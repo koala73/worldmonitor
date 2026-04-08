@@ -96,16 +96,16 @@ describe('buildSpineEntry — full data', () => {
     assert.equal(spine.coverage.hasIeaStocks, true);
   });
 
-  it('does not include electricity or gasStorage in the spine', () => {
+  it('electricity is null when no ember data provided, gasStorage excluded from spine', () => {
     const spine = buildSpineEntry('DE', {
       mix: makeMix(),
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
     });
-    assert.equal(spine.electricity, undefined);
+    assert.equal(spine.electricity, null);
     assert.equal(spine.gasStorage, undefined);
-    assert.equal(spine.coverage.hasElectricity, undefined);
+    assert.equal(spine.coverage.hasEmber, false);
     assert.equal(spine.coverage.hasGasStorage, undefined);
   });
 
@@ -351,5 +351,34 @@ describe('count-drop guard math', () => {
     // Guard should not activate on first run (prevCount <= 0)
     const guardActive = prevCount > 0;
     assert.equal(guardActive, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSpineEntry with Ember data
+// ---------------------------------------------------------------------------
+
+describe('buildSpineEntry with Ember data', () => {
+  it('includes electricity block when ember data is present', () => {
+    const ember = { dataMonth: '2025-12', fossilShare: 71.2, renewShare: 24.1, nuclearShare: 4.7, coalShare: 31.1, gasShare: 33.0, demandTwh: 78.4 };
+    const entry = buildSpineEntry('JP', { mix: makeMix(), jodiOil: makeJodiOil(), jodiGas: null, ieaStocks: null, ember });
+    assert.ok(entry.electricity != null, 'should have electricity block');
+    assert.equal(entry.electricity.fossilShare, 71.2);
+    assert.equal(entry.electricity.renewShare, 24.1);
+    assert.equal(entry.coverage.hasEmber, true);
+    assert.equal(entry.sources.emberMonth, '2025-12');
+  });
+
+  it('electricity is null when ember data is absent', () => {
+    const entry = buildSpineEntry('US', { mix: makeMix(), jodiOil: makeJodiOil(), jodiGas: null, ieaStocks: null, ember: null });
+    assert.equal(entry.electricity, null);
+    assert.equal(entry.coverage.hasEmber, false);
+    assert.equal(entry.sources.emberMonth, null);
+  });
+
+  it('hasEmber is false when ember has no fossilShare', () => {
+    const entry = buildSpineEntry('US', { mix: makeMix(), jodiOil: makeJodiOil(), jodiGas: null, ieaStocks: null, ember: { dataMonth: '2025-12' } });
+    assert.equal(entry.coverage.hasEmber, false);
+    assert.equal(entry.electricity, null);
   });
 });

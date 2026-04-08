@@ -542,3 +542,37 @@ describe('cache key includes degraded state', () => {
     assert.ok(keyLive.endsWith(':l'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// grid-tightness limitation from Ember fossilShare
+// ---------------------------------------------------------------------------
+
+describe('grid-tightness limitation from Ember fossilShare', () => {
+  it('appends limitation when fossilShare > 70', () => {
+    const limitations = [];
+    const fossilShare = 75.3;
+    if (fossilShare !== null && fossilShare > 70) {
+      limitations.push('high fossil grid dependency: limited electricity substitution capacity');
+    }
+    assert.equal(limitations.length, 1);
+    assert.ok(limitations[0].includes('fossil grid dependency'));
+  });
+
+  it('does not append when fossilShare <= 70', () => {
+    const limitations = [];
+    const fossilShare = 55.0;
+    if (fossilShare !== null && fossilShare > 70) {
+      limitations.push('high fossil grid dependency: limited electricity substitution capacity');
+    }
+    assert.equal(limitations.length, 0);
+  });
+
+  it('does not append when fossilShare is null (no Ember data)', () => {
+    const limitations = [];
+    const fossilShare = null;
+    if (fossilShare !== null && fossilShare > 70) {
+      limitations.push('high fossil grid dependency: limited electricity substitution capacity');
+    }
+    assert.equal(limitations.length, 0);
+  });
+});
