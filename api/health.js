@@ -144,6 +144,7 @@ const STANDALONE_KEYS = {
   regulatoryActions:        'regulatory:actions:v1',
   energyIntelligence:       'energy:intelligence:feed:v1',
   ieaOilStocks:             'energy:iea-oil-stocks:v1:index',
+  oilStocksAnalysis:        'energy:oil-stocks-analysis:v1',
   jodiGas:                  'energy:jodi-gas:v1:_countries',
   lngVulnerability:         'energy:lng-vulnerability:v1',
   jodiOil:                  'energy:jodi-oil:v1:_countries',
