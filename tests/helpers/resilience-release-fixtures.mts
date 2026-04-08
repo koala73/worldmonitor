@@ -167,7 +167,7 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
       fao: null,
       aquastat: null,
       iea: null,
-      coverage: { availableDatasets: 0, totalDatasets: 8, ratio: 0 },
+      coverage: { availableDatasets: 0, totalDatasets: 9, ratio: 0 },
       seedYear: 2025,
       seededAt: '2026-04-04T00:00:00.000Z',
     };
@@ -218,7 +218,12 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
         source: 'release-gate-fixture',
       },
     },
-    coverage: { availableDatasets: 8, totalDatasets: 8, ratio: 1 },
+    appliedTariffRate: {
+      value: round(clamp(20 - quality * 0.2, 1, 18), 1),
+      year: 2024,
+      source: 'release-gate-fixture',
+    },
+    coverage: { availableDatasets: 9, totalDatasets: 9, ratio: 1 },
     seedYear: 2025,
     seededAt: '2026-04-04T00:00:00.000Z',
   };

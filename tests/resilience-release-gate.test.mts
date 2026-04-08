@@ -124,14 +124,14 @@ describe('resilience release gate', () => {
     );
   });
 
-  it('US is not low-confidence with full 8/8 dataset coverage', async () => {
+  it('US is not low-confidence with full 9/9 dataset coverage', async () => {
     installRedisFixtures();
 
     const us = await getResilienceScore(
       { request: new Request('https://example.com?countryCode=US') } as never,
       { countryCode: 'US' },
     );
-    assert.equal(us.lowConfidence, false, `US has full 8/8 dataset coverage in fixtures and should not be flagged low-confidence`);
+    assert.equal(us.lowConfidence, false, `US has full 9/9 dataset coverage in fixtures and should not be flagged low-confidence`);
   });
 
   it('produces complete ranking and choropleth entries for the full G20 + EU27 release set', async () => {
