@@ -18,7 +18,7 @@ import {
 } from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 
-const SHOCK_CACHE_TTL = 900;
+const SHOCK_CACHE_TTL = 300;
 
 const CP_TO_PORTWATCH: Record<string, string> = {
   hormuz: 'hormuz_strait',
@@ -142,9 +142,10 @@ export async function computeEnergyShockScenario(
 
   const degraded = !chokepointFlowsRaw2 || cpEntry == null || !Number.isFinite(cpEntry.flowRatio as number);
 
-  const liveFlowRatio: number | null = (!degraded && cpEntry != null && Number.isFinite(cpEntry.flowRatio as number))
+  const rawFlowRatio = (!degraded && cpEntry != null && Number.isFinite(cpEntry.flowRatio as number))
     ? cpEntry.flowRatio
     : null;
+  const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
   const cacheKey = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}`;
   const cached = await getCachedJson(cacheKey);
@@ -167,7 +168,7 @@ export async function computeEnergyShockScenario(
   const jodiOilCoverage = jodiOil != null;
   const comtradeCoverage = comtradeHasData;
   const ieaStocksCoverage = ieaStocks != null && ieaStocks.anomaly !== true
-    && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
+    && (ieaStocks.netExporter === true || (Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
   const portwatchCoverage = liveFlowRatio !== null;
 
   const coverageLevel = deriveCoverageLevel(jodiOilCoverage, comtradeCoverage, ieaStocksCoverage, degraded);

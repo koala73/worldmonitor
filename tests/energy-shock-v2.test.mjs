@@ -458,6 +458,73 @@ describe('ieaStocksCoverage requires daysOfCover for non-exporters', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ieaStocksCoverage rejects non-finite and negative daysOfCover
+// ---------------------------------------------------------------------------
+
+describe('ieaStocksCoverage rejects non-finite and negative daysOfCover', () => {
+  function checkCoverage(ieaStocks) {
+    return ieaStocks != null && ieaStocks.anomaly !== true
+      && (ieaStocks.netExporter === true || (Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
+  }
+
+  it('rejects NaN daysOfCover', () => {
+    assert.equal(checkCoverage({ anomaly: false, daysOfCover: NaN, netExporter: false }), false);
+  });
+
+  it('rejects Infinity daysOfCover', () => {
+    assert.equal(checkCoverage({ anomaly: false, daysOfCover: Infinity, netExporter: false }), false);
+  });
+
+  it('rejects negative daysOfCover', () => {
+    assert.equal(checkCoverage({ anomaly: false, daysOfCover: -1, netExporter: false }), false);
+  });
+
+  it('accepts zero daysOfCover (genuinely exhausted)', () => {
+    assert.equal(checkCoverage({ anomaly: false, daysOfCover: 0, netExporter: false }), true);
+  });
+
+  it('accepts positive finite daysOfCover', () => {
+    assert.equal(checkCoverage({ anomaly: false, daysOfCover: 90, netExporter: false }), true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// liveFlowRatio clamped to 0..1.5
+// ---------------------------------------------------------------------------
+
+describe('liveFlowRatio clamped to 0..1.5', () => {
+  it('clamps negative flowRatio to 0', () => {
+    const raw = -0.5;
+    const clamped = Math.max(0, Math.min(1.5, raw));
+    assert.equal(clamped, 0);
+  });
+
+  it('clamps oversized flowRatio to 1.5', () => {
+    const raw = 3.0;
+    const clamped = Math.max(0, Math.min(1.5, raw));
+    assert.equal(clamped, 1.5);
+  });
+
+  it('passes through valid flowRatio unchanged', () => {
+    const raw = 0.85;
+    const clamped = Math.max(0, Math.min(1.5, raw));
+    assert.equal(clamped, 0.85);
+  });
+
+  it('passes through zero flowRatio (chokepoint collapsed)', () => {
+    const raw = 0;
+    const clamped = Math.max(0, Math.min(1.5, raw));
+    assert.equal(clamped, 0);
+  });
+
+  it('passes through 1.5 (max valid ratio)', () => {
+    const raw = 1.5;
+    const clamped = Math.max(0, Math.min(1.5, raw));
+    assert.equal(clamped, 1.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // cache key includes degraded state
 // ---------------------------------------------------------------------------
 
