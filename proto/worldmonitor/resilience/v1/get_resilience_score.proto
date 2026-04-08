@@ -19,4 +19,7 @@ message GetResilienceScoreResponse {
   double change_30d = 7;
   bool low_confidence = 8;
   double imputation_share = 9;
+  double baseline_score = 10;
+  double stress_score = 11;
+  double stress_factor = 12;
 }

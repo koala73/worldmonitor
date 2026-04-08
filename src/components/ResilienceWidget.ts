@@ -8,6 +8,7 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import {
   RESILIENCE_VISUAL_LEVEL_COLORS,
+  formatBaselineStress,
   formatResilienceChange30d,
   formatResilienceConfidence,
   getResilienceDomainLabel,
@@ -19,6 +20,9 @@ import type { CountryEnergyProfileData } from './CountryBriefPanel';
 const LOCKED_PREVIEW: ResilienceScoreResponse = {
   countryCode: 'US',
   overallScore: 73,
+  baselineScore: 82,
+  stressScore: 58,
+  stressFactor: 0.21,
   level: 'high',
   domains: [
     { id: 'economic', score: 82, weight: 0.22, dimensions: [] },
@@ -262,6 +266,14 @@ export class ResilienceWidget {
           ),
         ),
       ),
+      ...(data.baselineScore != null && data.stressScore != null && data.stressFactor != null
+        ? [h(
+            'div',
+            { className: 'resilience-widget__baseline-stress' },
+            h('span', { className: 'resilience-widget__baseline-stress-text' },
+              formatBaselineStress(data.baselineScore, data.stressScore, data.stressFactor)),
+          )]
+        : []),
       h(
         'div',
         { className: 'resilience-widget__domains' },

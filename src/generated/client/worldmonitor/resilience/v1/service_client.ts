@@ -15,6 +15,9 @@ export interface GetResilienceScoreResponse {
   change30d: number;
   lowConfidence: boolean;
   imputationShare: number;
+  baselineScore: number;
+  stressScore: number;
+  stressFactor: number;
 }
 
 export interface ResilienceDomain {

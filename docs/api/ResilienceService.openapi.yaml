@@ -121,6 +121,15 @@ components:
                 imputationShare:
                     type: number
                     format: double
+                baselineScore:
+                    type: number
+                    format: double
+                stressScore:
+                    type: number
+                    format: double
+                stressFactor:
+                    type: number
+                    format: double
         ResilienceDomain:
             type: object
             properties:

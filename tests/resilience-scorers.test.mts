@@ -5,6 +5,7 @@ import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_SCORERS,
+  RESILIENCE_DIMENSION_TYPES,
   RESILIENCE_DOMAIN_ORDER,
   getResilienceDomainWeight,
   scoreAllDimensions,
@@ -69,10 +70,6 @@ describe('resilience scorer contracts', () => {
       return [domainId, average];
     }));
 
-    const overallScore = Number(RESILIENCE_DOMAIN_ORDER.reduce((sum, domainId) => {
-      return sum + domainAverages[domainId] * getResilienceDomainWeight(domainId);
-    }, 0).toFixed(2));
-
     assert.deepEqual(domainAverages, {
       economic: 66.33,
       infrastructure: 79,
@@ -80,7 +77,114 @@ describe('resilience scorer contracts', () => {
       'social-governance': 61.75,
       'health-food': 60.5,
     });
-    assert.equal(overallScore, 68.72);
+
+    function round(v: number, d = 2) { return Number(v.toFixed(d)); }
+    function coverageWeightedMean(dims: { score: number; coverage: number }[]) {
+      const totalCov = dims.reduce((s, d) => s + d.coverage, 0);
+      if (!totalCov) return 0;
+      return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+    }
+
+    const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
+      id,
+      score: round(scoreMap[id].score),
+      coverage: round(scoreMap[id].coverage),
+    }));
+    const baselineDims = dimensions.filter((d) => {
+      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
+      return t === 'baseline' || t === 'mixed';
+    });
+    const stressDims = dimensions.filter((d) => {
+      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
+      return t === 'stress' || t === 'mixed';
+    });
+
+    const baselineScore = round(coverageWeightedMean(baselineDims));
+    const stressScore = round(coverageWeightedMean(stressDims));
+    const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
+    const overallScore = round(baselineScore * (1 - stressFactor));
+
+    assert.equal(baselineScore, 67.85);
+    assert.equal(stressScore, 67.85);
+    assert.equal(stressFactor, 0.3215);
+    assert.equal(overallScore, 46.04);
+  });
+
+  it('baselineScore is computed from baseline + mixed dimensions only', async () => {
+    installRedis(RESILIENCE_FIXTURES);
+    const scoreMap = await scoreAllDimensions('US');
+
+    const baselineDimIds = RESILIENCE_DIMENSION_ORDER.filter((id) => {
+      const t = RESILIENCE_DIMENSION_TYPES[id];
+      return t === 'baseline' || t === 'mixed';
+    });
+    const stressOnlyDimIds = RESILIENCE_DIMENSION_ORDER.filter((id) => RESILIENCE_DIMENSION_TYPES[id] === 'stress');
+
+    assert.ok(baselineDimIds.length > 0, 'should have baseline dims');
+    for (const id of stressOnlyDimIds) {
+      assert.ok(!baselineDimIds.includes(id), `stress-only dimension ${id} should not appear in baseline set`);
+    }
+    assert.ok(baselineDimIds.includes('macroFiscal'), 'macroFiscal should be in baseline set');
+    assert.ok(baselineDimIds.includes('infrastructure'), 'infrastructure should be in baseline set');
+    assert.ok(baselineDimIds.includes('logisticsSupply'), 'mixed logisticsSupply should be in baseline set');
+  });
+
+  it('stressScore is computed from stress + mixed dimensions only', async () => {
+    installRedis(RESILIENCE_FIXTURES);
+    const scoreMap = await scoreAllDimensions('US');
+
+    const stressDimIds = RESILIENCE_DIMENSION_ORDER.filter((id) => {
+      const t = RESILIENCE_DIMENSION_TYPES[id];
+      return t === 'stress' || t === 'mixed';
+    });
+    const baselineOnlyDimIds = RESILIENCE_DIMENSION_ORDER.filter((id) => RESILIENCE_DIMENSION_TYPES[id] === 'baseline');
+
+    assert.ok(stressDimIds.length > 0, 'should have stress dims');
+    for (const id of baselineOnlyDimIds) {
+      assert.ok(!stressDimIds.includes(id), `baseline-only dimension ${id} should not appear in stress set`);
+    }
+    assert.ok(stressDimIds.includes('currencyExternal'), 'currencyExternal should be in stress set');
+    assert.ok(stressDimIds.includes('borderSecurity'), 'borderSecurity should be in stress set');
+    assert.ok(stressDimIds.includes('energy'), 'mixed energy should be in stress set');
+  });
+
+  it('overallScore = baselineScore * (1 - stressFactor)', async () => {
+    installRedis(RESILIENCE_FIXTURES);
+    const scoreMap = await scoreAllDimensions('US');
+    function round(v: number, d = 2) { return Number(v.toFixed(d)); }
+    function coverageWeightedMean(dims: { score: number; coverage: number }[]) {
+      const totalCov = dims.reduce((s, d) => s + d.coverage, 0);
+      if (!totalCov) return 0;
+      return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+    }
+    const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
+      id, score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage),
+    }));
+    const baselineDims = dimensions.filter((d) => {
+      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
+      return t === 'baseline' || t === 'mixed';
+    });
+    const stressDims = dimensions.filter((d) => {
+      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
+      return t === 'stress' || t === 'mixed';
+    });
+    const bs = round(coverageWeightedMean(baselineDims));
+    const ss = round(coverageWeightedMean(stressDims));
+    const sf = round(Math.max(0, Math.min(1 - ss / 100, 0.5)), 4);
+    const expected = round(bs * (1 - sf));
+    assert.ok(expected > 0, 'overall should be positive');
+    assert.equal(expected, 46.04, 'overallScore should match the baseline * (1 - stressFactor) formula');
+  });
+
+  it('stressFactor is clamped to [0, 0.5]', () => {
+    function clampStressFactor(stressScore: number) {
+      return Math.max(0, Math.min(1 - stressScore / 100, 0.5));
+    }
+    assert.equal(clampStressFactor(100), 0, 'perfect stress score = zero factor');
+    assert.equal(clampStressFactor(0), 0.5, 'zero stress score = max factor 0.5');
+    assert.equal(clampStressFactor(50), 0.5, 'stress 50 = clamped to 0.5');
+    assert.ok(clampStressFactor(70) >= 0 && clampStressFactor(70) <= 0.5, 'stress 70 within bounds');
+    assert.ok(clampStressFactor(110) >= 0, 'stress above 100 still clamped');
   });
 });
 

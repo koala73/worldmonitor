@@ -47,8 +47,14 @@ describe('resilience handlers', () => {
     assert.ok(response.change30d > 0);
     assert.equal(typeof response.lowConfidence, 'boolean');
     assert.ok(response.imputationShare >= 0 && response.imputationShare <= 1, `imputationShare out of bounds: ${response.imputationShare}`);
+    assert.equal(typeof response.baselineScore, 'number', 'baselineScore should be present');
+    assert.equal(typeof response.stressScore, 'number', 'stressScore should be present');
+    assert.equal(typeof response.stressFactor, 'number', 'stressFactor should be present');
+    assert.ok(response.baselineScore >= 0 && response.baselineScore <= 100, `baselineScore out of bounds: ${response.baselineScore}`);
+    assert.ok(response.stressScore >= 0 && response.stressScore <= 100, `stressScore out of bounds: ${response.stressScore}`);
+    assert.ok(response.stressFactor >= 0 && response.stressFactor <= 0.5, `stressFactor out of bounds: ${response.stressFactor}`);
 
-    const cachedScore = redis.get('resilience:score:v4:US');
+    const cachedScore = redis.get('resilience:score:v5:US');
     assert.ok(cachedScore, 'expected score cache to be written');
     assert.equal(JSON.parse(cachedScore || '{}').countryCode, 'US');
 

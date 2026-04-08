@@ -52,3 +52,10 @@ export function formatResilienceChange30d(change30d: number): string {
   const sign = change30d > 0 ? '+' : '';
   return `30d ${sign}${rounded}`;
 }
+
+export function formatBaselineStress(baseline: number, stress: number, stressFactor: number): string {
+  const b = Number.isFinite(baseline) ? Math.round(baseline) : 0;
+  const s = Number.isFinite(stress) ? Math.round(stress) : 0;
+  const impact = Number.isFinite(stressFactor) ? Math.round(stressFactor * 100) : 0;
+  return `Baseline: ${b} | Stress: ${s} | Impact: -${impact}%`;
+}

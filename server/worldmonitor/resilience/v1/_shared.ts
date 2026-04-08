@@ -10,6 +10,7 @@ import { detectTrend, round } from '../../../_shared/resilience-stats';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
+  RESILIENCE_DIMENSION_TYPES,
   RESILIENCE_DOMAIN_ORDER,
   createMemoizedSeedReader,
   getResilienceDomainWeight,
@@ -21,9 +22,9 @@ import {
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v4:';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v5:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v4';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v5';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
@@ -151,6 +152,9 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     return {
       countryCode: '',
       overallScore: 0,
+      baselineScore: 0,
+      stressScore: 0,
+      stressFactor: 0.5,
       level: 'unknown',
       domains: [],
       trend: 'stable',
@@ -167,9 +171,18 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
       const dimensions = buildDimensionList(scoreMap);
       const domains = buildDomainList(dimensions);
-      const overallScore = round(
-        domains.reduce((sum, domain) => sum + domain.score * domain.weight, 0),
-      );
+
+      const baselineDims: ResilienceDimension[] = [];
+      const stressDims: ResilienceDimension[] = [];
+      for (const dim of dimensions) {
+        const dimType = RESILIENCE_DIMENSION_TYPES[dim.id as ResilienceDimensionId];
+        if (dimType === 'baseline' || dimType === 'mixed') baselineDims.push(dim);
+        if (dimType === 'stress' || dimType === 'mixed') stressDims.push(dim);
+      }
+      const baselineScore = round(coverageWeightedMean(baselineDims));
+      const stressScore = round(coverageWeightedMean(stressDims));
+      const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
+      const overallScore = round(baselineScore * (1 - stressFactor));
 
       const totalImputed = dimensions.reduce((sum, d) => sum + (d.imputedWeight ?? 0), 0);
       const totalObserved = dimensions.reduce((sum, d) => sum + (d.observedWeight ?? 0), 0);
@@ -187,6 +200,9 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       return {
         countryCode: normalizedCountryCode,
         overallScore,
+        baselineScore,
+        stressScore,
+        stressFactor,
         level: classifyResilienceLevel(overallScore),
         domains,
         trend: detectTrend(scoreSeries),
@@ -199,6 +215,9 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
   ) ?? {
     countryCode: normalizedCountryCode,
     overallScore: 0,
+    baselineScore: 0,
+    stressScore: 0,
+    stressFactor: 0.5,
     level: 'unknown',
     domains: [],
     trend: 'stable',
