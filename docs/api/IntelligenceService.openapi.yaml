@@ -734,6 +734,11 @@ paths:
                   schema:
                     type: integer
                     format: int32
+                - name: fuel_mode
+                  in: query
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -2212,6 +2217,8 @@ components:
                 disruptionPct:
                     type: integer
                     format: int32
+                fuelMode:
+                    type: string
         ComputeEnergyShockScenarioResponse:
             type: object
             properties:
@@ -2261,6 +2268,8 @@ components:
                 liveFlowRatio:
                     type: number
                     format: double
+                gasImpact:
+                    $ref: '#/components/schemas/GasImpact'
         ProductImpact:
             type: object
             properties:
@@ -2275,6 +2284,50 @@ components:
                 deficitPct:
                     type: number
                     format: double
+        GasImpact:
+            type: object
+            properties:
+                lngShareOfImports:
+                    type: number
+                    format: double
+                lngImportsTj:
+                    type: number
+                    format: double
+                lngDisruptionTj:
+                    type: number
+                    format: double
+                totalDemandTj:
+                    type: number
+                    format: double
+                deficitPct:
+                    type: number
+                    format: double
+                dataAvailable:
+                    type: boolean
+                assessment:
+                    type: string
+                storage:
+                    $ref: '#/components/schemas/GasStorageBuffer'
+                dataSource:
+                    type: string
+        GasStorageBuffer:
+            type: object
+            properties:
+                fillPct:
+                    type: number
+                    format: double
+                gasTwh:
+                    type: number
+                    format: double
+                bufferDays:
+                    type: number
+                    format: double
+                trend:
+                    type: string
+                date:
+                    type: string
+                scope:
+                    type: string
         GetCountryPortActivityRequest:
             type: object
             properties:

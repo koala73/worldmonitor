@@ -3,6 +3,8 @@ import type {
   ComputeEnergyShockScenarioRequest,
   ComputeEnergyShockScenarioResponse,
   ProductImpact,
+  GasImpact,
+  GasStorageBuffer,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
@@ -15,6 +17,11 @@ import {
   buildAssessment,
   deriveCoverageLevel,
   deriveChokepointConfidence,
+  parseFuelMode,
+  EU_GAS_STORAGE_COUNTRIES,
+  computeGasDisruption,
+  computeGasBufferDays,
+  buildGasAssessment,
 } from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 
@@ -49,6 +56,22 @@ interface IeaStocks {
   netExporter?: boolean | null;
   belowObligation?: boolean | null;
   anomaly?: boolean | null;
+}
+
+interface JodiGas {
+  dataMonth?: string | null;
+  lngImportsTj?: number | null;
+  pipeImportsTj?: number | null;
+  totalDemandTj?: number | null;
+  lngShareOfImports?: number | null;
+  closingStockTj?: number | null;
+}
+
+interface GasStorageData {
+  fillPct?: number | null;
+  gasTwh?: number | null;
+  trend?: string | null;
+  date?: string | null;
 }
 
 interface ComtradeFlowRecord {
@@ -103,6 +126,9 @@ export async function computeEnergyShockScenario(
   const code = req.countryCode?.trim().toUpperCase() ?? '';
   const chokepointId = req.chokepointId?.trim().toLowerCase() ?? '';
   const disruptionPct = clamp(Math.round(req.disruptionPct ?? 0), 10, 100);
+  const fuelMode = parseFuelMode(req.fuelMode);
+  const needsOil = fuelMode === 'oil' || fuelMode === 'both';
+  const needsGas = fuelMode === 'gas' || fuelMode === 'both';
 
   const EMPTY: ComputeEnergyShockScenarioResponse = {
     countryCode: code,
@@ -123,6 +149,7 @@ export async function computeEnergyShockScenario(
     degraded: false,
     chokepointConfidence: 'none',
     liveFlowRatio: undefined,
+    gasImpact: undefined,
   };
 
   if (!code || code.length !== 2) return EMPTY;
@@ -147,15 +174,19 @@ export async function computeEnergyShockScenario(
     : null;
   const liveFlowRatio: number | null = rawFlowRatio !== null ? clamp(rawFlowRatio, 0, 1.5) : null;
 
-  const cacheKey = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}`;
+  const cacheKey = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:${degraded ? 'd' : 'l'}:${fuelMode}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
 
-  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult] = await Promise.allSettled([
+  const [jodiOilResult, ieaStocksResult, gulfShareResult, emberResult, jodiGasResult, gasStorageResult] = await Promise.allSettled([
     getCachedJson(`energy:jodi-oil:v1:${code}`, true),
     getCachedJson(`energy:iea-oil-stocks:v1:${code}`, true),
     getGulfCrudeShare(code),
     getCachedJson(`energy:ember:v1:${code}`, true),
+    needsGas ? getCachedJson(`energy:jodi-gas:v1:${code}`, true) : Promise.resolve(null),
+    needsGas && EU_GAS_STORAGE_COUNTRIES.has(code)
+      ? getCachedJson(`energy:gas-storage:v1:${code}`, true)
+      : Promise.resolve(null),
   ]);
 
   const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
@@ -165,6 +196,8 @@ export async function computeEnergyShockScenario(
     : { share: 0, hasData: false };
 
   const emberData = emberResult.status === 'fulfilled' ? (emberResult.value as { fossilShare?: number } | null) : null;
+  const jodiGas = jodiGasResult.status === 'fulfilled' ? (jodiGasResult.value as JodiGas | null) : null;
+  const gasStorageData = gasStorageResult.status === 'fulfilled' ? (gasStorageResult.value as GasStorageData | null) : null;
 
   const baseExposure = CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0;
   const exposureMult = liveFlowRatio !== null ? baseExposure * liveFlowRatio : baseExposure;
@@ -246,6 +279,56 @@ export async function computeEnergyShockScenario(
     comtradeCoverage,
   );
 
+  let gasImpact: GasImpact | undefined;
+
+  if (needsGas && jodiGas) {
+    const lngImportsTj = n(jodiGas.lngImportsTj);
+    const lngShareOfImports = n(jodiGas.lngShareOfImports);
+    const totalDemandTj = n(jodiGas.totalDemandTj);
+
+    const { lngDisruptionTj, deficitPct: gasDeficitPct } = computeGasDisruption(
+      lngImportsTj, totalDemandTj, chokepointId, disruptionPct,
+    );
+
+    let storage: GasStorageBuffer | undefined;
+    let bufferDays = 0;
+    const isEu = EU_GAS_STORAGE_COUNTRIES.has(code);
+
+    if (isEu && gasStorageData) {
+      const gasTwh = n(gasStorageData.gasTwh);
+      bufferDays = computeGasBufferDays(gasTwh, lngDisruptionTj);
+      storage = {
+        fillPct: n(gasStorageData.fillPct),
+        gasTwh,
+        bufferDays,
+        trend: gasStorageData.trend ?? '',
+        date: gasStorageData.date ?? '',
+        scope: 'europe',
+      };
+    }
+
+    const gasDataAvailable = lngImportsTj > 0;
+
+    gasImpact = {
+      lngShareOfImports: Math.round(lngShareOfImports * 1000) / 1000,
+      lngImportsTj,
+      lngDisruptionTj,
+      totalDemandTj,
+      deficitPct: gasDeficitPct,
+      dataAvailable: gasDataAvailable,
+      assessment: buildGasAssessment(
+        code, chokepointId, gasDataAvailable, lngShareOfImports,
+        gasDeficitPct, bufferDays, disruptionPct, storage != null,
+      ),
+      storage,
+      dataSource: isEu && gasStorageData ? 'gie_daily' : 'jodi_monthly',
+    };
+
+    if (gasDataAvailable) {
+      limitations.push('LNG chokepoint exposure estimates based on global trade route shares');
+    }
+  }
+
   const response: ComputeEnergyShockScenarioResponse = {
     countryCode: code,
     chokepointId,
@@ -265,7 +348,13 @@ export async function computeEnergyShockScenario(
     degraded,
     chokepointConfidence,
     liveFlowRatio: liveFlowRatio !== null ? Math.round(liveFlowRatio * 1000) / 1000 : undefined,
+    gasImpact,
   };
+
+  if (!needsOil && gasImpact) {
+    response.assessment = gasImpact.assessment;
+    response.dataAvailable = gasImpact.dataAvailable;
+  }
 
   const cacheTtl = degraded ? 300 : SHOCK_CACHE_TTL;
   await setCachedJson(cacheKey, response, cacheTtl);

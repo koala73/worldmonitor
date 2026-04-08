@@ -100,3 +100,71 @@ export function buildAssessment(
   const proxyNote = comtradeCoverage === false ? '. Gulf share proxied at 40%' : '';
   return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}${proxyNote}${degradedNote}.`;
 }
+
+export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {
+  hormuz: 0.30,
+  malacca: 0.50,
+  suez: 0.20,
+  babelm: 0.20,
+};
+
+export const EU_GAS_STORAGE_COUNTRIES = new Set([
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
+  'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
+  'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB',
+]);
+
+export type FuelMode = 'oil' | 'gas' | 'both';
+
+export function parseFuelMode(raw: string | undefined | null): FuelMode {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === 'gas' || v === 'both') return v;
+  return 'oil';
+}
+
+export function computeGasDisruption(
+  lngImportsTj: number,
+  totalDemandTj: number,
+  chokepointId: string,
+  disruptionPct: number,
+): { lngDisruptionTj: number; deficitPct: number } {
+  const exposure = CHOKEPOINT_LNG_EXPOSURE[chokepointId] ?? 0;
+  const lngDisruptionTj = lngImportsTj * exposure * (disruptionPct / 100);
+  const deficitPct = totalDemandTj > 0
+    ? clamp((lngDisruptionTj / totalDemandTj) * 100, 0, 100)
+    : 0;
+  return {
+    lngDisruptionTj: Math.round(lngDisruptionTj * 10) / 10,
+    deficitPct: Math.round(deficitPct * 10) / 10,
+  };
+}
+
+export function computeGasBufferDays(gasTwh: number, lngDisruptionTj: number): number {
+  if (lngDisruptionTj <= 0 || gasTwh <= 0) return 0;
+  const storedTj = gasTwh * 3600;
+  const dailyLossTj = lngDisruptionTj / 30;
+  return Math.round(storedTj / dailyLossTj);
+}
+
+export function buildGasAssessment(
+  code: string,
+  chokepointId: string,
+  dataAvailable: boolean,
+  lngShareOfImports: number,
+  deficitPct: number,
+  bufferDays: number,
+  disruptionPct: number,
+  hasStorage: boolean,
+): string {
+  if (!dataAvailable) {
+    return `Insufficient gas import data for ${code} to model ${chokepointId} LNG exposure.`;
+  }
+  if (lngShareOfImports < 0.1) {
+    return `${code} has low LNG dependence (${Math.round(lngShareOfImports * 100)}% of gas imports via LNG); ${chokepointId} disruption has limited gas impact.`;
+  }
+  if (hasStorage && bufferDays > 90) {
+    return `${code} has ${bufferDays} days of gas storage buffer under ${disruptionPct}% ${chokepointId} LNG disruption.`;
+  }
+  const storageNote = hasStorage ? `; gas storage covers ~${bufferDays} days` : '';
+  return `${code} faces ${deficitPct.toFixed(1)}% gas supply deficit under ${disruptionPct}% ${chokepointId} LNG disruption${storageNote}.`;
+}

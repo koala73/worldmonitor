@@ -536,6 +536,7 @@ export interface ComputeEnergyShockScenarioRequest {
   countryCode: string;
   chokepointId: string;
   disruptionPct: number;
+  fuelMode: string;
 }
 
 export interface ComputeEnergyShockScenarioResponse {
@@ -557,6 +558,7 @@ export interface ComputeEnergyShockScenarioResponse {
   degraded: boolean;
   chokepointConfidence: string;
   liveFlowRatio?: number;
+  gasImpact?: GasImpact;
 }
 
 export interface ProductImpact {
@@ -564,6 +566,27 @@ export interface ProductImpact {
   outputLossKbd: number;
   demandKbd: number;
   deficitPct: number;
+}
+
+export interface GasImpact {
+  lngShareOfImports: number;
+  lngImportsTj: number;
+  lngDisruptionTj: number;
+  totalDemandTj: number;
+  deficitPct: number;
+  dataAvailable: boolean;
+  assessment: string;
+  storage?: GasStorageBuffer;
+  dataSource: string;
+}
+
+export interface GasStorageBuffer {
+  fillPct: number;
+  gasTwh: number;
+  bufferDays: number;
+  trend: string;
+  date: string;
+  scope: string;
 }
 
 export interface GetCountryPortActivityRequest {
@@ -1161,6 +1184,7 @@ export class IntelligenceServiceClient {
     if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
     if (req.chokepointId != null && req.chokepointId !== "") params.set("chokepoint_id", String(req.chokepointId));
     if (req.disruptionPct != null && req.disruptionPct !== 0) params.set("disruption_pct", String(req.disruptionPct));
+    if (req.fuelMode != null && req.fuelMode !== "") params.set("fuel_mode", String(req.fuelMode));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

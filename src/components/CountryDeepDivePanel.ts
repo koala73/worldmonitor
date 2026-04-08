@@ -736,6 +736,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       disruptionSelect.append(opt);
     }
 
+    const fuelModeSelect = this.el('select', '') as HTMLSelectElement;
+    fuelModeSelect.style.cssText = disruptionSelect.style.cssText;
+    for (const [val, label] of [['oil', 'Oil'], ['gas', 'Gas (LNG)'], ['both', 'Both']] as const) {
+      const opt = this.el('option', '') as HTMLOptionElement;
+      opt.value = val;
+      opt.textContent = label;
+      fuelModeSelect.append(opt);
+    }
+
     const computeBtn = this.el('button', 'cdp-action-btn') as HTMLButtonElement;
     computeBtn.type = 'button';
     computeBtn.textContent = 'Compute';
@@ -744,7 +753,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const coverageBadge = this.el('span', '');
     coverageBadge.style.cssText = 'display:none;font-size:10px;padding:2px 5px;border-radius:3px;font-weight:600';
 
-    controls.append(chokepointSelect, disruptionSelect, computeBtn, coverageBadge);
+    controls.append(chokepointSelect, disruptionSelect, fuelModeSelect, computeBtn, coverageBadge);
     wrapper.append(controls);
 
     const resultArea = this.el('div', '');
@@ -764,7 +773,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       coverageBadge.style.display = 'none';
       coverageBadge.textContent = '';
 
-      const url = toApiUrl(`/api/intelligence/v1/compute-energy-shock?country_code=${encodeURIComponent(code)}&chokepoint_id=${encodeURIComponent(chokepoint)}&disruption_pct=${disruption}`);
+      const url = toApiUrl(`/api/intelligence/v1/compute-energy-shock?country_code=${encodeURIComponent(code)}&chokepoint_id=${encodeURIComponent(chokepoint)}&disruption_pct=${disruption}&fuel_mode=${encodeURIComponent(fuelModeSelect.value)}`);
       globalThis.fetch(url)
         .then((r) => r.json() as Promise<ComputeEnergyShockScenarioResponse>)
         .then((result) => {
@@ -887,6 +896,41 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
       details.append(ul);
       container.append(details);
+    }
+
+    if (result.gasImpact?.dataAvailable) {
+      const gi = result.gasImpact;
+      const gasSection = this.el('div', '');
+      gasSection.style.cssText = 'margin-top:10px;border-top:1px solid #374151;padding-top:8px';
+
+      const gasTitle = this.el('div', '');
+      gasTitle.style.cssText = 'font-size:11px;font-weight:600;color:#e5e7eb;margin-bottom:4px';
+      gasTitle.textContent = 'Gas / LNG Impact';
+      gasSection.append(gasTitle);
+
+      const metrics = this.el('div', 'cdp-economic-source');
+      metrics.textContent = `LNG share: ${(gi.lngShareOfImports * 100).toFixed(0)}% | Disruption: ${gi.lngDisruptionTj.toFixed(0)} TJ | Deficit: ${gi.deficitPct.toFixed(1)}%`;
+      gasSection.append(metrics);
+
+      if (gi.storage) {
+        const s = gi.storage;
+        const storageDiv = this.el('div', 'cdp-economic-source');
+        storageDiv.style.cssText += ';margin-top:4px';
+        storageDiv.textContent = `Gas storage: ${s.fillPct.toFixed(1)}% full (${s.gasTwh.toFixed(0)} TWh), buffer ~${s.bufferDays} days, ${s.trend} (${s.scope})`;
+        gasSection.append(storageDiv);
+      }
+
+      const srcBadge = this.el('div', '');
+      srcBadge.style.cssText = 'font-size:10px;color:#9ca3af;margin-top:2px';
+      srcBadge.textContent = `Source: ${gi.dataSource === 'gie_daily' ? 'GIE (daily, Europe)' : 'JODI (monthly, global)'}`;
+      gasSection.append(srcBadge);
+
+      const gasAssess = this.el('div', '');
+      gasAssess.style.cssText = 'font-size:11px;color:#d1d5db;line-height:1.4;margin-top:4px';
+      gasAssess.textContent = gi.assessment;
+      gasSection.append(gasAssess);
+
+      container.append(gasSection);
     }
 
     return container;

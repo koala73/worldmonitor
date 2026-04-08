@@ -7,6 +7,7 @@ message ComputeEnergyShockScenarioRequest {
   string country_code   = 1 [(sebuf.http.query) = {name: "country_code"}];
   string chokepoint_id  = 2 [(sebuf.http.query) = {name: "chokepoint_id"}];
   int32  disruption_pct = 3 [(sebuf.http.query) = {name: "disruption_pct"}];
+  string fuel_mode      = 4 [(sebuf.http.query) = {name: "fuel_mode"}]; // "oil"|"gas"|"both", default "oil"
 }
 
 message ProductImpact {
@@ -14,6 +15,27 @@ message ProductImpact {
   double output_loss_kbd = 2;
   double demand_kbd      = 3;
   double deficit_pct     = 4;
+}
+
+message GasStorageBuffer {
+  double fill_pct    = 1;
+  double gas_twh     = 2;
+  double buffer_days = 3;
+  string trend       = 4;
+  string date        = 5;
+  string scope       = 6;
+}
+
+message GasImpact {
+  double lng_share_of_imports = 1;
+  double lng_imports_tj       = 2;
+  double lng_disruption_tj    = 3;
+  double total_demand_tj      = 4;
+  double deficit_pct          = 5;
+  bool   data_available       = 6;
+  string assessment           = 7;
+  GasStorageBuffer storage    = 8;
+  string data_source          = 9;
 }
 
 message ComputeEnergyShockScenarioResponse {
@@ -39,5 +61,5 @@ message ComputeEnergyShockScenarioResponse {
   bool   degraded              = 17;  // true when PortWatch absent/stale
   string chokepoint_confidence = 18;  // "high" | "low" | "none"
   optional double live_flow_ratio = 19;  // from energy:chokepoint-flows:v1, 0-1.5; absent when portwatch_coverage=false
-  // field 20 reserved for gas_impact (PR4)
+  GasImpact gas_impact        = 20;
 }

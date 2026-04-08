@@ -13,6 +13,12 @@ import {
   buildAssessment,
   computeGulfShare,
   CHOKEPOINT_EXPOSURE,
+  parseFuelMode,
+  CHOKEPOINT_LNG_EXPOSURE,
+  EU_GAS_STORAGE_COUNTRIES,
+  computeGasDisruption,
+  computeGasBufferDays,
+  buildGasAssessment,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 
 import { ISO2_TO_COMTRADE } from '../server/worldmonitor/intelligence/v1/_comtrade-reporters.js';
@@ -529,18 +535,148 @@ describe('liveFlowRatio clamped to 0..1.5', () => {
 // cache key includes degraded state
 // ---------------------------------------------------------------------------
 
-describe('cache key includes degraded state', () => {
+describe('cache key includes degraded state and fuelMode', () => {
   it('degraded and non-degraded produce different cache keys', () => {
     const code = 'US';
     const chokepointId = 'hormuz';
     const disruptionPct = 50;
+    const fuelMode = 'oil';
 
-    const keyDegraded = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:d`;
-    const keyLive = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:l`;
+    const keyDegraded = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:d:${fuelMode}`;
+    const keyLive = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:l:${fuelMode}`;
 
     assert.notEqual(keyDegraded, keyLive, 'cache keys must differ by degraded state');
-    assert.ok(keyDegraded.endsWith(':d'));
-    assert.ok(keyLive.endsWith(':l'));
+    assert.ok(keyDegraded.endsWith(':d:oil'));
+    assert.ok(keyLive.endsWith(':l:oil'));
+  });
+
+  it('different fuelMode values produce different cache keys', () => {
+    const base = 'energy:shock:v2:US:hormuz:50:l';
+    const keyOil = `${base}:oil`;
+    const keyGas = `${base}:gas`;
+    const keyBoth = `${base}:both`;
+
+    assert.notEqual(keyOil, keyGas);
+    assert.notEqual(keyOil, keyBoth);
+    assert.notEqual(keyGas, keyBoth);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseFuelMode
+// ---------------------------------------------------------------------------
+
+describe('parseFuelMode', () => {
+  it('defaults to "oil" for empty string', () => assert.equal(parseFuelMode(''), 'oil'));
+  it('defaults to "oil" for null', () => assert.equal(parseFuelMode(null), 'oil'));
+  it('defaults to "oil" for undefined', () => assert.equal(parseFuelMode(undefined), 'oil'));
+  it('parses "gas"', () => assert.equal(parseFuelMode('gas'), 'gas'));
+  it('parses "both"', () => assert.equal(parseFuelMode('both'), 'both'));
+  it('parses "GAS" case-insensitive', () => assert.equal(parseFuelMode('GAS'), 'gas'));
+  it('returns "oil" for invalid value', () => assert.equal(parseFuelMode('nuclear'), 'oil'));
+});
+
+// ---------------------------------------------------------------------------
+// CHOKEPOINT_LNG_EXPOSURE
+// ---------------------------------------------------------------------------
+
+describe('CHOKEPOINT_LNG_EXPOSURE', () => {
+  it('has all 4 chokepoints', () => {
+    for (const cp of ['hormuz', 'malacca', 'suez', 'babelm']) {
+      assert.ok(cp in CHOKEPOINT_LNG_EXPOSURE, `missing ${cp}`);
+      assert.ok(CHOKEPOINT_LNG_EXPOSURE[cp] > 0 && CHOKEPOINT_LNG_EXPOSURE[cp] <= 1);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EU_GAS_STORAGE_COUNTRIES
+// ---------------------------------------------------------------------------
+
+describe('EU_GAS_STORAGE_COUNTRIES', () => {
+  it('includes DE, FR, IT', () => {
+    for (const c of ['DE', 'FR', 'IT']) assert.ok(EU_GAS_STORAGE_COUNTRIES.has(c));
+  });
+  it('excludes JP, KR, TW', () => {
+    for (const c of ['JP', 'KR', 'TW']) assert.ok(!EU_GAS_STORAGE_COUNTRIES.has(c));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeGasDisruption
+// ---------------------------------------------------------------------------
+
+describe('computeGasDisruption', () => {
+  it('computes hormuz LNG disruption correctly', () => {
+    const { lngDisruptionTj, deficitPct } = computeGasDisruption(1000, 5000, 'hormuz', 100);
+    assert.equal(lngDisruptionTj, 300);
+    assert.equal(deficitPct, 6);
+  });
+
+  it('computes malacca at 50% disruption', () => {
+    const { lngDisruptionTj } = computeGasDisruption(2000, 10000, 'malacca', 50);
+    assert.equal(lngDisruptionTj, 500);
+  });
+
+  it('returns zero for zero lngImportsTj', () => {
+    const { lngDisruptionTj, deficitPct } = computeGasDisruption(0, 5000, 'hormuz', 100);
+    assert.equal(lngDisruptionTj, 0);
+    assert.equal(deficitPct, 0);
+  });
+
+  it('returns zero deficit for zero totalDemandTj', () => {
+    const { deficitPct } = computeGasDisruption(1000, 0, 'hormuz', 100);
+    assert.equal(deficitPct, 0);
+  });
+
+  it('clamps deficit to 100%', () => {
+    const { deficitPct } = computeGasDisruption(10000, 100, 'malacca', 100);
+    assert.equal(deficitPct, 100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeGasBufferDays
+// ---------------------------------------------------------------------------
+
+describe('computeGasBufferDays', () => {
+  it('computes buffer from TWh and monthly disruption', () => {
+    const days = computeGasBufferDays(10, 300);
+    assert.equal(days, 3600);
+  });
+
+  it('returns 0 for zero disruption', () => {
+    assert.equal(computeGasBufferDays(100, 0), 0);
+  });
+
+  it('returns 0 for zero storage', () => {
+    assert.equal(computeGasBufferDays(0, 300), 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGasAssessment
+// ---------------------------------------------------------------------------
+
+describe('buildGasAssessment', () => {
+  it('returns insufficient data message when not available', () => {
+    const msg = buildGasAssessment('JP', 'hormuz', false, 0, 0, 0, 50, false);
+    assert.ok(msg.includes('Insufficient gas import data'));
+  });
+
+  it('returns low dependence for lngShare < 10%', () => {
+    const msg = buildGasAssessment('US', 'hormuz', true, 0.05, 1.0, 0, 50, false);
+    assert.ok(msg.includes('low LNG dependence'));
+  });
+
+  it('returns buffer message for EU with >90 days', () => {
+    const msg = buildGasAssessment('DE', 'hormuz', true, 0.3, 5.0, 200, 50, true);
+    assert.ok(msg.includes('200 days of gas storage buffer'));
+  });
+
+  it('returns deficit message for high exposure', () => {
+    const msg = buildGasAssessment('JP', 'malacca', true, 0.9, 25.0, 0, 50, false);
+    assert.ok(msg.includes('25.0% gas supply deficit'));
   });
 });
 
