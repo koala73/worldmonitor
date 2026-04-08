@@ -232,7 +232,7 @@ describe('count-drop guard math', () => {
   });
 });
 
-describe('pipeline failure detection logic', () => {
+describe('pipeline failure detection logic (non-transactional, e.g. Phase B meta write)', () => {
   it('detects a partial pipeline failure when one command errors', () => {
     const results = [{ result: 'OK' }, { result: 'OK' }, { error: 'NOSCRIPT' }, { result: 'OK' }];
     const failures = results.filter((r) => r?.error || r?.result === 'ERR');
@@ -252,33 +252,83 @@ describe('pipeline failure detection logic', () => {
   });
 });
 
-describe('rollback command generation on partial pipeline failure', () => {
-  it('generates correct rollback commands from a stashed _all map', () => {
-    const oldAllMap = {
-      US: { dataMonth: '2024-01', fossilShare: 50, renewShare: 37.5 },
-      DE: { dataMonth: '2024-01', fossilShare: 28.6, renewShare: 71.4 },
-    };
+describe('MULTI/EXEC transaction pipeline shape', () => {
+  it('wraps data commands between MULTI and EXEC', () => {
+    const countries = new Map([['US', { foo: 1 }], ['DE', { foo: 2 }]]);
+    const cmds = [['MULTI']];
+    for (const [iso2, payload] of countries) {
+      cmds.push(['SET', `${EMBER_KEY_PREFIX}${iso2}`, JSON.stringify(payload), 'EX', EMBER_TTL_SECONDS]);
+    }
+    cmds.push(['SET', EMBER_ALL_KEY, '{}', 'EX', EMBER_TTL_SECONDS]);
+    cmds.push(['EXEC']);
 
-    const rollbackCmds = Object.entries(oldAllMap).map(([iso2, val]) => [
-      'SET', `${EMBER_KEY_PREFIX}${iso2}`, JSON.stringify(val), 'EX', EMBER_TTL_SECONDS,
-    ]);
-    rollbackCmds.push(['SET', EMBER_ALL_KEY, JSON.stringify(oldAllMap), 'EX', EMBER_TTL_SECONDS]);
-
-    assert.equal(rollbackCmds.length, 3, 'should have 2 per-country + 1 _all command');
-    assert.equal(rollbackCmds[0][0], 'SET');
-    assert.equal(rollbackCmds[0][1], `${EMBER_KEY_PREFIX}US`);
-    assert.equal(rollbackCmds[0][3], 'EX');
-    assert.equal(rollbackCmds[0][4], EMBER_TTL_SECONDS);
-
-    assert.equal(rollbackCmds[2][1], EMBER_ALL_KEY, 'last command should restore _all');
-    const restoredAll = JSON.parse(rollbackCmds[2][2]);
-    assert.deepEqual(Object.keys(restoredAll).sort(), ['DE', 'US']);
+    assert.equal(cmds[0][0], 'MULTI', 'first command is MULTI');
+    assert.equal(cmds[cmds.length - 1][0], 'EXEC', 'last command is EXEC');
+    assert.equal(cmds.length, 5, 'MULTI + 2 country SET + 1 _all SET + EXEC');
   });
 
-  it('does not generate rollback when oldAllMap is null', () => {
-    const oldAllMap = null;
-    const shouldRollback = oldAllMap && typeof oldAllMap === 'object';
-    assert.equal(shouldRollback, null, 'null stash should skip rollback');
+  it('includes DEL for obsolete keys inside the transaction', () => {
+    const oldAllMap = { US: {}, DE: {}, JP: {} };
+    const newCountryKeys = new Set(['US', 'DE']);
+    const oldIso2Set = new Set(Object.keys(oldAllMap));
+
+    const cmds = [['MULTI']];
+    cmds.push(['SET', `${EMBER_KEY_PREFIX}US`, '{}', 'EX', EMBER_TTL_SECONDS]);
+    cmds.push(['SET', `${EMBER_KEY_PREFIX}DE`, '{}', 'EX', EMBER_TTL_SECONDS]);
+    cmds.push(['SET', EMBER_ALL_KEY, '{}', 'EX', EMBER_TTL_SECONDS]);
+    for (const iso2 of oldIso2Set) {
+      if (!newCountryKeys.has(iso2)) {
+        cmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+    cmds.push(['EXEC']);
+
+    const delCmds = cmds.filter(c => c[0] === 'DEL');
+    assert.equal(delCmds.length, 1);
+    assert.equal(delCmds[0][1], `${EMBER_KEY_PREFIX}JP`);
+    assert.equal(cmds[cmds.length - 1][0], 'EXEC', 'EXEC is still last');
+  });
+});
+
+describe('EXEC result validation', () => {
+  it('detects null EXEC result as transaction abort', () => {
+    const execResult = { result: null };
+    const isAborted = !execResult?.result || !Array.isArray(execResult.result);
+    assert.ok(isAborted, 'null EXEC result means transaction aborted');
+  });
+
+  it('accepts array EXEC result as success', () => {
+    const execResult = { result: ['OK', 'OK', 'OK', 1] };
+    const isAborted = !execResult?.result || !Array.isArray(execResult.result);
+    assert.ok(!isAborted, 'array EXEC result means success');
+  });
+
+  it('detects ERR within EXEC result array', () => {
+    const execResults = ['OK', 'OK', 'ERR', 'OK'];
+    const failures = execResults.filter((r) => {
+      if (typeof r === 'string') return r === 'ERR';
+      if (r && typeof r === 'object') return !!r.error;
+      return false;
+    });
+    assert.equal(failures.length, 1);
+  });
+
+  it('detects error object within EXEC result array', () => {
+    const execResults = ['OK', { error: 'WRONGTYPE' }, 'OK'];
+    const failures = execResults.filter((r) => {
+      if (typeof r === 'string') return r === 'ERR';
+      if (r && typeof r === 'object') return !!r.error;
+      return false;
+    });
+    assert.equal(failures.length, 1);
+  });
+});
+
+describe('MULTI/EXEC eliminates need for JS-side rollback', () => {
+  it('EXEC failure means no data was written (no rollback needed)', () => {
+    const execResult = { result: null };
+    const transactionAborted = !execResult?.result || !Array.isArray(execResult.result);
+    assert.ok(transactionAborted, 'aborted EXEC means no partial writes exist');
   });
 });
 
@@ -330,14 +380,15 @@ describe('publish pipeline includes DEL for obsolete per-country keys', () => {
   });
 });
 
-describe('rollback DELs new-only keys not in old snapshot', () => {
+describe('preservePreviousSnapshot restore DELs new-only keys', () => {
   it('generates DEL for keys in new dataset but not in old stash', () => {
     const oldAllMap = { US: {}, DE: {} };
     const newCountryKeys = new Set(['US', 'DE', 'XX']);
 
     const delCmds = [];
+    const oldIso2Set = new Set(Object.keys(oldAllMap));
     for (const iso2 of newCountryKeys) {
-      if (!oldAllMap[iso2]) {
+      if (!oldIso2Set.has(iso2)) {
         delCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
       }
     }
@@ -351,8 +402,9 @@ describe('rollback DELs new-only keys not in old snapshot', () => {
     const newCountryKeys = new Set(['US', 'DE']);
 
     const delCmds = [];
+    const oldIso2Set = new Set(Object.keys(oldAllMap));
     for (const iso2 of newCountryKeys) {
-      if (!oldAllMap[iso2]) {
+      if (!oldIso2Set.has(iso2)) {
         delCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
       }
     }
@@ -471,5 +523,50 @@ describe('health endpoint status agreement for error meta', () => {
       status = 'OK';
     }
     assert.equal(status, 'SEED_ERROR', 'explicit error meta should yield SEED_ERROR, not STALE_SEED');
+  });
+});
+
+describe('preservePreviousSnapshot recordCount fallback', () => {
+  it('uses null (not 0) when existingMeta is unavailable', () => {
+    const existingMeta = null;
+    const recordCount = existingMeta?.recordCount ?? null;
+    assert.equal(recordCount, null, 'should be null, not 0');
+    const serialized = JSON.stringify({ recordCount });
+    assert.ok(serialized.includes('"recordCount":null'), 'null should be serialized');
+  });
+
+  it('preserves existing recordCount when meta is readable', () => {
+    const existingMeta = { recordCount: 180, fetchedAt: Date.now() };
+    const recordCount = existingMeta?.recordCount ?? null;
+    assert.equal(recordCount, 180);
+  });
+
+  it('null recordCount does not enable count-drop guard', () => {
+    const prevMeta = { recordCount: null, status: 'error' };
+    const guardActive = prevMeta && typeof prevMeta === 'object' && prevMeta.recordCount > 0;
+    assert.equal(guardActive, false, 'null recordCount should not activate guard');
+  });
+});
+
+describe('dataWritten flag prevents stash restore after successful EXEC', () => {
+  it('skips restore when dataWritten=true (data is correct, only meta failed)', () => {
+    const stashedAllMap = { US: {}, DE: {} };
+    const dataWritten = true;
+    const shouldRestore = stashedAllMap && typeof stashedAllMap === 'object' && !dataWritten;
+    assert.equal(shouldRestore, false, 'should not restore stash when data was written successfully');
+  });
+
+  it('allows restore when dataWritten=false (EXEC failed or never ran)', () => {
+    const stashedAllMap = { US: {}, DE: {} };
+    const dataWritten = false;
+    const shouldRestore = stashedAllMap && typeof stashedAllMap === 'object' && !dataWritten;
+    assert.ok(shouldRestore, 'should restore stash when data was not written');
+  });
+
+  it('skips TTL extension when dataWritten=true and no stash', () => {
+    const stashedAllMap = null;
+    const dataWritten = true;
+    const shouldExtendTtl = !dataWritten;
+    assert.equal(shouldExtendTtl, false, 'should not extend TTL when data is already correct');
   });
 });
