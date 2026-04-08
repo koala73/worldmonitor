@@ -65,19 +65,13 @@ interface ComtradeFlowsResult {
 }
 
 interface ChokepointEntry {
-  id: string;
-  name: string;
-  baselineMbd?: number;
   currentMbd?: number;
+  baselineMbd?: number;
   flowRatio: number;
-  confidence: string;
   disrupted?: boolean;
   source?: string;
-}
-
-interface ChokepointFlowsResult {
-  updatedAt?: string;
-  chokepoints?: ChokepointEntry[];
+  hazardAlertLevel?: string | null;
+  hazardAlertName?: string | null;
 }
 
 function n(v: number | null | undefined): number {
@@ -157,17 +151,13 @@ export async function computeEnergyShockScenario(
     : { share: 0, hasData: false };
 
   const chokepointFlowsRaw2 = chokepointFlowsRaw.status === 'fulfilled'
-    ? (chokepointFlowsRaw.value as ChokepointFlowsResult | null)
+    ? (chokepointFlowsRaw.value as Record<string, ChokepointEntry> | null)
     : null;
 
   const portWatchKey = CP_TO_PORTWATCH[chokepointId];
-  const cpEntry = chokepointFlowsRaw2?.chokepoints?.find((c) => c.id === chokepointId || c.id === portWatchKey) ?? null;
+  const cpEntry = portWatchKey ? (chokepointFlowsRaw2?.[portWatchKey] ?? null) : null;
 
-  const degraded = !chokepointFlowsRaw2 ||
-    !chokepointFlowsRaw2.chokepoints ||
-    chokepointFlowsRaw2.chokepoints.length === 0 ||
-    (cpEntry?.source === 'unavailable') ||
-    (cpEntry?.confidence === 'none');
+  const degraded = !chokepointFlowsRaw2 || cpEntry == null || typeof cpEntry.flowRatio !== 'number';
 
   const liveFlowRatio: number | null = (!degraded && cpEntry != null && typeof cpEntry.flowRatio === 'number')
     ? cpEntry.flowRatio
