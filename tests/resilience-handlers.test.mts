@@ -28,7 +28,7 @@ describe('resilience handlers', () => {
     delete process.env.VERCEL_ENV;
 
     const { fetchImpl, redis, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
-    sortedSets.set('resilience:history:US', [
+    sortedSets.set('resilience:history:v2:US', [
       { member: '2026-04-01:20', score: 20260401 },
       { member: '2026-04-02:30', score: 20260402 },
     ]);
@@ -58,12 +58,12 @@ describe('resilience handlers', () => {
     assert.ok(cachedScore, 'expected score cache to be written');
     assert.equal(JSON.parse(cachedScore || '{}').countryCode, 'US');
 
-    const history = sortedSets.get('resilience:history:US') ?? [];
+    const history = sortedSets.get('resilience:history:v2:US') ?? [];
     assert.ok(history.some((entry) => entry.member.startsWith(today + ':')), 'expected today history member to be written');
 
     await getResilienceScore({ request: new Request('https://example.com') } as never, {
       countryCode: 'US',
     });
-    assert.equal((sortedSets.get('resilience:history:US') ?? []).length, history.length, 'cache hit must not append history');
+    assert.equal((sortedSets.get('resilience:history:v2:US') ?? []).length, history.length, 'cache hit must not append history');
   });
 });
