@@ -854,9 +854,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (result.ieaStocksCoverage) {
       const coverRow = this.el('div', 'cdp-economic-source');
       coverRow.style.cssText += ';margin-bottom:4px';
-      coverRow.textContent = result.effectiveCoverDays > 0
-        ? `IEA cover: ~${result.effectiveCoverDays} days under this scenario`
-        : 'IEA cover: 0 days (reserves exhausted under this scenario)';
+      let coverText: string;
+      if (result.effectiveCoverDays < 0) {
+        coverText = 'Net oil exporter — strategic reserve cover not applicable';
+      } else if (result.effectiveCoverDays > 0) {
+        coverText = `IEA cover: ~${result.effectiveCoverDays} days under this scenario`;
+      } else {
+        coverText = 'IEA cover: 0 days (reserves exhausted under this scenario)';
+      }
+      coverRow.textContent = coverText;
       container.append(coverRow);
     }
 
