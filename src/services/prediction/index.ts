@@ -134,27 +134,23 @@ function countrySearchTerms(country: string): string[] {
 }
 
 function matchesCountryTerms(title: string, terms: string[]): boolean {
-  const lower = title.toLowerCase();
-  return terms.some(t => lower.includes(t.toLowerCase()));
+  return terms.some(t => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title));
 }
 
 export async function fetchCountryMarkets(country: string): Promise<PredictionMarket[]> {
   const terms = countrySearchTerms(country);
   const allMarkets: PredictionMarket[] = [];
 
-  // Try RPC across all categories (geopolitics + finance cover most country markets)
-  for (const category of ['geopolitics', 'economy']) {
-    try {
-      const resp = await client.listPredictionMarkets({
-        category,
-        query: terms[0] ?? country,
-        pageSize: 30,
-        cursor: '',
-      });
-      if (resp.markets?.length) {
-        allMarkets.push(...resp.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)));
-      }
-    } catch { /* continue to next category or bootstrap fallback */ }
+  // Try RPC across geopolitics + finance (parallel, both cover most country markets)
+  const rpcResults = await Promise.allSettled(
+    (['geopolitics', 'finance'] as const).map(category =>
+      client.listPredictionMarkets({ category, query: country, pageSize: 30, cursor: '' })
+    )
+  );
+  for (const result of rpcResults) {
+    if (result.status === 'fulfilled' && result.value.markets?.length) {
+      allMarkets.push(...result.value.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)));
+    }
   }
 
   if (allMarkets.length > 0) {
