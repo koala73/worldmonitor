@@ -10,6 +10,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/market/v1/backtest-stock',
   '/api/market/v1/list-stored-stock-backtests',
   '/api/intelligence/v1/deduct-situation',
+  '/api/intelligence/v1/list-market-implications',
   '/api/resilience/v1/get-resilience-score',
   '/api/resilience/v1/get-resilience-ranking',
 ]);
