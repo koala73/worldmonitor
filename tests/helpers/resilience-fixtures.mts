@@ -372,7 +372,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     failedDatasets: [],
     seedYear: 2025,
     seededAt: '2026-04-03T00:00:00.000Z',
-    sourceVersion: 'resilience-static-v5',
+    sourceVersion: 'resilience-static-v6',
   },
 };
 

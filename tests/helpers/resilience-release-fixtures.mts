@@ -237,7 +237,7 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
       failedDatasets: [],
       seedYear: 2025,
       seededAt: '2026-04-04T00:00:00.000Z',
-      sourceVersion: 'resilience-static-v3',
+      sourceVersion: 'resilience-static-v6',
     },
     'supply_chain:shipping_stress:v1': { stressScore: 18 },
     'supply_chain:transit-summaries:v1': {
