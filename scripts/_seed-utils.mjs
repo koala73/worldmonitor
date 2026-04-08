@@ -193,7 +193,7 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds) 
   return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
 }
 
-export async function writeFreshnessMetadata(domain, resource, count, source) {
+export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
   const meta = {
@@ -201,7 +201,10 @@ export async function writeFreshnessMetadata(domain, resource, count, source) {
     recordCount: count,
     sourceVersion: source || '',
   };
-  await redisSet(url, token, metaKey, meta, 86400 * 7); // 7 day TTL on metadata
+  // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
+  // their meta key before the health check maxStaleMin threshold is reached.
+  const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
+  await redisSet(url, token, metaKey, meta, metaTtl);
   return meta;
 }
 
@@ -253,15 +256,16 @@ export async function writeExtraKey(key, data, ttl) {
   console.log(`  Extra key ${key}: written`);
 }
 
-export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride) {
+export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
   await writeExtraKey(key, data, ttl);
   const { url, token } = getRedisCredentials();
   const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
+  const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', 86400 * 7]),
+    body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
     signal: AbortSignal.timeout(5_000),
   });
   if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
@@ -651,7 +655,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await extendExistingTtl(keys, ttlSeconds || 600);
       // Always write seed-meta even when data is empty so health checks can
       // distinguish "seeder ran but nothing to publish" from "seeder stopped".
-      await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion);
+      await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
       console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed, existing cache TTL extended`);
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
@@ -682,7 +686,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
     }
 
-    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion);
+    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, ttlSeconds);
 
     const durationMs = Date.now() - startMs;
     logSeedResult(domain, recordCount, durationMs, { payloadBytes });

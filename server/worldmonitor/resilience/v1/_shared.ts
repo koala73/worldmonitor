@@ -6,27 +6,29 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
-import { cronbachAlpha, detectTrend } from '../../../_shared/resilience-stats';
+import { detectTrend, round } from '../../../_shared/resilience-stats';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
+  RESILIENCE_DIMENSION_TYPES,
   RESILIENCE_DOMAIN_ORDER,
+  createMemoizedSeedReader,
   getResilienceDomainWeight,
   scoreAllDimensions,
   type ResilienceDimensionId,
   type ResilienceDomainId,
+  type ResilienceSeedReader,
 } from './_dimension-scorers';
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:';
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v5:';
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v2:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v5';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
-export const RESILIENCE_WARM_LIMIT = 24;
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
-const LOW_CONFIDENCE_ALPHA_THRESHOLD = 0.55;
+const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0.40;
 
 interface ResilienceHistoryPoint {
   date: string;
@@ -35,10 +37,6 @@ interface ResilienceHistoryPoint {
 
 interface ResilienceStaticIndex {
   countries?: string[];
-}
-
-function round(value: number, digits = 2): number {
-  return Number(value.toFixed(digits));
 }
 
 function mean(values: number[]): number | null {
@@ -70,13 +68,21 @@ function classifyResilienceLevel(score: number): string {
 }
 
 function buildDimensionList(
-  scores: Record<ResilienceDimensionId, { score: number; coverage: number }>,
+  scores: Record<ResilienceDimensionId, { score: number; coverage: number; observedWeight: number; imputedWeight: number }>,
 ): ResilienceDimension[] {
   return RESILIENCE_DIMENSION_ORDER.map((dimensionId) => ({
     id: dimensionId,
     score: round(scores[dimensionId].score),
     coverage: round(scores[dimensionId].coverage),
+    observedWeight: round(scores[dimensionId].observedWeight, 4),
+    imputedWeight: round(scores[dimensionId].imputedWeight, 4),
   }));
+}
+
+function coverageWeightedMean(dimensions: ResilienceDimension[]): number {
+  const totalCoverage = dimensions.reduce((sum, d) => sum + d.coverage, 0);
+  if (!totalCoverage) return 0;
+  return dimensions.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCoverage;
 }
 
 function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] {
@@ -90,25 +96,16 @@ function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] 
 
   return RESILIENCE_DOMAIN_ORDER.map((domainId) => {
     const domainDimensions = grouped.get(domainId) ?? [];
-    const domainAverage = mean(domainDimensions.map((dimension) => dimension.score)) ?? 0;
+    // Coverage-weighted mean: dimensions with low coverage (sparse data) contribute
+    // proportionally less. Without this, a 0-coverage dimension (score=0) drags the
+    // domain average down for countries that simply lack data in one sub-area.
+    const domainScore = coverageWeightedMean(domainDimensions);
     return {
       id: domainId,
-      score: round(domainAverage),
+      score: round(domainScore),
       weight: getResilienceDomainWeight(domainId),
       dimensions: domainDimensions,
     };
-  });
-}
-
-function buildCronbachMatrix(domains: ResilienceDomain[]): number[][] {
-  const populated = domains.filter((domain) => domain.dimensions.length >= 2);
-  if (populated.length < 2) return [];
-
-  const width = Math.max(...populated.map((domain) => domain.dimensions.length));
-  return populated.map((domain) => {
-    const values = domain.dimensions.map((dimension) => dimension.score);
-    const fill = mean(values) ?? domain.score;
-    return Array.from({ length: width }, (_, index) => values[index] ?? fill);
   });
 }
 
@@ -129,10 +126,9 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   return history.sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function computeLowConfidence(dimensions: ResilienceDimension[], cronbach: number): boolean {
+function computeLowConfidence(dimensions: ResilienceDimension[], imputationShare: number): boolean {
   const averageCoverage = mean(dimensions.map((dimension) => dimension.coverage)) ?? 0;
-  if (averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD) return true;
-  return cronbach > 0 && cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
+  return averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD || imputationShare > LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD;
 }
 
 async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[]> {
@@ -150,18 +146,21 @@ async function appendHistory(countryCode: string, overallScore: number): Promise
   ]);
 }
 
-export async function ensureResilienceScoreCached(countryCode: string): Promise<GetResilienceScoreResponse> {
+export async function ensureResilienceScoreCached(countryCode: string, reader?: ResilienceSeedReader): Promise<GetResilienceScoreResponse> {
   const normalizedCountryCode = normalizeCountryCode(countryCode);
   if (!normalizedCountryCode) {
     return {
       countryCode: '',
       overallScore: 0,
+      baselineScore: 0,
+      stressScore: 0,
+      stressFactor: 0.5,
       level: 'unknown',
       domains: [],
-      cronbachAlpha: 0,
       trend: 'stable',
       change30d: 0,
       lowConfidence: true,
+      imputationShare: 0,
     };
   }
 
@@ -169,14 +168,28 @@ export async function ensureResilienceScoreCached(countryCode: string): Promise<
     scoreCacheKey(normalizedCountryCode),
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
     async () => {
-      const scoreMap = await scoreAllDimensions(normalizedCountryCode);
+      const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
       const dimensions = buildDimensionList(scoreMap);
       const domains = buildDomainList(dimensions);
-      const overallScore = round(
-        domains.reduce((sum, domain) => sum + domain.score * domain.weight, 0),
-      );
 
-      const cronbach = round(cronbachAlpha(buildCronbachMatrix(domains)), 3);
+      const baselineDims: ResilienceDimension[] = [];
+      const stressDims: ResilienceDimension[] = [];
+      for (const dim of dimensions) {
+        const dimType = RESILIENCE_DIMENSION_TYPES[dim.id as ResilienceDimensionId];
+        if (dimType === 'baseline' || dimType === 'mixed') baselineDims.push(dim);
+        if (dimType === 'stress' || dimType === 'mixed') stressDims.push(dim);
+      }
+      const baselineScore = round(coverageWeightedMean(baselineDims));
+      const stressScore = round(coverageWeightedMean(stressDims));
+      const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
+      const overallScore = round(baselineScore * (1 - stressFactor));
+
+      const totalImputed = dimensions.reduce((sum, d) => sum + (d.imputedWeight ?? 0), 0);
+      const totalObserved = dimensions.reduce((sum, d) => sum + (d.observedWeight ?? 0), 0);
+      const imputationShare = (totalImputed + totalObserved) > 0
+        ? round(totalImputed / (totalImputed + totalObserved), 4)
+        : 0;
+
       const history = (await readHistory(normalizedCountryCode))
         .filter((point) => point.date !== todayIsoDate());
       const scoreSeries = [...history.map((point) => point.score), overallScore];
@@ -187,24 +200,30 @@ export async function ensureResilienceScoreCached(countryCode: string): Promise<
       return {
         countryCode: normalizedCountryCode,
         overallScore,
+        baselineScore,
+        stressScore,
+        stressFactor,
         level: classifyResilienceLevel(overallScore),
         domains,
-        cronbachAlpha: cronbach,
         trend: detectTrend(scoreSeries),
         change30d: oldestScore == null ? 0 : round(overallScore - oldestScore),
-        lowConfidence: computeLowConfidence(dimensions, cronbach),
+        lowConfidence: computeLowConfidence(dimensions, imputationShare),
+        imputationShare,
       };
     },
     300,
   ) ?? {
     countryCode: normalizedCountryCode,
     overallScore: 0,
+    baselineScore: 0,
+    stressScore: 0,
+    stressFactor: 0.5,
     level: 'unknown',
     domains: [],
-    cronbachAlpha: 0,
     trend: 'stable',
     change30d: 0,
     lowConfidence: true,
+    imputationShare: 0,
   };
 }
 
@@ -238,6 +257,14 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
   return scores;
 }
 
+export const GREY_OUT_COVERAGE_THRESHOLD = 0.40;
+
+function computeOverallCoverage(response: GetResilienceScoreResponse): number {
+  const coverages = response.domains.flatMap((domain) => domain.dimensions.map((dimension) => dimension.coverage));
+  if (coverages.length === 0) return 0;
+  return coverages.reduce((sum, coverage) => sum + coverage, 0) / coverages.length;
+}
+
 export function buildRankingItem(
   countryCode: string,
   response?: GetResilienceScoreResponse | null,
@@ -248,6 +275,7 @@ export function buildRankingItem(
       overallScore: -1,
       level: 'unknown',
       lowConfidence: true,
+      overallCoverage: 0,
     };
   }
 
@@ -256,6 +284,7 @@ export function buildRankingItem(
     overallScore: response.overallScore,
     level: response.level,
     lowConfidence: response.lowConfidence,
+    overallCoverage: computeOverallCoverage(response),
   };
 }
 
@@ -268,5 +297,8 @@ export function sortRankingItems(items: ResilienceRankingItem[]): ResilienceRank
 
 export async function warmMissingResilienceScores(countryCodes: string[]): Promise<void> {
   const uniqueCodes = [...new Set(countryCodes.map((countryCode) => normalizeCountryCode(countryCode)).filter(Boolean))];
-  await Promise.allSettled(uniqueCodes.slice(0, RESILIENCE_WARM_LIMIT).map((countryCode) => ensureResilienceScoreCached(countryCode)));
+  // Share one memoized reader across all countries so global Redis keys (conflict events,
+  // sanctions, unrest, etc.) are fetched only once instead of once per country.
+  const sharedReader = createMemoizedSeedReader();
+  await Promise.allSettled(uniqueCodes.map((countryCode) => ensureResilienceScoreCached(countryCode, sharedReader)));
 }

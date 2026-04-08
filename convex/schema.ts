@@ -204,4 +204,11 @@ export default defineSchema({
   })
     .index("by_dodoProductId", ["dodoProductId"])
     .index("by_planKey", ["planKey"]),
+
+  emailSuppressions: defineTable({
+    normalizedEmail: v.string(),
+    reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
+    suppressedAt: v.number(),
+    source: v.optional(v.string()),
+  }).index("by_normalized_email", ["normalizedEmail"]),
 });

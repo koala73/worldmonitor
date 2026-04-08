@@ -112,6 +112,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Panel: Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:sanctions-pressure', keywords: ['sanctions pressure', 'ofac', 'designation', 'sanctions'], label: 'Panel: Sanctions Pressure', icon: '\u{1F6AB}', category: 'panels' },
   { id: 'panel:supply-chain', keywords: ['supply chain', 'shipping', 'chokepoint', 'minerals', 'freight', 'logistics'], label: 'Panel: Supply Chain', icon: '\u{1F6A2}', category: 'panels' },
+  { id: 'maritime-activity', keywords: ['maritime activity', 'port activity', 'tanker traffic', 'trade volumes', 'port calls'], label: 'Maritime Activity', icon: '\u26F3', category: 'panels' },
   { id: 'panel:finance', keywords: ['financial', 'finance news'], label: 'Panel: Financial', icon: '\u{1F4B5}', category: 'panels' },
   { id: 'panel:tech', keywords: ['technology', 'tech news'], label: 'Panel: Technology', icon: '\u{1F4BB}', category: 'panels' },
   { id: 'panel:crypto', keywords: ['crypto', 'bitcoin', 'ethereum'], label: 'Panel: Crypto', icon: '\u20BF', category: 'panels' },
@@ -198,7 +199,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:github', keywords: ['github trending', 'trending repos', 'open source trending'], label: 'GitHub Trending', icon: '\u{1F431}', category: 'panels' },
   { id: 'panel:internet-disruptions', keywords: ['internet disruptions', 'outages', 'internet outage', 'connectivity'], label: 'Internet Disruptions', icon: '\u{1F310}', category: 'panels' },
   { id: 'panel:service-status', keywords: ['service status', 'uptime', 'status page', 'downtime'], label: 'Service Status', icon: '\u{1F7E2}', category: 'panels' },
-  { id: 'panel:regulation', keywords: ['ai regulation', 'tech regulation', 'financial regulation', 'policy'], label: 'Regulation', icon: '\u{1F4DC}', category: 'panels' },
+  { id: 'panel:fin-regulation', keywords: ['financial regulation', 'sec', 'cftc', 'banking regulation'], label: 'Financial Regulation', icon: '\u{1F4DC}', category: 'panels' },
 
   // Finance variant panels
   { id: 'panel:analysis', keywords: ['market analysis', 'equity analysis', 'technical analysis'], label: 'Market Analysis', icon: '\u{1F4CA}', category: 'panels' },

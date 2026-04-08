@@ -80,6 +80,7 @@ interface ParsedItem {
   importanceScore: number;
   corroborationCount: number;
   titleHash?: string;
+  lang: string;
 }
 
 function computeImportanceScore(
@@ -228,6 +229,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
       classSource: 'keyword',
       importanceScore: 0,
       corroborationCount: 1,
+      lang: feed.lang ?? 'en',
     });
   }
 
@@ -426,10 +428,10 @@ export async function listFeedDigest(
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
 
-async function writeStoryTracking(items: ParsedItem[], variant: string, hashes: string[]): Promise<void> {
+async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[]): Promise<void> {
   if (items.length === 0) return;
   const now = Date.now();
-  const accKey = DIGEST_ACCUMULATOR_KEY(variant);
+  const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
 
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
@@ -453,6 +455,7 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, hashes: 
           'title', item.title,
           'link', item.link,
           'severity', item.level,
+          'lang', item.lang,
         ],
         ['HSETNX', trackKey, 'firstSeen', nowStr],
         ['ZADD', peakKey, 'GT', score, 'peak'],
@@ -582,7 +585,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const storyTracks = await readStoryTracks(uniqueHashes).catch(() => new Map<string, StoryTrack>());
 
     // Write story tracking. Errors never fail the digest build.
-    await writeStoryTracking(allSliced, variant, titleHashes).catch((err: unknown) =>
+    await writeStoryTracking(allSliced, variant, lang, titleHashes).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
 

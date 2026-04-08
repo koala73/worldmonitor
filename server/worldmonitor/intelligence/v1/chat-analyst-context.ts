@@ -9,6 +9,7 @@ import {
   ENERGY_INTELLIGENCE_KEY,
   SPR_KEY,
   REFINERY_UTIL_KEY,
+  ENERGY_SPINE_KEY_PREFIX,
 } from '../../../_shared/cache-keys';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
@@ -45,6 +46,9 @@ export interface AnalystContext {
   energyIntelligence?: string;
   sprLevel?: string;
   refineryUtil?: string;
+  productSupply?: string;
+  gasFlows?: string;
+  oilStocksCover?: string;
 }
 
 function safeStr(v: unknown): string {
@@ -369,6 +373,114 @@ async function buildRefineryUtil(): Promise<string | undefined> {
   }
 }
 
+async function buildProductSupply(iso2: string): Promise<string | undefined> {
+  try {
+    // Try spine first — single key read
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiOil) {
+      const oil = spine.oil as Record<string, unknown> | undefined;
+      const src = spine.sources as Record<string, unknown> | undefined;
+      const month = safeStr(src?.jodiOilMonth);
+      if (!oil) return undefined;
+      const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
+      const parts: string[] = [];
+      for (const [key, label] of [['dieselDemandKbd', 'diesel'], ['jetDemandKbd', 'jet fuel'], ['gasolineDemandKbd', 'gasoline']] as [string, string][]) {
+        const demand = fmt(oil[key]);
+        if (demand == null) continue;
+        parts.push(`${label} ${demand} kbd demand`);
+      }
+      if (parts.length === 0) return undefined;
+      return `Oil product supply${month ? ` (${month})` : ''}: ${parts.join('; ')}`;
+    }
+
+    // Fallback to direct key
+    const data = await getCachedJson(`energy:jodi-oil:v1:${iso2}`, true);
+    if (!data || typeof data !== 'object') return undefined;
+    const d = data as Record<string, unknown>;
+    const month = safeStr(d.dataMonth);
+    const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
+    const parts: string[] = [];
+    for (const [key, label] of [['diesel', 'diesel'], ['jet', 'jet fuel'], ['gasoline', 'gasoline']] as [string, string][]) {
+      const prod = d[key] as Record<string, unknown> | undefined;
+      if (!prod) continue;
+      const demand = fmt(prod.demandKbd);
+      if (demand == null) continue;
+      const details: string[] = [];
+      const imp = fmt(prod.importsKbd);
+      if (imp != null && key !== 'gasoline') details.push(`imports ${imp}`);
+      if (key === 'diesel') { const ref = fmt(prod.refOutputKbd); if (ref != null) details.push(`refinery ${ref}`); }
+      parts.push(`${label} ${demand} kbd demand${details.length ? ` (${details.join(', ')})` : ''}`);
+    }
+    if (parts.length === 0) return undefined;
+    return `Oil product supply${month ? ` (${month})` : ''}: ${parts.join('; ')}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function buildGasFlows(iso2: string): Promise<string | undefined> {
+  try {
+    // Try spine first
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiGas) {
+      const gas = spine.gas as Record<string, unknown> | undefined;
+      if (!gas) return undefined;
+      const pipeImports = typeof gas.pipeImportsTj === 'number' ? gas.pipeImportsTj as number : null;
+      const lngImports = typeof gas.lngImportsTj === 'number' ? gas.lngImportsTj as number : null;
+      const totalImports = (pipeImports ?? 0) + (lngImports ?? 0);
+      if (!totalImports) return undefined; // no imports to report; avoid mislabeling demand as imports
+      const totalPj = Math.round(totalImports / 1000);
+      const lngShare = typeof gas.lngShareOfImports === 'number' ? Math.round((gas.lngShareOfImports as number) * 100) : null;
+      const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
+      return `Gas: total imports ${totalPj} PJ${split}`;
+    }
+
+    // Fallback to direct key
+    const data = await getCachedJson(`energy:jodi-gas:v1:${iso2}`, true);
+    if (!data || typeof data !== 'object') return undefined;
+    const d = data as Record<string, unknown>;
+    const totalTj = typeof d.totalImportsTj === 'number' ? d.totalImportsTj as number : null;
+    if (!totalTj) return undefined;
+    const totalPj = Math.round(totalTj / 1000);
+    const lngShare = typeof d.lngShareOfImports === 'number' ? Math.round((d.lngShareOfImports as number) * 100) : null;
+    const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
+    return `Gas: total imports ${totalPj} PJ${split}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
+  try {
+    // Try spine first
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object') {
+      const cov = spine.coverage as Record<string, unknown> | undefined;
+      const oil = spine.oil as Record<string, unknown> | undefined;
+      if (oil?.netExporter === true) return 'IEA oil stocks: net exporter';
+      if (cov?.hasIeaStocks && typeof oil?.daysOfCover === 'number') {
+        const days = oil.daysOfCover as number;
+        return `IEA oil stocks: ${days} days of cover`;
+      }
+      // Spine present but no IEA stocks coverage — return undefined (don't fall through)
+      if (spine.coverage != null) return undefined;
+    }
+
+    // Fallback to direct key
+    const data = await getCachedJson(`energy:iea-oil-stocks:v1:${iso2}`, true);
+    if (!data || typeof data !== 'object') return undefined;
+    const d = data as Record<string, unknown>;
+    if (d.netExporter === true) return 'IEA oil stocks: net exporter';
+    const days = typeof d.daysOfCover === 'number' ? d.daysOfCover as number : null;
+    if (days == null) return undefined;
+    const threshold = typeof d.obligationThreshold === 'number' ? d.obligationThreshold as number : 90;
+    const breach = d.belowObligation === true ? ' (below obligation)' : '';
+    return `IEA oil stocks: ${days} days of cover (obligation: ${threshold} days)${breach}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function buildCountryBrief(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
@@ -567,6 +679,9 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['energyIntelligence', 'EnergyIntel'],
   ['sprLevel', 'SPR'],
   ['refineryUtil', 'Refinery'],
+  ['productSupply', 'JODIOil'],
+  ['gasFlows', 'JODIGas'],
+  ['oilStocksCover', 'IEAStocks'],
 ];
 
 export async function assembleAnalystContext(
@@ -605,6 +720,11 @@ export async function assembleAnalystContext(
   const needsSpr = new Set(['economic', 'all']).has(resolvedDomain);
   const needsRefinery = new Set(['economic', 'all']).has(resolvedDomain);
 
+  const iso2 = geoContext && /^[A-Z]{2}$/i.test(geoContext) ? geoContext.toUpperCase() : null;
+  const needsProductSupply = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
+  const needsGasFlows = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
+  const needsOilStocksCover = iso2 != null && new Set(['economic', 'all']).has(resolvedDomain);
+
   const [
     insightsResult,
     riskResult,
@@ -623,6 +743,9 @@ export async function assembleAnalystContext(
     energyIntelResult,
     sprResult,
     refineryResult,
+    productSupplyResult,
+    gasFlowsResult,
+    oilStocksCoverResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -641,6 +764,9 @@ export async function assembleAnalystContext(
     needsEnergyIntel ? buildEnergyIntelligence() : Promise.resolve(undefined),
     needsSpr ? buildSprLevel() : Promise.resolve(undefined),
     needsRefinery ? buildRefineryUtil() : Promise.resolve(undefined),
+    needsProductSupply ? buildProductSupply(iso2!) : Promise.resolve(undefined),
+    needsGasFlows ? buildGasFlows(iso2!) : Promise.resolve(undefined),
+    needsOilStocksCover ? buildOilStocksCover(iso2!) : Promise.resolve(undefined),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
@@ -685,6 +811,9 @@ export async function assembleAnalystContext(
     energyIntelligence: getOptStr(energyIntelResult),
     sprLevel: getOptStr(sprResult),
     refineryUtil: getOptStr(refineryResult),
+    productSupply: getOptStr(productSupplyResult),
+    gasFlows: getOptStr(gasFlowsResult),
+    oilStocksCover: getOptStr(oilStocksCoverResult),
   };
 
   ctx.activeSources = SOURCE_LABELS

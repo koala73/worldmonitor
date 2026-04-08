@@ -31,9 +31,7 @@ Sentry.init({
     /InvalidAccessError/,
     /importScripts/,
     /^TypeError: Load failed( \(.*\))?$/,
-    /^TypeError: Failed to fetch( \(.*\))?$/,
     /^TypeError: (?:cancelled|avbruten)$/,
-    /^TypeError: NetworkError/,
     /runtime\.sendMessage\(\)/,
     /Java object is gone/,
     /^Object captured as promise rejection with keys:/,
@@ -56,8 +54,6 @@ Sentry.init({
     /invalid origin/,
     /\.data\.split is not a function/,
     /signal is aborted without reason/,
-    /Failed to fetch dynamically imported module/,
-    /Importing a module script failed/,
     /contentWindow\.postMessage/,
     /Could not compile vertex shader/,
     /objectStoreNames/,
@@ -68,7 +64,6 @@ Sentry.init({
     /userScripts is not defined/,
     /NS_ERROR_ABORT/,
     /NS_ERROR_OUT_OF_MEMORY/,
-    /^Key not found$/,
     /DataCloneError.*could not be cloned/,
     /cannot decode message/,
     /WKWebView was deallocated/,
@@ -77,22 +72,14 @@ Sentry.init({
     /Attempted to assign to readonly property/,
     /Cannot assign to read only property/,
     /FetchEvent\.respondWith/,
-    /e\.toLowerCase is not a function/,
-    /\.trim is not a function/,
-    /\.(indexOf|findIndex) is not a function/,
     /QuotaExceededError/,
     /^TypeError: 已取消$/,
-    /Maximum call stack size exceeded/,
     /^fetchError: Network request failed$/,
     /window\.ethereum/,
-    /^SyntaxError: Unexpected token/,
-    /^Operation timed out\.?$/,
     /setting 'luma'/,
     /ML request .* timed out/,
-    /^Element not found$/,
     /(?:AbortError: )?The operation was aborted\.?\s*$/,
     /Unexpected end of script/,
-    /error loading dynamically imported module/,
     /Style is not done loading/,
     /Event `CustomEvent`.*captured as promise rejection/,
     /getProgramInfoLog/,
@@ -108,7 +95,6 @@ Sentry.init({
     /maxTextureDimension2D/,
     /Container app not found/,
     /this\.St\.unref/,
-    /Invalid or unexpected token/,
     /evaluating 'elemFound\.value'/,
     /[Cc]an(?:'t|not) access (?:'\w+'|lexical declaration '\w+') before initialization/,
     /^Uint8Array$/,
@@ -118,6 +104,7 @@ Sentry.init({
     /Attempting to change value of a readonly property/,
     /reading 'nodeType'/,
     /The node to be removed is not a child of this node/,
+    /The object can not be found here/, // Safari variant of above (Clerk SDK removeChild on detached DOM)
     /feature named .\w+. was not found/,
     /a2z\.onStatusUpdate/,
     /Attempting to run\(\), but is already running/,
@@ -129,11 +116,9 @@ Sentry.init({
     /\w+ is not a function.*\/uv\/service\//,
     /__isInQueue__/,
     /^(?:LIDNotify(?:Id)?|onWebViewAppeared|onGetWiFiBSSID|onHide|onShow|onReady|tapAt|removeHighlight) is not defined$/,
-    /signal timed out/,
     /Se requiere plan premium/,
     /hybridExecute is not defined/,
     /reading 'postMessage'/,
-    /NotSupportedError/,
     /appendChild.*Unexpected token/,
     /\bmag is not defined\b/,
     /evaluating '[^']*\.luma/,
@@ -174,13 +159,10 @@ Sentry.init({
     /missing \) after argument list/,
     /Error invoking postMessage: Java exception/,
     /IndexSizeError/,
-    /Cannot add property \w+, object is not extensible/,
     /Failed to construct 'Worker'.*cannot be accessed from origin/,
     /undefined is not an object \(evaluating '(?:this\.)?media(?:Controller)?\.(?:duration|videoTracks|readyState|audioTracks|media)/,
     /\$ is not defined/,
     /Qt\([^)]*\) is not a function/,
-    /out of memory/,
-    /Could not connect to the server/,
     /shaderSource must be an instance of WebGLShader/,
     /WebGL2RenderingContext\.shaderSource: Argument 1 is not an object/,
     /Failed to initialize WebGL/,
@@ -202,7 +184,6 @@ Sentry.init({
     /ucapi is not defined/,
     /Identifier '(?:script|reportPage|element|Shop)' has already been declared/,
     /getAttribute is not a function.*getAttribute\("role"\)/,
-    /^TypeError: Internal error$/,
     /SCDynimacBridge/,
     /errTimes is not defined/,
     /Failed to get ServiceWorkerRegistration/,
@@ -243,14 +224,12 @@ Sentry.init({
     /^UnavailableError(:.*)?$/,
     /null is not an object \(evaluating '\w{1,3}\.indexOf'\)/,
     /export declarations may only appear at top level/,
-    /^SyntaxError: Unexpected keyword/,
     /ucConfig is not defined/,
     /getShaderPrecisionFormat/,
     /Cannot read properties of null \(reading 'touches'\)/,
     /Failed to execute 'querySelectorAll' on '[^']*': ':[a-z]+\(/,
     /args\.site\.enabledFeatures/,
     /can't access property "\w+", FONTS\[/,
-    /^\w{1,2} is not a function\. \(In '\w{1,2}\(/,
     /null is not an object \(evaluating '\w+\.magnitude\.toFixed'\)/,
     /start offset of Int16Array should be a multiple of 2/,
     /Cannot read properties of undefined \(reading 'then'\)/,
@@ -262,11 +241,24 @@ Sentry.init({
     /^Can't find variable: _G$/, // browser extension/userscript injecting _G global
     /onAppPageCallback is not defined/, // Android Chrome WebView injection (Huawei/Samsung browsers)
     /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
+    /Response cannot have a body with the given status/, // Safari: Response constructor with 204/304 + body
+    /ClerkJS: Network error/, // Clerk SDK transient network failures on user devices
+    /doesn't provide an export named/, // stale cached chunk after deploy references removed export
+    /Possible side-effect in debug-evaluate/, // Chrome DevTools internal EvalError
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
+    const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js/;
+    const firstPartyFile = (filename: string) => {
+      if (/\.(ts|tsx)$/.test(filename) || /^src\//.test(filename)) return true;
+      if (/\/assets\/[A-Za-z0-9_-]+(-[A-Za-z0-9_-]+)*\.js/.test(filename)) return !vendorChunk.test(filename);
+      return false;
+    };
+    const nonInfraFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+    const hasFirstParty = nonInfraFrames.some(f => firstPartyFile(f.filename ?? ''));
+    const hasAnyStack = nonInfraFrames.length > 0;
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
     if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter)"[,] ?\w+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
@@ -274,24 +266,21 @@ Sentry.init({
     // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
     const excType = event.exception?.values?.[0]?.type ?? '';
     if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
-      if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
+      if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast)
     if (/reading '(?:type|pathType|count|__globeObjType)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count|__globeObjType)'\)|null is not an object \(evaluating '\w+\.__globeObjType'\)/.test(msg)) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
-      const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
-      if (!hasSourceMapped) return null;
+      if (!hasFirstParty) return null;
     }
     // Suppress minified Three.js/globe.gl crashes (e.g. "l is undefined" in raycast, "b is undefined" in update/initGlobe)
     if (/^\w{1,2} is (?:undefined|not an object)$/.test(msg) && frames.length > 0) {
       if (frames.some(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '') && /(raycast|update|initGlobe|traverse|render)/.test(f.function ?? ''))) return null;
     }
-    // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom)
+    // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom).
+    // OrbitControls is bundled into the main chunk, so hasFirstParty is true.
+    // Match by function name pattern (_handleTouch*Dolly*) or suppress when no first-party frames.
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
-      const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
-      if (!hasSourceMapped) return null;
+      if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
     }
     // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
     if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
@@ -322,17 +311,31 @@ Sentry.init({
     // Suppress TransactionInactiveError only when no first-party frames are present
     // (Safari kills open IDB transactions in background tabs — not actionable noise)
     // First-party paths in storage.ts / persistent-cache.ts / vector-db.ts must still surface.
-    if (/TransactionInactiveError/.test(msg) || excType === 'TransactionInactiveError') {
-      const appFrames = frames.filter(
-        f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]'
-          && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename)
-      );
-      const hasFirstParty = appFrames.some(
-        f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? '')
-          || /\/(main|index|app)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
-      );
-      if (!hasFirstParty) return null;
-    }
+    if ((/TransactionInactiveError/.test(msg) || excType === 'TransactionInactiveError') && !hasFirstParty) return null;
+    // Suppress ambiguous runtime errors ONLY when stack positively identifies third-party
+    // origin. Empty stacks are NOT suppressed because we cannot confirm the error didn't
+    // come from our own code (OOM, stack overflow, network failures all commonly arrive
+    // without frames even when our code triggered them).
+    if (hasAnyStack && !hasFirstParty && (
+      /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
+      || /Maximum call stack size exceeded/.test(msg)
+      || /out of memory/i.test(msg)
+      || /^\w{1,2} is not a function/.test(msg)
+      || /Cannot add property \w+, object is not extensible/.test(msg)
+      || /^TypeError: Internal error$/.test(msg)
+      || /NotSupportedError/.test(msg)
+      || /^Key not found$/.test(msg)
+      || /^Element not found$/.test(msg)
+      || /^TypeError: Failed to fetch/.test(msg)
+      || /^TypeError: NetworkError/.test(msg)
+      || /Could not connect to the server/.test(msg)
+      || /(?:Failed to fetch|Importing a module script failed|error loading) dynamically imported module/i.test(msg)
+      || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))
+      || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
+      || /Invalid or unexpected token/.test(msg)
+      || /^Operation timed out/.test(msg)
+      || /signal timed out/.test(msg)
+    )) return null;
     return event;
   },
 });

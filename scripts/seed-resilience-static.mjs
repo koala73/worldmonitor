@@ -29,20 +29,22 @@ export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 export const RESILIENCE_STATIC_PREFIX = 'resilience:static:';
 export const RESILIENCE_STATIC_TTL_SECONDS = 400 * 24 * 60 * 60;
-export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v1';
+export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v7';
 export const RESILIENCE_STATIC_WINDOW_CRON = '0 */4 1-3 10 *';
 
 const LOCK_DOMAIN = 'resilience:static';
 const LOCK_TTL_MS = 2 * 60 * 60 * 1000;
-const TOTAL_DATASET_SLOTS = 8;
-const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea'];
+const TOTAL_DATASET_SLOTS = 11;
+const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp', 'fxReservesMonths', 'appliedTariffRate'];
 const WGI_INDICATORS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
-const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS'];
+const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS', 'EG.USE.ELEC.KH.PC', 'IT.NET.BBND.P2'];
 const WHO_INDICATORS = {
   hospitalBeds: 'WHS6_102',
   uhcIndex: 'UHC_INDEX_REPORTED',
   // WHS4_100 from the issue body no longer resolves; WHO currently exposes MCV1 coverage on WHS8_110.
   measlesCoverage: process.env.RESILIENCE_WHO_MEASLES_INDICATOR || 'WHS8_110',
+  physiciansPer10k: 'HWF_0001',
+  healthExpPerCapitaUsd: 'GHED_CHE_pc_US_SHA2011',
 };
 const WORLD_BANK_BASE = 'https://api.worldbank.org/v2';
 const WHO_BASE = 'https://ghoapi.azureedge.net/api';
@@ -63,7 +65,9 @@ export function shouldSkipSeedYear(meta, seedYear = nowSeedYear()) {
   return Boolean(
     meta
     && meta.status === 'ok'
+    && meta.sourceVersion === RESILIENCE_STATIC_SOURCE_VERSION
     && Number(meta.seedYear) === seedYear
+    && !(meta.failedDatasets?.length > 0)
     && Number.isFinite(Number(meta.recordCount))
     && Number(meta.recordCount) > 0,
   );
@@ -91,7 +95,10 @@ async function fetchTextDirect(url, accept, timeoutMs) {
     headers: { Accept: accept, 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    const err = Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+    throw err;
+  }
   return { text: await response.text(), contentType: response.headers.get('content-type') || '' };
 }
 
@@ -252,26 +259,40 @@ export async function fetchInfrastructureDataset() {
 }
 
 async function fetchWhoIndicatorRows(indicatorCode) {
-  const rows = [];
-  const params = new URLSearchParams({
-    '$select': 'SpatialDim,TimeDim,NumericValue,Value',
-    '$filter': "SpatialDimType eq 'COUNTRY'",
-    '$top': '1000',
-  });
-  let nextUrl = `${WHO_BASE}/${encodeURIComponent(indicatorCode)}?${params}`;
-  let pageCount = 0;
+  const allRows = [];
+  const PAGE_SIZE = 1000;
   const MAX_WHO_PAGES = 50;
+  let skip = 0;
+  let pageCount = 0;
 
-  while (nextUrl && pageCount < MAX_WHO_PAGES) {
+  while (pageCount < MAX_WHO_PAGES) {
     pageCount += 1;
-    const payload = await withRetry(() => fetchJson(nextUrl), 2, 750);
+    const params = new URLSearchParams({
+      '$select': 'SpatialDim,TimeDim,NumericValue,Value',
+      '$filter': "SpatialDimType eq 'COUNTRY'",
+      '$top': String(PAGE_SIZE),
+      '$skip': String(skip),
+    });
+    const url = `${WHO_BASE}/${encodeURIComponent(indicatorCode)}?${params}`;
+    const payload = await withRetry(() => fetchJson(url), 2, 750);
     if (!Array.isArray(payload?.value)) throw new Error(`Unexpected WHO response shape for ${indicatorCode}`);
-    rows.push(...payload.value);
-    nextUrl = payload['@odata.nextLink'] || payload['odata.nextLink'] || null;
-  }
-  if (nextUrl) throw new Error(`WHO ${indicatorCode}: pagination exceeded ${MAX_WHO_PAGES} pages`);
+    const rows = payload.value;
+    allRows.push(...rows);
 
-  return rows;
+    const odataNext = payload['@odata.nextLink'] || payload['odata.nextLink'] || null;
+    if (odataNext) {
+      skip = allRows.length;
+      continue;
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    skip += PAGE_SIZE;
+  }
+
+  if (pageCount >= MAX_WHO_PAGES) throw new Error(`WHO ${indicatorCode}: pagination exceeded ${MAX_WHO_PAGES} pages`);
+  console.log(`  [who] ${indicatorCode}: ${allRows.length} rows (${pageCount} pages)`);
+
+  return allRows;
 }
 
 function selectLatestWhoByCountry(rows) {
@@ -324,7 +345,23 @@ export async function fetchWhoDataset() {
     throw new Error('WHO: all indicator fetches failed');
   }
 
+  transformWhoPhysicianDensity(merged);
+
   return merged;
+}
+
+export function transformWhoPhysicianDensity(merged) {
+  for (const [, record] of merged) {
+    const per10k = record.indicators.physiciansPer10k;
+    if (per10k && per10k.value != null) {
+      record.indicators.physiciansPer1k = {
+        indicator: per10k.indicator,
+        value: roundMetric(per10k.value / 10),
+        year: per10k.year,
+      };
+    }
+    delete record.indicators.physiciansPer10k;
+  }
 }
 
 function parseDecimal(value) {
@@ -524,21 +561,11 @@ function parseDelimitedText(text, delimiter) {
   });
 }
 
-async function fetchGpiDataset() {
-  const currentYear = new Date().getUTCFullYear();
-  let csvText;
-  let resolvedYear = currentYear;
+export function gpiUrlForYear(yr) {
+  return `https://www.visionofhumanity.org/wp-content/uploads/${yr}/06/GPI_${yr}_${yr}.csv`;
+}
 
-  const urlForYear = (yr) =>
-    `https://www.visionofhumanity.org/wp-content/uploads/${yr}/06/GPI_${yr}_${yr}.csv`;
-
-  try {
-    ({ text: csvText } = await withRetry(() => fetchText(urlForYear(currentYear), { accept: 'text/csv' }), 1, 750));
-  } catch {
-    resolvedYear = currentYear - 1;
-    ({ text: csvText } = await withRetry(() => fetchText(urlForYear(resolvedYear), { accept: 'text/csv' }), 2, 750));
-  }
-
+export function parseGpiRows(csvText, resolvedYear) {
   const rows = parseDelimitedText(csvText, ',');
   const parsed = new Map();
   for (const row of rows) {
@@ -560,10 +587,32 @@ async function fetchGpiDataset() {
   return parsed;
 }
 
-async function fetchFsinDataset() {
-  const hdxUrl =
-    'https://data.humdata.org/dataset/7a7e7428-b8d7-4d2e-91d3-19100500e016/resource/2e4f7475-105b-4fae-81f7-7c32076096b6/download/ipc_global_national_wide_latest.csv';
-  const { text: csvText } = await withRetry(() => fetchText(hdxUrl, { accept: 'text/csv' }), 2, 750);
+export async function resolveGpiCsv(
+  currentYear,
+  {
+    directFetch = (url) => fetchTextDirect(url, 'text/csv', 30_000),
+    retryFetch = (url) => withRetry(() => fetchText(url, { accept: 'text/csv' }), 2, 750),
+  } = {},
+) {
+  try {
+    const { text } = await directFetch(gpiUrlForYear(currentYear));
+    return { resolvedYear: currentYear, csvText: text };
+  } catch (err) {
+    if (err.status !== 404) throw err;
+    const resolvedYear = currentYear - 1;
+    console.info(`  [gpi] ${currentYear} report not yet available — using ${resolvedYear}`);
+    const { text } = await retryFetch(gpiUrlForYear(resolvedYear));
+    return { resolvedYear, csvText: text };
+  }
+}
+
+async function fetchGpiDataset() {
+  const currentYear = new Date().getUTCFullYear();
+  const { resolvedYear, csvText } = await resolveGpiCsv(currentYear);
+  return parseGpiRows(csvText, resolvedYear);
+}
+
+export function parseFsinRows(csvText) {
   const rows = parseDelimitedText(csvText, ',');
   const parsed = new Map();
   for (const row of rows) {
@@ -573,57 +622,119 @@ async function fetchFsinDataset() {
     const phase3plus = safeNum(row['Phase 3+ #'] ?? row['Phase 3+ number current']);
     const phase4 = safeNum(row['Phase 4 #'] ?? row['Phase 4 number current']);
     const phase5 = safeNum(row['Phase 5 #'] ?? row['Phase 5 number current']);
-    if (phase3plus == null && phase4 == null && phase5 == null) continue;
+    // Skip rows where no crisis-phase data is present (null or zero — IPC only lists active crises).
+    if (!phase3plus && !phase4 && !phase5) continue;
     const yearCandidates = Object.keys(row)
       .filter((k) => /period|date|year/i.test(k))
       .map((k) => safeNum(String(row[k]).slice(0, 4)))
       .filter((v) => v != null && v > 2000);
     const year = yearCandidates.length ? Math.max(...yearCandidates) : null;
+    const highestPhase = phase5 ? 5 : phase4 ? 4 : 3;
     parsed.set(iso2, {
       source: 'hdx-ipc',
       year,
-      phase3plus: phase3plus != null ? roundMetric(phase3plus, 0) : null,
-      phase4: phase4 != null ? roundMetric(phase4, 0) : null,
-      phase5: phase5 != null ? roundMetric(phase5, 0) : null,
+      // Output matches the shape that scoreFoodWater() reads from staticRecord.fao.
+      // phase3plus == total people in Phase 3 or above (IPC definition of "in crisis").
+      peopleInCrisis: phase3plus != null ? roundMetric(phase3plus, 0) : null,
+      phase: `IPC Phase ${highestPhase}`,
     });
   }
   if (parsed.size === 0) throw new Error('HDX IPC CSV returned no usable rows');
   return parsed;
 }
 
-async function fetchAquastatDataset() {
-  const aquastatUrl =
-    'https://api.data.apps.fao.org/api/v2/bigquery?sql_url=https://data.apps.fao.org/catalog/dataset/945666e6-7803-4621-b8ef-cfd885a84596/resource/4a000a1b-24f0-4328-aab6-b9b525892090/download/query_en.sql&area=World&variable=4550,4192,4190&year=2021&type=country';
-  const { text: csvText } = await withRetry(() => fetchText(aquastatUrl, { accept: 'text/csv' }), 2, 750);
-  const rows = parseDelimitedText(csvText, ',');
+async function fetchFsinDataset() {
+  const hdxUrl =
+    'https://data.humdata.org/dataset/7a7e7428-b8d7-4d2e-91d3-19100500e016/resource/2e4f7475-105b-4fae-81f7-7c32076096b6/download/ipc_global_national_wide_latest.csv';
+  const { text: csvText } = await withRetry(() => fetchText(hdxUrl, { accept: 'text/csv' }), 2, 750);
+  return parseFsinRows(csvText);
+}
 
-  const VARIABLE_MAP = {
-    '4550': 'waterStress',
-    '4192': 'dependencyRatio',
-    '4190': 'renewablePerCapita',
-  };
+// WB indicator ER.H2O.FWST.ZS = "Level of water stress: freshwater withdrawal as a proportion
+// of available freshwater resources". Matches scoreAquastatValue()'s 'stress' keyword branch.
+const WB_WATER_STRESS_INDICATOR = 'ER.H2O.FWST.ZS';
 
+export function buildAquastatWbMap(waterStressLatest) {
   const byCountry = new Map();
-  for (const row of rows) {
-    const countryName = String(row.Country || '').trim();
-    const iso2 = resolveIso2({ name: countryName });
-    if (!iso2) continue;
-    const varCode = String(row.VariableCode || row.Variable_Id || '').trim();
-    const metricKey = VARIABLE_MAP[varCode];
-    if (!metricKey) continue;
-    const value = safeNum(row.Value);
-    const year = safeNum(row.Year);
-    if (value == null) continue;
-
-    const existing = byCountry.get(iso2) || { source: 'fao-aquastat' };
-    const prev = existing[metricKey];
-    if (!prev || (year != null && (prev.year == null || year > prev.year))) {
-      existing[metricKey] = { value: roundMetric(value), year };
-    }
-    byCountry.set(iso2, existing);
+  for (const [iso2, entry] of waterStressLatest.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank-aquastat',
+      value: entry.value,
+      indicator: 'water stress',
+      year: entry.year,
+    });
   }
-  if (byCountry.size === 0) throw new Error('AQUASTAT CSV returned no usable rows');
+  if (byCountry.size === 0) throw new Error('World Bank water stress returned no usable rows');
   return byCountry;
+}
+
+async function fetchAquastatDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_WATER_STRESS_INDICATOR, { mrv: '15' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildAquastatWbMap(latest);
+}
+
+const WB_TRADE_TO_GDP_INDICATOR = 'NE.TRD.GNFS.ZS';
+
+export function buildTradeToGdpMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      tradeToGdpPct: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank trade-to-GDP returned no usable rows');
+  return byCountry;
+}
+
+async function fetchTradeToGdpDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_TRADE_TO_GDP_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildTradeToGdpMap(latest);
+}
+
+const WB_FX_RESERVES_MONTHS_INDICATOR = 'FI.RES.TOTL.MO';
+
+export function buildFxReservesMonthsMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      months: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank FX reserves months returned no usable rows');
+  return byCountry;
+}
+
+async function fetchFxReservesMonthsDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_FX_RESERVES_MONTHS_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildFxReservesMonthsMap(latest);
+}
+
+const WB_APPLIED_TARIFF_INDICATOR = 'TM.TAX.MRCH.WM.AR.ZS';
+
+export function buildAppliedTariffRateMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      value: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank applied tariff rate returned no usable rows');
+  return byCountry;
+}
+
+async function fetchAppliedTariffRateDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_APPLIED_TARIFF_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildAppliedTariffRateMap(latest);
 }
 
 export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), seededAt = new Date().toISOString()) {
@@ -756,6 +867,9 @@ async function fetchAllDatasetMaps() {
     { key: 'fao', fetcher: fetchFsinDataset },
     { key: 'aquastat', fetcher: fetchAquastatDataset },
     { key: 'iea', fetcher: fetchEnergyDependencyDataset },
+    { key: 'tradeToGdp', fetcher: fetchTradeToGdpDataset },
+    { key: 'fxReservesMonths', fetcher: fetchFxReservesMonthsDataset },
+    { key: 'appliedTariffRate', fetcher: fetchAppliedTariffRateDataset },
   ];
 
   const results = await Promise.allSettled(adapters.map((adapter) => adapter.fetcher()));
@@ -777,6 +891,51 @@ async function fetchAllDatasetMaps() {
   return { datasetMaps, failedDatasets };
 }
 
+// Exported for testing. When a dataset fetch fails, reads the prior Redis snapshot and
+// injects the existing per-country values for that field back into datasetMaps so the
+// new publish does not overwrite good data with null.
+// Throws if the Redis recovery reads themselves fail — the caller must then call
+// preservePreviousSnapshotOnFailure and abort, rather than publishing corrupt data.
+export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readIndex, readPipeline }) {
+  if (failedDatasets.length === 0) return;
+
+  let existingIndex;
+  try {
+    existingIndex = await readIndex();
+  } catch (err) {
+    throw new Error(`Dataset(s) (${failedDatasets.join(', ')}) failed and Redis index read also failed: ${err.message}`);
+  }
+
+  const existingCountries = existingIndex?.countries ?? [];
+  if (existingCountries.length === 0) {
+    console.warn(`  [fallback] dataset(s) failed (${failedDatasets.join(', ')}) — no prior snapshot to recover from`);
+    return;
+  }
+
+  let pipelineResults;
+  try {
+    pipelineResults = await readPipeline(existingCountries.map((iso2) => ['GET', countryRedisKey(iso2)]));
+  } catch (err) {
+    throw new Error(`Dataset(s) (${failedDatasets.join(', ')}) failed and Redis pipeline read also failed: ${err.message}`);
+  }
+
+  for (let i = 0; i < existingCountries.length; i++) {
+    const iso2 = existingCountries[i];
+    let existing = null;
+    try { existing = JSON.parse(pipelineResults[i]?.result ?? 'null'); } catch { /* skip */ }
+    if (!existing) continue;
+    for (const key of failedDatasets) {
+      if (existing[key] != null && datasetMaps[key] instanceof Map && !datasetMaps[key].has(iso2)) {
+        datasetMaps[key].set(iso2, existing[key]);
+      }
+    }
+  }
+
+  for (const key of failedDatasets) {
+    console.warn(`  [fallback] dataset '${key}' failed — preserved ${datasetMaps[key].size} existing Redis records from prior snapshot`);
+  }
+}
+
 export async function seedResilienceStatic() {
   const seedYear = nowSeedYear();
   const existingMeta = await readJsonKey(RESILIENCE_STATIC_META_KEY).catch(() => null);
@@ -790,6 +949,23 @@ export async function seedResilienceStatic() {
   }
 
   const { datasetMaps, failedDatasets } = await fetchAllDatasetMaps();
+
+  try {
+    await recoverFailedDatasets(datasetMaps, failedDatasets, {
+      readIndex: () => readJsonKey(RESILIENCE_STATIC_INDEX_KEY),
+      readPipeline: redisPipeline,
+    });
+  } catch (recoveryErr) {
+    const failure = await preservePreviousSnapshotOnFailure(
+      failedDatasets,
+      seedYear,
+      recoveryErr.message,
+    );
+    const error = new Error(recoveryErr.message);
+    error.failure = failure;
+    throw error;
+  }
+
   const seededAt = new Date().toISOString();
   const countryPayloads = finalizeCountryPayloads(datasetMaps, seedYear, seededAt);
   const manifest = buildManifest(countryPayloads, failedDatasets, seedYear, seededAt);

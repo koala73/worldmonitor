@@ -48,6 +48,9 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 const DIGEST_MAX_ITEMS = 30;
 const DIGEST_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24h default lookback on first send
+const DIGEST_CRITICAL_LIMIT = Infinity;
+const DIGEST_HIGH_LIMIT = 15;
+const DIGEST_MEDIUM_LIMIT = 10;
 
 // ── Redis helpers ──────────────────────────────────────────────────────────────
 
@@ -214,7 +217,8 @@ function deduplicateStories(stories) {
 
 async function buildDigest(rule, windowStartMs) {
   const variant = rule.variant ?? 'full';
-  const accKey = `digest:accumulator:v1:${variant}`;
+  const lang = rule.lang ?? 'en';
+  const accKey = `digest:accumulator:v1:${variant}:${lang}`;
 
   const hashes = await upstashRest(
     'ZRANGEBYSCORE', accKey, String(windowStartMs), String(Date.now()),
@@ -289,16 +293,19 @@ function formatDigest(stories, nowMs) {
     b.push(s);
   }
 
+  const SEVERITY_LIMITS = { critical: DIGEST_CRITICAL_LIMIT, high: DIGEST_HIGH_LIMIT, medium: DIGEST_MEDIUM_LIMIT };
+
   for (const [level, items] of Object.entries(buckets)) {
     if (items.length === 0) continue;
+    const limit = SEVERITY_LIMITS[level] ?? DIGEST_MEDIUM_LIMIT;
     lines.push(`${level.toUpperCase()} (${items.length} event${items.length !== 1 ? 's' : ''})`);
-    for (const item of items.slice(0, 10)) {
+    for (const item of items.slice(0, limit)) {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
         : '';
       lines.push(`  \u2022 ${stripSourceSuffix(item.title)}${src}`);
     }
-    if (items.length > 10) lines.push(`  ... and ${items.length - 10} more`);
+    if (items.length > limit) lines.push(`  ... and ${items.length - limit} more`);
     lines.push('');
   }
 
@@ -351,13 +358,16 @@ function formatDigestHtml(stories, nowMs) {
     return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
   }
 
+  const SEVERITY_LIMITS = { critical: DIGEST_CRITICAL_LIMIT, high: DIGEST_HIGH_LIMIT, medium: DIGEST_MEDIUM_LIMIT };
+
   function sectionHtml(severity, items) {
     if (items.length === 0) return '';
+    const limit = SEVERITY_LIMITS[severity] ?? DIGEST_MEDIUM_LIMIT;
     const SEVERITY_LABEL = { critical: '&#128308; Critical', high: '&#128992; High', medium: '&#128993; Medium' };
     const label = SEVERITY_LABEL[severity] ?? severity.toUpperCase();
-    const cards = items.slice(0, 10).map(storyCard).join('');
-    const overflow = items.length > 10
-      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-left: 4px;">... and ${items.length - 10} more</p>`
+    const cards = items.slice(0, limit).map(storyCard).join('');
+    const overflow = items.length > limit
+      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-left: 4px;">... and ${items.length - limit} more</p>`
       : '';
     return `<div style="margin-bottom: 24px;"><div style="font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">${label} (${items.length})</div>${cards}${overflow}</div>`;
   }
@@ -371,8 +381,8 @@ function formatDigestHtml(stories, nowMs) {
   <div style="padding: 40px 32px 0;">
     <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 32px;">
       <tr>
-        <td style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid #222; text-align: center; vertical-align: middle; background: #111;">
-          <span style="font-size: 20px; color: #4ade80;">&#9678;</span>
+        <td style="width: 40px; height: 40px; vertical-align: middle;">
+          <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="40" height="40" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
         </td>
         <td style="padding-left: 12px;">
           <div style="font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.5px;">WORLD MONITOR</div>

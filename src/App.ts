@@ -433,13 +433,19 @@ export class App {
       );
 
       // One-time migration: preserve user preferences across panel key renames.
-      const PANEL_KEY_RENAMES_MIGRATION_KEY = 'worldmonitor-panel-key-renames-v2.6';
+      const PANEL_KEY_RENAMES_MIGRATION_KEY = 'worldmonitor-panel-key-renames-v2.6.8';
       if (!localStorage.getItem(PANEL_KEY_RENAMES_MIGRATION_KEY)) {
+        let migrated = false;
         const keyRenames: Array<[string, string]> = [
           ['live-youtube', 'live-webcams'],
           ['pinned-webcams', 'windy-webcams'],
+          ...(SITE_VARIANT === 'finance' ? [['regulation', 'fin-regulation'] as [string, string]] : []),
         ];
-        let migrated = false;
+        // In non-finance variants, 'regulation' was dead config (no feeds). Just prune it.
+        if (SITE_VARIANT !== 'finance' && panelSettings['regulation']) {
+          delete panelSettings['regulation'];
+          migrated = true;
+        }
         for (const [legacyKey, nextKey] of keyRenames) {
           if (!panelSettings[legacyKey] || panelSettings[nextKey]) continue;
           panelSettings[nextKey] = {
@@ -449,6 +455,19 @@ export class App {
           };
           delete panelSettings[legacyKey];
           migrated = true;
+        }
+        // Also migrate saved panel order/bottom-set entries for renamed keys
+        for (const [legacyKey, nextKey] of keyRenames) {
+          for (const orderKey of [PANEL_ORDER_KEY, PANEL_ORDER_KEY + '-bottom-set', PANEL_ORDER_KEY + '-bottom']) {
+            try {
+              const raw = localStorage.getItem(orderKey);
+              if (!raw) continue;
+              const arr = JSON.parse(raw);
+              if (!Array.isArray(arr)) continue;
+              const idx = arr.indexOf(legacyKey);
+              if (idx !== -1) { arr[idx] = nextKey; localStorage.setItem(orderKey, JSON.stringify(arr)); migrated = true; }
+            } catch { /* corrupt storage, skip */ }
+          }
         }
         if (migrated) saveToStorage(STORAGE_KEYS.panels, panelSettings);
         localStorage.setItem(PANEL_KEY_RENAMES_MIGRATION_KEY, 'done');

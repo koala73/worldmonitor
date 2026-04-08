@@ -19,6 +19,7 @@ export const RELEASE_GATE_COUNTRIES = [
     'CH',
     'ER',
     'HT',
+    'LB',
     'NG',
     'NO',
     'SO',
@@ -100,6 +101,7 @@ const PROFILE_BY_COUNTRY: Record<string, CountryProfile> = {
   SA: 'stressed',
   TR: 'stressed',
   ZA: 'stressed',
+  LB: 'fragile',
   RU: 'fragile',
   YE: 'fragile',
   SO: 'fragile',
@@ -165,7 +167,7 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
       fao: null,
       aquastat: null,
       iea: null,
-      coverage: { availableDatasets: 0, totalDatasets: 8, ratio: 0 },
+      coverage: { availableDatasets: 0, totalDatasets: 9, ratio: 0 },
       seedYear: 2025,
       seededAt: '2026-04-04T00:00:00.000Z',
     };
@@ -186,6 +188,10 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
       indicators: {
         'EG.ELC.ACCS.ZS': { value: round(clamp(30 + quality * 0.78, 35, 100)), year: 2025 },
         'IS.ROD.PAVE.ZS': { value: round(clamp(10 + quality * 0.88, 8, 100)), year: 2025 },
+        // Exponential scale: fragile (~600 kWh) → stressed (~2200) → strong (~8000) → elite (~9500)
+        // Reflects that energy consumption per capita collapses in conflict/crisis states.
+        'EG.USE.ELEC.KH.PC': { value: Math.round(300 * 10 ** (quality / 60)), year: 2025 },
+        'IT.NET.BBND.P2': { value: round(clamp(quality * 0.5, 0.1, 46), 1), year: 2025 },
       },
     },
     gpi: { score: round(clamp(4.1 - quality * 0.03, 1.2, 4.2), 2), rank: Math.round(190 - quality * 1.5), year: 2025 },
@@ -212,7 +218,12 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
         source: 'release-gate-fixture',
       },
     },
-    coverage: { availableDatasets: 8, totalDatasets: 8, ratio: 1 },
+    appliedTariffRate: {
+      value: round(clamp(20 - quality * 0.2, 1, 18), 1),
+      year: 2024,
+      source: 'release-gate-fixture',
+    },
+    coverage: { availableDatasets: 9, totalDatasets: 9, ratio: 1 },
     seedYear: 2025,
     seededAt: '2026-04-04T00:00:00.000Z',
   };
@@ -231,7 +242,7 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
       failedDatasets: [],
       seedYear: 2025,
       seededAt: '2026-04-04T00:00:00.000Z',
-      sourceVersion: 'resilience-static-v1',
+      sourceVersion: 'resilience-static-v7',
     },
     'supply_chain:shipping_stress:v1': { stressScore: 18 },
     'supply_chain:transit-summaries:v1': {

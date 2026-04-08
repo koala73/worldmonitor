@@ -27,6 +27,7 @@ import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
 import "worldmonitor/economic/v1/get_eu_fsi.proto";
 import "worldmonitor/economic/v1/get_economic_stress.proto";
 import "worldmonitor/economic/v1/get_fao_food_price_index.proto";
+import "worldmonitor/economic/v1/get_oil_stocks_analysis.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -150,5 +151,10 @@ service EconomicService {
   // GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
   rpc GetFaoFoodPriceIndex(GetFaoFoodPriceIndexRequest) returns (GetFaoFoodPriceIndexResponse) {
     option (sebuf.http.config) = {path: "/get-fao-food-price-index", method: HTTP_METHOD_GET};
+  }
+
+  // GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+  rpc GetOilStocksAnalysis(GetOilStocksAnalysisRequest) returns (GetOilStocksAnalysisResponse) {
+    option (sebuf.http.config) = {path: "/get-oil-stocks-analysis", method: HTTP_METHOD_GET};
   }
 }

@@ -29,6 +29,18 @@ const WTO_MEMBER_CODES = {
   '484': 'Mexico', '380': 'Italy', '528': 'Netherlands', '000': 'World',
 };
 
+const WTO_CODE_TO_ISO2 = {
+  '840': 'US', '156': 'CN', '276': 'DE', '392': 'JP', '826': 'GB',
+  '356': 'IN', '076': 'BR', '643': 'RU', '410': 'KR', '036': 'AU',
+  '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
+};
+
+const REPORTER_ISO2 = MAJOR_REPORTERS.map(c => {
+  const iso2 = WTO_CODE_TO_ISO2[c];
+  if (!iso2) throw new Error(`WTO code '${c}' has no ISO2 mapping — add it to WTO_CODE_TO_ISO2`);
+  return iso2;
+});
+
 // ─── Shipping Rates (FRED) ───
 
 const SHIPPING_SERIES = [
@@ -404,7 +416,7 @@ async function fetchTradeBarriers() {
     return gapB - gapA;
   });
   console.log(`  Trade barriers: ${barriers.length} countries`);
-  return { barriers: barriers.slice(0, 50), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { barriers: barriers.slice(0, 50), _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Trade Restrictions (WTO) ───
@@ -446,7 +458,7 @@ async function fetchTradeRestrictions() {
   }).slice(0, 50);
 
   console.log(`  Trade restrictions: ${restrictions.length} countries`);
-  return { restrictions, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { restrictions, _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Tariff Trends (WTO) — pre-seed major reporters ───

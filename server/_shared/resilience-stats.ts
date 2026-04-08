@@ -64,7 +64,7 @@ function clampScore(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
-function round(value: number, digits = 2): number {
+export function round(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
 

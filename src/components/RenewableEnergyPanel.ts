@@ -7,6 +7,7 @@
  */
 
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import * as d3 from 'd3';
 import type { RenewableEnergyData, RegionRenewableData, CapacitySeries } from '@/services/renewable-energy-data';
 import { getCSSColor } from '@/utils';
@@ -14,7 +15,7 @@ import { replaceChildren } from '@/utils/dom-utils';
 
 export class RenewableEnergyPanel extends Panel {
   constructor() {
-    super({ id: 'renewable', title: 'Renewable Energy', trackActivity: false });
+    super({ id: 'renewable', title: 'Renewable Energy', trackActivity: false, infoTooltip: t('components.renewable.infoTooltip') });
   }
 
   /**

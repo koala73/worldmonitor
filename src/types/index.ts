@@ -665,7 +665,6 @@ export interface MapLayers {
   processingPlants: boolean;
   commodityPorts: boolean;
   webcams: boolean;
-  weatherRadar: boolean;
   // Health layers
   diseaseOutbreaks: boolean;
 }

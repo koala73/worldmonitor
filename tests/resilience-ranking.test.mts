@@ -41,46 +41,68 @@ describe('resilience ranking contracts', () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const cached = {
       items: [
-        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false },
-        { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false },
+        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95 },
+        { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false, overallCoverage: 0.88 },
       ],
+      greyedOut: [],
     };
-    redis.set('resilience:ranking', JSON.stringify(cached));
+    redis.set('resilience:ranking:v5', JSON.stringify(cached));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
     assert.deepEqual(response, cached);
-    assert.equal(redis.has('resilience:score:YE'), false, 'cache hit must not trigger score warmup');
+    assert.equal(redis.has('resilience:score:v5:YE'), false, 'cache hit must not trigger score warmup');
+  });
+
+  it('returns all-greyed-out cached payload without rewarming (items=[], greyedOut non-empty)', async () => {
+    // Regression for: `cached?.items?.length` was falsy when items=[] even though
+    // greyedOut had entries, causing unnecessary rewarming on every request.
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const cached = {
+      items: [],
+      greyedOut: [
+        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15 },
+        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12 },
+      ],
+    };
+    redis.set('resilience:ranking:v5', JSON.stringify(cached));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.deepEqual(response, cached);
+    assert.equal(redis.has('resilience:score:v5:SS'), false, 'all-greyed-out cache hit must not trigger score warmup');
   });
 
   it('warms missing scores synchronously and returns complete ranking on first call', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:score:NO', JSON.stringify({
+    const domainWithCoverage = [{ name: 'political', dimensions: [{ name: 'd1', coverage: 0.9 }] }];
+    redis.set('resilience:score:v5:NO', JSON.stringify({
       countryCode: 'NO',
       overallScore: 82,
       level: 'high',
-      domains: [],
-      cronbachAlpha: 0.82,
+      domains: domainWithCoverage,
       trend: 'stable',
       change30d: 1.2,
       lowConfidence: false,
+      imputationShare: 0.05,
     }));
-    redis.set('resilience:score:US', JSON.stringify({
+    redis.set('resilience:score:v5:US', JSON.stringify({
       countryCode: 'US',
       overallScore: 61,
       level: 'medium',
-      domains: [],
-      cronbachAlpha: 0.67,
+      domains: domainWithCoverage,
       trend: 'rising',
       change30d: 4.3,
       lowConfidence: false,
+      imputationShare: 0.1,
     }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.equal(response.items.length, 3);
-    assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed during first call');
-    assert.ok(response.items.every((item) => item.overallScore >= 0), 'all scores should be computed on first call');
-    assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
+    const totalItems = response.items.length + (response.greyedOut?.length ?? 0);
+    assert.equal(totalItems, 3, `expected 3 total items across ranked + greyedOut, got ${totalItems}`);
+    assert.ok(redis.has('resilience:score:v5:YE'), 'missing country should be warmed during first call');
+    assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
+    assert.ok(redis.has('resilience:ranking:v5'), 'fully scored ranking should be cached');
   });
 });

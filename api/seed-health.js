@@ -69,6 +69,11 @@ const SEED_DOMAINS = {
   'economic:owid-energy-mix': { key: 'seed-meta:economic:owid-energy-mix', intervalMin: 25200 }, // monthly cron on 1st; intervalMin = health.js maxStaleMin / 2 (50400 / 2)
   'economic:fao-ffpi':        { key: 'seed-meta:economic:fao-ffpi',        intervalMin: 43200 }, // monthly seed; intervalMin = health.js maxStaleMin / 2 (86400 / 2)
   'product-catalog':          { key: 'seed-meta:product-catalog',          intervalMin: 360 }, // relay loop every 6h; intervalMin = health.js maxStaleMin / 3 (1080 / 3)
+  'portwatch:chokepoints-ref': { key: 'seed-meta:portwatch:chokepoints-ref', intervalMin: 1440 }, // daily cron (0 0 * * *)
+  'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3)
+  'energy:chokepoint-flows': { key: 'seed-meta:energy:chokepoint-flows', intervalMin: 360 }, // 6h relay loop; intervalMin = maxStaleMin / 2 (720 / 2)
+  'energy:spine':                 { key: 'seed-meta:energy:spine',                 intervalMin: 1440 }, // daily cron (0 6 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
+  'energy:ember': { key: 'seed-meta:energy:ember', intervalMin: 1440 }, // daily cron (0 8 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
 };
 
 async function getMetaBatch(keys) {
@@ -124,11 +129,12 @@ export default async function handler(req) {
     }
 
     const ageMs = now - (meta.fetchedAt || 0);
-    const stale = ageMs > maxStalenessMs;
+    const isError = meta.status === 'error';
+    const stale = ageMs > maxStalenessMs || isError;
     if (stale) staleCount++;
 
     seeds[domain] = {
-      status: stale ? 'stale' : 'ok',
+      status: stale ? (isError ? 'error' : 'stale') : 'ok',
       fetchedAt: meta.fetchedAt,
       recordCount: meta.recordCount ?? null,
       sourceVersion: meta.sourceVersion || null,

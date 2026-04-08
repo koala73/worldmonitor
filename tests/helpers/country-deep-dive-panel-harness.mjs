@@ -76,6 +76,14 @@ async function loadCountryDeepDivePanel() {
     ['utils-stub', `export function getCSSColor() { return '#44ff88'; }`],
     ['country-flag-stub', `export function toFlagEmoji(code, fallback = '🌍') { return code ? ':' + code + ':' : fallback; }`],
     ['ports-stub', `export const PORTS = [];`],
+    ['runtime-stub', `
+      export function toApiUrl(path) { return path; }
+      export function isDesktopRuntime() { return false; }
+      export function getConfiguredWebApiBaseUrl() { return ''; }
+    `],
+    ['intelligence-client-stub', `
+      export class IntelligenceServiceClient {}
+    `],
     ['resilience-widget-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
       export class ResilienceWidget {
@@ -109,6 +117,8 @@ async function loadCountryDeepDivePanel() {
     ['@/utils/country-flag', 'country-flag-stub'],
     ['@/config/ports', 'ports-stub'],
     ['./ResilienceWidget', 'resilience-widget-stub'],
+    ['@/services/runtime', 'runtime-stub'],
+    ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
   ]);
 
   const plugin = {

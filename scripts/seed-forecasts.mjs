@@ -4,7 +4,7 @@
 
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, withRetry } from './_seed-utils.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
@@ -693,15 +693,23 @@ async function readInputKeys() {
     'conflict:ema-windows:v1',
     ...fredKeys,
   ];
-  const pipeline = keys.map(k => ['GET', k]);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(pipeline),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`Redis pipeline failed: ${resp.status}`);
-  const results = await resp.json();
+  const BATCH_SIZE = 10;
+  const results = [];
+  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+    const batchNum = i / BATCH_SIZE + 1;
+    const batch = keys.slice(i, i + BATCH_SIZE).map(k => ['GET', k]);
+    const batchResults = await withRetry(async () => {
+      const resp = await fetch(`${url}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(batch),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!resp.ok) throw new Error(`Redis pipeline batch ${batchNum} failed: ${resp.status}`);
+      return resp.json();
+    }, 2, 1000);
+    results.push(...batchResults);
+  }
 
   const parse = (i) => {
     try { return results[i]?.result ? JSON.parse(results[i].result) : null; } catch { return null; }

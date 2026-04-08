@@ -165,7 +165,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -228,7 +228,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -249,7 +249,6 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   accelerators: { name: 'Accelerators & Demo Days', enabled: true, priority: 1 },
   security: { name: 'Cybersecurity', enabled: true, priority: 1 },
   policy: { name: 'AI Policy & Regulation', enabled: true, priority: 1 },
-  regulation: { name: 'AI Regulation News', enabled: true, priority: 1 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 1 },
   markets: { name: 'Tech Stocks', enabled: true, priority: 2 },
   finance: { name: 'Financial News', enabled: true, priority: 2 },
@@ -336,7 +335,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -398,7 +397,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -444,7 +443,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'cot-positioning': { name: 'COT Positioning', enabled: true, priority: 2 },
   derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
   fintech: { name: 'Fintech & Trading Tech', enabled: true, priority: 2 },
-  regulation: { name: 'Financial Regulation', enabled: true, priority: 2 },
+  'fin-regulation': { name: 'Financial Regulation', enabled: true, priority: 2 },
   institutional: { name: 'Hedge Funds & PE', enabled: true, priority: 2 },
   analysis: { name: 'Market Analysis', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -518,7 +517,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -580,7 +579,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -658,7 +657,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -720,7 +719,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -815,7 +814,7 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   processingPlants: true,
   commodityPorts: true,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -877,7 +876,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: true,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -1083,7 +1082,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dealsInstitutional: {
     labelKey: 'header.panelCatDeals',
-    panelKeys: ['ipo', 'derivatives', 'institutional', 'regulation'],
+    panelKeys: ['ipo', 'derivatives', 'institutional', 'fin-regulation'],
   },
   gulfMena: {
     labelKey: 'header.panelCatGulfMena',

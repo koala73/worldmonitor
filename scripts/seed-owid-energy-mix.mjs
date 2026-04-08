@@ -20,6 +20,8 @@ export const OWID_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';
  *  failure-preservation path to extend TTL on ALL per-country keys, not just
  *  those that happen to appear in the top-20 exposure buckets. */
 export const OWID_COUNTRY_LIST_KEY = 'energy:mix:v1:_countries';
+/** Bulk map of all countries keyed by ISO2 — compact shape, no redundant fields. */
+export const OWID_ALL_KEY = 'energy:mix:v1:_all';
 export const OWID_META_KEY = 'seed-meta:economic:owid-energy-mix';
 export const OWID_TTL_SECONDS = 35 * 24 * 3600;
 const OWID_CSV_URL = 'https://owid-public.owid.io/data/energy/owid-energy-data.csv';
@@ -169,6 +171,31 @@ export function buildExposureIndex(countries) {
   };
 }
 
+/**
+ * Build a compact bulk map of all countries keyed by ISO2.
+ * Omits `iso2`, `country`, and `seededAt` to reduce payload size (~30% savings).
+ * @param {Map<string, object>} countries
+ * @returns {Record<string, {year: number, coalShare: number|null, gasShare: number|null, oilShare: number|null, nuclearShare: number|null, renewShare: number|null, windShare: number|null, solarShare: number|null, hydroShare: number|null, importShare: number|null}>}
+ */
+export function buildAllCountriesMap(countries) {
+  const result = {};
+  for (const [iso2, entry] of countries) {
+    result[iso2] = {
+      year: entry.year,
+      coalShare: entry.coalShare,
+      gasShare: entry.gasShare,
+      oilShare: entry.oilShare,
+      nuclearShare: entry.nuclearShare,
+      renewShare: entry.renewShare,
+      windShare: entry.windShare,
+      solarShare: entry.solarShare,
+      hydroShare: entry.hydroShare,
+      importShare: entry.importShare,
+    };
+  }
+  return result;
+}
+
 async function redisPipeline(commands) {
   const { url, token } = getRedisCredentials();
   const response = await fetch(`${url}/pipeline`, {
@@ -210,7 +237,7 @@ async function preservePreviousSnapshot(errorMsg) {
     : [];
 
   await extendExistingTtl(
-    [...perCountryKeys, OWID_COUNTRY_LIST_KEY, OWID_EXPOSURE_INDEX_KEY, OWID_META_KEY],
+    [...perCountryKeys, OWID_COUNTRY_LIST_KEY, OWID_EXPOSURE_INDEX_KEY, OWID_ALL_KEY, OWID_META_KEY],
     OWID_TTL_SECONDS,
   );
   const metaPayload = {
@@ -269,6 +296,14 @@ export async function main() {
     }
 
     const exposureIndex = buildExposureIndex(countries);
+    const allCountriesMap = buildAllCountriesMap(countries);
+    const allCountriesCount = Object.keys(allCountriesMap).length;
+    if (allCountriesCount < MIN_COUNTRIES) {
+      throw new Error(
+        `OWID _all: only ${allCountriesCount} entries, expected >=${MIN_COUNTRIES}`,
+      );
+    }
+
     const metaPayload = {
       fetchedAt: Date.now(),
       recordCount: countries.size,
@@ -298,6 +333,14 @@ export async function main() {
       'SET',
       OWID_COUNTRY_LIST_KEY,
       JSON.stringify([...countries.keys()]),
+      'EX',
+      OWID_TTL_SECONDS,
+    ]);
+    // Bulk map keyed by ISO2 — compact shape without redundant fields.
+    commands.push([
+      'SET',
+      OWID_ALL_KEY,
+      JSON.stringify(allCountriesMap),
       'EX',
       OWID_TTL_SECONDS,
     ]);

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   parseEntsoEPrice,
   buildElectricityIndex,
+  EIA_REGIONS,
   ELECTRICITY_INDEX_KEY,
   ELECTRICITY_KEY_PREFIX,
   ELECTRICITY_TTL_SECONDS,
@@ -125,5 +126,40 @@ describe('exported key constants', () => {
       ELECTRICITY_TTL_SECONDS >= 3 * 24 * 3600,
       `TTL ${ELECTRICITY_TTL_SECONDS}s is less than 3 days`,
     );
+  });
+});
+
+// ── EIA region/respondent mapping ────────────────────────────────────────────
+
+describe('EIA_REGIONS respondent codes', () => {
+  const EXPECTED = {
+    CISO: 'CISO',
+    MISO: 'MISO',
+    PJM: 'PJM',
+    NYISO: 'NYIS',
+    ERCO: 'ERCO',
+    SPP: 'SWPP',
+  };
+
+  it('every entry has distinct region and respondent fields', () => {
+    for (const entry of EIA_REGIONS) {
+      assert.ok(typeof entry.region === 'string' && entry.region.length > 0, `missing region`);
+      assert.ok(typeof entry.respondent === 'string' && entry.respondent.length > 0, `missing respondent for ${entry.region}`);
+    }
+  });
+
+  it('maps public region IDs to correct EIA respondent codes', () => {
+    for (const [region, respondent] of Object.entries(EXPECTED)) {
+      const entry = EIA_REGIONS.find((r) => r.region === region);
+      assert.ok(entry, `missing EIA_REGIONS entry for ${region}`);
+      assert.equal(entry.respondent, respondent, `${region} should use respondent ${respondent}, got ${entry.respondent}`);
+    }
+  });
+
+  it('covers all expected regions', () => {
+    const regions = EIA_REGIONS.map((r) => r.region);
+    for (const expected of Object.keys(EXPECTED)) {
+      assert.ok(regions.includes(expected), `EIA_REGIONS missing ${expected}`);
+    }
   });
 });

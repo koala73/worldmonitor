@@ -1,5 +1,6 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 
 let _client: MarketServiceClient | null = null;
@@ -69,7 +70,7 @@ export class CotPositioningPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'cot-positioning', title: 'CFTC COT Positioning', showCount: false });
+    super({ id: 'cot-positioning', title: 'CFTC COT Positioning', showCount: false, infoTooltip: t('components.cotPositioning.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {

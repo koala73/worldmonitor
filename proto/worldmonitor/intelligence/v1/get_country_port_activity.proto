@@ -1,0 +1,25 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+import "sebuf/http/annotations.proto";
+
+message GetCountryPortActivityRequest {
+  string country_code = 1 [(sebuf.http.query) = {name: "country_code"}];
+}
+
+message PortActivityEntry {
+  string port_id            = 1;
+  string port_name          = 2;
+  double lat                = 3;
+  double lon                = 4;
+  int32  tanker_calls_30d   = 5;
+  double trend_delta_pct    = 6;  // pre-computed by seeder: (30d-prev30d)/prev30d * 100, 0 when no prev data
+  double import_tanker_dwt  = 7;
+  double export_tanker_dwt  = 8;
+  bool   anomaly_signal     = 9;
+}
+
+message CountryPortActivityResponse {
+  repeated PortActivityEntry ports   = 1;
+  string fetched_at                  = 2;
+  bool   available                   = 3;
+}

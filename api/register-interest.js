@@ -5,6 +5,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { getClientIp, verifyTurnstile } from './_turnstile.js';
 import { jsonResponse } from './_json-response.js';
 import { createIpRateLimiter } from './_ip-rate-limit.js';
+import { validateEmail } from './_email-validation.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
@@ -46,12 +47,11 @@ async function sendConfirmationEmail(email, referralCode) {
             <div style="padding: 40px 32px 0;">
               <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 32px;">
                 <tr>
-                  <td style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid #222; text-align: center; vertical-align: middle; background: #111;">
-                    <span style="font-size: 20px; color: #4ade80;">&#9678;</span>
+                  <td style="width: 40px; height: 40px; vertical-align: middle;">
+                    <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="40" height="40" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
                   </td>
                   <td style="padding-left: 12px;">
                     <div style="font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.5px;">WORLD MONITOR</div>
-                    <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px;">by Someone.ceo</div>
                   </td>
                 </tr>
               </table>
@@ -225,6 +225,11 @@ export default async function handler(req) {
     return jsonResponse({ error: 'Invalid email address' }, 400, cors);
   }
 
+  const emailCheck = await validateEmail(email);
+  if (!emailCheck.valid) {
+    return jsonResponse({ error: emailCheck.reason }, 400, cors);
+  }
+
   const safeSource = typeof source === 'string'
     ? source.slice(0, MAX_META_LENGTH)
     : 'unknown';
@@ -250,8 +255,13 @@ export default async function handler(req) {
     });
 
     // Send confirmation email for new registrations (awaited to avoid Edge isolate termination)
+    // Skip if email is on the suppression list (previously bounced)
     if (result.status === 'registered' && result.referralCode) {
-      await sendConfirmationEmail(email, result.referralCode);
+      if (!result.emailSuppressed) {
+        await sendConfirmationEmail(email, result.referralCode);
+      } else {
+        console.log(`[register-interest] Skipped email to suppressed address: ${email}`);
+      }
     }
 
     return jsonResponse(result, 200, cors);

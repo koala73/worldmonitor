@@ -20,6 +20,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   bisPolicy:        'economic:bis:policy:v1',
   bisExchange:      'economic:bis:eer:v1',
   bisCredit:        'economic:bis:credit:v1',
+  imfMacro:         'economic:imf:macro:v2',
   shippingRates:    'supply_chain:shipping:v2',
   chokepoints:      'supply_chain:chokepoints:v4',
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',
@@ -87,11 +88,15 @@ const BOOTSTRAP_CACHE_KEYS = {
   pizzint:           'intelligence:pizzint:seed:v1',
   diseaseOutbreaks:  'health:disease-outbreaks:v1',
   economicStress:    'economic:stress-index:v1',
-  electricityPrices: 'energy:electricity:v1:index',
+  electricityPrices:    'energy:electricity:v1:index',
+  jodiOil:              'energy:jodi-oil:v1:_countries',
+  chokepointBaselines:  'energy:chokepoint-baselines:v1',
+  portwatchChokepointsRef: 'portwatch:chokepoints:ref:v1',
+  portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
 };
 
 const SLOW_KEYS = new Set([
-  'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
+  'bisPolicy', 'bisExchange', 'bisCredit', 'imfMacro', 'minerals', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
@@ -120,6 +125,10 @@ const SLOW_KEYS = new Set([
   'economicStress',
   'pizzint',
   'electricityPrices',
+  'jodiOil',
+  'chokepointBaselines',
+  'portwatchChokepointsRef',
+  'portwatchPortActivity',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',

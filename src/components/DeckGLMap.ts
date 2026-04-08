@@ -357,6 +357,7 @@ export class DeckGLMap {
   private aptGroups: import('@/types').APTGroup[] = [];
   private aptGroupsLoaded = false;
   private aptGroupsLayerFailed = false;
+  private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
@@ -563,7 +564,7 @@ export class DeckGLMap {
     if (this.state.layers.dayNight) {
       this.startDayNightTimer();
     }
-    if (this.state.layers.weatherRadar) {
+    if (this.state.layers.weather) {
       this.startWeatherRadar();
     }
     // Kick off lazy APT load if cyberThreats is already on at init (e.g. from URL/localStorage)
@@ -616,29 +617,35 @@ export class DeckGLMap {
         this.radarTileUrl = `${data.host}${latest.path}/256/{z}/{x}/{y}/6/1_1.png`;
         this.applyRadarLayer();
       })
-      .catch(() => {});
+      .catch((err) => console.warn('[DeckGLMap] weather radar fetch failed:', err?.message || err));
   }
 
   private applyRadarLayer(): void {
     if (!this.maplibreMap || !this.radarActive || !this.radarTileUrl) return;
-    const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
-    if (existing) {
-      existing.setTiles([this.radarTileUrl]);
+    if (!this.maplibreMap.isStyleLoaded()) {
+      this.maplibreMap.once('style.load', () => this.applyRadarLayer());
       return;
     }
-    this.maplibreMap.addSource('weather-radar', {
-      type: 'raster',
-      tiles: [this.radarTileUrl],
-      tileSize: 256,
-      attribution: '© RainViewer',
-    });
-    const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
-    this.maplibreMap.addLayer({
-      id: 'weather-radar-layer',
-      type: 'raster',
-      source: 'weather-radar',
-      paint: { 'raster-opacity': 0.65 },
-    }, beforeId);
+    try {
+      const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
+      if (existing) {
+        existing.setTiles([this.radarTileUrl]);
+        return;
+      }
+      this.maplibreMap.addSource('weather-radar', {
+        type: 'raster',
+        tiles: [this.radarTileUrl],
+        tileSize: 256,
+        attribution: '© RainViewer',
+      });
+      const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
+      this.maplibreMap.addLayer({
+        id: 'weather-radar-layer',
+        type: 'raster',
+        source: 'weather-radar',
+        paint: { 'raster-opacity': 0.65 },
+      }, beforeId);
+    } catch (err) { console.warn('[DeckGLMap] radar layer apply failed:', (err as Error)?.message); }
   }
 
   private removeRadarLayer(): void {
@@ -832,6 +839,11 @@ export class DeckGLMap {
         console.warn('[DeckGLMap] Render error (non-fatal):', error.message);
         if (error.message.includes('apt-groups-layer')) {
           this.aptGroupsLayerFailed = true;
+        }
+        if (error.message.includes('satellite-imagery-layer')) {
+          this.satelliteImageryLayerFailed = true;
+          console.warn('[DeckGLMap] Satellite imagery layer failed (likely Intel GPU driver incompatibility) — rebuilding layer stack without it');
+          try { this.deckOverlay?.setProps({ layers: this.buildLayers() }); } catch { /* map mid-teardown */ }
         }
       },
     });
@@ -1722,7 +1734,7 @@ export class DeckGLMap {
       layers.push(this.createRenewableInstallationsLayer());
     }
 
-    if (mapLayers.satellites && filteredImageryScenes.length > 0) {
+    if (mapLayers.satellites && filteredImageryScenes.length > 0 && !this.satelliteImageryLayerFailed) {
       layers.push(this.createImageryFootprintLayer(filteredImageryScenes));
     }
 
@@ -3769,6 +3781,9 @@ export class DeckGLMap {
         if (!resilienceEntry) {
           return { html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/><span style="opacity:.7">No resilience data</span></div>` };
         }
+        if (resilienceEntry.level === 'insufficient_data') {
+          return { html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/><span style="opacity:.7">Insufficient data</span></div>` };
+        }
         const [red, green, blue] = RESILIENCE_CHOROPLETH_COLORS[resilienceEntry.level];
         const levelColor = `rgb(${red}, ${green}, ${blue})`;
         return {
@@ -4299,6 +4314,8 @@ export class DeckGLMap {
         const layer = (input as HTMLInputElement).closest('.layer-toggle')?.getAttribute('data-layer') as keyof MapLayers;
         if (layer) {
           const enabled = (input as HTMLInputElement).checked;
+          const prevRadar = this.state.layers.weather;
+          const prevCyber = this.state.layers.cyberThreats;
           if (enabled && (layer === 'resilienceScore' || layer === 'ciiChoropleth')) {
             const conflictingLayer = layer === 'resilienceScore' ? 'ciiChoropleth' : 'resilienceScore';
             if (this.state.layers[conflictingLayer]) {
@@ -4311,6 +4328,9 @@ export class DeckGLMap {
           }
           this.state.layers[layer] = enabled;
           if (layer === 'flights') this.manageAircraftTimer(enabled);
+          if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+          else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
+          if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
           this.render();
           this.updateLegend();
           this.onLayerChange?.(layer, enabled, 'user');
@@ -4775,12 +4795,12 @@ export class DeckGLMap {
   }
 
   public setLayers(layers: MapLayers): void {
-    const prevRadar = this.state.layers.weatherRadar;
+    const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
     this.state.layers = normalizeExclusiveChoropleths(layers, this.state.layers);
     this.manageAircraftTimer(this.state.layers.flights);
-    if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
-    else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
+    if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+    else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
     if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
     this.render(); // Debounced
     this.updateLegend();
@@ -5271,8 +5291,8 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setResilienceRanking(items: ResilienceRankingItem[]): void {
-    this.resilienceScoresMap = buildResilienceChoroplethMap(items);
+  public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
+    this.resilienceScoresMap = buildResilienceChoroplethMap(items, greyedOut);
     this.resilienceScoresVersion++;
     this.render();
   }
@@ -5508,6 +5528,9 @@ export class DeckGLMap {
       this.state.layers[layer] = true;
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = true;
+      if (layer === 'weather') this.startWeatherRadar();
+      if (layer === 'cyberThreats' && !this.aptGroupsLoaded) this.loadAptGroups();
+      if (layer === 'flights') this.manageAircraftTimer(true);
       this.render();
       this.updateLegend();
       this.onLayerChange?.(layer, true, 'programmatic');
@@ -5517,6 +5540,8 @@ export class DeckGLMap {
 
   // Toggle layer on/off programmatically
   public toggleLayer(layer: keyof MapLayers): void {
+    const prevRadar = this.state.layers.weather;
+    const prevCyber = this.state.layers.cyberThreats;
     const nextEnabled = !this.state.layers[layer];
     if (nextEnabled && layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
       this.state.layers.ciiChoropleth = false;
@@ -5534,6 +5559,10 @@ export class DeckGLMap {
     this.state.layers[layer] = !this.state.layers[layer];
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
+    if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+    else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
+    if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
+    if (layer === 'flights') this.manageAircraftTimer(this.state.layers.flights);
     this.render();
     this.updateLegend();
     this.onLayerChange?.(layer, this.state.layers[layer], 'programmatic');

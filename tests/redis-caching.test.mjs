@@ -625,6 +625,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
       '../../../_shared/premium-check': resolve(root, 'tests/helpers/premium-check-stub.ts'),
       '../../../_shared/llm-sanitize.js': resolve(root, 'server/_shared/llm-sanitize.js'),
+      '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
     });
   }
 

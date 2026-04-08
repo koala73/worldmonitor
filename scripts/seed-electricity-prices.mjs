@@ -20,29 +20,28 @@ export const ELECTRICITY_TTL_SECONDS = 3 * 24 * 3600; // 3 days = 259200s
 
 const LOCK_DOMAIN = 'energy:electricity-prices';
 const LOCK_TTL_MS = 10 * 60 * 1000;
-const MIN_ENTSO_REGIONS = 3;
+const MIN_ENTSO_REGIONS = 7;
 
 const ENTSO_E_REGIONS = [
-  { region: 'DE', eic: '10Y1001A1001A83F', name: 'Germany' },
+  { region: 'DE', eic: '10Y1001A1001A82H', name: 'Germany' },       // DE-LU bidding zone (post-split)
   { region: 'FR', eic: '10YFR-RTE------C', name: 'France' },
   { region: 'ES', eic: '10YES-REE------0', name: 'Spain' },
-  { region: 'IT', eic: '10YIT-GRTN-----B', name: 'Italy' },
+  { region: 'IT', eic: '10Y1001A1001A73I', name: 'Italy (North)' }, // IT-North bidding zone
   { region: 'NL', eic: '10YNL----------L', name: 'Netherlands' },
   { region: 'BE', eic: '10YBE----------2', name: 'Belgium' },
   { region: 'PL', eic: '10YPL-AREA-----S', name: 'Poland' },
   { region: 'PT', eic: '10YPT-REN------W', name: 'Portugal' },
-  { region: 'GB', eic: '10YGB----------A', name: 'Great Britain' },
-  { region: 'NO', eic: '10YNO-0--------C', name: 'Norway' },
-  { region: 'SE', eic: '10YSE-1--------K', name: 'Sweden' },
+  { region: 'NO', eic: '10YNO-1--------2', name: 'Norway (Oslo)' }, // NO1 bidding zone
+  { region: 'SE', eic: '10Y1001A1001A46L', name: 'Sweden (Stockholm)' }, // SE3 bidding zone
 ];
 
-const EIA_REGIONS = [
-  { region: 'CISO',  name: 'California' },
-  { region: 'MISO',  name: 'Midwest' },
-  { region: 'PJM',   name: 'Mid-Atlantic' },
-  { region: 'NYISO', name: 'New York' },
-  { region: 'ERCO',  name: 'Texas (ERCOT)' },
-  { region: 'SPP',   name: 'Southwest' },
+export const EIA_REGIONS = [
+  { region: 'CISO',  respondent: 'CISO',  name: 'California' },
+  { region: 'MISO',  respondent: 'MISO',  name: 'Midwest' },
+  { region: 'PJM',   respondent: 'PJM',   name: 'Mid-Atlantic' },
+  { region: 'NYISO', respondent: 'NYIS',  name: 'New York' },
+  { region: 'ERCO',  respondent: 'ERCO',  name: 'Texas (ERCOT)' },
+  { region: 'SPP',   respondent: 'SWPP',  name: 'Southwest' },
 ];
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
@@ -180,7 +179,7 @@ async function fetchEiaRegion(region, apiKey, today) {
   const dateStr = isoDate(today);
   const params = new URLSearchParams({
     'data[]': 'value',
-    'facets[respondent][]': region.region,
+    'facets[respondent][]': region.respondent,
     start: isoDate(new Date(Date.now() - 2 * 24 * 3600 * 1000)),
     end: dateStr,
     'sort[0][column]': 'period',

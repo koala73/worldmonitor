@@ -678,6 +678,118 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-energy-profile:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryEnergyProfile
+            description: GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+            operationId: GetCountryEnergyProfile
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryEnergyProfileResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/compute-energy-shock:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ComputeEnergyShockScenario
+            description: ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+            operationId: ComputeEnergyShockScenario
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: chokepoint_id
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: disruption_pct
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: fuel_mode
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ComputeEnergyShockScenarioResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-port-activity:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryPortActivity
+            description: GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+            operationId: GetCountryPortActivity
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CountryPortActivityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1968,3 +2080,294 @@ components:
                     format: int64
                     description: 'Unix epoch milliseconds when posted.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: SocialVelocityPost represents a trending Reddit post with velocity scoring.
+        GetCountryEnergyProfileRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        GetCountryEnergyProfileResponse:
+            type: object
+            properties:
+                mixAvailable:
+                    type: boolean
+                    description: Phase 1 — OWID structural mix (~200 countries)
+                mixYear:
+                    type: integer
+                    format: int32
+                coalShare:
+                    type: number
+                    format: double
+                gasShare:
+                    type: number
+                    format: double
+                oilShare:
+                    type: number
+                    format: double
+                nuclearShare:
+                    type: number
+                    format: double
+                renewShare:
+                    type: number
+                    format: double
+                windShare:
+                    type: number
+                    format: double
+                solarShare:
+                    type: number
+                    format: double
+                hydroShare:
+                    type: number
+                    format: double
+                importShare:
+                    type: number
+                    format: double
+                gasStorageAvailable:
+                    type: boolean
+                    description: Phase 2 — EU gas storage
+                gasStorageFillPct:
+                    type: number
+                    format: double
+                gasStorageChange1d:
+                    type: number
+                    format: double
+                gasStorageTrend:
+                    type: string
+                gasStorageDate:
+                    type: string
+                electricityAvailable:
+                    type: boolean
+                    description: |-
+                        Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+                         US electricity is stored by EIA balancing area, not ISO2 — not available here
+                electricityPriceMwh:
+                    type: number
+                    format: double
+                electricitySource:
+                    type: string
+                electricityDate:
+                    type: string
+                jodiOilAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Oil (~90+ countries)
+                jodiOilDataMonth:
+                    type: string
+                gasolineDemandKbd:
+                    type: number
+                    format: double
+                gasolineImportsKbd:
+                    type: number
+                    format: double
+                dieselDemandKbd:
+                    type: number
+                    format: double
+                dieselImportsKbd:
+                    type: number
+                    format: double
+                jetDemandKbd:
+                    type: number
+                    format: double
+                jetImportsKbd:
+                    type: number
+                    format: double
+                lpgDemandKbd:
+                    type: number
+                    format: double
+                crudeImportsKbd:
+                    type: number
+                    format: double
+                lpgImportsKbd:
+                    type: number
+                    format: double
+                jodiGasAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Gas
+                jodiGasDataMonth:
+                    type: string
+                gasTotalDemandTj:
+                    type: number
+                    format: double
+                gasLngImportsTj:
+                    type: number
+                    format: double
+                gasPipeImportsTj:
+                    type: number
+                    format: double
+                gasLngShare:
+                    type: number
+                    format: double
+                ieaStocksAvailable:
+                    type: boolean
+                    description: Phase 2.5 — IEA oil stocks (~31 IEA members)
+                ieaStocksDataMonth:
+                    type: string
+                ieaDaysOfCover:
+                    type: integer
+                    format: int32
+                ieaNetExporter:
+                    type: boolean
+                ieaBelowObligation:
+                    type: boolean
+        ComputeEnergyShockScenarioRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                chokepointId:
+                    type: string
+                disruptionPct:
+                    type: integer
+                    format: int32
+                fuelMode:
+                    type: string
+        ComputeEnergyShockScenarioResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                chokepointId:
+                    type: string
+                disruptionPct:
+                    type: integer
+                    format: int32
+                gulfCrudeShare:
+                    type: number
+                    format: double
+                crudeLossKbd:
+                    type: number
+                    format: double
+                products:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProductImpact'
+                effectiveCoverDays:
+                    type: integer
+                    format: int32
+                assessment:
+                    type: string
+                dataAvailable:
+                    type: boolean
+                jodiOilCoverage:
+                    type: boolean
+                    description: v2 fields
+                comtradeCoverage:
+                    type: boolean
+                ieaStocksCoverage:
+                    type: boolean
+                portwatchCoverage:
+                    type: boolean
+                coverageLevel:
+                    type: string
+                limitations:
+                    type: array
+                    items:
+                        type: string
+                degraded:
+                    type: boolean
+                chokepointConfidence:
+                    type: string
+                liveFlowRatio:
+                    type: number
+                    format: double
+                gasImpact:
+                    $ref: '#/components/schemas/GasImpact'
+        ProductImpact:
+            type: object
+            properties:
+                product:
+                    type: string
+                outputLossKbd:
+                    type: number
+                    format: double
+                demandKbd:
+                    type: number
+                    format: double
+                deficitPct:
+                    type: number
+                    format: double
+        GasImpact:
+            type: object
+            properties:
+                lngShareOfImports:
+                    type: number
+                    format: double
+                lngImportsTj:
+                    type: number
+                    format: double
+                lngDisruptionTj:
+                    type: number
+                    format: double
+                totalDemandTj:
+                    type: number
+                    format: double
+                deficitPct:
+                    type: number
+                    format: double
+                dataAvailable:
+                    type: boolean
+                assessment:
+                    type: string
+                storage:
+                    $ref: '#/components/schemas/GasStorageBuffer'
+                dataSource:
+                    type: string
+        GasStorageBuffer:
+            type: object
+            properties:
+                fillPct:
+                    type: number
+                    format: double
+                gasTwh:
+                    type: number
+                    format: double
+                bufferDays:
+                    type: number
+                    format: double
+                trend:
+                    type: string
+                date:
+                    type: string
+                scope:
+                    type: string
+        GetCountryPortActivityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        CountryPortActivityResponse:
+            type: object
+            properties:
+                ports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PortActivityEntry'
+                fetchedAt:
+                    type: string
+                available:
+                    type: boolean
+        PortActivityEntry:
+            type: object
+            properties:
+                portId:
+                    type: string
+                portName:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                tankerCalls30d:
+                    type: integer
+                    format: int32
+                trendDeltaPct:
+                    type: number
+                    format: double
+                importTankerDwt:
+                    type: number
+                    format: double
+                exportTankerDwt:
+                    type: number
+                    format: double
+                anomalySignal:
+                    type: boolean

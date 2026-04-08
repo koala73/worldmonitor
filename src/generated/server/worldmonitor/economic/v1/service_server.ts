@@ -548,6 +548,51 @@ export interface FaoFoodPricePoint {
   sugar: number;
 }
 
+export interface GetOilStocksAnalysisRequest {
+}
+
+export interface GetOilStocksAnalysisResponse {
+  updatedAt: string;
+  dataMonth: string;
+  ieaMembers: OilStocksAnalysisMember[];
+  belowObligation: string[];
+  regionalSummary?: OilStocksRegionalSummary;
+  unavailable: boolean;
+}
+
+export interface OilStocksAnalysisMember {
+  iso2: string;
+  daysOfCover?: number;
+  netExporter: boolean;
+  belowObligation: boolean;
+  obligationMet: boolean;
+  rank: number;
+  vsObligation?: number;
+}
+
+export interface OilStocksRegionalSummary {
+  europe?: OilStocksRegionalSummaryEurope;
+  asiaPacific?: OilStocksRegionalSummaryAsiaPacific;
+  northAmerica?: OilStocksRegionalSummaryNorthAmerica;
+}
+
+export interface OilStocksRegionalSummaryEurope {
+  avgDays?: number;
+  minDays?: number;
+  countBelowObligation: number;
+}
+
+export interface OilStocksRegionalSummaryAsiaPacific {
+  avgDays?: number;
+  minDays?: number;
+  countBelowObligation: number;
+}
+
+export interface OilStocksRegionalSummaryNorthAmerica {
+  netExporters: number;
+  avgDays?: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -617,6 +662,7 @@ export interface EconomicServiceHandler {
   getEuFsi(ctx: ServerContext, req: GetEuFsiRequest): Promise<GetEuFsiResponse>;
   getEconomicStress(ctx: ServerContext, req: GetEconomicStressRequest): Promise<GetEconomicStressResponse>;
   getFaoFoodPriceIndex(ctx: ServerContext, req: GetFaoFoodPriceIndexRequest): Promise<GetFaoFoodPriceIndexResponse>;
+  getOilStocksAnalysis(ctx: ServerContext, req: GetOilStocksAnalysisRequest): Promise<GetOilStocksAnalysisResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1565,6 +1611,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getFaoFoodPriceIndex(ctx, body);
           return new Response(JSON.stringify(result as GetFaoFoodPriceIndexResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-oil-stocks-analysis",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetOilStocksAnalysisRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getOilStocksAnalysis(ctx, body);
+          return new Response(JSON.stringify(result as GetOilStocksAnalysisResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

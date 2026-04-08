@@ -319,6 +319,26 @@ export async function handleSubscriptionActive(
       });
     }
   }
+
+  // Schedule welcome + admin notification emails (non-blocking, new subscriptions only)
+  if (!email) {
+    console.warn(
+      `[subscriptionHelpers] subscription.active: no customer email — skipping welcome email (subscriptionId=${data.subscription_id})`,
+    );
+  } else if (existing) {
+    console.log(`[subscriptionHelpers] subscription.active: reactivation — skipping welcome email (subscriptionId=${data.subscription_id})`);
+  } else if (process.env.RESEND_API_KEY) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.subscriptionEmails.sendSubscriptionEmails,
+      {
+        userEmail: email,
+        planKey,
+        userId,
+        subscriptionId: data.subscription_id,
+      },
+    );
+  }
 }
 
 /**

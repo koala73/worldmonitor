@@ -65,8 +65,7 @@ describe('seedTransitSummaries (relay)', () => {
     assert.match(relaySrc, /cr\?\.disruptionPct/);
   });
 
-  it('reads latestPortwatchData for history and wowChangePct', () => {
-    assert.match(relaySrc, /latestPortwatchData/);
+  it('reads pw from Redis for history and wowChangePct', () => {
     assert.match(relaySrc, /cpData\.history/);
     assert.match(relaySrc, /cpData\.wowChangePct/);
   });
@@ -79,9 +78,8 @@ describe('seedTransitSummaries (relay)', () => {
     assert.match(relaySrc, /\{\s*summaries,\s*fetchedAt:\s*now\s*\}/);
   });
 
-  it('is triggered after PortWatch seed completes', () => {
-    const portWatchBlock = relaySrc.match(/\[PortWatch\] Seeded[\s\S]{0,200}seedTransitSummaries/);
-    assert.ok(portWatchBlock, 'seedTransitSummaries should be called after PortWatch seed');
+  it('PortWatch data is read directly from Redis each cycle', () => {
+    assert.match(relaySrc, /const pw = await upstashGet\(PORTWATCH_REDIS_KEY\)/);
   });
 
   it('is triggered after CorridorRisk seed completes', () => {
@@ -503,11 +501,10 @@ describe('handler transit data strategy', () => {
   });
 });
 
-describe('seedTransitSummaries cold-start hydration', () => {
-  it('reads PortWatch from Redis when latestPortwatchData is null', () => {
-    assert.match(relaySrc, /if\s*\(\s*!latestPortwatchData\s*\)/);
+describe('seedTransitSummaries Redis reads', () => {
+  it('always reads PortWatch fresh from Redis (no in-memory cache guard)', () => {
+    assert.doesNotMatch(relaySrc, /if\s*\(\s*!latestPortwatchData\s*\)/);
     assert.match(relaySrc, /upstashGet\(PORTWATCH_REDIS_KEY\)/);
-    assert.match(relaySrc, /Hydrated PortWatch from Redis/);
   });
 
   it('reads CorridorRisk from Redis when latestCorridorRiskData is null', () => {
@@ -516,18 +513,18 @@ describe('seedTransitSummaries cold-start hydration', () => {
     assert.match(relaySrc, /Hydrated CorridorRisk from Redis/);
   });
 
-  it('hydration happens BEFORE the empty-check early return', () => {
+  it('PortWatch Redis read is the first statement (before early return)', () => {
     const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
-    const hydratePos = fnBody.indexOf('upstashGet(PORTWATCH_REDIS_KEY)');
-    const earlyReturnPos = fnBody.indexOf("if (!pw || Object.keys(pw).length === 0) return");
-    assert.ok(hydratePos > 0, 'hydration code not found');
-    assert.ok(earlyReturnPos > 0, 'early return not found');
-    assert.ok(hydratePos < earlyReturnPos, 'hydration must happen BEFORE the empty-data early return');
+    const readPos = fnBody.indexOf('upstashGet(PORTWATCH_REDIS_KEY)');
+    const earlyReturnPos = fnBody.indexOf('if (!pw ||');
+    assert.ok(readPos > 0, 'upstashGet(PORTWATCH_REDIS_KEY) not found in function body');
+    assert.ok(earlyReturnPos > 0, 'pw early return not found');
+    assert.ok(readPos < earlyReturnPos, 'Redis read must come before the early return');
   });
 
-  it('assigns hydrated data back to latestPortwatchData', () => {
+  it('PortWatch data is assigned directly from Redis (no stale in-memory cache)', () => {
     const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
-    assert.match(fnBody, /latestPortwatchData\s*=\s*persisted/);
+    assert.match(fnBody, /const pw = await upstashGet\(PORTWATCH_REDIS_KEY\)/);
   });
 
   it('assigns hydrated data back to latestCorridorRiskData', () => {

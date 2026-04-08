@@ -28,7 +28,7 @@ describe('resilience handlers', () => {
     delete process.env.VERCEL_ENV;
 
     const { fetchImpl, redis, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
-    sortedSets.set('resilience:history:US', [
+    sortedSets.set('resilience:history:v2:US', [
       { member: '2026-04-01:20', score: 20260401 },
       { member: '2026-04-02:30', score: 20260402 },
     ]);
@@ -43,21 +43,27 @@ describe('resilience handlers', () => {
     assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 13);
     assert.ok(response.overallScore > 0 && response.overallScore <= 100);
     assert.equal(response.level, response.overallScore >= 70 ? 'high' : response.overallScore >= 40 ? 'medium' : 'low');
-    assert.ok(response.cronbachAlpha >= 0);
     assert.equal(response.trend, 'rising');
     assert.ok(response.change30d > 0);
     assert.equal(typeof response.lowConfidence, 'boolean');
+    assert.ok(response.imputationShare >= 0 && response.imputationShare <= 1, `imputationShare out of bounds: ${response.imputationShare}`);
+    assert.equal(typeof response.baselineScore, 'number', 'baselineScore should be present');
+    assert.equal(typeof response.stressScore, 'number', 'stressScore should be present');
+    assert.equal(typeof response.stressFactor, 'number', 'stressFactor should be present');
+    assert.ok(response.baselineScore >= 0 && response.baselineScore <= 100, `baselineScore out of bounds: ${response.baselineScore}`);
+    assert.ok(response.stressScore >= 0 && response.stressScore <= 100, `stressScore out of bounds: ${response.stressScore}`);
+    assert.ok(response.stressFactor >= 0 && response.stressFactor <= 0.5, `stressFactor out of bounds: ${response.stressFactor}`);
 
-    const cachedScore = redis.get('resilience:score:US');
+    const cachedScore = redis.get('resilience:score:v5:US');
     assert.ok(cachedScore, 'expected score cache to be written');
     assert.equal(JSON.parse(cachedScore || '{}').countryCode, 'US');
 
-    const history = sortedSets.get('resilience:history:US') ?? [];
+    const history = sortedSets.get('resilience:history:v2:US') ?? [];
     assert.ok(history.some((entry) => entry.member.startsWith(today + ':')), 'expected today history member to be written');
 
     await getResilienceScore({ request: new Request('https://example.com') } as never, {
       countryCode: 'US',
     });
-    assert.equal((sortedSets.get('resilience:history:US') ?? []).length, history.length, 'cache hit must not append history');
+    assert.equal((sortedSets.get('resilience:history:v2:US') ?? []).length, history.length, 'cache hit must not append history');
   });
 });

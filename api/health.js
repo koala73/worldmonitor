@@ -94,6 +94,7 @@ const STANDALONE_KEYS = {
   bisPolicy:             'economic:bis:policy:v1',
   bisExchange:           'economic:bis:eer:v1',
   bisCredit:             'economic:bis:credit:v1',
+  imfMacro:             'economic:imf:macro:v2',
   climateZoneNormals:    'climate:zone-normals:v1',
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
@@ -119,6 +120,7 @@ const STANDALONE_KEYS = {
   displacement:          `displacement:summary:v1:${new Date().getFullYear()}`,
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',
+  portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
   corridorrisk:          'supply_chain:corridorrisk:v1',
   chokepointTransits:    'supply_chain:chokepoint_transits:v1',
   transitSummaries:      'supply_chain:transit-summaries:v1',
@@ -134,10 +136,21 @@ const STANDALONE_KEYS = {
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
+  resilienceRanking:        'resilience:ranking:v5',
   productCatalog:           'product-catalog:v2',
+  energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
+  energyMixAll:             'energy:mix:v1:_all',
   regulatoryActions:        'regulatory:actions:v1',
   energyIntelligence:       'energy:intelligence:feed:v1',
+  ieaOilStocks:             'energy:iea-oil-stocks:v1:index',
+  jodiGas:                  'energy:jodi-gas:v1:_countries',
+  lngVulnerability:         'energy:lng-vulnerability:v1',
+  jodiOil:                  'energy:jodi-oil:v1:_countries',
+  chokepointBaselines:      'energy:chokepoint-baselines:v1',
+  portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
+  chokepointFlows:          'energy:chokepoint-flows:v1',
+  emberElectricity:         'energy:ember:v1:_all',
 };
 
 const SEED_META = {
@@ -169,6 +182,7 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 20 },
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
+  imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 100800 }, // monthly seed; 100800min = 70 days = 2× interval (absorbs one missed run)
   shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
   chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60 },
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL
@@ -194,6 +208,7 @@ const SEED_META = {
   theaterPosture:   { key: 'seed-meta:theater-posture',         maxStaleMin: 60 },
   correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 15 },
   portwatch:           { key: 'seed-meta:supply_chain:portwatch',            maxStaleMin: 720 },
+  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160 }, // 12h cron; 2160min = 36h = 3x interval
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
@@ -238,7 +253,7 @@ const SEED_META = {
   natGasStorage:     { key: 'seed-meta:economic:nat-gas-storage',     maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   spr:               { key: 'seed-meta:economic:spr',                 maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   refineryInputs:    { key: 'seed-meta:economic:refinery-inputs',     maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
-  ecbFxRates:        { key: 'seed-meta:economic:ecb-fx-rates',        maxStaleMin: 2880 }, // daily seed; 2880min = 48h = 2x interval
+  ecbFxRates:        { key: 'seed-meta:economic:ecb-fx-rates',        maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   euGasStorage:      { key: 'seed-meta:economic:eu-gas-storage',      maxStaleMin: 2880 }, // daily seed (T+1); 2880min = 48h = 2x interval
   euYieldCurve:      { key: 'seed-meta:economic:yield-curve-eu',      maxStaleMin: 4320 }, // daily seed (weekdays only); 4320min = 72h = covers Fri→Mon gap
@@ -253,11 +268,23 @@ const SEED_META = {
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
   resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
+  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 720 }, // on-demand RPC cache (6h TTL); 12h threshold catches stale rankings without paging on cold start
   energyExposure:       { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // monthly cron on 1st; 50400min = 35d = TTL matches cron cadence + 5d buffer
+  energyMixAll:         { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // same seed run as energyExposure; shares seed-meta key
   regulatoryActions:    { key: 'seed-meta:regulatory:actions',          maxStaleMin: 360 }, // 2h cron; 360min = 3x interval
+  energySpineCountries: { key: 'seed-meta:energy:spine',                maxStaleMin: 2880 }, // daily cron (06:00 UTC); 2880min = 48h = 2x interval
   electricityPrices:    { key: 'seed-meta:energy:electricity-prices',   maxStaleMin: 2880 }, // daily cron (14:00 UTC); 2880min = 48h = 2x interval
   gasStorageCountries:  { key: 'seed-meta:energy:gas-storage-countries', maxStaleMin: 2880 }, // daily cron at 10:30 UTC; 2880min = 48h = 2x interval
   energyIntelligence:   { key: 'seed-meta:energy:intelligence',          maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
+  jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
+  ieaOilStocks:         { key: 'seed-meta:energy:iea-oil-stocks',        maxStaleMin: 60 * 24 * 40 }, // monthly cron on 15th; 40d threshold = TTL_SECONDS
+  oilStocksAnalysis:    { key: 'seed-meta:energy:oil-stocks-analysis',   maxStaleMin: 60 * 24 * 50 }, // afterPublish of ieaOilStocks; 50d = matches seed-meta TTL (exceeds 40d data TTL)
+  jodiGas:              { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
+  lngVulnerability:     { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // written by jodi-gas seeder afterPublish; shares seed-meta key
+  chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
+  portwatchChokepointsRef: { key: 'seed-meta:portwatch:chokepoints-ref', maxStaleMin: 60 * 24 * 2 }, // daily cron; 2d = 2× interval
+  chokepointFlows:      { key: 'seed-meta:energy:chokepoint-flows',     maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
+  emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -275,6 +302,7 @@ const ON_DEMAND_KEYS = new Set([
   'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
   'simulationOutcomeLatest', // written by writeSimulationOutcome after simulation runs; only present after first successful simulation
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
+  'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
@@ -372,12 +400,14 @@ export default async function handler(req) {
 
     let seedAge = null;
     let seedStale = null;
+    let seedError = false;
     let metaCount = null;
     if (seedCfg) {
       const metaRaw = keyMetaValues.get(seedCfg.key);
       const meta = parseRedisValue(metaRaw);
       if (meta?.status === 'error') {
         seedStale = true;
+        seedError = true;
       } else if (meta?.fetchedAt) {
         seedAge = Math.round((now - meta.fetchedAt) / 60_000);
         seedStale = seedAge > seedCfg.maxStaleMin;
@@ -385,12 +415,16 @@ export default async function handler(req) {
         seedStale = true;
       }
       if (meta?.count != null) metaCount = meta.count;
+      else if (meta?.recordCount != null) metaCount = meta.recordCount;
     }
 
     const size = metaCount ?? (hasData ? 1 : 0);
 
     let status;
-    if (!hasData) {
+    if (seedError === true) {
+      status = 'SEED_ERROR';
+      warnCount++;
+    } else if (!hasData) {
       if (EMPTY_DATA_OK_KEYS.has(name)) {
         if (seedStale === true) {
           status = 'STALE_SEED';
@@ -440,12 +474,14 @@ export default async function handler(req) {
     // Freshness tracking for standalone keys (same logic as bootstrap keys)
     let seedAge = null;
     let seedStale = null;
+    let seedError = false;
     let metaCount = null;
     if (seedCfg) {
       const metaRaw = keyMetaValues.get(seedCfg.key);
       const meta = parseRedisValue(metaRaw);
       if (meta?.status === 'error') {
         seedStale = true;
+        seedError = true;
       } else if (meta?.fetchedAt) {
         seedAge = Math.round((now - meta.fetchedAt) / 60_000);
         seedStale = seedAge > seedCfg.maxStaleMin;
@@ -454,6 +490,7 @@ export default async function handler(req) {
         seedStale = true;
       }
       if (meta?.count != null) metaCount = meta.count;
+      else if (meta?.recordCount != null) metaCount = meta.recordCount;
     }
 
     const size = metaCount ?? (hasData ? 1 : 0);
@@ -474,7 +511,10 @@ export default async function handler(req) {
     }
 
     let status;
-    if (!hasData) {
+    if (seedError === true) {
+      status = 'SEED_ERROR';
+      warnCount++;
+    } else if (!hasData) {
       if (cascadeCovered) {
         status = 'OK_CASCADE';
         okCount++;
@@ -540,7 +580,7 @@ export default async function handler(req) {
 
   if (overall !== 'HEALTHY' && overall !== 'WARNING') {
     const problemKeys = Object.entries(checks)
-      .filter(([, c]) => c.status === 'EMPTY' || c.status === 'EMPTY_DATA' || c.status === 'STALE_SEED')
+      .filter(([, c]) => c.status === 'EMPTY' || c.status === 'EMPTY_DATA' || c.status === 'STALE_SEED' || c.status === 'SEED_ERROR')
       .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
     console.log('[health] %s crits=[%s]', overall, problemKeys.join(', '));
     // Persist last failure snapshot to Redis (TTL 24h) for post-mortem inspection.

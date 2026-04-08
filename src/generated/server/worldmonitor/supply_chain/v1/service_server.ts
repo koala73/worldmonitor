@@ -51,6 +51,7 @@ export interface ChokepointInfo {
   directions: string[];
   directionalDwt: DirectionalDwt[];
   transitSummary?: TransitSummary;
+  flowEstimate?: FlowEstimate;
 }
 
 export interface DirectionalDwt {
@@ -79,6 +80,25 @@ export interface TransitDayCount {
   cargo: number;
   other: number;
   total: number;
+  container: number;
+  dryBulk: number;
+  generalCargo: number;
+  roro: number;
+  capContainer: number;
+  capDryBulk: number;
+  capGeneralCargo: number;
+  capRoro: number;
+  capTanker: number;
+}
+
+export interface FlowEstimate {
+  currentMbd: number;
+  baselineMbd: number;
+  flowRatio: number;
+  disrupted: boolean;
+  source: string;
+  hazardAlertLevel: string;
+  hazardAlertName: string;
 }
 
 export interface GetCriticalMineralsRequest {

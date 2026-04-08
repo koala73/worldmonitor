@@ -4931,141 +4931,7 @@ async function startWorldBankSeedLoop() {
   }, WB_SEED_INTERVAL_MS).unref?.();
 }
 
-const PORTWATCH_ARCGIS_BASE = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
-const PORTWATCH_PAGE_SIZE = 2000;
-const PORTWATCH_FETCH_TIMEOUT_MS = 30000;
 const PORTWATCH_REDIS_KEY = 'supply_chain:portwatch:v1';
-const PORTWATCH_TTL = 43200;
-const PORTWATCH_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const PORTWATCH_CHOKEPOINT_NAMES = [
-  { name: 'Suez Canal', id: 'suez' },
-  { name: 'Malacca Strait', id: 'malacca_strait' },
-  { name: 'Strait of Hormuz', id: 'hormuz_strait' },
-  { name: 'Bab el-Mandeb Strait', id: 'bab_el_mandeb' },
-  { name: 'Panama Canal', id: 'panama' },
-  { name: 'Taiwan Strait', id: 'taiwan_strait' },
-  { name: 'Cape of Good Hope', id: 'cape_of_good_hope' },
-  { name: 'Gibraltar Strait', id: 'gibraltar' },
-  { name: 'Bosporus Strait', id: 'bosphorus' },
-  { name: 'Korea Strait', id: 'korea_strait' },
-  { name: 'Dover Strait', id: 'dover_strait' },
-  { name: 'Kerch Strait', id: 'kerch_strait' },
-  { name: 'Lombok Strait', id: 'lombok_strait' },
-];
-let portwatchSeedInFlight = false;
-let latestPortwatchData = null;
-
-function pwFormatDate(ts) {
-  const d = new Date(ts);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
-
-function pwComputeWowChangePct(history) {
-  if (history.length < 14) return 0;
-  const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
-  let thisWeek = 0;
-  let lastWeek = 0;
-  for (let i = 0; i < 7 && i < sorted.length; i++) thisWeek += sorted[i].total;
-  for (let i = 7; i < 14 && i < sorted.length; i++) lastWeek += sorted[i].total;
-  if (lastWeek === 0) return 0;
-  return Math.round(((thisWeek - lastWeek) / lastWeek) * 1000) / 10;
-}
-
-function pwEpochToTimestamp(epochMs) {
-  const d = new Date(epochMs);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `timestamp '${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}'`;
-}
-
-async function pwFetchAllPages(portname, sinceEpoch) {
-  const all = [];
-  let offset = 0;
-  for (;;) {
-    const params = new URLSearchParams({
-      where: `portname='${portname.replace(/'/g, "''")}' AND date >= ${pwEpochToTimestamp(sinceEpoch)}`,
-      outFields: 'date,n_tanker,n_cargo,n_total',
-      f: 'json',
-      resultOffset: String(offset),
-      resultRecordCount: String(PORTWATCH_PAGE_SIZE),
-    });
-    const resp = await fetch(`${PORTWATCH_ARCGIS_BASE}?${params}`, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(PORTWATCH_FETCH_TIMEOUT_MS),
-    });
-    if (!resp.ok) {
-      console.warn(`[PortWatch] ArcGIS error ${resp.status} for ${portname}`);
-      return [];
-    }
-    const body = await resp.json();
-    if (body.error) {
-      console.warn(`[PortWatch] ArcGIS query error for ${portname}: ${body.error.message}`);
-      return [];
-    }
-    if (body.features?.length) all.push(...body.features);
-    if (!body.exceededTransferLimit) break;
-    offset += PORTWATCH_PAGE_SIZE;
-  }
-  return all;
-}
-
-function pwBuildHistory(features) {
-  return features
-    .filter(f => f.attributes?.date)
-    .map(f => {
-      const a = f.attributes;
-      const tanker = Number(a.n_tanker ?? 0);
-      const cargo = Number(a.n_cargo ?? 0);
-      const total = Number(a.n_total ?? tanker + cargo);
-      return { date: pwFormatDate(a.date), tanker, cargo, other: Math.max(0, total - tanker - cargo), total };
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-async function seedPortWatch() {
-  if (portwatchSeedInFlight) return;
-  portwatchSeedInFlight = true;
-  const t0 = Date.now();
-  try {
-    const sinceEpoch = Date.now() - 180 * 24 * 60 * 60 * 1000;
-    const result = {};
-    const CONCURRENCY = 3;
-    for (let i = 0; i < PORTWATCH_CHOKEPOINT_NAMES.length; i += CONCURRENCY) {
-      const batch = PORTWATCH_CHOKEPOINT_NAMES.slice(i, i + CONCURRENCY);
-      const settled = await Promise.allSettled(batch.map(cp => pwFetchAllPages(cp.name, sinceEpoch)));
-      for (let j = 0; j < batch.length; j++) {
-        const outcome = settled[j];
-        if (outcome.status !== 'fulfilled' || !outcome.value.length) continue;
-        const history = pwBuildHistory(outcome.value);
-        result[batch[j].id] = { history, wowChangePct: pwComputeWowChangePct(history) };
-      }
-    }
-    if (Object.keys(result).length === 0) {
-      console.warn('[PortWatch] No data fetched — skipping');
-      return;
-    }
-    latestPortwatchData = result;
-    const ok = await upstashSet(PORTWATCH_REDIS_KEY, result, PORTWATCH_TTL);
-    await upstashSet('seed-meta:supply_chain:portwatch', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
-    console.log(`[PortWatch] Seeded ${Object.keys(result).length} chokepoints (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-PortWatch seed error:', e?.message || e));
-  } catch (e) {
-    console.warn('[PortWatch] Seed error:', e?.message || e);
-  } finally {
-    portwatchSeedInFlight = false;
-  }
-}
-
-async function startPortWatchSeedLoop() {
-  if (!UPSTASH_ENABLED) {
-    console.log('[PortWatch] Disabled (no Upstash Redis)');
-    return;
-  }
-  console.log(`[PortWatch] Seed loop starting (interval ${PORTWATCH_SEED_INTERVAL_MS / 1000 / 60 / 60}h)`);
-  seedPortWatch().catch(e => console.warn('[PortWatch] Initial seed error:', e?.message || e));
-  setInterval(() => {
-    seedPortWatch().catch(e => console.warn('[PortWatch] Seed error:', e?.message || e));
-  }, PORTWATCH_SEED_INTERVAL_MS).unref?.();
-}
 
 const CORRIDOR_RISK_BASE_URL = 'https://corridorrisk.io/api/corridors';
 const CORRIDOR_RISK_REDIS_KEY = 'supply_chain:corridorrisk:v1';
@@ -5664,6 +5530,139 @@ function startClimateNewsSeedLoop() {
   setInterval(() => {
     seedClimateNews().catch((e) => console.warn('[ClimateNewsSeed] Seed error:', e?.message || e));
   }, CLIMATE_NEWS_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Chokepoint Flow Calibration — delegated to standalone seed script
+// Reads portwatch DWT data → computes live mb/d flow ratios per chokepoint.
+// Runs every 6h (matching portwatch seed cadence).
+// ─────────────────────────────────────────────────────────────
+
+const CHOKEPOINT_FLOWS_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+const CHOKEPOINT_FLOWS_SEED_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
+const CHOKEPOINT_FLOWS_SEED_RETRY_MS = 20 * 60 * 1000; // retry in 20 min on failure
+const CHOKEPOINT_FLOWS_SEED_SCRIPT = path.join(__dirname, 'seed-chokepoint-flows.mjs');
+
+let chokepointFlowsSeedInFlight = false;
+let chokepointFlowsRetryTimer = null;
+
+function runChokepointFlowsSeedScript() {
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, [CHOKEPOINT_FLOWS_SEED_SCRIPT], {
+      env: process.env,
+      timeout: CHOKEPOINT_FLOWS_SEED_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    }, (err, stdout, stderr) => {
+      relayLogScriptOutput('[ChokepointFlows]', stdout);
+      if (stderr) {
+        const trimmedErr = String(stderr).trim();
+        if (trimmedErr) {
+          for (const line of trimmedErr.split('\n')) console.warn(`[ChokepointFlows] ${line}`);
+        }
+      }
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
+async function seedChokepointFlows() {
+  if (chokepointFlowsSeedInFlight) {
+    console.log('[ChokepointFlows] Skipped (in-flight)');
+    return;
+  }
+  chokepointFlowsSeedInFlight = true;
+  if (chokepointFlowsRetryTimer) { clearTimeout(chokepointFlowsRetryTimer); chokepointFlowsRetryTimer = null; }
+  const t0 = Date.now();
+  try {
+    await runChokepointFlowsSeedScript();
+    console.log(`[ChokepointFlows] Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    const message = e?.killed ? 'timeout' : (e?.message || e);
+    console.warn('[ChokepointFlows] Seed error:', message);
+    chokepointFlowsRetryTimer = setTimeout(() => { seedChokepointFlows().catch(() => {}); }, CHOKEPOINT_FLOWS_SEED_RETRY_MS);
+  } finally {
+    chokepointFlowsSeedInFlight = false;
+  }
+}
+
+function startChokepointFlowsSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[ChokepointFlows] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[ChokepointFlows] Seed loop starting (interval ${CHOKEPOINT_FLOWS_SEED_INTERVAL_MS / 1000 / 60}min)`);
+  seedChokepointFlows().catch((e) => console.warn('[ChokepointFlows] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedChokepointFlows().catch((e) => console.warn('[ChokepointFlows] Seed error:', e?.message || e));
+  }, CHOKEPOINT_FLOWS_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Ember Monthly Electricity Seed — monthly generation CSV → Redis
+// Downloads Ember Climate's long-format CSV (CC BY 4.0) and writes
+// energy:ember:v1:<ISO2> and energy:ember:v1:_all to Redis.
+// Runs once per day (24h interval). Large CSV (~30MB) — 8 min timeout.
+// ─────────────────────────────────────────────────────────────
+
+const EMBER_ELECTRICITY_SEED_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+const EMBER_ELECTRICITY_SEED_TIMEOUT_MS = 8 * 60 * 1000; // 8 min (large CSV download)
+const EMBER_ELECTRICITY_SEED_RETRY_MS = 20 * 60 * 1000;
+const EMBER_ELECTRICITY_SEED_SCRIPT = path.join(__dirname, 'seed-ember-electricity.mjs');
+
+let emberElectricitySeedInFlight = false;
+let emberElectricityRetryTimer = null;
+
+function runEmberElectricitySeedScript() {
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, [EMBER_ELECTRICITY_SEED_SCRIPT], {
+      env: process.env,
+      timeout: EMBER_ELECTRICITY_SEED_TIMEOUT_MS,
+      maxBuffer: 2 * 1024 * 1024,
+    }, (err, stdout, stderr) => {
+      relayLogScriptOutput('[EmberElectricity]', stdout);
+      if (stderr) {
+        const trimmedErr = String(stderr).trim();
+        if (trimmedErr) {
+          for (const line of trimmedErr.split('\n')) console.warn(`[EmberElectricity] ${line}`);
+        }
+      }
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
+async function seedEmberElectricity() {
+  if (emberElectricitySeedInFlight) {
+    console.log('[EmberElectricity] Skipped (in-flight)');
+    return;
+  }
+  emberElectricitySeedInFlight = true;
+  if (emberElectricityRetryTimer) { clearTimeout(emberElectricityRetryTimer); emberElectricityRetryTimer = null; }
+  const t0 = Date.now();
+  try {
+    await runEmberElectricitySeedScript();
+    console.log(`[EmberElectricity] Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    const message = e?.killed ? 'timeout' : (e?.message || e);
+    console.warn('[EmberElectricity] Seed error:', message);
+    emberElectricityRetryTimer = setTimeout(() => { seedEmberElectricity().catch(() => {}); }, EMBER_ELECTRICITY_SEED_RETRY_MS);
+  } finally {
+    emberElectricitySeedInFlight = false;
+  }
+}
+
+function startEmberElectricitySeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[EmberElectricity] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[EmberElectricity] Seed loop starting (interval ${EMBER_ELECTRICITY_SEED_INTERVAL_MS / 1000 / 60}min)`);
+  seedEmberElectricity().catch((e) => console.warn('[EmberElectricity] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedEmberElectricity().catch((e) => console.warn('[EmberElectricity] Seed error:', e?.message || e));
+  }, EMBER_ELECTRICITY_SEED_INTERVAL_MS).unref?.();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -6827,14 +6826,9 @@ function detectTrafficAnomalyRelay(history, threatLevel) {
 }
 
 async function seedTransitSummaries() {
-  // Hydrate from Redis on cold start (in-memory state lost after relay restart)
-  if (!latestPortwatchData) {
-    const persisted = await upstashGet(PORTWATCH_REDIS_KEY);
-    if (persisted && typeof persisted === 'object' && Object.keys(persisted).length > 0) {
-      latestPortwatchData = persisted;
-      console.log(`[TransitSummary] Hydrated PortWatch from Redis (${Object.keys(persisted).length} chokepoints)`);
-    }
-  }
+  const pw = await upstashGet(PORTWATCH_REDIS_KEY);
+  if (!pw || typeof pw !== 'object' || Object.keys(pw).length === 0) return;
+
   if (!latestCorridorRiskData) {
     const persisted = await upstashGet(CORRIDOR_RISK_REDIS_KEY);
     if (persisted && typeof persisted === 'object' && Object.keys(persisted).length > 0) {
@@ -6842,9 +6836,6 @@ async function seedTransitSummaries() {
       console.log(`[TransitSummary] Hydrated CorridorRisk from Redis (${Object.keys(persisted).length} corridors)`);
     }
   }
-
-  const pw = latestPortwatchData;
-  if (!pw || Object.keys(pw).length === 0) return;
 
   const now = Date.now();
   const summaries = {};
@@ -10358,6 +10349,8 @@ server.listen(PORT, () => {
   startMarketDataSeedLoop();
   startAviationSeedLoop();
   startNotamSeedLoop();
+  // Energy spine seed — standalone Railway cron (0 6 * * *) — seed-energy-spine.mjs
+  // Assembles per-country canonical energy keys from 6 domain sources daily.
   // Cyber seed disabled — standalone cron seed-cyber-threats.mjs handles this
   // (avoids burning 12 extra AbuseIPDB calls/day from duplicate relay loop)
   startCiiWarmPingLoop();
@@ -10374,12 +10367,13 @@ server.listen(PORT, () => {
   startWorldBankSeedLoop();
   startSatelliteSeedLoop();
   startTechEventsSeedLoop();
-  startPortWatchSeedLoop();
   startCorridorRiskSeedLoop();
   startUsniFleetSeedLoop();
   startShippingStressSeedLoop();
   startSocialVelocitySeedLoop();
   startClimateNewsSeedLoop();
+  startChokepointFlowsSeedLoop();
+  startEmberElectricitySeedLoop();
   startPizzintSeedLoop();
   startDodoPriceSeedLoop();
 });

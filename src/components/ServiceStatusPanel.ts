@@ -27,7 +27,7 @@ export class ServiceStatusPanel extends Panel {
   private error: string | null = null;
   private filter: CategoryFilter = 'all';
   constructor() {
-    super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false });
+    super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false, infoTooltip: t('components.serviceStatus.infoTooltip') });
   }
 
   private lastServicesJson = '';

@@ -40,11 +40,22 @@ export function getResilienceDomainLabel(domainId: string): string {
 
 export function formatResilienceConfidence(data: ResilienceScoreResponse): string {
   if (data.lowConfidence) return 'Low confidence — sparse data';
-  return `Confidence ${data.cronbachAlpha.toFixed(2)} ✓`;
+  const coverages = data.domains.flatMap((d) => d.dimensions.map((dim) => dim.coverage));
+  const avgCoverage = coverages.length > 0
+    ? Math.round((coverages.reduce((s, c) => s + c, 0) / coverages.length) * 100)
+    : 0;
+  return `Coverage ${avgCoverage}% ✓`;
 }
 
 export function formatResilienceChange30d(change30d: number): string {
   const rounded = Number.isFinite(change30d) ? change30d.toFixed(1) : '0.0';
   const sign = change30d > 0 ? '+' : '';
   return `30d ${sign}${rounded}`;
+}
+
+export function formatBaselineStress(baseline: number, stress: number, stressFactor: number): string {
+  const b = Number.isFinite(baseline) ? Math.round(baseline) : 0;
+  const s = Number.isFinite(stress) ? Math.round(stress) : 0;
+  const impact = Number.isFinite(stressFactor) ? Math.round(stressFactor * 100) : 0;
+  return `Baseline: ${b} | Stress: ${s} | Impact: -${impact}%`;
 }

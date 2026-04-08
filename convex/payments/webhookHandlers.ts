@@ -60,12 +60,17 @@ export const webhookHandler = httpAction(async (ctx, request) => {
       console.warn("[webhook] Missing payload.timestamp — falling back to Date.now(). Out-of-order detection may be unreliable.");
     }
 
+    // Round-trip through JSON to convert Date objects to ISO strings.
+    // Convex does not support Date as a value type, and the Dodo SDK
+    // parses date fields (created_at, expires_at, etc.) into Date objects.
+    const sanitizedPayload = JSON.parse(JSON.stringify(payload));
+
     await ctx.runMutation(
       internal.payments.webhookMutations.processWebhookEvent,
       {
         webhookId,
         eventType: payload.type,
-        rawPayload: payload,
+        rawPayload: sanitizedPayload,
         timestamp: eventTimestamp,
       },
     );

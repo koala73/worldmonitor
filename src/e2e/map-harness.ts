@@ -189,7 +189,7 @@ const allLayersEnabled: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: true,
+  diseaseOutbreaks: true,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -246,7 +246,7 @@ const allLayersDisabled: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: true,
+  diseaseOutbreaks: true,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{
