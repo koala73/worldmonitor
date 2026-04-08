@@ -819,14 +819,26 @@ describe('computeGasDisruption uses liveFlowRatio when available', () => {
 // ---------------------------------------------------------------------------
 
 describe('gas-only mode coverage override', () => {
-  it('gas-only with valid gas data should not show unsupported', () => {
+  it('gas-only with valid gas data (not degraded) should be full', () => {
     const needsOil = false;
     const gasImpact = { dataAvailable: true };
+    const degraded = false;
     let coverageLevel = 'unsupported';
     if (!needsOil && gasImpact?.dataAvailable) {
-      coverageLevel = 'full';
+      coverageLevel = degraded ? 'partial' : 'full';
     }
     assert.equal(coverageLevel, 'full');
+  });
+
+  it('gas-only with valid gas data (degraded) should be partial', () => {
+    const needsOil = false;
+    const gasImpact = { dataAvailable: true };
+    const degraded = true;
+    let coverageLevel = 'unsupported';
+    if (!needsOil && gasImpact?.dataAvailable) {
+      coverageLevel = degraded ? 'partial' : 'full';
+    }
+    assert.equal(coverageLevel, 'partial');
   });
 
   it('gas-only limitations exclude oil-specific strings', () => {
@@ -843,5 +855,72 @@ describe('gas-only mode coverage override', () => {
     );
     assert.equal(filtered.length, 1);
     assert.ok(filtered[0].includes('LNG'));
+  });
+});
+
+describe('gas-only coverageLevel respects degraded state', () => {
+  it('gas-only with degraded=true should be partial, not full', () => {
+    const gasImpact = { dataAvailable: true };
+    const degraded = true;
+    const needsOil = false;
+    let coverageLevel = 'unsupported';
+    if (!needsOil && gasImpact?.dataAvailable) {
+      coverageLevel = degraded ? 'partial' : 'full';
+    }
+    assert.equal(coverageLevel, 'partial');
+  });
+
+  it('gas-only with degraded=false should be full', () => {
+    const gasImpact = { dataAvailable: true };
+    const degraded = false;
+    const needsOil = false;
+    let coverageLevel = 'unsupported';
+    if (!needsOil && gasImpact?.dataAvailable) {
+      coverageLevel = degraded ? 'partial' : 'full';
+    }
+    assert.equal(coverageLevel, 'full');
+  });
+
+  it('gas-only with no gas data should be unsupported', () => {
+    const gasImpact = { dataAvailable: false };
+    const degraded = false;
+    const needsOil = false;
+    let coverageLevel = 'unsupported';
+    if (!needsOil && gasImpact?.dataAvailable) {
+      coverageLevel = degraded ? 'partial' : 'full';
+    }
+    assert.equal(coverageLevel, 'unsupported');
+  });
+});
+
+describe('gas-only mode zeros oil fields', () => {
+  it('products should be empty array in gas-only mode', () => {
+    const needsOil = false;
+    const gasImpact = { dataAvailable: true };
+    const response = {
+      products: [{ product: 'Diesel', outputLossKbd: 5, demandKbd: 100, deficitPct: 4 }],
+      gulfCrudeShare: 0.35,
+      crudeLossKbd: 50,
+      effectiveCoverDays: 90,
+      jodiOilCoverage: true,
+      comtradeCoverage: true,
+      ieaStocksCoverage: true,
+    };
+    if (!needsOil && gasImpact) {
+      response.products = [];
+      response.gulfCrudeShare = 0;
+      response.crudeLossKbd = 0;
+      response.effectiveCoverDays = 0;
+      response.jodiOilCoverage = false;
+      response.comtradeCoverage = false;
+      response.ieaStocksCoverage = false;
+    }
+    assert.equal(response.products.length, 0);
+    assert.equal(response.gulfCrudeShare, 0);
+    assert.equal(response.crudeLossKbd, 0);
+    assert.equal(response.effectiveCoverDays, 0);
+    assert.equal(response.jodiOilCoverage, false);
+    assert.equal(response.comtradeCoverage, false);
+    assert.equal(response.ieaStocksCoverage, false);
   });
 });

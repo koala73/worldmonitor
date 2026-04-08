@@ -354,12 +354,22 @@ export async function computeEnergyShockScenario(
   if (!needsOil && gasImpact) {
     response.assessment = gasImpact.assessment;
     response.dataAvailable = gasImpact.dataAvailable;
-    response.coverageLevel = gasImpact.dataAvailable ? 'full' : 'unsupported';
+    response.coverageLevel = gasImpact.dataAvailable
+      ? (degraded ? 'partial' : 'full')
+      : 'unsupported';
     response.limitations = response.limitations.filter(l =>
       !l.includes('refinery yield') &&
       !l.includes('Gulf crude share') &&
       !l.includes('IEA strategic stock')
     );
+    // Zero out oil-specific fields for gas-only mode
+    response.gulfCrudeShare = 0;
+    response.crudeLossKbd = 0;
+    response.products = [];
+    response.effectiveCoverDays = 0;
+    response.jodiOilCoverage = false;
+    response.comtradeCoverage = false;
+    response.ieaStocksCoverage = false;
   }
 
   if (needsOil && needsGas && gasImpact?.dataAvailable && !jodiOilCoverage) {
