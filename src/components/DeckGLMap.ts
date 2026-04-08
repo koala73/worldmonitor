@@ -97,7 +97,7 @@ import {
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
@@ -4307,6 +4307,18 @@ export class DeckGLMap {
     toggles.appendChild(authorBadge);
 
     this.container.appendChild(toggles);
+
+    // Unlock premium layers when auth state resolves (e.g., Clerk JWT arrives after map init)
+    subscribeAuthState(() => {
+      if (!hasPremiumAccess(getAuthState())) return;
+      toggles.querySelectorAll('.layer-toggle-locked').forEach(label => {
+        label.classList.remove('layer-toggle-locked');
+        const input = label.querySelector('input') as HTMLInputElement | null;
+        if (input) input.disabled = false;
+        const labelSpan = label.querySelector('.toggle-label');
+        if (labelSpan) labelSpan.textContent = labelSpan.textContent!.replace(' \uD83D\uDD12', '');
+      });
+    });
 
     // Bind toggle events
     toggles.querySelectorAll('.layer-toggle input').forEach(input => {
