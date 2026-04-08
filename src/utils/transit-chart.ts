@@ -119,11 +119,13 @@ export class TransitChart {
     const textDim = getCSSColor('--text-dim') || '#888';
     const textPrimary = getCSSColor('--text-primary') || '#eee';
     const borderSubtle = getCSSColor('--border-subtle') || '#444';
+    const accentColor = getCSSColor('--accent') || '#fff';
+    const bgColor = getCSSColor('--bg') || '#000';
 
     const btnStyle = (active: boolean) =>
       `font-size:10px;padding:2px 7px;border-radius:3px;cursor:pointer;border:1px solid ${borderSubtle};` +
-      `background:${active ? 'var(--accent,#3b82f6)' : 'transparent'};` +
-      `color:${active ? '#fff' : textDim};transition:background 0.15s`;
+      `background:${active ? accentColor : 'transparent'};` +
+      `color:${active ? bgColor : textDim};transition:background 0.15s`;
 
     const tabs = document.createElement('div');
     tabs.style.cssText = 'display:flex;gap:4px';
@@ -144,7 +146,7 @@ export class TransitChart {
       const btn = document.createElement('button');
       btn.textContent = label;
       btn.style.cssText = btnStyle(this.zoom === z);
-      btn.style.color = this.zoom === z ? '#fff' : textPrimary;
+      btn.style.color = this.zoom === z ? bgColor : textPrimary;
       btn.addEventListener('click', () => {
         this.zoom = z; this.buildControls(); this.buildLegend(); this.draw();
       });
