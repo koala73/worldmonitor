@@ -528,9 +528,13 @@ export class SearchManager implements AppModule {
           window.location.reload();
         } else if (action === 'resilience') {
           const layerKey = 'resilienceScore' as keyof MapLayers;
-          this.ctx.mapLayers[layerKey] = !this.ctx.mapLayers[layerKey];
+          const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+          if (!variantAllowed.has(layerKey)) break;
+          let newValue = !this.ctx.mapLayers[layerKey];
+          if (newValue && !this.ctx.map?.isDeckGLActive?.()) newValue = false;
+          this.ctx.mapLayers[layerKey] = newValue;
           saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-          if (this.ctx.mapLayers[layerKey]) {
+          if (newValue) {
             this.ctx.map?.enableLayer(layerKey);
           } else {
             this.ctx.map?.setLayers(this.ctx.mapLayers);
