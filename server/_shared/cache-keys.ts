@@ -150,11 +150,6 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   chokepointBaselines: 'energy:chokepoint-baselines:v1',
   portwatchChokepointsRef: 'portwatch:chokepoints:ref:v1',
   portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
-  energySpineCountries:  'energy:spine:v1:_countries',
-  chokepointFlows:       'energy:chokepoint-flows:v1',
-  oilStocksAnalysis:     'energy:oil-stocks-analysis:v1',
-  lngVulnerability:      'energy:lng-vulnerability:v1',
-  emberElectricityAll:   'energy:ember:v1:_all',
 };
 
 export const PORTWATCH_PORT_ACTIVITY_KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';
@@ -207,11 +202,6 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   chokepointBaselines: 'slow',
   portwatchChokepointsRef: 'slow',
   portwatchPortActivity: 'slow',
-  energySpineCountries: 'fast',
-  chokepointFlows: 'fast',
-  oilStocksAnalysis: 'slow',
-  lngVulnerability: 'slow',
-  emberElectricityAll: 'slow',
 };
 
 export const PORTWATCH_CHOKEPOINTS_REF_KEY = 'portwatch:chokepoints:ref:v1';

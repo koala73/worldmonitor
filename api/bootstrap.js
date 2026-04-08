@@ -93,11 +93,6 @@ const BOOTSTRAP_CACHE_KEYS = {
   chokepointBaselines:  'energy:chokepoint-baselines:v1',
   portwatchChokepointsRef: 'portwatch:chokepoints:ref:v1',
   portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
-  energySpineCountries:  'energy:spine:v1:_countries',
-  chokepointFlows:       'energy:chokepoint-flows:v1',
-  oilStocksAnalysis:     'energy:oil-stocks-analysis:v1',
-  lngVulnerability:      'energy:lng-vulnerability:v1',
-  emberElectricityAll:   'energy:ember:v1:_all',
 };
 
 const SLOW_KEYS = new Set([
@@ -134,16 +129,12 @@ const SLOW_KEYS = new Set([
   'chokepointBaselines',
   'portwatchChokepointsRef',
   'portwatchPortActivity',
-  'oilStocksAnalysis',
-  'lngVulnerability',
-  'emberElectricityAll',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',
   'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights', 'predictions',
   'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
   'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity',
-  'energySpineCountries', 'chokepointFlows',
 ]);
 
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
