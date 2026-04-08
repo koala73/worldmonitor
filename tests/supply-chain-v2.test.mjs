@@ -342,8 +342,8 @@ describe('Gateway daily cache tier', () => {
     assert.match(src, /\/api\/supply-chain\/v1\/get-chokepoint-status':\s*'medium'/);
   });
 
-  it('shipping rates route still uses static tier', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'static'/);
+  it('shipping rates route uses daily tier (24h seed interval)', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'daily'/);
   });
 });
 
