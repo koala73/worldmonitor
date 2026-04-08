@@ -2,6 +2,7 @@ import { anyApi, httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { webhookHandler } from "./payments/webhookHandlers";
+import { resendWebhookHandler } from "./resendWebhookHandler";
 
 const TRUSTED = [
   "https://worldmonitor.app",
@@ -621,6 +622,74 @@ http.route({
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Checkout creation failed";
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+// Resend webhook: captures bounce/complaint events and suppresses emails.
+// Signature verification + internal mutation, same pattern as Dodo webhook.
+http.route({
+  path: "/resend-webhook",
+  method: "POST",
+  handler: resendWebhookHandler,
+});
+
+// Bulk email suppression: service-to-service, authenticated via RELAY_SHARED_SECRET.
+// Used by the one-time import script (scripts/import-bounced-emails.mjs).
+http.route({
+  path: "/relay/bulk-suppress-emails",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(
+      /^Bearer\s+/,
+      "",
+    );
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: {
+      emails: Array<{
+        email: string;
+        reason: "bounce" | "complaint" | "manual";
+        source?: string;
+      }>;
+    };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!Array.isArray(body.emails) || body.emails.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "MISSING_FIELDS", required: ["emails"] }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    try {
+      const result = await ctx.runMutation(
+        internal.emailSuppressions.bulkSuppress,
+        { emails: body.emails },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Bulk suppress failed";
       return new Response(JSON.stringify({ error: msg }), {
         status: 500,
         headers: { "Content-Type": "application/json" },

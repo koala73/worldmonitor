@@ -1,7 +1,7 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-export const suppress = mutation({
+export const suppress = internalMutation({
   args: {
     email: v.string(),
     reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
@@ -38,7 +38,7 @@ export const isEmailSuppressed = query({
   },
 });
 
-export const bulkSuppress = mutation({
+export const bulkSuppress = internalMutation({
   args: {
     emails: v.array(v.object({
       email: v.string(),
@@ -73,7 +73,7 @@ export const bulkSuppress = mutation({
   },
 });
 
-export const remove = mutation({
+export const remove = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const normalizedEmail = args.email.trim().toLowerCase();

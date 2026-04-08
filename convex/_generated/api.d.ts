@@ -13,6 +13,7 @@ import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
 import type * as crons from "../crons.js";
+import type * as emailSuppressions from "../emailSuppressions.js";
 import type * as entitlements from "../entitlements.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -30,6 +31,7 @@ import type * as payments_subscriptionHelpers from "../payments/subscriptionHelp
 import type * as payments_webhookHandlers from "../payments/webhookHandlers.js";
 import type * as payments_webhookMutations from "../payments/webhookMutations.js";
 import type * as registerInterest from "../registerInterest.js";
+import type * as resendWebhookHandler from "../resendWebhookHandler.js";
 import type * as telegramPairingTokens from "../telegramPairingTokens.js";
 import type * as userPreferences from "../userPreferences.js";
 
@@ -45,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   constants: typeof constants;
   contactMessages: typeof contactMessages;
   crons: typeof crons;
+  emailSuppressions: typeof emailSuppressions;
   entitlements: typeof entitlements;
   http: typeof http;
   "lib/auth": typeof lib_auth;
@@ -62,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "payments/webhookHandlers": typeof payments_webhookHandlers;
   "payments/webhookMutations": typeof payments_webhookMutations;
   registerInterest: typeof registerInterest;
+  resendWebhookHandler: typeof resendWebhookHandler;
   telegramPairingTokens: typeof telegramPairingTokens;
   userPreferences: typeof userPreferences;
 }>;
