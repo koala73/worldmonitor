@@ -88,6 +88,7 @@ describe('Legacy api/*.js endpoint allowlist', () => {
     'polymarket.js',
     'product-catalog.js',
     'register-interest.js',
+    'resend-webhook.js',
     'reverse-geocode.js',
     'mcp-proxy.js',
     'rss-proxy.js',

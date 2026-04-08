@@ -5,6 +5,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { getClientIp, verifyTurnstile } from './_turnstile.js';
 import { jsonResponse } from './_json-response.js';
 import { createIpRateLimiter } from './_ip-rate-limit.js';
+import { validateEmail } from './_email-validation.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
@@ -224,6 +225,11 @@ export default async function handler(req) {
     return jsonResponse({ error: 'Invalid email address' }, 400, cors);
   }
 
+  const emailCheck = await validateEmail(email);
+  if (!emailCheck.valid) {
+    return jsonResponse({ error: emailCheck.reason }, 400, cors);
+  }
+
   const safeSource = typeof source === 'string'
     ? source.slice(0, MAX_META_LENGTH)
     : 'unknown';
@@ -249,8 +255,21 @@ export default async function handler(req) {
     });
 
     // Send confirmation email for new registrations (awaited to avoid Edge isolate termination)
+    // Skip if email is on the suppression list (previously bounced)
     if (result.status === 'registered' && result.referralCode) {
-      await sendConfirmationEmail(email, result.referralCode);
+      let suppressed = false;
+      try {
+        suppressed = await client.query('emailSuppressions:isEmailSuppressed', {
+          email: email.trim().toLowerCase(),
+        });
+      } catch (e) {
+        console.warn('[register-interest] Suppression check failed, proceeding with send:', e.message);
+      }
+      if (!suppressed) {
+        await sendConfirmationEmail(email, result.referralCode);
+      } else {
+        console.log(`[register-interest] Skipped email to suppressed address: ${email}`);
+      }
     }
 
     return jsonResponse(result, 200, cors);
