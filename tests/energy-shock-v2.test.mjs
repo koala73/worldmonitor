@@ -11,6 +11,7 @@ import {
   deriveCoverageLevel,
   deriveChokepointConfidence,
   buildAssessment,
+  computeGulfShare,
   CHOKEPOINT_EXPOSURE,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 
@@ -84,12 +85,12 @@ describe('buildAssessment — unsupported country', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildAssessment — partial coverage', () => {
-  it('includes proxy note in partial coverage deficit branch', () => {
+  it('includes proxy note when partial due to missing comtrade', () => {
     const products = [
       { product: 'Diesel', deficitPct: 20.0 },
       { product: 'Jet fuel', deficitPct: 15.0 },
     ];
-    const msg = buildAssessment('XX', 'hormuz', true, 0.4, 60, 30, 50, products, 'partial', false);
+    const msg = buildAssessment('XX', 'hormuz', true, 0.4, 60, 30, 50, products, 'partial', false, true, false);
     assert.ok(msg.includes('20.0%'));
     assert.ok(msg.includes('Gulf share proxied'));
   });
@@ -99,7 +100,7 @@ describe('buildAssessment — partial coverage', () => {
       { product: 'Diesel', deficitPct: 20.0 },
       { product: 'Jet fuel', deficitPct: 15.0 },
     ];
-    const msg = buildAssessment('IN', 'hormuz', true, 0.4, 60, 30, 50, products, 'full', false);
+    const msg = buildAssessment('IN', 'hormuz', true, 0.4, 60, 30, 50, products, 'full', false, true, true);
     assert.ok(!msg.includes('proxied'));
   });
 });
@@ -336,5 +337,81 @@ describe('liveFlowRatio is absent (undefined) when PortWatch unavailable', () =>
       ? Math.round(liveFlowRatioFromServer * 1000) / 1000
       : undefined;
     assert.equal(fieldOnWire, 0, 'true 0 flow should serialize as 0, not undefined');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeGulfShare — NaN/Infinity guard
+// ---------------------------------------------------------------------------
+
+describe('computeGulfShare rejects NaN and Infinity tradeValueUsd', () => {
+  it('returns { share: 0, hasData: false } when flow has tradeValueUsd: NaN', () => {
+    const flows = [{ tradeValueUsd: NaN, partnerCode: '682' }];
+    const result = computeGulfShare(flows);
+    assert.deepEqual(result, { share: 0, hasData: false });
+  });
+
+  it('returns { share: 0, hasData: false } when flow has tradeValueUsd: Infinity', () => {
+    const flows = [{ tradeValueUsd: Infinity, partnerCode: '682' }];
+    const result = computeGulfShare(flows);
+    assert.deepEqual(result, { share: 0, hasData: false });
+  });
+
+  it('returns { share: 0, hasData: false } when flow has tradeValueUsd: -Infinity', () => {
+    const flows = [{ tradeValueUsd: -Infinity, partnerCode: '682' }];
+    const result = computeGulfShare(flows);
+    assert.deepEqual(result, { share: 0, hasData: false });
+  });
+
+  it('still computes correctly with valid finite values', () => {
+    const flows = [
+      { tradeValueUsd: 100, partnerCode: '682' },
+      { tradeValueUsd: 100, partnerCode: '840' },
+    ];
+    const result = computeGulfShare(flows);
+    assert.equal(result.hasData, true);
+    assert.equal(result.share, 0.5);
+  });
+
+  it('skips NaN flows but computes from valid ones', () => {
+    const flows = [
+      { tradeValueUsd: NaN, partnerCode: '682' },
+      { tradeValueUsd: 100, partnerCode: '682' },
+      { tradeValueUsd: 100, partnerCode: '840' },
+    ];
+    const result = computeGulfShare(flows);
+    assert.equal(result.hasData, true);
+    assert.equal(result.share, 0.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAssessment — proxy text only when comtrade is missing
+// ---------------------------------------------------------------------------
+
+describe('buildAssessment proxy text is tied to comtradeCoverage, not coverageLevel', () => {
+  const products = [
+    { product: 'Diesel', deficitPct: 20.0 },
+    { product: 'Jet fuel', deficitPct: 15.0 },
+  ];
+
+  it('shows proxy text when partial due to missing comtrade (comtradeCoverage=false)', () => {
+    const msg = buildAssessment('XX', 'hormuz', true, 0.4, 60, 30, 50, products, 'partial', false, true, false);
+    assert.ok(msg.includes('Gulf share proxied at 40%'), 'should mention proxy when comtrade missing');
+  });
+
+  it('does NOT show proxy text when partial due to IEA anomaly (comtradeCoverage=true)', () => {
+    const msg = buildAssessment('XX', 'hormuz', true, 0.4, 60, 30, 50, products, 'partial', false, false, true);
+    assert.ok(!msg.includes('proxied'), 'should not mention proxy when comtrade is present');
+  });
+
+  it('does NOT show proxy text when partial due to degraded PortWatch (comtradeCoverage=true)', () => {
+    const msg = buildAssessment('XX', 'hormuz', true, 0.4, 60, 30, 50, products, 'partial', true, true, true);
+    assert.ok(!msg.includes('proxied'), 'should not mention proxy when comtrade is present');
+  });
+
+  it('does NOT show proxy text when full coverage (comtradeCoverage=true)', () => {
+    const msg = buildAssessment('IN', 'hormuz', true, 0.4, 60, 30, 50, products, 'full', false, true, true);
+    assert.ok(!msg.includes('proxied'), 'should not mention proxy in full coverage');
   });
 });

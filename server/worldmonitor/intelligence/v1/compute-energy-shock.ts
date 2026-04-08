@@ -122,7 +122,7 @@ export async function computeEnergyShockScenario(
     limitations: [],
     degraded: false,
     chokepointConfidence: 'none',
-    liveFlowRatio: 0,
+    liveFlowRatio: undefined,
   };
 
   if (!code || code.length !== 2) return EMPTY;
@@ -184,7 +184,7 @@ export async function computeEnergyShockScenario(
     limitations.push('PortWatch flow data unavailable, using historical baseline multipliers');
   }
 
-  const effectiveGulfShare = coverageLevel === 'partial' ? PROXIED_GULF_SHARE : rawGulfShare;
+  const effectiveGulfShare = !comtradeCoverage ? PROXIED_GULF_SHARE : rawGulfShare;
   const gulfCrudeShare = effectiveGulfShare * exposureMult;
 
   const crudeImportsKbd = n(jodiOil?.crude?.importsKbd);
@@ -233,6 +233,7 @@ export async function computeEnergyShockScenario(
     coverageLevel,
     degraded,
     ieaStocksCoverage,
+    comtradeCoverage,
   );
 
   const response: ComputeEnergyShockScenarioResponse = {

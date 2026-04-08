@@ -22,7 +22,7 @@ export function computeGulfShare(flows: ComtradeFlowLike[]): { share: number; ha
   let totalImports = 0;
   let gulfImports = 0;
   for (const flow of flows) {
-    const val = typeof flow.tradeValueUsd === 'number' ? flow.tradeValueUsd : 0;
+    const val = Number.isFinite(flow.tradeValueUsd) ? flow.tradeValueUsd : 0;
     if (val <= 0) continue;
     totalImports += val;
     if (GULF_PARTNER_CODES.has(String(flow.partnerCode))) {
@@ -78,6 +78,7 @@ export function buildAssessment(
   coverageLevel?: 'full' | 'partial' | 'unsupported',
   degraded?: boolean,
   ieaStocksCoverage?: boolean,
+  comtradeCoverage?: boolean,
 ): string {
   if (coverageLevel === 'unsupported' || !dataAvailable) {
     return `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
@@ -96,8 +97,6 @@ export function buildAssessment(
   const dieselDeficit = products.find((p) => p.product === 'Diesel')?.deficitPct ?? 0;
   const jetDeficit = products.find((p) => p.product === 'Jet fuel')?.deficitPct ?? 0;
   const worstDeficit = Math.max(dieselDeficit, jetDeficit);
-  if (coverageLevel === 'partial') {
-    return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}. Gulf share proxied at 40%${degradedNote}.`;
-  }
-  return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}${degradedNote}.`;
+  const proxyNote = comtradeCoverage === false ? '. Gulf share proxied at 40%' : '';
+  return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}${proxyNote}${degradedNote}.`;
 }
