@@ -19,6 +19,8 @@ import {
   computeGasDisruption,
   computeGasBufferDays,
   buildGasAssessment,
+  REFINERY_YIELD,
+  REFINERY_YIELD_BASIS,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 
 import { ISO2_TO_COMTRADE } from '../server/worldmonitor/intelligence/v1/_comtrade-reporters.js';
@@ -180,7 +182,7 @@ describe('mock: partial coverage limitations', () => {
     if (coverageLevel === 'partial') {
       limitations.push('Gulf crude share proxied at 40% (no Comtrade data)');
     }
-    limitations.push('refinery yield: 80% crude-to-product heuristic');
+    limitations.push(REFINERY_YIELD_BASIS);
 
     assert.ok(limitations.some((l) => l.includes('proxied at 40%')));
     assert.ok(limitations.some((l) => l.includes('refinery yield')));
@@ -192,7 +194,7 @@ describe('mock: partial coverage limitations', () => {
     if (coverageLevel === 'partial') {
       limitations.push('Gulf crude share proxied at 40% (no Comtrade data)');
     }
-    limitations.push('refinery yield: 80% crude-to-product heuristic');
+    limitations.push(REFINERY_YIELD_BASIS);
     assert.ok(!limitations.some((l) => l.includes('proxied at 40%')));
   });
 });
@@ -843,7 +845,7 @@ describe('gas-only mode coverage override', () => {
 
   it('gas-only limitations exclude oil-specific strings', () => {
     const limitations = [
-      'refinery yield: 80% crude-to-product heuristic',
+      REFINERY_YIELD_BASIS,
       'Gulf crude share proxied at 40% (no Comtrade data)',
       'IEA strategic stock data unavailable',
       'LNG chokepoint exposure estimates based on global trade route shares',
@@ -922,5 +924,70 @@ describe('gas-only mode zeros oil fields', () => {
     assert.equal(response.jodiOilCoverage, false);
     assert.equal(response.comtradeCoverage, false);
     assert.equal(response.ieaStocksCoverage, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REFINERY_YIELD coefficients
+// ---------------------------------------------------------------------------
+
+describe('REFINERY_YIELD coefficients', () => {
+  it('has entries for all four products', () => {
+    for (const p of ['Gasoline', 'Diesel', 'Jet fuel', 'LPG']) {
+      assert.ok(p in REFINERY_YIELD, `missing ${p}`);
+      assert.ok(REFINERY_YIELD[p] > 0 && REFINERY_YIELD[p] < 1, `${p} yield out of range`);
+    }
+  });
+
+  it('yields sum to < 1.0 (crude has residuals)', () => {
+    const total = Object.values(REFINERY_YIELD).reduce((s, v) => s + v, 0);
+    assert.ok(total < 1.0, `total yield ${total} should be < 1.0`);
+    assert.ok(total > 0.8, `total yield ${total} should be > 0.8 (sanity check)`);
+  });
+
+  it('gasoline has highest yield', () => {
+    assert.ok(REFINERY_YIELD['Gasoline'] > REFINERY_YIELD['Diesel']);
+    assert.ok(REFINERY_YIELD['Gasoline'] > REFINERY_YIELD['Jet fuel']);
+    assert.ok(REFINERY_YIELD['Gasoline'] > REFINERY_YIELD['LPG']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// per-product deficit divergence with named yields
+// ---------------------------------------------------------------------------
+
+describe('per-product deficit divergence with named yields', () => {
+  it('gasoline deficit differs from diesel deficit for same demand', () => {
+    const demand = 100;
+    const ratio = 0.5;
+    const gasolineLoss = demand * ratio * REFINERY_YIELD['Gasoline'];
+    const dieselLoss = demand * ratio * REFINERY_YIELD['Diesel'];
+    assert.notEqual(gasolineLoss, dieselLoss, 'different yields should produce different losses');
+    assert.ok(gasolineLoss > dieselLoss, 'gasoline should have higher loss (higher yield)');
+  });
+
+  it('LPG has lowest deficit for same demand and ratio', () => {
+    const demand = 100;
+    const ratio = 0.5;
+    const losses = Object.entries(REFINERY_YIELD).map(([name, y]) => ({
+      name,
+      loss: demand * ratio * y,
+    }));
+    const lpg = losses.find(l => l.name === 'LPG');
+    assert.ok(losses.every(l => l.name === 'LPG' || l.loss >= lpg.loss), 'LPG should have lowest loss');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REFINERY_YIELD_BASIS string
+// ---------------------------------------------------------------------------
+
+describe('REFINERY_YIELD_BASIS string', () => {
+  it('mentions all four products with percentages', () => {
+    assert.ok(REFINERY_YIELD_BASIS.includes('gasoline 44%'));
+    assert.ok(REFINERY_YIELD_BASIS.includes('diesel 30%'));
+    assert.ok(REFINERY_YIELD_BASIS.includes('jet 10%'));
+    assert.ok(REFINERY_YIELD_BASIS.includes('LPG 5%'));
+    assert.ok(REFINERY_YIELD_BASIS.includes('EIA'));
   });
 });

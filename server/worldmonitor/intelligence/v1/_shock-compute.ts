@@ -9,6 +9,15 @@ export const CHOKEPOINT_EXPOSURE: Record<string, number> = {
   malacca: 0.7,
 };
 
+export const REFINERY_YIELD: Record<string, number> = {
+  Gasoline: 0.44,
+  Diesel: 0.30,
+  'Jet fuel': 0.10,
+  LPG: 0.05,
+};
+
+export const REFINERY_YIELD_BASIS = 'refinery yields: US-average EIA basis, gasoline 44%, diesel 30%, jet 10%, LPG 5%';
+
 export function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }

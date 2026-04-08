@@ -22,6 +22,8 @@ import {
   computeGasDisruption,
   computeGasBufferDays,
   buildGasAssessment,
+  REFINERY_YIELD,
+  REFINERY_YIELD_BASIS,
 } from './_shock-compute';
 import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 
@@ -217,7 +219,7 @@ export async function computeEnergyShockScenario(
   if (!ieaStocksCoverage) {
     limitations.push('IEA strategic stock data unavailable');
   }
-  limitations.push('refinery yield: 80% crude-to-product heuristic');
+  limitations.push(REFINERY_YIELD_BASIS);
   if (degraded) {
     limitations.push('PortWatch flow data unavailable, using historical baseline multipliers');
   }
@@ -245,7 +247,8 @@ export async function computeEnergyShockScenario(
   const products: ProductImpact[] = productDefs
     .filter((p) => p.demand > 0)
     .map((p) => {
-      const outputLossKbd = p.demand * ratio * 0.8;
+      const yieldFactor = REFINERY_YIELD[p.name] ?? 0.20;
+      const outputLossKbd = p.demand * ratio * yieldFactor;
       const deficitPct = clamp((outputLossKbd / p.demand) * 100, 0, 100);
       return {
         product: p.name,
