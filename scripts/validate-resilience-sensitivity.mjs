@@ -78,11 +78,11 @@ async function run() {
   const {
     scoreAllDimensions,
     RESILIENCE_DIMENSION_ORDER,
-    RESILIENCE_DIMENSION_TYPES,
     createMemoizedSeedReader,
   } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
 
   const { listScorableCountries } = await import('../server/worldmonitor/resilience/v1/_shared.ts');
+  const { RESILIENCE_DIMENSION_TYPES } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
 
   const scorableCountries = await listScorableCountries();
   const validSample = SAMPLE.filter((c) => scorableCountries.includes(c));
@@ -139,14 +139,14 @@ async function run() {
   console.log('TOP 10 MOST STABLE (smallest rank range in 95% CI):');
   for (let i = 0; i < Math.min(10, stats.length); i++) {
     const s = stats[i];
-    console.log(`  ${String(i + 1).padStart(2)}. ${s.countryCode}  mean_rank=${s.meanRank.toFixed(1)}  p05=${s.p05}  p95=${s.p95}  range=${s.range}`);
+    console.log(`  ${String(i + 1).padStart(2)}. ${s.countryCode}  mean_rank=${s.meanRank.toFixed(1)}  p05=${s.p05.toFixed(1)}  p95=${s.p95.toFixed(1)}  range=${s.range.toFixed(1)}`);
   }
 
   console.log('\nTOP 10 LEAST STABLE (largest rank range in 95% CI):');
   const leastStable = stats.slice().sort((a, b) => b.range - a.range || b.meanRank - a.meanRank);
   for (let i = 0; i < Math.min(10, leastStable.length); i++) {
     const s = leastStable[i];
-    console.log(`  ${String(i + 1).padStart(2)}. ${s.countryCode}  mean_rank=${s.meanRank.toFixed(1)}  p05=${s.p05}  p95=${s.p95}  range=${s.range}`);
+    console.log(`  ${String(i + 1).padStart(2)}. ${s.countryCode}  mean_rank=${s.meanRank.toFixed(1)}  p05=${s.p05.toFixed(1)}  p95=${s.p95.toFixed(1)}  range=${s.range.toFixed(1)}`);
   }
 
   const baselineRanks = rankCountries(countryData, RESILIENCE_DIMENSION_TYPES, false);
@@ -163,7 +163,7 @@ async function run() {
     const baseRank = baselineRanks[cc];
     const stable = Math.abs(s.p05 - baseRank) <= STABILITY_GATE_RANKS && Math.abs(s.p95 - baseRank) <= STABILITY_GATE_RANKS;
     if (!stable) gatePass = false;
-    console.log(`  ${cc}  baseline_rank=${baseRank}  p05=${s.p05}  p95=${s.p95}  ${stable ? 'PASS' : 'FAIL'}`);
+    console.log(`  ${cc}  baseline_rank=${baseRank}  p05=${s.p05.toFixed(1)}  p95=${s.p95.toFixed(1)}  ${stable ? 'PASS' : 'FAIL'}`);
   }
 
   console.log(`\nGATE CHECK: Top-10 stable within ±${STABILITY_GATE_RANKS} ranks? ${gatePass ? 'YES' : 'NO'}`);
@@ -179,8 +179,8 @@ async function run() {
   console.log(`  Monte Carlo draws: ${NUM_DRAWS}`);
   console.log(`  Perturbation: ±${PERTURBATION_RANGE * 100}% on dimension coverage weights`);
   console.log(`  Mean rank range (p05-p95): ${meanRange.toFixed(1)}`);
-  console.log(`  Min rank range: ${minRange}`);
-  console.log(`  Max rank range: ${maxRange}`);
+  console.log(`  Min rank range: ${minRange.toFixed(1)}`);
+  console.log(`  Max rank range: ${maxRange.toFixed(1)}`);
 }
 
 const isMain = process.argv[1]?.endsWith('validate-resilience-sensitivity.mjs');
