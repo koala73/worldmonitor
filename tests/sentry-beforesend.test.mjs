@@ -253,6 +253,13 @@ describe('existing beforeSend filters', () => {
     assert.equal(beforeSend(event), null, 'OrbitControls pinch-zoom crash in main chunk should be suppressed');
   });
 
+  it('does NOT suppress "reading x" from first-party non-OrbitControls frames', () => {
+    const event = makeEvent('Cannot read properties of undefined (reading \'x\')', 'TypeError', [
+      { filename: '/assets/main-Dpr0EWW-.js', lineno: 100, function: 'MyMap.onPointerMove' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'First-party non-OrbitControls touch error should reach Sentry');
+  });
+
   it('suppresses maplibre TypeError when all frames are maplibre', () => {
     const event = makeEvent('Cannot read properties of null', 'TypeError', [
       { filename: '/assets/maplibre-AbC123.js', lineno: 100, function: 'paint' },
