@@ -117,7 +117,7 @@ describe('CountryDeepDivePanel: updateMaritimeActivity', () => {
   });
 
   it('renders Maritime Activity sectionCard', () => {
-    assert.match(panelSrc, /sectionCard\(['"]Maritime Activity['"]\)/);
+    assert.match(panelSrc, /sectionCard\(['"]Maritime Activity['"],/);
   });
 
   it('removes card from DOM when data is unavailable', () => {

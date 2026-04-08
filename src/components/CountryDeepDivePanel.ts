@@ -1236,11 +1236,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const factsExpanded = this.el('div', 'cdp-expanded-only');
     factsExpanded.append(factsCard);
 
-    const [energyCard, energyBody] = this.sectionCard('Energy Profile');
+    const [energyCard, energyBody] = this.sectionCard('Energy Profile', 'Oil import dependency, chokepoint exposure, and energy shock data from JODI, IEA, and PortWatch.');
     this.energyBody = energyBody;
     energyBody.append(this.makeLoading('Loading energy data\u2026'));
 
-    const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity');
+    const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity', 'Port-level tanker call volume and import/export cargo weight over 30 days. ⚠ badge = port running below 50% of its 30-day baseline. Source: IMF PortWatch.');
     this.maritimeBody = maritimeBody;
     maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
 
@@ -1485,9 +1485,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return panel;
   }
 
-  private sectionCard(title: string): [HTMLElement, HTMLElement] {
+  private sectionCard(title: string, helpText?: string): [HTMLElement, HTMLElement] {
     const card = this.el('section', 'cdp-card');
     const heading = this.el('h3', 'cdp-card-title', title);
+    if (helpText) {
+      const tip = this.el('button', 'cdp-card-help', '?');
+      tip.setAttribute('title', helpText);
+      tip.setAttribute('type', 'button');
+      heading.append(tip);
+    }
     const body = this.el('div', 'cdp-card-body');
     card.append(heading, body);
     return [card, body];
