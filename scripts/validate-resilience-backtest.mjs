@@ -14,9 +14,11 @@
  * health, macro) move slowly, but it is not a true time-series backtest.
  *
  * Usage:
- *   node scripts/validate-resilience-backtest.mjs
+ *   npx tsx scripts/validate-resilience-backtest.mjs
  *
  * Requires: UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (via .env.local)
+ * Note: Uses tsx so it can import the TypeScript scorer as a fallback when
+ *       cached scores are missing from Redis.
  */
 
 import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
@@ -39,6 +41,18 @@ const MIXED_DIMENSIONS = new Set([
   'energy',
   'foodWater',
 ]);
+
+const MIN_SCORED_COUNTRIES = 5;
+
+let _scoreAllDimensions = null;
+let _RESILIENCE_DIMENSION_TYPES = null;
+try {
+  const mod = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+  _scoreAllDimensions = mod.scoreAllDimensions;
+  _RESILIENCE_DIMENSION_TYPES = mod.RESILIENCE_DIMENSION_TYPES;
+} catch {
+  console.warn('[WARN] Could not import scorer (run with npx tsx for live fallback)');
+}
 
 const SHOCKS = [
   {
@@ -143,6 +157,30 @@ function computeBaselineScore(scoreResponse) {
   return baselineDims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
 }
 
+async function getBaselineScore(url, token, countryCode, scoreData) {
+  const cached = scoreData ? computeBaselineScore(scoreData) : null;
+  if (cached != null) return cached;
+
+  if (!_scoreAllDimensions || !_RESILIENCE_DIMENSION_TYPES) return null;
+
+  try {
+    const reader = async (key) => redisGetJson(url, token, key);
+    const dims = await _scoreAllDimensions(countryCode, reader);
+    const baselineDims = Object.entries(dims)
+      .filter(([id]) => {
+        const type = _RESILIENCE_DIMENSION_TYPES[id];
+        return type === 'baseline' || type === 'mixed';
+      })
+      .map(([, d]) => d);
+    const totalCov = baselineDims.reduce((s, d) => s + d.coverage, 0);
+    if (totalCov === 0) return null;
+    return baselineDims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+  } catch (err) {
+    console.log(`  [WARN] ${countryCode}: live scoring failed (${err.message})`);
+    return null;
+  }
+}
+
 function pearsonCorrelation(xs, ys) {
   const n = xs.length;
   if (n < 3) return null;
@@ -185,6 +223,7 @@ async function runBacktest() {
   console.log('=== BACKTESTING: RESILIENCE PREDICTS RECOVERY ===\n');
 
   const gateResults = [];
+  let evaluatedShocks = 0;
 
   for (const shock of SHOCKS) {
     const countryCodes = Object.keys(shock.affectedCountries);
@@ -198,18 +237,19 @@ async function runBacktest() {
 
     for (const cc of countryCodes) {
       const scoreData = scores.get(cc);
-      const baseline = scoreData ? computeBaselineScore(scoreData) : null;
+      const baseline = await getBaselineScore(url, token, cc, scoreData);
       const recovery = shock.affectedCountries[cc].recovery;
 
       if (baseline != null) {
-        pairs.push({ cc, baseline, recovery, overall: scoreData.overallScore });
+        const overall = scoreData?.overallScore ?? baseline;
+        pairs.push({ cc, baseline, recovery, overall });
       } else {
-        console.log(`  [WARN] ${cc}: no cached score in Redis`);
+        console.log(`  [WARN] ${cc}: no cached score and live scoring unavailable`);
       }
     }
 
-    if (pairs.length < 3) {
-      console.log(`  Note: only ${pairs.length} countries with scores, too few for correlation`);
+    if (pairs.length < MIN_SCORED_COUNTRIES) {
+      console.log(`  Skipped: only ${pairs.length} countries scored (need >= ${MIN_SCORED_COUNTRIES})`);
       console.log('');
       continue;
     }
@@ -224,6 +264,7 @@ async function runBacktest() {
         ? 'No clear relationship between baseline and recovery'
         : 'Countries with higher baseline recovered slower';
 
+    evaluatedShocks++;
     console.log(`  Scored: ${pairs.length}/${countryCodes.length}`);
     console.log(`  Correlation (baseline vs recovery): r = ${r.toFixed(3)}`);
     console.log(`  Direction: ${direction} (expect positive)`);
@@ -242,6 +283,11 @@ async function runBacktest() {
       console.log(`    ${p.cc}  baseline=${p.baseline.toFixed(1)}  overall=${p.overall.toFixed(1)}  recovery=${p.recovery.toFixed(1)}%`);
     }
     console.log('');
+  }
+
+  if (evaluatedShocks === 0) {
+    console.error('FATAL: No shocks had enough scored countries. Check Redis/scorer.');
+    process.exit(1);
   }
 
   const positiveCount = gateResults.filter((g) => g.r > 0).length;
