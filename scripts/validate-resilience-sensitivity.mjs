@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// Weight perturbation Monte Carlo — tests ranking stability under weight variation.
+// Coverage perturbation Monte Carlo — tests ranking stability under coverage variation.
+// Perturbs each dimension's coverage ±10% and recomputes via the production
+// baselineScore * (1 - stressFactor) formula. Domain weights are NOT part of
+// the production formula and are intentionally excluded.
 // Usage: node --import tsx/esm scripts/validate-resilience-sensitivity.mjs
 
 import { loadEnvFile } from './_seed-utils.mjs';
@@ -9,6 +12,7 @@ loadEnvFile(import.meta.url);
 const NUM_DRAWS = 100;
 const PERTURBATION_RANGE = 0.1; // ±10%
 const STABILITY_GATE_RANKS = 5;
+const MIN_SAMPLE = 20;
 
 const SAMPLE = [
   // Top tier
@@ -32,39 +36,19 @@ function percentile(sortedValues, p) {
   return sortedValues[lower] + (sortedValues[upper] - sortedValues[lower]) * (index - lower);
 }
 
-function perturbWeights(domainOrder, getWeight) {
-  const raw = {};
-  let total = 0;
-  for (const domainId of domainOrder) {
-    const base = getWeight(domainId);
-    const factor = 1 + (Math.random() * 2 - 1) * PERTURBATION_RANGE;
-    raw[domainId] = base * factor;
-    total += raw[domainId];
-  }
-  const perturbed = {};
-  for (const domainId of domainOrder) {
-    perturbed[domainId] = raw[domainId] / total;
-  }
-  return perturbed;
-}
-
 function coverageWeightedMean(dims) {
   const totalCoverage = dims.reduce((s, d) => s + d.coverage, 0);
   if (!totalCoverage) return 0;
   return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCoverage;
 }
 
-function computeOverallScore(dimensions, perturbedWeights, originalWeights, dimensionDomains, dimensionTypes) {
-  const weightRatios = {};
-  for (const domainId of Object.keys(originalWeights)) {
-    weightRatios[domainId] = (perturbedWeights[domainId] ?? originalWeights[domainId]) / originalWeights[domainId];
-  }
-
+function computeOverallScorePerturbed(dimensions, dimensionTypes, perturb) {
   const baselineDims = [];
   const stressDims = [];
   for (const dim of dimensions) {
-    const domainId = dimensionDomains[dim.id];
-    const scaledCoverage = dim.coverage * (weightRatios[domainId] ?? 1);
+    const scaledCoverage = perturb
+      ? dim.coverage * (0.9 + Math.random() * 0.2)
+      : dim.coverage;
     const scaled = { score: dim.score, coverage: scaledCoverage };
     const dimType = dimensionTypes[dim.id];
     if (dimType === 'baseline' || dimType === 'mixed') baselineDims.push(scaled);
@@ -77,10 +61,10 @@ function computeOverallScore(dimensions, perturbedWeights, originalWeights, dime
   return baselineScore * (1 - stressFactor);
 }
 
-function rankCountries(countryData, perturbedWeights, originalWeights, dimensionDomains, dimensionTypes) {
+function rankCountries(countryData, dimensionTypes, perturb) {
   const scored = countryData.map(({ countryCode, dimensions }) => ({
     countryCode,
-    score: computeOverallScore(dimensions, perturbedWeights, originalWeights, dimensionDomains, dimensionTypes),
+    score: computeOverallScorePerturbed(dimensions, dimensionTypes, perturb),
   }));
   scored.sort((a, b) => b.score - a.score || a.countryCode.localeCompare(b.countryCode));
   const ranks = {};
@@ -93,10 +77,7 @@ function rankCountries(countryData, perturbedWeights, originalWeights, dimension
 async function run() {
   const {
     scoreAllDimensions,
-    RESILIENCE_DOMAIN_ORDER,
     RESILIENCE_DIMENSION_ORDER,
-    RESILIENCE_DIMENSION_DOMAINS,
-    getResilienceDomainWeight,
     RESILIENCE_DIMENSION_TYPES,
     createMemoizedSeedReader,
   } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
@@ -114,9 +95,6 @@ async function run() {
 
   const sharedReader = createMemoizedSeedReader();
   const countryData = [];
-  const originalWeights = Object.fromEntries(
-    RESILIENCE_DOMAIN_ORDER.map((d) => [d, getResilienceDomainWeight(d)]),
-  );
 
   for (const countryCode of validSample) {
     const scoreMap = await scoreAllDimensions(countryCode, sharedReader);
@@ -129,8 +107,8 @@ async function run() {
     countryData.push({ countryCode, dimensions });
   }
 
-  if (countryData.length === 0) {
-    console.error('FATAL: No countries scored. Check Redis connectivity.');
+  if (countryData.length < MIN_SAMPLE) {
+    console.error(`FATAL: Only ${countryData.length} countries scored (need >= ${MIN_SAMPLE}). Redis may be degraded.`);
     process.exit(1);
   }
 
@@ -140,8 +118,7 @@ async function run() {
   for (const cc of validSample) rankHistory[cc] = [];
 
   for (let draw = 0; draw < NUM_DRAWS; draw++) {
-    const perturbedWeights = perturbWeights(RESILIENCE_DOMAIN_ORDER, getResilienceDomainWeight);
-    const ranks = rankCountries(countryData, perturbedWeights, originalWeights, RESILIENCE_DIMENSION_DOMAINS, RESILIENCE_DIMENSION_TYPES);
+    const ranks = rankCountries(countryData, RESILIENCE_DIMENSION_TYPES, true);
     for (const cc of validSample) {
       rankHistory[cc].push(ranks[cc]);
     }
@@ -157,7 +134,7 @@ async function run() {
 
   stats.sort((a, b) => a.range - b.range || a.meanRank - b.meanRank);
 
-  console.log(`=== SENSITIVITY ANALYSIS (${NUM_DRAWS} draws, ±${PERTURBATION_RANGE * 100}% weight perturbation) ===\n`);
+  console.log(`=== SENSITIVITY ANALYSIS (${NUM_DRAWS} draws, ±${PERTURBATION_RANGE * 100}% coverage perturbation) ===\n`);
 
   console.log('TOP 10 MOST STABLE (smallest rank range in 95% CI):');
   for (let i = 0; i < Math.min(10, stats.length); i++) {
@@ -172,13 +149,7 @@ async function run() {
     console.log(`  ${String(i + 1).padStart(2)}. ${s.countryCode}  mean_rank=${s.meanRank.toFixed(1)}  p05=${s.p05}  p95=${s.p95}  range=${s.range}`);
   }
 
-  const baselineRanks = rankCountries(
-    countryData,
-    originalWeights,
-    originalWeights,
-    RESILIENCE_DIMENSION_DOMAINS,
-    RESILIENCE_DIMENSION_TYPES,
-  );
+  const baselineRanks = rankCountries(countryData, RESILIENCE_DIMENSION_TYPES, false);
   const top10 = Object.entries(baselineRanks)
     .sort(([, a], [, b]) => a - b)
     .slice(0, 10)
@@ -206,7 +177,7 @@ async function run() {
   console.log(`\nSUMMARY STATISTICS:`);
   console.log(`  Countries sampled: ${countryData.length}`);
   console.log(`  Monte Carlo draws: ${NUM_DRAWS}`);
-  console.log(`  Perturbation: ±${PERTURBATION_RANGE * 100}% on domain weights`);
+  console.log(`  Perturbation: ±${PERTURBATION_RANGE * 100}% on dimension coverage weights`);
   console.log(`  Mean rank range (p05-p95): ${meanRange.toFixed(1)}`);
   console.log(`  Min rank range: ${minRange}`);
   console.log(`  Max rank range: ${maxRange}`);
