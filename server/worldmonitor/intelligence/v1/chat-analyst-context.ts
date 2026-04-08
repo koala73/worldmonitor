@@ -432,7 +432,7 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
       if (!totalImports) {
         const totalDemand = typeof gas.totalDemandTj === 'number' ? Math.round((gas.totalDemandTj as number) / 1000) : null;
         if (totalDemand != null && totalDemand > 0) {
-          return `Gas: domestic/pipeline supply covers demand (${totalDemand} PJ total demand, no seaborne LNG imports)`;
+          return `Gas: domestic supply covers demand (${totalDemand} PJ total demand, no LNG or pipeline imports recorded)`;
         }
         return undefined;
       }
@@ -450,7 +450,7 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
     if (!totalTj) {
       const demandTj = typeof d.totalDemandTj === 'number' ? d.totalDemandTj as number : null;
       if (demandTj != null && demandTj > 0) {
-        return `Gas: domestic/pipeline supply covers demand (${Math.round(demandTj / 1000)} PJ total demand, no seaborne LNG imports)`;
+        return `Gas: domestic supply covers demand (${Math.round(demandTj / 1000)} PJ total demand, no LNG or pipeline imports recorded)`;
       }
       return undefined;
     }
@@ -502,22 +502,34 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
   }
 }
 
+function formatMixParts(src: Record<string, unknown>): string[] {
+  const pct = (key: string) => {
+    const v = src[key];
+    return typeof v === 'number' && (v as number) > 1 ? Math.round(v as number) : null;
+  };
+  const parts: string[] = [];
+  const fossilPct = pct('fossilShare');
+  if (fossilPct != null) {
+    const coalPct = pct('coalShare');
+    const gasPct = pct('gasShare');
+    const breakdown = [coalPct != null ? `coal ${coalPct}%` : null, gasPct != null ? `gas ${gasPct}%` : null]
+      .filter(Boolean).join(', ');
+    parts.push(`fossil ${fossilPct}%${breakdown ? ` (${breakdown})` : ''}`);
+  }
+  const renewPct = pct('renewShare');
+  if (renewPct != null) parts.push(`renewable ${renewPct}%`);
+  const nuclearPct = pct('nuclearShare');
+  if (nuclearPct != null) parts.push(`nuclear ${nuclearPct}%`);
+  return parts;
+}
+
 async function buildElectricityMix(iso2: string): Promise<string | undefined> {
   try {
     const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
     if (spine != null && typeof spine === 'object') {
       const elec = spine.electricity as Record<string, unknown> | undefined;
       if (elec && typeof elec.fossilShare === 'number') {
-        const parts: string[] = [];
-        const add = (key: string, label: string) => {
-          const v = elec[key];
-          if (typeof v === 'number' && v > 1) parts.push(`${label} ${Math.round(v as number)}%`);
-        };
-        add('fossilShare', 'fossil');
-        add('renewShare', 'renewable');
-        add('nuclearShare', 'nuclear');
-        add('coalShare', 'coal');
-        add('gasShare', 'gas');
+        const parts = formatMixParts(elec);
         if (parts.length === 0) return undefined;
         const demandTwh = typeof elec.demandTwh === 'number' ? ` (${Math.round(elec.demandTwh as number)} TWh/month)` : '';
         return `Electricity generation mix: ${parts.join(', ')}${demandTwh}`;
@@ -525,16 +537,7 @@ async function buildElectricityMix(iso2: string): Promise<string | undefined> {
     }
     const ember = await getCachedJson(`energy:ember:v1:${iso2}`, true) as Record<string, unknown> | null;
     if (!ember || typeof ember.fossilShare !== 'number') return undefined;
-    const parts: string[] = [];
-    const add = (key: string, label: string) => {
-      const v = ember[key];
-      if (typeof v === 'number' && (v as number) > 1) parts.push(`${label} ${Math.round(v as number)}%`);
-    };
-    add('fossilShare', 'fossil');
-    add('renewShare', 'renewable');
-    add('nuclearShare', 'nuclear');
-    add('coalShare', 'coal');
-    add('gasShare', 'gas');
+    const parts = formatMixParts(ember as Record<string, unknown>);
     if (parts.length === 0) return undefined;
     const demandTwh = typeof ember.demandTwh === 'number' ? ` (${Math.round(ember.demandTwh as number)} TWh/month)` : '';
     return `Electricity generation mix: ${parts.join(', ')}${demandTwh}`;
