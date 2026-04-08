@@ -552,13 +552,16 @@ describe('resilience dimension scorers', () => {
     const highDep = await scoreEnergy('XX', makeReader({ energyImportDependency: { value: 90, year: 2024, source: 'IEA' } }));
     const missingDep = await scoreEnergy('XX', makeReader(null));
     const lowDep = await scoreEnergy('XX', makeReader({ energyImportDependency: { value: 5, year: 2024, source: 'IEA' } }));
+    const zeroDep = await scoreEnergy('XX', makeReader({ energyImportDependency: { value: 0, year: 2024, source: 'IEA' } }));
     const exporterDep = await scoreEnergy('XX', makeReader({ energyImportDependency: { value: -30, year: 2024, source: 'IEA' } }));
     assert.ok(missingDep.score <= lowDep.score,
       `Missing dependency (score=${missingDep.score}) should score <= low dep (score=${lowDep.score}) since default exposure=0.5 is moderate`);
     assert.ok(missingDep.score >= highDep.score,
       `Missing dependency (score=${missingDep.score}) should score >= high dep (score=${highDep.score})`);
-    assert.ok(exporterDep.score >= lowDep.score,
-      `Net exporter (score=${exporterDep.score}) should score >= low importer (score=${lowDep.score}) since negative dependency clamps to 0 exposure`);
+    // The clamp at _dimension-scorers.ts:847 floors negative dependency to 0 exposure.
+    // A net exporter (-30) must produce the same score as dependency=0, proving the clamp works.
+    assert.equal(exporterDep.score, zeroDep.score,
+      `Net exporter (score=${exporterDep.score}) must equal zero-dependency (score=${zeroDep.score}) — negative values should clamp to 0 exposure`);
   });
 
   it('scoreLogisticsSupply: static bundle outage (null) excludes exposure-weighted stress metrics', async () => {
