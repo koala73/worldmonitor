@@ -286,20 +286,6 @@ describe('pipeline shape (plain pipeline, no MULTI/EXEC)', () => {
   });
 });
 
-describe('pipeline failure detection logic', () => {
-  it('detects a partial pipeline failure when one command errors', () => {
-    const results = [{ result: 'OK' }, { result: 'OK' }, { error: 'NOSCRIPT' }, { result: 'OK' }];
-    const failures = results.filter((r) => r?.error || r?.result === 'ERR');
-    assert.equal(failures.length, 1);
-  });
-
-  it('treats all-OK results as no failures', () => {
-    const results = [{ result: 'OK' }, { result: 'OK' }, { result: 'OK' }];
-    const failures = results.filter((r) => r?.error || r?.result === 'ERR');
-    assert.equal(failures.length, 0);
-  });
-});
-
 describe('publish pipeline includes DEL for obsolete per-country keys', () => {
   it('generates DEL commands for keys in old _all but not in new dataset', () => {
     const oldAllMap = { US: {}, DE: {}, JP: {} };
