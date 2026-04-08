@@ -86,14 +86,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     cadence: 'annual',
   },
 
-  // ── tradeSanctions (3 sub-metrics) ────────────────────────────────────────
+  // ── tradeSanctions (4 sub-metrics) ────────────────────────────────────────
   {
     id: 'sanctionCount',
     dimension: 'tradeSanctions',
     description: 'OFAC sanctions entity count per country; piecewise normalization (0=100, 200+=near 0)',
     direction: 'lowerBetter',
     goalposts: { worst: 200, best: 0 },
-    weight: 0.55,
+    weight: 0.45,
     sourceKey: 'sanctions:country-counts:v1',
     scope: 'global',
     cadence: 'daily',
@@ -104,7 +104,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'WTO trade restrictions count (IN_FORCE weighted 3x); curated reporter set',
     direction: 'lowerBetter',
     goalposts: { worst: 30, best: 0 },
-    weight: 0.25,
+    weight: 0.15,
     sourceKey: 'trade:restrictions:v1:tariff-overview:50',
     scope: 'curated',
     cadence: 'weekly',
@@ -116,11 +116,22 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'WTO trade barrier notifications count; curated reporter set',
     direction: 'lowerBetter',
     goalposts: { worst: 40, best: 0 },
-    weight: 0.2,
+    weight: 0.15,
     sourceKey: 'trade:barriers:v1:tariff-gap:50',
     scope: 'curated',
     cadence: 'weekly',
     imputation: { type: 'conservative', score: 60, certainty: 0.4 },
+  },
+  {
+    id: 'appliedTariffRate',
+    dimension: 'tradeSanctions',
+    description: 'World Bank applied tariff rate, weighted mean, all products (TM.TAX.MRCH.WM.AR.ZS); 0%=free trade, 20%+=heavily restricted',
+    direction: 'lowerBetter',
+    goalposts: { worst: 20, best: 0 },
+    weight: 0.25,
+    sourceKey: 'resilience:static',
+    scope: 'global',
+    cadence: 'annual',
   },
 
   // ── cyberDigital (3 sub-metrics) ──────────────────────────────────────────
