@@ -89,6 +89,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 2 },
   'defense-patents': { name: 'R&D Signal', enabled: true, priority: 2 },
   'weapons-arms': { name: 'Weapons & Arms', enabled: true, priority: 2 },
+  'india-defence-feed': { name: 'India Defence Feed', enabled: true, priority: 2 },
   'radiation-watch': { name: 'Radiation Watch', enabled: true, priority: 2 },
   'thermal-escalation': { name: 'Thermal Escalation', enabled: true, priority: 2 },
   'oref-sirens': { name: 'Israel Sirens', enabled: true, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
