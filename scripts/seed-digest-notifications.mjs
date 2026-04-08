@@ -371,8 +371,8 @@ function formatDigestHtml(stories, nowMs) {
   <div style="padding: 40px 32px 0;">
     <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 32px;">
       <tr>
-        <td style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid #222; text-align: center; vertical-align: middle; background: #111;">
-          <span style="font-size: 20px; color: #4ade80;">&#9678;</span>
+        <td style="width: 40px; height: 40px; vertical-align: middle;">
+          <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="40" height="40" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
         </td>
         <td style="padding-left: 12px;">
           <div style="font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.5px;">WORLD MONITOR</div>
