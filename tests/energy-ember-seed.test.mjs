@@ -282,6 +282,129 @@ describe('rollback command generation on partial pipeline failure', () => {
   });
 });
 
+describe('publish pipeline includes DEL for obsolete per-country keys', () => {
+  it('generates DEL commands for keys in old _all but not in new dataset', () => {
+    const oldAllMap = { US: {}, DE: {}, JP: {} };
+    const newCountryKeys = new Set(['US', 'DE']); // JP removed
+    const oldIso2Set = new Set(Object.keys(oldAllMap));
+
+    const delCmds = [];
+    for (const iso2 of oldIso2Set) {
+      if (!newCountryKeys.has(iso2)) {
+        delCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+
+    assert.equal(delCmds.length, 1, 'should DEL 1 obsolete key');
+    assert.equal(delCmds[0][1], `${EMBER_KEY_PREFIX}JP`);
+  });
+
+  it('generates no DEL when new dataset is a superset of old', () => {
+    const oldAllMap = { US: {}, DE: {} };
+    const newCountryKeys = new Set(['US', 'DE', 'FR']);
+    const oldIso2Set = new Set(Object.keys(oldAllMap));
+
+    const delCmds = [];
+    for (const iso2 of oldIso2Set) {
+      if (!newCountryKeys.has(iso2)) {
+        delCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+
+    assert.equal(delCmds.length, 0, 'no DELs needed when new is superset');
+  });
+
+  it('handles empty old _all (first run)', () => {
+    const oldAllMap = null;
+    const newCountryKeys = new Set(['US', 'DE']);
+    const oldIso2Set = oldAllMap && typeof oldAllMap === 'object' ? new Set(Object.keys(oldAllMap)) : new Set();
+
+    const delCmds = [];
+    for (const iso2 of oldIso2Set) {
+      if (!newCountryKeys.has(iso2)) {
+        delCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+
+    assert.equal(delCmds.length, 0, 'no DELs on first run');
+  });
+});
+
+describe('rollback DELs new-only keys not in old snapshot', () => {
+  it('generates DEL for keys in new dataset but not in old stash', () => {
+    const oldAllMap = { US: {}, DE: {} };
+    const newCountryKeys = new Set(['US', 'DE', 'XX']);
+
+    const delCmds = [];
+    for (const iso2 of newCountryKeys) {
+      if (!oldAllMap[iso2]) {
+        delCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+
+    assert.equal(delCmds.length, 1, 'should DEL 1 new-only key');
+    assert.equal(delCmds[0][1], `${EMBER_KEY_PREFIX}XX`);
+  });
+
+  it('generates no DEL when new dataset is subset of old stash', () => {
+    const oldAllMap = { US: {}, DE: {}, FR: {} };
+    const newCountryKeys = new Set(['US', 'DE']);
+
+    const delCmds = [];
+    for (const iso2 of newCountryKeys) {
+      if (!oldAllMap[iso2]) {
+        delCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+
+    assert.equal(delCmds.length, 0, 'no DELs when new is subset of old');
+  });
+});
+
+describe('preservePreviousSnapshot cleanup of new-only keys', () => {
+  it('includes DEL commands for new-only keys when restoring from stash', () => {
+    const stashedAllMap = { US: {}, DE: {} };
+    const newCountryKeys = new Set(['US', 'DE', 'XX', 'YY']);
+
+    const restoreCmds = [];
+    // Simulate restore SET commands
+    for (const [iso2, val] of Object.entries(stashedAllMap)) {
+      restoreCmds.push(['SET', `${EMBER_KEY_PREFIX}${iso2}`, JSON.stringify(val), 'EX', EMBER_TTL_SECONDS]);
+    }
+    restoreCmds.push(['SET', EMBER_ALL_KEY, JSON.stringify(stashedAllMap), 'EX', EMBER_TTL_SECONDS]);
+
+    // Add DEL for new-only keys
+    const oldIso2Set = new Set(Object.keys(stashedAllMap));
+    for (const iso2 of newCountryKeys) {
+      if (!oldIso2Set.has(iso2)) {
+        restoreCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+
+    const delCmds = restoreCmds.filter(c => c[0] === 'DEL');
+    assert.equal(delCmds.length, 2, 'should DEL XX and YY');
+    const delKeys = delCmds.map(c => c[1]).sort();
+    assert.deepEqual(delKeys, [`${EMBER_KEY_PREFIX}XX`, `${EMBER_KEY_PREFIX}YY`]);
+  });
+
+  it('skips DEL when newCountryKeys is null (error before parse)', () => {
+    const stashedAllMap = { US: {} };
+    const newCountryKeys = null;
+
+    const restoreCmds = [];
+    if (newCountryKeys) {
+      const oldIso2Set = new Set(Object.keys(stashedAllMap));
+      for (const iso2 of newCountryKeys) {
+        if (!oldIso2Set.has(iso2)) {
+          restoreCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+        }
+      }
+    }
+
+    assert.equal(restoreCmds.length, 0, 'no DELs when newCountryKeys is null');
+  });
+});
+
 describe('health cascade: seedError priority over hasData', () => {
   function resolveStatus({ seedError, hasData, seedStale, size }) {
     let status;

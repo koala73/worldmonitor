@@ -224,7 +224,7 @@ async function redisGet(key) {
   return data.result ? JSON.parse(data.result) : null;
 }
 
-async function preservePreviousSnapshot(errorMsg, stashedAllMap = null) {
+async function preservePreviousSnapshot(errorMsg, stashedAllMap = null, newCountryKeys = null) {
   console.error('[EmberElectricity] Preserving previous snapshot:', errorMsg);
 
   const existingMeta = await redisGet(EMBER_META_KEY).catch(() => null);
@@ -234,6 +234,14 @@ async function preservePreviousSnapshot(errorMsg, stashedAllMap = null) {
       'SET', `${EMBER_KEY_PREFIX}${iso2}`, JSON.stringify(val), 'EX', EMBER_TTL_SECONDS,
     ]);
     restoreCmds.push(['SET', EMBER_ALL_KEY, JSON.stringify(stashedAllMap), 'EX', EMBER_TTL_SECONDS]);
+    if (newCountryKeys) {
+      const oldIso2Set = new Set(Object.keys(stashedAllMap));
+      for (const iso2 of newCountryKeys) {
+        if (!oldIso2Set.has(iso2)) {
+          restoreCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+        }
+      }
+    }
     await redisPipeline(restoreCmds).catch((e) =>
       console.error('[EmberElectricity] Snapshot restore failed:', e),
     );
@@ -274,6 +282,7 @@ export async function main() {
   }
 
   let oldAllMap = null;
+  let newCountryKeys = null;
 
   try {
     const csvText = await withRetry(
@@ -308,6 +317,8 @@ export async function main() {
       }
     }
 
+    newCountryKeys = new Set(countries.keys());
+
     const allCountriesMap = buildAllCountriesMap(countries);
 
     const metaPayload = {
@@ -338,6 +349,13 @@ export async function main() {
       EMBER_TTL_SECONDS,
     ]);
 
+    const oldIso2Set = oldAllMap && typeof oldAllMap === 'object' ? new Set(Object.keys(oldAllMap)) : new Set();
+    for (const iso2 of oldIso2Set) {
+      if (!newCountryKeys.has(iso2)) {
+        dataCommands.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+      }
+    }
+
     const dataResults = await redisPipeline(dataCommands);
     const dataFailures = dataResults.filter((r) => r?.error || r?.result === 'ERR');
     if (dataFailures.length > 0) {
@@ -346,6 +364,11 @@ export async function main() {
           'SET', `${EMBER_KEY_PREFIX}${iso2}`, JSON.stringify(val), 'EX', EMBER_TTL_SECONDS,
         ]);
         rollbackCmds.push(['SET', EMBER_ALL_KEY, JSON.stringify(oldAllMap), 'EX', EMBER_TTL_SECONDS]);
+        for (const iso2 of newCountryKeys) {
+          if (!oldAllMap[iso2]) {
+            rollbackCmds.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
+          }
+        }
         await redisPipeline(rollbackCmds).catch((e) =>
           console.error('[EmberElectricity] Rollback pipeline failed:', e),
         );
@@ -361,7 +384,7 @@ export async function main() {
     logSeedResult('energy:ember', countries.size, Date.now() - startedAt);
     console.log(`[EmberElectricity] Seeded ${countries.size} countries`);
   } catch (err) {
-    await preservePreviousSnapshot(String(err), oldAllMap).catch((e) =>
+    await preservePreviousSnapshot(String(err), oldAllMap, newCountryKeys).catch((e) =>
       console.error('[EmberElectricity] Failed to preserve snapshot:', e),
     );
     throw err;
