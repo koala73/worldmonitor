@@ -613,7 +613,7 @@ describe('resilience dimension scorers', () => {
           measlesCoverage: { value: 90, year: 2024 },
           hospitalBeds: { value: 3, year: 2024 },
           physiciansPer1k: { value: physiciansPer1k, year: 2024 },
-          healthExpPerCapitaPpp: { value: 2000, year: 2024 },
+          healthExpPerCapitaUsd: { value: 2000, year: 2024 },
         } },
       };
       return null;
@@ -632,7 +632,7 @@ describe('resilience dimension scorers', () => {
           measlesCoverage: { value: 90, year: 2024 },
           hospitalBeds: { value: 3, year: 2024 },
           physiciansPer1k: { value: 2.0, year: 2024 },
-          healthExpPerCapitaPpp: { value: healthExp, year: 2024 },
+          healthExpPerCapitaUsd: { value: healthExp, year: 2024 },
         } },
       };
       return null;

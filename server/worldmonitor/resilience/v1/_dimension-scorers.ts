@@ -955,14 +955,14 @@ export async function scoreHealthPublicService(
   const uhcIndex = getStaticIndicatorValue(staticRecord, 'who', 'uhcIndex');
   const measlesCoverage = getStaticIndicatorValue(staticRecord, 'who', 'measlesCoverage');
   const physiciansPer1k = getStaticIndicatorValue(staticRecord, 'who', 'physiciansPer1k');
-  const healthExpPerCapitaPpp = getStaticIndicatorValue(staticRecord, 'who', 'healthExpPerCapitaPpp');
+  const healthExpPerCapitaUsd = getStaticIndicatorValue(staticRecord, 'who', 'healthExpPerCapitaUsd');
 
   return weightedBlend([
     { score: uhcIndex == null ? null : normalizeHigherBetter(uhcIndex, 40, 90), weight: 0.35 },
     { score: measlesCoverage == null ? null : normalizeHigherBetter(measlesCoverage, 50, 99), weight: 0.25 },
     { score: hospitalBeds == null ? null : normalizeHigherBetter(hospitalBeds, 0, 8), weight: 0.10 },
     { score: physiciansPer1k == null ? null : normalizeHigherBetter(physiciansPer1k, 0, 5), weight: 0.15 },
-    { score: healthExpPerCapitaPpp == null ? null : normalizeHigherBetter(healthExpPerCapitaPpp, 50, 5000), weight: 0.15 },
+    { score: healthExpPerCapitaUsd == null ? null : normalizeHigherBetter(healthExpPerCapitaUsd, 20, 3000), weight: 0.15 },
   ]);
 }
 
