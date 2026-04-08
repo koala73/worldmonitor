@@ -129,7 +129,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
     weight: 0.25,
-    sourceKey: 'resilience:static',
+    sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
   },
