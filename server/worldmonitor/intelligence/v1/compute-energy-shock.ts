@@ -168,7 +168,7 @@ export async function computeEnergyShockScenario(
   const jodiOilCoverage = jodiOil != null;
   const comtradeCoverage = comtradeHasData;
   const ieaStocksCoverage = ieaStocks != null && ieaStocks.anomaly !== true
-    && (ieaStocks.netExporter === true || (Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
+    && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && Number.isFinite(ieaStocks.daysOfCover) && ieaStocks.daysOfCover >= 0));
   const portwatchCoverage = liveFlowRatio !== null;
 
   const coverageLevel = deriveCoverageLevel(jodiOilCoverage, comtradeCoverage, ieaStocksCoverage, degraded);
