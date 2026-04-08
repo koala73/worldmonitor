@@ -28,20 +28,6 @@ loadEnvFile(import.meta.url);
 // Source of truth: server/worldmonitor/resilience/v1/_shared.ts
 const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v5:';
 
-const BASELINE_DIMENSIONS = new Set([
-  'macroFiscal',
-  'governanceInstitutional',
-  'socialCohesion',
-  'infrastructure',
-  'healthPublicService',
-]);
-
-const MIXED_DIMENSIONS = new Set([
-  'logisticsSupply',
-  'energy',
-  'foodWater',
-]);
-
 const MIN_SCORED_COUNTRIES = 5;
 
 let _scoreAllDimensions = null;
@@ -142,19 +128,9 @@ async function redisPipeline(url, token, commands) {
   return resp.json();
 }
 
-// Production formula (server/worldmonitor/resilience/v1/_shared.ts):
-// baseline dimensions + mixed dimensions, all at full weight via coverageWeightedMean
 function computeBaselineScore(scoreResponse) {
-  const dimensions = scoreResponse?.domains?.flatMap((d) => d.dimensions) ?? [];
-  if (dimensions.length === 0) return null;
-
-  const baselineDims = dimensions.filter((d) => {
-    return BASELINE_DIMENSIONS.has(d.id) || MIXED_DIMENSIONS.has(d.id);
-  });
-
-  const totalCov = baselineDims.reduce((s, d) => s + d.coverage, 0);
-  if (totalCov === 0) return null;
-  return baselineDims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+  const score = scoreResponse?.baselineScore;
+  return (typeof score === 'number' && Number.isFinite(score)) ? score : null;
 }
 
 async function getBaselineScore(url, token, countryCode, scoreData) {
