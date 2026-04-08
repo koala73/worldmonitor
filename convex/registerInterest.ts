@@ -105,11 +105,17 @@ export const register = mutation({
       referralCount: 0,
     });
 
+    const suppressed = await ctx.db
+      .query("emailSuppressions")
+      .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", normalizedEmail))
+      .first();
+
     return {
       status: "registered" as const,
       referralCode,
       referralCount: 0,
       position,
+      emailSuppressed: !!suppressed,
     };
   },
 });

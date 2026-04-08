@@ -1,4 +1,4 @@
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
 export const suppress = internalMutation({
@@ -26,7 +26,7 @@ export const suppress = internalMutation({
   },
 });
 
-export const isEmailSuppressed = query({
+export const isEmailSuppressed = internalQuery({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const normalizedEmail = args.email.trim().toLowerCase();

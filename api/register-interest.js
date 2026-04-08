@@ -257,15 +257,7 @@ export default async function handler(req) {
     // Send confirmation email for new registrations (awaited to avoid Edge isolate termination)
     // Skip if email is on the suppression list (previously bounced)
     if (result.status === 'registered' && result.referralCode) {
-      let suppressed = false;
-      try {
-        suppressed = await client.query('emailSuppressions:isEmailSuppressed', {
-          email: email.trim().toLowerCase(),
-        });
-      } catch (e) {
-        console.warn('[register-interest] Suppression check failed, proceeding with send:', e.message);
-      }
-      if (!suppressed) {
+      if (!result.emailSuppressed) {
         await sendConfirmationEmail(email, result.referralCode);
       } else {
         console.log(`[register-interest] Skipped email to suppressed address: ${email}`);
