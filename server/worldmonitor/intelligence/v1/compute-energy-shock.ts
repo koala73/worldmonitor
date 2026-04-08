@@ -235,8 +235,6 @@ export async function computeEnergyShockScenario(
   const crudeImportsKbd = n(jodiOil?.crude?.importsKbd);
   const crudeLossKbd = crudeImportsKbd * gulfCrudeShare * (disruptionPct / 100);
 
-  const ratio = crudeImportsKbd > 0 ? crudeLossKbd / crudeImportsKbd : 0;
-
   const productDefs: Array<{ name: string; demand: number }> = [
     { name: 'Gasoline', demand: n(jodiOil?.gasoline?.demandKbd) },
     { name: 'Diesel', demand: n(jodiOil?.diesel?.demandKbd) },
@@ -248,7 +246,7 @@ export async function computeEnergyShockScenario(
     .filter((p) => p.demand > 0)
     .map((p) => {
       const yieldFactor = REFINERY_YIELD[p.name] ?? 0.20;
-      const outputLossKbd = p.demand * ratio * yieldFactor;
+      const outputLossKbd = crudeLossKbd * yieldFactor;
       const deficitPct = clamp((outputLossKbd / p.demand) * 100, 0, 100);
       return {
         product: p.name,

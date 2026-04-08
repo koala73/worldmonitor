@@ -103,11 +103,14 @@ export function buildAssessment(
   if (effectiveCoverDays > 90) {
     return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
   }
-  const dieselDeficit = products.find((p) => p.product === 'Diesel')?.deficitPct ?? 0;
-  const jetDeficit = products.find((p) => p.product === 'Jet fuel')?.deficitPct ?? 0;
-  const worstDeficit = Math.max(dieselDeficit, jetDeficit);
+  const worst = products.reduce<{ product: string; deficitPct: number }>(
+    (best, p) => (p.deficitPct > best.deficitPct ? p : best),
+    { product: '', deficitPct: 0 },
+  );
+  const worstDeficit = worst.deficitPct;
+  const worstProduct = worst.product.toLowerCase();
   const proxyNote = comtradeCoverage === false ? '. Gulf share proxied at 40%' : '';
-  return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}${proxyNote}${degradedNote}.`;
+  return `${code} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}${proxyNote}${degradedNote}.`;
 }
 
 export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {

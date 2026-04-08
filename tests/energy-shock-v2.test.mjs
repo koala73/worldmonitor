@@ -956,25 +956,24 @@ describe('REFINERY_YIELD coefficients', () => {
 // per-product deficit divergence with named yields
 // ---------------------------------------------------------------------------
 
-describe('per-product deficit divergence with named yields', () => {
-  it('gasoline deficit differs from diesel deficit for same demand', () => {
-    const demand = 100;
-    const ratio = 0.5;
-    const gasolineLoss = demand * ratio * REFINERY_YIELD['Gasoline'];
-    const dieselLoss = demand * ratio * REFINERY_YIELD['Diesel'];
-    assert.notEqual(gasolineLoss, dieselLoss, 'different yields should produce different losses');
-    assert.ok(gasolineLoss > dieselLoss, 'gasoline should have higher loss (higher yield)');
+describe('per-product deficit with correct yield formula', () => {
+  it('outputLossKbd = crudeLossKbd * yieldFactor (not demand * ratio * yield)', () => {
+    const crudeLossKbd = 100;
+    const gasolineLoss = crudeLossKbd * REFINERY_YIELD['Gasoline']; // 100 * 0.44 = 44
+    const dieselLoss = crudeLossKbd * REFINERY_YIELD['Diesel'];     // 100 * 0.30 = 30
+    assert.equal(gasolineLoss, 44);
+    assert.equal(dieselLoss, 30);
   });
 
-  it('LPG has lowest deficit for same demand and ratio', () => {
-    const demand = 100;
-    const ratio = 0.5;
-    const losses = Object.entries(REFINERY_YIELD).map(([name, y]) => ({
-      name,
-      loss: demand * ratio * y,
-    }));
-    const lpg = losses.find(l => l.name === 'LPG');
-    assert.ok(losses.every(l => l.name === 'LPG' || l.loss >= lpg.loss), 'LPG should have lowest loss');
+  it('deficit depends on demand, not on yield alone', () => {
+    const crudeLossKbd = 100;
+    const gasolineDemand = 500;
+    const jetDemand = 20;
+    const gasolineLoss = crudeLossKbd * REFINERY_YIELD['Gasoline']; // 44
+    const jetLoss = crudeLossKbd * REFINERY_YIELD['Jet fuel'];       // 10
+    const gasolineDeficit = (gasolineLoss / gasolineDemand) * 100;   // 8.8%
+    const jetDeficit = (jetLoss / jetDemand) * 100;                  // 50%
+    assert.ok(jetDeficit > gasolineDeficit, 'low-demand product has higher deficit even with lower yield');
   });
 });
 
@@ -989,5 +988,31 @@ describe('REFINERY_YIELD_BASIS string', () => {
     assert.ok(REFINERY_YIELD_BASIS.includes('jet 10%'));
     assert.ok(REFINERY_YIELD_BASIS.includes('LPG 5%'));
     assert.ok(REFINERY_YIELD_BASIS.includes('EIA'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAssessment picks actual worst product
+// ---------------------------------------------------------------------------
+
+describe('buildAssessment picks actual worst product', () => {
+  it('names gasoline when it has highest deficit', () => {
+    const products = [
+      { product: 'Gasoline', deficitPct: 25.0 },
+      { product: 'Diesel', deficitPct: 15.0 },
+      { product: 'Jet fuel', deficitPct: 10.0 },
+    ];
+    const msg = buildAssessment('US', 'hormuz', true, 0.4, 60, 30, 50, products, 'full', false, true, true);
+    assert.ok(msg.includes('25.0% gasoline deficit'), `expected gasoline deficit in: ${msg}`);
+  });
+
+  it('names jet fuel when it has highest deficit', () => {
+    const products = [
+      { product: 'Gasoline', deficitPct: 5.0 },
+      { product: 'Diesel', deficitPct: 8.0 },
+      { product: 'Jet fuel', deficitPct: 40.0 },
+    ];
+    const msg = buildAssessment('JP', 'malacca', true, 0.5, 60, 30, 50, products, 'full', false, true, true);
+    assert.ok(msg.includes('40.0% jet fuel deficit'), `expected jet fuel deficit in: ${msg}`);
   });
 });
