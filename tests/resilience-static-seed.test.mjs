@@ -24,6 +24,7 @@ import {
   recoverFailedDatasets,
   resolveIso2,
   shouldSkipSeedYear,
+  transformWhoPhysicianDensity,
 } from '../scripts/seed-resilience-static.mjs';
 
 // Helpers for inline CSV construction
@@ -210,6 +211,57 @@ describe('resilience static seed CSV parsers', () => {
       // If this keyword changes the scorer breaks silently. Pin it here.
       const result = buildAquastatWbMap(new Map([['DE', { value: 10, year: 2022 }]]));
       assert.ok(result.get('DE')?.indicator?.includes('stress'), 'indicator must include "stress" to route correctly in scoreAquastatValue()');
+    });
+  });
+
+  describe('transformWhoPhysicianDensity', () => {
+    it('converts HWF_0001 from per-10k to per-1k and renames the field', () => {
+      const merged = new Map([
+        ['NO', {
+          source: 'who-gho',
+          indicators: {
+            physiciansPer10k: { indicator: 'HWF_0001', value: 25.0, year: 2022 },
+            uhcIndex: { indicator: 'UHC_INDEX_REPORTED', value: 81, year: 2021 },
+          },
+        }],
+        ['YE', {
+          source: 'who-gho',
+          indicators: {
+            physiciansPer10k: { indicator: 'HWF_0001', value: 1.0, year: 2020 },
+          },
+        }],
+      ]);
+
+      transformWhoPhysicianDensity(merged);
+
+      const no = merged.get('NO');
+      assert.ok(no.indicators.physiciansPer1k != null, 'physiciansPer1k should be created');
+      assert.equal(no.indicators.physiciansPer1k.value, 2.5, '25.0 / 10 = 2.5');
+      assert.equal(no.indicators.physiciansPer1k.indicator, 'HWF_0001');
+      assert.equal(no.indicators.physiciansPer1k.year, 2022);
+      assert.equal(no.indicators.physiciansPer10k, undefined, 'physiciansPer10k should be deleted');
+      assert.equal(no.indicators.uhcIndex.value, 81, 'other indicators should be untouched');
+
+      const ye = merged.get('YE');
+      assert.equal(ye.indicators.physiciansPer1k.value, 0.1, '1.0 / 10 = 0.1');
+    });
+
+    it('handles records without physiciansPer10k gracefully', () => {
+      const merged = new Map([
+        ['US', {
+          source: 'who-gho',
+          indicators: {
+            healthExpPerCapitaUsd: { indicator: 'GHED_CHE_pc_US_SHA2011', value: 12555, year: 2021 },
+          },
+        }],
+      ]);
+
+      transformWhoPhysicianDensity(merged);
+
+      const us = merged.get('US');
+      assert.equal(us.indicators.physiciansPer1k, undefined, 'no physiciansPer1k when source data is absent');
+      assert.equal(us.indicators.healthExpPerCapitaUsd.value, 12555, 'healthExpPerCapitaUsd should be untouched');
+      assert.equal(us.indicators.healthExpPerCapitaUsd.indicator, 'GHED_CHE_pc_US_SHA2011');
     });
   });
 

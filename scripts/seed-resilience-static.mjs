@@ -262,7 +262,7 @@ async function fetchWhoIndicatorRows(indicatorCode) {
   const params = new URLSearchParams({
     '$select': 'SpatialDim,TimeDim,NumericValue,Value',
     '$filter': "SpatialDimType eq 'COUNTRY'",
-    '$top': '1000',
+    '$top': '10000',
   });
   let nextUrl = `${WHO_BASE}/${encodeURIComponent(indicatorCode)}?${params}`;
   let pageCount = 0;
@@ -330,6 +330,12 @@ export async function fetchWhoDataset() {
     throw new Error('WHO: all indicator fetches failed');
   }
 
+  transformWhoPhysicianDensity(merged);
+
+  return merged;
+}
+
+export function transformWhoPhysicianDensity(merged) {
   for (const [, record] of merged) {
     const per10k = record.indicators.physiciansPer10k;
     if (per10k && per10k.value != null) {
@@ -341,8 +347,6 @@ export async function fetchWhoDataset() {
     }
     delete record.indicators.physiciansPer10k;
   }
-
-  return merged;
 }
 
 function parseDecimal(value) {
