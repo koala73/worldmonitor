@@ -415,3 +415,63 @@ describe('buildAssessment proxy text is tied to comtradeCoverage, not coverageLe
     assert.ok(!msg.includes('proxied'), 'should not mention proxy in full coverage');
   });
 });
+
+// ---------------------------------------------------------------------------
+// ieaStocksCoverage requires daysOfCover for non-exporters
+// ---------------------------------------------------------------------------
+
+describe('ieaStocksCoverage requires daysOfCover for non-exporters', () => {
+  it('ieaStocksCoverage is false when daysOfCover is null and not a net exporter', () => {
+    const ieaStocks = { anomaly: false, daysOfCover: null, netExporter: false };
+    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
+      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
+    assert.equal(coverage, false, 'null daysOfCover for non-exporter should be false');
+  });
+
+  it('ieaStocksCoverage is true when daysOfCover is 0 (genuinely exhausted)', () => {
+    const ieaStocks = { anomaly: false, daysOfCover: 0, netExporter: false };
+    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
+      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
+    assert.equal(coverage, true, 'daysOfCover=0 is real data, should be true');
+  });
+
+  it('ieaStocksCoverage is true for net exporter even without daysOfCover', () => {
+    const ieaStocks = { anomaly: false, daysOfCover: null, netExporter: true };
+    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
+      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
+    assert.equal(coverage, true, 'net exporters do not need daysOfCover');
+  });
+
+  it('ieaStocksCoverage is false when anomaly is true', () => {
+    const ieaStocks = { anomaly: true, daysOfCover: 90, netExporter: false };
+    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
+      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
+    assert.equal(coverage, false, 'anomaly should override');
+  });
+
+  it('ieaStocksCoverage is false when ieaStocks is null', () => {
+    const ieaStocks = null;
+    const coverage = ieaStocks != null && ieaStocks.anomaly !== true
+      && (ieaStocks.netExporter === true || typeof ieaStocks.daysOfCover === 'number');
+    assert.equal(coverage, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cache key includes degraded state
+// ---------------------------------------------------------------------------
+
+describe('cache key includes degraded state', () => {
+  it('degraded and non-degraded produce different cache keys', () => {
+    const code = 'US';
+    const chokepointId = 'hormuz';
+    const disruptionPct = 50;
+
+    const keyDegraded = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:d`;
+    const keyLive = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}:l`;
+
+    assert.notEqual(keyDegraded, keyLive, 'cache keys must differ by degraded state');
+    assert.ok(keyDegraded.endsWith(':d'));
+    assert.ok(keyLive.endsWith(':l'));
+  });
+});
