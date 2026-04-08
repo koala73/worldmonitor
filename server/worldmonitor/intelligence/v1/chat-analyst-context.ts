@@ -49,6 +49,7 @@ export interface AnalystContext {
   productSupply?: string;
   gasFlows?: string;
   oilStocksCover?: string;
+  electricityMix?: string;
 }
 
 function safeStr(v: unknown): string {
@@ -428,7 +429,13 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
       const pipeImports = typeof gas.pipeImportsTj === 'number' ? gas.pipeImportsTj as number : null;
       const lngImports = typeof gas.lngImportsTj === 'number' ? gas.lngImportsTj as number : null;
       const totalImports = (pipeImports ?? 0) + (lngImports ?? 0);
-      if (!totalImports) return undefined; // no imports to report; avoid mislabeling demand as imports
+      if (!totalImports) {
+        const totalDemand = typeof gas.totalDemandTj === 'number' ? Math.round((gas.totalDemandTj as number) / 1000) : null;
+        if (totalDemand != null && totalDemand > 0) {
+          return `Gas: domestic/pipeline supply covers demand (${totalDemand} PJ total demand, no seaborne LNG imports)`;
+        }
+        return undefined;
+      }
       const totalPj = Math.round(totalImports / 1000);
       const lngShare = typeof gas.lngShareOfImports === 'number' ? Math.round((gas.lngShareOfImports as number) * 100) : null;
       const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
@@ -440,7 +447,13 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
     const totalTj = typeof d.totalImportsTj === 'number' ? d.totalImportsTj as number : null;
-    if (!totalTj) return undefined;
+    if (!totalTj) {
+      const demandTj = typeof d.totalDemandTj === 'number' ? d.totalDemandTj as number : null;
+      if (demandTj != null && demandTj > 0) {
+        return `Gas: domestic/pipeline supply covers demand (${Math.round(demandTj / 1000)} PJ total demand, no seaborne LNG imports)`;
+      }
+      return undefined;
+    }
     const totalPj = Math.round(totalTj / 1000);
     const lngShare = typeof d.lngShareOfImports === 'number' ? Math.round((d.lngShareOfImports as number) * 100) : null;
     const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
@@ -457,7 +470,13 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
     if (spine != null && typeof spine === 'object') {
       const cov = spine.coverage as Record<string, unknown> | undefined;
       const oil = spine.oil as Record<string, unknown> | undefined;
-      if (oil?.netExporter === true) return 'IEA oil stocks: net exporter';
+      if (oil?.netExporter === true) {
+        const crudeImports = typeof oil.crudeImportsKbd === 'number' ? Math.round(oil.crudeImportsKbd as number) : null;
+        const importNote = crudeImports != null && crudeImports > 0
+          ? ` (still imports ${crudeImports} kbd crude for refinery feedstock)`
+          : '';
+        return `IEA oil stocks: net oil exporter${importNote}`;
+      }
       if (cov?.hasIeaStocks && typeof oil?.daysOfCover === 'number') {
         const days = oil.daysOfCover as number;
         return `IEA oil stocks: ${days} days of cover`;
@@ -470,12 +489,55 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
     const data = await getCachedJson(`energy:iea-oil-stocks:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
-    if (d.netExporter === true) return 'IEA oil stocks: net exporter';
+    if (d.netExporter === true) {
+      return 'IEA oil stocks: net oil exporter';
+    }
     const days = typeof d.daysOfCover === 'number' ? d.daysOfCover as number : null;
     if (days == null) return undefined;
     const threshold = typeof d.obligationThreshold === 'number' ? d.obligationThreshold as number : 90;
     const breach = d.belowObligation === true ? ' (below obligation)' : '';
     return `IEA oil stocks: ${days} days of cover (obligation: ${threshold} days)${breach}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function buildElectricityMix(iso2: string): Promise<string | undefined> {
+  try {
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object') {
+      const elec = spine.electricity as Record<string, unknown> | undefined;
+      if (elec && typeof elec.fossilShare === 'number') {
+        const parts: string[] = [];
+        const add = (key: string, label: string) => {
+          const v = elec[key];
+          if (typeof v === 'number' && v > 1) parts.push(`${label} ${Math.round(v as number)}%`);
+        };
+        add('fossilShare', 'fossil');
+        add('renewShare', 'renewable');
+        add('nuclearShare', 'nuclear');
+        add('coalShare', 'coal');
+        add('gasShare', 'gas');
+        if (parts.length === 0) return undefined;
+        const demandTwh = typeof elec.demandTwh === 'number' ? ` (${Math.round(elec.demandTwh as number)} TWh/month)` : '';
+        return `Electricity generation mix: ${parts.join(', ')}${demandTwh}`;
+      }
+    }
+    const ember = await getCachedJson(`energy:ember:v1:${iso2}`, true) as Record<string, unknown> | null;
+    if (!ember || typeof ember.fossilShare !== 'number') return undefined;
+    const parts: string[] = [];
+    const add = (key: string, label: string) => {
+      const v = ember[key];
+      if (typeof v === 'number' && (v as number) > 1) parts.push(`${label} ${Math.round(v as number)}%`);
+    };
+    add('fossilShare', 'fossil');
+    add('renewShare', 'renewable');
+    add('nuclearShare', 'nuclear');
+    add('coalShare', 'coal');
+    add('gasShare', 'gas');
+    if (parts.length === 0) return undefined;
+    const demandTwh = typeof ember.demandTwh === 'number' ? ` (${Math.round(ember.demandTwh as number)} TWh/month)` : '';
+    return `Electricity generation mix: ${parts.join(', ')}${demandTwh}`;
   } catch {
     return undefined;
   }
@@ -682,6 +744,7 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['productSupply', 'JODIOil'],
   ['gasFlows', 'JODIGas'],
   ['oilStocksCover', 'IEAStocks'],
+  ['electricityMix', 'ElecMix'],
 ];
 
 export async function assembleAnalystContext(
@@ -724,6 +787,7 @@ export async function assembleAnalystContext(
   const needsProductSupply = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsGasFlows = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsOilStocksCover = iso2 != null && new Set(['economic', 'all']).has(resolvedDomain);
+  const needsElectricityMix = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
 
   const [
     insightsResult,
@@ -746,6 +810,7 @@ export async function assembleAnalystContext(
     productSupplyResult,
     gasFlowsResult,
     oilStocksCoverResult,
+    electricityMixResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -767,6 +832,7 @@ export async function assembleAnalystContext(
     needsProductSupply ? buildProductSupply(iso2!) : Promise.resolve(undefined),
     needsGasFlows ? buildGasFlows(iso2!) : Promise.resolve(undefined),
     needsOilStocksCover ? buildOilStocksCover(iso2!) : Promise.resolve(undefined),
+    needsElectricityMix ? buildElectricityMix(iso2!) : Promise.resolve(undefined),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
@@ -814,6 +880,7 @@ export async function assembleAnalystContext(
     productSupply: getOptStr(productSupplyResult),
     gasFlows: getOptStr(gasFlowsResult),
     oilStocksCover: getOptStr(oilStocksCoverResult),
+    electricityMix: getOptStr(electricityMixResult),
   };
 
   ctx.activeSources = SOURCE_LABELS
