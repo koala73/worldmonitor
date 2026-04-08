@@ -27,8 +27,8 @@ loadEnvFile(import.meta.url);
 const LOCK_DOMAIN = 'resilience:scores';
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v2:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v2';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v3:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v3';
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
