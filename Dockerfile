@@ -26,6 +26,11 @@ RUN node docker/build-handlers.mjs
 # Skip blog build — blog-site has its own deps not installed here
 RUN npx tsc && npx vite build
 
+# Drop dev dependencies so the copied node_modules below stays small.
+# Runtime only needs packages referenced by raw .js handlers (e.g.
+# api/enrichment/signals.js → @upstash/ratelimit).
+RUN npm prune --omit=dev
+
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine AS final
 
@@ -40,6 +45,13 @@ WORKDIR /app
 # API server
 COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
+
+# Production node_modules — required by raw .js handlers that aren't
+# bundled by build-handlers.mjs (e.g. api/enrichment/signals.js, which
+# imports @upstash/ratelimit / @upstash/redis). Without this the Node
+# sidecar dispatches the route, fails to resolve the import with
+# ERR_MODULE_NOT_FOUND, and returns 502 "missing dependency".
+COPY --from=builder /app/node_modules ./node_modules
 
 # API handler modules (JS originals + compiled TS bundles)
 COPY --from=builder /app/api ./api
