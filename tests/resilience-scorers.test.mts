@@ -79,7 +79,7 @@ describe('resilience scorer contracts', () => {
       'social-governance': 61.75,
       'health-food': 60.5,
     });
-    assert.equal(overallScore, 69.3);
+    assert.equal(overallScore, 69.23);
   });
 });
 
@@ -145,7 +145,21 @@ describe('scoreEnergy storageBuffer metric', () => {
 });
 
 describe('scoreInfrastructure: broadband penetration', () => {
-  it('broadband penetration contributes to score', async () => {
+  it('pins expected numeric score and coverage for US with broadband data', async () => {
+    installRedis(RESILIENCE_FIXTURES);
+    const result = await scoreInfrastructure('US');
+
+    // US fixture: electricityAccess=100, roadsPaved=74, broadband=35, outages=2 MAJOR+1 PARTIAL
+    // normalizeHigherBetter(100, 40, 100) = 100   weight 0.30
+    // normalizeHigherBetter(74,  0, 100)  = 74    weight 0.30
+    // normalizeLowerBetter(5, 0, 20)      = 75    weight 0.25  (penalty = 0*4 + 2*2 + 1 = 5)
+    // normalizeHigherBetter(35, 0, 40)    = 88    weight 0.15
+    // weighted = (100*0.3 + 74*0.3 + 75*0.25 + 88*0.15) / 1.0 = 84.15 → 84
+    assert.equal(result.score, 84, 'pinned infrastructure score for US fixture');
+    assert.equal(result.coverage, 1, 'full coverage when all four metrics present');
+  });
+
+  it('broadband removal lowers score and coverage', async () => {
     installRedis(RESILIENCE_FIXTURES);
     const withBroadband = await scoreInfrastructure('US');
 
@@ -156,7 +170,9 @@ describe('scoreInfrastructure: broadband penetration', () => {
     installRedis(noBroadbandFixtures);
     const withoutBroadband = await scoreInfrastructure('US');
 
-    assert.notEqual(withBroadband.score, withoutBroadband.score, 'broadband should change the infrastructure score');
-    assert.ok(withBroadband.coverage > withoutBroadband.coverage, 'coverage should increase when broadband data is present');
+    assert.equal(withoutBroadband.score, 83, 'pinned infrastructure score without broadband');
+    assert.equal(withoutBroadband.coverage, 0.85, 'coverage drops to 0.85 without broadband (0.15 weight missing)');
+    assert.ok(withBroadband.score > withoutBroadband.score, 'broadband presence increases infrastructure score');
+    assert.ok(withBroadband.coverage > withoutBroadband.coverage, 'broadband presence increases coverage');
   });
 });
