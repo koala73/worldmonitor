@@ -78,13 +78,17 @@ CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null || echo "")
 if [ -z "$CHANGED_FILES" ]; then
   CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
 fi
+if [ -z "$CHANGED_FILES" ]; then
+  echo "WARNING: Could not determine changed files, running full test suite as safety fallback."
+  RUN_ALL=true
+fi
 
 # Determine which test categories to run based on changed files
 RUN_RESILIENCE=false
 RUN_SEED=false
 RUN_SERVER=false
 RUN_FRONTEND=false
-RUN_ALL=false
+${RUN_ALL:=false}
 
 if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
 if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
@@ -95,22 +99,27 @@ if echo "$CHANGED_FILES" | grep -q "^tests/\|package.json\|tsconfig"; then RUN_A
 if [ "$RUN_ALL" = true ]; then
   echo "Running full unit test suite (test files or config changed)..."
   timeout 300 npx tsx --test tests/*.test.mjs tests/*.test.mts || exit 1
-elif [ "$RUN_RESILIENCE" = true ]; then
-  echo "Running resilience tests (resilience files changed)..."
-  timeout 120 npx tsx --test tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
-elif [ "$RUN_SEED" = true ]; then
-  echo "Running seed tests (scripts/ changed)..."
-  SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | while read -r t; do [ -f "$t" ] && echo "$t"; done)
-  if [ -n "$SEED_TESTS" ]; then
-    timeout 120 npx tsx --test $SEED_TESTS || exit 1
-  else
-    echo "  No matching seed tests found, skipping."
-  fi
-elif [ "$RUN_SERVER" = true ]; then
-  echo "Running server handler tests (server/ changed)..."
-  timeout 120 npx tsx --test tests/handlers.test.mts tests/server-handlers.test.mjs 2>/dev/null || true
 else
-  echo "Skipping unit tests (frontend-only changes)."
+  if [ "$RUN_RESILIENCE" = true ]; then
+    echo "Running resilience tests (resilience files changed)..."
+    timeout 120 npx tsx --test tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
+  fi
+  if [ "$RUN_SEED" = true ]; then
+    echo "Running seed tests (scripts/ changed)..."
+    SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | while read -r t; do [ -f "$t" ] && echo "$t"; done)
+    if [ -n "$SEED_TESTS" ]; then
+      timeout 120 npx tsx --test $SEED_TESTS || exit 1
+    else
+      echo "  No matching seed tests found, skipping."
+    fi
+  fi
+  if [ "$RUN_SERVER" = true ]; then
+    echo "Running server handler tests (server/ changed)..."
+    timeout 120 npx tsx --test tests/handlers.test.mts tests/server-handlers.test.mjs || exit 1
+  fi
+  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ]; then
+    echo "Skipping unit tests (frontend-only changes)."
+  fi
 fi
 
 echo "Running edge function tests..."
