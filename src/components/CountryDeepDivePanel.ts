@@ -761,6 +761,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const loading = this.el('div', 'cdp-economic-source', 'Computing\u2026');
       resultArea.append(loading);
       computeBtn.disabled = true;
+      coverageBadge.style.display = 'none';
+      coverageBadge.textContent = '';
 
       const url = toApiUrl(`/api/intelligence/v1/compute-energy-shock?country_code=${encodeURIComponent(code)}&chokepoint_id=${encodeURIComponent(chokepoint)}&disruption_pct=${disruption}`);
       globalThis.fetch(url)
@@ -814,7 +816,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const thead = this.el('thead', '');
       const hr = this.el('tr', '');
       const headers = ['Product', 'Demand', 'Loss', 'Deficit'];
-      if (result.liveFlowRatio && result.liveFlowRatio > 0) headers.push('Flow');
+      if (result.liveFlowRatio != null) headers.push('Flow');
       for (const h of headers) {
         const th = this.el('th', '');
         th.textContent = h;
@@ -834,7 +836,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           `${p.outputLossKbd} kbd`,
           `${p.deficitPct.toFixed(1)}%`,
         ];
-        if (result.liveFlowRatio && result.liveFlowRatio > 0) {
+        if (result.liveFlowRatio != null) {
           cells.push(`${Math.round(result.liveFlowRatio * 100)}%`);
         }
         cells.forEach((val, i) => {

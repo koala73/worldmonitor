@@ -133,7 +133,7 @@ export async function computeEnergyShockScenario(
     };
   }
 
-  const cacheKey = `energy:shock:v1:${code}:${chokepointId}:${disruptionPct}`;
+  const cacheKey = `energy:shock:v2:${code}:${chokepointId}:${disruptionPct}`;
   const cached = await getCachedJson(cacheKey);
   if (cached) return cached as ComputeEnergyShockScenarioResponse;
 
@@ -228,6 +228,7 @@ export async function computeEnergyShockScenario(
     products,
     coverageLevel,
     degraded,
+    ieaStocksCoverage,
   );
 
   const response: ComputeEnergyShockScenarioResponse = {

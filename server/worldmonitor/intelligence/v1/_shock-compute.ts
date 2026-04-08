@@ -71,6 +71,7 @@ export function buildAssessment(
   products: Array<{ product: string; deficitPct: number }>,
   coverageLevel?: 'full' | 'partial' | 'unsupported',
   degraded?: boolean,
+  ieaStocksCoverage?: boolean,
 ): string {
   if (coverageLevel === 'unsupported' || !dataAvailable) {
     return `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
@@ -82,6 +83,7 @@ export function buildAssessment(
     return `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
   }
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
+  const ieaCoverText = ieaStocksCoverage === false ? 'unknown' : `${daysOfCover} days`;
   if (effectiveCoverDays > 90) {
     return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
   }
@@ -89,7 +91,7 @@ export function buildAssessment(
   const jetDeficit = products.find((p) => p.product === 'Jet fuel')?.deficitPct ?? 0;
   const worstDeficit = Math.max(dieselDeficit, jetDeficit);
   if (coverageLevel === 'partial') {
-    return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${daysOfCover} days. Gulf share proxied at 40%${degradedNote}.`;
+    return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}. Gulf share proxied at 40%${degradedNote}.`;
   }
-  return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${daysOfCover} days${degradedNote}.`;
+  return `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}${degradedNote}.`;
 }
