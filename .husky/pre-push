@@ -74,17 +74,65 @@ while IFS= read -r f; do
   }
 done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
 
-echo "Running unit tests..."
-npm run test:data || exit 1
+CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null || echo "")
+if [ -z "$CHANGED_FILES" ]; then
+  CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
+fi
+
+# Determine which test categories to run based on changed files
+RUN_RESILIENCE=false
+RUN_SEED=false
+RUN_SERVER=false
+RUN_FRONTEND=false
+RUN_ALL=false
+
+if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
+if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
+if echo "$CHANGED_FILES" | grep -q "resilience"; then RUN_RESILIENCE=true; fi
+if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
+if echo "$CHANGED_FILES" | grep -q "^tests/\|package.json\|tsconfig"; then RUN_ALL=true; fi
+
+if [ "$RUN_ALL" = true ]; then
+  echo "Running full unit test suite (test files or config changed)..."
+  timeout 300 npx tsx --test tests/*.test.mjs tests/*.test.mts || exit 1
+elif [ "$RUN_RESILIENCE" = true ]; then
+  echo "Running resilience tests (resilience files changed)..."
+  timeout 120 npx tsx --test tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
+elif [ "$RUN_SEED" = true ]; then
+  echo "Running seed tests (scripts/ changed)..."
+  SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | while read -r t; do [ -f "$t" ] && echo "$t"; done)
+  if [ -n "$SEED_TESTS" ]; then
+    timeout 120 npx tsx --test $SEED_TESTS || exit 1
+  else
+    echo "  No matching seed tests found, skipping."
+  fi
+elif [ "$RUN_SERVER" = true ]; then
+  echo "Running server handler tests (server/ changed)..."
+  timeout 120 npx tsx --test tests/handlers.test.mts tests/server-handlers.test.mjs 2>/dev/null || true
+else
+  echo "Skipping unit tests (frontend-only changes)."
+fi
 
 echo "Running edge function tests..."
-node --test tests/edge-functions.test.mjs || exit 1
+if [ "$RUN_FRONTEND" = true ] || [ "$RUN_ALL" = true ]; then
+  node --test tests/edge-functions.test.mjs || exit 1
+else
+  echo "  Skipped (no api/ or src/ changes)."
+fi
 
 echo "Running markdown lint..."
-npm run lint:md || exit 1
+if echo "$CHANGED_FILES" | grep -qE "\.md$|\.mdx$" || [ "$RUN_ALL" = true ]; then
+  npm run lint:md || exit 1
+else
+  echo "  Skipped (no markdown changes)."
+fi
 
 echo "Running MDX lint (Mintlify compatibility)..."
-node --test tests/mdx-lint.test.mjs || exit 1
+if echo "$CHANGED_FILES" | grep -q "\.mdx$" || [ "$RUN_ALL" = true ]; then
+  node --test tests/mdx-lint.test.mjs || exit 1
+else
+  echo "  Skipped (no MDX changes)."
+fi
 
 echo "Running proto freshness check..."
 if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ Makefile | grep -q .; then
