@@ -851,10 +851,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       container.append(table);
     }
 
-    if (result.ieaStocksCoverage && result.effectiveCoverDays > 0) {
+    if (result.ieaStocksCoverage) {
       const coverRow = this.el('div', 'cdp-economic-source');
       coverRow.style.cssText += ';margin-bottom:4px';
-      coverRow.textContent = `IEA cover: ~${result.effectiveCoverDays} days under this scenario`;
+      coverRow.textContent = result.effectiveCoverDays > 0
+        ? `IEA cover: ~${result.effectiveCoverDays} days under this scenario`
+        : 'IEA cover: 0 days (reserves exhausted under this scenario)';
       container.append(coverRow);
     }
 

@@ -211,7 +211,7 @@ export async function computeEnergyShockScenario(
 
   const rawDaysOfCover = n(ieaStocks?.daysOfCover);
   const daysOfCover = ieaStocksCoverage ? rawDaysOfCover : 0;
-  const netExporter = ieaStocks?.netExporter === true;
+  const netExporter = ieaStocksCoverage && ieaStocks?.netExporter === true;
   const effectiveCoverDays = computeEffectiveCoverDays(daysOfCover, netExporter, crudeLossKbd, crudeImportsKbd);
 
   const dataAvailable = jodiOilCoverage;
