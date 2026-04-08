@@ -962,4 +962,28 @@
 .cdp-facts-summary { font-size: 0.82rem; color: var(--cdp-muted); line-height: 1.5; margin-bottom: 8px; }
 .cdp-facts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .cdp-facts-grid .cdp-fact-item { font-size: 0.78rem; }
+
+.cdp-card-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin-left: 0.375rem;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.5;
+  cursor: help;
+  vertical-align: middle;
+  padding: 0;
+}
+
+.cdp-card-help:hover {
+  opacity: 1;
+}
 .cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: 0.65rem; }
