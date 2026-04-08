@@ -28,17 +28,6 @@ const REFERENCE_INDICES = {
 
 const SAMPLE_COUNTRIES = Object.keys(REFERENCE_INDICES.ndgain);
 
-async function redisGetJson(url, token, key) {
-  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  if (!data?.result) return null;
-  try { return JSON.parse(data.result); } catch { return null; }
-}
-
 async function redisPipeline(url, token, commands) {
   const resp = await fetch(`${url}/pipeline`, {
     method: 'POST',
