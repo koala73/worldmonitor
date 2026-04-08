@@ -2755,6 +2755,7 @@ export class DataLoaderManager implements AppModule {
 
       if (shippingData) scPanel.updateShippingRates(shippingData);
       if (chokepointData) scPanel.updateChokepointStatus(chokepointData);
+      if (chokepointData) this.ctx.map?.setChokepointData(chokepointData);
       if (mineralsData) scPanel.updateCriticalMinerals(mineralsData);
       if (stressData) scPanel.updateShippingStress(stressData);
 

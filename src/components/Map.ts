@@ -48,6 +48,7 @@ import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
@@ -3400,6 +3401,10 @@ export class MapComponent {
     if (btn) {
       (btn as HTMLElement).style.display = 'none';
     }
+  }
+
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    this.popup.setChokepointData(data);
   }
 
   public setLayerLoading(layer: keyof MapLayers, loading: boolean): void {

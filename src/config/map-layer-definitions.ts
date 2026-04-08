@@ -53,7 +53,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   cyberThreats:             def('cyberThreats',             '&#128737;', 'cyberThreats',             'Cyber Threats'),
   natural:                  def('natural',                  '&#127755;', 'naturalEvents',            'Natural Events'),
   fires:                    def('fires',                    '&#128293;', 'fires',                    'Fires'),
-  waterways:                def('waterways',                '&#9875;',   'strategicWaterways',       'Strategic Waterways'),
+  waterways:                def('waterways',                '&#9875;',   'strategicWaterways',       'Chokepoints'),
   economic:                 def('economic',                 '&#128176;', 'economicCenters',          'Economic Centers'),
   minerals:                 def('minerals',                 '&#128142;', 'criticalMinerals',         'Critical Minerals'),
   gpsJamming:               def('gpsJamming',               '&#128225;', 'gpsJamming',               'GPS Jamming', ['flat', 'globe'], _desktop ? 'locked' : undefined),

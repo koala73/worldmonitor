@@ -47,6 +47,7 @@ import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/se
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -664,6 +665,11 @@ export class MapContainer {
       this.deckGLMap?.setHappinessScores(data);
     }
     // SVG map does not support choropleth overlay
+  }
+
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    if (this.useDeckGL) { this.deckGLMap?.setChokepointData(data); return; }
+    this.svgMap?.setChokepointData(data);
   }
 
   public setCIIScores(scores: CIIScore[]): void {

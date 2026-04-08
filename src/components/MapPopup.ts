@@ -9,6 +9,8 @@ import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { isMobileDevice, getCSSColor } from '@/utils';
+import { TransitChart } from '@/utils/transit-chart';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import { t } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
@@ -181,6 +183,8 @@ export class MapPopup {
   private onClose?: () => void;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
+  private chokepointData: GetChokepointStatusResponse | null = null;
+  private transitChart: TransitChart | null = null;
   private isMobileSheet = false;
   private sheetTouchStartY: number | null = null;
   private sheetCurrentOffset = 0;
@@ -189,6 +193,10 @@ export class MapPopup {
 
   constructor(container: HTMLElement) {
     this.container = container;
+  }
+
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    this.chokepointData = data;
   }
 
   public show(data: PopupData): void {
@@ -216,6 +224,19 @@ export class MapPopup {
 
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
+
+    // Mount transit chart for waterway popups after DOM insertion
+    if (data.type === 'waterway') {
+      const waterway = data.data as StrategicWaterway;
+      const cp = this.chokepointData?.chokepoints?.find(
+        c => c.name.toLowerCase() === waterway.name.toLowerCase(),
+      );
+      const chartEl = this.popup.querySelector<HTMLElement>('[data-transit-chart]');
+      if (chartEl && cp?.transitSummary?.history?.length) {
+        this.transitChart = new TransitChart();
+        this.transitChart.mount(chartEl, cp.transitSummary.history);
+      }
+    }
 
     // Close button handler via event delegation on the popup element.
     // This avoids re-querying and re-attaching listeners after innerHTML.
@@ -390,6 +411,9 @@ export class MapPopup {
   };
 
   public hide(): void {
+    this.transitChart?.destroy();
+    this.transitChart = null;
+
     if (this.outsideListenerTimeoutId !== null) {
       window.clearTimeout(this.outsideListenerTimeoutId);
       this.outsideListenerTimeoutId = null;
@@ -1130,6 +1154,10 @@ export class MapPopup {
   }
 
   private renderWaterwayPopup(waterway: StrategicWaterway): string {
+    const cp = this.chokepointData?.chokepoints?.find(
+      c => c.name.toLowerCase() === waterway.name.toLowerCase(),
+    );
+    const hasChart = !!(cp?.transitSummary?.history?.length);
     return `
       <div class="popup-header waterway">
         <span class="popup-title">${escapeHtml(waterway.name)}</span>
@@ -1144,6 +1172,7 @@ export class MapPopup {
             <span class="stat-value">${waterway.lat.toFixed(2)}°, ${waterway.lon.toFixed(2)}°</span>
           </div>
         </div>
+        ${hasChart ? `<div data-transit-chart="${escapeHtml(waterway.name)}" style="margin-top:10px;min-height:200px"></div>` : ''}
       </div>
     `;
   }
