@@ -433,7 +433,7 @@ export function createDomainGateway(
         // 200 from a trusted-origin browser request could be served to a no-origin scraper,
         // bypassing auth entirely.
         const reqOrigin = request.headers.get('origin') || '';
-        const cdnCache = isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
+        const cdnCache = !isPremium && isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
         if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);
         mergedHeaders.set('X-Cache-Tier', tier);
 

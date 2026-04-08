@@ -109,6 +109,6 @@ describe('gateway CDN origin policy', () => {
     assert.equal(withKey.status, 200);
     assert.equal(withKey.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
     assert.equal(withKey.headers.get('Vary'), 'Origin');
-    assert.match(withKey.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+    assert.equal(withKey.headers.get('CDN-Cache-Control'), null, 'premium endpoints must NOT have CDN caching');
   });
 });
