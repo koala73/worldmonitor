@@ -212,7 +212,7 @@ describe('energy shock scenario computation', () => {
       ];
       const assessment = buildAssessment('IN', 'malacca', true, 0.5, 60, 30, 75, products);
       assert.ok(assessment.includes('faces'));
-      assert.ok(assessment.includes('diesel/jet deficit'));
+      assert.ok(assessment.includes('25.0% diesel deficit'));
       assert.ok(assessment.includes('25.0%'));
     });
 
