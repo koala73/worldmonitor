@@ -423,7 +423,9 @@ export function createDomainGateway(
       } else {
         const rpcName = pathname.split('/').pop() ?? '';
         const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
-        const tier = (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
+        const isPremium = PREMIUM_RPC_PATHS.has(pathname) || getRequiredTier(pathname) !== null;
+        const tier = isPremium ? 'slow-browser' as CacheTier
+          : (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
         mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
         // Only allow Vercel CDN caching for trusted origins (worldmonitor.app, Vercel previews,
         // Tauri). No-origin server-side requests (external scrapers) must always reach the edge
