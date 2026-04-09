@@ -93,7 +93,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.79.0",
+    "@anthropic-ai/sdk": "^0.82.0",
     "@aws-sdk/client-s3": "^3.1009.0",
     "@clerk/clerk-js": "^5.56.0",
     "@deck.gl/aggregation-layers": "^9.2.11",
