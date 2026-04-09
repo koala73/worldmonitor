@@ -22,7 +22,7 @@ loadEnvFile(import.meta.url);
 
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v6:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v6';
-export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
+export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60; // kept for test parity — ranking write owned by Vercel handler
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 async function redisGetJson(url, token, key) {
