@@ -132,6 +132,8 @@ components:
                     format: double
                 dataVersion:
                     type: string
+                scoreInterval:
+                    $ref: '#/components/schemas/ScoreInterval'
         ResilienceDomain:
             type: object
             properties:
@@ -162,6 +164,15 @@ components:
                     type: number
                     format: double
                 imputedWeight:
+                    type: number
+                    format: double
+        ScoreInterval:
+            type: object
+            properties:
+                p05:
+                    type: number
+                    format: double
+                p95:
                     type: number
                     format: double
         GetResilienceRankingRequest:

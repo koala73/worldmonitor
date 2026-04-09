@@ -6,11 +6,6 @@ export interface GetResilienceScoreRequest {
   countryCode: string;
 }
 
-export interface ScoreInterval {
-  p05: number;
-  p95: number;
-}
-
 export interface GetResilienceScoreResponse {
   countryCode: string;
   overallScore: number;
@@ -40,6 +35,11 @@ export interface ResilienceDimension {
   coverage: number;
   observedWeight: number;
   imputedWeight: number;
+}
+
+export interface ScoreInterval {
+  p05: number;
+  p95: number;
 }
 
 export interface GetResilienceRankingRequest {
