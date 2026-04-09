@@ -20,8 +20,7 @@ import { CANONICAL_CHOKEPOINTS } from './_chokepoint-ids';
 // @ts-expect-error — .mjs module, no declaration file
 import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL, detectTrafficAnomaly } from './_scoring.mjs';
 import { type ThreatLevel, threatLevelToWarRiskTier } from './_insurance-tier';
-
-const REDIS_CACHE_KEY = 'supply_chain:chokepoints:v4';
+import { CHOKEPOINT_STATUS_KEY as REDIS_CACHE_KEY } from '../../../_shared/cache-keys';
 const TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const PORTWATCH_FALLBACK_KEY = 'supply_chain:portwatch:v1';
 const CORRIDORRISK_FALLBACK_KEY = 'supply_chain:corridorrisk:v1';
