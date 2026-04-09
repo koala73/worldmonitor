@@ -3,7 +3,7 @@ import { getSourcePropagandaRisk, getSourceTier } from '@/config/feeds';
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
-import { getNearbyInfrastructure } from '@/services/related-assets';
+import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
 import { sanitizeUrl } from '@/utils/sanitize';
@@ -364,7 +364,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       return;
     }
 
-    const assets = getNearbyInfrastructure(centroid.lat, centroid.lon, INFRA_TYPES);
+    const assets = getCountryInfrastructure(centroid.lat, centroid.lon, countryCode, INFRA_TYPES);
     if (assets.length === 0) {
       this.infrastructureBody.append(this.makeEmpty(t('countryBrief.noInfrastructure')));
       return;

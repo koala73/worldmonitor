@@ -143,7 +143,7 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
 
   // Try RPC across geopolitics + finance (parallel, both cover most country markets)
   const rpcResults = await Promise.allSettled(
-    (['geopolitics', 'finance'] as const).map(category =>
+    (['geopolitics', 'economy'] as const).map(category =>
       client.listPredictionMarkets({ category, query: country, pageSize: 30, cursor: '' })
     )
   );

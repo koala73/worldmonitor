@@ -67,6 +67,9 @@ async function loadCountryDeepDivePanel() {
       export function getNearbyInfrastructure() {
         return [];
       }
+      export function getCountryInfrastructure() {
+        return [];
+      }
       export function haversineDistanceKm() {
         return 0;
       }
