@@ -3903,7 +3903,7 @@ async function fetchTheaterFlightsFromAdsbLol() {
       const lat = a.lat; const lon = a.lon;
       if (lat == null || lon == null) continue;
       if (a.alt_baro === 'ground') continue;
-      const icao24 = (a.hex || '').trim().replace('~', '');
+      const icao24 = (a.hex || '').trim().replace(/~/g, '');
       if (!icao24 || seenIds.has(icao24)) continue;
       const inTheater = POSTURE_THEATERS.some((t) =>
         lat >= t.bounds.south && lat <= t.bounds.north &&
@@ -4051,11 +4051,13 @@ async function seedTheaterPosture() {
   }
   if (flights.length === 0) {
     const adsbLol = await fetchTheaterFlightsFromAdsbLol();
-    if (adsbLol && adsbLol.length > 0) flights = adsbLol;
-  }
-  if (flights.length === 0) {
-    const wb = await fetchTheaterFlightsFromWingbits();
-    if (wb && wb.length > 0) flights = wb;
+    if (adsbLol !== null) {
+      // null = fetch error (fall through to Wingbits); [] = success, no theater traffic (stop here)
+      flights = adsbLol;
+    } else {
+      const wb = await fetchTheaterFlightsFromWingbits();
+      if (wb && wb.length > 0) flights = wb;
+    }
   }
   if (flights.length === 0) {
     console.warn('[TheaterPosture] No military flights from OpenSky, adsb.lol, or Wingbits — continuing with vessel-only posture');
