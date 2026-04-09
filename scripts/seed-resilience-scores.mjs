@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 /**
- * Pre-warms resilience country scores and the ranking cache so the choropleth
- * layer is always instant for users. Runs every 5 hours via Railway cron
- * (slightly inside the 6-hour score cache TTL to keep caches warm).
+ * Read-only health check for resilience country scores. Reads the static index
+ * and checks how many countries have cached scores. Does NOT write rankings
+ * (the Vercel ranking handler owns that with proper greyedOut split).
  *
- * Flow:
- *   1. Read country list from resilience:static:index:v1
- *   2. Read all resilience:score:{iso2} keys from Redis in a single pipeline
- *   3. Build and write resilience:ranking with a fresh TTL (only if all countries scored)
+ * Runs every 5 hours via Railway cron (slightly inside the 6-hour score cache
+ * TTL to keep monitoring warm).
  *
  * Missing scores are handled on-demand by the Vercel ranking handler
  * (warmMissingResilienceScores with SYNC_WARM_LIMIT=200 covers the full index
- * in parallel — wall time is bounded by ~2-3 Redis RTTs regardless of country count).
+ * in parallel).
  */
 
 import {
@@ -27,8 +25,8 @@ loadEnvFile(import.meta.url);
 const LOCK_DOMAIN = 'resilience:scores';
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v5:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v5';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v6:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v6';
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
@@ -57,31 +55,6 @@ async function redisPipeline(url, token, commands) {
   return resp.json();
 }
 
-/** Mirrors server/worldmonitor/resilience/v1/_shared.ts buildRankingItem */
-export function buildRankingItem(countryCode, score) {
-  if (!score) return { countryCode, overallScore: -1, level: 'unknown', lowConfidence: true };
-  return { countryCode, overallScore: score.overallScore, level: score.level, lowConfidence: score.lowConfidence };
-}
-
-/** Mirrors server/worldmonitor/resilience/v1/_shared.ts sortRankingItems */
-export function sortRankingItems(items) {
-  return [...items].sort((a, b) => {
-    if (a.overallScore !== b.overallScore) return b.overallScore - a.overallScore;
-    return a.countryCode.localeCompare(b.countryCode);
-  });
-}
-
-/**
- * Pure: builds and sorts ranking items from a country list + cached score map.
- * Returns { items, scored } where scored = count of items with overallScore >= 0.
- * The caller skips the Redis write when scored < countryCodes.length.
- */
-export function buildRankingPayload(countryCodes, scoreMap) {
-  const items = sortRankingItems(countryCodes.map((c) => buildRankingItem(c, scoreMap.get(c))));
-  const scored = items.filter((item) => item.overallScore >= 0).length;
-  return { items, scored };
-}
-
 async function seedResilienceScores() {
   const { url, token } = getRedisCredentials();
 
@@ -100,29 +73,20 @@ async function seedResilienceScores() {
   const getCommands = countryCodes.map((c) => ['GET', `${RESILIENCE_SCORE_CACHE_PREFIX}${c}`]);
   const results = await redisPipeline(url, token, getCommands);
 
-  const scoreMap = new Map();
+  let scored = 0;
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = results[i]?.result;
-    if (typeof raw !== 'string') continue;
-    try { scoreMap.set(countryCodes[i], JSON.parse(raw)); } catch { /* skip malformed */ }
+    if (typeof raw === 'string') {
+      try { JSON.parse(raw); scored++; } catch { /* skip malformed */ }
+    }
   }
 
-  const { items, scored } = buildRankingPayload(countryCodes, scoreMap);
   console.log(`[resilience-scores] ${scored}/${countryCodes.length} countries have cached scores`);
 
-  // Only write the ranking cache when every country has a real score.
-  // A partial write would pin an incomplete choropleth for the full 6h TTL because
-  // getResilienceRanking() returns any cached ranking with items.length > 0 unchanged.
   if (scored < countryCodes.length) {
     const missing = countryCodes.length - scored;
-    console.warn(`[resilience-scores] ${missing} countries missing scores — skipping ranking cache write to avoid pinning incomplete data`);
-    return { skipped: false, recordCount: scored, total: countryCodes.length };
+    console.warn(`[resilience-scores] ${missing} countries missing scores — will be warmed on-demand by ranking handler`);
   }
-
-  await redisPipeline(url, token, [
-    ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ items }), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
-  ]);
-  console.log('[resilience-scores] Ranking cache written');
 
   return { skipped: false, recordCount: scored, total: countryCodes.length };
 }

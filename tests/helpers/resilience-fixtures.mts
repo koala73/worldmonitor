@@ -21,7 +21,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       },
     },
     gpi: { score: 1.5, rank: 12, year: 2025 },
-    rsf: { score: 92, rank: 4, year: 2025 },
+    rsf: { score: 7, rank: 4, year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: 3.5, year: 2024 },
@@ -58,7 +58,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       },
     },
     gpi: { score: 2.4, rank: 132, year: 2025 },
-    rsf: { score: 70, rank: 45, year: 2025 },
+    rsf: { score: 30, rank: 45, year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: 2.8, year: 2024 },
@@ -95,7 +95,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       },
     },
     gpi: { score: 3.8, rank: 160, year: 2025 },
-    rsf: { score: 25, rank: 150, year: 2025 },
+    rsf: { score: 75, rank: 150, year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: 0.7, year: 2024 },

@@ -195,7 +195,7 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
       },
     },
     gpi: { score: round(clamp(4.1 - quality * 0.03, 1.2, 4.2), 2), rank: Math.round(190 - quality * 1.5), year: 2025 },
-    rsf: { score: round(clamp(8 + quality * 0.92, 10, 95), 1), rank: Math.round(180 - quality * 1.6), year: 2025 },
+    rsf: { score: round(clamp(97 - quality, 5, 90), 1), rank: Math.round(180 - quality * 1.6), year: 2025 },
     who: {
       indicators: {
         hospitalBeds: { value: round(clamp(0.2 + quality * 0.045, 0.3, 8), 1), year: 2024 },

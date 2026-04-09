@@ -102,12 +102,22 @@ describe('resilience scorer contracts', () => {
     const baselineScore = round(coverageWeightedMean(baselineDims));
     const stressScore = round(coverageWeightedMean(stressDims));
     const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
-    const overallScore = round(baselineScore * (1 - stressFactor));
 
     assert.equal(baselineScore, 67.85);
     assert.equal(stressScore, 67.85);
     assert.equal(stressFactor, 0.3215);
-    assert.equal(overallScore, 46.04);
+
+    const overallScore = round(
+      RESILIENCE_DOMAIN_ORDER.map((domainId) => {
+        const dimScores = RESILIENCE_DIMENSION_ORDER
+          .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === domainId)
+          .map((id) => ({ score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage) }));
+        const totalCov = dimScores.reduce((sum, d) => sum + d.coverage, 0);
+        const cwMean = totalCov ? dimScores.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCov : 0;
+        return round(cwMean) * getResilienceDomainWeight(domainId);
+      }).reduce((sum, v) => sum + v, 0),
+    );
+    assert.equal(overallScore, 68.72);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -148,7 +158,7 @@ describe('resilience scorer contracts', () => {
     assert.ok(stressDimIds.includes('energy'), 'mixed energy should be in stress set');
   });
 
-  it('overallScore = baselineScore * (1 - stressFactor)', async () => {
+  it('overallScore = sum(domainScore * domainWeight)', async () => {
     installRedis(RESILIENCE_FIXTURES);
     const scoreMap = await scoreAllDimensions('US');
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
@@ -157,26 +167,31 @@ describe('resilience scorer contracts', () => {
       if (!totalCov) return 0;
       return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
     }
+
     const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
       id, score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage),
     }));
-    const baselineDims = dimensions.filter((d) => {
-      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
-      return t === 'baseline' || t === 'mixed';
-    });
-    const stressDims = dimensions.filter((d) => {
-      const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
-      return t === 'stress' || t === 'mixed';
-    });
-    const bs = round(coverageWeightedMean(baselineDims));
-    const ss = round(coverageWeightedMean(stressDims));
-    const sf = round(Math.max(0, Math.min(1 - ss / 100, 0.5)), 4);
-    const expected = round(bs * (1 - sf));
+
+    const grouped = new Map<string, typeof dimensions>();
+    for (const domainId of RESILIENCE_DOMAIN_ORDER) grouped.set(domainId, []);
+    for (const dim of dimensions) {
+      const domainId = RESILIENCE_DIMENSION_DOMAINS[dim.id as keyof typeof RESILIENCE_DIMENSION_DOMAINS];
+      grouped.get(domainId)?.push(dim);
+    }
+
+    const expected = round(
+      RESILIENCE_DOMAIN_ORDER.reduce((sum, domainId) => {
+        const domainDims = grouped.get(domainId) ?? [];
+        const domainScore = round(coverageWeightedMean(domainDims));
+        return sum + domainScore * getResilienceDomainWeight(domainId);
+      }, 0),
+    );
+
     assert.ok(expected > 0, 'overall should be positive');
-    assert.equal(expected, 46.04, 'overallScore should match the baseline * (1 - stressFactor) formula');
+    assert.equal(expected, 68.72, 'overallScore should match sum(domainScore * domainWeight)');
   });
 
-  it('stressFactor is clamped to [0, 0.5]', () => {
+  it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {
     function clampStressFactor(stressScore: number) {
       return Math.max(0, Math.min(1 - stressScore / 100, 0.5));
     }

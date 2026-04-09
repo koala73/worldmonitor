@@ -22,9 +22,9 @@ import {
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v5:';
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v2:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v5';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v6:';
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v3:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v6';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
@@ -182,7 +182,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       const baselineScore = round(coverageWeightedMean(baselineDims));
       const stressScore = round(coverageWeightedMean(stressDims));
       const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
-      const overallScore = round(baselineScore * (1 - stressFactor));
+      const overallScore = round(domains.reduce((sum, d) => sum + d.score * d.weight, 0));
 
       const totalImputed = dimensions.reduce((sum, d) => sum + (d.imputedWeight ?? 0), 0);
       const totalObserved = dimensions.reduce((sum, d) => sum + (d.observedWeight ?? 0), 0);

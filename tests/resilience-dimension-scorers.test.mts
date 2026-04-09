@@ -453,7 +453,7 @@ describe('resilience dimension scorers', () => {
       return null;
     };
     const score = await scoreInformationCognitive('XX', reader);
-    assert.ok(score.score === 80, `RSF only (no threat, no velocity), got ${score.score}`);
+    assert.ok(score.score === 20, `RSF only (no threat, no velocity), got ${score.score}`);
   });
 
   it('scoreBorderSecurity: zero UCDP events still scores (UCDP is global registry)', async () => {

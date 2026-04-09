@@ -972,7 +972,7 @@ export async function scoreInformationCognitive(
   const threatScore = getThreatSummaryScore(threatSummaryRaw, countryCode);
 
   return weightedBlend([
-    { score: rsfScore == null ? null : normalizeHigherBetter(rsfScore, 0, 100), weight: 0.55 },
+    { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55 },
     { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 },
     { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.3 },
   ]);

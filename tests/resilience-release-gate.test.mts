@@ -85,8 +85,7 @@ describe('resilience release gate', () => {
       ),
     );
     for (const response of highAnchors) {
-      assert.ok(response.overallScore >= 60, `${response.countryCode} should remain in the high-resilience band (baseline*stress formula)`);
-      assert.ok(response.baselineScore > response.stressScore * 0.8, `${response.countryCode} baseline should be >= 80% of stress for resilient countries`);
+      assert.ok(response.overallScore >= 70, `${response.countryCode} should remain in the high-resilience band (domain-weighted average)`);
     }
 
     const lowAnchors = await Promise.all(
@@ -95,8 +94,7 @@ describe('resilience release gate', () => {
       ),
     );
     for (const response of lowAnchors) {
-      assert.ok(response.overallScore <= 20, `${response.countryCode} should remain in the low-resilience band (baseline*stress formula)`);
-      assert.ok(response.stressScore < 40, `${response.countryCode} (fragile) should have stressScore < 40`);
+      assert.ok(response.overallScore <= 35, `${response.countryCode} should remain in the low-resilience band (domain-weighted average)`);
     }
   });
 

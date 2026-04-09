@@ -68,9 +68,9 @@ test('formatResilienceChange30d preserves explicit sign formatting', () => {
   assert.equal(formatResilienceChange30d(0), '30d 0.0');
 });
 
-test('formatBaselineStress renders the expected breakdown string', () => {
-  assert.equal(formatBaselineStress(72.1, 58.3, 0.21), 'Baseline: 72 | Stress: 58 | Impact: -21%');
-  assert.equal(formatBaselineStress(80, 100, 0), 'Baseline: 80 | Stress: 100 | Impact: -0%');
-  assert.equal(formatBaselineStress(50, 0, 0.5), 'Baseline: 50 | Stress: 0 | Impact: -50%');
-  assert.equal(formatBaselineStress(NaN, 50, 0.1), 'Baseline: 0 | Stress: 50 | Impact: -10%');
+test('formatBaselineStress renders the expected breakdown string (no Impact)', () => {
+  assert.equal(formatBaselineStress(72.1, 58.3), 'Baseline: 72 | Stress: 58');
+  assert.equal(formatBaselineStress(80, 100), 'Baseline: 80 | Stress: 100');
+  assert.equal(formatBaselineStress(50, 0), 'Baseline: 50 | Stress: 0');
+  assert.equal(formatBaselineStress(NaN, 50), 'Baseline: 0 | Stress: 50');
 });
