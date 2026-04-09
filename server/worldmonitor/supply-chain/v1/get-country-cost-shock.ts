@@ -90,9 +90,12 @@ export async function getCountryCostShock(
       fuelMode: 'oil',
     }).catch(() => null);
     coverageDays = shock?.effectiveCoverDays ?? 0;
-    // costIncreasePct: use crude product deficit % as supply-pressure proxy (v1 has no price model)
-    const crudeProduct = shock?.products?.find((p: { product: string; deficitPct: number }) => p.product === 'crude');
-    costIncreasePct = crudeProduct?.deficitPct ?? 0;
+    // No 'crude' product entry — compute average deficit across refined products (Gasoline, Diesel, Jet fuel, LPG).
+    // This represents the fraction of refined product demand unmet under full Hormuz/Suez/Malacca/BEM closure.
+    const productDeficits = shock?.products?.map((p: { product: string; deficitPct: number }) => p.deficitPct).filter((d: number) => d > 0) ?? [];
+    costIncreasePct = productDeficits.length > 0
+      ? productDeficits.reduce((a: number, b: number) => a + b, 0) / productDeficits.length
+      : 0;
   }
 
   return {

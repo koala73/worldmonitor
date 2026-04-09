@@ -224,6 +224,11 @@ describe('get-country-cost-shock handler source code', () => {
     assert.match(src, /shockModelSupported/);
     assert.match(src, /hasEnergyModel/);
   });
+
+  it('averages deficitPct across all products (no crude product entry)', () => {
+    assert.match(src, /productDeficits/);
+    assert.doesNotMatch(src, /product.*===.*'crude'/);
+  });
 });
 
 // ========================================================================
