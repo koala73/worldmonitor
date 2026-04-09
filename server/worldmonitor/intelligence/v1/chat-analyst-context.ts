@@ -468,8 +468,15 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
   try {
     const parts: string[] = [];
 
+    // Parallel-fetch spine + SPR registry
+    const [spineRaw, registryRaw] = await Promise.allSettled([
+      getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true),
+      getCachedJson(SPR_POLICIES_KEY, true),
+    ]);
+    const spine = spineRaw.status === 'fulfilled' ? spineRaw.value as Record<string, unknown> | null : null;
+    const registry = registryRaw.status === 'fulfilled' ? registryRaw.value as Record<string, unknown> | null : null;
+
     // IEA part (existing logic: try spine first, fallback to direct key)
-    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
     if (spine != null && typeof spine === 'object') {
       const cov = spine.coverage as Record<string, unknown> | undefined;
       const oil = spine.oil as Record<string, unknown> | undefined;
@@ -497,13 +504,14 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
     }
 
     // SPR part (new: enrich from policy registry)
-    const registry = await getCachedJson(SPR_POLICIES_KEY, true).catch(() => null) as Record<string, unknown> | null;
     const policies = (registry as { policies?: Record<string, Record<string, unknown>> } | null)?.policies;
     const sprPolicy = policies?.[iso2];
     if (sprPolicy && sprPolicy.regime !== 'unknown') {
       const regime = sprPolicy.regime === 'government_spr' ? 'government strategic reserve'
         : sprPolicy.regime === 'mandatory_stockholding' ? 'IEA mandatory stockholding'
         : sprPolicy.regime === 'spare_capacity' ? 'spare production capacity (no stockpile)'
+        : sprPolicy.regime === 'commercial_only' ? 'commercial stocks only (no government reserve)'
+        : sprPolicy.regime === 'none' ? 'no strategic reserve program'
         : sprPolicy.regime as string;
       const capacity = typeof sprPolicy.capacityMb === 'number' && sprPolicy.capacityMb > 0
         ? ` (${sprPolicy.capacityMb}Mb capacity)` : '';
