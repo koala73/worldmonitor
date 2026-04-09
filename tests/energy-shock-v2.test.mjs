@@ -141,7 +141,7 @@ describe('buildAssessment — degraded mode', () => {
 
 describe('mock: degraded mode falls back to CHOKEPOINT_EXPOSURE', () => {
   it('CHOKEPOINT_EXPOSURE values are used as fallback when portwatch absent', () => {
-    const chokepointId = 'hormuz';
+    const chokepointId = 'hormuz_strait';
     const degraded = true;
     const liveFlowRatio = null;
 
@@ -161,8 +161,8 @@ describe('mock: degraded mode falls back to CHOKEPOINT_EXPOSURE', () => {
     assert.equal(exposureMult, 0.6);
   });
 
-  it('malacca uses CHOKEPOINT_EXPOSURE[malacca]=0.7 when portwatch absent', () => {
-    const exposureMult = CHOKEPOINT_EXPOSURE['malacca'] ?? 1.0;
+  it('malacca uses CHOKEPOINT_EXPOSURE[malacca_strait]=0.7 when portwatch absent', () => {
+    const exposureMult = CHOKEPOINT_EXPOSURE['malacca_strait'] ?? 1.0;
     assert.equal(exposureMult, 0.7);
   });
 });
@@ -584,7 +584,7 @@ describe('parseFuelMode', () => {
 
 describe('CHOKEPOINT_LNG_EXPOSURE', () => {
   it('has all 4 chokepoints', () => {
-    for (const cp of ['hormuz', 'malacca', 'suez', 'babelm']) {
+    for (const cp of ['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']) {
       assert.ok(cp in CHOKEPOINT_LNG_EXPOSURE, `missing ${cp}`);
       assert.ok(CHOKEPOINT_LNG_EXPOSURE[cp] > 0 && CHOKEPOINT_LNG_EXPOSURE[cp] <= 1);
     }
@@ -610,29 +610,29 @@ describe('EU_GAS_STORAGE_COUNTRIES', () => {
 
 describe('computeGasDisruption', () => {
   it('computes hormuz LNG disruption correctly', () => {
-    const { lngDisruptionTj, deficitPct } = computeGasDisruption(1000, 5000, 'hormuz', 100);
+    const { lngDisruptionTj, deficitPct } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100);
     assert.equal(lngDisruptionTj, 300);
     assert.equal(deficitPct, 6);
   });
 
   it('computes malacca at 50% disruption', () => {
-    const { lngDisruptionTj } = computeGasDisruption(2000, 10000, 'malacca', 50);
+    const { lngDisruptionTj } = computeGasDisruption(2000, 10000, 'malacca_strait', 50);
     assert.equal(lngDisruptionTj, 500);
   });
 
   it('returns zero for zero lngImportsTj', () => {
-    const { lngDisruptionTj, deficitPct } = computeGasDisruption(0, 5000, 'hormuz', 100);
+    const { lngDisruptionTj, deficitPct } = computeGasDisruption(0, 5000, 'hormuz_strait', 100);
     assert.equal(lngDisruptionTj, 0);
     assert.equal(deficitPct, 0);
   });
 
   it('returns zero deficit for zero totalDemandTj', () => {
-    const { deficitPct } = computeGasDisruption(1000, 0, 'hormuz', 100);
+    const { deficitPct } = computeGasDisruption(1000, 0, 'hormuz_strait', 100);
     assert.equal(deficitPct, 0);
   });
 
   it('clamps deficit to 100%', () => {
-    const { deficitPct } = computeGasDisruption(10000, 100, 'malacca', 100);
+    const { deficitPct } = computeGasDisruption(10000, 100, 'malacca_strait', 100);
     assert.equal(deficitPct, 100);
   });
 });
@@ -695,13 +695,13 @@ describe('exposureMult composes baseExposure with liveFlowRatio', () => {
   });
 
   it('hormuz with flowRatio 1.0 yields 1.0 * 1.0 = 1.0', () => {
-    const baseExposure = CHOKEPOINT_EXPOSURE['hormuz'];
+    const baseExposure = CHOKEPOINT_EXPOSURE['hormuz_strait'];
     const liveFlowRatio = 1.0;
     assert.equal(baseExposure * liveFlowRatio, 1.0);
   });
 
   it('malacca degraded uses baseExposure only (0.7)', () => {
-    const baseExposure = CHOKEPOINT_EXPOSURE['malacca'];
+    const baseExposure = CHOKEPOINT_EXPOSURE['malacca_strait'];
     const liveFlowRatio = null;
     const exposureMult = liveFlowRatio !== null ? baseExposure * liveFlowRatio : baseExposure;
     assert.equal(exposureMult, 0.7);
@@ -801,17 +801,17 @@ describe('grid-tightness limitation from Ember fossilShare', () => {
 
 describe('computeGasDisruption uses liveFlowRatio when available', () => {
   it('scales static exposure by liveFlowRatio', () => {
-    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz', 100, 0.5);
+    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100, 0.5);
     assert.equal(lngDisruptionTj, 150);
   });
 
   it('uses static exposure when liveFlowRatio is null (degraded)', () => {
-    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz', 100, null);
+    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100, null);
     assert.equal(lngDisruptionTj, 300);
   });
 
   it('uses static exposure when liveFlowRatio is undefined', () => {
-    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz', 100);
+    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz_strait', 100);
     assert.equal(lngDisruptionTj, 300);
   });
 });
