@@ -169,6 +169,54 @@ export interface ChokepointExposureEntry {
   shockSupported: boolean;
 }
 
+export interface GetBypassOptionsRequest {
+  chokepointId: string;
+  cargoType: string;
+  closurePct: number;
+}
+
+export interface GetBypassOptionsResponse {
+  chokepointId: string;
+  cargoType: string;
+  closurePct: number;
+  options: BypassOption[];
+  fetchedAt: string;
+}
+
+export interface BypassOption {
+  id: string;
+  name: string;
+  type: string;
+  addedTransitDays: number;
+  addedCostMultiplier: number;
+  capacityConstraintTonnage: string;
+  suitableCargoTypes: string[];
+  activationThreshold: string;
+  waypointChokepointIds: string[];
+  liveScore: number;
+  bypassWarRiskTier: WarRiskTier;
+  notes: string;
+}
+
+export interface GetCountryCostShockRequest {
+  iso2: string;
+  chokepointId: string;
+  hs2: string;
+}
+
+export interface GetCountryCostShockResponse {
+  iso2: string;
+  chokepointId: string;
+  hs2: string;
+  costIncreasePct: number;
+  coverageDays: number;
+  warRiskPremiumBps: number;
+  warRiskTier: WarRiskTier;
+  hasEnergyModel: boolean;
+  unavailableReason: string;
+  fetchedAt: string;
+}
+
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 
 export interface FieldViolation {
@@ -335,6 +383,60 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetCountryChokepointIndexResponse;
+  }
+
+  async getBypassOptions(req: GetBypassOptionsRequest, options?: SupplyChainServiceCallOptions): Promise<GetBypassOptionsResponse> {
+    let path = "/api/supply-chain/v1/get-bypass-options";
+    const params = new URLSearchParams();
+    if (req.chokepointId != null && req.chokepointId !== "") params.set("chokepointId", String(req.chokepointId));
+    if (req.cargoType != null && req.cargoType !== "") params.set("cargoType", String(req.cargoType));
+    if (req.closurePct != null && req.closurePct !== 0) params.set("closurePct", String(req.closurePct));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBypassOptionsResponse;
+  }
+
+  async getCountryCostShock(req: GetCountryCostShockRequest, options?: SupplyChainServiceCallOptions): Promise<GetCountryCostShockResponse> {
+    let path = "/api/supply-chain/v1/get-country-cost-shock";
+    const params = new URLSearchParams();
+    if (req.iso2 != null && req.iso2 !== "") params.set("iso2", String(req.iso2));
+    if (req.chokepointId != null && req.chokepointId !== "") params.set("chokepointId", String(req.chokepointId));
+    if (req.hs2 != null && req.hs2 !== "") params.set("hs2", String(req.hs2));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryCostShockResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

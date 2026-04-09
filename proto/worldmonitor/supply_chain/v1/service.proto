@@ -8,6 +8,8 @@ import "worldmonitor/supply_chain/v1/get_chokepoint_status.proto";
 import "worldmonitor/supply_chain/v1/get_critical_minerals.proto";
 import "worldmonitor/supply_chain/v1/get_shipping_stress.proto";
 import "worldmonitor/supply_chain/v1/get_country_chokepoint_index.proto";
+import "worldmonitor/supply_chain/v1/get_bypass_options.proto";
+import "worldmonitor/supply_chain/v1/get_country_cost_shock.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -32,5 +34,15 @@ service SupplyChainService {
   // GetCountryChokepointIndex returns per-chokepoint exposure scores for a country. PRO-gated.
   rpc GetCountryChokepointIndex(GetCountryChokepointIndexRequest) returns (GetCountryChokepointIndexResponse) {
     option (sebuf.http.config) = {path: "/get-country-chokepoint-index", method: HTTP_METHOD_GET};
+  }
+
+  // GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated.
+  rpc GetBypassOptions(GetBypassOptionsRequest) returns (GetBypassOptionsResponse) {
+    option (sebuf.http.config) = {path: "/get-bypass-options", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated.
+  rpc GetCountryCostShock(GetCountryCostShockRequest) returns (GetCountryCostShockResponse) {
+    option (sebuf.http.config) = {path: "/get-country-cost-shock", method: HTTP_METHOD_GET};
   }
 }

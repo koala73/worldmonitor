@@ -6,12 +6,15 @@ import {
   type GetCriticalMineralsResponse,
   type GetShippingStressResponse,
   type GetCountryChokepointIndexResponse,
+  type GetBypassOptionsResponse,
+  type GetCountryCostShockResponse,
   type ShippingIndex,
   type ChokepointInfo,
   type CriticalMineral,
   type MineralProducer,
   type ShippingRatePoint,
   type ChokepointExposureEntry,
+  type BypassOption,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -22,12 +25,15 @@ export type {
   GetCriticalMineralsResponse,
   GetShippingStressResponse,
   GetCountryChokepointIndexResponse,
+  GetBypassOptionsResponse,
+  GetCountryCostShockResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
   MineralProducer,
   ShippingRatePoint,
   ChokepointExposureEntry,
+  BypassOption,
 };
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
@@ -109,5 +115,36 @@ export async function fetchCountryChokepointIndex(
     return await client.getCountryChokepointIndex({ iso2, hs2 });
   } catch {
     return { ...emptyChokepointIndex, iso2, hs2 };
+  }
+}
+
+export async function fetchBypassOptions(
+  chokepointId: string,
+  cargoType = 'container',
+  closurePct = 100,
+): Promise<GetBypassOptionsResponse> {
+  const empty: GetBypassOptionsResponse = { chokepointId, cargoType, closurePct, options: [], fetchedAt: '' };
+  try {
+    return await client.getBypassOptions({ chokepointId, cargoType, closurePct });
+  } catch {
+    return empty;
+  }
+}
+
+export async function fetchCountryCostShock(
+  iso2: string,
+  chokepointId: string,
+  hs2 = '27',
+): Promise<GetCountryCostShockResponse> {
+  const empty: GetCountryCostShockResponse = {
+    iso2, chokepointId, hs2,
+    costIncreasePct: 0, coverageDays: 0, warRiskPremiumBps: 0,
+    warRiskTier: 'WAR_RISK_TIER_UNSPECIFIED',
+    hasEnergyModel: false, unavailableReason: '', fetchedAt: '',
+  };
+  try {
+    return await client.getCountryCostShock({ iso2, chokepointId, hs2 });
+  } catch {
+    return empty;
   }
 }

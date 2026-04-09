@@ -143,6 +143,94 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-bypass-options:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetBypassOptions
+            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated.
+            operationId: GetBypassOptions
+            parameters:
+                - name: chokepointId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: cargoType
+                  in: query
+                  description: 'container | tanker | bulk | roro  (default: "container")'
+                  required: false
+                  schema:
+                    type: string
+                - name: closurePct
+                  in: query
+                  description: '0-100, percent of capacity blocked (default: 100)'
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBypassOptionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-country-cost-shock:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetCountryCostShock
+            description: GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated.
+            operationId: GetCountryCostShock
+            parameters:
+                - name: iso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: chokepointId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: 'HS2 chapter (default: "27")'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryCostShockResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -554,3 +642,139 @@ components:
                     type: boolean
                     description: Whether the shock model is supported for this chokepoint + hs2 combination.
             description: ChokepointExposureEntry holds per-chokepoint exposure data for a country.
+        GetBypassOptionsRequest:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                cargoType:
+                    type: string
+                    description: 'container | tanker | bulk | roro  (default: "container")'
+                closurePct:
+                    type: integer
+                    format: int32
+                    description: '0-100, percent of capacity blocked (default: 100)'
+            required:
+                - chokepointId
+        GetBypassOptionsResponse:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                cargoType:
+                    type: string
+                closurePct:
+                    type: integer
+                    format: int32
+                options:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BypassOption'
+                fetchedAt:
+                    type: string
+        BypassOption:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                type:
+                    type: string
+                addedTransitDays:
+                    type: integer
+                    format: int32
+                addedCostMultiplier:
+                    type: number
+                    format: double
+                capacityConstraintTonnage:
+                    type: string
+                    format: int64
+                suitableCargoTypes:
+                    type: array
+                    items:
+                        type: string
+                activationThreshold:
+                    type: string
+                waypointChokepointIds:
+                    type: array
+                    items:
+                        type: string
+                liveScore:
+                    type: number
+                    format: double
+                bypassWarRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
+                notes:
+                    type: string
+        GetCountryCostShockRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                chokepointId:
+                    type: string
+                hs2:
+                    type: string
+                    description: 'HS2 chapter (default: "27")'
+            required:
+                - iso2
+                - chokepointId
+        GetCountryCostShockResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                chokepointId:
+                    type: string
+                hs2:
+                    type: string
+                costIncreasePct:
+                    type: number
+                    format: double
+                    description: Estimated annualized import cost increase as % of sector import value (HS 27 only; null for other sectors)
+                coverageDays:
+                    type: integer
+                    format: int32
+                    description: Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors)
+                warRiskPremiumBps:
+                    type: integer
+                    format: int32
+                    description: War risk insurance premium in basis points for this chokepoint
+                warRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
+                hasEnergyModel:
+                    type: boolean
+                    description: Whether cost_increase_pct and coverage_days are modelled (true) or unavailable (false)
+                unavailableReason:
+                    type: string
+                    description: Null/unavailable explanation for non-energy sectors
+                fetchedAt:
+                    type: string

@@ -72,6 +72,13 @@ export const CHOKEPOINT_EXPOSURE_KEY = (iso2: string, hs2: string) =>
 export const CHOKEPOINT_EXPOSURE_SEED_META_KEY = 'seed-meta:supply_chain:chokepoint-exposure';
 
 /**
+ * Per-country + per-chokepoint cost shock cache.
+ * NOT in bootstrap — request-varying, PRO-gated.
+ */
+export const COST_SHOCK_KEY = (iso2: string, chokepointId: string) =>
+  `supply-chain:cost-shock:${iso2}:${chokepointId}:v1` as const;
+
+/**
  * Static cache keys for the bootstrap endpoint.
  * Only keys with NO request-varying suffixes are included.
  */
