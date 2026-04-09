@@ -29,6 +29,7 @@ export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v7';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
+const RANK_STABLE_MAX_INTERVAL_WIDTH = 8;
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
 const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0.40;
@@ -286,15 +287,27 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
 
 export const GREY_OUT_COVERAGE_THRESHOLD = 0.40;
 
+export interface ScoreInterval {
+  p05: number;
+  p95: number;
+}
+
 function computeOverallCoverage(response: GetResilienceScoreResponse): number {
   const coverages = response.domains.flatMap((domain) => domain.dimensions.map((dimension) => dimension.coverage));
   if (coverages.length === 0) return 0;
   return coverages.reduce((sum, coverage) => sum + coverage, 0) / coverages.length;
 }
 
+function isRankStable(interval: ScoreInterval | null | undefined): boolean {
+  if (!interval) return false;
+  const width = interval.p95 - interval.p05;
+  return Number.isFinite(width) && width <= RANK_STABLE_MAX_INTERVAL_WIDTH;
+}
+
 export function buildRankingItem(
   countryCode: string,
   response?: GetResilienceScoreResponse | null,
+  interval?: ScoreInterval | null,
 ): ResilienceRankingItem {
   if (!response) {
     return {
@@ -303,6 +316,7 @@ export function buildRankingItem(
       level: 'unknown',
       lowConfidence: true,
       overallCoverage: 0,
+      rankStable: false,
     };
   }
 
@@ -312,6 +326,7 @@ export function buildRankingItem(
     level: response.level,
     lowConfidence: response.lowConfidence,
     overallCoverage: computeOverallCoverage(response),
+    rankStable: isRankStable(interval),
   };
 }
 

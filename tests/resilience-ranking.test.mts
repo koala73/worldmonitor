@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
-import { sortRankingItems } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { buildRankingItem, sortRankingItems } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
@@ -104,5 +104,44 @@ describe('resilience ranking contracts', () => {
     assert.ok(redis.has('resilience:score:v7:YE'), 'missing country should be warmed during first call');
     assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
     assert.ok(redis.has('resilience:ranking:v7'), 'fully scored ranking should be cached');
+  });
+
+  it('sets rankStable=true when interval data exists and width <= 8', async () => {
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    redis.set('resilience:score:v7:NO', JSON.stringify({
+      countryCode: 'NO', overallScore: 82, level: 'high',
+      domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
+      lowConfidence: false, imputationShare: 0.05,
+    }));
+    redis.set('resilience:score:v7:US', JSON.stringify({
+      countryCode: 'US', overallScore: 61, level: 'medium',
+      domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
+      lowConfidence: false, imputationShare: 0.1,
+    }));
+    redis.set('resilience:intervals:v1:NO', JSON.stringify({ p05: 78, p95: 84 }));
+    redis.set('resilience:intervals:v1:US', JSON.stringify({ p05: 50, p95: 72 }));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    const no = response.items.find((item) => item.countryCode === 'NO');
+    const us = response.items.find((item) => item.countryCode === 'US');
+    assert.equal(no?.rankStable, true, 'NO interval width 6 should be stable');
+    assert.equal(us?.rankStable, false, 'US interval width 22 should be unstable');
+  });
+
+  it('defaults rankStable=false when no interval data exists', () => {
+    const item = buildRankingItem('ZZ', {
+      countryCode: 'ZZ', overallScore: 50, level: 'medium',
+      domains: [], trend: 'stable', change30d: 0,
+      lowConfidence: false, imputationShare: 0,
+      baselineScore: 50, stressScore: 50, stressFactor: 0.5, dataVersion: '',
+    });
+    assert.equal(item.rankStable, false, 'missing interval should default to unstable');
+  });
+
+  it('returns rankStable=false for null response (unscored country)', () => {
+    const item = buildRankingItem('XX');
+    assert.equal(item.rankStable, false);
   });
 });

@@ -56,6 +56,7 @@ export interface ResilienceRankingItem {
   level: string;
   lowConfidence: boolean;
   overallCoverage: number;
+  rankStable: boolean;
 }
 
 export interface FieldViolation {

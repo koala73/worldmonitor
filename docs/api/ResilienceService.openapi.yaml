@@ -203,3 +203,5 @@ components:
                 overallCoverage:
                     type: number
                     format: double
+                rankStable:
+                    type: boolean
