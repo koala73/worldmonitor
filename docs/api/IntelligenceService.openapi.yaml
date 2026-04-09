@@ -2207,11 +2207,29 @@ components:
                     type: boolean
                 ieaBelowObligation:
                     type: boolean
+                emberFossilShare:
+                    type: number
+                    format: double
+                    description: Phase 3 — Ember monthly electricity mix
+                emberRenewShare:
+                    type: number
+                    format: double
+                emberNuclearShare:
+                    type: number
+                    format: double
+                emberCoalShare:
+                    type: number
+                    format: double
+                emberGasShare:
+                    type: number
+                    format: double
+                emberDemandTwh:
+                    type: number
+                    format: double
+                emberDataMonth:
+                    type: string
                 emberAvailable:
                     type: boolean
-                    description: |-
-                        Phase 3 — Ember monthly electricity mix
-                         fields 43-49 reserved for future Ember numeric fields
         ComputeEnergyShockScenarioRequest:
             type: object
             properties:
