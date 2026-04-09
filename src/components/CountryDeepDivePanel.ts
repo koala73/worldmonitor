@@ -499,9 +499,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
       || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable
-      || data.emberAvailable
-      || (data.sprAvailable && data.sprRegime === 'government_spr' && !data.sprIeaMember)
-      || (data.sprAvailable && data.sprRegime === 'spare_capacity');
+      || data.emberAvailable || data.sprAvailable;
 
     if (!hasAny) {
       this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
@@ -703,6 +701,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       muted.textContent = 'Spare capacity producer (no formal SPR)';
       section.append(muted);
       this.energyBody.append(section);
+    } else if (data.sprAvailable && data.sprRegime === 'none') {
+      const note = this.el('div', 'cdp-economic-source');
+      note.style.cssText += ';color:#ef4444;opacity:0.7';
+      note.textContent = 'No known strategic petroleum reserve program';
+      this.energyBody.append(note);
     }
 
     const hasLiveSignals = data.gasStorageAvailable || data.electricityAvailable;

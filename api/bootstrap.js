@@ -94,6 +94,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
   oilStocksAnalysis:    'energy:oil-stocks-analysis:v1',
   lngVulnerability:     'energy:lng-vulnerability:v1',
+  sprPolicies:          'energy:spr-policies:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -132,6 +133,7 @@ const SLOW_KEYS = new Set([
   'portwatchPortActivity',
   'oilStocksAnalysis',
   'lngVulnerability',
+  'sprPolicies',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints',
