@@ -165,8 +165,8 @@ describe('Cache keys bumped to v2', () => {
   });
 
   it('cache-keys.ts chokepoints key is v4', () => {
-    // BOOTSTRAP_CACHE_KEYS now references the CHOKEPOINT_STATUS_KEY constant rather than a raw string
-    assert.match(cacheKeysSrc, /chokepoints:\s*CHOKEPOINT_STATUS_KEY/);
+    // BOOTSTRAP_CACHE_KEYS must keep the raw string literal (bootstrap.test.mjs enforces string-literal values)
+    assert.match(cacheKeysSrc, /chokepoints:\s*'supply_chain:chokepoints:v4'/);
   });
 
   it('cache-keys.ts minerals key is v2', () => {
