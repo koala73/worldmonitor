@@ -65,8 +65,14 @@ export async function getCountryChokepointIndex(
     };
   }
 
-  const hs2 = req.hs2?.trim() || '27';
-  const cacheKey = CHOKEPOINT_EXPOSURE_KEY(req.iso2, hs2);
+  const iso2 = req.iso2.trim().toUpperCase();
+  const hs2 = (req.hs2?.trim() || '27').replace(/\D/g, '') || '27';
+
+  if (!/^[A-Z]{2}$/.test(iso2) || !/^\d{1,2}$/.test(hs2)) {
+    return { iso2: req.iso2, hs2: req.hs2 || '27', exposures: [], primaryChokepointId: '', vulnerabilityIndex: 0, fetchedAt: new Date().toISOString() };
+  }
+
+  const cacheKey = CHOKEPOINT_EXPOSURE_KEY(iso2, hs2);
 
   try {
     const result = await cachedFetchJson<GetCountryChokepointIndexResponse>(
@@ -74,7 +80,7 @@ export async function getCountryChokepointIndex(
       CACHE_TTL,
       async () => {
         const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, PortClusterEntry>;
-        const cluster = clusters[req.iso2];
+        const cluster = clusters[iso2];
         const nearestRouteIds = cluster?.nearestRouteIds ?? [];
         const coastSide = cluster?.coastSide ?? 'unknown';
 
@@ -86,7 +92,7 @@ export async function getCountryChokepointIndex(
         const vulnIndex = vulnerabilityIndex(exposures);
 
         return {
-          iso2: req.iso2,
+          iso2,
           hs2,
           exposures,
           primaryChokepointId: primaryId,
@@ -97,7 +103,7 @@ export async function getCountryChokepointIndex(
     );
 
     return result ?? {
-      iso2: req.iso2,
+      iso2,
       hs2,
       exposures: [],
       primaryChokepointId: '',
@@ -106,7 +112,7 @@ export async function getCountryChokepointIndex(
     };
   } catch {
     return {
-      iso2: req.iso2,
+      iso2,
       hs2,
       exposures: [],
       primaryChokepointId: '',

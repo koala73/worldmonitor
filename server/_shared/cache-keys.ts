@@ -69,7 +69,7 @@ export const REFINERY_UTIL_KEY = 'economic:refinery-util:v1';
  */
 export const CHOKEPOINT_EXPOSURE_KEY = (iso2: string, hs2: string) =>
   `supply-chain:exposure:${iso2}:${hs2}:v1`;
-export const CHOKEPOINT_EXPOSURE_SEED_META_KEY = 'supply-chain:exposure:seed-meta:v1';
+export const CHOKEPOINT_EXPOSURE_SEED_META_KEY = 'seed-meta:supply_chain:chokepoint-exposure';
 
 /**
  * Static cache keys for the bootstrap endpoint.

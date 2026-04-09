@@ -21,7 +21,7 @@ export const META_KEY = 'seed-meta:supply_chain:chokepoint-exposure';
 /** @type {string} */
 export const KEY_PREFIX = 'supply-chain:exposure:';
 /** @type {number} */
-export const TTL_SECONDS = 86400; // 24h — daily cron interval
+export const TTL_SECONDS = 172800; // 48h — 2× daily cron interval
 const LOCK_DOMAIN = 'supply_chain:chokepoint-exposure';
 const LOCK_TTL_MS = 5 * 60 * 1000;
 
@@ -120,7 +120,14 @@ export async function main() {
   const runId = `${LOCK_DOMAIN}:${startedAt}`;
   const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
 
-  if (lock.skipped) return;
+  if (lock.skipped) {
+    const allKeys = Object.keys(COUNTRY_PORT_CLUSTERS)
+      .filter(k => k !== '_comment' && k.length === 2)
+      .flatMap(iso2 => HS2_CODES.map(hs2 => `${KEY_PREFIX}${iso2}:${hs2}:v1`));
+    await extendExistingTtl([...allKeys, META_KEY], TTL_SECONDS)
+      .catch(e => console.warn('[chokepoint-exposure] TTL extension (skipped) failed:', e.message));
+    return;
+  }
   if (!lock.locked) {
     console.log('[chokepoint-exposure] Lock held, skipping');
     return;

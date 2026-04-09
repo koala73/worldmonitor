@@ -9664,7 +9664,7 @@ aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (param
 intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
   get-social-velocity
 health: list-disease-outbreaks
-supply-chain: get-shipping-stress
+supply-chain: get-shipping-stress, get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId)
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
 market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
 consumer-prices: list-retailer-price-spreads
@@ -10245,7 +10245,7 @@ aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (param
 intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
   get-social-velocity
 health: list-disease-outbreaks
-supply-chain: get-shipping-stress
+supply-chain: get-shipping-stress, get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId)
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
 market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
 consumer-prices: list-retailer-price-spreads

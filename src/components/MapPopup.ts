@@ -1209,10 +1209,12 @@ export class MapPopup {
           <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
           ${renderSectorRing(sectors)}`;
       } else {
+        // Use uniform placeholder segments — never expose real sector data to non-PRO DOM
+        const placeholderSectors = sectors.map(s => ({ label: '?', share: 1 / sectors.length, color: s.color }));
         sectorSection = `
           <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
           <div class="sector-pro-gate" data-gate="chokepoint-sector-mix" style="position:relative;overflow:hidden;border-radius:6px;margin-top:6px">
-            <div style="filter:blur(4px);pointer-events:none;opacity:.5">${renderSectorRing(sectors)}</div>
+            <div style="filter:blur(4px);pointer-events:none;opacity:.5">${renderSectorRing(placeholderSectors)}</div>
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
               <span style="font-size:16px">🔒</span>
               <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>

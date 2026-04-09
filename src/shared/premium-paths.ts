@@ -13,4 +13,5 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/intelligence/v1/list-market-implications',
   '/api/resilience/v1/get-resilience-score',
   '/api/resilience/v1/get-resilience-ranking',
+  '/api/supply-chain/v1/get-country-chokepoint-index',
 ]);
