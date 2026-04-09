@@ -178,7 +178,15 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
       else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
       else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
       else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text);
-      else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, { eventType: 'digest_batch', severity: 'info', payload: { title: subject } });
+      else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
+        eventType: 'quiet_hours_batch',
+        severity: 'info',
+        payload: {
+          title: subject,
+          alertCount: events.length,
+          alerts: events.map(ev => ({ eventType: ev.eventType, severity: ev.severity ?? 'high', title: ev.payload?.title ?? ev.eventType })),
+        },
+      });
       if (ok) anyDelivered = true;
     } catch (err) {
       console.warn(`[relay] drainHeldForUser: delivery error for ${userId}/${ch.channelType}:`, err.message);
