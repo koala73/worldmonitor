@@ -193,6 +193,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.economicIndicators = [];
     this.infrastructureByType.clear();
     this.renderSkeleton(country, code, score, signals);
+    this.content.scrollTop = 0;
     this.open();
   }
 
