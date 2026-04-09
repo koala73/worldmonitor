@@ -79,6 +79,67 @@ export interface CountryFactsData {
   countryName: string;
 }
 
+export interface CountryEnergyProfileData {
+  mixAvailable: boolean;
+  mixYear: number;
+  coalShare: number;
+  gasShare: number;
+  oilShare: number;
+  nuclearShare: number;
+  renewShare: number;
+  windShare: number;
+  solarShare: number;
+  hydroShare: number;
+  importShare: number;
+  gasStorageAvailable: boolean;
+  gasStorageFillPct: number;
+  gasStorageChange1d: number;
+  gasStorageTrend: string;
+  gasStorageDate: string;
+  electricityAvailable: boolean;
+  electricityPriceMwh: number;
+  electricitySource: string;
+  electricityDate: string;
+  jodiOilAvailable: boolean;
+  jodiOilDataMonth: string;
+  gasolineDemandKbd: number;
+  gasolineImportsKbd: number;
+  dieselDemandKbd: number;
+  dieselImportsKbd: number;
+  jetDemandKbd: number;
+  jetImportsKbd: number;
+  lpgDemandKbd: number;
+  lpgImportsKbd: number;
+  crudeImportsKbd: number;
+  jodiGasAvailable: boolean;
+  jodiGasDataMonth: string;
+  gasTotalDemandTj: number;
+  gasLngImportsTj: number;
+  gasPipeImportsTj: number;
+  gasLngShare: number;
+  ieaStocksAvailable: boolean;
+  ieaStocksDataMonth: string;
+  ieaDaysOfCover: number;
+  ieaNetExporter: boolean;
+  ieaBelowObligation: boolean;
+}
+
+export interface CountryPortActivityData {
+  available: boolean;
+  ports: {
+    portId: string;
+    portName: string;
+    lat: number;
+    lon: number;
+    tankerCalls30d: number;
+    trendDeltaPct: number;
+    importTankerDwt: number;
+    exportTankerDwt: number;
+    anomalySignal: boolean;
+  }[];
+  fetchedAt: string;
+}
+
 export interface CountryBriefPanel {
   show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void;
   hide(): void;
@@ -102,6 +163,8 @@ export interface CountryBriefPanel {
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;
   updateCountryFacts?(data: CountryFactsData): void;
+  updateEnergyProfile?(data: CountryEnergyProfileData): void;
+  updateMaritimeActivity?(data: CountryPortActivityData): void;
   maximize?(): void;
   minimize?(): void;
   getIsMaximized?(): boolean;

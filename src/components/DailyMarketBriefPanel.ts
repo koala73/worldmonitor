@@ -1,7 +1,11 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { FrameworkSelector } from './FrameworkSelector';
 import type { DailyMarketBrief } from '@/services/daily-market-brief';
 import { describeFreshness } from '@/services/persistent-cache';
 import { escapeHtml } from '@/utils/sanitize';
+import { getChangeClass } from '@/utils';
 
 type BriefSource = 'live' | 'cached';
 
@@ -37,8 +41,17 @@ function formatChange(change: number | null): string {
 }
 
 export class DailyMarketBriefPanel extends Panel {
+  private fwSelector: FrameworkSelector;
+
   constructor() {
-    super({ id: 'daily-market-brief', title: 'Daily Market Brief' });
+    super({ id: 'daily-market-brief', title: 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip'), premium: 'locked' });
+    this.fwSelector = new FrameworkSelector({ panelId: 'daily-market-brief', isPremium: hasPremiumAccess(), panel: this, note: 'Applies to client-generated analysis only' });
+    this.header.appendChild(this.fwSelector.el);
+  }
+
+  public override destroy(): void {
+    this.fwSelector.destroy();
+    super.destroy();
   }
 
   public renderBrief(brief: DailyMarketBrief, source: BriefSource = 'live'): void {
@@ -48,20 +61,20 @@ export class DailyMarketBriefPanel extends Panel {
 
     const html = `
       <div class="daily-brief-shell" style="display:grid;gap:12px">
-        <div class="daily-brief-card" style="display:grid;gap:6px;padding:12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.03)">
+        <div class="daily-brief-card" style="display:grid;gap:6px;padding:12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.03)">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
             <div style="font-size:13px;font-weight:600">${escapeHtml(brief.title)}</div>
             <div style="font-size:11px;color:var(--text-dim)">${escapeHtml(formatGeneratedTime(brief.generatedAt, brief.timezone))}</div>
           </div>
-          <div style="font-size:13px;line-height:1.5;color:var(--text)">${escapeHtml(brief.summary)}</div>
+          <div style="font-size:12px;line-height:1.5;color:var(--text)">${escapeHtml(brief.summary)}</div>
         </div>
 
         <div style="display:grid;gap:10px">
-          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.02)">
+          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
             <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Action Plan</div>
             <div style="font-size:12px;line-height:1.5">${escapeHtml(brief.actionPlan)}</div>
           </div>
-          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.02)">
+          <div style="padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
             <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Risk Watch</div>
             <div style="font-size:12px;line-height:1.5">${escapeHtml(brief.riskWatch)}</div>
           </div>
@@ -69,7 +82,7 @@ export class DailyMarketBriefPanel extends Panel {
 
         <div style="display:grid;gap:8px">
           ${brief.items.map((item) => `
-            <div style="display:grid;gap:6px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.02)">
+            <div style="display:grid;gap:6px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div>
                   <div style="font-size:12px;font-weight:600">${escapeHtml(item.name)}</div>
@@ -77,7 +90,7 @@ export class DailyMarketBriefPanel extends Panel {
                 </div>
                 <div style="text-align:right">
                   <div style="font-size:12px;font-weight:600">${escapeHtml(formatPrice(item.price))}</div>
-                  <div style="font-size:11px;color:var(--text-dim)">${escapeHtml(formatChange(item.change))}</div>
+                  <div class="market-change ${getChangeClass(item.change ?? 0)}" style="font-size:11px">${escapeHtml(formatChange(item.change))}</div>
                 </div>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -89,9 +102,6 @@ export class DailyMarketBriefPanel extends Panel {
           `).join('')}
         </div>
 
-        <div style="font-size:11px;color:var(--text-dim)">
-          ${escapeHtml(brief.fallback ? 'Rules-based brief' : `AI-assisted brief via ${brief.provider}${brief.model ? ` (${brief.model})` : ''}`)}
-        </div>
       </div>
     `;
 

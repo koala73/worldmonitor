@@ -24,69 +24,164 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import * as ts from 'typescript'; // TypeScript compiler API — available via the typescript devDep used by tsc
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
+const economicPath = resolve(root, 'src/services/economic/index.ts');
 
-const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
+function loadEconomicSourceFile() {
+  return ts.createSourceFile(
+    economicPath,
+    readFileSync(economicPath, 'utf-8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+}
+
+function walk(node, visit) {
+  visit(node);
+  ts.forEachChild(node, (child) => walk(child, visit));
+}
+
+function findVariableDeclaration(sourceFile, name) {
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isVariableStatement(stmt)) continue;
+    for (const decl of stmt.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name) && decl.name.text === name) {
+        return decl;
+      }
+    }
+  }
+  return undefined;
+}
+
+function findFunctionDeclaration(sourceFile, name) {
+  return sourceFile.statements.find(
+    (stmt) => ts.isFunctionDeclaration(stmt) && stmt.name?.text === name,
+  );
+}
+
+function collectCallExpressions(node) {
+  const calls = [];
+  walk(node, (current) => {
+    if (ts.isCallExpression(current)) calls.push(current);
+  });
+  return calls;
+}
+
+function findPropertyAssignment(node, name) {
+  if (!ts.isObjectLiteralExpression(node)) return undefined;
+  return node.properties.find(
+    (prop) => ts.isPropertyAssignment(prop)
+      && ((ts.isIdentifier(prop.name) && prop.name.text === name)
+        || (ts.isStringLiteral(prop.name) && prop.name.text === name)),
+  );
+}
+
+function isIdentifierNamed(node, name) {
+  return ts.isIdentifier(node) && node.text === name;
+}
+
+function isStringLiteralValue(node, value) {
+  return (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text === value;
+}
+
+function getTechIndicatorKeys(sourceFile) {
+  const decl = findVariableDeclaration(sourceFile, 'TECH_INDICATORS');
+  assert.ok(decl?.initializer && ts.isObjectLiteralExpression(decl.initializer), 'TECH_INDICATORS object must exist');
+
+  const keys = new Set();
+  for (const prop of decl.initializer.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    if (ts.isStringLiteral(prop.name) || ts.isIdentifier(prop.name)) {
+      keys.add(prop.name.text);
+    }
+  }
+  return keys;
+}
+
+function getCreateCircuitBreakerNameInitializer(fn) {
+  const createCall = collectCallExpressions(fn).find((call) => isIdentifierNamed(call.expression, 'createCircuitBreaker'));
+  assert.ok(createCall, 'getWbBreaker must call createCircuitBreaker');
+
+  const optionsArg = createCall.arguments[0];
+  assert.ok(optionsArg && ts.isObjectLiteralExpression(optionsArg), 'createCircuitBreaker must receive an options object');
+
+  const nameProp = findPropertyAssignment(optionsArg, 'name');
+  assert.ok(nameProp, 'createCircuitBreaker options must include a name');
+  return nameProp.initializer;
+}
 
 // ============================================================
 // 1. Static analysis: source structure guarantees
 // ============================================================
 
 describe('economic/index.ts — per-indicator World Bank circuit breakers', () => {
-  const src = readSrc('src/services/economic/index.ts');
+  const sourceFile = loadEconomicSourceFile();
 
   it('does NOT have a single shared wbBreaker', () => {
-    // The old bug: `const wbBreaker = createCircuitBreaker<...>({ name: 'World Bank', ... })`
-    assert.doesNotMatch(
-      src,
-      /\bconst\s+wbBreaker\s*=/,
+    assert.equal(
+      findVariableDeclaration(sourceFile, 'wbBreaker'),
+      undefined,
       'Single shared wbBreaker must not exist — use getWbBreaker(indicatorCode) instead',
     );
   });
 
   it('has a wbBreakers Map for per-indicator instances', () => {
-    assert.match(
-      src,
-      /\bwbBreakers\s*=\s*new\s+Map/,
-      'wbBreakers Map must exist to store per-indicator circuit breakers',
-    );
+    const decl = findVariableDeclaration(sourceFile, 'wbBreakers');
+    assert.ok(decl?.initializer && ts.isNewExpression(decl.initializer), 'wbBreakers declaration must exist');
+    assert.ok(isIdentifierNamed(decl.initializer.expression, 'Map'), 'wbBreakers must be initialized with new Map(...)');
   });
 
   it('has a getWbBreaker(indicatorCode) factory function', () => {
-    assert.match(
-      src,
-      /function\s+getWbBreaker\s*\(\s*indicatorCode/,
-      'getWbBreaker(indicatorCode) factory function must exist',
+    const fn = findFunctionDeclaration(sourceFile, 'getWbBreaker');
+    assert.ok(fn, 'getWbBreaker function must exist');
+    assert.equal(fn.parameters[0]?.name.getText(sourceFile), 'indicatorCode');
+    assert.ok(
+      collectCallExpressions(fn).some((call) => isIdentifierNamed(call.expression, 'createCircuitBreaker')),
+      'getWbBreaker must create circuit breakers lazily',
     );
   });
 
-  it('getIndicatorData calls getWbBreaker(indicator) not a shared breaker', () => {
-    assert.match(
-      src,
-      /getWbBreaker\s*\(\s*indicator\s*\)\s*\.execute/,
+  it('getIndicatorData calls getWbBreaker(indicator).execute, not a shared breaker', () => {
+    const fn = findFunctionDeclaration(sourceFile, 'getIndicatorData');
+    assert.ok(fn?.body, 'getIndicatorData must exist');
+
+    const executeCall = collectCallExpressions(fn.body).find((call) => {
+      if (!ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== 'execute') return false;
+      const receiver = call.expression.expression;
+      return ts.isCallExpression(receiver)
+        && isIdentifierNamed(receiver.expression, 'getWbBreaker')
+        && isIdentifierNamed(receiver.arguments[0], 'indicator');
+    });
+
+    assert.ok(
+      executeCall,
       'getIndicatorData must use getWbBreaker(indicator).execute, not a shared wbBreaker',
     );
   });
 
   it('per-indicator breaker names include the indicator code', () => {
-    // name: `WB:${indicatorCode}` — ensures distinct IndexedDB keys per indicator
-    assert.match(
-      src,
-      /name\s*:\s*`WB:\$\{indicatorCode\}`/,
-      'Breaker name must embed indicatorCode (e.g. "WB:IT.NET.USER.ZS") for unique IndexedDB persistence',
+    const fn = findFunctionDeclaration(sourceFile, 'getWbBreaker');
+    assert.ok(fn, 'getWbBreaker function must exist');
+
+    const nameInitializer = getCreateCircuitBreakerNameInitializer(fn);
+    assert.ok(
+      ts.isTemplateExpression(nameInitializer),
+      'Breaker name should be a template string scoped to the indicator code',
     );
+    assert.equal(nameInitializer.head.text, 'WB:');
+    assert.equal(nameInitializer.templateSpans.length, 1);
+    assert.ok(isIdentifierNamed(nameInitializer.templateSpans[0]?.expression, 'indicatorCode'));
   });
 
   it('mirrors fredBatchBreaker pattern (consistency check)', () => {
-    // fredBatchBreaker uses the same circuit breaker pattern
-    assert.match(src, /fredBatchBreaker\s*=/, 'fredBatchBreaker must exist as reference');
-    assert.match(src, /getWbBreaker\s*\(/, 'getWbBreaker implementation should be present');
-
-    // Both should use circuit breakers
-    assert.match(src, /fredBatchBreaker\s*=\s*createCircuitBreaker/, 'fredBatchBreaker uses createCircuitBreaker');
-    assert.match(src, /wbBreakers\s*=\s*new\s+Map/, 'wbBreakers uses Map for per-indicator breakers');
+    const fredDecl = findVariableDeclaration(sourceFile, 'fredBatchBreaker');
+    assert.ok(fredDecl?.initializer && ts.isCallExpression(fredDecl.initializer), 'fredBatchBreaker must exist');
+    assert.ok(isIdentifierNamed(fredDecl.initializer.expression, 'createCircuitBreaker'));
+    assert.ok(findFunctionDeclaration(sourceFile, 'getWbBreaker'), 'getWbBreaker implementation should be present');
   });
 });
 
@@ -194,25 +289,37 @@ describe('CircuitBreaker isolation — independent per-indicator instances', () 
 // ============================================================
 
 describe('getTechReadinessRankings — bootstrap-only data flow', () => {
-  const src = readSrc('src/services/economic/index.ts');
+  const sourceFile = loadEconomicSourceFile();
+  const fn = findFunctionDeclaration(sourceFile, 'getTechReadinessRankings');
 
   it('reads from bootstrap hydration or endpoint, never calls WB API directly', () => {
-    const fnStart = src.indexOf('export async function getTechReadinessRankings');
-    const fnEnd = src.indexOf('\nexport ', fnStart + 1);
-    const fnBody = src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000);
+    assert.ok(fn?.body, 'getTechReadinessRankings must exist');
+    const calls = collectCallExpressions(fn.body);
 
-    assert.match(fnBody, /getHydratedData\s*\(\s*'techReadiness'\s*\)/,
-      'Must try bootstrap hydration cache first');
-    assert.match(fnBody, /\/api\/bootstrap\?keys=techReadiness/,
-      'Must fallback to bootstrap endpoint');
-    assert.doesNotMatch(fnBody, /getIndicatorData\s*\(/,
-      'Must NOT call getIndicatorData (WB API) from frontend');
+    const hydratedCall = calls.find((call) =>
+      isIdentifierNamed(call.expression, 'getHydratedData')
+      && isStringLiteralValue(call.arguments[0], 'techReadiness'),
+    );
+    assert.ok(hydratedCall, 'Must try bootstrap hydration cache first');
+
+    const bootstrapFetch = calls.find((call) => {
+      if (!isIdentifierNamed(call.expression, 'fetch')) return false;
+      const firstArg = call.arguments[0];
+      return ts.isCallExpression(firstArg)
+        && isIdentifierNamed(firstArg.expression, 'toApiUrl')
+        && isStringLiteralValue(firstArg.arguments[0], '/api/bootstrap?keys=techReadiness');
+    });
+    assert.ok(bootstrapFetch, 'Must fallback to bootstrap endpoint');
+
+    const wbCalls = calls.filter((call) => isIdentifierNamed(call.expression, 'getIndicatorData'));
+    assert.equal(wbCalls.length, 0, 'Must NOT call getIndicatorData (WB API) from frontend');
   });
 
   it('indicator codes exist in TECH_INDICATORS for seed script parity', () => {
-    assert.match(src, /'IT\.NET\.USER\.ZS'/, 'Internet Users indicator must be present');
-    assert.match(src, /'IT\.CEL\.SETS\.P2'/, 'Mobile Subscriptions indicator must be present');
-    assert.match(src, /'IT\.NET\.BBND\.P2'/, 'Fixed Broadband indicator must be present');
-    assert.match(src, /'GB\.XPD\.RSDV\.GD\.ZS'/, 'R&D Expenditure indicator must be present');
+    const keys = getTechIndicatorKeys(sourceFile);
+    assert.ok(keys.has('IT.NET.USER.ZS'), 'Internet Users indicator must be present');
+    assert.ok(keys.has('IT.CEL.SETS.P2'), 'Mobile Subscriptions indicator must be present');
+    assert.ok(keys.has('IT.NET.BBND.P2'), 'Fixed Broadband indicator must be present');
+    assert.ok(keys.has('GB.XPD.RSDV.GD.ZS'), 'R&D Expenditure indicator must be present');
   });
 });

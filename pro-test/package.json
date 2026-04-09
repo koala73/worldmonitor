@@ -10,11 +10,16 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/clerk-js": "^6.4.0",
+    "@sentry/react": "^10.47.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "dodopayments-checkout": "^1.8.0",
+    "hls.js": "^1.6.15",
     "i18next": "^25.8.14",
     "i18next-browser-languagedetector": "^8.2.1",
     "lucide-react": "^0.546.0",
+    "mailcheck": "^1.1.1",
     "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

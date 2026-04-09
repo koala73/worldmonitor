@@ -38,6 +38,8 @@ message CryptoQuote {
   double change = 4;
   // Sparkline data points (recent price history).
   repeated double sparkline = 5;
+  // 7-day percentage change.
+  double change7d = 6;
 }
 
 // CommodityQuote represents a commodity price quote from Yahoo Finance.

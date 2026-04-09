@@ -1,0 +1,119 @@
+basket:
+  slug: essentials-gb
+  name: Essentials Basket UK
+  marketCode: gb
+  methodology: fixed
+  baseDate: "2025-01-01"
+  description: >
+    Core household essentials tracked weekly across UK grocery retailers.
+    Weighted to reflect a typical household of 4 in the United Kingdom.
+    Does not represent official CPI. Tracks consumer price pressure only.
+
+  items:
+    - id: eggs_12
+      category: eggs
+      canonicalName: Free Range Eggs 12 Pack
+      weight: 0.12
+      baseUnit: ct
+      substitutionGroup: eggs
+      minBaseQty: 10
+      maxBaseQty: 15
+
+    - id: milk_1l
+      category: dairy
+      canonicalName: Semi Skimmed Milk 2 Pint
+      weight: 0.10
+      baseUnit: ml
+      substitutionGroup: milk_semi_skimmed
+      minBaseQty: 900
+      maxBaseQty: 1200
+
+    - id: bread_white
+      category: bread
+      canonicalName: White Sliced Bread 800g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: bread_white
+      minBaseQty: 700
+      maxBaseQty: 900
+
+    - id: rice_1kg
+      category: rice
+      canonicalName: Basmati Rice 1kg
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: rice_basmati
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: cooking_oil_sunflower_1l
+      category: cooking_oil
+      canonicalName: Sunflower Oil 1L
+      weight: 0.07
+      baseUnit: ml
+      substitutionGroup: cooking_oil_sunflower
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: chicken_whole_1kg
+      category: chicken
+      canonicalName: Whole Chicken Fresh 1.5kg
+      weight: 0.12
+      baseUnit: g
+      substitutionGroup: chicken_whole
+      minBaseQty: 1200
+      maxBaseQty: 1800
+
+    - id: tomatoes_1kg
+      category: tomatoes
+      canonicalName: Tomatoes Fresh 1kg
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: tomatoes
+      minBaseQty: 800
+      maxBaseQty: 1200
+
+    - id: onions_1kg
+      category: onions
+      canonicalName: Brown Onions 1kg
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: onions
+      minBaseQty: 800
+      maxBaseQty: 1200
+
+    - id: water_1_5l
+      category: water
+      canonicalName: Still Water 6 x 1.5L
+      weight: 0.07
+      baseUnit: ml
+      substitutionGroup: water_still
+      minBaseQty: 7000
+      maxBaseQty: 10000
+
+    - id: sugar_1kg
+      category: sugar
+      canonicalName: Granulated White Sugar 1kg
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: sugar_white
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: cheese_cheddar_400g
+      category: dairy
+      canonicalName: Mature Cheddar Cheese 400g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: cheese_cheddar
+      minBaseQty: 350
+      maxBaseQty: 450
+
+    - id: yogurt_500g
+      category: dairy
+      canonicalName: Natural Yogurt 500g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: yogurt_plain
+      minBaseQty: 450
+      maxBaseQty: 550

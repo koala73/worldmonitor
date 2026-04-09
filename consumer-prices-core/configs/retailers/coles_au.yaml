@@ -1,0 +1,23 @@
+retailer:
+  slug: coles_au
+  name: Coles Australia
+  marketCode: au
+  currencyCode: AUD
+  adapter: search
+  baseUrl: https://www.coles.com.au
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} grocery {market} {currency} price"
+    urlPathContains: /product/
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

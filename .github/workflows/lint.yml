@@ -6,6 +6,9 @@ on:
       - '**/*.md'
       - '.markdownlint-cli2.jsonc'
 
+permissions:
+  contents: read
+
 jobs:
   markdown:
     # No secrets needed — run for all PRs including forks

@@ -48,7 +48,7 @@ export async function fetchCableHealth(): Promise<CableHealthResponse> {
 
   const resp = await breaker.execute(async () => {
     return client.getCableHealth({});
-  }, emptyFallback);
+  }, emptyFallback, { shouldCache: (r) => Object.keys(r.cables).length > 0 });
 
   const cables: Record<string, CableHealthRecord> = {};
   for (const [id, proto] of Object.entries(resp.cables)) {

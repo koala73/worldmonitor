@@ -132,11 +132,13 @@ const layers = {
   iranAttacks: false,
 
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  diseaseOutbreaks: false,
 };
 
 await initI18n();

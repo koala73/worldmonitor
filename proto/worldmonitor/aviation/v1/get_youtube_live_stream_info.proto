@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetYoutubeLiveStreamInfoRequest parameters for detecting live status.
+message GetYoutubeLiveStreamInfoRequest {
+  // YouTube channel handle or ID.
+  string channel = 1 [(sebuf.http.query) = {name: "channel"}];
+  // Specific video ID to check.
+  string video_id = 2 [(sebuf.http.query) = {name: "video_id"}];
+}
+
+// GetYoutubeLiveStreamInfoResponse containing detection results.
+message GetYoutubeLiveStreamInfoResponse {
+  // Video ID of the live stream (if found).
+  string video_id = 1;
+  // Whether the stream is currently live.
+  bool is_live = 2;
+  // Whether the channel exists.
+  bool channel_exists = 3;
+  // Human-readable channel name.
+  string channel_name = 4;
+  // HLS manifest URL (if available).
+  string hls_url = 5;
+  // Stream title.
+  string title = 6;
+  // Optional error message.
+  string error = 7;
+}

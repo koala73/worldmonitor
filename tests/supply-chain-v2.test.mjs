@@ -342,8 +342,8 @@ describe('Gateway daily cache tier', () => {
     assert.match(src, /\/api\/supply-chain\/v1\/get-chokepoint-status':\s*'medium'/);
   });
 
-  it('shipping rates route still uses static tier', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'static'/);
+  it('shipping rates route uses daily tier (24h seed interval)', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'daily'/);
   });
 });
 
@@ -358,8 +358,8 @@ describe('Client-side circuit breaker TTLs', () => {
     assert.match(src, /name:\s*'Shipping Rates'.*cacheTtlMs:\s*60\s*\*\s*60\s*\*\s*1000/);
   });
 
-  it('chokepoint breaker uses 5 min TTL', () => {
-    assert.match(src, /name:\s*'Chokepoint Status'.*cacheTtlMs:\s*5\s*\*\s*60\s*\*\s*1000/);
+  it('chokepoint breaker uses 90 min TTL (aligned with 60 min supplyChain refresh)', () => {
+    assert.match(src, /name:\s*'Chokepoint Status'.*cacheTtlMs:\s*90\s*\*\s*60\s*\*\s*1000/);
   });
 
   it('minerals breaker uses 24 hour TTL', () => {

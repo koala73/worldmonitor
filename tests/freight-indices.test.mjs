@@ -328,7 +328,7 @@ describe('Seed script structure', () => {
   });
 
   it('updated sourceVersion reflects new sources', () => {
-    assert.ok(seedSrc.includes("'fred-wto-sse-bdi'"));
+    assert.ok(seedSrc.includes("'fred-wto-sse-bdi-budgetlab'"));
   });
 });
 

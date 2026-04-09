@@ -1,0 +1,119 @@
+basket:
+  slug: essentials-ch
+  name: Essentials Basket Switzerland
+  marketCode: ch
+  methodology: fixed
+  baseDate: "2025-01-01"
+  description: >
+    Core household essentials tracked weekly across Swiss grocery retailers.
+    Weighted to reflect a typical household of 4 in Switzerland.
+    Does not represent official CPI. Tracks consumer price pressure only.
+
+  items:
+    - id: eggs_10
+      category: eggs
+      canonicalName: Fresh Eggs 10 Pack
+      weight: 0.12
+      baseUnit: ct
+      substitutionGroup: eggs
+      minBaseQty: 8
+      maxBaseQty: 12
+
+    - id: milk_1l
+      category: dairy
+      canonicalName: Vollmilch 1L
+      weight: 0.10
+      baseUnit: ml
+      substitutionGroup: milk_full_fat
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: bread_white
+      category: bread
+      canonicalName: Weissbrot Sandwich 500g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: bread_white
+      minBaseQty: 450
+      maxBaseQty: 550
+
+    - id: rice_1kg
+      category: rice
+      canonicalName: Basmati Rice 1kg
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: rice_basmati
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: cooking_oil_sunflower_1l
+      category: cooking_oil
+      canonicalName: Sonnenblumenöl 1L
+      weight: 0.07
+      baseUnit: ml
+      substitutionGroup: cooking_oil_sunflower
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: chicken_whole_1kg
+      category: chicken
+      canonicalName: Whole Chicken Fresh 1kg
+      weight: 0.12
+      baseUnit: g
+      substitutionGroup: chicken_whole
+      minBaseQty: 800
+      maxBaseQty: 1400
+
+    - id: tomatoes_500g
+      category: tomatoes
+      canonicalName: Tomaten 500g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: tomatoes
+      minBaseQty: 400
+      maxBaseQty: 600
+
+    - id: onions_1kg
+      category: onions
+      canonicalName: Zwiebeln 1kg
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: onions
+      minBaseQty: 800
+      maxBaseQty: 1200
+
+    - id: water_1_5l
+      category: water
+      canonicalName: Mineralwasser 1.5L
+      weight: 0.07
+      baseUnit: ml
+      substitutionGroup: water_still
+      minBaseQty: 1300
+      maxBaseQty: 1700
+
+    - id: sugar_1kg
+      category: sugar
+      canonicalName: Zucker 1kg
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: sugar_white
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: cheese_200g
+      category: dairy
+      canonicalName: Emmentaler Käse 200g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: cheese_hard
+      minBaseQty: 150
+      maxBaseQty: 250
+
+    - id: yogurt_500g
+      category: dairy
+      canonicalName: Naturjoghurt 500g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: yogurt_plain
+      minBaseQty: 450
+      maxBaseQty: 550

@@ -15,3 +15,6 @@ cmds = ["npm ci"]
 
 [phases.build]
 cmds = ["npm install", "npm install --prefix scripts"]
+
+[start]
+cmd = "node scripts/ais-relay.cjs"

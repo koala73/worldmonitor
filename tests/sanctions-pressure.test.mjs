@@ -69,47 +69,6 @@ describe('seed: memory safety', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Seed: buildLocationMap must sort code/name as aligned pairs
-// ---------------------------------------------------------------------------
-describe('seed buildLocationMap: code/name alignment', () => {
-  it('seed buildLocationMap uses paired sort instead of independent uniqueSorted calls', () => {
-    const fnStart = seedSrc.indexOf('function buildLocationMap(');
-    const fnEnd = seedSrc.indexOf('\nfunction extractPartyName(');
-    const fnBody = seedSrc.slice(fnStart, fnEnd);
-
-    assert.match(
-      fnBody,
-      /new Map\(mapped\.map/,
-      'seed buildLocationMap must deduplicate via Map keyed on code',
-    );
-    assert.ok(
-      !fnBody.includes("uniqueSorted(mapped.map((item) => item.code))"),
-      'seed buildLocationMap must not sort codes independently',
-    );
-    assert.ok(
-      !fnBody.includes("uniqueSorted(mapped.map((item) => item.name))"),
-      'seed buildLocationMap must not sort names independently',
-    );
-  });
-
-  it('seed extractPartyCountries deduplicates via Map instead of independent uniqueSorted', () => {
-    const fnStart = seedSrc.indexOf('function extractPartyCountries(');
-    const fnEnd = seedSrc.indexOf('\nfunction buildPartyMap(');
-    const fnBody = seedSrc.slice(fnStart, fnEnd);
-
-    assert.match(
-      fnBody,
-      /const seen = new Map/,
-      'seed extractPartyCountries must use a seen Map for deduplication',
-    );
-    assert.ok(
-      !fnBody.includes('uniqueSorted(codes)'),
-      'seed extractPartyCountries must not sort codes independently',
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Seed: DEFAULT_RECENT_LIMIT must not exceed handler MAX_ITEMS_LIMIT
 // ---------------------------------------------------------------------------
 describe('sanctions seed: DEFAULT_RECENT_LIMIT vs MAX_ITEMS_LIMIT', () => {

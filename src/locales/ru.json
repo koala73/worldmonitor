@@ -263,6 +263,7 @@
     "security": "Кибербезопасность",
     "policy": "Политика и регулирование ИИ",
     "regulation": "Панель регулирования ИИ",
+    "finRegulation": "Финансовое регулирование",
     "hardware": "Полупроводники и оборудование",
     "cloud": "Облако и инфраструктура",
     "dev": "Сообщество разработчиков",
@@ -280,7 +281,8 @@
     "gulfEconomies": "Экономика Залива",
     "gulfIndices": "Индексы Залива",
     "gulfCurrencies": "Валюты Залива",
-    "gulfOil": "Нефть Залива"
+    "gulfOil": "Нефть Залива",
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -732,7 +734,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>Регулирование</strong> Регуляторные действия, изменения политик и обновления правоприменения от глобальных регуляторов: финансовые, технологические, энергетические и торговые органы. Источник: официальные правительственные и регуляторные публикации."
     },
     "economic": {
       "indicators": "Индикаторы",
@@ -749,6 +752,8 @@
       "vsPreviousWeek": "к предыдущей неделе",
       "in": "в",
       "centralBanks": "Central Banks",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",
@@ -836,7 +841,8 @@
       "token": "Токен",
       "mcap": "Капитализация",
       "vol24h": "Объём 24ч",
-      "chg24h": "Изм. 24ч"
+      "chg24h": "Изм. 24ч",
+      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
       "dataFeeds": "Потоки данных",
@@ -958,8 +964,8 @@
       "nuclear": "Ядерный"
     },
     "community": {
-      "joinDiscussion": "Присоединиться к обсуждению",
-      "openDiscussion": "Открыть обсуждение",
+      "joinDiscussion": "Help Shape What's Next",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "Больше не показывать",
       "sectionLabel": "Сообщество"
     },
@@ -1322,7 +1328,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>Технологические события</strong> Предстоящие и недавние технологические события: конференции, запуски продуктов, регуляторные слушания и звонки по отчётности. Агрегировано из официальных календарей событий и отраслевых источников."
     },
     "techReadiness": {
       "internetUsers": "Интернет-пользователи",
@@ -1529,7 +1536,7 @@
       "noEventsIn7Days": "Нет событий за 7 дней"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>Разведка GDELT</strong> Мониторинг мировых новостей в реальном времени:<ul><li>Курированные тематические категории (конфликты, кибер и др.)</li><li>Статьи на 100+ языках с переводом</li><li>Обновление каждые 15 минут</li></ul>Источник: GDELT Project (gdeltproject.org)"
+      "infoTooltip": "<strong>Новостная разведка</strong> Мониторинг мировых новостей в реальном времени:<ul><li>Курированные тематические категории (конфликты, кибер и др.)</li><li>Статьи на 100+ языках с переводом</li><li>Обновление каждые 15 минут</li><li>14-day media tone &amp; volume trend per topic</li></ul>Источник: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Сигналы в реальном времени из отслеживаемых Telegram-каналов OSINT",
@@ -1544,7 +1551,9 @@
       "filterPolitics": "Политика",
       "filterMiddleeast": "Ближний Восток",
       "live": "ПРЯМОЙ ЭФИР",
-      "viewSource": "Посмотреть источник"
+      "viewSource": "Посмотреть источник",
+      "filterGeopolitics": "Геополитика",
+      "filterCyber": "Кибер"
     },
     "investments": {
       "infoTooltip": "База данных прямых иностранных инвестиций Саудовской Аравии и ОАЭ в мировую критическую инфраструктуру. Нажмите на строку для перехода к инвестиции на карте.",
@@ -1646,7 +1655,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Статус сервисов</strong> Оперативный статус в реальном времени крупных облачных платформ, финансовой инфраструктуры и критических интернет-сервисов. Источник: официальные страницы статуса (AWS, Azure, GCP, Cloudflare, биржи). Инциденты могут указывать на более масштабные события нарушений."
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1713,6 +1723,96 @@
     "map": {
       "showMap": "Показать карту",
       "hideMap": "Скрыть карту"
+    },
+    "internetDisruptions": {
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+    },
+    "crypto": {
+      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+    },
+    "gulfEconomies": {
+      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+    },
+    "groceryBasket": {
+      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+    },
+    "bigmac": {
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "defiTokens": {
+      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+    },
+    "aiTokens": {
+      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+    },
+    "altTokens": {
+      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+    },
+    "stockAnalysis": {
+      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+    },
+    "stockBacktest": {
+      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+    },
+    "dailyMarketBrief": {
+      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+    },
+    "centralBankWatch": {
+      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Авиационная разведка</strong> Оперативные данные авиакомпаний в реальном времени: приостановки маршрутов, закрытия воздушного пространства, уведомления перевозчиков и экстренные перенаправления. Источник: NOTAM авиационных властей и бюллетени перевозчиков."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>Аналитик WM</strong> ИИ-аналитик с живым контекстом в геополитической, рыночной, военной и экономической сферах. Работает на Claude с данными в реальном времени из активных каналов WorldMonitor."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>Позиционирование CFTC COT</strong> Отчёт об обязательствах трейдеров: чистое позиционирование коммерческих участников, крупных спекулянтов и мелких трейдеров по товарным и финансовым фьючерсам. Публикуется еженедельно (пятница). Источник: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Счётчики в реальном времени</strong> Экстраполированные счётчики в реальном времени для глобальных показателей: военные расходы, стихийные бедствия, бремя болезней и другое. Цифры — статистические оценки на основе годовых данных."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Вспышки заболеваний</strong> Активные оповещения о вспышках от ВОЗ, ProMED и министерств здравоохранения. Отслеживает подтверждённые вспышки, затронутые регионы, количество случаев и уровни угрозы. Обновляется при публикации новых отчётов."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Календарь отчётности</strong> Предстоящие и недавние публикации отчётности крупных публичных компаний. Показывает оценки EPS vs. фактические, выручку и классификацию превышения/недобора. Источник: поставщики финансовых данных."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Экономический календарь</strong> Запланированные макроэкономические публикации: CPI, NFP, GDP, PMI и решения центральных банков. Показывает прогноз vs. факт vs. предыдущее. События с высоким влиянием выделены. Источник: поставщики экономических данных."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Индикатор финансового стресса</strong> Индекс финансового стресса ФРБ Канзас-Сити (KCFSI): измеряет стресс на финансовых рынках США с помощью 11 индикаторов, включая спреды доходности, волатильность и перекрёстные корреляции. Положительные значения указывают на стресс выше среднего. Источник: Федеральный резервный банк Канзас-Сити."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Трекер торговли в Ормузе</strong> Отслеживание судов AIS в реальном времени через Ормузский пролив — самую критическую точку нефтяного узкого места в мире. Отслеживает количество танкеров, события нарушений и еженедельные изменения потоков. Примерно 20% мировых поставок нефти проходит здесь ежедневно."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Веб-камеры в прямом эфире</strong> Прямые трансляции из геополитически значимых мест по всему миру: зоны конфликтов, столицы, пограничные переходы и стратегические узкие места. Потоки с YouTube и публичных сетей."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Макроиндикаторы</strong> Ключевые макроэкономические показатели для США и еврозоны: CPI, безработица, GDP и ставки центральных банков. Значения с дельтой к предыдущему периоду. Источник: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Мониторы ключевых слов</strong> Добавьте любой термин для отслеживания упоминаний в новостях в реальном времени по всем источникам WorldMonitor. Результаты обновляются в реальном времени по мере поступления соответствующих статей."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Возобновляемая энергетика</strong> Глобальный портфель проектов возобновляемой энергетики: солнечная, ветровая, гидроэнергетика и добавление ёмкости хранения. Отслеживает объявленные, строящиеся и введённые в эксплуатацию проекты по регионам и типам технологий."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Социальная скорость</strong> Трендовые темы и вирусный контент с геополитическим значением. Измеряет скорость в социальных сетях: насколько быстро история распространяется относительно базовой линии. Помогает выявлять зарождающиеся нарративы до их попадания в традиционные СМИ."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Успехи охраны природы</strong> Позитивные новости об охране природы: восстановление популяций видов, вехи восстановления среды обитания и усилия по де-экстинкции. Источник: IUCN, WWF и публикации исследований в области охраны природы."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Мировые часы</strong> Местное время в реальном времени и статус торговых сессий для основных мировых финансовых центров. Показывает статус открыто/закрыто для NYSE, LSE, TSE, SGX и других бирж."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Кривая доходности &amp; Ставки</strong> Кривая доходности казначейских облигаций США (2Y, 5Y, 10Y, 30Y) и ключевые спреды ставок, включая индикатор инверсии 10Y-2Y. Также показывает ставки еврозоны (EURIBOR, ESTR). Инвертированная кривая исторически предшествует рецессиям. Источник: FRED."
     }
   },
   "popups": {

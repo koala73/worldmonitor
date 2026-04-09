@@ -12,6 +12,40 @@ function freshImportUrl(url) {
   return `${url}?t=${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function overrideGlobal(name, value) {
+  const original = Object.getOwnPropertyDescriptor(globalThis, name);
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+  return () => {
+    if (original) Object.defineProperty(globalThis, name, original);
+    else delete globalThis[name];
+  };
+}
+
+function installBrowserEnv() {
+  const location = {
+    hostname: 'worldmonitor.app',
+    protocol: 'https:',
+    host: 'worldmonitor.app',
+    origin: 'https://worldmonitor.app',
+  };
+  const navigator = { userAgent: 'node-test', onLine: true };
+  const window = { location, navigator };
+
+  const restoreWindow = overrideGlobal('window', window);
+  const restoreLocation = overrideGlobal('location', location);
+  const restoreNavigator = overrideGlobal('navigator', navigator);
+
+  return () => {
+    restoreNavigator();
+    restoreLocation();
+    restoreWindow();
+  };
+}
+
 function getRequestUrl(input) {
   if (typeof input === 'string') return new URL(input, 'http://localhost');
   if (input instanceof URL) return new URL(input.toString());
@@ -40,6 +74,7 @@ function marketResponse(quotes) {
 
 describe('market service symbol casing', () => {
   it('preserves distinct-case symbols in the batched request and response mapping', async () => {
+    const restoreBrowserEnv = installBrowserEnv();
     const { clearAllCircuitBreakers } = await import(freshImportUrl(CIRCUIT_BREAKER_URL));
     clearAllCircuitBreakers();
 
@@ -77,10 +112,12 @@ describe('market service symbol casing', () => {
     } finally {
       globalThis.fetch = originalFetch;
       clearAllCircuitBreakers();
+      restoreBrowserEnv();
     }
   });
 
   it('keeps per-request cache keys isolated when symbols differ only by case', async () => {
+    const restoreBrowserEnv = installBrowserEnv();
     const { clearAllCircuitBreakers } = await import(freshImportUrl(CIRCUIT_BREAKER_URL));
     clearAllCircuitBreakers();
 
@@ -116,6 +153,38 @@ describe('market service symbol casing', () => {
     } finally {
       globalThis.fetch = originalFetch;
       clearAllCircuitBreakers();
+      restoreBrowserEnv();
+    }
+  });
+
+  it('keeps requested metadata when the backend normalizes symbol casing', async () => {
+    const restoreBrowserEnv = installBrowserEnv();
+    const { clearAllCircuitBreakers } = await import(freshImportUrl(CIRCUIT_BREAKER_URL));
+    clearAllCircuitBreakers();
+
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async () => new Response(JSON.stringify(marketResponse([
+      quote('Btc-Usd', 101),
+    ])), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    try {
+      const { fetchMultipleStocks } = await import(freshImportUrl(MARKET_SERVICE_URL));
+      const result = await fetchMultipleStocks([
+        { symbol: 'btc-usd', name: 'Lower BTC', display: 'btc lower' },
+        { symbol: 'BTC-USD', name: 'Upper BTC', display: 'BTC upper' },
+      ]);
+
+      assert.equal(result.data[0]?.symbol, 'Btc-Usd');
+      assert.equal(result.data[0]?.name, 'Lower BTC');
+      assert.equal(result.data[0]?.display, 'btc lower');
+    } finally {
+      globalThis.fetch = originalFetch;
+      clearAllCircuitBreakers();
+      restoreBrowserEnv();
     }
   });
 });

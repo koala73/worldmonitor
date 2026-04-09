@@ -1,0 +1,41 @@
+# =============================================================================
+# AIS Relay Sidecar
+# =============================================================================
+# Runs scripts/ais-relay.cjs as a standalone container.
+# Dependencies: ws (WebSocket), telegram (OSINT polling), plus others in
+# scripts/package.json (fast-xml-parser, @anthropic-ai/sdk, etc.)
+# Set AISSTREAM_API_KEY in docker-compose.yml or Railway env.
+# =============================================================================
+
+FROM node:22-alpine
+
+# curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Install scripts/ runtime dependencies (telegram, ws, fast-xml-parser, etc.)
+COPY scripts/package.json scripts/package-lock.json ./scripts/
+RUN npm ci --prefix scripts --omit=dev
+
+# Relay script and shared helpers
+COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
+COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
+COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
+COPY scripts/seed-climate-news.mjs ./scripts/seed-climate-news.mjs
+COPY scripts/seed-chokepoint-flows.mjs ./scripts/seed-chokepoint-flows.mjs
+COPY scripts/seed-ember-electricity.mjs ./scripts/seed-ember-electricity.mjs
+
+# Shared helper required by the relay (rss-allowed-domains.cjs)
+COPY shared/ ./shared/
+
+# Data files required by the relay (telegram-channels.json, etc.)
+COPY data/ ./data/
+
+EXPOSE 3004
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3004/health || exit 1
+
+CMD ["node", "scripts/ais-relay.cjs"]

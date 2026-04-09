@@ -36,6 +36,7 @@ export interface CryptoQuote {
   price: number;
   change: number;
   sparkline: number[];
+  change7d: number;
 }
 
 export interface ListCommodityQuotesRequest {
@@ -293,6 +294,138 @@ export interface ListStoredStockBacktestsResponse {
   items: BacktestStockResponse[];
 }
 
+export interface ListCryptoSectorsRequest {
+}
+
+export interface ListCryptoSectorsResponse {
+  sectors: CryptoSector[];
+}
+
+export interface CryptoSector {
+  id: string;
+  name: string;
+  change: number;
+}
+
+export interface ListDefiTokensRequest {
+}
+
+export interface ListDefiTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface ListAiTokensRequest {
+}
+
+export interface ListAiTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface ListOtherTokensRequest {
+}
+
+export interface ListOtherTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface GetFearGreedIndexRequest {
+}
+
+export interface GetFearGreedIndexResponse {
+  compositeScore: number;
+  compositeLabel: string;
+  previousScore: number;
+  seededAt: string;
+  sentiment?: FearGreedCategory;
+  volatility?: FearGreedCategory;
+  positioning?: FearGreedCategory;
+  trend?: FearGreedCategory;
+  breadth?: FearGreedCategory;
+  momentum?: FearGreedCategory;
+  liquidity?: FearGreedCategory;
+  credit?: FearGreedCategory;
+  macro?: FearGreedCategory;
+  crossAsset?: FearGreedCategory;
+  vix: number;
+  hySpread: number;
+  yield10y: number;
+  putCallRatio: number;
+  pctAbove200d: number;
+  cnnFearGreed: number;
+  cnnLabel: string;
+  aaiiBull: number;
+  aaiiBear: number;
+  fedRate: string;
+  unavailable: boolean;
+  fsiValue: number;
+  fsiLabel: string;
+  hygPrice: number;
+  tltPrice: number;
+  sectorPerformance: FearGreedSectorPerformance[];
+}
+
+export interface FearGreedCategory {
+  score: number;
+  weight: number;
+  contribution: number;
+  degraded: boolean;
+  inputsJson: string;
+}
+
+export interface FearGreedSectorPerformance {
+  symbol: string;
+  name: string;
+  change1d: number;
+}
+
+export interface ListEarningsCalendarRequest {
+  fromDate: string;
+  toDate: string;
+}
+
+export interface ListEarningsCalendarResponse {
+  earnings: EarningsEntry[];
+  fromDate: string;
+  toDate: string;
+  total: number;
+  unavailable: boolean;
+}
+
+export interface EarningsEntry {
+  symbol: string;
+  company: string;
+  date: string;
+  hour: string;
+  epsEstimate: number;
+  revenueEstimate: number;
+  epsActual: number;
+  revenueActual: number;
+  hasActuals: boolean;
+  surpriseDirection: string;
+}
+
+export interface GetCotPositioningRequest {
+}
+
+export interface GetCotPositioningResponse {
+  instruments: CotInstrument[];
+  reportDate: string;
+  unavailable: boolean;
+}
+
+export interface CotInstrument {
+  name: string;
+  code: string;
+  reportDate: string;
+  assetManagerLong: string;
+  assetManagerShort: string;
+  leveragedFundsLong: string;
+  leveragedFundsShort: string;
+  dealerLong: string;
+  dealerShort: string;
+  netPct: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -350,6 +483,13 @@ export interface MarketServiceHandler {
   getStockAnalysisHistory(ctx: ServerContext, req: GetStockAnalysisHistoryRequest): Promise<GetStockAnalysisHistoryResponse>;
   backtestStock(ctx: ServerContext, req: BacktestStockRequest): Promise<BacktestStockResponse>;
   listStoredStockBacktests(ctx: ServerContext, req: ListStoredStockBacktestsRequest): Promise<ListStoredStockBacktestsResponse>;
+  listCryptoSectors(ctx: ServerContext, req: ListCryptoSectorsRequest): Promise<ListCryptoSectorsResponse>;
+  listDefiTokens(ctx: ServerContext, req: ListDefiTokensRequest): Promise<ListDefiTokensResponse>;
+  listAiTokens(ctx: ServerContext, req: ListAiTokensRequest): Promise<ListAiTokensResponse>;
+  listOtherTokens(ctx: ServerContext, req: ListOtherTokensRequest): Promise<ListOtherTokensResponse>;
+  getFearGreedIndex(ctx: ServerContext, req: GetFearGreedIndexRequest): Promise<GetFearGreedIndexResponse>;
+  listEarningsCalendar(ctx: ServerContext, req: ListEarningsCalendarRequest): Promise<ListEarningsCalendarResponse>;
+  getCotPositioning(ctx: ServerContext, req: GetCotPositioningRequest): Promise<GetCotPositioningResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -887,6 +1027,276 @@ export function createMarketServiceRoutes(
 
           const result = await handler.listStoredStockBacktests(ctx, body);
           return new Response(JSON.stringify(result as ListStoredStockBacktestsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-crypto-sectors",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListCryptoSectorsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listCryptoSectors(ctx, body);
+          return new Response(JSON.stringify(result as ListCryptoSectorsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-defi-tokens",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListDefiTokensRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listDefiTokens(ctx, body);
+          return new Response(JSON.stringify(result as ListDefiTokensResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-ai-tokens",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListAiTokensRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listAiTokens(ctx, body);
+          return new Response(JSON.stringify(result as ListAiTokensResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-other-tokens",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListOtherTokensRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listOtherTokens(ctx, body);
+          return new Response(JSON.stringify(result as ListOtherTokensResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-fear-greed-index",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetFearGreedIndexRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getFearGreedIndex(ctx, body);
+          return new Response(JSON.stringify(result as GetFearGreedIndexResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-earnings-calendar",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListEarningsCalendarRequest = {
+            fromDate: params.get("fromDate") ?? "",
+            toDate: params.get("toDate") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listEarningsCalendar", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listEarningsCalendar(ctx, body);
+          return new Response(JSON.stringify(result as ListEarningsCalendarResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-cot-positioning",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetCotPositioningRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCotPositioning(ctx, body);
+          return new Response(JSON.stringify(result as GetCotPositioningResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

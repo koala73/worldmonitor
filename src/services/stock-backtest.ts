@@ -4,10 +4,9 @@ import {
   type BacktestStockResponse,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { runThrottledTargetRequests } from '@/services/throttled-target-requests';
+import { premiumFetch } from '@/services/premium-fetch';
 
-const client = new MarketServiceClient(getRpcBaseUrl(), {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-});
+const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 export type StockBacktestResult = BacktestStockResponse;
 

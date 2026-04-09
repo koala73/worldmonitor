@@ -183,11 +183,13 @@ const allLayersEnabled: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: true,
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  diseaseOutbreaks: true,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -238,11 +240,13 @@ const allLayersDisabled: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  diseaseOutbreaks: true,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{
@@ -837,6 +841,10 @@ const seedAllDynamicData = (): void => {
       location: { latitude: 34.1, longitude: -118.2 },
       occurredAt: new Date('2026-02-01T10:00:00.000Z').getTime(),
       sourceUrl: 'https://example.com/eq',
+      nearTestSite: false,
+      testSiteName: '',
+      concernScore: 0,
+      concernLevel: '',
     },
   ];
 

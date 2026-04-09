@@ -120,7 +120,7 @@ export async function fetchRadiationWatch(): Promise<RadiationWatchResult> {
     const result = toResult(response);
     latestRadiationWatchResult = result;
     return result;
-  }, emptyResult);
+  }, emptyResult, { shouldCache: (r) => r.observations.length > 0 });
 }
 
 export function getLatestRadiationWatch(): RadiationWatchResult | null {

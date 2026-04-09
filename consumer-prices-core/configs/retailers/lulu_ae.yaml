@@ -1,0 +1,23 @@
+retailer:
+  slug: lulu_ae
+  name: Lulu Hypermarket UAE
+  marketCode: ae
+  currencyCode: AED
+  adapter: search
+  baseUrl: https://gcc.luluhypermarket.com
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} {currency} {market} price"
+    urlPathContains: /en-ae/
+
+  rateLimit:
+    requestsPerMinute: 15
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 4000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

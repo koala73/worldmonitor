@@ -12,9 +12,10 @@ interface Props {
   section?: string;
   jsonLd?: Record<string, unknown>;
   breadcrumbLd?: Record<string, unknown>;
+  faqLd?: Record<string, unknown>;
 }
 
-const { title, description, metaTitle, keywords, ogType, ogImage, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd } = Astro.props;
+const { title, description, metaTitle, keywords, ogType, ogImage, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd, faqLd } = Astro.props;
 const pageTitle = metaTitle || title;
 const resolvedOgImage = ogImage || 'https://www.worldmonitor.app/favico/og-image.png';
 const resolvedOgType = ogType || 'website';
@@ -68,10 +69,15 @@ const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6
     {breadcrumbLd && (
       <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
     )}
+    {faqLd && (
+      <script type="application/ld+json" set:html={JSON.stringify(faqLd)} />
+    )}
 
     <style is:global>
       @import '../styles/global.css';
     </style>
+
+    <script defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app"></script>
   </head>
   <body>
     <header class="site-header">
@@ -115,7 +121,7 @@ const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6
           <a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener noreferrer">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>
+          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener noreferrer">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener noreferrer">X</a>
         </div>
         <div class="footer-copy">

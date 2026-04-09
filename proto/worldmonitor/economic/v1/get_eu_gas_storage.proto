@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+// EuGasStorageHistoryEntry represents one day of EU aggregate gas storage data.
+message EuGasStorageHistoryEntry {
+  // Calendar date (YYYY-MM-DD).
+  string date = 1;
+  // Storage fill level as a percentage of working gas volume capacity.
+  double fill_pct = 2;
+  // Working gas volume in storage (TWh).
+  double gas_twh = 3;
+}
+
+// GetEuGasStorageRequest is empty — returns latest EU aggregate snapshot.
+message GetEuGasStorageRequest {}
+
+// GetEuGasStorageResponse contains the EU aggregate gas storage snapshot.
+message GetEuGasStorageResponse {
+  // Current storage fill level as a percentage of working gas volume (0–100).
+  double fill_pct = 1;
+  // 1-day change in fill percentage (positive = injecting, negative = withdrawing).
+  double fill_pct_change_1d = 2;
+  // Approximate days of consumption remaining at average EU winter drawdown rate.
+  double gas_days_consumption = 3;
+  // Current storage trend: "injecting", "withdrawing", or "stable".
+  string trend = 4;
+  // Recent daily history (up to 5 entries, most recent first).
+  repeated EuGasStorageHistoryEntry history = 5;
+  // UTC ms timestamp when seed data was written.
+  int64 seeded_at = 6;
+  // Calendar date of the most recent data point (YYYY-MM-DD).
+  string updated_at = 7;
+  // True when upstream data is unavailable (fallback result).
+  bool unavailable = 8;
+}

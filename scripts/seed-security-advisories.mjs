@@ -6,14 +6,13 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:advisories:v1';
 const BOOTSTRAP_KEY = 'intelligence:advisories-bootstrap:v1';
-const TTL = 7200; // 120min (2x cron interval; ensures data outlives maxStaleMin:120)
+const TTL = 10800; // 180min — 2h buffer over 1h cron cadence (was 120min = exactly 1h buffer)
 
 const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 
 const ADVISORY_FEEDS = [
   { name: 'US State Dept', sourceCountry: 'US', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
-  { name: 'NZ MFAT', sourceCountry: 'NZ', url: 'https://www.safetravel.govt.nz/news/feed', levelParser: 'au' },
-  { name: 'UK FCDO', sourceCountry: 'UK', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
+{ name: 'UK FCDO', sourceCountry: 'UK', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
   { name: 'US Embassy Thailand', sourceCountry: 'US', url: 'https://th.usembassy.gov/category/alert/feed/', targetCountry: 'TH' },
   { name: 'US Embassy UAE', sourceCountry: 'US', url: 'https://ae.usembassy.gov/category/alert/feed/', targetCountry: 'AE' },
   { name: 'US Embassy Germany', sourceCountry: 'US', url: 'https://de.usembassy.gov/category/alert/feed/', targetCountry: 'DE' },
@@ -61,13 +60,21 @@ function parseLevel(title, parser) {
 
 const COUNTRY_NAMES = loadSharedConfig('country-names.json');
 const SORTED_COUNTRY_ENTRIES = Object.entries(COUNTRY_NAMES).sort((a, b) => b[0].length - a[0].length);
+// Reverse map: ISO2 → display name (title-cased from the config keys).
+const BY_COUNTRY_NAME = Object.fromEntries(
+  Object.entries(COUNTRY_NAMES).map(([name, code]) => [
+    code,
+    name.replace(/\b\w/g, (c) => c.toUpperCase()),
+  ]),
+);
 
 function extractCountry(title, feed) {
   if (feed.targetCountry) return feed.targetCountry;
   if (feed.sourceCountry === 'EU' || feed.sourceCountry === 'INT') return undefined;
-  const lower = title.toLowerCase();
+  const normalized = title.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
   for (const [name, code] of SORTED_COUNTRY_ENTRIES) {
-    if (lower.includes(name)) return code;
+    if (normalized.includes(name)) return code;
   }
   return undefined;
 }
@@ -196,7 +203,7 @@ async function fetchAll() {
   deduped.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
   const byCountry = buildByCountryMap(deduped);
-  const report = { byCountry, advisories: deduped, fetchedAt: new Date().toISOString() };
+  const report = { byCountry, byCountryName: BY_COUNTRY_NAME, advisories: deduped, fetchedAt: new Date().toISOString() };
 
   console.log(`  ${deduped.length} advisories, ${Object.keys(byCountry).length} countries with levels`);
 

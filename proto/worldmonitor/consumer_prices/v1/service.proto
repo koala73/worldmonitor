@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package worldmonitor.consumer_prices.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/consumer_prices/v1/get_consumer_price_overview.proto";
+import "worldmonitor/consumer_prices/v1/get_consumer_price_basket_series.proto";
+import "worldmonitor/consumer_prices/v1/list_consumer_price_categories.proto";
+import "worldmonitor/consumer_prices/v1/list_consumer_price_movers.proto";
+import "worldmonitor/consumer_prices/v1/list_retailer_price_spreads.proto";
+import "worldmonitor/consumer_prices/v1/get_consumer_price_freshness.proto";
+
+// ConsumerPricesService provides APIs for consumer price intelligence.
+// Data is sourced from the consumer-prices-core companion service via Redis snapshots.
+service ConsumerPricesService {
+  option (sebuf.http.service_config) = {base_path: "/api/consumer-prices/v1"};
+
+  // GetConsumerPriceOverview retrieves headline basket indices and coverage metrics.
+  rpc GetConsumerPriceOverview(GetConsumerPriceOverviewRequest) returns (GetConsumerPriceOverviewResponse) {
+    option (sebuf.http.config) = {path: "/get-consumer-price-overview", method: HTTP_METHOD_GET};
+  }
+
+  // GetConsumerPriceBasketSeries retrieves the basket index time series.
+  rpc GetConsumerPriceBasketSeries(GetConsumerPriceBasketSeriesRequest) returns (GetConsumerPriceBasketSeriesResponse) {
+    option (sebuf.http.config) = {path: "/get-consumer-price-basket-series", method: HTTP_METHOD_GET};
+  }
+
+  // ListConsumerPriceCategories retrieves category summaries with sparklines.
+  rpc ListConsumerPriceCategories(ListConsumerPriceCategoriesRequest) returns (ListConsumerPriceCategoriesResponse) {
+    option (sebuf.http.config) = {path: "/list-consumer-price-categories", method: HTTP_METHOD_GET};
+  }
+
+  // ListConsumerPriceMovers retrieves the largest upward and downward item price moves.
+  rpc ListConsumerPriceMovers(ListConsumerPriceMoversRequest) returns (ListConsumerPriceMoversResponse) {
+    option (sebuf.http.config) = {path: "/list-consumer-price-movers", method: HTTP_METHOD_GET};
+  }
+
+  // ListRetailerPriceSpreads retrieves cheapest-basket comparisons across retailers.
+  rpc ListRetailerPriceSpreads(ListRetailerPriceSpreadsRequest) returns (ListRetailerPriceSpreadsResponse) {
+    option (sebuf.http.config) = {path: "/list-retailer-price-spreads", method: HTTP_METHOD_GET};
+  }
+
+  // GetConsumerPriceFreshness retrieves feed freshness and coverage health per retailer.
+  rpc GetConsumerPriceFreshness(GetConsumerPriceFreshnessRequest) returns (GetConsumerPriceFreshnessResponse) {
+    option (sebuf.http.config) = {path: "/get-consumer-price-freshness", method: HTTP_METHOD_GET};
+  }
+}

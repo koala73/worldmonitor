@@ -12,6 +12,22 @@ import "worldmonitor/economic/v1/get_bis_policy_rates.proto";
 import "worldmonitor/economic/v1/get_bis_exchange_rates.proto";
 import "worldmonitor/economic/v1/get_bis_credit.proto";
 import "worldmonitor/economic/v1/get_fred_series_batch.proto";
+import "worldmonitor/economic/v1/list_grocery_basket_prices.proto";
+import "worldmonitor/economic/v1/list_bigmac_prices.proto";
+import "worldmonitor/economic/v1/get_national_debt.proto";
+import "worldmonitor/economic/v1/list_fuel_prices.proto";
+import "worldmonitor/economic/v1/get_bls_series.proto";
+import "worldmonitor/economic/v1/get_economic_calendar.proto";
+import "worldmonitor/economic/v1/get_crude_inventories.proto";
+import "worldmonitor/economic/v1/get_nat_gas_storage.proto";
+import "worldmonitor/economic/v1/get_ecb_fx_rates.proto";
+import "worldmonitor/economic/v1/get_eurostat_country_data.proto";
+import "worldmonitor/economic/v1/get_eu_gas_storage.proto";
+import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
+import "worldmonitor/economic/v1/get_eu_fsi.proto";
+import "worldmonitor/economic/v1/get_economic_stress.proto";
+import "worldmonitor/economic/v1/get_fao_food_price_index.proto";
+import "worldmonitor/economic/v1/get_oil_stocks_analysis.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -60,5 +76,85 @@ service EconomicService {
   // GetFredSeriesBatch retrieves multiple FRED series in a single call.
   rpc GetFredSeriesBatch(GetFredSeriesBatchRequest) returns (GetFredSeriesBatchResponse) {
     option (sebuf.http.config) = {path: "/get-fred-series-batch", method: HTTP_METHOD_POST};
+  }
+
+  // ListGroceryBasketPrices retrieves grocery basket price comparison across 24 countries worldwide.
+  rpc ListGroceryBasketPrices(ListGroceryBasketPricesRequest) returns (ListGroceryBasketPricesResponse) {
+    option (sebuf.http.config) = {path: "/list-grocery-basket-prices", method: HTTP_METHOD_GET};
+  }
+
+  // ListBigMacPrices retrieves Big Mac Index prices across Middle East countries.
+  rpc ListBigMacPrices(ListBigMacPricesRequest) returns (ListBigMacPricesResponse) {
+    option (sebuf.http.config) = {path: "/list-bigmac-prices", method: HTTP_METHOD_GET};
+  }
+
+  // GetNationalDebt retrieves national debt clock data for all countries.
+  rpc GetNationalDebt(GetNationalDebtRequest) returns (GetNationalDebtResponse) {
+    option (sebuf.http.config) = {path: "/get-national-debt", method: HTTP_METHOD_GET};
+  }
+
+  // ListFuelPrices retrieves retail gasoline and diesel prices across 30+ countries.
+  rpc ListFuelPrices(ListFuelPricesRequest) returns (ListFuelPricesResponse) {
+    option (sebuf.http.config) = {path: "/list-fuel-prices", method: HTTP_METHOD_GET};
+  }
+
+  // GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+  rpc GetBlsSeries(GetBlsSeriesRequest) returns (GetBlsSeriesResponse) {
+    option (sebuf.http.config) = {path: "/get-bls-series", method: HTTP_METHOD_GET};
+  }
+
+  // GetEconomicCalendar retrieves upcoming major economic events (FOMC, CPI, NFP, etc).
+  rpc GetEconomicCalendar(GetEconomicCalendarRequest) returns (GetEconomicCalendarResponse) {
+    option (sebuf.http.config) = {path: "/get-economic-calendar", method: HTTP_METHOD_GET};
+  }
+
+  // GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
+  rpc GetCrudeInventories(GetCrudeInventoriesRequest) returns (GetCrudeInventoriesResponse) {
+    option (sebuf.http.config) = {path: "/get-crude-inventories", method: HTTP_METHOD_GET};
+  }
+
+  // GetNatGasStorage retrieves the 8 most recent weeks of US natural gas working gas storage from EIA (NW2_EPG0_SWO_R48_BCF).
+  rpc GetNatGasStorage(GetNatGasStorageRequest) returns (GetNatGasStorageResponse) {
+    option (sebuf.http.config) = {path: "/get-nat-gas-storage", method: HTTP_METHOD_GET};
+  }
+
+  // GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.
+  rpc GetEcbFxRates(GetEcbFxRatesRequest) returns (GetEcbFxRatesResponse) {
+    option (sebuf.http.config) = {path: "/get-ecb-fx-rates", method: HTTP_METHOD_GET};
+  }
+
+  // GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+  rpc GetEurostatCountryData(GetEurostatCountryDataRequest) returns (GetEurostatCountryDataResponse) {
+    option (sebuf.http.config) = {path: "/get-eurostat-country-data", method: HTTP_METHOD_GET};
+  }
+
+  // GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
+  rpc GetEuGasStorage(GetEuGasStorageRequest) returns (GetEuGasStorageResponse) {
+    option (sebuf.http.config) = {path: "/get-eu-gas-storage", method: HTTP_METHOD_GET};
+  }
+
+  // GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+  rpc GetEuYieldCurve(GetEuYieldCurveRequest) returns (GetEuYieldCurveResponse) {
+    option (sebuf.http.config) = {path: "/get-eu-yield-curve", method: HTTP_METHOD_GET};
+  }
+
+  // GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+  rpc GetEuFsi(GetEuFsiRequest) returns (GetEuFsiResponse) {
+    option (sebuf.http.config) = {path: "/get-eu-fsi", method: HTTP_METHOD_GET};
+  }
+
+  // GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
+  rpc GetEconomicStress(GetEconomicStressRequest) returns (GetEconomicStressResponse) {
+    option (sebuf.http.config) = {path: "/get-economic-stress", method: HTTP_METHOD_GET};
+  }
+
+  // GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+  rpc GetFaoFoodPriceIndex(GetFaoFoodPriceIndexRequest) returns (GetFaoFoodPriceIndexResponse) {
+    option (sebuf.http.config) = {path: "/get-fao-food-price-index", method: HTTP_METHOD_GET};
+  }
+
+  // GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+  rpc GetOilStocksAnalysis(GetOilStocksAnalysisRequest) returns (GetOilStocksAnalysisResponse) {
+    option (sebuf.http.config) = {path: "/get-oil-stocks-analysis", method: HTTP_METHOD_GET};
   }
 }

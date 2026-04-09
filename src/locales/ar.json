@@ -258,6 +258,7 @@
     "security": "الأمن السيبراني",
     "policy": "سياسات وتنظيمات AI",
     "regulation": "لوحة تنظيمات AI",
+    "finRegulation": "التنظيم المالي",
     "hardware": "أشباه الموصلات والعتاد",
     "cloud": "السحابة والبنية التحتية",
     "dev": "مجتمع المطورين",
@@ -280,7 +281,9 @@
     "gulfEconomies": "اقتصادات الخليج",
     "gulfIndices": "مؤشرات الخليج",
     "gulfCurrencies": "عملات الخليج",
-    "gulfOil": "نفط الخليج"
+    "gulfOil": "نفط الخليج",
+    "bigmac": "Real Big Mac Index",
+    "fearGreed": "Fear & Greed"
   },
   "commands": {
     "prefixes": {
@@ -722,7 +725,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>التنظيم</strong> إجراءات تنظيمية وتغييرات سياسات وتحديثات إنفاذ من الهيئات التنظيمية العالمية: المالية والتقنية والطاقة والتجارة. مصدرها منشورات الحكومات والهيئات التنظيمية الرسمية."
     },
     "economic": {
       "indicators": "المؤشرات",
@@ -738,6 +742,8 @@
       "vsPreviousWeek": "مقارنة بالأسبوع السابق",
       "in": "في",
       "centralBanks": "Central Banks",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",
@@ -802,7 +808,8 @@
       "token": "الرمز",
       "mcap": "القيمة السوقية",
       "vol24h": "حجم 24 ساعة",
-      "chg24h": "تغيّر 24 ساعة"
+      "chg24h": "تغيّر 24 ساعة",
+      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
       "dataFeeds": "تدفقات البيانات",
@@ -924,8 +931,8 @@
       "nuclear": "نووي"
     },
     "community": {
-      "joinDiscussion": "انضم إلى النقاش",
-      "openDiscussion": "فتح النقاش",
+      "joinDiscussion": "Help Shape What's Next",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "عدم العرض مجدداً",
       "sectionLabel": "المجتمع"
     },
@@ -1278,7 +1285,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>أحداث التقنية</strong> أحداث تقنية قادمة وحديثة: مؤتمرات، إطلاق منتجات، جلسات استماع تنظيمية، ومكالمات أرباح. مجمعة من تقويمات الأحداث الرسمية ومصادر الصناعة."
     },
     "techReadiness": {
       "internetUsers": "مستخدمو الإنترنت",
@@ -1416,7 +1424,7 @@
       "noEventsIn7Days": "لا توجد أحداث خلال 7 أيام"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>استخبارات GDELT</strong> مراقبة أخبار عالمية فورية:<ul><li>فئات مواضيع منتقاة (نزاعات، سيبرانية، إلخ.)</li><li>مقالات من 100+ لغة مترجمة</li><li>تُحدّث كل 15 دقيقة</li></ul>المصدر: مشروع GDELT (gdeltproject.org)"
+      "infoTooltip": "<strong>استخبارات الأخبار</strong> مراقبة أخبار عالمية فورية:<ul><li>فئات مواضيع منتقاة (نزاعات، سيبرانية، إلخ.)</li><li>مقالات من 100+ لغة مترجمة</li><li>تُحدّث كل 15 دقيقة</li><li>14-day media tone &amp; volume trend per topic</li></ul>المصدر: مشروع GDELT (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "إشارات فورية من قنوات OSINT المراقبة على Telegram",
@@ -1431,7 +1439,9 @@
       "filterPolitics": "سياسة",
       "filterMiddleeast": "الشرق الأوسط",
       "live": "مباشر",
-      "viewSource": "عرض المصدر"
+      "viewSource": "عرض المصدر",
+      "filterGeopolitics": "جيوسياسية",
+      "filterCyber": "إلكتروني"
     },
     "investments": {
       "infoTooltip": "قاعدة بيانات الاستثمارات الأجنبية المباشرة للمملكة العربية السعودية والإمارات في البنية التحتية الحيوية العالمية. انقر على صف للانتقال إلى موقع الاستثمار على الخريطة.",
@@ -1533,7 +1543,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>حالة الخدمات</strong> الحالة التشغيلية المباشرة لمنصات السحابة الكبرى والبنية التحتية المالية وخدمات الإنترنت الحيوية. مصدرها صفحات الحالة الرسمية (AWS وAzure وGCP وCloudflare والبورصات). قد تشير الحوادث إلى أحداث تعطل أوسع."
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1713,6 +1724,96 @@
     "map": {
       "showMap": "إظهار الخريطة",
       "hideMap": "إخفاء الخريطة"
+    },
+    "internetDisruptions": {
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+    },
+    "crypto": {
+      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+    },
+    "gulfEconomies": {
+      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+    },
+    "groceryBasket": {
+      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+    },
+    "bigmac": {
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "defiTokens": {
+      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+    },
+    "aiTokens": {
+      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+    },
+    "altTokens": {
+      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+    },
+    "stockAnalysis": {
+      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+    },
+    "stockBacktest": {
+      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+    },
+    "dailyMarketBrief": {
+      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+    },
+    "centralBankWatch": {
+      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>استخبارات الطيران</strong> بيانات تشغيل شركات الطيران في الوقت الفعلي: تعليق المسارات، إغلاق المجالات الجوية، تنبيهات الناقلين، والتحويلات الطارئة. مصدرها إشعارات NOTAM من سلطات الطيران ونشرات الناقلين."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>محلل WM</strong> محلل ذكاء اصطناعي مع سياق مباشر عبر المجالات الجيوسياسية والسوقية والعسكرية والاقتصادية. مدعوم بـ Claude مع بيانات فورية من تغذيات WorldMonitor النشطة."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>مراكز CFTC COT</strong> تقرير التزامات المتداولين: صافي مراكز التجاريين والمضاربين الكبار والمتداولين الصغار عبر العقود الآجلة للسلع والمالية. يُنشر أسبوعياً (الجمعة). المصدر: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>عدادات مباشرة</strong> عدادات استقراء فورية لمقاييس عالمية: الإنفاق العسكري، الكوارث الطبيعية، عبء الأمراض، والمزيد. الأرقام تقديرات إحصائية مبنية على معدلات البيانات السنوية."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>تفشي الأمراض</strong> تنبيهات التفشي النشطة من WHO وProMED ووزارات الصحة. تتبع حالات التفشي المؤكدة والمناطق المتأثرة وأعداد الحالات ومستويات التهديد. تُحدث عند نشر تقارير جديدة."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>تقويم الأرباح</strong> إصدارات الأرباح القادمة والأخيرة للشركات العامة الكبرى. يعرض تقديرات EPS مقابل الفعلية والإيرادات وتصنيف تجاوز/إخفاق التوقعات. المصدر: مزودو البيانات المالية."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>التقويم الاقتصادي</strong> إصدارات الاقتصاد الكلي المجدولة: CPI وNFP وGDP وPMI وقرارات البنوك المركزية. يعرض التوقعات مقابل الفعلي مقابل السابق. الأحداث عالية التأثير مميزة. المصدر: مزودو البيانات الاقتصادية."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>مؤشر الضغوط المالية</strong> مؤشر الضغوط المالية لبنك كانساس سيتي الفيدرالي (KCFSI): يقيس الضغوط في الأسواق المالية الأمريكية باستخدام 11 مؤشراً تشمل فروق العوائد والتقلبات والارتباطات المتبادلة. القيم الموجبة تشير إلى ضغوط أعلى من المتوسط. المصدر: بنك الاحتياطي الفيدرالي في كانساس سيتي."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>متتبع تجارة هرمز</strong> تتبع مباشر لسفن AIS عبر مضيق هرمز، أهم نقطة اختناق نفطية في العالم. يراقب أعداد الناقلات وأحداث التعطيل والتغيرات الأسبوعية في التدفقات. حوالي 20% من إمدادات النفط العالمية تعبر هنا يومياً."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>كاميرات مباشرة</strong> بث مباشر من مواقع ذات أهمية جيوسياسية حول العالم: مناطق النزاع، العواصم، المعابر الحدودية، ونقاط الاختناق الاستراتيجية. البث من YouTube والشبكات العامة."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>مؤشرات الاقتصاد الكلي</strong> مؤشرات اقتصادية كلية رئيسية للولايات المتحدة ومنطقة اليورو: CPI والبطالة وGDP وأسعار البنوك المركزية. القيم معروضة مع فارق الفترة السابقة. المصدر: FRED (بيانات الاحتياطي الفيدرالي الاقتصادية)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>مراقبة الكلمات المفتاحية</strong> أضف أي مصطلح لتتبع الإشارات الإخبارية المباشرة عبر جميع مصادر WorldMonitor. تُحدث النتائج فورياً مع استيعاب المقالات المطابقة."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>الطاقة المتجددة</strong> خط أنابيب مشاريع الطاقة المتجددة العالمية: الطاقة الشمسية والرياح والمائية وإضافات سعة التخزين. يتتبع المشاريع المعلنة وقيد الإنشاء والمكلفة حسب المنطقة ونوع التقنية."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>السرعة الاجتماعية</strong> المواضيع الرائجة والمحتوى الفيروسي ذو الأهمية الجيوسياسية. يقيس سرعة وسائل التواصل الاجتماعي: مدى سرعة انتشار قصة مقارنة بالمعدل الطبيعي. يساعد في إبراز الروايات الناشئة قبل وصولها للإعلام التقليدي."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>إنجازات الحفاظ على البيئة</strong> أخبار إيجابية عن الحفاظ على البيئة: تعافي أعداد الأنواع، معالم استعادة الموائل، وجهود إعادة الأنواع المنقرضة. مصدرها IUCN وWWF ومنشورات أبحاث الحفاظ على البيئة."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>ساعة عالمية</strong> التوقيت المحلي المباشر وحالة جلسات السوق للمراكز المالية العالمية الرئيسية. يعرض حالة الفتح/الإغلاق لـ NYSE وLSE وTSE وSGX وبورصات أخرى."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>منحنى العائد &amp; الأسعار</strong> منحنى عائد سندات الخزانة الأمريكية (2Y و5Y و10Y و30Y) وفروق الأسعار الرئيسية بما في ذلك مؤشر انعكاس 10Y-2Y. يعرض أيضاً أسعار منطقة اليورو (EURIBOR وESTR). المنحنى المقلوب يسبق تاريخياً فترات الركود. المصدر: FRED."
     }
   },
   "popups": {

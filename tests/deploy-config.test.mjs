@@ -16,7 +16,7 @@ const getCacheHeaderValue = (sourcePath) => {
 
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
-    const spaNoCache = getCacheHeaderValue('/((?!api|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)');
+    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known|wm-widget-sandbox\\.html).*)');
     assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
   });
 
@@ -101,11 +101,11 @@ describe('security header guardrails', () => {
       'idle-detection=()',
       'magnetometer=()',
       'midi=()',
-      'payment=()',
+      'payment=(self "https://checkout.dodopayments.com" "https://test.checkout.dodopayments.com" "https://pay.google.com" "https://hooks.stripe.com" "https://js.stripe.com")',
       'screen-wake-lock=()',
       'serial=()',
       'usb=()',
-      'xr-spatial-tracking=()',
+      'xr-spatial-tracking=("https://challenges.cloudflare.com")',
     ];
     for (const directive of expectedDisabled) {
       assert.ok(policy.includes(directive), `Permissions-Policy missing: ${directive}`);
@@ -127,11 +127,11 @@ describe('security header guardrails', () => {
       policy.includes('geolocation=(self)'),
       'Permissions-Policy should delegate geolocation to self'
     );
-    // picture-in-picture delegates to self + YouTube
+    // picture-in-picture delegates to self + YouTube + Turnstile
     assert.match(
       policy,
-      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com"\)/,
-      'Permissions-Policy should delegate picture-in-picture to YouTube origins'
+      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com" "https:\/\/challenges\.cloudflare\.com"\)/,
+      'Permissions-Policy should delegate picture-in-picture to YouTube + Turnstile origins'
     );
   });
 
@@ -140,6 +140,26 @@ describe('security header guardrails', () => {
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
     assert.ok(!connectSrc.includes(' ws:'), 'CSP connect-src must not contain ws: (unencrypted WebSocket)');
     assert.ok(connectSrc.includes('wss:'), 'CSP connect-src should keep wss: for secure WebSocket');
+  });
+
+  it('CSP connect-src https: scheme is consistent between header and meta tag', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+
+    const headerConnectSrc = headerCsp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+    const metaConnectSrc = metaMatch[1].match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+
+    const headerHasHttps = /\bhttps:\b/.test(headerConnectSrc);
+    const metaHasHttps = /\bhttps:\b/.test(metaConnectSrc);
+
+    // The CSP violation listener suppresses HTTPS connect-src violations when the meta tag
+    // contains https: in connect-src. If the header is tightened without the meta tag,
+    // real violations would be silently suppressed. Both must stay in sync.
+    assert.equal(headerHasHttps, metaHasHttps,
+      `connect-src https: scheme mismatch: header=${headerHasHttps}, meta=${metaHasHttps}. ` +
+      'If removing https: from connect-src, update the CSP violation listener in main.ts too.');
   });
 
   it('CSP connect-src does not contain localhost in production', () => {
@@ -153,6 +173,50 @@ describe('security header guardrails', () => {
     const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
     assert.ok(scriptSrc.includes("'wasm-unsafe-eval'"), 'CSP script-src must include wasm-unsafe-eval for WASM support');
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
+  });
+
+  it('CSP script-src includes Clerk origin for auth UI', () => {
+    const csp = getHeaderValue('Content-Security-Policy');
+    const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      scriptSrc.includes('clerk.accounts.dev') || scriptSrc.includes('clerk.worldmonitor.app'),
+      'CSP script-src must include Clerk origin for auth UI to load'
+    );
+  });
+
+  it('CSP frame-src includes Clerk origin for auth modals', () => {
+    const csp = getHeaderValue('Content-Security-Policy');
+    const frameSrc = csp.match(/frame-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      frameSrc.includes('clerk.accounts.dev') || frameSrc.includes('clerk.worldmonitor.app'),
+      'CSP frame-src must include Clerk origin for sign-in modal'
+    );
+  });
+
+  it('CSP script-src hashes are in sync between vercel.json header and index.html meta tag', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+    const metaCsp = metaMatch[1];
+
+    const extractHashes = (csp) => {
+      const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+      return new Set(scriptSrc.match(/'sha256-[A-Za-z0-9+/=]+'/g) ?? []);
+    };
+
+    const headerHashes = extractHashes(headerCsp);
+    const metaHashes = extractHashes(metaCsp);
+
+    const onlyHeader = [...headerHashes].filter(h => !metaHashes.has(h));
+    const onlyMeta = [...metaHashes].filter(h => !headerHashes.has(h));
+
+    assert.deepEqual(onlyHeader, [],
+      `script-src hashes in vercel.json but missing from index.html: ${onlyHeader.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched hashes block scripts.');
+    assert.deepEqual(onlyMeta, [],
+      `script-src hashes in index.html but missing from vercel.json: ${onlyMeta.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched hashes block scripts.');
   });
 
   it('security.txt exists in public/.well-known/', () => {

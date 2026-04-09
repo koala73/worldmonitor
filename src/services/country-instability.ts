@@ -10,6 +10,8 @@ import type { ConflictEvent, UcdpConflictStatus, HapiConflictSummary } from './c
 import type { CountryDisplacement } from '@/services/displacement';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
+import type { Earthquake } from '@/generated/client/worldmonitor/seismology/v1/service_client';
+import type { CountrySanctionsPressure } from '@/services/sanctions-pressure';
 import { getCountryAtCoordinates, iso3ToIso2Code, nameToCountryCode, getCountryNameByCode, matchCountryNamesInText, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
 
 export interface CountryScore {
@@ -60,6 +62,11 @@ interface CountryData {
   cyberThreatMediumCount: number;
   temporalAnomalyCount: number;
   temporalAnomalyCriticalCount: number;
+  earthquakeSignificantCount: number;
+  earthquakeMajorCount: number;
+  earthquakeSevereCount: number;
+  sanctionsEntryCount: number;
+  sanctionsNewEntryCount: number;
 }
 
 export { TIER1_COUNTRIES } from '@/config/countries';
@@ -204,6 +211,11 @@ function initCountryData(): CountryData {
     cyberThreatMediumCount: 0,
     temporalAnomalyCount: 0,
     temporalAnomalyCriticalCount: 0,
+    earthquakeSignificantCount: 0,
+    earthquakeMajorCount: 0,
+    earthquakeSevereCount: 0,
+    sanctionsEntryCount: 0,
+    sanctionsNewEntryCount: 0,
   };
 }
 
@@ -723,6 +735,60 @@ export function ingestTemporalAnomaliesForCII(anomalies: TemporalAnomaly[]): voi
   }
 }
 
+const EARTHQUAKE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function ingestEarthquakesForCII(earthquakes: Earthquake[], now = Date.now()): void {
+  for (const [, data] of countryDataMap) {
+    data.earthquakeSignificantCount = 0;
+    data.earthquakeMajorCount = 0;
+    data.earthquakeSevereCount = 0;
+  }
+
+  const cutoff = now - EARTHQUAKE_LOOKBACK_MS;
+  for (const eq of earthquakes) {
+    if (eq.magnitude < 5.5) continue;
+    if (eq.occurredAt < cutoff) continue;
+    processedCount++;
+    const code = getCountryAtCoordinates(eq.location?.latitude ?? 0, eq.location?.longitude ?? 0)?.code;
+    if (!code || code === 'XX') { unmappedCount++; continue; }
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    const data = countryDataMap.get(code)!;
+    if (eq.magnitude >= 7.5) data.earthquakeSevereCount++;
+    else if (eq.magnitude >= 6.5) data.earthquakeMajorCount++;
+    else data.earthquakeSignificantCount++;
+  }
+}
+
+export function ingestSanctionsForCII(countries: CountrySanctionsPressure[]): void {
+  for (const [, data] of countryDataMap) {
+    data.sanctionsEntryCount = 0;
+    data.sanctionsNewEntryCount = 0;
+  }
+
+  for (const c of countries) {
+    const code = c.countryCode.toUpperCase();
+    if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
+    const data = countryDataMap.get(code)!;
+    data.sanctionsEntryCount = c.entryCount;
+    data.sanctionsNewEntryCount = c.newEntryCount;
+  }
+}
+
+function getEarthquakeBoost(data: CountryData): number {
+  const raw = data.earthquakeSevereCount * 10
+    + data.earthquakeMajorCount * 5
+    + data.earthquakeSignificantCount * 2;
+  return Math.min(25, raw);
+}
+
+function getSanctionsBoost(data: CountryData): number {
+  const count = data.sanctionsEntryCount;
+  if (count === 0) return 0;
+  let boost = count >= 2000 ? 12 : count >= 501 ? 8 : count >= 101 ? 5 : 3;
+  if (data.sanctionsNewEntryCount > 0) boost += 2;
+  return boost;
+}
+
 function calcUnrestScore(data: CountryData, countryCode: string): number {
   const protestCount = data.protests.length;
   const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
@@ -944,7 +1010,7 @@ export function calculateCII(): CountryScore[] {
 
     const advisoryBoost = getAdvisoryBoost(data);
     const supplementalSignalBoost = getSupplementalSignalBoost(data);
-    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost + supplementalSignalBoost;
+    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost + supplementalSignalBoost + getEarthquakeBoost(data) + getSanctionsBoost(data);
 
     const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
     const score = Math.round(Math.min(100, Math.max(floor, blendedScore)));

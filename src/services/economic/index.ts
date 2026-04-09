@@ -24,6 +24,25 @@ import {
   type BisPolicyRate,
   type BisExchangeRate,
   type BisCreditToGdp,
+  type GetNationalDebtResponse,
+  type NationalDebtEntry,
+  type GetBlsSeriesResponse,
+  type GetCrudeInventoriesResponse,
+  type CrudeInventoryWeek,
+  type GetNatGasStorageResponse,
+  type NatGasStorageWeek,
+  type GetEcbFxRatesResponse,
+  type EcbFxRate,
+  type GetEuGasStorageResponse,
+  type EuGasStorageHistoryEntry,
+  type GetEurostatCountryDataResponse,
+  type EurostatCountryEntry,
+  type GetOilStocksAnalysisResponse,
+  type OilStocksAnalysisMember,
+  type OilStocksRegionalSummary,
+  type OilStocksRegionalSummaryEurope,
+  type OilStocksRegionalSummaryAsiaPacific,
+  type OilStocksRegionalSummaryNorthAmerica,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
@@ -35,10 +54,14 @@ import { toApiUrl } from '@/services/runtime';
 // ---- Client + Circuit Breakers ----
 
 const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const WB_BREAKERS_WARN_THRESHOLD = 50;
 const wbBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<ListWorldBankIndicatorsResponse>>>();
 
 function getWbBreaker(indicatorCode: string) {
   if (!wbBreakers.has(indicatorCode)) {
+    if (wbBreakers.size >= WB_BREAKERS_WARN_THRESHOLD) {
+      console.warn(`[wb] breaker pool at ${wbBreakers.size} — unexpected growth, investigate getWbBreaker callers`);
+    }
     wbBreakers.set(indicatorCode, createCircuitBreaker<ListWorldBankIndicatorsResponse>({
       name: `WB:${indicatorCode}`,
       cacheTtlMs: 30 * 60 * 1000,
@@ -54,14 +77,33 @@ const bisPolicyBreaker = createCircuitBreaker<GetBisPolicyRatesResponse>({ name:
 const bisEerBreaker = createCircuitBreaker<GetBisExchangeRatesResponse>({ name: 'BIS EER', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const bisCreditBreaker = createCircuitBreaker<GetBisCreditResponse>({ name: 'BIS Credit', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
+const emptyBlsFallback: GetBlsSeriesResponse = { series: undefined };
+const blsBreaker = createCircuitBreaker<FredSeries[]>({ name: 'BLS Batch', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
+
 const emptyFredBatchFallback: GetFredSeriesBatchResponse = { results: {}, fetched: 0, requested: 0 };
 const fredBatchBreaker = createCircuitBreaker<GetFredSeriesBatchResponse>({ name: 'FRED Batch', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
 const emptyWbFallback: ListWorldBankIndicatorsResponse = { data: [], pagination: undefined };
 const emptyEiaFallback: GetEnergyPricesResponse = { prices: [] };
+const emptyCrudeFallback: GetCrudeInventoriesResponse = { weeks: [], latestPeriod: '' };
+const crudeBreaker = createCircuitBreaker<GetCrudeInventoriesResponse>({ name: 'EIA Crude Inventories', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
+const emptyEuGasFallback: GetEuGasStorageResponse = { fillPct: 0, fillPctChange1d: 0, gasDaysConsumption: 0, trend: 'stable', history: [], seededAt: '0', updatedAt: '', unavailable: true };
+const euGasBreaker = createCircuitBreaker<GetEuGasStorageResponse>({ name: 'EU Gas Storage', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
+const emptyEurostatFallback: GetEurostatCountryDataResponse = { countries: {}, seededAt: '0', unavailable: true };
+const eurostatBreaker = createCircuitBreaker<GetEurostatCountryDataResponse>({ name: 'Eurostat Country Data', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
+const emptyNatGasFallback: GetNatGasStorageResponse = { weeks: [], latestPeriod: '' };
+const natGasBreaker = createCircuitBreaker<GetNatGasStorageResponse>({ name: 'EIA Nat Gas Storage', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
 const emptyCapacityFallback: GetEnergyCapacityResponse = { series: [] };
 const emptyBisPolicyFallback: GetBisPolicyRatesResponse = { rates: [] };
 const emptyBisEerFallback: GetBisExchangeRatesResponse = { rates: [] };
 const emptyBisCreditFallback: GetBisCreditResponse = { entries: [] };
+const emptyOilStocksAnalysisFallback: GetOilStocksAnalysisResponse = {
+  updatedAt: '',
+  dataMonth: '',
+  ieaMembers: [],
+  belowObligation: [],
+  unavailable: true,
+};
+const oilStocksAnalysisBreaker = createCircuitBreaker<GetOilStocksAnalysisResponse>({ name: 'IEA Oil Stocks Analysis', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
 
 // ========================================================================
 // FRED -- replaces src/services/fred.ts
@@ -76,6 +118,7 @@ export interface FredSeries {
   changePercent: number | null;
   date: string;
   unit: string;
+  observations: Array<{ date: string; value: number }>;
 }
 
 interface FredConfig {
@@ -94,7 +137,6 @@ const FRED_SERIES: FredConfig[] = [
   { id: 'FEDFUNDS', name: 'Fed Funds Rate', unit: '%', precision: 2 },
   { id: 'T10Y2Y', name: '10Y-2Y Spread', unit: '%', precision: 2 },
   { id: 'M2SL', name: 'M2 Supply', unit: '$T', precision: 1, scaleDivisor: 1000 },
-  { id: 'GSCPI', name: 'GSCPI', unit: '', precision: 2 },
   { id: 'UNRATE', name: 'Unemployment', unit: '%', precision: 1 },
   { id: 'CPIAUCSL', name: 'CPI Index', unit: '', precision: 1 },
   { id: 'DGS10', name: '10Y Treasury', unit: '%', precision: 2 },
@@ -133,7 +175,7 @@ export async function fetchFredData(): Promise<FredSeries[]> {
       }
       throw err;
     }
-  }, emptyFredBatchFallback);
+  }, emptyFredBatchFallback, { shouldCache: (r) => r.fetched > 0 });
 
   const out: FredSeries[] = [];
   for (const config of FRED_SERIES) {
@@ -159,6 +201,7 @@ export async function fetchFredData(): Promise<FredSeries[]> {
         change: roundValue(change, config.precision),
         changePercent: changePercent !== null ? Number(changePercent.toFixed(2)) : null,
         date: latest.date, unit: config.unit,
+        observations: obs.slice(-30).map(o => ({ date: o.date, value: toDisplayValue(o.value, config) })),
       });
     } else {
       const latest = obs[0]!;
@@ -168,6 +211,7 @@ export async function fetchFredData(): Promise<FredSeries[]> {
         value: roundValue(displayValue, config.precision),
         previousValue: null, change: null, changePercent: null,
         date: latest.date, unit: config.unit,
+        observations: obs.map(o => ({ date: o.date, value: toDisplayValue(o.value, config) })),
       });
     }
   }
@@ -176,6 +220,72 @@ export async function fetchFredData(): Promise<FredSeries[]> {
 
 export function getFredStatus(): string {
   return fredBatchBreaker.getStatus();
+}
+
+// ========================================================================
+// BLS -- direct series not available on FRED (metro unemployment, ECI)
+// ========================================================================
+
+interface BlsConfig {
+  id: string;
+  name: string;
+  unit: string;
+  precision: number;
+}
+
+const BLS_SERIES: BlsConfig[] = [
+  { id: 'USPRIV',    name: 'Private Payrolls', unit: 'K', precision: 0 },
+  { id: 'ECIALLCIV', name: 'Employment Cost Index', unit: '', precision: 1 },
+];
+
+export const BLS_METRO_IDS = new Set<string>(); // metro-area LAUMT* series dropped — no FRED equivalent
+
+export async function fetchBlsData(): Promise<FredSeries[]> {
+  return blsBreaker.execute(async () => {
+    const results = await Promise.allSettled(
+      BLS_SERIES.map(cfg =>
+        client.getBlsSeries({ seriesId: cfg.id, limit: 60 }, { signal: AbortSignal.timeout(15_000) })
+          .catch(() => emptyBlsFallback),
+      ),
+    );
+
+    const out: FredSeries[] = [];
+    for (let i = 0; i < BLS_SERIES.length; i++) {
+      const cfg = BLS_SERIES[i]!;
+      const result = results[i];
+      if (result?.status !== 'fulfilled') continue;
+      const series = result.value.series;
+      if (!series || series.observations.length === 0) continue;
+
+      const obs = series.observations;
+      const observations = obs.map(o => ({
+        date: `${o.year}-${o.period}`,
+        value: parseFloat(o.value),
+      })).filter(o => Number.isFinite(o.value));
+
+      if (observations.length === 0) continue;
+
+      const latest = observations[observations.length - 1]!;
+      const previous = observations.length >= 2 ? observations[observations.length - 2] : null;
+      const change = previous ? Number((latest.value - previous.value).toFixed(cfg.precision)) : null;
+      const changePercent = previous && previous.value !== 0
+        ? Number(((latest.value - previous.value) / previous.value * 100).toFixed(2))
+        : null;
+
+      const lastObs = obs[obs.length - 1]!;
+      const displayDate = lastObs.periodName ? `${lastObs.periodName} ${lastObs.year}` : latest.date;
+
+      out.push({
+        id: cfg.id, name: cfg.name,
+        value: Number(latest.value.toFixed(cfg.precision)),
+        previousValue: previous ? Number(previous.value.toFixed(cfg.precision)) : null,
+        change, changePercent,
+        date: displayDate, unit: cfg.unit,
+        observations: observations.slice(-30),
+      });
+    }
+    return out;
+  }, [] as FredSeries[], { shouldCache: (r) => r.length > 0 });
 }
 
 export function getChangeClass(change: number | null): string {
@@ -258,18 +368,6 @@ function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
   };
 }
 
-export async function checkEiaStatus(): Promise<boolean> {
-  if (!isFeatureAvailable('energyEia')) return false;
-  try {
-    const resp = await eiaBreaker.execute(async () => {
-      return client.getEnergyPrices({ commodities: ['wti'] }, { signal: AbortSignal.timeout(20_000) });
-    }, emptyEiaFallback);
-    return resp.prices.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 export async function fetchOilAnalytics(): Promise<OilAnalytics> {
   const empty: OilAnalytics = {
     wtiPrice: null, brentPrice: null, usProduction: null, usInventory: null, fetchedAt: new Date(),
@@ -280,7 +378,7 @@ export async function fetchOilAnalytics(): Promise<OilAnalytics> {
   try {
     const resp = await eiaBreaker.execute(async () => {
       return client.getEnergyPrices({ commodities: [] }, { signal: AbortSignal.timeout(20_000) }); // all commodities
-    }, emptyEiaFallback);
+    }, emptyEiaFallback, { shouldCache: (r) => r.prices.length > 0 });
 
     const byId = new Map<string, ProtoEnergyPrice>();
     for (const p of resp.prices) byId.set(p.commodity, p);
@@ -333,6 +431,44 @@ export function getTrendColor(trend: OilMetric['trend'], inverse = false): strin
 }
 
 // ========================================================================
+// EIA Crude Oil Inventories (WCRSTUS1) -- weekly stockpile data
+// ========================================================================
+
+export type { CrudeInventoryWeek };
+
+export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesResponse> {
+  if (!isFeatureAvailable('energyEia')) return emptyCrudeFallback;
+  const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
+  if (hydrated?.weeks?.length) return hydrated;
+  try {
+    return await crudeBreaker.execute(async () => {
+      return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });
+    }, emptyCrudeFallback, { shouldCache: (r) => r.weeks.length > 0 });
+  } catch {
+    return emptyCrudeFallback;
+  }
+}
+
+// ========================================================================
+// EIA Natural Gas Storage (NW2_EPG0_SWO_R48_BCF) -- weekly storage data
+// ========================================================================
+
+export type { NatGasStorageWeek };
+
+export async function fetchNatGasStorageRpc(): Promise<GetNatGasStorageResponse> {
+  if (!isFeatureAvailable('energyEia')) return emptyNatGasFallback;
+  const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
+  if (hydrated?.weeks?.length) return hydrated;
+  try {
+    return await natGasBreaker.execute(async () => {
+      return client.getNatGasStorage({}, { signal: AbortSignal.timeout(20_000) });
+    }, emptyNatGasFallback, { shouldCache: (r) => r.weeks.length > 0 });
+  } catch {
+    return emptyNatGasFallback;
+  }
+}
+
+// ========================================================================
 // EIA Capacity -- installed generation capacity (solar, wind, coal)
 // ========================================================================
 
@@ -347,7 +483,7 @@ export async function fetchEnergyCapacityRpc(
         energySources: energySources ?? [],
         years: years ?? 0,
       }, { signal: AbortSignal.timeout(20_000) });
-    }, emptyCapacityFallback);
+    }, emptyCapacityFallback, { shouldCache: (r) => r.series.length > 0 });
   } catch {
     return emptyCapacityFallback;
   }
@@ -574,6 +710,49 @@ export async function getCountryComparison(
 // ========================================================================
 
 export type { BisPolicyRate, BisExchangeRate, BisCreditToGdp };
+export type { NationalDebtEntry };
+
+// ========================================================================
+// National Debt Clock
+// ========================================================================
+
+// No persistCache: IndexedDB hydration on first call can deadlock in some browsers,
+// causing the panel to hang indefinitely on "Loading debt data from IMF..."
+const nationalDebtBreaker = createCircuitBreaker<GetNationalDebtResponse>({ name: 'National Debt', cacheTtlMs: 6 * 60 * 60 * 1000 });
+const emptyNationalDebtFallback: GetNationalDebtResponse = { entries: [], seededAt: '', unavailable: true };
+
+export async function getNationalDebtData(): Promise<GetNationalDebtResponse> {
+  const hydrated = getHydratedData('nationalDebt') as GetNationalDebtResponse | undefined;
+  if (hydrated?.entries?.length) return hydrated;
+
+  // Race all fetch paths against a hard 20s deadline so the panel never hangs.
+  return Promise.race([
+    _fetchNationalDebt(),
+    new Promise<GetNationalDebtResponse>(resolve =>
+      setTimeout(() => resolve(emptyNationalDebtFallback), 20_000),
+    ),
+  ]);
+}
+
+async function _fetchNationalDebt(): Promise<GetNationalDebtResponse> {
+  try {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=nationalDebt'), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (resp.ok) {
+      const { data } = (await resp.json()) as { data: { nationalDebt?: GetNationalDebtResponse } };
+      if (data.nationalDebt?.entries?.length) return data.nationalDebt;
+    }
+  } catch { /* fall through to RPC */ }
+
+  try {
+    return await nationalDebtBreaker.execute(async () => {
+      return client.getNationalDebt({}, { signal: AbortSignal.timeout(12_000) });
+    }, emptyNationalDebtFallback, { shouldCache: (r) => r.entries.length > 0 });
+  } catch {
+    return emptyNationalDebtFallback;
+  }
+}
 
 export interface BisData {
   policyRates: BisPolicyRate[];
@@ -591,9 +770,9 @@ export async function fetchBisData(): Promise<BisData> {
 
   try {
     const [policy, eer, credit] = await Promise.all([
-      hPolicy?.rates?.length ? Promise.resolve(hPolicy) : bisPolicyBreaker.execute(() => client.getBisPolicyRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisPolicyFallback),
-      hEer?.rates?.length ? Promise.resolve(hEer) : bisEerBreaker.execute(() => client.getBisExchangeRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisEerFallback),
-      hCredit?.entries?.length ? Promise.resolve(hCredit) : bisCreditBreaker.execute(() => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }), emptyBisCreditFallback),
+      hPolicy?.rates?.length ? Promise.resolve(hPolicy) : bisPolicyBreaker.execute(() => client.getBisPolicyRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisPolicyFallback, { shouldCache: (r) => (r.rates?.length ?? 0) > 0 }),
+      hEer?.rates?.length ? Promise.resolve(hEer) : bisEerBreaker.execute(() => client.getBisExchangeRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisEerFallback, { shouldCache: (r) => (r.rates?.length ?? 0) > 0 }),
+      hCredit?.entries?.length ? Promise.resolve(hCredit) : bisCreditBreaker.execute(() => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }), emptyBisCreditFallback, { shouldCache: (r) => (r.entries?.length ?? 0) > 0 }),
     ]);
     return {
       policyRates: policy.rates ?? [],
@@ -603,5 +782,89 @@ export async function fetchBisData(): Promise<BisData> {
     };
   } catch {
     return empty;
+  }
+}
+
+// ========================================================================
+// ECB Reference FX Rates
+// ========================================================================
+
+export type { GetEcbFxRatesResponse, EcbFxRate };
+
+const ecbFxRatesBreaker = createCircuitBreaker<GetEcbFxRatesResponse>({ name: 'ECB FX Rates', cacheTtlMs: 4 * 60 * 60 * 1000 });
+const emptyEcbFxRatesFallback: GetEcbFxRatesResponse = { rates: [], updatedAt: '', seededAt: '0', unavailable: true };
+
+export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
+  const hydrated = getHydratedData('ecbFxRates') as GetEcbFxRatesResponse | undefined;
+  if (hydrated?.rates?.length) return hydrated;
+
+  try {
+    return await ecbFxRatesBreaker.execute(
+      () => client.getEcbFxRates({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyEcbFxRatesFallback,
+      { shouldCache: (r) => (r.rates?.length ?? 0) > 0 },
+    );
+  } catch {
+    return emptyEcbFxRatesFallback;
+  }
+}
+
+// ========================================================================
+// EU Gas Storage (GIE AGSI+)
+// ========================================================================
+
+export type { GetEuGasStorageResponse, EuGasStorageHistoryEntry };
+
+export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
+  const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
+  if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) return hydrated;
+
+  try {
+    return await euGasBreaker.execute(
+      () => client.getEuGasStorage({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyEuGasFallback,
+      { shouldCache: (r) => !r.unavailable && r.fillPct > 0 },
+    );
+  } catch {
+    return emptyEuGasFallback;
+  }
+}
+
+// ========================================================================
+// Eurostat Country Data (CPI, Unemployment, GDP Growth)
+// ========================================================================
+
+export type { GetEurostatCountryDataResponse, EurostatCountryEntry };
+
+export async function getEurostatCountryData(): Promise<GetEurostatCountryDataResponse> {
+  const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
+  if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) return hydrated;
+
+  try {
+    return await eurostatBreaker.execute(
+      () => client.getEurostatCountryData({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyEurostatFallback,
+      { shouldCache: (r) => !r.unavailable && Object.keys(r.countries).length > 0 },
+    );
+  } catch {
+    return emptyEurostatFallback;
+  }
+}
+
+// ========================================================================
+// IEA Oil Stocks Analysis (Days of Cover)
+// ========================================================================
+
+export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica };
+
+export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
+  try {
+    return await oilStocksAnalysisBreaker.execute(
+      () => client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyOilStocksAnalysisFallback,
+      { shouldCache: (r) => !r.unavailable && r.ieaMembers.length > 0 },
+    );
+  } catch {
+    return emptyOilStocksAnalysisFallback;
   }
 }

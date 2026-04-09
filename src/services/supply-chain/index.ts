@@ -4,6 +4,7 @@ import {
   type GetShippingRatesResponse,
   type GetChokepointStatusResponse,
   type GetCriticalMineralsResponse,
+  type GetShippingStressResponse,
   type ShippingIndex,
   type ChokepointInfo,
   type CriticalMineral,
@@ -17,6 +18,7 @@ export type {
   GetShippingRatesResponse,
   GetChokepointStatusResponse,
   GetCriticalMineralsResponse,
+  GetShippingStressResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
@@ -27,7 +29,7 @@ export type {
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const shippingBreaker = createCircuitBreaker<GetShippingRatesResponse>({ name: 'Shipping Rates', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
-const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
+const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 90 * 60 * 1000, persistCache: true });
 const mineralsBreaker = createCircuitBreaker<GetCriticalMineralsResponse>({ name: 'Critical Minerals', cacheTtlMs: 24 * 60 * 60 * 1000, persistCache: true });
 
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
@@ -72,5 +74,18 @@ export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsRespon
     }, emptyMinerals);
   } catch {
     return emptyMinerals;
+  }
+}
+
+const emptyShippingStress: GetShippingStressResponse = { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0, upstreamUnavailable: false };
+
+export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
+  const hydrated = getHydratedData('shippingStress') as GetShippingStressResponse | undefined;
+  if (hydrated?.carriers?.length) return hydrated;
+
+  try {
+    return await client.getShippingStress({});
+  } catch {
+    return emptyShippingStress;
   }
 }

@@ -313,6 +313,447 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/list-grocery-basket-prices:
+        get:
+            tags:
+                - EconomicService
+            summary: ListGroceryBasketPrices
+            description: ListGroceryBasketPrices retrieves grocery basket price comparison across 24 countries worldwide.
+            operationId: ListGroceryBasketPrices
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListGroceryBasketPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/list-bigmac-prices:
+        get:
+            tags:
+                - EconomicService
+            summary: ListBigMacPrices
+            description: ListBigMacPrices retrieves Big Mac Index prices across Middle East countries.
+            operationId: ListBigMacPrices
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListBigMacPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-national-debt:
+        get:
+            tags:
+                - EconomicService
+            summary: GetNationalDebt
+            description: GetNationalDebt retrieves national debt clock data for all countries.
+            operationId: GetNationalDebt
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetNationalDebtResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/list-fuel-prices:
+        get:
+            tags:
+                - EconomicService
+            summary: ListFuelPrices
+            description: ListFuelPrices retrieves retail gasoline and diesel prices across 30+ countries.
+            operationId: ListFuelPrices
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListFuelPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-bls-series:
+        get:
+            tags:
+                - EconomicService
+            summary: GetBlsSeries
+            description: GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+            operationId: GetBlsSeries
+            parameters:
+                - name: series_id
+                  in: query
+                  description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum number of observations to return. Defaults to 60.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBlsSeriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-economic-calendar:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEconomicCalendar
+            description: GetEconomicCalendar retrieves upcoming major economic events (FOMC, CPI, NFP, etc).
+            operationId: GetEconomicCalendar
+            parameters:
+                - name: fromDate
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: toDate
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEconomicCalendarResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-crude-inventories:
+        get:
+            tags:
+                - EconomicService
+            summary: GetCrudeInventories
+            description: GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
+            operationId: GetCrudeInventories
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCrudeInventoriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-nat-gas-storage:
+        get:
+            tags:
+                - EconomicService
+            summary: GetNatGasStorage
+            description: GetNatGasStorage retrieves the 8 most recent weeks of US natural gas working gas storage from EIA (NW2_EPG0_SWO_R48_BCF).
+            operationId: GetNatGasStorage
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetNatGasStorageResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-ecb-fx-rates:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEcbFxRates
+            description: GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.
+            operationId: GetEcbFxRates
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEcbFxRatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-eurostat-country-data:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEurostatCountryData
+            description: GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+            operationId: GetEurostatCountryData
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEurostatCountryDataResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-eu-gas-storage:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEuGasStorage
+            description: GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
+            operationId: GetEuGasStorage
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEuGasStorageResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-eu-yield-curve:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEuYieldCurve
+            description: GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+            operationId: GetEuYieldCurve
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEuYieldCurveResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-eu-fsi:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEuFsi
+            description: GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+            operationId: GetEuFsi
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEuFsiResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-economic-stress:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEconomicStress
+            description: GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
+            operationId: GetEconomicStress
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEconomicStressResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-fao-food-price-index:
+        get:
+            tags:
+                - EconomicService
+            summary: GetFaoFoodPriceIndex
+            description: GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+            operationId: GetFaoFoodPriceIndex
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFaoFoodPriceIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-oil-stocks-analysis:
+        get:
+            tags:
+                - EconomicService
+            summary: GetOilStocksAnalysis
+            description: GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+            operationId: GetOilStocksAnalysis
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetOilStocksAnalysisResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -886,3 +1327,799 @@ components:
                     type: string
                 value:
                     $ref: '#/components/schemas/FredSeries'
+        ListGroceryBasketPricesRequest:
+            type: object
+        ListGroceryBasketPricesResponse:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CountryBasket'
+                fetchedAt:
+                    type: string
+                cheapestCountry:
+                    type: string
+                mostExpensiveCountry:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+                wowAvgPct:
+                    type: number
+                    format: double
+                wowAvailable:
+                    type: boolean
+                prevFetchedAt:
+                    type: string
+        CountryBasket:
+            type: object
+            properties:
+                code:
+                    type: string
+                name:
+                    type: string
+                currency:
+                    type: string
+                flag:
+                    type: string
+                totalUsd:
+                    type: number
+                    format: double
+                fxRate:
+                    type: number
+                    format: double
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GroceryItemPrice'
+                wowPct:
+                    type: number
+                    format: double
+        GroceryItemPrice:
+            type: object
+            properties:
+                itemId:
+                    type: string
+                itemName:
+                    type: string
+                unit:
+                    type: string
+                localPrice:
+                    type: number
+                    format: double
+                usdPrice:
+                    type: number
+                    format: double
+                currency:
+                    type: string
+                sourceSite:
+                    type: string
+                available:
+                    type: boolean
+        ListBigMacPricesRequest:
+            type: object
+        ListBigMacPricesResponse:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BigMacCountryPrice'
+                fetchedAt:
+                    type: string
+                cheapestCountry:
+                    type: string
+                mostExpensiveCountry:
+                    type: string
+                wowAvgPct:
+                    type: number
+                    format: double
+                wowAvailable:
+                    type: boolean
+                prevFetchedAt:
+                    type: string
+        BigMacCountryPrice:
+            type: object
+            properties:
+                code:
+                    type: string
+                name:
+                    type: string
+                currency:
+                    type: string
+                flag:
+                    type: string
+                localPrice:
+                    type: number
+                    format: double
+                usdPrice:
+                    type: number
+                    format: double
+                fxRate:
+                    type: number
+                    format: double
+                sourceSite:
+                    type: string
+                available:
+                    type: boolean
+                wowPct:
+                    type: number
+                    format: double
+        GetNationalDebtRequest:
+            type: object
+            description: GetNationalDebtRequest requests national debt data for all countries.
+        GetNationalDebtResponse:
+            type: object
+            properties:
+                entries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NationalDebtEntry'
+                seededAt:
+                    type: string
+                    description: ISO 8601 timestamp when seed data was written.
+                unavailable:
+                    type: boolean
+                    description: True when upstream data is unavailable (fallback result).
+            description: GetNationalDebtResponse wraps the full list of national debt entries.
+        NationalDebtEntry:
+            type: object
+            properties:
+                iso3:
+                    type: string
+                    description: ISO3 country code (e.g. "USA").
+                debtUsd:
+                    type: number
+                    format: double
+                    description: Total debt in USD at baseline_ts.
+                gdpUsd:
+                    type: number
+                    format: double
+                    description: GDP in USD (nominal, latest year).
+                debtToGdp:
+                    type: number
+                    format: double
+                    description: Debt as % of GDP.
+                annualGrowth:
+                    type: number
+                    format: double
+                    description: Year-over-year debt growth percent (2023->2024).
+                perSecondRate:
+                    type: number
+                    format: double
+                    description: Deficit-derived accrual in USD per second.
+                perDayRate:
+                    type: number
+                    format: double
+                    description: Deficit-derived accrual in USD per day.
+                baselineTs:
+                    type: string
+                    format: int64
+                    description: UTC ms timestamp anchoring the debt_usd figure (2024-01-01T00:00:00Z).
+                source:
+                    type: string
+                    description: Human-readable source string.
+            description: NationalDebtEntry holds debt data for a single country.
+        ListFuelPricesRequest:
+            type: object
+        ListFuelPricesResponse:
+            type: object
+            properties:
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FuelCountryPrice'
+                fetchedAt:
+                    type: string
+                cheapestGasoline:
+                    type: string
+                cheapestDiesel:
+                    type: string
+                mostExpensiveGasoline:
+                    type: string
+                mostExpensiveDiesel:
+                    type: string
+                wowAvailable:
+                    type: boolean
+                prevFetchedAt:
+                    type: string
+                sourceCount:
+                    type: integer
+                    format: int32
+                countryCount:
+                    type: integer
+                    format: int32
+        FuelCountryPrice:
+            type: object
+            properties:
+                code:
+                    type: string
+                name:
+                    type: string
+                currency:
+                    type: string
+                flag:
+                    type: string
+                gasoline:
+                    $ref: '#/components/schemas/FuelPrice'
+                diesel:
+                    $ref: '#/components/schemas/FuelPrice'
+                fxRate:
+                    type: number
+                    format: double
+        FuelPrice:
+            type: object
+            properties:
+                usdPrice:
+                    type: number
+                    format: double
+                localPrice:
+                    type: number
+                    format: double
+                grade:
+                    type: string
+                source:
+                    type: string
+                available:
+                    type: boolean
+                wowPct:
+                    type: number
+                    format: double
+                observedAt:
+                    type: string
+        GetBlsSeriesRequest:
+            type: object
+            properties:
+                seriesId:
+                    type: string
+                    description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of observations to return. Defaults to 60.
+            description: GetBlsSeriesRequest specifies which BLS series to retrieve.
+        GetBlsSeriesResponse:
+            type: object
+            properties:
+                series:
+                    $ref: '#/components/schemas/BlsSeries'
+            description: GetBlsSeriesResponse contains the requested BLS series data.
+        BlsSeries:
+            type: object
+            properties:
+                seriesId:
+                    type: string
+                    description: BLS series ID (e.g. "CES0500000001").
+                title:
+                    type: string
+                    description: Human-readable series title.
+                units:
+                    type: string
+                    description: Unit of measure.
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BlsObservation'
+            description: BlsSeries is a BLS time series with metadata and observations.
+        BlsObservation:
+            type: object
+            properties:
+                year:
+                    type: string
+                    description: Year of the observation.
+                period:
+                    type: string
+                    description: Period code (e.g. "M01" for January, "A01" for annual).
+                periodName:
+                    type: string
+                    description: Human-readable period name.
+                value:
+                    type: string
+                    description: Observed value.
+            description: BlsObservation is a single BLS data point.
+        GetEconomicCalendarRequest:
+            type: object
+            properties:
+                fromDate:
+                    type: string
+                toDate:
+                    type: string
+        GetEconomicCalendarResponse:
+            type: object
+            properties:
+                events:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EconomicEvent'
+                fromDate:
+                    type: string
+                toDate:
+                    type: string
+                total:
+                    type: integer
+                    format: int32
+                unavailable:
+                    type: boolean
+        EconomicEvent:
+            type: object
+            properties:
+                event:
+                    type: string
+                country:
+                    type: string
+                date:
+                    type: string
+                impact:
+                    type: string
+                actual:
+                    type: string
+                estimate:
+                    type: string
+                previous:
+                    type: string
+                unit:
+                    type: string
+        GetCrudeInventoriesRequest:
+            type: object
+            description: GetCrudeInventoriesRequest is the request message for GetCrudeInventories.
+        GetCrudeInventoriesResponse:
+            type: object
+            properties:
+                weeks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CrudeInventoryWeek'
+                latestPeriod:
+                    type: string
+                    description: Timestamp of the most recent EIA data point (ISO 8601).
+            description: GetCrudeInventoriesResponse contains the 8 most recent weeks of US crude oil inventory data.
+        CrudeInventoryWeek:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: ISO week period (YYYY-MM-DD, Monday of the EIA report week).
+                stocksMb:
+                    type: number
+                    format: double
+                    description: Total crude oil stocks in millions of barrels.
+                weeklyChangeMb:
+                    type: number
+                    format: double
+                    description: |-
+                        Week-over-week change in millions of barrels. Positive = build (bearish), negative = draw (bullish).
+                         Absent for the oldest week when no prior week is available for comparison.
+            description: CrudeInventoryWeek represents one week of US crude oil stockpile data from EIA WCRSTUS1.
+        GetNatGasStorageRequest:
+            type: object
+            description: GetNatGasStorageRequest is the request message for GetNatGasStorage.
+        GetNatGasStorageResponse:
+            type: object
+            properties:
+                weeks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NatGasStorageWeek'
+                latestPeriod:
+                    type: string
+                    description: Timestamp of the most recent EIA data point (ISO 8601).
+            description: GetNatGasStorageResponse contains the 8 most recent weeks of US natural gas storage data.
+        NatGasStorageWeek:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: ISO week period (YYYY-MM-DD, Monday of the EIA report week).
+                storBcf:
+                    type: number
+                    format: double
+                    description: Working gas in underground storage, Lower-48 States, in Bcf.
+                weeklyChangeBcf:
+                    type: number
+                    format: double
+                    description: |-
+                        Week-over-week change in Bcf. Positive = build (bearish for gas prices), negative = draw (bullish).
+                         Absent for the oldest week when no prior week is available for comparison.
+            description: NatGasStorageWeek represents one week of US natural gas working gas storage data from EIA.
+        GetEcbFxRatesRequest:
+            type: object
+            description: GetEcbFxRatesRequest is empty; returns all tracked EUR pairs.
+        GetEcbFxRatesResponse:
+            type: object
+            properties:
+                rates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EcbFxRate'
+                updatedAt:
+                    type: string
+                    description: ISO 8601 timestamp of the ECB publication.
+                seededAt:
+                    type: string
+                    format: int64
+                    description: Unix ms when the data was last seeded.
+                unavailable:
+                    type: boolean
+                    description: True when Redis key is missing or data is unavailable.
+            description: GetEcbFxRatesResponse contains the latest ECB reference rates.
+        EcbFxRate:
+            type: object
+            properties:
+                pair:
+                    type: string
+                    description: Currency pair label, e.g. "EURUSD".
+                rate:
+                    type: number
+                    format: double
+                    description: Exchange rate (units of quote currency per 1 EUR).
+                date:
+                    type: string
+                    description: Date of the observation in YYYY-MM-DD format.
+                change1d:
+                    type: number
+                    format: double
+                    description: 1-day change in rate (absolute).
+            description: EcbFxRate is a single ECB official reference rate for a currency pair.
+        GetEurostatCountryDataRequest:
+            type: object
+            description: GetEurostatCountryDataRequest requests Eurostat per-country economic data.
+        GetEurostatCountryDataResponse:
+            type: object
+            properties:
+                countries:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/EurostatCountryEntry'
+                    description: Map of ISO2 country code to economic metrics (e.g. "DE", "FR", "IT").
+                seededAt:
+                    type: string
+                    format: int64
+                    description: UTC ms timestamp when seed data was written.
+                unavailable:
+                    type: boolean
+                    description: True when upstream data is unavailable (fallback result).
+            description: GetEurostatCountryDataResponse contains per-country CPI, unemployment, and GDP growth.
+        CountriesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/EurostatCountryEntry'
+        EurostatCountryEntry:
+            type: object
+            properties:
+                cpi:
+                    $ref: '#/components/schemas/EurostatMetric'
+                unemployment:
+                    $ref: '#/components/schemas/EurostatMetric'
+                gdpGrowth:
+                    $ref: '#/components/schemas/EurostatMetric'
+            description: EurostatCountryEntry holds all available metrics for one EU country.
+        EurostatMetric:
+            type: object
+            properties:
+                value:
+                    type: number
+                    format: double
+                    description: Numeric value (e.g. 2.3 for 2.3%).
+                date:
+                    type: string
+                    description: Period string (e.g. "2024-01" for monthly, "2024-Q1" for quarterly).
+                unit:
+                    type: string
+                    description: Unit of measurement (e.g. "%").
+                priorValue:
+                    type: number
+                    format: double
+                    description: Prior period value for delta calculation (e.g. previous month/quarter).
+                hasPrior:
+                    type: boolean
+                    description: True when prior_value is present (proto3 can't distinguish 0 from absent).
+            description: EurostatMetric holds a single economic metric value for a country.
+        GetEuGasStorageRequest:
+            type: object
+            description: GetEuGasStorageRequest is empty — returns latest EU aggregate snapshot.
+        GetEuGasStorageResponse:
+            type: object
+            properties:
+                fillPct:
+                    type: number
+                    format: double
+                    description: Current storage fill level as a percentage of working gas volume (0–100).
+                fillPctChange1d:
+                    type: number
+                    format: double
+                    description: 1-day change in fill percentage (positive = injecting, negative = withdrawing).
+                gasDaysConsumption:
+                    type: number
+                    format: double
+                    description: Approximate days of consumption remaining at average EU winter drawdown rate.
+                trend:
+                    type: string
+                    description: 'Current storage trend: "injecting", "withdrawing", or "stable".'
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EuGasStorageHistoryEntry'
+                seededAt:
+                    type: string
+                    format: int64
+                    description: UTC ms timestamp when seed data was written.
+                updatedAt:
+                    type: string
+                    description: Calendar date of the most recent data point (YYYY-MM-DD).
+                unavailable:
+                    type: boolean
+                    description: True when upstream data is unavailable (fallback result).
+            description: GetEuGasStorageResponse contains the EU aggregate gas storage snapshot.
+        EuGasStorageHistoryEntry:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: Calendar date (YYYY-MM-DD).
+                fillPct:
+                    type: number
+                    format: double
+                    description: Storage fill level as a percentage of working gas volume capacity.
+                gasTwh:
+                    type: number
+                    format: double
+                    description: Working gas volume in storage (TWh).
+            description: EuGasStorageHistoryEntry represents one day of EU aggregate gas storage data.
+        GetEuYieldCurveRequest:
+            type: object
+            description: GetEuYieldCurveRequest fetches the ECB Euro Area AAA sovereign yield curve.
+        GetEuYieldCurveResponse:
+            type: object
+            properties:
+                data:
+                    $ref: '#/components/schemas/EuYieldCurveData'
+                unavailable:
+                    type: boolean
+                    description: True if data is not yet available in cache.
+            description: GetEuYieldCurveResponse contains the latest ECB Euro Area AAA sovereign yield curve.
+        EuYieldCurveData:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: Date of the observation (YYYY-MM or YYYY-MM-DD).
+                rates:
+                    type: object
+                    additionalProperties:
+                        type: number
+                        format: double
+                    description: 'Spot rates by tenor. Keys: "1Y", "2Y", "5Y", "10Y", "20Y", "30Y".'
+                source:
+                    type: string
+                    description: Data source identifier (e.g. "ecb-aaa").
+                updatedAt:
+                    type: string
+                    description: ISO 8601 timestamp when this was last seeded.
+            description: EuYieldCurveData holds a single observation of the ECB Euro Area AAA yield curve.
+        RatesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: number
+                    format: double
+        GetEuFsiRequest:
+            type: object
+        GetEuFsiResponse:
+            type: object
+            properties:
+                latestValue:
+                    type: number
+                    format: double
+                latestDate:
+                    type: string
+                label:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EuFsiObservation'
+                seededAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        EuFsiObservation:
+            type: object
+            properties:
+                date:
+                    type: string
+                value:
+                    type: number
+                    format: double
+        GetEconomicStressRequest:
+            type: object
+        GetEconomicStressResponse:
+            type: object
+            properties:
+                compositeScore:
+                    type: number
+                    format: double
+                label:
+                    type: string
+                components:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EconomicStressComponent'
+                seededAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        EconomicStressComponent:
+            type: object
+            properties:
+                id:
+                    type: string
+                label:
+                    type: string
+                rawValue:
+                    type: number
+                    format: double
+                score:
+                    type: number
+                    format: double
+                weight:
+                    type: number
+                    format: double
+                missing:
+                    type: boolean
+        GetFaoFoodPriceIndexRequest:
+            type: object
+        GetFaoFoodPriceIndexResponse:
+            type: object
+            properties:
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FaoFoodPricePoint'
+                fetchedAt:
+                    type: string
+                currentFfpi:
+                    type: number
+                    format: double
+                momPct:
+                    type: number
+                    format: double
+                yoyPct:
+                    type: number
+                    format: double
+        FaoFoodPricePoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                ffpi:
+                    type: number
+                    format: double
+                meat:
+                    type: number
+                    format: double
+                dairy:
+                    type: number
+                    format: double
+                cereals:
+                    type: number
+                    format: double
+                oils:
+                    type: number
+                    format: double
+                sugar:
+                    type: number
+                    format: double
+        GetOilStocksAnalysisRequest:
+            type: object
+            description: GetOilStocksAnalysisRequest is empty — returns the latest global analysis snapshot.
+        GetOilStocksAnalysisResponse:
+            type: object
+            properties:
+                updatedAt:
+                    type: string
+                    description: UTC ISO-8601 timestamp when this analysis was written.
+                dataMonth:
+                    type: string
+                    description: 'Data month in YYYY-MM format (source: IEA monthly release).'
+                ieaMembers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OilStocksAnalysisMember'
+                belowObligation:
+                    type: array
+                    items:
+                        type: string
+                        description: ISO2 codes of countries currently below the 90-day obligation.
+                regionalSummary:
+                    $ref: '#/components/schemas/OilStocksRegionalSummary'
+                unavailable:
+                    type: boolean
+                    description: True when upstream seed data is unavailable (fallback result).
+            description: GetOilStocksAnalysisResponse contains the IEA oil stocks days-of-cover analysis.
+        OilStocksAnalysisMember:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                daysOfCover:
+                    type: integer
+                    format: int32
+                    description: Days of supply cover (absent when country is a net exporter or data anomaly).
+                netExporter:
+                    type: boolean
+                    description: True when the country is classified as a net exporter by IEA.
+                belowObligation:
+                    type: boolean
+                    description: True when days_of_cover < 90 (IEA 90-day obligation threshold).
+                obligationMet:
+                    type: boolean
+                    description: True when the 90-day obligation is met (net exporters always true).
+                rank:
+                    type: integer
+                    format: int32
+                    description: Rank within the IEA member ranking (1-indexed, net exporters ranked last).
+                vsObligation:
+                    type: integer
+                    format: int32
+                    description: days_of_cover - 90; absent for net exporters.
+            description: OilStocksAnalysisMember holds days-of-cover data and obligation status for one IEA member country.
+        OilStocksRegionalSummary:
+            type: object
+            properties:
+                europe:
+                    $ref: '#/components/schemas/OilStocksRegionalSummaryEurope'
+                asiaPacific:
+                    $ref: '#/components/schemas/OilStocksRegionalSummaryAsiaPacific'
+                northAmerica:
+                    $ref: '#/components/schemas/OilStocksRegionalSummaryNorthAmerica'
+            description: OilStocksRegionalSummary holds regional aggregates for the three IEA regions.
+        OilStocksRegionalSummaryEurope:
+            type: object
+            properties:
+                avgDays:
+                    type: integer
+                    format: int32
+                    description: Mean days of cover across non-net-exporter European members.
+                minDays:
+                    type: integer
+                    format: int32
+                    description: Minimum days of cover across non-net-exporter European members.
+                countBelowObligation:
+                    type: integer
+                    format: int32
+                    description: Count of European members below the 90-day obligation.
+            description: OilStocksRegionalSummaryEurope aggregates days-of-cover for European IEA members.
+        OilStocksRegionalSummaryAsiaPacific:
+            type: object
+            properties:
+                avgDays:
+                    type: integer
+                    format: int32
+                    description: Mean days of cover across Asia-Pacific members (AU, JP, KR, NZ).
+                minDays:
+                    type: integer
+                    format: int32
+                    description: Minimum days of cover across Asia-Pacific members.
+                countBelowObligation:
+                    type: integer
+                    format: int32
+                    description: Count of Asia-Pacific members below the 90-day obligation.
+            description: OilStocksRegionalSummaryAsiaPacific aggregates days-of-cover for Asia-Pacific IEA members.
+        OilStocksRegionalSummaryNorthAmerica:
+            type: object
+            properties:
+                netExporters:
+                    type: integer
+                    format: int32
+                    description: Count of net exporters in North America (CA, MX, US).
+                avgDays:
+                    type: integer
+                    format: int32
+                    description: Average days of cover for non-exporter North American members (if any).
+            description: OilStocksRegionalSummaryNorthAmerica aggregates data for North American IEA members.

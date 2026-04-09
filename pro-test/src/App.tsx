@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
+import Mailcheck from 'mailcheck';
 import {
   Globe, Activity, ShieldAlert, Zap, Terminal, Database,
   Send, MessageCircle, Mail, MessageSquare, ChevronDown,
@@ -12,6 +13,8 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
+import { initOverlay } from './services/checkout';
+import { PricingSection } from './components/PricingSection';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
 
@@ -177,7 +180,7 @@ const Navbar = () => (
         <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
         <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
       </div>
-      <a href="#waitlist" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+      <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
         {t('nav.reserveAccess')}
       </a>
     </div>
@@ -245,65 +248,97 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => (
-  <section className="pt-28 pb-12 px-6 relative overflow-hidden">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
-    <div className="max-w-4xl mx-auto text-center relative z-10">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="mb-4">
-          <WiredBadge />
-        </div>
+const Hero = () => {
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
-        <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
-          <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
-          <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
-        </h1>
+  const checkEmail = (value: string) => {
+    Mailcheck.run({
+      email: value,
+      suggested: (s) => setEmailSuggestion(s.full),
+      empty: () => setEmailSuggestion(null),
+    });
+  };
 
-        <SignalBars />
+  const acceptSuggestion = () => {
+    if (emailRef.current && emailSuggestion) {
+      emailRef.current.value = emailSuggestion;
+      setEmailSuggestion(null);
+    }
+  };
 
-        <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
-          {t('hero.valueProps')}
-        </p>
-
-        {getRefCode() && (
-          <div className="inline-flex items-center gap-2 px-4 py-2 mt-4 rounded-sm border border-wm-green/30 bg-wm-green/5 text-sm font-mono text-wm-green">
-            <Users className="w-4 h-4" aria-hidden="true" />
-            {t('referral.invitedBanner')}
+  return (
+    <section className="pt-28 pb-12 px-6 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
+      <div className="max-w-4xl mx-auto text-center relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="mb-4">
+            <WiredBadge />
           </div>
-        )}
-        <form className="flex flex-col gap-3 max-w-md mx-auto mt-8" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const email = new FormData(form).get('email') as string; submitWaitlist(email, form); }}>
-          <input type="text" name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" className="absolute opacity-0 h-0 w-0 pointer-events-none" />
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="email"
-              name="email"
-              placeholder={t('hero.emailPlaceholder')}
-              className="flex-1 bg-wm-card border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono"
-              required
-              aria-label={t('hero.emailAriaLabel')}
-            />
-            <button type="submit" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
-              {t('hero.reserveEarlyAccess')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
-            </button>
+
+          <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
+            <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
+          </h1>
+
+          <SignalBars />
+
+          <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
+            {t('hero.valueProps')}
+          </p>
+
+          {getRefCode() && (
+            <div className="inline-flex items-center gap-2 px-4 py-2 mt-4 rounded-sm border border-wm-green/30 bg-wm-green/5 text-sm font-mono text-wm-green">
+              <Users className="w-4 h-4" aria-hidden="true" />
+              {t('referral.invitedBanner')}
+            </div>
+          )}
+          <form className="flex flex-col gap-3 max-w-md mx-auto mt-8" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const email = new FormData(form).get('email') as string; submitWaitlist(email, form); }}>
+            <input type="text" name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" className="absolute opacity-0 h-0 w-0 pointer-events-none" />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                ref={emailRef}
+                type="email"
+                name="email"
+                placeholder={t('hero.emailPlaceholder')}
+                className="flex-1 bg-wm-card border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono"
+                required
+                aria-label={t('hero.emailAriaLabel')}
+                onBlur={(e) => checkEmail(e.target.value)}
+                onChange={() => setEmailSuggestion(null)}
+              />
+              <button type="submit" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
+                {t('hero.reserveEarlyAccess')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+            {emailSuggestion && (
+              <button
+                type="button"
+                onClick={acceptSuggestion}
+                className="text-xs text-wm-muted font-mono text-left px-1 hover:text-wm-green transition-colors cursor-pointer"
+              >
+                Did you mean <span className="text-wm-green font-semibold">{emailSuggestion}</span>?
+              </button>
+            )}
+            <div className="cf-turnstile mx-auto" />
+          </form>
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <p className="text-xs text-wm-muted font-mono">{t('hero.launchingDate')}</p>
+            <span className="text-wm-border">|</span>
+            <a href="https://worldmonitor.app" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+              {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
           </div>
-          <div className="cf-turnstile mx-auto" />
-        </form>
-        <div className="flex items-center justify-center gap-4 mt-4">
-          <p className="text-xs text-wm-muted font-mono">{t('hero.launchingDate')}</p>
-          <span className="text-wm-border">|</span>
-          <a href="https://worldmonitor.app" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
-            {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </a>
-        </div>
-      </motion.div>
-    </div>
-  </section>
-);
+        </motion.div>
+      </div>
+    </section>
+  );
+};
 
 /* ─── 2. Social proof (current — WIRED badge already in hero) ─── */
 const SocialProof = () => (
@@ -353,7 +388,7 @@ const TwoPathSplit = () => (
             </li>
           ))}
         </ul>
-        <a href="#waitlist" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
+        <a href="#pricing" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
           {t('twoPath.proCta')}
         </a>
       </div>
@@ -936,7 +971,7 @@ const Footer = () => (
         <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
         <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
         <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discussions</a>
+        <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
         <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
       </div>
       <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
@@ -1136,7 +1171,7 @@ const EnterprisePage = () => (
           <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-          <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discussions</a>
+          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
         </div>
         <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
@@ -1148,6 +1183,25 @@ const EnterprisePage = () => (
 /* ─── Page Layout ─── */
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
+
+  // Initialize Dodo checkout overlay with success handler
+  useEffect(() => {
+    initOverlay(() => {
+      // Show success banner
+      const banner = document.createElement('div');
+      Object.assign(banner.style, {
+        position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
+        padding: '14px 20px', background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+        color: '#fff', fontWeight: '600', fontSize: '14px', textAlign: 'center',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'opacity 0.4s ease, transform 0.4s ease',
+        transform: 'translateY(-100%)', opacity: '0',
+      });
+      banner.textContent = 'Payment received! Unlocking your premium features...';
+      document.body.appendChild(banner);
+      requestAnimationFrame(() => { banner.style.transform = 'translateY(0)'; banner.style.opacity = '1'; });
+      setTimeout(() => { window.location.href = 'https://worldmonitor.app'; }, 3000);
+    });
+  }, []);
 
   useEffect(() => {
     const onHash = () => {
@@ -1190,7 +1244,13 @@ export default function App() {
         <ProShowcase />
         <ApiSection />
         <EnterpriseShowcase />
-        <PricingTable />
+        {/* TODO: isProUser gate should be removed when we are ready to get new users signing up */}
+        {(localStorage.getItem('wm-widget-key') || localStorage.getItem('wm-pro-key')) && (
+          <>
+            <PricingSection refCode={getRefCode()} />
+            <PricingTable />
+          </>
+        )}
         <FAQ />
       </main>
       <Footer />

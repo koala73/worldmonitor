@@ -46,6 +46,7 @@
     "commodities": "Grondstoffen",
     "monitors": "Mijn monitoren",
     "regulation": "Dashboard voor AI-regulering",
+    "finRegulation": "Financiële regelgeving",
     "serviceStatus": "Servicestatus",
     "stablecoins": "Stabiele munten",
     "deduction": "Situatie afleiden",
@@ -73,7 +74,8 @@
     "gulfEconomies": "Golfeconomieën",
     "gulfIndices": "Golfindices",
     "gulfCurrencies": "Golfvaluta",
-    "gulfOil": "Golfolie"
+    "gulfOil": "Golfolie",
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -571,6 +573,8 @@
         "stockExchanges": "Beurzen",
         "financialCenters": "Financiële centra",
         "centralBanks": "Centrale banken",
+        "laborMarket": "Labor Market",
+        "metroUnemployment": "Metro Unemployment",
         "commodityHubs": "Grondstoffenhubs",
         "gulfInvestments": "GCC-investeringen",
         "tradeRoutes": "Handelsroutes",
@@ -739,8 +743,8 @@
       "nuclear": "Nucleair"
     },
     "community": {
-      "joinDiscussion": "Doe mee aan de discussie",
-      "openDiscussion": "Open discussie",
+      "joinDiscussion": "Help Shape What's Next",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "Niet meer tonen",
       "sectionLabel": "Gemeenschap"
     },
@@ -781,7 +785,8 @@
       "token": "Token",
       "mcap": "Marktk.",
       "vol24h": "24u Vol",
-      "chg24h": "24u Wijz"
+      "chg24h": "24u Wijz",
+      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
       "dataFeeds": "Gegevensfeeds",
@@ -869,7 +874,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>Tech-evenementen</strong> Aankomende en recente technologie-evenementen: conferenties, productlanceringen, regelgevende hoorzittingen en winstgesprekken. Samengesteld uit officiële evenementenkalenders en industriebronnen."
     },
     "techReadiness": {
       "internetUsers": "Internetgebruikers",
@@ -1047,7 +1053,7 @@
       "noSignals": "Geen instabiliteitssignalen gedetecteerd"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>GDELT Intelligence</strong> Realtime monitoring van mondiaal nieuws:<ul><li>Samengestelde onderwerpcategorieën (conflicten, cyber, etc.)</li><li>Artikelen uit meer dan 100 talen vertaald</li><li>Updates elke 15 minuten</li></ul>Bron: GDELT Project (gdeltproject.org)"
+      "infoTooltip": "<strong>News Intelligence</strong> Realtime monitoring van mondiaal nieuws:<ul><li>Samengestelde onderwerpcategorieën (conflicten, cyber, etc.)</li><li>Artikelen uit meer dan 100 talen vertaald</li><li>Updates elke 15 minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Bron: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Realtime signalen van gemonitorde Telegram OSINT-kanalen",
@@ -1062,7 +1068,9 @@
       "filterPolitics": "Politiek",
       "filterMiddleeast": "Midden-Oosten",
       "live": "LIVE",
-      "viewSource": "Bron bekijken"
+      "viewSource": "Bron bekijken",
+      "filterGeopolitics": "Geopolitiek",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Database van directe buitenlandse investeringen van Saoedi-Arabië en de VAE in mondiale kritieke infrastructuur. Klik op een rij om naar de investering op de kaart te vliegen.",
@@ -1261,7 +1269,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties."
     },
     "etfFlows": {
       "unavailable": "ETF-gegevens tijdelijk niet beschikbaar",
@@ -1329,7 +1338,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Dienststatus</strong> Live operationele status van grote cloudplatforms, financiële infrastructuur en kritieke internetdiensten. Bron: officiële statuspagina's (AWS, Azure, GCP, Cloudflare, beurzen). Incidenten kunnen wijzen op bredere verstoringen."
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1509,6 +1519,96 @@
     "map": {
       "showMap": "Kaart tonen",
       "hideMap": "Kaart verbergen"
+    },
+    "internetDisruptions": {
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+    },
+    "crypto": {
+      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+    },
+    "gulfEconomies": {
+      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+    },
+    "groceryBasket": {
+      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+    },
+    "bigmac": {
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "defiTokens": {
+      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+    },
+    "aiTokens": {
+      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+    },
+    "altTokens": {
+      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+    },
+    "stockAnalysis": {
+      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+    },
+    "stockBacktest": {
+      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+    },
+    "dailyMarketBrief": {
+      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+    },
+    "centralBankWatch": {
+      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Luchtvaart-intelligence</strong> Operationele luchtvaartgegevens in realtime: routeonderbrekingen, luchtruimsluitingen, adviezen van luchtvaartmaatschappijen en noodomleidingen. Bron: NOTAM van luchtvaartautoriteiten en bulletins van luchtvaartmaatschappijen."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM Analist</strong> AI-analist met live context over geopolitieke, markt-, militaire en economische domeinen. Aangedreven door Claude met realtime data uit actieve WorldMonitor-feeds."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT Positionering</strong> Commitments of Traders-rapport: nettopositie van commerciëlen, grote speculanten en kleine handelaren in grondstof- en financiële futures. Wekelijks gepubliceerd (vrijdag). Bron: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Live tellers</strong> Geëxtrapoleerde realtimetellers voor mondiale statistieken: militaire uitgaven, natuurrampen, ziektelast en meer. Cijfers zijn statistische schattingen op basis van jaarlijkse datacijfers."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Ziekte-uitbraken</strong> Actieve uitbraakwaarschuwingen van WHO, ProMED en ministeries van gezondheid. Volgt bevestigde uitbraken, getroffen regio's, aantallen gevallen en dreigingsniveaus. Wordt bijgewerkt bij publicatie van nieuwe rapporten."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Winstkalender</strong> Aankomende en recente winstpublicaties van grote beursgenoteerde bedrijven. Toont EPS-schattingen vs. werkelijk, omzet en classificatie overtreffing/mislukking. Bron: financiële dataproviders."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Economische kalender</strong> Geplande macro-economische publicaties: CPI, NFP, GDP, PMI en centrale bankbesluiten. Toont prognose vs. werkelijk vs. vorig. Gebeurtenissen met hoge impact zijn gemarkeerd. Bron: economische dataproviders."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Financiële stress-indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): meet stress op Amerikaanse financiële markten aan de hand van 11 indicatoren waaronder rentespreads, volatiliteit en kruiscorrelaties. Positieve waarden duiden op bovengemiddelde stress. Bron: Federal Reserve Bank of Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Hormuz-handelstracker</strong> Live AIS-scheepvaarttracking door de Straat van Hormuz, het meest kritieke olieknelpunt ter wereld. Monitort tankeraantallen, verstoringsevenementen en wekelijkse stroomwijzigingen. Ongeveer 20% van de wereldwijde olietoevoer passeert hier dagelijks."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Live webcams</strong> Livestreams van geopolitiek significante locaties wereldwijd: conflictzones, hoofdsteden, grensovergangen en strategische knelpunten. Streams van YouTube en openbare netwerken."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Macro-indicatoren</strong> Belangrijke macro-economische indicatoren voor de VS en de eurozone: CPI, werkloosheid, GDP en centrale banktarieven. Waarden getoond met delta ten opzichte van de voorgaande periode. Bron: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Zoekwoordmonitoren</strong> Voeg een willekeurige term toe om live nieuwsvermeldingen over alle WorldMonitor-bronnen te volgen. Resultaten worden in realtime bijgewerkt naarmate overeenkomende artikelen worden opgenomen."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Hernieuwbare energie</strong> Wereldwijde pijplijn voor hernieuwbare-energieprojecten: toevoegingen van zonne-, wind-, waterkracht- en opslagcapaciteit. Volgt aangekondigde, in aanbouw zijnde en in gebruik genomen projecten per regio en technologietype."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Sociale snelheid</strong> Trending onderwerpen en virale content met geopolitieke betekenis. Meet de snelheid op sociale media: hoe snel een verhaal zich verspreidt ten opzichte van de basislijn. Helpt opkomende narratieven te signaleren voordat ze de reguliere media bereiken."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Natuurbehoudssuccessen</strong> Positief natuurbehoudsnieuws: herstel van dierenpopulaties, mijlpalen in habitatherstel en de-extinctie-inspanningen. Bron: IUCN, WWF en natuurbehoudsonderzoekspublicaties."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Wereldklok</strong> Live lokale tijden en marktconsultstatus voor grote mondiale financiële centra. Toont open/gesloten status voor NYSE, LSE, TSE, SGX en andere beurzen."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Rentecurve &amp; Rentes</strong> US Treasury-rentecurve (2Y, 5Y, 10Y, 30Y) en belangrijke rentespreads inclusief de 10Y-2Y-inversie-indicator. Toont ook rentetarieven voor de eurozone (EURIBOR, ESTR). Een omgekeerde curve gaat historisch vooraf aan recessies. Bron: FRED."
     }
   },
   "popups": {

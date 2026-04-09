@@ -255,6 +255,45 @@ export interface WingbitsLiveFlight {
   operator: string;
   onGround: boolean;
   lastSeen: string;
+  depIata: string;
+  arrIata: string;
+  depTimeUtc: string;
+  arrTimeUtc: string;
+  depEstimatedUtc: string;
+  arrEstimatedUtc: string;
+  depDelayedMin: number;
+  arrDelayedMin: number;
+  flightStatus: string;
+  flightDurationMin: number;
+  arrTerminal: string;
+  photoUrl: string;
+  photoLink: string;
+  photoCredit: string;
+  callsignIata: string;
+  airlineName: string;
+}
+
+export interface ListDefensePatentsRequest {
+  cpcCode: string;
+  assignee: string;
+  limit: number;
+}
+
+export interface ListDefensePatentsResponse {
+  patents: DefensePatentFiling[];
+  total: number;
+  fetchedAt: string;
+}
+
+export interface DefensePatentFiling {
+  patentId: string;
+  title: string;
+  date: string;
+  assignee: string;
+  cpcCode: string;
+  cpcDesc: string;
+  abstract: string;
+  url: string;
 }
 
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
@@ -318,6 +357,7 @@ export interface MilitaryServiceHandler {
   getUSNIFleetReport(ctx: ServerContext, req: GetUSNIFleetReportRequest): Promise<GetUSNIFleetReportResponse>;
   listMilitaryBases(ctx: ServerContext, req: ListMilitaryBasesRequest): Promise<ListMilitaryBasesResponse>;
   getWingbitsLiveFlight(ctx: ServerContext, req: GetWingbitsLiveFlightRequest): Promise<GetWingbitsLiveFlightResponse>;
+  listDefensePatents(ctx: ServerContext, req: ListDefensePatentsRequest): Promise<ListDefensePatentsResponse>;
 }
 
 export function createMilitaryServiceRoutes(
@@ -680,6 +720,55 @@ export function createMilitaryServiceRoutes(
 
           const result = await handler.getWingbitsLiveFlight(ctx, body);
           return new Response(JSON.stringify(result as GetWingbitsLiveFlightResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/military/v1/list-defense-patents",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListDefensePatentsRequest = {
+            cpcCode: params.get("cpc_code") ?? "",
+            assignee: params.get("assignee") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listDefensePatents", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listDefensePatents(ctx, body);
+          return new Response(JSON.stringify(result as ListDefensePatentsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

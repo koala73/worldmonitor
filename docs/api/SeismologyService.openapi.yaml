@@ -158,6 +158,19 @@ components:
                 sourceUrl:
                     type: string
                     description: URL to the USGS event detail page.
+                nearTestSite:
+                    type: boolean
+                    description: True when epicenter is within 100 km of a known nuclear test site.
+                testSiteName:
+                    type: string
+                    description: Name of the nearest test site (e.g. "Punggye-ri"), when near_test_site is true.
+                concernScore:
+                    type: number
+                    format: double
+                    description: Composite concern score 0–100 based on magnitude, depth, and proximity.
+                concernLevel:
+                    type: string
+                    description: 'Human-readable concern level: "low" | "moderate" | "elevated" | "critical".'
             required:
                 - id
             description: Earthquake represents a seismic event from USGS GeoJSON feed.

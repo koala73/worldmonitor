@@ -80,8 +80,8 @@ describe('Customs revenue panel (WTO gate fix)', () => {
     assert.match(panelSrc, /const wtoAvailable = !isDesktopRuntime\(\) \|\| isFeatureAvailable\('wtoTrade'\)/);
   });
 
-  it('defaults to revenue tab when WTO key is missing', () => {
-    assert.match(panelSrc, /if \(!wtoAvailable && this\.activeTab !== 'revenue'\)/);
+  it('defaults to revenue tab when WTO key is missing (comtrade exempt)', () => {
+    assert.match(panelSrc, /if \(!wtoAvailable && this\.activeTab !== 'revenue' && this\.activeTab !== 'comtrade'\)/);
   });
 
   it('shows localized Treasury source for revenue tab', () => {

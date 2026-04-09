@@ -1,4 +1,4 @@
-import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
+import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout, buildRelayResponse } from './_relay.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 
@@ -29,8 +29,8 @@ export default async function handler(req) {
     const channel = (url.searchParams.get('channel') || '').trim();
     const params = new URLSearchParams();
     params.set('limit', String(limit));
-    if (topic) params.set('topic', encodeURIComponent(topic));
-    if (channel) params.set('channel', encodeURIComponent(channel));
+    if (topic) params.set('topic', topic);
+    if (channel) params.set('channel', channel);
 
     const relayUrl = `${relayBaseUrl}/telegram/feed?${params}`;
     const response = await fetchWithTimeout(relayUrl, {
@@ -47,13 +47,9 @@ export default async function handler(req) {
       }
     } catch {}
 
-    return new Response(body, {
-      status: response.status,
-      headers: {
-        'Content-Type': response.headers.get('content-type') || 'application/json',
-        'Cache-Control': cacheControl,
-        ...corsHeaders,
-      },
+    return buildRelayResponse(response, body, {
+      'Cache-Control': response.ok ? cacheControl : 'no-store',
+      ...corsHeaders,
     });
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';

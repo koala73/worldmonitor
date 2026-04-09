@@ -259,6 +259,7 @@
     "security": "Cybersicherheit",
     "policy": "KI-Politik & Regulierung",
     "regulation": "KI-Regulierungs-Dashboard",
+    "finRegulation": "Finanzregulierung",
     "hardware": "Halbleiter & Hardware",
     "cloud": "Cloud & Infrastruktur",
     "dev": "Entwickler-Community",
@@ -280,7 +281,8 @@
     "gulfEconomies": "Golf-Ökonomien",
     "gulfIndices": "Golf-Indizes",
     "gulfCurrencies": "Golf-Währungen",
-    "gulfOil": "Golf-Öl"
+    "gulfOil": "Golf-Öl",
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -722,7 +724,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen."
     },
     "economic": {
       "indicators": "Indikatoren",
@@ -739,6 +742,8 @@
       "vsPreviousWeek": "im Vergleich zur Vorwoche",
       "in": "In",
       "centralBanks": "Central Banks",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",
@@ -1060,8 +1065,8 @@
       "nuclear": "Nuklear"
     },
     "community": {
-      "joinDiscussion": "An der Diskussion teilnehmen",
-      "openDiscussion": "Diskussion öffnen",
+      "joinDiscussion": "Help Shape What's Next",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "Nicht mehr anzeigen",
       "sectionLabel": "Gemeinschaft"
     },
@@ -1112,7 +1117,8 @@
       "token": "Token",
       "mcap": "Marktk.",
       "vol24h": "Vol 24h",
-      "chg24h": "Änd 24h"
+      "chg24h": "Änd 24h",
+      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
       "dataFeeds": "Daten-Feeds",
@@ -1200,7 +1206,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>Tech-Veranstaltungen</strong> Bevorstehende und aktuelle Technologieveranstaltungen: Konferenzen, Produkteinführungen, regulatorische Anhörungen und Earnings Calls. Aggregiert aus offiziellen Veranstaltungskalendern und Branchenquellen."
     },
     "techReadiness": {
       "internetUsers": "Internetnutzer",
@@ -1367,7 +1374,7 @@
       "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>S</strong>Sicherheit: Militärflüge/-schiffe über Gebiet</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:S:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung."
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>GDELT Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber ​​usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
+      "infoTooltip": "<strong>News Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber ​​usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Echtzeit-Signale aus überwachten Telegram-OSINT-Kanälen",
@@ -1382,7 +1389,9 @@
       "filterPolitics": "Politik",
       "filterMiddleeast": "Naher Osten",
       "live": "LIVE",
-      "viewSource": "Quelle anzeigen"
+      "viewSource": "Quelle anzeigen",
+      "filterGeopolitics": "Geopolitik",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Datenbank über ausländische Direktinvestitionen Saudi-Arabiens und der VAE in globale kritische Infrastruktur. Klicken Sie auf eine Zeile, um zur Investition auf der Karte zu fliegen.",
@@ -1591,7 +1600,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Dienststatus</strong> Echtzeit-Betriebsstatus großer Cloud-Plattformen, Finanzinfrastruktur und kritischer Internetdienste. Quelle: offizielle Statusseiten (AWS, Azure, GCP, Cloudflare, Börsen). Vorfälle können auf breitere Störungsereignisse hindeuten."
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1713,6 +1723,96 @@
       "importSuccess": "{{count}} Einstellungen importiert",
       "importFailed": "Einstellungen konnten nicht importiert werden",
       "reloadNow": "Jetzt neu laden"
+    },
+    "internetDisruptions": {
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+    },
+    "crypto": {
+      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+    },
+    "gulfEconomies": {
+      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+    },
+    "groceryBasket": {
+      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+    },
+    "bigmac": {
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "defiTokens": {
+      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+    },
+    "aiTokens": {
+      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+    },
+    "altTokens": {
+      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+    },
+    "stockAnalysis": {
+      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+    },
+    "stockBacktest": {
+      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+    },
+    "dailyMarketBrief": {
+      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+    },
+    "centralBankWatch": {
+      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Airline-Aufklärung</strong> Betriebsdaten von Fluggesellschaften in Echtzeit: Routenaussetzungen, Luftraumsperrungen, Carrier-Hinweise und Notfallumleitungen. Quelle: NOTAM der Luftfahrtbehörden und Carrier-Bulletins."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM Analyst</strong> KI-Analyst mit Live-Kontext über geopolitische, Markt-, Militär- und Wirtschaftsbereiche. Betrieben durch Claude mit Echtzeitdaten aus aktiven WorldMonitor-Feeds."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT Positionierung</strong> Commitments of Traders-Bericht: Nettopositionen von Commercials, großen Spekulanten und kleinen Händlern in Rohstoff- und Finanz-Futures. Wöchentlich veröffentlicht (Freitag). Quelle: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Live-Zähler</strong> Extrapolierte Echtzeit-Zähler für globale Metriken: Militärausgaben, Naturkatastrophen, Krankheitslast und mehr. Zahlen sind statistische Schätzungen basierend auf jährlichen Datenraten."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Krankheitsausbrüche</strong> Aktive Ausbruchswarnungen von WHO, ProMED und Gesundheitsministerien. Verfolgt bestätigte Ausbrüche, betroffene Regionen, Fallzahlen und Bedrohungsstufen. Aktualisiert bei Veröffentlichung neuer Berichte."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Ergebniskalender</strong> Bevorstehende und aktuelle Ergebnisveröffentlichungen großer börsennotierter Unternehmen. Zeigt EPS-Schätzungen vs. Ist, Umsatz und Über-/Unterschreitungsklassifizierung. Quelle: Finanzdatenanbieter."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Wirtschaftskalender</strong> Geplante makroökonomische Veröffentlichungen: CPI, NFP, GDP, PMI und Zentralbankentscheidungen. Zeigt Prognose vs. Ist vs. Vorwert. Ereignisse mit hoher Auswirkung hervorgehoben. Quelle: Wirtschaftsdatenanbieter."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Finanzstress-Indikator</strong> Kansas City Fed Financial Stress Index (KCFSI): misst Stress an US-Finanzmärkten anhand von 11 Indikatoren, darunter Renditespreads, Volatilität und Kreuzkorrelationen. Positive Werte zeigen überdurchschnittlichen Stress an. Quelle: Federal Reserve Bank of Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Hormuz-Handelstracker</strong> AIS-Schiffsverfolgung in Echtzeit durch die Straße von Hormuz, den kritischsten Öl-Engpass der Welt. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Flussänderungen. Etwa 20 % der globalen Ölversorgung passiert hier täglich."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Live-Webcams</strong> Liveübertragungen von geopolitisch bedeutsamen Orten weltweit: Konfliktzonen, Hauptstädte, Grenzübergänge und strategische Engpässe. Streams von YouTube und öffentlichen Netzwerken."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Makro-Indikatoren</strong> Wichtige makroökonomische Indikatoren für die USA und den Euroraum: CPI, Arbeitslosigkeit, GDP und Zentralbankzinsen. Werte mit Delta zum Vorperiodenzeitraum. Quelle: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Stichwort-Monitore</strong> Fügen Sie einen beliebigen Begriff hinzu, um Live-Nachrichtenerwähnungen über alle WorldMonitor-Quellen zu verfolgen. Ergebnisse werden in Echtzeit aktualisiert, wenn passende Artikel aufgenommen werden."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Erneuerbare Energie</strong> Globale Pipeline für Erneuerbare-Energien-Projekte: Solar-, Wind-, Wasser- und Speicherkapazitätserweiterungen. Verfolgt angekündigte, im Bau befindliche und in Betrieb genommene Projekte nach Region und Technologietyp."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Soziale Geschwindigkeit</strong> Trending-Themen und virale Inhalte mit geopolitischer Bedeutung. Misst die Social-Media-Geschwindigkeit: wie schnell sich eine Story relativ zur Baseline verbreitet. Hilft aufkommende Narrative zu erkennen, bevor sie Mainstream-Medien erreichen."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Naturschutzerfolge</strong> Positive Naturschutznachrichten: Erholung von Artenpopulationen, Meilensteine bei der Wiederherstellung von Lebensräumen und De-Extinktions-Bemühungen. Quelle: IUCN, WWF und Naturschutzforschungspublikationen."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Weltuhr</strong> Echtzeit-Ortszeiten und Marktsitzungsstatus für große globale Finanzzentren. Zeigt Offen/Geschlossen-Status für NYSE, LSE, TSE, SGX und andere Börsen."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Zinsstrukturkurve &amp; Zinsen</strong> US-Treasury-Zinsstrukturkurve (2Y, 5Y, 10Y, 30Y) und wichtige Zinsspreads einschließlich des 10Y-2Y-Inversionsindikators. Zeigt auch Euroraum-Zinsen (EURIBOR, ESTR). Eine invertierte Kurve geht historisch Rezessionen voraus. Quelle: FRED."
     }
   },
   "popups": {

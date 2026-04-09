@@ -149,6 +149,20 @@ const LOCATION_COORDS = {
   'qom':           { lat: 34.6401, lon: 50.8764 },
   'andisheh':      { lat: 35.7050, lon: 51.0000 },
   'ankara':        { lat: 39.9334, lon: 32.8597 },
+  'minab':         { lat: 27.1452, lon: 57.0812 },
+  'asaluyeh':      { lat: 27.4834, lon: 52.6121 },
+  'south pars':    { lat: 27.5000, lon: 52.5000 },
+  'al-ahmadi':     { lat: 29.0769, lon: 48.0839 },
+  'mina al-ahmadi': { lat: 29.0769, lon: 48.0839 },
+  'mina abdullah': { lat: 28.9600, lon: 48.1600 },
+  'kafr qasim':    { lat: 32.1161, lon: 34.9750 },
+  'taybad':        { lat: 35.1884, lon: 60.7814 },
+  'sweihan':       { lat: 24.4041, lon: 55.3325 },
+  'mahshahr':      { lat: 30.5630, lon: 49.1980 },
+  'bandar khamir': { lat: 26.9592, lon: 55.8981 },
+  'shalamcheh':    { lat: 30.5244, lon: 47.9297 },
+  'ramat gan':     { lat: 32.0704, lon: 34.8237 },
+  'shuwaikh':      { lat: 29.3636, lon: 47.9417 },
 };
 
 const CATEGORY_MAP = {

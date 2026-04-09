@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
+import { BUDGET_LAB_TARIFFS_URL, htmlToPlainText, toIsoDate, parseBudgetLabEffectiveTariffHtml } from './_trade-parse-utils.mjs';
 
 loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxyForConnect();
 
 // ─── Keys (must match handler cache keys exactly) ───
 const KEYS = {
@@ -14,6 +17,8 @@ const KEYS = {
 
 const SHIPPING_TTL = 3600;
 const TRADE_TTL = 21600;
+const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
+const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
 const MAJOR_REPORTERS = ['840', '156', '276', '392', '826', '356', '076', '643', '410', '036', '124', '484', '250', '380', '528'];
 
@@ -23,6 +28,18 @@ const WTO_MEMBER_CODES = {
   '076': 'Brazil', '410': 'South Korea', '036': 'Australia', '124': 'Canada',
   '484': 'Mexico', '380': 'Italy', '528': 'Netherlands', '000': 'World',
 };
+
+const WTO_CODE_TO_ISO2 = {
+  '840': 'US', '156': 'CN', '276': 'DE', '392': 'JP', '826': 'GB',
+  '356': 'IN', '076': 'BR', '643': 'RU', '410': 'KR', '036': 'AU',
+  '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
+};
+
+const REPORTER_ISO2 = MAJOR_REPORTERS.map(c => {
+  const iso2 = WTO_CODE_TO_ISO2[c];
+  if (!iso2) throw new Error(`WTO code '${c}' has no ISO2 mapping — add it to WTO_CODE_TO_ISO2`);
+  return iso2;
+});
 
 // ─── Shipping Rates (FRED) ───
 
@@ -53,12 +70,11 @@ async function fetchShippingRates() {
         series_id: cfg.seriesId, api_key: apiKey, file_type: 'json',
         frequency: cfg.frequency, sort_order: 'desc', limit: '24',
       });
-      const resp = await fetch(`https://api.stlouisfed.org/fred/series/observations?${params}`, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(10_000),
+      const data = await fredFetchJson(`https://api.stlouisfed.org/fred/series/observations?${params}`, _proxyAuth).catch((e) => {
+        console.warn(`  FRED ${cfg.seriesId}: ${e.message}`);
+        return null;
       });
-      if (!resp.ok) { console.warn(`  FRED ${cfg.seriesId}: HTTP ${resp.status}`); continue; }
-      const data = await resp.json();
+      if (!data) continue;
       const observations = (data.observations || [])
         .map(o => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
         .filter(Boolean).reverse();
@@ -234,6 +250,30 @@ async function wtoFetch(path, params) {
   return resp.json();
 }
 
+async function fetchBudgetLabEffectiveTariffRate() {
+  try {
+    const resp = await fetch(BUDGET_LAB_TARIFFS_URL, {
+      headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      console.warn(`  Budget Lab tariffs: HTTP ${resp.status}`);
+      return null;
+    }
+    const html = await resp.text();
+    const parsed = parseBudgetLabEffectiveTariffHtml(html);
+    if (!parsed) {
+      console.warn('  Budget Lab tariffs: effective tariff rate not found in page content');
+      return null;
+    }
+    console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);
+    return parsed;
+  } catch (e) {
+    console.warn(`  Budget Lab tariffs: ${e.message}`);
+    return null;
+  }
+}
+
 // ─── Trade Flows (WTO) — pre-seed major reporters vs World + key bilateral pairs ───
 
 const BILATERAL_PAIRS = [
@@ -376,7 +416,7 @@ async function fetchTradeBarriers() {
     return gapB - gapA;
   });
   console.log(`  Trade barriers: ${barriers.length} countries`);
-  return { barriers: barriers.slice(0, 50), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { barriers: barriers.slice(0, 50), _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Trade Restrictions (WTO) ───
@@ -407,7 +447,7 @@ async function fetchTradeRestrictions() {
       id: `${cc}-${year}-${row.IndicatorCode ?? ''}`,
       reportingCountry: WTO_MEMBER_CODES[cc] ?? String(row.ReportingEconomy ?? ''),
       affectedCountry: 'All trading partners', productSector: 'All products',
-      measureType: 'MFN Applied Tariff', description: `Average tariff rate: ${value.toFixed(1)}%`,
+      measureType: 'WTO MFN Baseline', description: `WTO MFN baseline: ${value.toFixed(1)}%`,
       status: value > 10 ? 'high' : value > 5 ? 'moderate' : 'low',
       notifiedAt: year, sourceUrl: 'https://stats.wto.org',
     };
@@ -418,7 +458,7 @@ async function fetchTradeRestrictions() {
   }).slice(0, 50);
 
   console.log(`  Trade restrictions: ${restrictions.length} countries`);
-  return { restrictions, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { restrictions, _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Tariff Trends (WTO) — pre-seed major reporters ───
@@ -426,6 +466,7 @@ async function fetchTradeRestrictions() {
 async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
+  const usEffectiveTariffRate = await fetchBudgetLabEffectiveTariffRate();
 
   for (const reporter of MAJOR_REPORTERS) {
     const years = 10;
@@ -449,7 +490,12 @@ async function fetchTariffTrends() {
 
     if (datapoints.length > 0) {
       const cacheKey = `trade:tariffs:v1:${reporter}:all:${years}`;
-      trends[cacheKey] = { datapoints, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+      trends[cacheKey] = {
+        datapoints,
+        ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
+        fetchedAt: new Date().toISOString(),
+        upstreamUnavailable: false,
+      };
     }
     await sleep(500);
   }
@@ -551,8 +597,8 @@ async function fetchAll() {
   if (ba) await writeExtraKeyWithMeta(KEYS.barriers, ba, TRADE_TTL, ba.barriers?.length ?? 0);
   if (re) await writeExtraKeyWithMeta(KEYS.restrictions, re, TRADE_TTL, re.restrictions?.length ?? 0);
   if (fl) { for (const [key, data] of Object.entries(fl)) await writeExtraKeyWithMeta(key, data, TRADE_TTL, data.flows?.length ?? 0); }
-  if (ta) { for (const [key, data] of Object.entries(ta)) await writeExtraKeyWithMeta(key, data, TRADE_TTL, data.datapoints?.length ?? 0); }
-  if (cu) await writeExtraKeyWithMeta(KEYS.customsRevenue, cu, TRADE_TTL, cu.months?.length ?? 0);
+  if (ta) { for (const [key, data] of Object.entries(ta)) await writeExtraKeyWithMeta(key, data, TARIFF_TTL, data.datapoints?.length ?? 0); }
+  if (cu) await writeExtraKeyWithMeta(KEYS.customsRevenue, cu, CUSTOMS_TTL, cu.months?.length ?? 0);
 
   return mergedIndices.length > 0
     ? { indices: mergedIndices, fetchedAt: new Date().toISOString(), upstreamUnavailable: false }
@@ -566,7 +612,7 @@ function validate(data) {
 runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
   validateFn: validate,
   ttlSeconds: SHIPPING_TTL,
-  sourceVersion: 'fred-wto-sse-bdi',
+  sourceVersion: 'fred-wto-sse-bdi-budgetlab',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

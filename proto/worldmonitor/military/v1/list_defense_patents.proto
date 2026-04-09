@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "sebuf/http/annotations.proto";
+
+// DefensePatentFiling is a single patent filing from a defense/dual-use organization.
+message DefensePatentFiling {
+  // USPTO patent ID.
+  string patent_id = 1;
+  // Patent title.
+  string title = 2;
+  // Filing date (YYYY-MM-DD).
+  string date = 3;
+  // Primary assignee organization name.
+  string assignee = 4;
+  // CPC classification code (e.g. "H04B", "F42B").
+  string cpc_code = 5;
+  // CPC class description.
+  string cpc_desc = 6;
+  // Patent abstract (truncated to 500 chars).
+  string abstract = 7;
+  // USPTO patent URL.
+  string url = 8;
+}
+
+// ListDefensePatentsRequest filters defense/dual-use patent filings.
+message ListDefensePatentsRequest {
+  // CPC category filter (e.g. "H04B", "F42B"). Empty returns all categories.
+  string cpc_code = 1 [(sebuf.http.query) = { name: "cpc_code" }];
+  // Assignee keyword filter (case-insensitive substring match). Empty returns all.
+  string assignee = 2 [(sebuf.http.query) = { name: "assignee" }];
+  // Maximum results to return (default 20, max 100).
+  int32 limit = 3 [(sebuf.http.query) = { name: "limit" }];
+}
+
+// ListDefensePatentsResponse contains recent defense/dual-use patent filings.
+message ListDefensePatentsResponse {
+  // Patent filings ordered by date descending.
+  repeated DefensePatentFiling patents = 1;
+  // Total number of filings in the seeded dataset.
+  int32 total = 2;
+  // ISO 8601 timestamp when data was seeded.
+  string fetched_at = 3;
+}

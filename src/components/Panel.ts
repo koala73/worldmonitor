@@ -5,6 +5,7 @@ import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
+import { PanelGateReason } from '@/services/panel-gating';
 
 export interface PanelOptions {
   id: string;
@@ -15,8 +16,13 @@ export interface PanelOptions {
   infoTooltip?: string;
   premium?: 'locked' | 'enhanced';
   closable?: boolean;
+  collapsible?: boolean;
   defaultRowSpan?: number;
 }
+
+const lockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
+
+const upgradeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
 
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
 
@@ -53,6 +59,31 @@ function savePanelColSpan(panelId: string, span: number): void {
   const spans = loadPanelColSpans();
   spans[panelId] = span;
   localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify(spans));
+}
+
+const PANEL_COLLAPSED_KEY = 'worldmonitor-panel-collapsed';
+
+function loadPanelCollapsed(): Record<string, boolean> {
+  try {
+    const stored = localStorage.getItem(PANEL_COLLAPSED_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePanelCollapsed(panelId: string, collapsed: boolean): void {
+  const map = loadPanelCollapsed();
+  if (collapsed) {
+    map[panelId] = true;
+  } else {
+    delete map[panelId];
+  }
+  if (Object.keys(map).length === 0) {
+    localStorage.removeItem(PANEL_COLLAPSED_KEY);
+  } else {
+    localStorage.setItem(PANEL_COLLAPSED_KEY, JSON.stringify(map));
+  }
 }
 
 function clearPanelColSpan(panelId: string): void {
@@ -203,6 +234,8 @@ export class Panel {
   private retryAttempt = 0;
   private _fetching = false;
   private _locked = false;
+  private _collapsed = false;
+  private _collapseBtn: HTMLButtonElement | null = null;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -250,7 +283,7 @@ export class Panel {
       headerLeft.appendChild(this.newBadgeEl);
     }
 
-    if (isDesktopRuntime() && options.premium === 'enhanced' && !getSecretState('WORLDMONITOR_API_KEY').present) {
+    if (options.premium && !getSecretState('WORLDMONITOR_API_KEY').present) {
       const proBadge = h('span', { className: 'panel-pro-badge' }, t('premium.pro'));
       headerLeft.appendChild(proBadge);
     }
@@ -269,6 +302,10 @@ export class Panel {
       this.header.appendChild(this.countEl);
     }
 
+    if (options.collapsible) {
+      this.appendCollapseButton();
+    }
+
     if (options.closable !== false) {
       this.appendCloseButton();
     }
@@ -279,6 +316,10 @@ export class Panel {
 
     this.element.appendChild(this.header);
     this.element.appendChild(this.content);
+
+    if (this._collapseBtn && loadPanelCollapsed()[this.panelId]) {
+      this._applyCollapsed(this._collapseBtn, true);
+    }
 
     this.content.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('[data-panel-retry]');
@@ -653,6 +694,35 @@ export class Panel {
     headerLeft.appendChild(badge);
   }
 
+  private _applyCollapsed(btn: HTMLButtonElement, collapsed: boolean): void {
+    this._collapsed = collapsed;
+    this.content.style.display = collapsed ? 'none' : '';
+    this.element.classList.toggle('panel-collapsed', collapsed);
+    btn.textContent = collapsed ? '▸' : '▾';
+    const label = collapsed
+      ? (t('components.panel.expandPanel') ?? 'Expand')
+      : (t('components.panel.collapsePanel') ?? 'Collapse');
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  }
+
+  protected appendCollapseButton(): void {
+    const btn = h('button', {
+      className: 'icon-btn panel-collapse-btn',
+      'aria-label': t('components.panel.collapsePanel') ?? 'Collapse',
+      'aria-expanded': 'true',
+      title: t('components.panel.collapsePanel') ?? 'Collapse',
+    }, '▾') as HTMLButtonElement;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._applyCollapsed(btn, !this._collapsed);
+      savePanelCollapsed(this.panelId, this._collapsed);
+    });
+    this._collapseBtn = btn;
+    this.header.appendChild(btn);
+  }
+
   protected appendCloseButton(): void {
     const closeBtn = h('button', {
       className: 'icon-btn panel-close-btn',
@@ -758,7 +828,6 @@ export class Panel {
     }
     this.element.classList.add('panel-is-locked');
 
-    const lockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
     const iconEl = h('div', { className: 'panel-locked-icon' });
     iconEl.innerHTML = lockSvg;
 
@@ -775,15 +844,68 @@ export class Panel {
       lockedChildren.push(featureList);
     }
 
-    const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, t('premium.joinWaitlist'));
+    const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
       ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank')));
     } else {
-      ctaBtn.addEventListener('click', () => window.open('https://worldmonitor.app/pro', '_blank'));
+      ctaBtn.addEventListener('click', () => {
+        import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+          window.open('https://worldmonitor.app/pro', '_blank');
+        });
+      });
     }
     lockedChildren.push(ctaBtn);
 
     replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
+  }
+
+  public showGatedCta(reason: PanelGateReason, onAction: () => void): void {
+    this._locked = true;
+    this.clearRetryCountdown();
+
+    // Hide elements between header and content (same as showLocked)
+    for (let child = this.header.nextElementSibling; child && child !== this.content; child = child.nextElementSibling) {
+      (child as HTMLElement).style.display = 'none';
+    }
+    this.element.classList.add('panel-is-locked');
+
+    const config: Record<string, { icon: string; desc: string; cta: string }> = {
+      [PanelGateReason.ANONYMOUS]: {
+        icon: lockSvg,
+        desc: t('premium.signInToUnlock'),
+        cta: t('premium.signIn'),
+      },
+      [PanelGateReason.FREE_TIER]: {
+        icon: upgradeSvg,
+        desc: t('premium.upgradeDesc'),
+        cta: t('premium.upgradeToPro'),
+      },
+    };
+
+    const entry = config[reason];
+    if (!entry) return; // PanelGateReason.NONE should never reach here
+
+    const iconEl = h('div', { className: 'panel-locked-icon' });
+    iconEl.innerHTML = entry.icon;
+
+    const descEl = h('div', { className: 'panel-locked-desc' }, entry.desc);
+
+    const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, entry.cta);
+    ctaBtn.addEventListener('click', onAction);
+
+    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
+  }
+
+  public unlockPanel(): void {
+    if (!this._locked) return;
+    this._locked = false;
+    this.element.classList.remove('panel-is-locked');
+    // Re-show hidden elements
+    for (let child = this.header.nextElementSibling; child && child !== this.content; child = child.nextElementSibling) {
+      (child as HTMLElement).style.display = '';
+    }
+    // Clear the locked state content
+    replaceChildren(this.content);
   }
 
   public showRetrying(message?: string, countdownSeconds?: number): void {

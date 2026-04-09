@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CF_RADAR_URL = 'https://api.cloudflare.com/client/v4/radar/annotations/outages';
+const CF_RADAR_BASE = 'https://api.cloudflare.com/client/v4';
 const CANONICAL_KEY = 'infra:outages:v1';
-const CACHE_TTL = 1800; // 30 min
+const DDOS_KEY = 'cf:radar:ddos:v1';
+const TRAFFIC_ANOMALIES_KEY = 'cf:radar:traffic-anomalies:v1';
+const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval (was 1x = key expired on any missed run)
+const DDOS_TTL = 10800;
+const ANOMALIES_TTL = 3600;
 
 const COUNTRY_COORDS = {
   AF:[33.94,67.71],AL:[41.15,20.17],DZ:[28.03,1.66],AO:[-11.20,17.87],
@@ -104,7 +109,7 @@ async function fetchOutages() {
       id: `cf-${raw.id}`,
       title: raw.scope ? `${raw.scope} outage in ${countryName}` : `Internet disruption in ${countryName}`,
       link: raw.linkedUrl || 'https://radar.cloudflare.com/outage-center',
-      description: raw.description,
+      description: raw.description ?? '',
       detectedAt: toEpochMs(raw.startDate),
       country: countryName,
       region: '',
@@ -120,11 +125,121 @@ async function fetchOutages() {
   return { outages, pagination: undefined };
 }
 
+async function fetchDdosData(token) {
+  const headers = {
+    'User-Agent': CHROME_UA,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const [protocolResp, vectorResp, targetResp] = await Promise.all([
+    fetch(`${CF_RADAR_BASE}/radar/attacks/layer3/summary/protocol?dateRange=7d`, { headers, signal: AbortSignal.timeout(15_000) }),
+    fetch(`${CF_RADAR_BASE}/radar/attacks/layer3/summary/vector?dateRange=7d`, { headers, signal: AbortSignal.timeout(15_000) }),
+    fetch(`${CF_RADAR_BASE}/radar/attacks/layer3/top/locations/target?dateRange=7d`, { headers, signal: AbortSignal.timeout(15_000) }),
+  ]);
+
+  if (!protocolResp.ok || !vectorResp.ok) {
+    throw new Error(`CF Radar DDoS API error: protocol=${protocolResp.status} vector=${vectorResp.status}`);
+  }
+
+  const [protocolData, vectorData] = await Promise.all([protocolResp.json(), vectorResp.json()]);
+  const targetData = targetResp.ok ? await targetResp.json() : null;
+
+  function toEntries(summary) {
+    return Object.entries(summary || {}).map(([label, pct]) => ({ label, percentage: parseFloat(pct) || 0 }))
+      .sort((a, b) => b.percentage - a.percentage);
+  }
+
+  const topTargetLocations = (targetData?.result?.top_0 || []).map((item) => {
+    const code = item.clientCountryAlpha2 || '';
+    const coords = COUNTRY_COORDS[code] || null;
+    return {
+      countryCode: code,
+      countryName: item.clientCountryName || code,
+      percentage: parseFloat(item.value) || 0,
+      latitude: coords ? coords[0] : 0,
+      longitude: coords ? coords[1] : 0,
+    };
+  }).filter((item) => item.latitude !== 0 || item.longitude !== 0);
+
+  const meta = protocolData.result?.meta;
+  return {
+    protocol: toEntries(protocolData.result?.summary_0),
+    vector: toEntries(vectorData.result?.summary_0),
+    dateRangeStart: meta?.dateRange?.[0]?.startTime || '',
+    dateRangeEnd: meta?.dateRange?.[0]?.endTime || '',
+    topTargetLocations,
+  };
+}
+
+
+async function fetchTrafficAnomalies(token) {
+  const headers = {
+    'User-Agent': CHROME_UA,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const resp = await fetch(`${CF_RADAR_BASE}/radar/traffic_anomalies?dateRange=7d&limit=100`, {
+    headers,
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`CF Radar traffic anomalies API error: ${resp.status}`);
+
+  const data = await resp.json();
+  const raw = data.result?.trafficAnomalies || [];
+
+  const anomalies = raw.map((item) => {
+    const coords = COUNTRY_COORDS[item.locationDetails?.code] || null;
+    return {
+      uuid: item.uuid || '',
+      type: item.type || '',
+      status: item.status || '',
+      startDate: toEpochMs(item.startDate),
+      endDate: toEpochMs(item.endDate),
+      asn: item.asnDetails?.asn ? String(item.asnDetails.asn) : '',
+      asnName: item.asnDetails?.name || '',
+      locationCode: item.locationDetails?.code || '',
+      locationName: item.locationDetails?.name || '',
+      latitude: coords ? coords[0] : 0,
+      longitude: coords ? coords[1] : 0,
+    };
+  });
+
+  return { anomalies, totalCount: anomalies.length };
+}
+
+// NOTE: runSeed() calls process.exit(0) after writing the primary key.
+// All secondary keys MUST be written inside fetchAll() before returning.
+async function fetchAll() {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+
+  const [outagesResult, ddosResult, anomaliesResult] = await Promise.allSettled([
+    fetchOutages(),
+    fetchDdosData(token),
+    fetchTrafficAnomalies(token),
+  ]);
+
+  if (outagesResult.status === 'rejected') throw outagesResult.reason;
+  if (ddosResult.status === 'rejected') console.warn(`  CF Radar DDoS fetch failed: ${ddosResult.reason?.message || ddosResult.reason}`);
+  if (anomaliesResult.status === 'rejected') console.warn(`  CF Radar traffic anomalies fetch failed: ${anomaliesResult.reason?.message || anomaliesResult.reason}`);
+
+  const ddos = ddosResult.status === 'fulfilled' ? ddosResult.value : null;
+  const anomalies = anomaliesResult.status === 'fulfilled' ? anomaliesResult.value : null;
+
+  if (ddos && (ddos.protocol.length > 0 || ddos.vector.length > 0)) {
+    await writeExtraKeyWithMeta(DDOS_KEY, ddos, DDOS_TTL, ddos.protocol.length + ddos.vector.length);
+  }
+  if (anomalies && anomalies.anomalies.length > 0) {
+    await writeExtraKeyWithMeta(TRAFFIC_ANOMALIES_KEY, anomalies, ANOMALIES_TTL, anomalies.totalCount);
+  }
+
+  return outagesResult.value;
+}
+
 function validate(data) {
   return data && Array.isArray(data.outages);
 }
 
-runSeed('infra', 'outages', CANONICAL_KEY, fetchOutages, {
+runSeed('infra', 'outages', CANONICAL_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'cloudflare-radar-7d',

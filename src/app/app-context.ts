@@ -10,6 +10,7 @@ export type { CountryBriefSignals } from '@/types';
 
 export interface IntelligenceCache {
   flightDelays?: AirportDelayAlert[];
+  thermalEscalation?: import('@/services/thermal-escalation').ThermalEscalationWatch;
   aircraftPositions?: PositionSample[];
   outages?: InternetOutage[];
   protests?: { events: SocialUnrestEvent[]; sources: { acled: number; gdelt: number } };
@@ -73,6 +74,8 @@ export interface AppContext {
   digestPanel: import('@/components/GoodThingsDigestPanel').GoodThingsDigestPanel | null;
   speciesPanel: import('@/components/SpeciesComebackPanel').SpeciesComebackPanel | null;
   renewablePanel: import('@/components/RenewableEnergyPanel').RenewableEnergyPanel | null;
+  authModal: { open(): void; close(): void; destroy(): void } | null;
+  authHeaderWidget: import('@/components/AuthHeaderWidget').AuthHeaderWidget | null;
   tvMode: import('@/services/tv-mode').TvModeController | null;
   happyAllItems: NewsItem[];
   isDestroyed: boolean;

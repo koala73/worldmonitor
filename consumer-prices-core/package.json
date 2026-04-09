@@ -1,0 +1,40 @@
+{
+  "name": "consumer-prices-core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/api/server.js",
+    "dev": "tsx watch src/api/server.ts",
+    "jobs:scrape": "tsx src/jobs/scrape.ts",
+    "jobs:aggregate": "tsx src/jobs/aggregate.ts",
+    "jobs:publish": "tsx src/jobs/publish.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "validate": "tsx src/cli/validate.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "dotenv": "^16.4.5",
+    "exa-js": "^1.7.0",
+    "fastify": "^4.28.1",
+    "js-yaml": "^4.1.0",
+    "jsdom": "^25.0.1",
+    "pg": "^8.13.1",
+    "pino": "^9.4.0",
+    "playwright": "^1.47.2",
+    "redis": "^4.7.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.7.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}

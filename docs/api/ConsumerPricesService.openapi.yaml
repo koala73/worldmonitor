@@ -1,0 +1,673 @@
+openapi: 3.1.0
+info:
+    title: ConsumerPricesService API
+    version: 1.0.0
+paths:
+    /api/consumer-prices/v1/get-consumer-price-overview:
+        get:
+            tags:
+                - ConsumerPricesService
+            summary: GetConsumerPriceOverview
+            description: GetConsumerPriceOverview retrieves headline basket indices and coverage metrics.
+            operationId: GetConsumerPriceOverview
+            parameters:
+                - name: market_code
+                  in: query
+                  description: market_code is the ISO 3166-1 alpha-2 market identifier (e.g. "ae").
+                  required: false
+                  schema:
+                    type: string
+                - name: basket_slug
+                  in: query
+                  description: basket_slug selects which basket to use (e.g. "essentials-ae").
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetConsumerPriceOverviewResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/consumer-prices/v1/get-consumer-price-basket-series:
+        get:
+            tags:
+                - ConsumerPricesService
+            summary: GetConsumerPriceBasketSeries
+            description: GetConsumerPriceBasketSeries retrieves the basket index time series.
+            operationId: GetConsumerPriceBasketSeries
+            parameters:
+                - name: market_code
+                  in: query
+                  description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                  required: false
+                  schema:
+                    type: string
+                - name: basket_slug
+                  in: query
+                  description: basket_slug selects the basket (e.g. "essentials-ae").
+                  required: false
+                  schema:
+                    type: string
+                - name: range
+                  in: query
+                  description: range is one of "7d", "30d", "90d", "180d".
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetConsumerPriceBasketSeriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/consumer-prices/v1/list-consumer-price-categories:
+        get:
+            tags:
+                - ConsumerPricesService
+            summary: ListConsumerPriceCategories
+            description: ListConsumerPriceCategories retrieves category summaries with sparklines.
+            operationId: ListConsumerPriceCategories
+            parameters:
+                - name: market_code
+                  in: query
+                  description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                  required: false
+                  schema:
+                    type: string
+                - name: basket_slug
+                  in: query
+                  description: basket_slug selects the basket scope.
+                  required: false
+                  schema:
+                    type: string
+                - name: range
+                  in: query
+                  description: range is one of "7d", "30d", "90d", "180d".
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListConsumerPriceCategoriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/consumer-prices/v1/list-consumer-price-movers:
+        get:
+            tags:
+                - ConsumerPricesService
+            summary: ListConsumerPriceMovers
+            description: ListConsumerPriceMovers retrieves the largest upward and downward item price moves.
+            operationId: ListConsumerPriceMovers
+            parameters:
+                - name: market_code
+                  in: query
+                  description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                  required: false
+                  schema:
+                    type: string
+                - name: range
+                  in: query
+                  description: range is one of "7d", "30d", "90d".
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: limit caps the number of risers and fallers returned (default 10).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: category_slug
+                  in: query
+                  description: category_slug filters to a single category when set.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListConsumerPriceMoversResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/consumer-prices/v1/list-retailer-price-spreads:
+        get:
+            tags:
+                - ConsumerPricesService
+            summary: ListRetailerPriceSpreads
+            description: ListRetailerPriceSpreads retrieves cheapest-basket comparisons across retailers.
+            operationId: ListRetailerPriceSpreads
+            parameters:
+                - name: market_code
+                  in: query
+                  description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                  required: false
+                  schema:
+                    type: string
+                - name: basket_slug
+                  in: query
+                  description: basket_slug selects which basket to compare across retailers.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListRetailerPriceSpreadsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/consumer-prices/v1/get-consumer-price-freshness:
+        get:
+            tags:
+                - ConsumerPricesService
+            summary: GetConsumerPriceFreshness
+            description: GetConsumerPriceFreshness retrieves feed freshness and coverage health per retailer.
+            operationId: GetConsumerPriceFreshness
+            parameters:
+                - name: market_code
+                  in: query
+                  description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetConsumerPriceFreshnessResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetConsumerPriceOverviewRequest:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code is the ISO 3166-1 alpha-2 market identifier (e.g. "ae").
+                basketSlug:
+                    type: string
+                    description: basket_slug selects which basket to use (e.g. "essentials-ae").
+            description: GetConsumerPriceOverviewRequest parameters for the overview RPC.
+        GetConsumerPriceOverviewResponse:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code echoes the requested market.
+                asOf:
+                    type: string
+                    format: int64
+                    description: as_of is the Unix millisecond timestamp of the snapshot.
+                currencyCode:
+                    type: string
+                    description: currency_code is the ISO 4217 currency for price values.
+                essentialsIndex:
+                    type: number
+                    format: double
+                    description: essentials_index is the fixed basket index value (base = 100).
+                valueBasketIndex:
+                    type: number
+                    format: double
+                    description: value_basket_index is the value basket index value (base = 100).
+                wowPct:
+                    type: number
+                    format: double
+                    description: wow_pct is the week-over-week percentage change in the essentials index.
+                momPct:
+                    type: number
+                    format: double
+                    description: mom_pct is the month-over-month percentage change in the essentials index.
+                retailerSpreadPct:
+                    type: number
+                    format: double
+                    description: retailer_spread_pct is the basket cost spread between cheapest and most expensive retailer.
+                coveragePct:
+                    type: number
+                    format: double
+                    description: coverage_pct is the fraction of basket items with current observations.
+                freshnessLagMin:
+                    type: integer
+                    format: int32
+                    description: freshness_lag_min is the average minutes since last observation across all retailers.
+                topCategories:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CategorySnapshot'
+                upstreamUnavailable:
+                    type: boolean
+                    description: upstream_unavailable is true when the companion service could not be reached.
+            description: GetConsumerPriceOverviewResponse contains headline basket and coverage metrics.
+        CategorySnapshot:
+            type: object
+            properties:
+                slug:
+                    type: string
+                    description: slug is the machine-readable category identifier (e.g. "eggs", "rice").
+                name:
+                    type: string
+                    description: name is the human-readable category label.
+                wowPct:
+                    type: number
+                    format: double
+                    description: wow_pct is the week-over-week percentage change.
+                momPct:
+                    type: number
+                    format: double
+                    description: mom_pct is the month-over-month percentage change.
+                currentIndex:
+                    type: number
+                    format: double
+                    description: current_index is the current price index value (base = 100).
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: sparkline is an ordered sequence of index values for the selected range.
+                coveragePct:
+                    type: number
+                    format: double
+                    description: coverage_pct is the percentage of basket items observed for this category.
+                itemCount:
+                    type: integer
+                    format: int32
+                    description: item_count is the number of observed products in this category.
+            description: CategorySnapshot holds price index data for a single product category.
+        GetConsumerPriceBasketSeriesRequest:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                basketSlug:
+                    type: string
+                    description: basket_slug selects the basket (e.g. "essentials-ae").
+                range:
+                    type: string
+                    description: range is one of "7d", "30d", "90d", "180d".
+            description: GetConsumerPriceBasketSeriesRequest parameters for time series data.
+        GetConsumerPriceBasketSeriesResponse:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code echoes the requested market.
+                basketSlug:
+                    type: string
+                    description: basket_slug echoes the requested basket.
+                asOf:
+                    type: string
+                    format: int64
+                    description: as_of is the Unix millisecond timestamp of the snapshot.
+                currencyCode:
+                    type: string
+                    description: currency_code is the ISO 4217 currency code.
+                range:
+                    type: string
+                    description: range echoes the requested range.
+                essentialsSeries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BasketPoint'
+                valueSeries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BasketPoint'
+                upstreamUnavailable:
+                    type: boolean
+                    description: upstream_unavailable is true when the companion service could not be reached.
+            description: GetConsumerPriceBasketSeriesResponse contains the basket index time series.
+        BasketPoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: date is the ISO 8601 date string (YYYY-MM-DD).
+                index:
+                    type: number
+                    format: double
+                    description: index is the basket index value (base = 100).
+            description: BasketPoint is a single data point in a basket index time series.
+        ListConsumerPriceCategoriesRequest:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                basketSlug:
+                    type: string
+                    description: basket_slug selects the basket scope.
+                range:
+                    type: string
+                    description: range is one of "7d", "30d", "90d", "180d".
+            description: ListConsumerPriceCategoriesRequest parameters for category listing.
+        ListConsumerPriceCategoriesResponse:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code echoes the requested market.
+                asOf:
+                    type: string
+                    format: int64
+                    description: as_of is the Unix millisecond timestamp of the snapshot.
+                range:
+                    type: string
+                    description: range echoes the requested range.
+                categories:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CategorySnapshot'
+                upstreamUnavailable:
+                    type: boolean
+                    description: upstream_unavailable is true when the companion service could not be reached.
+            description: ListConsumerPriceCategoriesResponse holds category-level price snapshots.
+        ListConsumerPriceMoversRequest:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                range:
+                    type: string
+                    description: range is one of "7d", "30d", "90d".
+                limit:
+                    type: integer
+                    format: int32
+                    description: limit caps the number of risers and fallers returned (default 10).
+                categorySlug:
+                    type: string
+                    description: category_slug filters to a single category when set.
+            description: ListConsumerPriceMoversRequest parameters for the movers RPC.
+        ListConsumerPriceMoversResponse:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code echoes the requested market.
+                asOf:
+                    type: string
+                    format: int64
+                    description: as_of is the Unix millisecond timestamp of the snapshot.
+                range:
+                    type: string
+                    description: range echoes the requested range.
+                risers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PriceMover'
+                fallers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PriceMover'
+                upstreamUnavailable:
+                    type: boolean
+                    description: upstream_unavailable is true when the companion service could not be reached.
+            description: ListConsumerPriceMoversResponse holds the top price movers.
+        PriceMover:
+            type: object
+            properties:
+                productId:
+                    type: string
+                    description: product_id is the retailer product identifier.
+                title:
+                    type: string
+                    description: title is the normalized product title.
+                category:
+                    type: string
+                    description: category is the product category slug.
+                retailerSlug:
+                    type: string
+                    description: retailer_slug identifies the retailer where this move was observed.
+                changePct:
+                    type: number
+                    format: double
+                    description: change_pct is the signed percentage change over the selected window.
+                currentPrice:
+                    type: number
+                    format: double
+                    description: current_price is the latest observed price.
+                currencyCode:
+                    type: string
+                    description: currency_code is the ISO 4217 currency code.
+            description: PriceMover describes a product with a notable upward or downward price move.
+        ListRetailerPriceSpreadsRequest:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code is the ISO 3166-1 alpha-2 market identifier.
+                basketSlug:
+                    type: string
+                    description: basket_slug selects which basket to compare across retailers.
+            description: ListRetailerPriceSpreadsRequest parameters for the retailer spread RPC.
+        ListRetailerPriceSpreadsResponse:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code echoes the requested market.
+                asOf:
+                    type: string
+                    format: int64
+                    description: as_of is the Unix millisecond timestamp of the snapshot.
+                basketSlug:
+                    type: string
+                    description: basket_slug echoes the requested basket.
+                currencyCode:
+                    type: string
+                    description: currency_code is the ISO 4217 currency code.
+                retailers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RetailerSpread'
+                spreadPct:
+                    type: number
+                    format: double
+                    description: spread_pct is the percentage difference between cheapest and most expensive retailer.
+                upstreamUnavailable:
+                    type: boolean
+                    description: upstream_unavailable is true when the companion service could not be reached.
+            description: ListRetailerPriceSpreadsResponse holds cheapest-basket rankings.
+        RetailerSpread:
+            type: object
+            properties:
+                slug:
+                    type: string
+                    description: slug is the retailer identifier.
+                name:
+                    type: string
+                    description: name is the retailer display name.
+                basketTotal:
+                    type: number
+                    format: double
+                    description: basket_total is the sum of matched basket item prices at this retailer.
+                deltaVsCheapest:
+                    type: number
+                    format: double
+                    description: delta_vs_cheapest is the absolute price difference vs the cheapest retailer.
+                deltaVsCheapestPct:
+                    type: number
+                    format: double
+                    description: delta_vs_cheapest_pct is the percentage difference vs the cheapest retailer.
+                itemCount:
+                    type: integer
+                    format: int32
+                    description: item_count is the number of matched basket items observed.
+                freshnessMin:
+                    type: integer
+                    format: int32
+                    description: freshness_min is minutes since the last successful scrape for this retailer.
+                currencyCode:
+                    type: string
+                    description: currency_code is the ISO 4217 currency code.
+            description: RetailerSpread holds the basket cost breakdown for one retailer.
+        GetConsumerPriceFreshnessRequest:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code is the ISO 3166-1 alpha-2 market identifier.
+            description: GetConsumerPriceFreshnessRequest parameters for the freshness RPC.
+        GetConsumerPriceFreshnessResponse:
+            type: object
+            properties:
+                marketCode:
+                    type: string
+                    description: market_code echoes the requested market.
+                asOf:
+                    type: string
+                    format: int64
+                    description: as_of is the Unix millisecond timestamp of the snapshot.
+                retailers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RetailerFreshnessInfo'
+                overallFreshnessMin:
+                    type: integer
+                    format: int32
+                    description: overall_freshness_min is the average freshness lag across all retailers.
+                stalledCount:
+                    type: integer
+                    format: int32
+                    description: stalled_count is the number of retailers with no recent successful scrape.
+                upstreamUnavailable:
+                    type: boolean
+                    description: upstream_unavailable is true when the companion service could not be reached.
+            description: GetConsumerPriceFreshnessResponse describes feed health for all retailers.
+        RetailerFreshnessInfo:
+            type: object
+            properties:
+                slug:
+                    type: string
+                    description: slug is the retailer identifier.
+                name:
+                    type: string
+                    description: name is the retailer display name.
+                lastRunAt:
+                    type: string
+                    format: int64
+                    description: last_run_at is the Unix millisecond timestamp of the last successful scrape.
+                status:
+                    type: string
+                    description: status is one of "ok", "stale", "failed", "unknown".
+                parseSuccessRate:
+                    type: number
+                    format: double
+                    description: parse_success_rate is the fraction of pages parsed successfully (0–1).
+                freshnessMin:
+                    type: integer
+                    format: int32
+                    description: freshness_min is minutes since last successful observation.
+            description: RetailerFreshnessInfo describes the operational health of one retailer feed.

@@ -623,6 +623,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       '../../../_shared/llm-health': resolve(root, 'tests/helpers/llm-health-stub.ts'),
       '../../../_shared/llm': resolve(root, 'server/_shared/llm.ts'),
       '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
+      '../../../_shared/premium-check': resolve(root, 'tests/helpers/premium-check-stub.ts'),
+      '../../../_shared/llm-sanitize.js': resolve(root, 'server/_shared/llm-sanitize.js'),
+      '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
     });
   }
 
@@ -687,8 +690,8 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(groqCalls, 2, 'different contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
-      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
+      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
       assert.equal(alphaCached.brief, 'brief-1', 'same context should hit cache');
@@ -767,6 +770,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       './_shared': resolve(root, 'server/worldmonitor/military/v1/_shared.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/relay': resolve(root, 'server/_shared/relay.ts'),
       '../../../_shared/response-headers': resolve(root, 'server/_shared/response-headers.ts'),
     });
   }

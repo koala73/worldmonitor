@@ -8,7 +8,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetRiskScores
-            description: GetRiskScores retrieves composite instability and strategic risk assessments.
+            description: GetRiskScores retrieves composite risk scores and strategic assessments.
             operationId: GetRiskScores
             parameters:
                 - name: region
@@ -41,7 +41,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetPizzintStatus
-            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension pair data.
+            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
             operationId: GetPizzintStatus
             parameters:
                 - name: include_gdelt
@@ -74,7 +74,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
-            description: ClassifyEvent classifies a real-world event using AI (Groq).
+            description: ClassifyEvent analyzes a news event using AI models.
             operationId: ClassifyEvent
             parameters:
                 - name: title
@@ -120,17 +120,56 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-risk:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryRisk
+            description: GetCountryRisk retrieves composite risk intelligence for a specific country.
+            operationId: GetCountryRisk
+            parameters:
+                - name: country_code
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryRiskResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/intelligence/v1/get-country-intel-brief:
         get:
             tags:
                 - IntelligenceService
             summary: GetCountryIntelBrief
-            description: GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
+            description: GetCountryIntelBrief generates a strategic brief for a specific country.
             operationId: GetCountryIntelBrief
             parameters:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code.
+                  required: false
+                  schema:
+                    type: string
+                - name: framework
+                  in: query
+                  description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
                   required: false
                   schema:
                     type: string
@@ -158,7 +197,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
-            description: SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
+            description: SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
             operationId: SearchGdeltDocuments
             parameters:
                 - name: query
@@ -218,7 +257,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation performs AI-powered situational analysis and deduction.
+            description: DeductSituation performs broad situational analysis using LLMs.
             operationId: DeductSituation
             requestBody:
                 content:
@@ -233,6 +272,225 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/DeductSituationResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-satellites:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListSatellites
+            description: ListSatellites retrieves current orbital positions and metadata.
+            operationId: ListSatellites
+            parameters:
+                - name: country
+                  in: query
+                  description: Filter by country code. Empty returns all.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSatellitesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-gps-interference:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListGpsInterference
+            description: ListGpsInterference retrieves detected GPS/GNSS interference data (jamming).
+            operationId: ListGpsInterference
+            parameters:
+                - name: region
+                  in: query
+                  description: Optional region filter.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListGpsInterferenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-oref-alerts:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListOrefAlerts
+            description: ListOrefAlerts retrieves Israeli Home Front Command alerts (Red Alerts).
+            operationId: ListOrefAlerts
+            parameters:
+                - name: mode
+                  in: query
+                  description: Mode selection. MODE_UNSPECIFIED defaults to active alerts.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOrefAlertsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-telegram-feed:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListTelegramFeed
+            description: ListTelegramFeed retrieves real-time OSINT messages from monitored Telegram channels.
+            operationId: ListTelegramFeed
+            parameters:
+                - name: limit
+                  in: query
+                  description: Maximum number of messages to return (default 50).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: topic
+                  in: query
+                  description: Filter by topic keyword (e.g. "military", "cyber").
+                  required: false
+                  schema:
+                    type: string
+                - name: channel
+                  in: query
+                  description: Filter by specific channel ID or name.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListTelegramFeedResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-company-enrichment:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCompanyEnrichment
+            description: GetCompanyEnrichment aggregates company data from multiple public sources (GitHub, SEC, HN).
+            operationId: GetCompanyEnrichment
+            parameters:
+                - name: domain
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: name
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCompanyEnrichmentResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-company-signals:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListCompanySignals
+            description: ListCompanySignals discovers activity signals for a company from public sources.
+            operationId: ListCompanySignals
+            parameters:
+                - name: company
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: domain
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCompanySignalsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -291,6 +549,235 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListSecurityAdvisoriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-gdelt-topic-timeline:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetGdeltTopicTimeline
+            description: GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
+            operationId: GetGdeltTopicTimeline
+            parameters:
+                - name: topic
+                  in: query
+                  description: Topic ID (military, cyber, nuclear, sanctions, intelligence, maritime).
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetGdeltTopicTimelineResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-cross-source-signals:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListCrossSourceSignals
+            description: ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+            operationId: ListCrossSourceSignals
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCrossSourceSignalsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-market-implications:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListMarketImplications
+            description: ListMarketImplications returns AI-generated trade-implication cards from live world state.
+            operationId: ListMarketImplications
+            parameters:
+                - name: frameworkId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListMarketImplicationsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-social-velocity:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetSocialVelocity
+            description: GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
+            operationId: GetSocialVelocity
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSocialVelocityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-energy-profile:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryEnergyProfile
+            description: GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+            operationId: GetCountryEnergyProfile
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryEnergyProfileResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/compute-energy-shock:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ComputeEnergyShockScenario
+            description: ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+            operationId: ComputeEnergyShockScenario
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: chokepoint_id
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: disruption_pct
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: fuel_mode
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ComputeEnergyShockScenarioResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-port-activity:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryPortActivity
+            description: GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+            operationId: GetCountryPortActivity
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CountryPortActivityResponse'
                 "400":
                     description: Validation error
                     content:
@@ -672,6 +1159,45 @@ components:
                         type: string
                         description: Related entities identified.
             description: EventClassification represents an AI-generated classification of a real-world event.
+        GetCountryRiskRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code.
+            required:
+                - countryCode
+            description: GetCountryRiskRequest specifies which country to retrieve risk intelligence for.
+        GetCountryRiskResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                countryName:
+                    type: string
+                    description: Country name.
+                cii:
+                    $ref: '#/components/schemas/CiiScore'
+                advisoryLevel:
+                    type: string
+                    description: Travel advisory level from government sources (e.g. "do-not-travel", "reconsider", "caution"). Empty if none.
+                sanctionsActive:
+                    type: boolean
+                    description: Whether this country has active OFAC sanctions designations.
+                sanctionsCount:
+                    type: integer
+                    format: int32
+                    description: Count of sanctioned entities associated with this country.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                upstreamUnavailable:
+                    type: boolean
+                    description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
+            description: GetCountryRiskResponse contains composite risk intelligence for a specific country.
         GetCountryIntelBriefRequest:
             type: object
             properties:
@@ -679,6 +1205,9 @@ components:
                     type: string
                     pattern: ^[A-Z]{2}$
                     description: ISO 3166-1 alpha-2 country code.
+                framework:
+                    type: string
+                    description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
             required:
                 - countryCode
             description: GetCountryIntelBriefRequest specifies which country to generate a brief for.
@@ -776,6 +1305,9 @@ components:
                     type: string
                 geoContext:
                     type: string
+                framework:
+                    type: string
+                    description: Optional analytical framework instructions.
         DeductSituationResponse:
             type: object
             properties:
@@ -785,6 +1317,470 @@ components:
                     type: string
                 provider:
                     type: string
+        ListSatellitesRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Filter by country code. Empty returns all.
+            description: ListSatellitesRequest specifies filters for orbital data.
+        ListSatellitesResponse:
+            type: object
+            properties:
+                satellites:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Satellite'
+            description: ListSatellitesResponse contains the current orbital snapshot.
+        Satellite:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    description: NORAD identifier (e.g., "25544").
+                name:
+                    type: string
+                    description: Name of the satellite.
+                country:
+                    type: string
+                    description: ISO country code of the operator/owner.
+                type:
+                    type: string
+                    description: Purpose category (e.g., "sar", "optical", "military").
+                alt:
+                    type: number
+                    format: double
+                    description: Orbital altitude in kilometers.
+                velocity:
+                    type: number
+                    format: double
+                    description: Velocity in km/s.
+                inclination:
+                    type: number
+                    format: double
+                    description: Orbital inclination in degrees.
+                line1:
+                    type: string
+                    description: TLE line 1.
+                line2:
+                    type: string
+                    description: TLE line 2.
+            required:
+                - id
+            description: Satellite represents an orbital asset tracked by WorldMonitor.
+        ListGpsInterferenceRequest:
+            type: object
+            properties:
+                region:
+                    type: string
+                    description: Optional region filter.
+            description: ListGpsInterferenceRequest specifies filters for GPS interference data.
+        ListGpsInterferenceResponse:
+            type: object
+            properties:
+                hexes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GpsJamHex'
+                stats:
+                    $ref: '#/components/schemas/GpsJamStats'
+                source:
+                    type: string
+                    description: Data source name.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Data fetch time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ListGpsInterferenceResponse contains GPS interference data and stats.
+        GpsJamHex:
+            type: object
+            properties:
+                h3:
+                    type: string
+                    minLength: 1
+                    description: H3 index of the hexagon.
+                lat:
+                    type: number
+                    format: double
+                    description: Centroid latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Centroid longitude.
+                level:
+                    type: string
+                    enum:
+                        - INTERFERENCE_LEVEL_UNSPECIFIED
+                        - INTERFERENCE_LEVEL_LOW
+                        - INTERFERENCE_LEVEL_MEDIUM
+                        - INTERFERENCE_LEVEL_HIGH
+                    description: InterferenceLevel represents the severity of detected signal interference.
+                npAvg:
+                    type: number
+                    format: double
+                    description: Average Navigation Precision (np) - lower means more interference.
+                sampleCount:
+                    type: integer
+                    format: int32
+                    description: Number of samples in this hex.
+                aircraftCount:
+                    type: integer
+                    format: int32
+                    description: Number of unique aircraft that reported in this hex.
+            required:
+                - h3
+            description: GpsJamHex represents a geographic hexagon with detected GPS interference.
+        GpsJamStats:
+            type: object
+            properties:
+                totalHexes:
+                    type: integer
+                    format: int32
+                highCount:
+                    type: integer
+                    format: int32
+                mediumCount:
+                    type: integer
+                    format: int32
+            description: GpsJamStats contains aggregate statistics for GPS interference.
+        ListOrefAlertsRequest:
+            type: object
+            properties:
+                mode:
+                    type: string
+                    enum:
+                        - MODE_UNSPECIFIED
+                        - MODE_HISTORY
+            description: Request to fetch Israeli Red Alerts (OREF).
+        ListOrefAlertsResponse:
+            type: object
+            properties:
+                configured:
+                    type: boolean
+                    description: Whether the OREF bridge is configured.
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OrefAlert'
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OrefWave'
+                historyCount24h:
+                    type: integer
+                    format: int32
+                    description: Number of alerts in the last 24 hours.
+                totalHistoryCount:
+                    type: integer
+                    format: int32
+                    description: Total alerts in the historical buffer.
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds of the response generation.. Warning: Values > 2^53 may lose precision in JavaScript'
+                error:
+                    type: string
+                    description: Optional error message from the relay.
+            description: OREF alert wave snapshot.
+        OrefAlert:
+            type: object
+            properties:
+                id:
+                    type: string
+                cat:
+                    type: string
+                title:
+                    type: string
+                data:
+                    type: array
+                    items:
+                        type: string
+                desc:
+                    type: string
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds for when the alert was issued.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: A single Red Alert event.
+        OrefWave:
+            type: object
+            properties:
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OrefAlert'
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds for this wave.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: A wave of alerts occurring at the same time.
+        ListTelegramFeedRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of messages to return (default 50).
+                topic:
+                    type: string
+                    description: Filter by topic keyword (e.g. "military", "cyber").
+                channel:
+                    type: string
+                    description: Filter by specific channel ID or name.
+            description: Request to fetch real-time Telegram OSINT feed.
+        ListTelegramFeedResponse:
+            type: object
+            properties:
+                enabled:
+                    type: boolean
+                    description: Whether the bridge is currently active.
+                messages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TelegramMessage'
+                count:
+                    type: integer
+                    format: int32
+                    description: Total count of messages in the current window.
+                error:
+                    type: string
+                    description: Detailed error message if the fetch failed.
+            description: OSINT feed containing validated Telegram messages.
+        TelegramMessage:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique message identifier.
+                channelId:
+                    type: string
+                    description: Identifier of the originating channel.
+                channelName:
+                    type: string
+                    description: Human-readable name of the channel.
+                text:
+                    type: string
+                    description: Sanitized message content.
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds for when the message was posted.. Warning: Values > 2^53 may lose precision in JavaScript'
+                mediaUrls:
+                    type: array
+                    items:
+                        type: string
+                        description: Direct links to associated media (images, videos).
+                sourceUrl:
+                    type: string
+                    description: Link to the original post on Telegram.
+                topic:
+                    type: string
+                    description: Auto-classified topic based on content.
+            description: Validated OSINT post from Telegram channels.
+        GetCompanyEnrichmentRequest:
+            type: object
+            properties:
+                domain:
+                    type: string
+                name:
+                    type: string
+            description: |-
+                Request to fetch enrichment data for a company.
+                 Requires either domain (e.g. "github.com") or name (e.g. "GitHub").
+        GetCompanyEnrichmentResponse:
+            type: object
+            properties:
+                company:
+                    $ref: '#/components/schemas/EnrichedCompany'
+                github:
+                    $ref: '#/components/schemas/EnrichedGithub'
+                techStack:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TechStackItem'
+                secFilings:
+                    $ref: '#/components/schemas/SecFilings'
+                hackerNewsMentions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/HNMention'
+                enrichedAtMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds when this data was fetched.. Warning: Values > 2^53 may lose precision in JavaScript'
+                sources:
+                    type: array
+                    items:
+                        type: string
+                        description: List of sources successfully reached (e.g. "github", "sec_edgar").
+            description: Aggregated company data from multiple public sources.
+        EnrichedCompany:
+            type: object
+            properties:
+                name:
+                    type: string
+                domain:
+                    type: string
+                description:
+                    type: string
+                location:
+                    type: string
+                website:
+                    type: string
+                founded:
+                    type: integer
+                    format: int32
+        EnrichedGithub:
+            type: object
+            properties:
+                publicRepos:
+                    type: integer
+                    format: int32
+                followers:
+                    type: integer
+                    format: int32
+                avatarUrl:
+                    type: string
+        TechStackItem:
+            type: object
+            properties:
+                name:
+                    type: string
+                category:
+                    type: string
+                confidence:
+                    type: number
+                    format: float
+        SecFilings:
+            type: object
+            properties:
+                totalFilings:
+                    type: integer
+                    format: int32
+                recentFilings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SecFiling'
+        SecFiling:
+            type: object
+            properties:
+                form:
+                    type: string
+                fileDate:
+                    type: string
+                description:
+                    type: string
+        HNMention:
+            type: object
+            properties:
+                title:
+                    type: string
+                url:
+                    type: string
+                points:
+                    type: integer
+                    format: int32
+                comments:
+                    type: integer
+                    format: int32
+                createdAtMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds when the post was created.. Warning: Values > 2^53 may lose precision in JavaScript'
+        ListCompanySignalsRequest:
+            type: object
+            properties:
+                company:
+                    type: string
+                domain:
+                    type: string
+            description: Request to discover and classify company signals (hiring, funding, tech changes).
+        ListCompanySignalsResponse:
+            type: object
+            properties:
+                company:
+                    type: string
+                domain:
+                    type: string
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanySignal'
+                summary:
+                    $ref: '#/components/schemas/SignalSummary'
+                discoveredAtMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds when signals were discovered.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: Discovered company signals with classification and engagement metrics.
+        CompanySignal:
+            type: object
+            properties:
+                type:
+                    type: string
+                    description: Classification type (e.g. "Hiring", "Product Launch", "Expansion").
+                title:
+                    type: string
+                url:
+                    type: string
+                source:
+                    type: string
+                sourceTier:
+                    type: integer
+                    format: int32
+                    description: Data quality tier (1 is authoritative, 5 is low confidence).
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds of the event occurrence.. Warning: Values > 2^53 may lose precision in JavaScript'
+                strength:
+                    type: string
+                    description: Qualitative strength of the signal (e.g. "Strong", "Emerging").
+                engagement:
+                    $ref: '#/components/schemas/SignalEngagement'
+        SignalEngagement:
+            type: object
+            properties:
+                points:
+                    type: integer
+                    format: int32
+                comments:
+                    type: integer
+                    format: int32
+                stars:
+                    type: integer
+                    format: int32
+                forks:
+                    type: integer
+                    format: int32
+                mentions:
+                    type: integer
+                    format: int32
+        SignalSummary:
+            type: object
+            properties:
+                totalSignals:
+                    type: integer
+                    format: int32
+                byType:
+                    type: object
+                    additionalProperties:
+                        type: integer
+                        format: int32
+                strongestSignal:
+                    $ref: '#/components/schemas/CompanySignal'
+                signalDiversity:
+                    type: integer
+                    format: int32
+        ByTypeEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: integer
+                    format: int32
         GetCountryFactsRequest:
             type: object
             properties:
@@ -860,3 +1856,518 @@ components:
                     type: string
                 country:
                     type: string
+        GetGdeltTopicTimelineRequest:
+            type: object
+            properties:
+                topic:
+                    type: string
+                    description: Topic ID (military, cyber, nuclear, sanctions, intelligence, maritime).
+            description: GetGdeltTopicTimelineRequest retrieves tone and volume timelines for a GDELT intel topic.
+        GetGdeltTopicTimelineResponse:
+            type: object
+            properties:
+                topic:
+                    type: string
+                    description: Topic ID.
+                tone:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GdeltTimelinePoint'
+                vol:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GdeltTimelinePoint'
+                fetchedAt:
+                    type: string
+                    description: ISO timestamp when this data was fetched.
+                error:
+                    type: string
+                    description: Error message if fetch failed.
+            description: GetGdeltTopicTimelineResponse contains tone and volume timelines for a topic.
+        GdeltTimelinePoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: Date string from GDELT (e.g. "20240101T000000").
+                value:
+                    type: number
+                    format: double
+                    description: Tone or volume value at this point.
+            description: GdeltTimelinePoint is a single data point in a tone or volume timeline.
+        ListCrossSourceSignalsRequest:
+            type: object
+            description: ListCrossSourceSignalsRequest has no required parameters (returns all signals).
+        ListCrossSourceSignalsResponse:
+            type: object
+            properties:
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CrossSourceSignal'
+                evaluatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Timestamp when the aggregator last ran (Unix epoch milliseconds).. Warning: Values > 2^53 may lose precision in JavaScript'
+                compositeCount:
+                    type: integer
+                    format: int32
+                    description: Total number of composite escalation zones detected.
+            description: ListCrossSourceSignalsResponse contains ranked cross-domain signals.
+        CrossSourceSignal:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique signal identifier.
+                type:
+                    type: string
+                    enum:
+                        - CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED
+                        - CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE
+                        - CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING
+                        - CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER
+                        - CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE
+                        - CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK
+                        - CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION
+                        - CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT
+                        - CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY
+                        - CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS
+                        - CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME
+                        - CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE
+                    description: CrossSourceSignalType enumerates all monitored cross-domain signal categories.
+                theater:
+                    type: string
+                    description: Theater / geographic context (e.g. "Eastern Europe", "Red Sea", "Global Markets").
+                summary:
+                    type: string
+                    description: Human-readable summary of the signal.
+                severity:
+                    type: string
+                    enum:
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_LOW
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_HIGH
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL
+                    description: CrossSourceSignalSeverity indicates the urgency tier of a detected signal.
+                severityScore:
+                    type: number
+                    format: double
+                    description: 'Raw severity score used for ranking (higher = more severe).. Warning: Values > 2^53 may lose precision in JavaScript'
+                detectedAt:
+                    type: integer
+                    format: int64
+                    description: 'Detection timestamp (Unix epoch milliseconds).. Warning: Values > 2^53 may lose precision in JavaScript'
+                contributingTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: 'For COMPOSITE_ESCALATION: list of contributing signal type names.'
+                signalCount:
+                    type: integer
+                    format: int32
+                    description: 'For COMPOSITE_ESCALATION: number of co-firing signals in theater.'
+            description: CrossSourceSignal represents a single detected cross-domain signal event.
+        ListMarketImplicationsRequest:
+            type: object
+            properties:
+                frameworkId:
+                    type: string
+        ListMarketImplicationsResponse:
+            type: object
+            properties:
+                cards:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MarketImplicationCard'
+                degraded:
+                    type: boolean
+                emptyReason:
+                    type: string
+                generatedAt:
+                    type: string
+        MarketImplicationCard:
+            type: object
+            properties:
+                ticker:
+                    type: string
+                name:
+                    type: string
+                direction:
+                    type: string
+                timeframe:
+                    type: string
+                confidence:
+                    type: string
+                title:
+                    type: string
+                narrative:
+                    type: string
+                riskCaveat:
+                    type: string
+                driver:
+                    type: string
+                transmissionChain:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TransmissionNode'
+        TransmissionNode:
+            type: object
+            properties:
+                node:
+                    type: string
+                impactType:
+                    type: string
+                logic:
+                    type: string
+        GetSocialVelocityRequest:
+            type: object
+        GetSocialVelocityResponse:
+            type: object
+            properties:
+                posts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SocialVelocityPost'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        SocialVelocityPost:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Reddit post ID.
+                title:
+                    type: string
+                    description: Post title.
+                subreddit:
+                    type: string
+                    description: Subreddit name (without r/ prefix).
+                url:
+                    type: string
+                    description: Direct URL to the post.
+                score:
+                    type: integer
+                    format: int32
+                    description: Reddit score (upvotes - downvotes).
+                upvoteRatio:
+                    type: number
+                    format: double
+                    description: Upvote ratio (0.0–1.0).
+                numComments:
+                    type: integer
+                    format: int32
+                    description: Number of comments.
+                velocityScore:
+                    type: number
+                    format: double
+                    description: Composite velocity score accounting for recency, score, and ratio.
+                createdAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch milliseconds when posted.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: SocialVelocityPost represents a trending Reddit post with velocity scoring.
+        GetCountryEnergyProfileRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        GetCountryEnergyProfileResponse:
+            type: object
+            properties:
+                mixAvailable:
+                    type: boolean
+                    description: Phase 1 — OWID structural mix (~200 countries)
+                mixYear:
+                    type: integer
+                    format: int32
+                coalShare:
+                    type: number
+                    format: double
+                gasShare:
+                    type: number
+                    format: double
+                oilShare:
+                    type: number
+                    format: double
+                nuclearShare:
+                    type: number
+                    format: double
+                renewShare:
+                    type: number
+                    format: double
+                windShare:
+                    type: number
+                    format: double
+                solarShare:
+                    type: number
+                    format: double
+                hydroShare:
+                    type: number
+                    format: double
+                importShare:
+                    type: number
+                    format: double
+                gasStorageAvailable:
+                    type: boolean
+                    description: Phase 2 — EU gas storage
+                gasStorageFillPct:
+                    type: number
+                    format: double
+                gasStorageChange1d:
+                    type: number
+                    format: double
+                gasStorageTrend:
+                    type: string
+                gasStorageDate:
+                    type: string
+                electricityAvailable:
+                    type: boolean
+                    description: |-
+                        Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+                         US electricity is stored by EIA balancing area, not ISO2 — not available here
+                electricityPriceMwh:
+                    type: number
+                    format: double
+                electricitySource:
+                    type: string
+                electricityDate:
+                    type: string
+                jodiOilAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Oil (~90+ countries)
+                jodiOilDataMonth:
+                    type: string
+                gasolineDemandKbd:
+                    type: number
+                    format: double
+                gasolineImportsKbd:
+                    type: number
+                    format: double
+                dieselDemandKbd:
+                    type: number
+                    format: double
+                dieselImportsKbd:
+                    type: number
+                    format: double
+                jetDemandKbd:
+                    type: number
+                    format: double
+                jetImportsKbd:
+                    type: number
+                    format: double
+                lpgDemandKbd:
+                    type: number
+                    format: double
+                crudeImportsKbd:
+                    type: number
+                    format: double
+                lpgImportsKbd:
+                    type: number
+                    format: double
+                jodiGasAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Gas
+                jodiGasDataMonth:
+                    type: string
+                gasTotalDemandTj:
+                    type: number
+                    format: double
+                gasLngImportsTj:
+                    type: number
+                    format: double
+                gasPipeImportsTj:
+                    type: number
+                    format: double
+                gasLngShare:
+                    type: number
+                    format: double
+                ieaStocksAvailable:
+                    type: boolean
+                    description: Phase 2.5 — IEA oil stocks (~31 IEA members)
+                ieaStocksDataMonth:
+                    type: string
+                ieaDaysOfCover:
+                    type: integer
+                    format: int32
+                ieaNetExporter:
+                    type: boolean
+                ieaBelowObligation:
+                    type: boolean
+        ComputeEnergyShockScenarioRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                chokepointId:
+                    type: string
+                disruptionPct:
+                    type: integer
+                    format: int32
+                fuelMode:
+                    type: string
+        ComputeEnergyShockScenarioResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                chokepointId:
+                    type: string
+                disruptionPct:
+                    type: integer
+                    format: int32
+                gulfCrudeShare:
+                    type: number
+                    format: double
+                crudeLossKbd:
+                    type: number
+                    format: double
+                products:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProductImpact'
+                effectiveCoverDays:
+                    type: integer
+                    format: int32
+                assessment:
+                    type: string
+                dataAvailable:
+                    type: boolean
+                jodiOilCoverage:
+                    type: boolean
+                    description: v2 fields
+                comtradeCoverage:
+                    type: boolean
+                ieaStocksCoverage:
+                    type: boolean
+                portwatchCoverage:
+                    type: boolean
+                coverageLevel:
+                    type: string
+                limitations:
+                    type: array
+                    items:
+                        type: string
+                degraded:
+                    type: boolean
+                chokepointConfidence:
+                    type: string
+                liveFlowRatio:
+                    type: number
+                    format: double
+                gasImpact:
+                    $ref: '#/components/schemas/GasImpact'
+        ProductImpact:
+            type: object
+            properties:
+                product:
+                    type: string
+                outputLossKbd:
+                    type: number
+                    format: double
+                demandKbd:
+                    type: number
+                    format: double
+                deficitPct:
+                    type: number
+                    format: double
+        GasImpact:
+            type: object
+            properties:
+                lngShareOfImports:
+                    type: number
+                    format: double
+                lngImportsTj:
+                    type: number
+                    format: double
+                lngDisruptionTj:
+                    type: number
+                    format: double
+                totalDemandTj:
+                    type: number
+                    format: double
+                deficitPct:
+                    type: number
+                    format: double
+                dataAvailable:
+                    type: boolean
+                assessment:
+                    type: string
+                storage:
+                    $ref: '#/components/schemas/GasStorageBuffer'
+                dataSource:
+                    type: string
+        GasStorageBuffer:
+            type: object
+            properties:
+                fillPct:
+                    type: number
+                    format: double
+                gasTwh:
+                    type: number
+                    format: double
+                bufferDays:
+                    type: number
+                    format: double
+                trend:
+                    type: string
+                date:
+                    type: string
+                scope:
+                    type: string
+        GetCountryPortActivityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        CountryPortActivityResponse:
+            type: object
+            properties:
+                ports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PortActivityEntry'
+                fetchedAt:
+                    type: string
+                available:
+                    type: boolean
+        PortActivityEntry:
+            type: object
+            properties:
+                portId:
+                    type: string
+                portName:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                tankerCalls30d:
+                    type: integer
+                    format: int32
+                trendDeltaPct:
+                    type: number
+                    format: double
+                importTankerDwt:
+                    type: number
+                    format: double
+                exportTankerDwt:
+                    type: number
+                    format: double
+                anomalySignal:
+                    type: boolean

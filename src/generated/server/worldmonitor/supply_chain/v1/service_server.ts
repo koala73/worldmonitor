@@ -51,6 +51,7 @@ export interface ChokepointInfo {
   directions: string[];
   directionalDwt: DirectionalDwt[];
   transitSummary?: TransitSummary;
+  flowEstimate?: FlowEstimate;
 }
 
 export interface DirectionalDwt {
@@ -79,6 +80,25 @@ export interface TransitDayCount {
   cargo: number;
   other: number;
   total: number;
+  container: number;
+  dryBulk: number;
+  generalCargo: number;
+  roro: number;
+  capContainer: number;
+  capDryBulk: number;
+  capGeneralCargo: number;
+  capRoro: number;
+  capTanker: number;
+}
+
+export interface FlowEstimate {
+  currentMbd: number;
+  baselineMbd: number;
+  flowRatio: number;
+  disrupted: boolean;
+  source: string;
+  hazardAlertLevel: string;
+  hazardAlertName: string;
 }
 
 export interface GetCriticalMineralsRequest {
@@ -104,6 +124,26 @@ export interface MineralProducer {
   countryCode: string;
   productionTonnes: number;
   sharePct: number;
+}
+
+export interface GetShippingStressRequest {
+}
+
+export interface GetShippingStressResponse {
+  carriers: ShippingStressCarrier[];
+  stressScore: number;
+  stressLevel: string;
+  fetchedAt: number;
+  upstreamUnavailable: boolean;
+}
+
+export interface ShippingStressCarrier {
+  symbol: string;
+  name: string;
+  price: number;
+  changePct: number;
+  carrierType: string;
+  sparkline: number[];
 }
 
 export interface FieldViolation {
@@ -154,6 +194,7 @@ export interface SupplyChainServiceHandler {
   getShippingRates(ctx: ServerContext, req: GetShippingRatesRequest): Promise<GetShippingRatesResponse>;
   getChokepointStatus(ctx: ServerContext, req: GetChokepointStatusRequest): Promise<GetChokepointStatusResponse>;
   getCriticalMinerals(ctx: ServerContext, req: GetCriticalMineralsRequest): Promise<GetCriticalMineralsResponse>;
+  getShippingStress(ctx: ServerContext, req: GetShippingStressRequest): Promise<GetShippingStressResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -251,6 +292,43 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getCriticalMinerals(ctx, body);
           return new Response(JSON.stringify(result as GetCriticalMineralsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-shipping-stress",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetShippingStressRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getShippingStress(ctx, body);
+          return new Response(JSON.stringify(result as GetShippingStressResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

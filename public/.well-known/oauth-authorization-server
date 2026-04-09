@@ -1,0 +1,11 @@
+{
+  "issuer": "https://api.worldmonitor.app",
+  "authorization_endpoint": "https://api.worldmonitor.app/oauth/authorize",
+  "token_endpoint": "https://api.worldmonitor.app/oauth/token",
+  "registration_endpoint": "https://api.worldmonitor.app/oauth/register",
+  "grant_types_supported": ["authorization_code", "refresh_token"],
+  "response_types_supported": ["code"],
+  "code_challenge_methods_supported": ["S256"],
+  "token_endpoint_auth_methods_supported": ["none"],
+  "scopes_supported": ["mcp"]
+}

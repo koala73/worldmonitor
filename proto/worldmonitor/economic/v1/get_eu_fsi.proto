@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetEuFsiRequest {}
+
+message EuFsiObservation {
+  string date = 1;
+  double value = 2;
+}
+
+message GetEuFsiResponse {
+  double latest_value = 1;
+  string latest_date = 2;
+  string label = 3;
+  repeated EuFsiObservation history = 4;
+  string seeded_at = 5;
+  bool unavailable = 6;
+}

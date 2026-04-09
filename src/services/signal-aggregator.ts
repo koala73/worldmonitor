@@ -108,6 +108,8 @@ class SignalAggregator {
   private readonly WINDOW_MS = 24 * 60 * 60 * 1000;
   // Tracks which source event type each temporal anomaly signal came from
   private temporalSourceMap = new WeakMap<GeoSignal, string>();
+  // Tracks signals added by ingestTheaterPostures so they can be cleared on re-ingestion
+  private theaterPostureSignals: GeoSignal[] = [];
 
   private clearSignalType(type: SignalType): void {
     this.signals = this.signals.filter(s => s.type !== type);
@@ -135,7 +137,7 @@ class SignalAggregator {
     this.clearSignalType('military_flight');
     const countryCounts = new Map<string, number>();
     for (const f of flights) {
-      const code = this.coordsToCountry(f.lat, f.lon);
+      const code = this.coordsToCountryWithFallback(f.lat, f.lon);
       const count = countryCounts.get(code) || 0;
       countryCounts.set(code, count + 1);
     }
@@ -160,7 +162,7 @@ class SignalAggregator {
     const regionCounts = new Map<string, { count: number; lat: number; lon: number }>();
 
     for (const v of vessels) {
-      const code = this.coordsToCountry(v.lat, v.lon);
+      const code = this.coordsToCountryWithFallback(v.lat, v.lon);
       const existing = regionCounts.get(code);
       if (existing) {
         existing.count++;
@@ -425,14 +427,37 @@ class SignalAggregator {
       'Gaza': 'PS', 'Yemen': 'YE',
     };
 
+    // Remove previously-added theater posture signals before re-ingesting (idempotency)
+    const prev = new Set(this.theaterPostureSignals);
+    this.signals = this.signals.filter(s => !prev.has(s));
+    this.theaterPostureSignals = [];
+
+    // Remove real signals only for the specific type that will be replaced by theater summary.
+    // Tracked per-type so that e.g. an aircraft-only posture doesn't erase real vessel signals.
+    const activeFlightCodes = new Set<string>();
+    const activeVesselCodes = new Set<string>();
+    for (const p of postures) {
+      if (!p.targetNation || p.postureLevel === 'normal') continue;
+      const code = TARGET_CODES[p.targetNation];
+      if (!code) continue;
+      if (p.totalAircraft > 0) activeFlightCodes.add(code);
+      if (p.totalVessels > 0) activeVesselCodes.add(code);
+    }
+    if (activeFlightCodes.size > 0 || activeVesselCodes.size > 0) {
+      this.signals = this.signals.filter(s => {
+        if (s.type === 'military_flight' && activeFlightCodes.has(s.country)) return false;
+        if (s.type === 'military_vessel' && activeVesselCodes.has(s.country)) return false;
+        return true;
+      });
+    }
+
     for (const p of postures) {
       if (!p.targetNation || p.postureLevel === 'normal') continue;
       const code = TARGET_CODES[p.targetNation];
       if (!code) continue;
 
-      const hasFlight = this.signals.some(s => s.country === code && s.type === 'military_flight');
-      if (!hasFlight && p.totalAircraft > 0) {
-        this.signals.push({
+      if (p.totalAircraft > 0) {
+        const sig: GeoSignal = {
           type: 'military_flight',
           country: code,
           countryName: getCountryName(code),
@@ -441,12 +466,13 @@ class SignalAggregator {
           severity: p.postureLevel === 'critical' ? 'high' : 'medium',
           title: `${p.totalAircraft} military aircraft in ${p.theaterName}`,
           timestamp: new Date(),
-        });
+        };
+        this.signals.push(sig);
+        this.theaterPostureSignals.push(sig);
       }
 
-      const hasVessel = this.signals.some(s => s.country === code && s.type === 'military_vessel');
-      if (!hasVessel && p.totalVessels > 0) {
-        this.signals.push({
+      if (p.totalVessels > 0) {
+        const sig: GeoSignal = {
           type: 'military_vessel',
           country: code,
           countryName: getCountryName(code),
@@ -455,7 +481,9 @@ class SignalAggregator {
           severity: p.totalVessels >= 5 ? 'high' : 'medium',
           title: `${p.totalVessels} naval vessels in ${p.theaterName}`,
           timestamp: new Date(),
-        });
+        };
+        this.signals.push(sig);
+        this.theaterPostureSignals.push(sig);
       }
     }
   }

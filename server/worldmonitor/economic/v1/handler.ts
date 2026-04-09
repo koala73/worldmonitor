@@ -9,6 +9,22 @@ import { getEnergyCapacity } from './get-energy-capacity';
 import { getBisPolicyRates } from './get-bis-policy-rates';
 import { getBisExchangeRates } from './get-bis-exchange-rates';
 import { getBisCredit } from './get-bis-credit';
+import { listGroceryBasketPrices } from './list-grocery-basket-prices';
+import { listBigMacPrices } from './list-bigmac-prices';
+import { getNationalDebt } from './get-national-debt';
+import { listFuelPrices } from './list-fuel-prices';
+import { getBlsSeries } from './get-bls-series';
+import { getEconomicCalendar } from './get-economic-calendar';
+import { getCrudeInventories } from './get-crude-inventories';
+import { getNatGasStorage } from './get-nat-gas-storage';
+import { getEcbFxRates } from './get-ecb-fx-rates';
+import { getEurostatCountryData } from './get-eurostat-country-data';
+import { getEuGasStorage } from './get-eu-gas-storage';
+import { getEuYieldCurve } from './get-eu-yield-curve';
+import { getEuFsi } from './get-eu-fsi';
+import { getEconomicStress } from './get-economic-stress';
+import { getFaoFoodPriceIndex } from './get-fao-food-price-index';
+import { getOilStocksAnalysis } from './get-oil-stocks-analysis';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -20,4 +36,20 @@ export const economicHandler: EconomicServiceHandler = {
   getBisPolicyRates,
   getBisExchangeRates,
   getBisCredit,
+  listGroceryBasketPrices,
+  listBigMacPrices,
+  getNationalDebt,
+  listFuelPrices,
+  getBlsSeries,
+  getEconomicCalendar,
+  getCrudeInventories,
+  getNatGasStorage,
+  getEcbFxRates,
+  getEurostatCountryData,
+  getEuGasStorage,
+  getEuYieldCurve,
+  getEuFsi,
+  getEconomicStress,
+  getFaoFoodPriceIndex,
+  getOilStocksAnalysis,
 };

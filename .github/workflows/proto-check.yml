@@ -9,6 +9,9 @@ on:
       - 'Makefile'
       - '.github/workflows/proto-check.yml'
 
+permissions:
+  contents: read
+
 jobs:
   proto-freshness:
     if: github.event.pull_request.head.repo.full_name == github.repository

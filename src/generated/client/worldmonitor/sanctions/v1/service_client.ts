@@ -48,6 +48,25 @@ export interface ProgramSanctionsPressure {
   newEntryCount: number;
 }
 
+export interface LookupSanctionEntityRequest {
+  q: string;
+  maxResults: number;
+}
+
+export interface LookupSanctionEntityResponse {
+  results: SanctionEntityMatch[];
+  total: number;
+  source: string;
+}
+
+export interface SanctionEntityMatch {
+  id: string;
+  name: string;
+  entityType: string;
+  countryCodes: string[];
+  programs: string[];
+}
+
 export type SanctionsEntityType = "SANCTIONS_ENTITY_TYPE_UNSPECIFIED" | "SANCTIONS_ENTITY_TYPE_ENTITY" | "SANCTIONS_ENTITY_TYPE_INDIVIDUAL" | "SANCTIONS_ENTITY_TYPE_VESSEL" | "SANCTIONS_ENTITY_TYPE_AIRCRAFT";
 
 export interface FieldViolation {
@@ -121,6 +140,32 @@ export class SanctionsServiceClient {
     }
 
     return await resp.json() as ListSanctionsPressureResponse;
+  }
+
+  async lookupSanctionEntity(req: LookupSanctionEntityRequest, options?: SanctionsServiceCallOptions): Promise<LookupSanctionEntityResponse> {
+    let path = "/api/sanctions/v1/lookup-sanction-entity";
+    const params = new URLSearchParams();
+    if (req.q != null && req.q !== "") params.set("q", String(req.q));
+    if (req.maxResults != null && req.maxResults !== 0) params.set("max_results", String(req.maxResults));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as LookupSanctionEntityResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

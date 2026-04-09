@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// Request to fetch enrichment data for a company.
+// Requires either domain (e.g. "github.com") or name (e.g. "GitHub").
+message GetCompanyEnrichmentRequest {
+  string domain = 1 [(sebuf.http.query) = {name: "domain"}];
+  string name = 2 [(sebuf.http.query) = {name: "name"}];
+}
+
+// Aggregated company data from multiple public sources.
+message GetCompanyEnrichmentResponse {
+  EnrichedCompany company = 1;
+  EnrichedGithub github = 2;
+  repeated TechStackItem tech_stack = 3;
+  SecFilings sec_filings = 4;
+  repeated HNMention hacker_news_mentions = 5;
+  
+  // Unix timestamp in milliseconds when this data was fetched.
+  int64 enriched_at_ms = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  
+  // List of sources successfully reached (e.g. "github", "sec_edgar").
+  repeated string sources = 7;
+}
+
+message EnrichedCompany {
+  string name = 1;
+  string domain = 2;
+  string description = 3;
+  string location = 4;
+  string website = 5;
+  int32 founded = 6;
+}
+
+message EnrichedGithub {
+  int32 public_repos = 1;
+  int32 followers = 2;
+  string avatar_url = 3;
+}
+
+message TechStackItem {
+  string name = 1;
+  string category = 2;
+  float confidence = 3;
+}
+
+message SecFilings {
+  int32 total_filings = 1;
+  repeated SecFiling recent_filings = 2;
+}
+
+message SecFiling {
+  string form = 1;
+  string file_date = 2; // ISO 8601 date (YYYY-MM-DD)
+  string description = 3;
+}
+
+message HNMention {
+  string title = 1;
+  string url = 2;
+  int32 points = 3;
+  int32 comments = 4;
+  
+  // Unix timestamp in milliseconds when the post was created.
+  int64 created_at_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

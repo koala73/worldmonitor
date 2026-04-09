@@ -13,17 +13,22 @@ const RSS_PROXY_BASE = isDev
     ? 'https://proxy.worldmonitor.app'
     : '';
 
-// Widget agent always goes directly to Railway relay.
-// Desktop: sidecar buffers via arrayBuffer() which destroys SSE streaming, so we bypass it.
+// Widget agent proxy:
+//   dev       → Vite proxy /widget-agent → relay
+//   desktop   → relay directly (sidecar buffers arrayBuffer() which destroys SSE streaming)
+//   prod web  → /api/widget-agent (Vercel edge) → validates Clerk JWT or tester keys
+//               then proxies SSE to relay with real server-side keys
 const WIDGET_RELAY_BASE = 'https://proxy.worldmonitor.app';
 export function widgetAgentUrl(): string {
   if (isDev) return '/widget-agent';
-  return `${WIDGET_RELAY_BASE}/widget-agent`;
+  if (isDesktopRuntime()) return `${WIDGET_RELAY_BASE}/widget-agent`;
+  return '/api/widget-agent';
 }
 
 export function widgetAgentHealthUrl(): string {
   if (isDev) return '/widget-agent/health';
-  return `${WIDGET_RELAY_BASE}/widget-agent/health`;
+  if (isDesktopRuntime()) return `${WIDGET_RELAY_BASE}/widget-agent/health`;
+  return '/api/widget-agent'; // Vercel handler: GET → relay /widget-agent/health
 }
 
 export function rssProxyUrl(feedUrl: string): string {

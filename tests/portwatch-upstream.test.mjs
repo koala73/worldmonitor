@@ -8,6 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const src = readFileSync(resolve(root, 'server/worldmonitor/supply-chain/v1/_portwatch-upstream.ts'), 'utf-8');
 const relaySrc = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf-8');
+const seederSrc = readFileSync(resolve(root, 'scripts/seed-portwatch.mjs'), 'utf-8');
 
 function classifyVesselType(name) {
   const lower = name.toLowerCase();
@@ -55,44 +56,64 @@ describe('PortWatch type exports', () => {
     assert.match(src, /export\s+interface\s+PortWatchChokepointData/);
   });
 
-  it('does not contain fetch logic (moved to relay)', () => {
+  it('does not contain fetch logic (moved to seed-portwatch.mjs)', () => {
     assert.doesNotMatch(src, /cachedFetchJson/);
     assert.doesNotMatch(src, /getPortWatchTransits/);
     assert.doesNotMatch(src, /fetchAllPages/);
   });
 });
 
-describe('PortWatch relay seed loop', () => {
+describe('PortWatch standalone seeder (seed-portwatch.mjs)', () => {
+  it('exports fetchAll and validateFn', () => {
+    assert.match(seederSrc, /export\s+async\s+function\s+fetchAll/);
+    assert.match(seederSrc, /export\s+function\s+validateFn/);
+  });
+
   it('uses ArcGIS FeatureServer endpoint', () => {
-    assert.match(relaySrc, /arcgis\.com.*FeatureServer/);
+    assert.match(seederSrc, /arcgis\.com.*FeatureServer/);
   });
 
   it('writes to supply_chain:portwatch:v1 Redis key', () => {
+    assert.match(seederSrc, /supply_chain:portwatch:v1/);
+  });
+
+  it('fetches all 5 vessel type count fields', () => {
+    assert.match(seederSrc, /n_container/);
+    assert.match(seederSrc, /n_dry_bulk/);
+    assert.match(seederSrc, /n_general_cargo/);
+    assert.match(seederSrc, /n_roro/);
+    assert.match(seederSrc, /n_tanker/);
+  });
+
+  it('fetches all 5 DWT capacity fields', () => {
+    assert.match(seederSrc, /capacity_container/);
+    assert.match(seederSrc, /capacity_dry_bulk/);
+    assert.match(seederSrc, /capacity_general_cargo/);
+    assert.match(seederSrc, /capacity_roro/);
+    assert.match(seederSrc, /capacity_tanker/);
+  });
+
+  it('computes week-over-week change percentage', () => {
+    assert.match(seederSrc, /computeWow/);
+  });
+
+  it('uses ArcGIS timestamp syntax for date filter', () => {
+    assert.match(seederSrc, /epochToTimestamp/);
+    assert.match(seederSrc, /timestamp '/);
+  });
+
+  it('covers 180 days of history', () => {
+    assert.match(seederSrc, /HISTORY_DAYS\s*=\s*180/);
+  });
+
+  it('relay no longer defines startPortWatchSeedLoop', () => {
+    assert.doesNotMatch(relaySrc, /function startPortWatchSeedLoop/);
+  });
+
+  it('relay reads PORTWATCH_REDIS_KEY fresh every seedTransitSummaries cycle (no stale in-memory guard)', () => {
     assert.match(relaySrc, /supply_chain:portwatch:v1/);
-  });
-
-  it('writes seed-meta for portwatch', () => {
-    assert.match(relaySrc, /seed-meta:supply_chain:portwatch/);
-  });
-
-  it('defines startPortWatchSeedLoop', () => {
-    assert.match(relaySrc, /function startPortWatchSeedLoop/);
-  });
-
-  it('reads pre-aggregated n_tanker/n_cargo/n_total columns', () => {
-    assert.match(relaySrc, /n_tanker/);
-    assert.match(relaySrc, /n_cargo/);
-    assert.match(relaySrc, /n_total/);
-  });
-
-  it('computes week-over-week change percentage in relay', () => {
-    assert.match(relaySrc, /pwComputeWowChangePct/);
-  });
-
-  it('uses ArcGIS timestamp syntax for date filter (not raw epoch)', () => {
-    assert.match(relaySrc, /pwEpochToTimestamp/);
-    assert.match(relaySrc, /timestamp '/);
-    assert.doesNotMatch(relaySrc, /date >= \$\{sinceEpoch\}/);
+    assert.doesNotMatch(relaySrc, /let latestPortwatchData/);
+    assert.doesNotMatch(relaySrc, /if\s*\(\s*!latestPortwatchData\s*\)/);
   });
 });
 

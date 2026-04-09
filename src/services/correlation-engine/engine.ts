@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { haversineKm } from '@/utils/distance';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { hasPremiumAccess } from '@/services/panel-gating';
 
 const LLM_SCORE_THRESHOLD = 60;
 const LLM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -83,6 +84,10 @@ export class CorrelationEngine {
 
   getCards(domain: string): ConvergenceCard[] {
     return this.cards.get(domain) ?? [];
+  }
+
+  getAllCards(): ConvergenceCard[] {
+    return Array.from(this.cards.values()).flat();
   }
 
   // ── Clustering ──────────────────────────────────────────────
@@ -356,6 +361,7 @@ export class CorrelationEngine {
   // ── LLM Assessment ─────────────────────────────────────────
 
   private queueLlmAssessments(cards: ConvergenceCard[], adapter: DomainAdapter): void {
+    if (!hasPremiumAccess()) return;
     const pending: Array<{ card: ConvergenceCard; cacheKey: string }> = [];
     for (const card of cards) {
       if (card.score < LLM_SCORE_THRESHOLD) continue;
@@ -414,7 +420,7 @@ export class CorrelationEngine {
           ? `Location: ${card.location.label} (${card.location.lat.toFixed(2)}, ${card.location.lon.toFixed(2)})`
           : '';
 
-      const resp = await this.intelligenceClient.deductSituation({ query, geoContext });
+      const resp = await this.intelligenceClient.deductSituation({ query, geoContext, framework: '' });
 
       if (resp.analysis) {
         card.assessment = resp.analysis;

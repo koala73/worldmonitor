@@ -1,14 +1,18 @@
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
+import { getBrowserTesterKey, getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
+import { getClerkToken } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { widgetAgentHealthUrl, widgetAgentUrl } from '@/utils/proxy';
 import { wrapWidgetHtml, wrapProWidgetHtml } from '@/utils/widget-sanitizer';
+import { track } from '@/services/analytics';
 
 interface WidgetChatOptions {
   mode: 'create' | 'modify';
   tier?: 'basic' | 'pro';
   existingSpec?: CustomWidgetSpec;
+  /** Pre-fill the chat input with this text. Used when opening from the analyst action chip. */
+  initialMessage?: string;
   onComplete: (spec: CustomWidgetSpec) => void;
 }
 
@@ -40,8 +44,25 @@ let overlay: HTMLElement | null = null;
 let abortController: AbortController | null = null;
 let clientTimeout: ReturnType<typeof setTimeout> | null = null;
 
+async function buildWidgetAuthHeaders(isPro: boolean): Promise<Record<string, string>> {
+  const testerKey = getBrowserTesterKey();
+  const widgetKey = getWidgetAgentKey();
+  const proKey = getProWidgetKey();
+  if (testerKey || widgetKey || proKey) {
+    const headers: Record<string, string> = {};
+    if (testerKey) headers['X-WorldMonitor-Key'] = testerKey;
+    if (widgetKey) headers['X-Widget-Key'] = widgetKey;
+    if (isPro && proKey) headers['X-Pro-Key'] = proKey;
+    return headers;
+  }
+  const token = await getClerkToken();
+  if (token) return { 'Authorization': `Bearer ${token}` };
+  return {};
+}
+
 export function openWidgetChatModal(options: WidgetChatOptions): void {
   closeWidgetChatModal();
+  track('widget-ai-open', { panelId: options.existingSpec?.id });
 
   const currentTier: 'basic' | 'pro' = options.tier ?? options.existingSpec?.tier ?? 'basic';
   const isPro = currentTier === 'pro';
@@ -103,6 +124,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   let preflightReady = false;
   let pendingSaveSpec: CustomWidgetSpec | null = null;
 
+  if (options.initialMessage) inputEl.value = options.initialMessage;
+
   if (isModify && options.existingSpec) {
     for (const msg of sessionHistory) {
       appendMessage(messagesEl, msg.role, msg.content);
@@ -136,8 +159,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   async function runPreflight(): Promise<void> {
     setReadinessState(readinessEl, 'checking', t('widgets.checkingConnection'));
     try {
-      const headers: Record<string, string> = { 'X-Widget-Key': getWidgetAgentKey() };
-      if (isPro) headers['X-Pro-Key'] = getProWidgetKey();
+      const headers = await buildWidgetAuthHeaders(isPro);
       const res = await fetch(widgetAgentHealthUrl(), { headers });
       let payload: WidgetAgentHealth | null = null;
       try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
@@ -186,6 +208,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   const submit = async () => {
     const prompt = inputEl.value.trim();
     if (!prompt || sendBtn.disabled) return;
+    track('widget-ai-generate');
 
     inputEl.value = '';
     requestInFlight = true;
@@ -219,9 +242,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     try {
       const reqHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
-        'X-Widget-Key': getWidgetAgentKey(),
+        ...(await buildWidgetAuthHeaders(isPro)),
       };
-      if (isPro) reqHeaders['X-Pro-Key'] = getProWidgetKey();
 
       const res = await fetch(widgetAgentUrl(), {
         method: 'POST',
@@ -276,6 +298,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
           } else if (event.type === 'done') {
             resultTitle = String(event.title ?? 'Custom Widget');
             radarEl.remove();
+            track('widget-ai-success', { title: resultTitle });
             const assistantSummary = t('widgets.generatedWidget', { title: resultTitle });
             sessionHistory.push(
               { role: 'user' as const, content: prompt },

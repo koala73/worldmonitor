@@ -174,6 +174,7 @@ const breaker = createCircuitBreaker<CachedRiskScores>({
   name: 'Risk Scores',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+  persistentStaleCeilingMs: LS_MAX_STALENESS_MS,
 });
 
 // Sync prime from localStorage (before async IndexedDB hydration)
@@ -246,7 +247,7 @@ export async function fetchCachedRiskScores(signal?: AbortSignal): Promise<Cache
       saveToStorage(data);
       setHasCachedScores(true);
       return data;
-    }, emptyFallback()),
+    }, emptyFallback(), { shouldCache: (r) => r.cii.length > 0 }),
     signal,
   );
 

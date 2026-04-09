@@ -108,8 +108,14 @@ function extractMethodBody(source, methodName) {
   throw new Error(`Could not extract body for ${methodName}`);
 }
 
+function stripTSAnnotations(src) {
+  // Remove inline type annotations that new Function() cannot parse
+  return src.replace(/:\s*\{\s*loop[^}]+\}\[\]/g, '');
+}
+
 function buildFlushStaleRefreshes(timers) {
-  const methodBody = extractMethodBody(appSrc, 'flushStaleRefreshes');
+  const rawBody = extractMethodBody(appSrc, 'flushStaleRefreshes');
+  const methodBody = stripTSAnnotations(rawBody);
   const factory = new Function('Date', 'setTimeout', 'clearTimeout', `
     return function flushStaleRefreshes() {
       ${methodBody}
@@ -254,7 +260,7 @@ describe('flushStaleRefreshes behavior', () => {
     assert.equal(ctx.hiddenSince, 0, 'hiddenSince must still be reset even if no services flushed');
   });
 
-  it('staggers re-triggered services deterministically by 150ms', () => {
+  it('staggers re-triggered services deterministically (fast tier: 100ms steps)', () => {
     const timestamps = [];
     const start = timers.now;
 
@@ -270,7 +276,28 @@ describe('flushStaleRefreshes behavior', () => {
     timers.runAll();
 
     assert.equal(timestamps.length, 3, 'All 3 services should fire');
-    assert.deepEqual(timestamps, [0, 150, 300], 'Services should fire in 150ms steps');
+    assert.deepEqual(timestamps, [0, 100, 200], 'Fast-tier services fire in 100ms steps');
+  });
+
+  it('switches to 300ms stagger for services beyond the fast-tier threshold', () => {
+    const timestamps = [];
+    const start = timers.now;
+
+    // 6 services: indices 0-3 fast-tier (100ms apart), index 4 slow-tier (+300ms)
+    // delays: 0, 100, 200, 300, 400, then 400+300=700
+    for (let i = 0; i < 6; i++) {
+      ctx.refreshRunners.set(`svc-${i}`, {
+        loop: { trigger: () => { timestamps.push(timers.now - start); } },
+        intervalMs: 60_000,
+      });
+    }
+
+    ctx.hiddenSince = timers.now - 600_000;
+    flushStaleRefreshes.call(ctx);
+    timers.runAll();
+
+    assert.equal(timestamps.length, 6, 'All 6 services should fire');
+    assert.deepEqual(timestamps, [0, 100, 200, 300, 400, 700], 'index 4+ uses 300ms slow-tier gap');
   });
 
   it('cleans up stale flush timeout IDs after triggering', () => {

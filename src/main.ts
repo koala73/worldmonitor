@@ -12,10 +12,14 @@ const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 Sentry.init({
   dsn: sentryDsn || undefined,
   release: `worldmonitor@${__APP_VERSION__}`,
-  environment: location.hostname === 'worldmonitor.app' ? 'production'
+  environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
     : location.hostname.includes('vercel.app') ? 'preview'
     : 'development',
   enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
+  allowUrls: [
+    /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.)?worldmonitor\.app/,
+    /https?:\/\/.*\.vercel\.app/,
+  ],
   sendDefaultPii: true,
   tracesSampleRate: 0.1,
   ignoreErrors: [
@@ -27,9 +31,7 @@ Sentry.init({
     /InvalidAccessError/,
     /importScripts/,
     /^TypeError: Load failed( \(.*\))?$/,
-    /^TypeError: Failed to fetch( \(.*\))?$/,
     /^TypeError: (?:cancelled|avbruten)$/,
-    /^TypeError: NetworkError/,
     /runtime\.sendMessage\(\)/,
     /Java object is gone/,
     /^Object captured as promise rejection with keys:/,
@@ -52,8 +54,6 @@ Sentry.init({
     /invalid origin/,
     /\.data\.split is not a function/,
     /signal is aborted without reason/,
-    /Failed to fetch dynamically imported module/,
-    /Importing a module script failed/,
     /contentWindow\.postMessage/,
     /Could not compile vertex shader/,
     /objectStoreNames/,
@@ -64,7 +64,6 @@ Sentry.init({
     /userScripts is not defined/,
     /NS_ERROR_ABORT/,
     /NS_ERROR_OUT_OF_MEMORY/,
-    /^Key not found$/,
     /DataCloneError.*could not be cloned/,
     /cannot decode message/,
     /WKWebView was deallocated/,
@@ -73,22 +72,14 @@ Sentry.init({
     /Attempted to assign to readonly property/,
     /Cannot assign to read only property/,
     /FetchEvent\.respondWith/,
-    /e\.toLowerCase is not a function/,
-    /\.trim is not a function/,
-    /\.(indexOf|findIndex) is not a function/,
     /QuotaExceededError/,
     /^TypeError: 已取消$/,
-    /Maximum call stack size exceeded/,
     /^fetchError: Network request failed$/,
     /window\.ethereum/,
-    /^SyntaxError: Unexpected token/,
-    /^Operation timed out\.?$/,
     /setting 'luma'/,
     /ML request .* timed out/,
-    /^Element not found$/,
     /(?:AbortError: )?The operation was aborted\.?\s*$/,
     /Unexpected end of script/,
-    /error loading dynamically imported module/,
     /Style is not done loading/,
     /Event `CustomEvent`.*captured as promise rejection/,
     /getProgramInfoLog/,
@@ -104,7 +95,6 @@ Sentry.init({
     /maxTextureDimension2D/,
     /Container app not found/,
     /this\.St\.unref/,
-    /Invalid or unexpected token/,
     /evaluating 'elemFound\.value'/,
     /[Cc]an(?:'t|not) access (?:'\w+'|lexical declaration '\w+') before initialization/,
     /^Uint8Array$/,
@@ -113,6 +103,8 @@ Sentry.init({
     /shortcut icon/,
     /Attempting to change value of a readonly property/,
     /reading 'nodeType'/,
+    /The node to be removed is not a child of this node/,
+    /The object can not be found here/, // Safari variant of above (Clerk SDK removeChild on detached DOM)
     /feature named .\w+. was not found/,
     /a2z\.onStatusUpdate/,
     /Attempting to run\(\), but is already running/,
@@ -123,12 +115,10 @@ Sentry.init({
     /(?:AbortError: )?The user aborted a request/,
     /\w+ is not a function.*\/uv\/service\//,
     /__isInQueue__/,
-    /^(?:LIDNotify(?:Id)?|onWebViewAppeared|onGetWiFiBSSID) is not defined$/,
-    /signal timed out/,
+    /^(?:LIDNotify(?:Id)?|onWebViewAppeared|onGetWiFiBSSID|onHide|onShow|onReady|tapAt|removeHighlight) is not defined$/,
     /Se requiere plan premium/,
     /hybridExecute is not defined/,
     /reading 'postMessage'/,
-    /NotSupportedError/,
     /appendChild.*Unexpected token/,
     /\bmag is not defined\b/,
     /evaluating '[^']*\.luma/,
@@ -169,14 +159,12 @@ Sentry.init({
     /missing \) after argument list/,
     /Error invoking postMessage: Java exception/,
     /IndexSizeError/,
-    /Cannot add property \w+, object is not extensible/,
     /Failed to construct 'Worker'.*cannot be accessed from origin/,
     /undefined is not an object \(evaluating '(?:this\.)?media(?:Controller)?\.(?:duration|videoTracks|readyState|audioTracks|media)/,
     /\$ is not defined/,
     /Qt\([^)]*\) is not a function/,
-    /out of memory/,
-    /Could not connect to the server/,
     /shaderSource must be an instance of WebGLShader/,
+    /WebGL2RenderingContext\.shaderSource: Argument 1 is not an object/,
     /Failed to initialize WebGL/,
     /opacityVertexArray\.length/,
     /Length of new data is \d+, which doesn't match current length of/,
@@ -194,9 +182,8 @@ Sentry.init({
     /Can't find variable: caches/,
     /crypto\.randomUUID is not a function/,
     /ucapi is not defined/,
-    /Identifier '(?:script|reportPage|element)' has already been declared/,
+    /Identifier '(?:script|reportPage|element|Shop)' has already been declared/,
     /getAttribute is not a function.*getAttribute\("role"\)/,
-    /^TypeError: Internal error$/,
     /SCDynimacBridge/,
     /errTimes is not defined/,
     /Failed to get ServiceWorkerRegistration/,
@@ -222,6 +209,7 @@ Sentry.init({
     /WKErrorDomain/,
     /Content-Length header of network response exceeds response Body/,
     /^Uncaught \[object ErrorEvent\]$/,
+    /^\[object Event\]$/,
     /trsMethod\w+ is not defined/,
     /checkLogin is not a function/,
     /VConsole is not defined/,
@@ -236,19 +224,41 @@ Sentry.init({
     /^UnavailableError(:.*)?$/,
     /null is not an object \(evaluating '\w{1,3}\.indexOf'\)/,
     /export declarations may only appear at top level/,
-    /^SyntaxError: Unexpected keyword/,
     /ucConfig is not defined/,
     /getShaderPrecisionFormat/,
     /Cannot read properties of null \(reading 'touches'\)/,
     /Failed to execute 'querySelectorAll' on '[^']*': ':[a-z]+\(/,
     /args\.site\.enabledFeatures/,
     /can't access property "\w+", FONTS\[/,
-    /^\w{1,2} is not a function\. \(In '\w{1,2}\(/,
+    /null is not an object \(evaluating '\w+\.magnitude\.toFixed'\)/,
+    /start offset of Int16Array should be a multiple of 2/,
+    /Cannot read properties of undefined \(reading 'then'\)/,
+    /^(?:Error: )?uncaught exception: undefined$/,
+    /ss_bootstrap_config/, // Surfly proxy — "Can't find variable: ss_bootstrap_config" (Safari) or "ss_bootstrap_config is not defined" (Chrome)
+    /undefined is not an object \(evaluating '[a-z]\.includes'\)/,
+    /^"use strict" is not a function$/,
+    /Can only call Window\.setTimeout on instances of Window/, // iOS Safari cross-frame setTimeout from 3rd-party injected script
+    /^Can't find variable: _G$/, // browser extension/userscript injecting _G global
+    /onAppPageCallback is not defined/, // Android Chrome WebView injection (Huawei/Samsung browsers)
+    /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
+    /Response cannot have a body with the given status/, // Safari: Response constructor with 204/304 + body
+    /ClerkJS: Network error/, // Clerk SDK transient network failures on user devices
+    /doesn't provide an export named/, // stale cached chunk after deploy references removed export
+    /Possible side-effect in debug-evaluate/, // Chrome DevTools internal EvalError
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
+    const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js/;
+    const firstPartyFile = (filename: string) => {
+      if (/\.(ts|tsx)$/.test(filename) || /^src\//.test(filename)) return true;
+      if (/\/assets\/[A-Za-z0-9_-]+(-[A-Za-z0-9_-]+)*\.js/.test(filename)) return !vendorChunk.test(filename);
+      return false;
+    };
+    const nonInfraFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
+    const hasFirstParty = nonInfraFrames.some(f => firstPartyFile(f.filename ?? ''));
+    const hasAnyStack = nonInfraFrames.length > 0;
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
     if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter)"[,] ?\w+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
@@ -256,24 +266,21 @@ Sentry.init({
     // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
     const excType = event.exception?.values?.[0]?.type ?? '';
     if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
-      if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
+      if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast)
     if (/reading '(?:type|pathType|count|__globeObjType)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count|__globeObjType)'\)|null is not an object \(evaluating '\w+\.__globeObjType'\)/.test(msg)) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
-      const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
-      if (!hasSourceMapped) return null;
+      if (!hasFirstParty) return null;
     }
     // Suppress minified Three.js/globe.gl crashes (e.g. "l is undefined" in raycast, "b is undefined" in update/initGlobe)
     if (/^\w{1,2} is (?:undefined|not an object)$/.test(msg) && frames.length > 0) {
       if (frames.some(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '') && /(raycast|update|initGlobe|traverse|render)/.test(f.function ?? ''))) return null;
     }
-    // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom)
+    // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom).
+    // OrbitControls is bundled into the main chunk, so hasFirstParty is true.
+    // Match by function name pattern (_handleTouch*Dolly*) or suppress when no first-party frames.
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
-      const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
-      const hasSourceMapped = nonSentryFrames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
-      if (!hasSourceMapped) return null;
+      if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
     }
     // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
     if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
@@ -282,29 +289,53 @@ Sentry.init({
     // Suppress TypeErrors from anonymous/injected scripts (no real source files or only inline page URL)
     if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
     // Suppress parentNode.insertBefore from injected/inline scripts (iOS WKWebView, Apple Mail)
-    if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Also covers [native code] frames (no filename) produced by WKWebView's forEach wrapper
+    if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Suppress NotFoundError: insertBefore with no usable stack (Chrome 146+ extension DOM interference — stack shows minified bundle but no line/function)
+    if (excType === 'NotFoundError' && /insertBefore/.test(msg) && frames.every(f => !f.lineno && !f.function)) return null;
     // Suppress Sentry breadcrumb DOM-measuring crashes (element.offsetWidth on detached DOM)
     if (/evaluating '(?:element|e)\.offset(?:Width|Height)'/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
     if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
+    // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script)
+    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\//.test(f.filename))) return null;
     // Suppress YouTube IFrame widget API internal errors
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
+    // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)
+    if (frames.some(f => /beacon\.min\.js/.test(f.filename ?? ''))) return null;
+    // Suppress "options is not defined" from browser extension overriding Navigator getter (WORLDMONITOR-JN).
+    // Only suppress when stack has no first-party frames (filename=<anonymous> is the extension getter).
+    if (/^options is not defined$/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]')) return null;
     // Suppress TransactionInactiveError only when no first-party frames are present
     // (Safari kills open IDB transactions in background tabs — not actionable noise)
     // First-party paths in storage.ts / persistent-cache.ts / vector-db.ts must still surface.
-    if (/TransactionInactiveError/.test(msg) || excType === 'TransactionInactiveError') {
-      const appFrames = frames.filter(
-        f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]'
-          && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename)
-      );
-      const hasFirstParty = appFrames.some(
-        f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? '')
-          || /\/(main|index|app)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
-      );
-      if (!hasFirstParty) return null;
-    }
+    if ((/TransactionInactiveError/.test(msg) || excType === 'TransactionInactiveError') && !hasFirstParty) return null;
+    // Suppress ambiguous runtime errors ONLY when stack positively identifies third-party
+    // origin. Empty stacks are NOT suppressed because we cannot confirm the error didn't
+    // come from our own code (OOM, stack overflow, network failures all commonly arrive
+    // without frames even when our code triggered them).
+    if (hasAnyStack && !hasFirstParty && (
+      /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
+      || /Maximum call stack size exceeded/.test(msg)
+      || /out of memory/i.test(msg)
+      || /^\w{1,2} is not a function/.test(msg)
+      || /Cannot add property \w+, object is not extensible/.test(msg)
+      || /^TypeError: Internal error$/.test(msg)
+      || /NotSupportedError/.test(msg)
+      || /^Key not found$/.test(msg)
+      || /^Element not found$/.test(msg)
+      || /^TypeError: Failed to fetch/.test(msg)
+      || /^TypeError: NetworkError/.test(msg)
+      || /Could not connect to the server/.test(msg)
+      || /(?:Failed to fetch|Importing a module script failed|error loading) dynamically imported module/i.test(msg)
+      || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))
+      || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
+      || /Invalid or unexpected token/.test(msg)
+      || /^Operation timed out/.test(msg)
+      || /signal timed out/.test(msg)
+    )) return null;
     return event;
   },
 });
@@ -312,6 +343,95 @@ Sentry.init({
 // not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.
 window.addEventListener('unhandledrejection', (e) => {
   if (e.reason?.name === 'NotAllowedError') e.preventDefault();
+});
+
+// CSP violation filter — exported for testability.
+// Returns true if the violation should be suppressed (not reported to Sentry).
+// @ts-ignore — exported for tests, not consumed by other modules
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function shouldSuppressCspViolation(
+  disposition: string,
+  directive: string,
+  blockedURI: string,
+  sourceFile: string,
+  cspConnectSrcAllowsHttps: boolean,
+): boolean {
+  // Skip non-enforced violations (report-only from dual-CSP interaction).
+  if (disposition && disposition !== 'enforce') return true;
+  // connect-src + HTTPS: only suppress when the page CSP actually allows https: scheme.
+  // This is scoped to the current policy state, not a blanket protocol assumption.
+  if (directive === 'connect-src' && cspConnectSrcAllowsHttps) {
+    try {
+      if (new URL(blockedURI).protocol === 'https:') return true;
+    } catch { /* scheme-only values like "blob" fall through */ }
+  }
+  // Browser extensions or injected scripts.
+  if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(sourceFile) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blockedURI)) return true;
+  // blob: — browsers report "blob" (scheme-only) or "blob:https://...".
+  if (blockedURI === 'blob' || /^blob:/.test(sourceFile) || /^blob:/.test(blockedURI)) return true;
+  // eval/inline/data.
+  if (blockedURI === 'eval' || blockedURI === 'inline' || blockedURI === 'data' || /^data:/.test(blockedURI)) return true;
+  // Android WebView video poster injection.
+  if (blockedURI === 'android-webview-video-poster') return true;
+  // Own manifest.webmanifest — stale CSP cache hit.
+  if (/manifest\.webmanifest$/.test(blockedURI)) return true;
+  // Third-party injectors: Google Translate, Facebook Pixel.
+  if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
+  // YouTube live stream manifests.
+  if (/googlevideo\.com|youtube\.com\/generate_204/.test(blockedURI)) return true;
+  // Corporate/school content filter injections.
+  if (/securly\.com|goguardian\.com|contentkeeper\.com/.test(blockedURI)) return true;
+  // Vercel Analytics script.
+  if (/_vercel\/insights\/script\.js/.test(blockedURI)) return true;
+  // Inline script blocks from extensions/in-app browsers.
+  if (blockedURI === 'inline' && directive === 'script-src-elem') return true;
+  // Null blocked URI from in-app browsers.
+  if (blockedURI === 'null') return true;
+  // localhost/loopback — Smart TV browsers (Tizen, webOS) and dev tools inject local service calls.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(blockedURI)) return true;
+  return false;
+}
+// Detect once whether BOTH the meta tag and HTTP header CSP allow https: in connect-src.
+// Browsers enforce both independently — the effective policy is the intersection.
+// Only suppress HTTPS connect-src violations when both policies allow https:.
+// The HTTP header CSP isn't directly readable from JS, so we check the meta tag and
+// also parse the vercel.json-derived header value baked into the build.
+const _cspAllowsHttps = (() => {
+  const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  const metaCsp = metaEl?.getAttribute('content') ?? '';
+  const metaConnectSrc = metaCsp.match(/connect-src\s+([^;]*)/)?.[1] ?? '';
+  const metaAllows = /\bhttps:\b/.test(metaConnectSrc);
+  // If no meta CSP exists, we can't confirm both policies allow https:.
+  // Be conservative: only suppress if the meta tag explicitly has it.
+  if (!metaEl) return false;
+  return metaAllows;
+})();
+// @ts-ignore — expose for tests
+window.__shouldSuppressCspViolation = shouldSuppressCspViolation;
+
+// Report CSP violations in the parent page to Sentry.
+// Sandbox iframe violations are isolated and not captured here.
+window.addEventListener('securitypolicyviolation', (e) => {
+  const blocked = e.blockedURI ?? '';
+  if (shouldSuppressCspViolation(
+    e.disposition ?? '',
+    e.effectiveDirective ?? '',
+    blocked,
+    e.sourceFile ?? '',
+    _cspAllowsHttps,
+  )) return;
+  Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
+    level: 'warning',
+    tags: { kind: 'csp_violation' },
+    extra: {
+      violatedDirective: e.violatedDirective,
+      effectiveDirective: e.effectiveDirective,
+      blockedURI: blocked,
+      sourceFile: e.sourceFile,
+      lineNumber: e.lineNumber,
+      disposition: e.disposition,
+    },
+  });
 });
 
 import { debugGetCells, getCellCount } from '@/services/geo-convergence';
@@ -322,6 +442,7 @@ import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyFont } from '@/services/font-settings';
 import { SITE_VARIANT } from '@/config/variant';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
+import { installSwUpdateHandler } from '@/bootstrap/sw-update';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
@@ -423,20 +544,7 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
 }
 
 if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  // Auto-reload when a NEW SW replaces an existing one (fixes stale HTML after deploys).
-  // Skip on first visit: skipWaiting+clientsClaim fires controllerchange when the SW
-  // claims the page for the first time, causing a useless full reload on every new session.
-  let hadController = !!navigator.serviceWorker.controller;
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadController) {
-      hadController = true;
-      return;
-    }
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
+  installSwUpdateHandler({ version: __APP_VERSION__ });
 
   const SW_UPDATE_SUCCESS_INTERVAL_MS = 60 * 60 * 1000;
   const SW_UPDATE_FAILURE_INTERVAL_MS = 5 * 60 * 1000;

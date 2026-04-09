@@ -103,8 +103,24 @@ export interface EventClassification {
   entities: string[];
 }
 
+export interface GetCountryRiskRequest {
+  countryCode: string;
+}
+
+export interface GetCountryRiskResponse {
+  countryCode: string;
+  countryName: string;
+  cii?: CiiScore;
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  upstreamUnavailable: boolean;
+}
+
 export interface GetCountryIntelBriefRequest {
   countryCode: string;
+  framework: string;
 }
 
 export interface GetCountryIntelBriefResponse {
@@ -142,12 +158,206 @@ export interface GdeltArticle {
 export interface DeductSituationRequest {
   query: string;
   geoContext: string;
+  framework: string;
 }
 
 export interface DeductSituationResponse {
   analysis: string;
   model: string;
   provider: string;
+}
+
+export interface ListSatellitesRequest {
+  country: string;
+}
+
+export interface ListSatellitesResponse {
+  satellites: Satellite[];
+}
+
+export interface Satellite {
+  id: string;
+  name: string;
+  country: string;
+  type: string;
+  alt: number;
+  velocity: number;
+  inclination: number;
+  line1: string;
+  line2: string;
+}
+
+export interface ListGpsInterferenceRequest {
+  region: string;
+}
+
+export interface ListGpsInterferenceResponse {
+  hexes: GpsJamHex[];
+  stats?: GpsJamStats;
+  source: string;
+  fetchedAt: number;
+}
+
+export interface GpsJamHex {
+  h3: string;
+  lat: number;
+  lon: number;
+  level: InterferenceLevel;
+  npAvg: number;
+  sampleCount: number;
+  aircraftCount: number;
+}
+
+export interface GpsJamStats {
+  totalHexes: number;
+  highCount: number;
+  mediumCount: number;
+}
+
+export interface ListOrefAlertsRequest {
+  mode: Mode;
+}
+
+export interface ListOrefAlertsResponse {
+  configured: boolean;
+  alerts: OrefAlert[];
+  history: OrefWave[];
+  historyCount24h: number;
+  totalHistoryCount: number;
+  timestampMs: number;
+  error: string;
+}
+
+export interface OrefAlert {
+  id: string;
+  cat: string;
+  title: string;
+  data: string[];
+  desc: string;
+  timestampMs: number;
+}
+
+export interface OrefWave {
+  alerts: OrefAlert[];
+  timestampMs: number;
+}
+
+export interface ListTelegramFeedRequest {
+  limit: number;
+  topic: string;
+  channel: string;
+}
+
+export interface ListTelegramFeedResponse {
+  enabled: boolean;
+  messages: TelegramMessage[];
+  count: number;
+  error: string;
+}
+
+export interface TelegramMessage {
+  id: string;
+  channelId: string;
+  channelName: string;
+  text: string;
+  timestampMs: number;
+  mediaUrls: string[];
+  sourceUrl: string;
+  topic: string;
+}
+
+export interface GetCompanyEnrichmentRequest {
+  domain: string;
+  name: string;
+}
+
+export interface GetCompanyEnrichmentResponse {
+  company?: EnrichedCompany;
+  github?: EnrichedGithub;
+  techStack: TechStackItem[];
+  secFilings?: SecFilings;
+  hackerNewsMentions: HNMention[];
+  enrichedAtMs: number;
+  sources: string[];
+}
+
+export interface EnrichedCompany {
+  name: string;
+  domain: string;
+  description: string;
+  location: string;
+  website: string;
+  founded: number;
+}
+
+export interface EnrichedGithub {
+  publicRepos: number;
+  followers: number;
+  avatarUrl: string;
+}
+
+export interface TechStackItem {
+  name: string;
+  category: string;
+  confidence: number;
+}
+
+export interface SecFilings {
+  totalFilings: number;
+  recentFilings: SecFiling[];
+}
+
+export interface SecFiling {
+  form: string;
+  fileDate: string;
+  description: string;
+}
+
+export interface HNMention {
+  title: string;
+  url: string;
+  points: number;
+  comments: number;
+  createdAtMs: number;
+}
+
+export interface ListCompanySignalsRequest {
+  company: string;
+  domain: string;
+}
+
+export interface ListCompanySignalsResponse {
+  company: string;
+  domain: string;
+  signals: CompanySignal[];
+  summary?: SignalSummary;
+  discoveredAtMs: number;
+}
+
+export interface CompanySignal {
+  type: string;
+  title: string;
+  url: string;
+  source: string;
+  sourceTier: number;
+  timestampMs: number;
+  strength: string;
+  engagement?: SignalEngagement;
+}
+
+export interface SignalEngagement {
+  points: number;
+  comments: number;
+  stars: number;
+  forks: number;
+  mentions: number;
+}
+
+export interface SignalSummary {
+  totalSignals: number;
+  byType: Record<string, number>;
+  strongestSignal?: CompanySignal;
+  signalDiversity: number;
 }
 
 export interface GetCountryFactsRequest {
@@ -185,11 +395,235 @@ export interface SecurityAdvisoryItem {
   country: string;
 }
 
+export interface GetGdeltTopicTimelineRequest {
+  topic: string;
+}
+
+export interface GetGdeltTopicTimelineResponse {
+  topic: string;
+  tone: GdeltTimelinePoint[];
+  vol: GdeltTimelinePoint[];
+  fetchedAt: string;
+  error: string;
+}
+
+export interface GdeltTimelinePoint {
+  date: string;
+  value: number;
+}
+
+export interface ListCrossSourceSignalsRequest {
+}
+
+export interface ListCrossSourceSignalsResponse {
+  signals: CrossSourceSignal[];
+  evaluatedAt: number;
+  compositeCount: number;
+}
+
+export interface CrossSourceSignal {
+  id: string;
+  type: CrossSourceSignalType;
+  theater: string;
+  summary: string;
+  severity: CrossSourceSignalSeverity;
+  severityScore: number;
+  detectedAt: number;
+  contributingTypes: string[];
+  signalCount: number;
+}
+
+export interface ListMarketImplicationsRequest {
+  frameworkId: string;
+}
+
+export interface ListMarketImplicationsResponse {
+  cards: MarketImplicationCard[];
+  degraded: boolean;
+  emptyReason: string;
+  generatedAt: string;
+}
+
+export interface MarketImplicationCard {
+  ticker: string;
+  name: string;
+  direction: string;
+  timeframe: string;
+  confidence: string;
+  title: string;
+  narrative: string;
+  riskCaveat: string;
+  driver: string;
+  transmissionChain: TransmissionNode[];
+}
+
+export interface TransmissionNode {
+  node: string;
+  impactType: string;
+  logic: string;
+}
+
+export interface GetSocialVelocityRequest {
+}
+
+export interface GetSocialVelocityResponse {
+  posts: SocialVelocityPost[];
+  fetchedAt: number;
+}
+
+export interface SocialVelocityPost {
+  id: string;
+  title: string;
+  subreddit: string;
+  url: string;
+  score: number;
+  upvoteRatio: number;
+  numComments: number;
+  velocityScore: number;
+  createdAt: number;
+}
+
+export interface GetCountryEnergyProfileRequest {
+  countryCode: string;
+}
+
+export interface GetCountryEnergyProfileResponse {
+  mixAvailable: boolean;
+  mixYear: number;
+  coalShare: number;
+  gasShare: number;
+  oilShare: number;
+  nuclearShare: number;
+  renewShare: number;
+  windShare: number;
+  solarShare: number;
+  hydroShare: number;
+  importShare: number;
+  gasStorageAvailable: boolean;
+  gasStorageFillPct: number;
+  gasStorageChange1d: number;
+  gasStorageTrend: string;
+  gasStorageDate: string;
+  electricityAvailable: boolean;
+  electricityPriceMwh: number;
+  electricitySource: string;
+  electricityDate: string;
+  jodiOilAvailable: boolean;
+  jodiOilDataMonth: string;
+  gasolineDemandKbd: number;
+  gasolineImportsKbd: number;
+  dieselDemandKbd: number;
+  dieselImportsKbd: number;
+  jetDemandKbd: number;
+  jetImportsKbd: number;
+  lpgDemandKbd: number;
+  crudeImportsKbd: number;
+  lpgImportsKbd: number;
+  jodiGasAvailable: boolean;
+  jodiGasDataMonth: string;
+  gasTotalDemandTj: number;
+  gasLngImportsTj: number;
+  gasPipeImportsTj: number;
+  gasLngShare: number;
+  ieaStocksAvailable: boolean;
+  ieaStocksDataMonth: string;
+  ieaDaysOfCover: number;
+  ieaNetExporter: boolean;
+  ieaBelowObligation: boolean;
+}
+
+export interface ComputeEnergyShockScenarioRequest {
+  countryCode: string;
+  chokepointId: string;
+  disruptionPct: number;
+  fuelMode: string;
+}
+
+export interface ComputeEnergyShockScenarioResponse {
+  countryCode: string;
+  chokepointId: string;
+  disruptionPct: number;
+  gulfCrudeShare: number;
+  crudeLossKbd: number;
+  products: ProductImpact[];
+  effectiveCoverDays: number;
+  assessment: string;
+  dataAvailable: boolean;
+  jodiOilCoverage: boolean;
+  comtradeCoverage: boolean;
+  ieaStocksCoverage: boolean;
+  portwatchCoverage: boolean;
+  coverageLevel: string;
+  limitations: string[];
+  degraded: boolean;
+  chokepointConfidence: string;
+  liveFlowRatio?: number;
+  gasImpact?: GasImpact;
+}
+
+export interface ProductImpact {
+  product: string;
+  outputLossKbd: number;
+  demandKbd: number;
+  deficitPct: number;
+}
+
+export interface GasImpact {
+  lngShareOfImports: number;
+  lngImportsTj: number;
+  lngDisruptionTj: number;
+  totalDemandTj: number;
+  deficitPct: number;
+  dataAvailable: boolean;
+  assessment: string;
+  storage?: GasStorageBuffer;
+  dataSource: string;
+}
+
+export interface GasStorageBuffer {
+  fillPct: number;
+  gasTwh: number;
+  bufferDays: number;
+  trend: string;
+  date: string;
+  scope: string;
+}
+
+export interface GetCountryPortActivityRequest {
+  countryCode: string;
+}
+
+export interface CountryPortActivityResponse {
+  ports: PortActivityEntry[];
+  fetchedAt: string;
+  available: boolean;
+}
+
+export interface PortActivityEntry {
+  portId: string;
+  portName: string;
+  lat: number;
+  lon: number;
+  tankerCalls30d: number;
+  trendDeltaPct: number;
+  importTankerDwt: number;
+  exportTankerDwt: number;
+  anomalySignal: boolean;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
 
+export type CrossSourceSignalSeverity = "CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_SEVERITY_LOW" | "CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM" | "CROSS_SOURCE_SIGNAL_SEVERITY_HIGH" | "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL";
+
+export type CrossSourceSignalType = "CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING" | "CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER" | "CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK" | "CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION" | "CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT" | "CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY" | "CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE" | "CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS" | "CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME" | "CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE";
+
 export type DataFreshness = "DATA_FRESHNESS_UNSPECIFIED" | "DATA_FRESHNESS_FRESH" | "DATA_FRESHNESS_STALE";
+
+export type InterferenceLevel = "INTERFERENCE_LEVEL_UNSPECIFIED" | "INTERFERENCE_LEVEL_LOW" | "INTERFERENCE_LEVEL_MEDIUM" | "INTERFERENCE_LEVEL_HIGH";
+
+export type Mode = "MODE_UNSPECIFIED" | "MODE_HISTORY";
 
 export interface FieldViolation {
   field: string;
@@ -317,10 +751,36 @@ export class IntelligenceServiceClient {
     return await resp.json() as ClassifyEventResponse;
   }
 
+  async getCountryRisk(req: GetCountryRiskRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryRiskResponse> {
+    let path = "/api/intelligence/v1/get-country-risk";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryRiskResponse;
+  }
+
   async getCountryIntelBrief(req: GetCountryIntelBriefRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryIntelBriefResponse> {
     let path = "/api/intelligence/v1/get-country-intel-brief";
     const params = new URLSearchParams();
     if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.framework != null && req.framework !== "") params.set("framework", String(req.framework));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
@@ -395,6 +855,160 @@ export class IntelligenceServiceClient {
     return await resp.json() as DeductSituationResponse;
   }
 
+  async listSatellites(req: ListSatellitesRequest, options?: IntelligenceServiceCallOptions): Promise<ListSatellitesResponse> {
+    let path = "/api/intelligence/v1/list-satellites";
+    const params = new URLSearchParams();
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSatellitesResponse;
+  }
+
+  async listGpsInterference(req: ListGpsInterferenceRequest, options?: IntelligenceServiceCallOptions): Promise<ListGpsInterferenceResponse> {
+    let path = "/api/intelligence/v1/list-gps-interference";
+    const params = new URLSearchParams();
+    if (req.region != null && req.region !== "") params.set("region", String(req.region));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListGpsInterferenceResponse;
+  }
+
+  async listOrefAlerts(req: ListOrefAlertsRequest, options?: IntelligenceServiceCallOptions): Promise<ListOrefAlertsResponse> {
+    let path = "/api/intelligence/v1/list-oref-alerts";
+    const params = new URLSearchParams();
+    if (req.mode != null && req.mode !== "") params.set("mode", String(req.mode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListOrefAlertsResponse;
+  }
+
+  async listTelegramFeed(req: ListTelegramFeedRequest, options?: IntelligenceServiceCallOptions): Promise<ListTelegramFeedResponse> {
+    let path = "/api/intelligence/v1/list-telegram-feed";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.topic != null && req.topic !== "") params.set("topic", String(req.topic));
+    if (req.channel != null && req.channel !== "") params.set("channel", String(req.channel));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListTelegramFeedResponse;
+  }
+
+  async getCompanyEnrichment(req: GetCompanyEnrichmentRequest, options?: IntelligenceServiceCallOptions): Promise<GetCompanyEnrichmentResponse> {
+    let path = "/api/intelligence/v1/get-company-enrichment";
+    const params = new URLSearchParams();
+    if (req.domain != null && req.domain !== "") params.set("domain", String(req.domain));
+    if (req.name != null && req.name !== "") params.set("name", String(req.name));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCompanyEnrichmentResponse;
+  }
+
+  async listCompanySignals(req: ListCompanySignalsRequest, options?: IntelligenceServiceCallOptions): Promise<ListCompanySignalsResponse> {
+    let path = "/api/intelligence/v1/list-company-signals";
+    const params = new URLSearchParams();
+    if (req.company != null && req.company !== "") params.set("company", String(req.company));
+    if (req.domain != null && req.domain !== "") params.set("domain", String(req.domain));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListCompanySignalsResponse;
+  }
+
   async getCountryFacts(req: GetCountryFactsRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryFactsResponse> {
     let path = "/api/intelligence/v1/get-country-facts";
     const params = new URLSearchParams();
@@ -441,6 +1055,180 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ListSecurityAdvisoriesResponse;
+  }
+
+  async getGdeltTopicTimeline(req: GetGdeltTopicTimelineRequest, options?: IntelligenceServiceCallOptions): Promise<GetGdeltTopicTimelineResponse> {
+    let path = "/api/intelligence/v1/get-gdelt-topic-timeline";
+    const params = new URLSearchParams();
+    if (req.topic != null && req.topic !== "") params.set("topic", String(req.topic));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetGdeltTopicTimelineResponse;
+  }
+
+  async listCrossSourceSignals(req: ListCrossSourceSignalsRequest, options?: IntelligenceServiceCallOptions): Promise<ListCrossSourceSignalsResponse> {
+    let path = "/api/intelligence/v1/list-cross-source-signals";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListCrossSourceSignalsResponse;
+  }
+
+  async listMarketImplications(req: ListMarketImplicationsRequest, options?: IntelligenceServiceCallOptions): Promise<ListMarketImplicationsResponse> {
+    let path = "/api/intelligence/v1/list-market-implications";
+    const params = new URLSearchParams();
+    if (req.frameworkId != null && req.frameworkId !== "") params.set("frameworkId", String(req.frameworkId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListMarketImplicationsResponse;
+  }
+
+  async getSocialVelocity(req: GetSocialVelocityRequest, options?: IntelligenceServiceCallOptions): Promise<GetSocialVelocityResponse> {
+    let path = "/api/intelligence/v1/get-social-velocity";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetSocialVelocityResponse;
+  }
+
+  async getCountryEnergyProfile(req: GetCountryEnergyProfileRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryEnergyProfileResponse> {
+    let path = "/api/intelligence/v1/get-country-energy-profile";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryEnergyProfileResponse;
+  }
+
+  async computeEnergyShockScenario(req: ComputeEnergyShockScenarioRequest, options?: IntelligenceServiceCallOptions): Promise<ComputeEnergyShockScenarioResponse> {
+    let path = "/api/intelligence/v1/compute-energy-shock";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.chokepointId != null && req.chokepointId !== "") params.set("chokepoint_id", String(req.chokepointId));
+    if (req.disruptionPct != null && req.disruptionPct !== 0) params.set("disruption_pct", String(req.disruptionPct));
+    if (req.fuelMode != null && req.fuelMode !== "") params.set("fuel_mode", String(req.fuelMode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ComputeEnergyShockScenarioResponse;
+  }
+
+  async getCountryPortActivity(req: GetCountryPortActivityRequest, options?: IntelligenceServiceCallOptions): Promise<CountryPortActivityResponse> {
+    let path = "/api/intelligence/v1/get-country-port-activity";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as CountryPortActivityResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

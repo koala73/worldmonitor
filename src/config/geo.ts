@@ -1,4 +1,4 @@
-import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, APTGroup, EconomicCenter, Spaceport, CriticalMineralProject } from '@/types';
+import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, EconomicCenter, Spaceport, CriticalMineralProject } from '@/types';
 import { MILITARY_BASES_EXPANDED } from './bases-expanded';
 
 // Hotspot levels are NOT hardcoded - they are dynamically calculated based on news activity
@@ -513,12 +513,6 @@ export const STRATEGIC_WATERWAYS: StrategicWaterway[] = [
   { id: 'lombok_strait', name: 'LOMBOK STRAIT', lat: -8.5, lon: 115.7, description: 'Malacca bypass for deep-draft vessels' },
 ];
 
-export const APT_GROUPS: APTGroup[] = [
-  { id: 'apt28', name: 'APT28/29', aka: 'Fancy Bear/Cozy Bear', sponsor: 'Russia (GRU/FSB)', lat: 55.0, lon: 40.0 },
-  { id: 'apt41', name: 'APT41', aka: 'Double Dragon', sponsor: 'China (MSS)', lat: 38.0, lon: 118.0 },
-  { id: 'lazarus', name: 'Lazarus', aka: 'Hidden Cobra', sponsor: 'North Korea (RGB)', lat: 38.5, lon: 127.0 },
-  { id: 'apt33', name: 'APT33/35', aka: 'Elfin/Charming Kitten', sponsor: 'Iran (IRGC)', lat: 34.0, lon: 53.0 },
-];
 
 export const CONFLICT_ZONES: ConflictZone[] = [
   {
@@ -3160,18 +3154,40 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'dimona', name: 'Dimona', lat: 31.0, lon: 35.15, type: 'weapons', status: 'active' },
   { id: 'pakistan_kahuta', name: 'Kahuta', lat: 33.59, lon: 73.40, type: 'enrichment', status: 'active' },
   { id: 'pakistan_khushab', name: 'Khushab', lat: 32.02, lon: 72.22, type: 'weapons', status: 'active' },
+  // Historical nuclear test sites (enriches earthquake proximity alerts)
+  { id: 'punggye_ri',    name: 'Punggye-ri',     lat: 41.28, lon: 129.08,  type: 'test-site', status: 'active' },
+  { id: 'lop_nur',       name: 'Lop Nur',         lat: 41.75, lon: 88.35,   type: 'test-site', status: 'inactive', operator: 'CN' },
+  { id: 'novaya_zemlya', name: 'Novaya Zemlya',   lat: 73.37, lon: 54.78,   type: 'test-site', status: 'inactive', operator: 'RU' },
+  { id: 'nevada_nts',    name: 'Nevada NTS',      lat: 37.07, lon: -116.05, type: 'test-site', status: 'inactive', operator: 'US' },
+  { id: 'semipalatinsk', name: 'Semipalatinsk',   lat: 50.07, lon: 78.43,   type: 'test-site', status: 'inactive', operator: 'KZ' },
 ];
 
+// Used by Map.ts (2D SVG) which looks up countries via TopoJSON numeric IDs.
+// Keep in sync with SANCTIONED_COUNTRIES_ALPHA2 below.
 export const SANCTIONED_COUNTRIES: Record<number, 'severe' | 'high' | 'moderate'> = {
-  408: 'severe',   // North Korea
-  728: 'severe',   // South Sudan
-  760: 'severe',   // Syria
-  364: 'high',     // Iran
-  643: 'high',     // Russia
-  112: 'high',     // Belarus
-  862: 'moderate', // Venezuela
-  104: 'moderate', // Myanmar
-  178: 'moderate', // Congo
+  408: 'severe',   // North Korea (KP)
+  728: 'severe',   // South Sudan (SS)
+  760: 'severe',   // Syria (SY)
+  364: 'high',     // Iran (IR)
+  643: 'high',     // Russia (RU)
+  112: 'high',     // Belarus (BY)
+  862: 'moderate', // Venezuela (VE)
+  104: 'moderate', // Myanmar (MM)
+  178: 'moderate', // Congo DRC (CD)
+};
+
+// Used by DeckGLMap.ts which looks up countries via ISO3166-1-Alpha-2 codes.
+// Keep in sync with SANCTIONED_COUNTRIES above.
+export const SANCTIONED_COUNTRIES_ALPHA2: Record<string, 'severe' | 'high' | 'moderate'> = {
+  KP: 'severe', // North Korea (408)
+  SS: 'severe', // South Sudan (728)
+  SY: 'severe', // Syria (760)
+  IR: 'high',   // Iran (364)
+  RU: 'high',   // Russia (643)
+  BY: 'high',   // Belarus (112)
+  VE: 'moderate', // Venezuela (862)
+  MM: 'moderate', // Myanmar (104)
+  CD: 'moderate', // Congo DRC (178)
 };
 
 export const MAP_URLS = {

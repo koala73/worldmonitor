@@ -435,6 +435,12 @@ fn delete_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, 
 #[tauri::command]
 fn delete_cache_entries_by_prefix(webview: Webview, app: AppHandle, cache: tauri::State<'_, PersistentCache>, prefix: String) -> Result<(), String> {
     require_trusted_window(webview.label())?;
+    let suffix = prefix
+        .strip_prefix("breaker:")
+        .ok_or_else(|| "delete_cache_entries_by_prefix only accepts breaker: prefixes".to_string())?;
+    if suffix.is_empty() || suffix.chars().all(|ch| ch == ':') {
+        return Err("delete_cache_entries_by_prefix requires a specific breaker: prefix".to_string());
+    }
     let removed_any = {
         let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
         let before = data.len();

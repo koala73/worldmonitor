@@ -34,7 +34,6 @@ export class SanctionsPressurePanel extends Panel {
     const summaryHtml = `
       <div class="sanctions-summary">
         ${this.renderSummaryCard('New', data.newEntryCount, data.newEntryCount > 0 ? 'highlight' : '')}
-        ${this.renderSummaryCard('Total', data.totalCount)}
         ${this.renderSummaryCard('Vessels', data.vesselCount)}
         ${this.renderSummaryCard('Aircraft', data.aircraftCount)}
       </div>

@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+
+message AirQualityStation {
+  string city = 1;
+  string country_code = 2;
+  double lat = 3;
+  double lng = 4;
+  double pm25 = 5;
+  int32 aqi = 6;
+  string risk_level = 7;
+  string pollutant = 8;
+  int64 measured_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string source = 10;
+}
+
+message ListAirQualityDataRequest {}
+
+message ListAirQualityDataResponse {
+  repeated AirQualityStation stations = 1;
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

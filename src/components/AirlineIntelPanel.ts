@@ -3,16 +3,18 @@ import {
     fetchAirportFlights,
     fetchCarrierOps,
     fetchAircraftPositions,
-    fetchFlightPrices,
+    fetchFlightStatus,
     fetchAviationNews,
-    isPriceExpired,
+    fetchGoogleFlights,
+    fetchGoogleDates,
     type AirportOpsSummary,
     type FlightInstance,
     type CarrierOps,
     type PositionSample,
-    type PriceQuote,
     type AviationNewsItem,
     type FlightDelaySeverity,
+    type GoogleFlightItinerary,
+    type DatePrice,
 } from '@/services/aviation';
 import { aviationWatchlist } from '@/services/aviation/watchlist';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
@@ -44,22 +46,17 @@ function fmtMin(m: number): string {
     if (!m) return '—';
     return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
-function expCountdown(exp: Date | null, now: number): string {
-    if (!exp) return '';
-    const ms = exp.getTime() - now;
-    if (ms <= 0) return '<span style="color:#ef4444;font-size:10px">EXPIRED</span>';
-    const h = Math.floor(ms / 3_600_000);
-    const m = Math.floor((ms % 3_600_000) / 60_000);
-    const color = h < 1 ? '#f97316' : '#6b7280';
-    return `<span style="font-size:10px;color:${color}">exp ${h > 0 ? `${h}h ` : ''}${m}m</span>`;
+function localDateStr(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 const TABS = ['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as const;
 type Tab = typeof TABS[number];
 
 const TAB_LABELS: Record<Tab, string> = {
-    ops: '🛫 Ops', flights: '✈️ Flights', airlines: '🏢 Airlines',
-    tracking: '📡 Track', news: '📰 News', prices: '💸 Prices',
+    ops: 'Ops', flights: 'Flights', airlines: 'Airlines',
+    tracking: 'Track', news: 'News', prices: 'Prices',
 };
 
 // ---- Panel class ----
@@ -71,23 +68,42 @@ export class AirlineIntelPanel extends Panel {
     private flightsData: FlightInstance[] = [];
     private carriersData: CarrierOps[] = [];
     private trackingData: PositionSample[] = [];
+    private trackingFlightData: FlightInstance[] = [];
+    private trackingQuery = '';
     private newsData: AviationNewsItem[] = [];
-    private pricesData: PriceQuote[] = [];
-    private pricesProvider = 'demo';
+    private googleFlightsData: GoogleFlightItinerary[] = [];
+    private datesData: DatePrice[] = [];
+    private pricesMode: 'search' | 'dates' = 'search';
+    private pricesCabin = 'ECONOMY';
+    private pricesDegraded = false;
+    private pricesError = '';
     private pricesOrigin = 'IST';
-    private pricesDest = 'LHR';
+    private pricesDest = '';
     private pricesDep = '';
-    private pricesCurrency = 'usd';
+    private datesStart = '';
+    private datesEnd = '';
+    private datesTripDuration = 7;
+    private datesRoundTrip = true;
     private loading = false;
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
     private liveIndicator!: HTMLElement;
     private tabBar!: HTMLElement;
 
     constructor() {
-        super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true });
+        super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true, infoTooltip: t('components.airlineIntel.infoTooltip') });
 
         const wl = aviationWatchlist.get();
         this.airports = wl.airports.slice(0, 8);
+
+        const firstRoute = wl.routes[0];
+        if (firstRoute) {
+            const parts = firstRoute.split('-');
+            if (parts[0]) this.pricesOrigin = parts[0];
+            if (parts[1]) this.pricesDest = parts[1];
+        } else {
+            this.pricesOrigin = this.airports[0] ?? 'IST';
+            this.pricesDest = this.airports[1] ?? '';
+        }
 
         // Add refresh button to header
         const refreshBtn = document.createElement('button');
@@ -123,12 +139,34 @@ export class AirlineIntelPanel extends Panel {
         // Event delegation on stable content element (survives innerHTML replacements)
         this.content.addEventListener('click', (e) => {
             const target = e.target as HTMLElement;
+            const modeBtn = target.closest('[data-price-mode]') as HTMLElement | null;
+            if (modeBtn) {
+                this.pricesMode = modeBtn.dataset.priceMode as 'search' | 'dates';
+                this.pricesError = '';
+                this.pricesDegraded = false;
+                this.renderTab();
+                return;
+            }
             if (target.id === 'priceSearchBtn' || target.closest('#priceSearchBtn')) {
-                this.pricesOrigin = ((this.content.querySelector('#priceFromInput') as HTMLInputElement)?.value || 'IST').toUpperCase();
-                this.pricesDest = ((this.content.querySelector('#priceToInput') as HTMLInputElement)?.value || 'LHR').toUpperCase();
-                this.pricesDep = (this.content.querySelector('#priceDepInput') as HTMLInputElement)?.value || '';
-                this.pricesCurrency = (this.content.querySelector('#priceCurrencySelect') as HTMLSelectElement)?.value || 'usd';
-                void this.loadTab('prices');
+                this.handleFlightSearch();
+            }
+            if (target.id === 'datesSearchBtn' || target.closest('#datesSearchBtn')) {
+                this.handleDatesSearch();
+            }
+            if (target.id === 'trackSearchBtn' || target.closest('#trackSearchBtn')) {
+                this.handleTrackSearch();
+            }
+            if (target.id === 'trackClearBtn' || target.closest('#trackClearBtn')) {
+                this.trackingQuery = '';
+                this.trackingFlightData = [];
+                this.trackingData = [];
+                void this.loadTab('tracking');
+            }
+        });
+
+        this.content.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).id === 'trackQueryInput') {
+                this.handleTrackSearch();
             }
         });
 
@@ -149,6 +187,7 @@ export class AirlineIntelPanel extends Panel {
 
     /** Called by the map when new aircraft positions arrive. */
     updateLivePositions(positions: PositionSample[]): void {
+        if (this.trackingQuery) return; // preserve filtered search results
         this.trackingData = positions;
         if (this.activeTab === 'tracking') this.renderTab();
     }
@@ -156,6 +195,80 @@ export class AirlineIntelPanel extends Panel {
     /** Toggle the LIVE indicator badge. */
     setLiveMode(active: boolean): void {
         this.liveIndicator.style.display = active ? '' : 'none';
+    }
+
+    private handleFlightSearch(): void {
+        const origin = ((this.content.querySelector('#priceFromInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
+        const dest = ((this.content.querySelector('#priceToInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
+        const dep = (this.content.querySelector('#priceDepInput') as HTMLInputElement)?.value || '';
+        const cabin = (this.content.querySelector('#priceCabinSelect') as HTMLSelectElement)?.value || 'ECONOMY';
+        const errEl = this.content.querySelector('#priceInlineErr') as HTMLElement | null;
+        const iataRe = /^[A-Z]{3}$/;
+        if (!iataRe.test(origin) || !iataRe.test(dest)) {
+            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            return;
+        }
+        const today = localDateStr();
+        if (dep && dep < today) {
+            if (errEl) errEl.textContent = 'Departure date must be today or future';
+            return;
+        }
+        if (errEl) errEl.textContent = '';
+        this.pricesOrigin = origin;
+        this.pricesDest = dest;
+        this.pricesDep = dep;
+        this.pricesCabin = cabin;
+        void this.loadTab('prices');
+    }
+
+    private handleDatesSearch(): void {
+        const origin = ((this.content.querySelector('#datesFromInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
+        const dest = ((this.content.querySelector('#datesToInput') as HTMLInputElement)?.value || '').toUpperCase().trim();
+        const start = (this.content.querySelector('#datesStartInput') as HTMLInputElement)?.value || '';
+        const end = (this.content.querySelector('#datesEndInput') as HTMLInputElement)?.value || '';
+        const rt = (this.content.querySelector('#datesRoundTripCheck') as HTMLInputElement)?.checked ?? true;
+        const dur = parseInt((this.content.querySelector('#datesTripDurInput') as HTMLInputElement)?.value || '7', 10);
+        const cabin = (this.content.querySelector('#datesCabinSelect') as HTMLSelectElement)?.value || 'ECONOMY';
+        const errEl = this.content.querySelector('#datesInlineErr') as HTMLElement | null;
+        const iataRe = /^[A-Z]{3}$/;
+        if (!iataRe.test(origin) || !iataRe.test(dest)) {
+            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            return;
+        }
+        if (!start || !end) {
+            if (errEl) errEl.textContent = 'Enter start and end dates';
+            return;
+        }
+        if (start < localDateStr()) {
+            if (errEl) errEl.textContent = 'Start date must be today or future';
+            return;
+        }
+        if (start >= end) {
+            if (errEl) errEl.textContent = 'Start date must be before end date';
+            return;
+        }
+        if (rt && (Number.isNaN(dur) || dur < 1)) {
+            if (errEl) errEl.textContent = 'Trip duration must be at least 1 day';
+            return;
+        }
+        const daysDiff = (new Date(end).getTime() - new Date(start).getTime()) / 86400000;
+        if (errEl) errEl.textContent = daysDiff > 90 ? 'Range exceeds 90 days — results may be incomplete' : '';
+        this.pricesOrigin = origin;
+        this.pricesDest = dest;
+        this.datesStart = start;
+        this.datesEnd = end;
+        this.datesRoundTrip = rt;
+        this.datesTripDuration = Number.isNaN(dur) ? 7 : dur;
+        this.pricesCabin = cabin;
+        void this.loadTab('prices');
+    }
+
+    private handleTrackSearch(): void {
+        const q = ((this.content.querySelector('#trackQueryInput') as HTMLInputElement)?.value || '').trim().toUpperCase();
+        this.trackingQuery = q;
+        this.trackingFlightData = [];
+        this.trackingData = [];
+        void this.loadTab('tracking');
     }
 
     private switchTab(tab: Tab): void {
@@ -168,15 +281,15 @@ export class AirlineIntelPanel extends Panel {
             (tab === 'flights' && !this.flightsData.length) ||
             (tab === 'airlines' && !this.carriersData.length) ||
             (tab === 'tracking' && !this.trackingData.length) ||
-            (tab === 'news' && !this.newsData.length) ||
-            (tab === 'prices' && !this.pricesData.length)) {
+            (tab === 'news' && !this.newsData.length)) {
             void this.loadTab(tab);
         }
+        // prices tab: never auto-fetch — only on explicit search button click
     }
 
     private async refresh(): Promise<void> {
-        void this.loadOps();
-        void this.loadTab(this.activeTab);
+        if (this.activeTab !== 'ops') void this.loadOps();
+        if (this.activeTab !== 'prices') void this.loadTab(this.activeTab);
     }
 
     private async loadOps(): Promise<void> {
@@ -199,7 +312,17 @@ export class AirlineIntelPanel extends Panel {
                     this.carriersData = await fetchCarrierOps(this.airports);
                     break;
                 case 'tracking':
-                    this.trackingData = await fetchAircraftPositions({});
+                    if (this.trackingQuery) {
+                        if (/^[A-Z]{2}\d{1,4}$/.test(this.trackingQuery)) {
+                            this.trackingFlightData = await fetchFlightStatus(this.trackingQuery);
+                        } else if (/^[0-9A-F]{6}$/i.test(this.trackingQuery)) {
+                            this.trackingData = await fetchAircraftPositions({ icao24: this.trackingQuery.toLowerCase() });
+                        } else {
+                            this.trackingData = await fetchAircraftPositions({ callsign: this.trackingQuery });
+                        }
+                    } else {
+                        this.trackingData = await fetchAircraftPositions({});
+                    }
                     break;
                 case 'news': {
                     const entities = [...this.airports, ...aviationWatchlist.get().airlines];
@@ -207,13 +330,26 @@ export class AirlineIntelPanel extends Panel {
                     break;
                 }
                 case 'prices': {
-                    const dep = this.pricesDep || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-                    const result = await fetchFlightPrices({
-                        origin: this.pricesOrigin, destination: this.pricesDest,
-                        departureDate: dep, currency: this.pricesCurrency,
-                    });
-                    this.pricesData = result.quotes;
-                    this.pricesProvider = result.provider;
+                    if (this.pricesMode === 'dates') {
+                        const r = await fetchGoogleDates({
+                            origin: this.pricesOrigin, destination: this.pricesDest,
+                            startDate: this.datesStart, endDate: this.datesEnd,
+                            tripDuration: this.datesTripDuration, isRoundTrip: this.datesRoundTrip,
+                            cabinClass: this.pricesCabin,
+                        });
+                        this.datesData = r.dates;
+                        this.pricesDegraded = r.degraded;
+                        this.pricesError = r.error;
+                    } else {
+                        const dep = this.pricesDep || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+                        const r = await fetchGoogleFlights({
+                            origin: this.pricesOrigin, destination: this.pricesDest,
+                            departureDate: dep, cabinClass: this.pricesCabin,
+                        });
+                        this.googleFlightsData = r.flights;
+                        this.pricesDegraded = r.degraded;
+                        this.pricesError = r.error;
+                    }
                     break;
                 }
             }
@@ -295,18 +431,64 @@ export class AirlineIntelPanel extends Panel {
 
     // ---- Tracking tab ----
     private renderTracking(): void {
-        if (!this.trackingData.length) {
-            this.content.innerHTML = `<div class="no-data">${t('components.airlineIntel.noTrackingData')}</div>`;
+        const clearBtn = this.trackingQuery
+            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed">×</button>`
+            : '';
+        const searchBar = `
+      <div class="track-search" style="display:flex;gap:6px;padding:8px 0 6px">
+        <input id="trackQueryInput" class="price-input" placeholder="Flight (EK3) or callsign (UAE3)" value="${escapeHtml(this.trackingQuery)}" style="flex:1;min-width:0">
+        ${clearBtn}<button id="trackSearchBtn" class="icon-btn" style="padding:4px 10px">Track</button>
+      </div>`;
+
+        if (this.loading) {
+            this.content.innerHTML = `${searchBar}<div class="panel-loading">${t('common.loading')}</div>`;
             return;
         }
-        const rows = this.trackingData.slice(0, 20).map(p => `
-      <div class="track-row">
-        <div class="track-cs">${escapeHtml(p.callsign || p.icao24)}</div>
-        <div class="track-alt">${fmt(p.altitudeFt)} ft</div>
-        <div class="track-spd">${fmt(p.groundSpeedKts)} kts</div>
-        <div class="track-pos">${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}</div>
-      </div>`).join('');
-        this.content.innerHTML = `<div class="tracking-list">${rows}</div>`;
+
+        // Flight status results (searched by IATA flight number)
+        if (this.trackingFlightData.length) {
+            const rows = this.trackingFlightData.map(f => {
+                const depStr = f.estimatedDeparture
+                    ? `Dep ${fmtTime(f.estimatedDeparture)}`
+                    : '';
+                const arrStr = f.estimatedArrival
+                    ? ` · Arr ${fmtTime(f.estimatedArrival)}`
+                    : '';
+                const color = STATUS_BADGE[f.status] ?? '#6b7280';
+                return `
+          <div class="track-flight-card" style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;gap:8px;align-items:baseline">
+              <strong>${escapeHtml(f.flightNumber)}</strong>
+              <span style="color:#9ca3af;font-size:11px">${escapeHtml(f.carrier.name || f.carrier.iata)}</span>
+              <span style="color:${color};font-size:11px;margin-left:auto">${f.status}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
+            ${f.aircraftType ? `<div style="font-size:11px;color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}
+            ${(f.gate || f.terminal) ? `<div style="font-size:11px;color:#6b7280">${f.gate ? `Gate ${escapeHtml(f.gate)}` : ''}${f.terminal ? `${f.gate ? ' · ' : ''}T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
+            ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:12px">+${f.delayMinutes}m delay</div>` : ''}
+          </div>`;
+            }).join('');
+            this.content.innerHTML = `${searchBar}<div>${rows}</div>`;
+            return;
+        }
+
+        // Position results (searched by callsign/ICAO24 or default global fetch)
+        if (this.trackingData.length) {
+            const rows = this.trackingData.slice(0, 20).map(p => `
+        <div class="track-row">
+          <div class="track-cs">${escapeHtml(p.callsign || p.icao24)}</div>
+          <div class="track-alt">${fmt(p.altitudeFt)} ft</div>
+          <div class="track-spd">${fmt(p.groundSpeedKts)} kts</div>
+          <div class="track-pos">${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}</div>
+        </div>`).join('');
+            this.content.innerHTML = `${searchBar}<div class="tracking-list">${rows}</div>`;
+            return;
+        }
+
+        const emptyMsg = this.trackingQuery
+            ? `<div class="no-data">No results for <strong>${escapeHtml(this.trackingQuery)}</strong>.</div>`
+            : `<div class="no-data">${t('components.airlineIntel.noTrackingData')}</div>`;
+        this.content.innerHTML = `${searchBar}${emptyMsg}`;
     }
 
     // ---- News tab ----
@@ -325,51 +507,114 @@ export class AirlineIntelPanel extends Panel {
 
     // ---- Prices tab ----
     private renderPrices(): void {
-        const provider = this.pricesProvider;
-        const providerBadge = provider === 'travelpayouts_data'
-            ? `<span class="tp-badge">${t('components.airlineIntel.cachedInsight')} · Travelpayouts</span>`
-            : `<span class="demo-badge">${t('components.airlineIntel.demoMode')}</span>`;
+        const isSearch = this.pricesMode === 'search';
+        const toggle = `
+      <div class="price-mode-toggle">
+        <button class="price-mode-btn${isSearch ? ' active' : ''}" data-price-mode="search">${escapeHtml(t('components.airlineIntel.searchFlights'))}</button>
+        <button class="price-mode-btn${!isSearch ? ' active' : ''}" data-price-mode="dates">${escapeHtml(t('components.airlineIntel.bestDates'))}</button>
+      </div>`;
 
-        const searchForm = `
-      <div class="price-controls" style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 0;align-items:center">
-        <input id="priceFromInput" class="price-input" placeholder="From" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
-        <span style="color:#6b7280">\u2192</span>
-        <input id="priceToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
-        <input id="priceDepInput" class="price-input" type="date" value="${escapeHtml(this.pricesDep)}" style="width:128px">
-        <select id="priceCurrencySelect" class="price-input" style="width:58px">
-          <option value="usd"${this.pricesCurrency === 'usd' ? ' selected' : ''}>USD</option>
-          <option value="eur"${this.pricesCurrency === 'eur' ? ' selected' : ''}>EUR</option>
-          <option value="try"${this.pricesCurrency === 'try' ? ' selected' : ''}>TRY</option>
-          <option value="gbp"${this.pricesCurrency === 'gbp' ? ' selected' : ''}>GBP</option>
-        </select>
-        <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">${t('common.search')}</button>
-      </div>
-      <div style="margin-bottom:6px">${providerBadge}<span style="font-size:10px;color:#6b7280;margin-left:6px">${t('components.airlineIntel.pricesIndicative')}</span></div>`;
+        const degradedBanner = this.pricesDegraded
+            ? `<div class="gf-degraded">${escapeHtml(t('components.airlineIntel.degradedResults'))}</div>`
+            : '';
 
-        if (!this.pricesData.length) {
-            this.content.innerHTML = `${searchForm}<div class="no-data">${t('components.airlineIntel.enterRoute')}</div>`;
+        if (isSearch) {
+            const dep = this.pricesDep || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+            const form = `
+        <div class="price-controls">
+          <input id="priceFromInput" class="price-input" placeholder="From" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
+          <span style="color:#6b7280">\u2192</span>
+          <input id="priceToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
+          <input id="priceDepInput" class="price-input" type="date" value="${escapeHtml(dep)}" style="width:128px">
+          <select id="priceCabinSelect" class="price-input" style="width:110px">
+            <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>Economy</option>
+            <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>Premium Economy</option>
+            <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>
+            <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>First</option>
+          </select>
+          <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
+        </div>
+        <div id="priceInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
+
+            let body: string;
+            if (this.googleFlightsData.length) {
+                const cards = this.googleFlightsData.map(it => {
+                    const stops = it.stops === 0
+                        ? t('components.airlineIntel.nonstop')
+                        : `${it.stops} stop`;
+                    const legs = it.legs.map(leg => `
+              <div class="gf-leg">
+                <span class="gf-airline">${escapeHtml(leg.airlineCode)} ${escapeHtml(leg.flightNumber)}</span>
+                <span>${escapeHtml(leg.departureAirport)} ${escapeHtml(leg.departureDatetime.slice(11, 16))}</span>
+                <span>\u2192</span>
+                <span>${escapeHtml(leg.arrivalAirport)} ${escapeHtml(leg.arrivalDatetime.slice(11, 16))}</span>
+                <span class="gf-dur">(${fmtMin(leg.durationMinutes)})</span>
+              </div>`).join('');
+                    return `
+            <div class="gf-card">
+              <div class="gf-summary">
+                <span class="gf-price">${Math.round(it.price).toLocaleString()}</span>
+                <span class="gf-total-dur">${fmtMin(it.durationMinutes)}</span>
+                <span class="gf-stops">${escapeHtml(stops)}</span>
+              </div>
+              ${legs}
+            </div>`;
+                }).join('');
+                body = `<div class="gf-list">${cards}</div>`;
+            } else if (this.pricesError) {
+                body = `<div class="no-data" style="color:#ef4444">${escapeHtml(this.pricesError)}</div>`;
+            } else {
+                body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterRouteAndDate'))}</div>`;
+            }
+            this.content.innerHTML = `${toggle}${form}${degradedBanner}${body}`;
         } else {
-            const now = Date.now();
-            const active = this.pricesData.filter(q => !isPriceExpired(q));
-            const expired = this.pricesData.filter(q => isPriceExpired(q));
-            const sorted = [...active, ...expired];
+            const form = `
+        <div class="price-controls">
+          <input id="datesFromInput" class="price-input" placeholder="From" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
+          <span style="color:#6b7280">\u2192</span>
+          <input id="datesToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
+          <input id="datesStartInput" class="price-input" type="date" value="${escapeHtml(this.datesStart || localDateStr())}" style="width:128px">
+          <input id="datesEndInput" class="price-input" type="date" value="${escapeHtml(this.datesEnd)}" style="width:128px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px">
+            <input id="datesRoundTripCheck" type="checkbox" ${this.datesRoundTrip ? 'checked' : ''}>${escapeHtml(t('components.airlineIntel.roundTrip'))}
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px">
+            ${escapeHtml(t('components.airlineIntel.tripDays'))}:
+            <input id="datesTripDurInput" class="price-input" type="number" min="1" value="${this.datesTripDuration}" style="width:44px">
+          </label>
+          <select id="datesCabinSelect" class="price-input" style="width:110px">
+            <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>Economy</option>
+            <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>Premium Economy</option>
+            <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>
+            <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>First</option>
+          </select>
+          <button id="datesSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
+        </div>
+        <div id="datesInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
 
-            const rows = sorted.map(q => {
-                const exp = isPriceExpired(q);
-                const currency = q.currency || this.pricesCurrency.toUpperCase();
-                return `
-          <div class="price-row" style="${exp ? 'opacity:0.4;' : ''}">
-            <div class="price-carrier">${escapeHtml(q.carrierName || q.carrierIata || '\u2014')}</div>
-            <div class="price-route" style="flex:1">${escapeHtml(q.origin)} \u2192 ${escapeHtml(q.destination)}</div>
-            <div class="price-amount" style="font-weight:700;color:${exp ? '#6b7280' : 'var(--accent,#60a5fa)'}">${currency} ${Math.round(q.priceAmount)}</div>
-            <div class="price-dur">${fmtMin(q.durationMinutes)}</div>
-            <div class="price-stops">${q.stops === 0 ? 'nonstop' : `${q.stops} stop`}</div>
-            ${expCountdown(q.expiresAt, now)}
-          </div>`;
-            }).join('');
-            this.content.innerHTML = `${searchForm}<div class="prices-list">${rows}</div>`;
+            let body: string;
+            if (this.datesData.length) {
+                const sorted = [...this.datesData].sort((a, b) => a.price - b.price);
+                const prices = sorted.map(d => d.price);
+                const cheapThreshold = prices[Math.floor(prices.length * 0.2)] ?? Infinity;
+                const expThreshold = prices[Math.floor(prices.length * 0.8)] ?? -Infinity;
+                const rows = sorted.map(d => {
+                    const cls = d.price <= cheapThreshold ? 'dp-cheap' : d.price >= expThreshold ? 'dp-expensive' : '';
+                    return `
+            <div class="dp-row">
+              <span class="dp-date">${escapeHtml(d.date)}</span>
+              ${d.returnDate ? `<span class="dp-return">${escapeHtml(d.returnDate)}</span>` : ''}
+              <span class="dp-price ${cls}">${Math.round(d.price).toLocaleString()}</span>
+            </div>`;
+                }).join('');
+                body = `<div class="dp-list">${rows}</div>`;
+            } else if (this.pricesError) {
+                body = `<div class="no-data" style="color:#ef4444">${escapeHtml(this.pricesError)}</div>`;
+            } else {
+                body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterDateRange'))}</div>`;
+            }
+            this.content.innerHTML = `${toggle}${form}${degradedBanner}${body}`;
         }
-
     }
 
     /* Styles moved to panels.css (PERF-012) */

@@ -14,6 +14,8 @@ message GetCountryIntelBriefRequest {
     (buf.validate.field).string.pattern = "^[A-Z]{2}$",
     (sebuf.http.query) = {name: "country_code"}
   ];
+  // Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
+  string framework = 2 [(sebuf.http.query) = {name: "framework"}];
 }
 
 // GetCountryIntelBriefResponse contains an AI-generated intelligence brief for a country.

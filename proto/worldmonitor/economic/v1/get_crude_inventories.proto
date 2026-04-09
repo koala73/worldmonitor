@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// CrudeInventoryWeek represents one week of US crude oil stockpile data from EIA WCRSTUS1.
+message CrudeInventoryWeek {
+  // ISO week period (YYYY-MM-DD, Monday of the EIA report week).
+  string period = 1;
+  // Total crude oil stocks in millions of barrels.
+  double stocks_mb = 2;
+  // Week-over-week change in millions of barrels. Positive = build (bearish), negative = draw (bullish).
+  // Absent for the oldest week when no prior week is available for comparison.
+  optional double weekly_change_mb = 3;
+}
+
+// GetCrudeInventoriesRequest is the request message for GetCrudeInventories.
+message GetCrudeInventoriesRequest {}
+
+// GetCrudeInventoriesResponse contains the 8 most recent weeks of US crude oil inventory data.
+message GetCrudeInventoriesResponse {
+  // The 8 most recent weeks, sorted newest-first.
+  repeated CrudeInventoryWeek weeks = 1;
+  // Timestamp of the most recent EIA data point (ISO 8601).
+  string latest_period = 2;
+}

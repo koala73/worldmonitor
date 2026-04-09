@@ -25,4 +25,6 @@ message GetTariffTrendsResponse {
   string fetched_at = 2;
   // True if upstream fetch failed and results may be stale/empty.
   bool upstream_unavailable = 3;
+  // Optional effective tariff snapshot for countries with additional coverage (currently US only).
+  EffectiveTariffRate effective_tariff_rate = 4;
 }

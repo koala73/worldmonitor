@@ -9,34 +9,11 @@ import type {
   AisDisruptionSeverity,
 } from '../../../../src/generated/server/worldmonitor/maritime/v1/service_server';
 
-import { CHROME_UA } from '../../../_shared/constants';
+import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
 // ========================================================================
 // Helpers
 // ========================================================================
-
-function getRelayBaseUrl(): string | null {
-  const relayUrl = process.env.WS_RELAY_URL;
-  if (!relayUrl) return null;
-  return relayUrl
-    .replace('wss://', 'https://')
-    .replace('ws://', 'http://')
-    .replace(/\/$/, '');
-}
-
-function getRelayRequestHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    'User-Agent': CHROME_UA,
-  };
-  const relaySecret = process.env.RELAY_SHARED_SECRET;
-  if (relaySecret) {
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
-  }
-  return headers;
-}
 
 const DISRUPTION_TYPE_MAP: Record<string, AisDisruptionType> = {
   gap_spike: 'AIS_DISRUPTION_TYPE_GAP_SPIKE',
@@ -88,7 +65,7 @@ async function fetchVesselSnapshotFromRelay(): Promise<VesselSnapshot | undefine
     const response = await fetch(
       `${relayBaseUrl}/ais/snapshot?candidates=false`,
       {
-        headers: getRelayRequestHeaders(),
+        headers: getRelayHeaders(),
         signal: AbortSignal.timeout(10000),
       },
     );

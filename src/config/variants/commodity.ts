@@ -114,7 +114,9 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Additional required properties
 
   ciiChoropleth: false,
+  resilienceScore: false,
   webcams: false,
+  diseaseOutbreaks: false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,7 +178,9 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   // Additional required properties
 
   ciiChoropleth: false,
+  resilienceScore: false,
   webcams: false,
+  diseaseOutbreaks: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

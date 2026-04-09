@@ -1,4 +1,5 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { t } from '@/services/i18n';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
@@ -652,24 +653,7 @@ export class CountryBriefPage implements CountryBriefPanel {
   }
 
   private formatBrief(text: string, headlineCount = 0): string {
-    let html = escapeHtml(text)
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\n/g, '<br>')
-      .replace(/^/, '<p>')
-      .replace(/$/, '</p>');
-
-    if (headlineCount > 0) {
-      html = html.replace(/\[(\d{1,2})\]/g, (_match, numStr) => {
-        const n = parseInt(numStr, 10);
-        if (n >= 1 && n <= headlineCount) {
-          return `<a href="#cb-news-${n}" class="cb-citation" title="${t('components.countryBrief.sourceRef', { n: String(n) })}">[${n}]</a>`;
-        }
-        return `[${numStr}]`;
-      });
-    }
-
-    return html;
+    return formatIntelBrief(text, headlineCount > 0 ? { count: headlineCount, hrefPrefix: '#cb-news-' } : undefined);
   }
 
   private exportBrief(format: 'json' | 'csv'): void {

@@ -6,7 +6,8 @@ import { t } from '@/services/i18n';
 import { getNearbyInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
-import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
+import { sanitizeUrl } from '@/utils/sanitize';
+import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { getCSSColor } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
@@ -20,8 +21,13 @@ import type {
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveEconomicIndicator,
   CountryFactsData,
+  CountryEnergyProfileData,
+  CountryPortActivityData,
 } from './CountryBriefPanel';
 import type { MapContainer } from './MapContainer';
+import { ResilienceWidget } from './ResilienceWidget';
+import { toApiUrl } from '@/services/runtime';
+import type { ComputeEnergyShockScenarioResponse, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
 type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 type TrendDirection = 'up' | 'down' | 'flat';
@@ -62,7 +68,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private infrastructureByType = new Map<AssetType, RelatedAsset[]>();
   private maximizeButton: HTMLButtonElement | null = null;
   private currentHeadlineCount = 0;
-
   private signalsBody: HTMLElement | null = null;
   private signalBreakdownBody: HTMLElement | null = null;
   private signalRecentBody: HTMLElement | null = null;
@@ -75,6 +80,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private timelineBody: HTMLElement | null = null;
   private scoreCard: HTMLElement | null = null;
   private factsBody: HTMLElement | null = null;
+  private resilienceWidget: ResilienceWidget | null = null;
+  private energyBody: HTMLElement | null = null;
+  private maritimeBody: HTMLElement | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -154,7 +162,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public showGeoError(onRetry: () => void): void {
     this.currentCode = '__error__';
     this.currentName = null;
-    this.content.replaceChildren();
+    this.resetPanelContent();
 
     const wrapper = this.el('div', 'cdp-geo-error');
     wrapper.append(
@@ -189,6 +197,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public hide(): void {
+    this.destroyResilienceWidget();
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
       this.panel.classList.remove('maximized');
@@ -477,6 +486,522 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.factsBody.append(grid);
   }
 
+  public updateEnergyProfile(data: CountryEnergyProfileData): void {
+    if (!this.energyBody) return;
+    this.renderEnergyProfile(data);
+    this.resilienceWidget?.setEnergyMix(data);
+  }
+
+  private renderEnergyProfile(data: CountryEnergyProfileData): void {
+    if (!this.energyBody) return;
+    this.energyBody.replaceChildren();
+
+    const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
+      || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable;
+
+    if (!hasAny) {
+      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
+      return;
+    }
+
+    if (data.mixAvailable) {
+      const segments: Array<{ label: string; color: string; value: number }> = [
+        { label: 'Coal', color: '#6b6b6b', value: data.coalShare },
+        { label: 'Oil', color: '#8B4513', value: data.oilShare },
+        { label: 'Gas', color: '#D2691E', value: data.gasShare },
+        { label: 'Nuclear', color: '#6A0DAD', value: data.nuclearShare },
+        { label: 'Hydro', color: '#1E90FF', value: data.hydroShare },
+        { label: 'Wind', color: '#87CEEB', value: data.windShare },
+        { label: 'Solar', color: '#FFD700', value: data.solarShare },
+        { label: 'Other renew', color: '#32CD32', value: Math.max(0, data.renewShare - data.windShare - data.solarShare - data.hydroShare) },
+      ];
+
+      const total = segments.reduce((s, seg) => s + seg.value, 0);
+      const norm = total > 0 ? total : 1;
+
+      const bar = this.el('div', '');
+      bar.style.cssText = 'display:flex;width:100%;height:12px;border-radius:4px;overflow:hidden;margin-bottom:8px';
+      for (const seg of segments) {
+        const pct = (seg.value / norm) * 100;
+        if (pct <= 0.5) continue;
+        const span = this.el('span', '');
+        span.style.cssText = `width:${pct}%;background:${seg.color}`;
+        bar.append(span);
+      }
+      this.energyBody.append(bar);
+
+      const legend = this.el('div', '');
+      for (const seg of segments) {
+        const pct = (seg.value / norm) * 100;
+        if (pct <= 0.5) continue;
+        const row = this.el('div', '');
+        row.style.cssText = 'font-size:11px;color:#aaa;display:flex;gap:4px;align-items:center';
+        const dot = this.el('span', '');
+        dot.textContent = '\u25CF';
+        dot.style.color = seg.color;
+        const label = this.el('span', '', `${seg.label}  ${Math.round(pct)}%`);
+        row.append(dot, label);
+        legend.append(row);
+      }
+      this.energyBody.append(legend);
+
+      const src = this.el('div', 'cdp-economic-source', `Data: ${data.mixYear} (OWID)`);
+      this.energyBody.append(src);
+    }
+
+    if (data.mixAvailable) {
+      const importPct = data.importShare;
+      const color = importPct > 60 ? '#ef4444'
+        : importPct >= 30 ? '#f59e0b'
+        : importPct > 0 ? '#22c55e'
+        : '#6b7280';
+      const labelText = importPct <= 0 ? 'Net exporter' : `${Math.round(importPct)}%`;
+      const row = this.el('div', '');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px';
+      const label = this.el('span', 'cdp-economic-source', 'Import dependency:');
+      const badge = this.el('span', '');
+      badge.style.cssText = `background:${color};color:#fff;padding:1px 6px;border-radius:3px;font-size:11px`;
+      badge.textContent = labelText;
+      row.append(label, badge);
+      this.energyBody.append(row);
+    }
+
+    if (data.jodiOilAvailable) {
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+      section.append(this.el('div', 'cdp-subtitle', `Oil Product Supply (${data.jodiOilDataMonth})`));
+
+      const table = this.el('table', '');
+      table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
+
+      const thead = this.el('thead', '');
+      const hr = this.el('tr', '');
+      for (const h of ['Product', 'Demand', 'Imports']) {
+        const th = this.el('th', '');
+        th.textContent = h;
+        th.style.cssText = 'text-align:left;color:#aaa;padding:2px 4px';
+        hr.append(th);
+      }
+      thead.append(hr);
+      table.append(thead);
+
+      const tbody = this.el('tbody', '');
+      const rows: Array<{ label: string; demand: number; imports: number }> = [
+        { label: 'Gasoline', demand: data.gasolineDemandKbd, imports: data.gasolineImportsKbd },
+        { label: 'Diesel', demand: data.dieselDemandKbd, imports: data.dieselImportsKbd },
+        { label: 'Jet fuel', demand: data.jetDemandKbd, imports: data.jetImportsKbd },
+        { label: 'LPG', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
+      ];
+      for (const r of rows) {
+        const tr = this.el('tr', '');
+        const fmtKbd = (v: number) => v > 0 ? `${v} kbd` : '\u2014';
+        for (const val of [r.label, fmtKbd(r.demand), fmtKbd(r.imports)]) {
+          const td = this.el('td', '');
+          td.textContent = val;
+          td.style.cssText = 'padding:2px 4px';
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+      if (data.crudeImportsKbd > 0) {
+        const tr = this.el('tr', '');
+        for (const val of ['Crude', '\u2014', `${data.crudeImportsKbd} kbd`]) {
+          const td = this.el('td', '');
+          td.textContent = val;
+          td.style.cssText = 'padding:2px 4px';
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      section.append(table);
+      section.append(this.el('div', 'cdp-economic-source', 'Source: JODI'));
+      this.energyBody.append(section);
+    }
+
+    if (data.jodiGasAvailable) {
+      const totalBcm = Math.round(data.gasTotalDemandTj / 36000);
+      const lngShare = data.gasLngShare;
+      const pipeShare = Math.max(0, 100 - lngShare);
+      const lngColor = lngShare > 80 ? '#ef4444' : lngShare >= 40 ? '#f59e0b' : '#22c55e';
+
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+      const row = this.el('div', '');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px';
+
+      const gasLabel = this.el('span', '', `Gas demand: ${totalBcm} BCM/yr`);
+      const lngBadge = this.el('span', '');
+      lngBadge.style.cssText = `background:${lngColor};color:#fff;padding:1px 5px;border-radius:3px;font-size:11px`;
+      lngBadge.textContent = `LNG ${lngShare.toFixed(0)}%`;
+      const pipeBadge = this.el('span', '');
+      pipeBadge.style.cssText = 'background:#6b7280;color:#fff;padding:1px 5px;border-radius:3px;font-size:11px';
+      pipeBadge.textContent = `Pipeline ${pipeShare.toFixed(0)}%`;
+
+      row.append(gasLabel, lngBadge, pipeBadge);
+      section.append(row);
+      this.energyBody.append(section);
+    }
+
+    if (data.ieaStocksAvailable) {
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+
+      if (data.ieaNetExporter) {
+        const msg = this.el('div', '');
+        msg.style.cssText = 'color:#22c55e;font-size:12px';
+        msg.textContent = 'IEA oil stocks: Net Exporter';
+        section.append(msg);
+      } else {
+        const coverLabel = this.el('div', '');
+        coverLabel.style.cssText = 'font-size:12px;margin-bottom:4px;display:flex;align-items:center;gap:6px';
+        const txt = this.el('span', '', `IEA Oil Stocks: ${data.ieaDaysOfCover} days of cover`);
+        coverLabel.append(txt);
+
+        if (data.ieaBelowObligation) {
+          const warn = this.el('span', '');
+          warn.style.cssText = 'background:#ef4444;color:#fff;padding:1px 5px;border-radius:3px;font-size:11px';
+          warn.textContent = 'Below 90-day obligation';
+          coverLabel.append(warn);
+        }
+        section.append(coverLabel);
+
+        const barOuter = this.el('div', '');
+        barOuter.style.cssText = 'position:relative;width:100%;height:8px;border-radius:4px;background:#374151;overflow:visible';
+        const fillPct = Math.min(data.ieaDaysOfCover / 180 * 100, 100);
+        const fill = this.el('div', '');
+        fill.style.cssText = `width:${fillPct}%;height:100%;background:#3b82f6;border-radius:4px`;
+        const marker = this.el('div', '');
+        marker.style.cssText = 'position:absolute;top:-2px;left:50%;width:2px;height:12px;background:#f59e0b;transform:translateX(-50%)';
+        barOuter.append(fill, marker);
+        section.append(barOuter);
+      }
+      this.energyBody.append(section);
+    }
+
+    const hasLiveSignals = data.gasStorageAvailable || data.electricityAvailable;
+    if (hasLiveSignals) {
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+      section.append(this.el('div', 'cdp-subtitle', 'Live Signals'));
+
+      if (data.gasStorageAvailable) {
+        const row = this.el('div', '');
+        row.style.cssText = 'font-size:12px;margin-bottom:4px';
+        const deltaSign = data.gasStorageChange1d >= 0 ? '+' : '';
+        row.textContent = `EU Gas Storage: ${data.gasStorageFillPct.toFixed(1)}% (${deltaSign}${data.gasStorageChange1d.toFixed(1)}% today, ${data.gasStorageTrend}) as of ${data.gasStorageDate}`;
+        section.append(row);
+      }
+
+      if (data.electricityAvailable) {
+        const row = this.el('div', '');
+        row.style.cssText = 'font-size:12px';
+        row.textContent = `Electricity: \u20AC${data.electricityPriceMwh.toFixed(1)}/MWh as of ${data.electricityDate}`;
+        section.append(row);
+      }
+      this.energyBody.append(section);
+    }
+
+    if (data.jodiOilAvailable || data.jodiGasAvailable) {
+      this.energyBody.append(this.renderShockScenarioWidget());
+    }
+  }
+
+  private renderShockScenarioWidget(): HTMLElement {
+    const wrapper = this.el('div', '');
+    wrapper.style.cssText = 'margin-top:12px;border-top:1px solid #374151;padding-top:10px';
+
+    const title = this.el('div', 'cdp-subtitle', 'Shock Scenario');
+    wrapper.append(title);
+
+    const controls = this.el('div', '');
+    controls.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px';
+
+    const chokepointSelect = this.el('select', '') as HTMLSelectElement;
+    chokepointSelect.style.cssText = 'background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:3px 6px;font-size:11px';
+    const chopkpts: Array<[string, string]> = [['hormuz', 'Strait of Hormuz'], ['malacca', 'Strait of Malacca'], ['suez', 'Suez Canal'], ['babelm', 'Bab el-Mandeb']];
+    for (const [cpValue, cpLabel] of chopkpts) {
+      const opt = this.el('option', '') as HTMLOptionElement;
+      opt.value = cpValue;
+      opt.textContent = cpLabel;
+      chokepointSelect.append(opt);
+    }
+
+    const disruptionSelect = this.el('select', '') as HTMLSelectElement;
+    disruptionSelect.style.cssText = 'background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:3px 6px;font-size:11px';
+    for (const pct of [25, 50, 75, 100]) {
+      const opt = this.el('option', '') as HTMLOptionElement;
+      opt.value = String(pct);
+      opt.textContent = `${pct}% disruption`;
+      disruptionSelect.append(opt);
+    }
+
+    const fuelModeSelect = this.el('select', '') as HTMLSelectElement;
+    fuelModeSelect.style.cssText = disruptionSelect.style.cssText;
+    for (const [val, label] of [['oil', 'Oil'], ['gas', 'Gas (LNG)'], ['both', 'Both']] as const) {
+      const opt = this.el('option', '') as HTMLOptionElement;
+      opt.value = val;
+      opt.textContent = label;
+      fuelModeSelect.append(opt);
+    }
+
+    const computeBtn = this.el('button', 'cdp-action-btn') as HTMLButtonElement;
+    computeBtn.type = 'button';
+    computeBtn.textContent = 'Compute';
+    computeBtn.style.cssText += ';font-size:11px;padding:3px 8px';
+
+    const coverageBadge = this.el('span', '');
+    coverageBadge.style.cssText = 'display:none;font-size:10px;padding:2px 5px;border-radius:3px;font-weight:600';
+
+    controls.append(chokepointSelect, disruptionSelect, fuelModeSelect, computeBtn, coverageBadge);
+    wrapper.append(controls);
+
+    const resultArea = this.el('div', '');
+    resultArea.style.cssText = 'margin-top:8px';
+    wrapper.append(resultArea);
+
+    computeBtn.addEventListener('click', () => {
+      const code = this.currentCode;
+      if (!code) return;
+      const chokepoint = chokepointSelect.value;
+      const disruption = parseInt(disruptionSelect.value, 10);
+
+      resultArea.replaceChildren();
+      const loading = this.el('div', 'cdp-economic-source', 'Computing\u2026');
+      resultArea.append(loading);
+      computeBtn.disabled = true;
+      coverageBadge.style.display = 'none';
+      coverageBadge.textContent = '';
+
+      const url = toApiUrl(`/api/intelligence/v1/compute-energy-shock?country_code=${encodeURIComponent(code)}&chokepoint_id=${encodeURIComponent(chokepoint)}&disruption_pct=${disruption}&fuel_mode=${encodeURIComponent(fuelModeSelect.value)}`);
+      globalThis.fetch(url)
+        .then((r) => r.json() as Promise<ComputeEnergyShockScenarioResponse>)
+        .then((result) => {
+          resultArea.replaceChildren();
+          resultArea.append(this.renderShockResult(result));
+          const lvl = result.coverageLevel ?? '';
+          if (lvl) {
+            const colors: Record<string, string> = {
+              full: 'background:#15803d;color:#dcfce7',
+              partial: 'background:#b45309;color:#fef3c7',
+              unsupported: 'background:#b91c1c;color:#fee2e2',
+            };
+            coverageBadge.style.cssText = `display:inline-block;font-size:10px;padding:2px 5px;border-radius:3px;font-weight:600;${colors[lvl] ?? ''}`;
+            coverageBadge.textContent = lvl;
+          } else {
+            coverageBadge.style.display = 'none';
+          }
+        })
+        .catch(() => {
+          resultArea.replaceChildren();
+          resultArea.append(this.el('div', 'cdp-economic-source', 'Failed to compute scenario.'));
+        })
+        .finally(() => {
+          computeBtn.disabled = false;
+        });
+    });
+
+    return wrapper;
+  }
+
+  private renderShockResult(result: ComputeEnergyShockScenarioResponse): HTMLElement {
+    const container = this.el('div', '');
+
+    if (!result.dataAvailable && !(result as any).gasImpact?.dataAvailable) {
+      container.append(this.el('div', 'cdp-economic-source', result.assessment));
+      return container;
+    }
+
+    if (result.degraded) {
+      const warn = this.el('div', '');
+      warn.style.cssText = 'font-size:10px;color:#f59e0b;margin-bottom:6px;padding:3px 6px;background:#1c1400;border-radius:3px';
+      warn.textContent = 'Live flow data unavailable — using historical baseline';
+      container.append(warn);
+    }
+
+    if (result.products.length > 0) {
+      const table = this.el('table', '');
+      table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse;margin-bottom:6px';
+      const thead = this.el('thead', '');
+      const hr = this.el('tr', '');
+      const headers = ['Product', 'Demand', 'Loss', 'Deficit'];
+      if (result.portwatchCoverage && result.liveFlowRatio != null) headers.push('Flow');
+      for (const h of headers) {
+        const th = this.el('th', '');
+        th.textContent = h;
+        th.style.cssText = 'text-align:left;color:#aaa;padding:2px 4px';
+        hr.append(th);
+      }
+      thead.append(hr);
+      table.append(thead);
+
+      const tbody = this.el('tbody', '');
+      for (const p of result.products as ProductImpact[]) {
+        const tr = this.el('tr', '');
+        const defColor = p.deficitPct > 30 ? '#ef4444' : p.deficitPct > 10 ? '#f59e0b' : '#22c55e';
+        const cells = [
+          p.product,
+          `${p.demandKbd} kbd`,
+          `${p.outputLossKbd} kbd`,
+          `${p.deficitPct.toFixed(1)}%`,
+        ];
+        if (result.portwatchCoverage && result.liveFlowRatio != null) {
+          cells.push(`${Math.round(result.liveFlowRatio * 100)}%`);
+        }
+        cells.forEach((val, i) => {
+          const td = this.el('td', '');
+          td.textContent = val;
+          td.style.cssText = `padding:2px 4px${i === 3 ? `;color:${defColor}` : ''}`;
+          tr.append(td);
+        });
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      container.append(table);
+    }
+
+    if (result.ieaStocksCoverage) {
+      const coverRow = this.el('div', 'cdp-economic-source');
+      coverRow.style.cssText += ';margin-bottom:4px';
+      let coverText: string;
+      if (result.effectiveCoverDays < 0) {
+        coverText = 'Net oil exporter — strategic reserve cover not applicable';
+      } else if (result.effectiveCoverDays > 0) {
+        coverText = `IEA cover: ~${result.effectiveCoverDays} days under this scenario`;
+      } else {
+        coverText = 'IEA cover: 0 days (reserves exhausted under this scenario)';
+      }
+      coverRow.textContent = coverText;
+      container.append(coverRow);
+    }
+
+    const assessmentEl = this.el('div', '');
+    assessmentEl.style.cssText = 'font-size:11px;color:#d1d5db;line-height:1.4;margin-top:4px';
+    assessmentEl.textContent = result.assessment;
+    container.append(assessmentEl);
+
+    if (result.limitations && result.limitations.length > 0) {
+      const details = this.el('details', '') as HTMLDetailsElement;
+      details.style.cssText = 'margin-top:6px;font-size:10px;color:#9ca3af';
+      const summary = this.el('summary', '');
+      summary.style.cssText = 'cursor:pointer;color:#6b7280';
+      summary.textContent = 'Model assumptions';
+      details.append(summary);
+      const ul = this.el('ul', '');
+      ul.style.cssText = 'margin:4px 0 0 12px;padding:0;list-style:disc';
+      for (const lim of result.limitations) {
+        const li = this.el('li', '');
+        li.textContent = lim;
+        ul.append(li);
+      }
+      details.append(ul);
+      container.append(details);
+    }
+
+    if (result.gasImpact?.dataAvailable) {
+      const gi = result.gasImpact;
+      const gasSection = this.el('div', '');
+      gasSection.style.cssText = 'margin-top:10px;border-top:1px solid #374151;padding-top:8px';
+
+      const gasTitle = this.el('div', '');
+      gasTitle.style.cssText = 'font-size:11px;font-weight:600;color:#e5e7eb;margin-bottom:4px';
+      gasTitle.textContent = 'Gas / LNG Impact';
+      gasSection.append(gasTitle);
+
+      const metrics = this.el('div', 'cdp-economic-source');
+      metrics.textContent = `LNG share: ${(gi.lngShareOfImports * 100).toFixed(0)}% | Disruption: ${gi.lngDisruptionTj.toFixed(0)} TJ | Deficit: ${gi.deficitPct.toFixed(1)}%`;
+      gasSection.append(metrics);
+
+      if (gi.storage) {
+        const s = gi.storage;
+        const storageDiv = this.el('div', 'cdp-economic-source');
+        storageDiv.style.cssText += ';margin-top:4px';
+        storageDiv.textContent = `Gas storage: ${s.fillPct.toFixed(1)}% full (${s.gasTwh.toFixed(0)} TWh), buffer ~${s.bufferDays} days, ${s.trend} (${s.scope})`;
+        gasSection.append(storageDiv);
+      }
+
+      const srcBadge = this.el('div', '');
+      srcBadge.style.cssText = 'font-size:10px;color:#9ca3af;margin-top:2px';
+      srcBadge.textContent = `Source: ${gi.dataSource === 'gie_daily' ? 'GIE (daily, Europe)' : 'JODI (monthly, global)'}`;
+      gasSection.append(srcBadge);
+
+      const gasAssess = this.el('div', '');
+      gasAssess.style.cssText = 'font-size:11px;color:#d1d5db;line-height:1.4;margin-top:4px';
+      gasAssess.textContent = gi.assessment;
+      gasSection.append(gasAssess);
+
+      container.append(gasSection);
+    }
+
+    return container;
+  }
+
+  public updateMaritimeActivity(data: CountryPortActivityData): void {
+    if (!this.maritimeBody) return;
+
+    if (!data.available || data.ports.length === 0) {
+      this.maritimeBody.parentElement?.remove();
+      this.maritimeBody = null;
+      return;
+    }
+
+    this.maritimeBody.replaceChildren();
+
+    const table = this.el('table', 'cdp-maritime-table');
+    const thead = this.el('thead');
+    const headerRow = this.el('tr');
+    for (const col of ['Port', 'Tanker Calls (30d)', 'Trend', 'Import DWT', 'Export DWT']) {
+      const th = this.el('th', '', col);
+      headerRow.append(th);
+    }
+    thead.append(headerRow);
+    table.append(thead);
+
+    const tbody = this.el('tbody');
+    for (const port of data.ports) {
+      const tr = this.el('tr');
+
+      const nameCell = this.el('td', 'cdp-maritime-port');
+      nameCell.textContent = port.portName;
+      if (port.anomalySignal) {
+        const badge = this.el('span', 'cdp-maritime-anomaly', '\u26A0');
+        badge.title = 'Traffic anomaly detected';
+        nameCell.append(badge);
+      }
+      tr.append(nameCell);
+
+      const callsCell = this.el('td', '', String(port.tankerCalls30d));
+      tr.append(callsCell);
+
+      const trendCell = this.el('td', 'cdp-maritime-trend');
+      const pct = port.trendDeltaPct;
+      if (pct !== 0 || port.tankerCalls30d > 0) {
+        const sign = pct >= 0 ? '+' : '';
+        trendCell.textContent = `${sign}${pct.toFixed(1)}%`;
+        trendCell.classList.add(pct >= 0 ? 'cdp-trend-up' : 'cdp-trend-down');
+      } else {
+        trendCell.textContent = 'n/a';
+      }
+      tr.append(trendCell);
+
+      const fmtDwt = (v: number): string =>
+        v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}K` : String(Math.round(v));
+
+      tr.append(this.el('td', '', fmtDwt(port.importTankerDwt)));
+      tr.append(this.el('td', '', fmtDwt(port.exportTankerDwt)));
+
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    this.maritimeBody.append(table);
+
+    if (data.fetchedAt) {
+      const dateStr = data.fetchedAt.split('T')[0] ?? data.fetchedAt;
+      const footer = this.el('div', 'cdp-section-source', `Source: IMF PortWatch \u00B7 as of ${dateStr}`);
+      this.maritimeBody.append(footer);
+    }
+  }
+
   private factItem(label: string, value: string): HTMLElement {
     const wrapper = this.el('div', 'cdp-fact-item');
     wrapper.append(this.el('div', 'cdp-fact-label', label));
@@ -605,8 +1130,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderLoading(): void {
-    this.scoreCard = null;
-    this.content.replaceChildren();
+    this.resetPanelContent();
     const loading = this.el('div', 'cdp-loading');
     loading.append(
       this.el('div', 'cdp-loading-title', t('countryBrief.identifying')),
@@ -617,7 +1141,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderSkeleton(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
-    this.content.replaceChildren();
+    this.resetPanelContent();
 
     const shell = this.el('div', 'cdp-shell');
     const header = this.el('header', 'cdp-header');
@@ -646,7 +1170,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
-      const url = `${window.location.origin}/?c=${this.currentCode}`;
+      const url = `${window.location.origin}/?c=${encodeURIComponent(this.currentCode)}`;
       navigator.clipboard.writeText(url).then(() => {
         const orig = shareBtn.innerHTML;
         shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -692,6 +1216,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       scoreCard.append(this.makeEmpty(t('countryBrief.ciiUnavailable')));
     }
 
+    this.resilienceWidget = new ResilienceWidget(code);
+    const summaryGrid = this.el('div', 'cdp-summary-grid');
+    summaryGrid.append(scoreCard, this.resilienceWidget.getElement());
+
     const bodyGrid = this.el('div', 'cdp-grid');
     const [signalsCard, signalBody] = this.sectionCard(t('countryBrief.activeSignals'));
     const [timelineCard, timelineBody] = this.sectionCard(t('countryBrief.timeline'));
@@ -707,6 +1235,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     factsBody.append(this.makeLoading(t('countryBrief.loadingFacts')));
     const factsExpanded = this.el('div', 'cdp-expanded-only');
     factsExpanded.append(factsCard);
+
+    const [energyCard, energyBody] = this.sectionCard('Energy Profile', 'Oil import dependency, chokepoint exposure, and energy shock data from JODI, IEA, and PortWatch.');
+    this.energyBody = energyBody;
+    energyBody.append(this.makeLoading('Loading energy data\u2026'));
+
+    const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity', 'Port-level tanker call volume and import/export cargo weight over 30 days. ⚠ badge = port running below 50% of its 30-day baseline. Source: IMF PortWatch.');
+    this.maritimeBody = maritimeBody;
+    maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
 
     this.signalsBody = signalBody;
     this.timelineBody = timelineBody;
@@ -726,9 +1262,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
-    shell.append(header, scoreCard, bodyGrid);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
+  }
+
+  private destroyResilienceWidget(): void {
+    this.resilienceWidget?.destroy();
+    this.resilienceWidget = null;
+  }
+
+  private resetPanelContent(): void {
+    this.destroyResilienceWidget();
+    this.scoreCard = null;
+    this.energyBody = null;
+    this.maritimeBody = null;
+    this.content.replaceChildren();
   }
 
   private renderInitialSignals(signals: CountryBriefSignals): void {
@@ -936,9 +1485,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return panel;
   }
 
-  private sectionCard(title: string): [HTMLElement, HTMLElement] {
+  private sectionCard(title: string, helpText?: string): [HTMLElement, HTMLElement] {
     const card = this.el('section', 'cdp-card');
     const heading = this.el('h3', 'cdp-card-title', title);
+    if (helpText) {
+      const tip = this.el('button', 'cdp-card-help', '?');
+      tip.setAttribute('title', helpText);
+      tip.setAttribute('type', 'button');
+      heading.append(tip);
+    }
     const body = this.el('div', 'cdp-card-body');
     card.append(heading, body);
     return [card, body];
@@ -972,24 +1527,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private formatBrief(text: string, headlineCount = 0): string {
-    let html = escapeHtml(text)
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\n/g, '<br>')
-      .replace(/^/, '<p>')
-      .replace(/$/, '</p>');
-
-    if (headlineCount > 0) {
-      html = html.replace(/\[(\d{1,2})\]/g, (_match, numStr) => {
-        const n = parseInt(numStr, 10);
-        if (n >= 1 && n <= headlineCount) {
-          return `<a href="#cdp-news-${n}" class="cb-citation">[${n}]</a>`;
-        }
-        return `[${numStr}]`;
-      });
-    }
-
-    return html;
+    return formatIntelBrief(text, headlineCount > 0 ? { count: headlineCount, hrefPrefix: '#cdp-news-' } : undefined);
   }
 
   private summarizeBrief(brief: string): string {

@@ -263,6 +263,7 @@
     "security": "Siber Guvenlik",
     "policy": "Yapay Zeka Politikasi ve Duzenlemeler",
     "regulation": "Yapay Zeka Duzenleme Paneli",
+    "finRegulation": "Finansal Düzenleme",
     "hardware": "Yaricileticiler ve Donanim",
     "cloud": "Bulut ve Altyapi",
     "dev": "Gelistirici Toplulugu",
@@ -280,7 +281,8 @@
     "gulfEconomies": "Körfez Ekonomileri",
     "gulfIndices": "Körfez Endeksleri",
     "gulfCurrencies": "Körfez Para Birimleri",
-    "gulfOil": "Körfez Petrolü"
+    "gulfOil": "Körfez Petrolü",
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -732,7 +734,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>Düzenleme</strong> Küresel düzenleyicilerden düzenleyici eylemler, politika değişiklikleri ve uygulama güncellemeleri: finans, teknoloji, enerji ve ticaret otoriteleri. Kaynak: resmi hükümet ve düzenleyici kurum yayınları."
     },
     "economic": {
       "indicators": "Gostergeler",
@@ -749,6 +752,8 @@
       "vsPreviousWeek": "onceki haftaya gore",
       "in": "icinde",
       "centralBanks": "Central Banks",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",
@@ -836,7 +841,8 @@
       "token": "Token",
       "mcap": "P.Deg.",
       "vol24h": "24sa Hacim",
-      "chg24h": "24sa Deg."
+      "chg24h": "24sa Deg.",
+      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
       "dataFeeds": "Veri Akislari",
@@ -958,8 +964,8 @@
       "nuclear": "Nukleer"
     },
     "community": {
-      "joinDiscussion": "Tartismaya Katilin",
-      "openDiscussion": "Tartismayi Ac",
+      "joinDiscussion": "Help Shape What's Next",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "Bir daha gosterme",
       "sectionLabel": "Topluluk"
     },
@@ -1322,7 +1328,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>Teknoloji Etkinlikleri</strong> Yaklaşan ve son teknoloji etkinlikleri: konferanslar, ürün lansmanları, düzenleyici oturumlar ve kazanç görüşmeleri. Resmi etkinlik takvimleri ve sektör kaynaklarından derlenmektedir."
     },
     "techReadiness": {
       "internetUsers": "Internet Kullanicilari",
@@ -1529,7 +1536,7 @@
       "noEventsIn7Days": "7 gunde olay yok"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>GDELT Istihbarati</strong> Gercek zamanli kuresel haber izleme:<ul><li>Secilmis konu kategorileri (catismalar, siber vb.)</li><li>100+ dilden cevrilen makaleler</li><li>Her 15 dakikada guncelleme</li></ul>Kaynak: GDELT Project (gdeltproject.org)"
+      "infoTooltip": "<strong>Haber İstihbaratı</strong> Gercek zamanli kuresel haber izleme:<ul><li>Secilmis konu kategorileri (catismalar, siber vb.)</li><li>100+ dilden cevrilen makaleler</li><li>Her 15 dakikada guncelleme</li><li>14-day media tone &amp; volume trend per topic</li></ul>Kaynak: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "İzlenen Telegram OSINT kanallarından gerçek zamanlı sinyaller",
@@ -1544,7 +1551,9 @@
       "filterPolitics": "Siyaset",
       "filterMiddleeast": "Orta Doğu",
       "live": "CANLI",
-      "viewSource": "Kaynağı görüntüle"
+      "viewSource": "Kaynağı görüntüle",
+      "filterGeopolitics": "Jeopolitik",
+      "filterCyber": "Siber"
     },
     "investments": {
       "infoTooltip": "Suudi Arabistan ve BAE'nin kuresel kritik altyapilara dogrudan yabanci yatirimlari veritabani. Yatirimi haritada gormek icin bir satira tiklayin.",
@@ -1646,7 +1655,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Hizmet Durumu</strong> Büyük bulut platformları, finansal altyapı ve kritik internet hizmetlerinin gerçek zamanlı operasyonel durumu. Kaynak: resmi durum sayfaları (AWS, Azure, GCP, Cloudflare, borsalar). Olaylar daha geniş aksama olaylarına işaret edebilir."
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1713,6 +1723,96 @@
     "map": {
       "showMap": "Haritayı Göster",
       "hideMap": "Haritayı Gizle"
+    },
+    "internetDisruptions": {
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+    },
+    "crypto": {
+      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+    },
+    "gulfEconomies": {
+      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+    },
+    "groceryBasket": {
+      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+    },
+    "bigmac": {
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "defiTokens": {
+      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+    },
+    "aiTokens": {
+      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+    },
+    "altTokens": {
+      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+    },
+    "stockAnalysis": {
+      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+    },
+    "stockBacktest": {
+      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+    },
+    "dailyMarketBrief": {
+      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+    },
+    "centralBankWatch": {
+      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Havacılık İstihbaratı</strong> Gerçek zamanlı havayolu operasyonel verileri: hat askıya almaları, hava sahası kapatmaları, taşıyıcı uyarıları ve acil yönlendirmeler. Kaynak: havacılık otoritesi NOTAM'ları ve taşıyıcı bültenleri."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM Analist</strong> Jeopolitik, piyasa, askeri ve ekonomik alanlarda canlı bağlama sahip AI analisti. Aktif WorldMonitor beslemelerinden gerçek zamanlı veri enjekte edilen Claude tarafından desteklenmektedir."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT Pozisyonlama</strong> Tüccar Taahhütleri raporu: emtia ve finansal vadeli işlemlerde ticari aktörler, büyük spekülatörler ve küçük tüccarların net pozisyonları. Haftalık yayımlanır (Cuma). Kaynak: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Canlı Sayaçlar</strong> Küresel metrikler için gerçek zamanlı ekstrapolasyon sayaçları: askeri harcamalar, doğal afetler, hastalık yükü ve daha fazlası. Rakamlar yıllık veri oranlarına dayalı istatistiksel tahminlerdir."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Hastalık Salgınları</strong> WHO, ProMED ve sağlık bakanlıklarından aktif salgın uyarıları. Doğrulanmış salgınları, etkilenen bölgeleri, vaka sayılarını ve tehdit seviyelerini izler. Yeni raporlar yayımlandığında güncellenir."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Kazanç Takvimi</strong> Büyük halka açık şirketlerin yaklaşan ve son kazanç açıklamaları. EPS tahminlerini gerçekle karşılaştırır, gelir ve beklenti aşma/kaçırma sınıflandırması gösterir. Kaynak: finansal veri sağlayıcıları."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Ekonomik Takvim</strong> Planlanmış makroekonomik yayınlar: CPI, NFP, GDP, PMI ve merkez bankası kararları. Tahmin, gerçek ve önceki değeri gösterir. Yüksek etkili olaylar vurgulanır. Kaynak: ekonomik veri sağlayıcıları."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Finansal Stres Göstergesi</strong> Kansas City Fed Finansal Stres Endeksi (KCFSI): getiri farkları, oynaklık ve çapraz korelasyonlar dahil 11 gösterge kullanarak ABD finans piyasalarındaki stresi ölçer. Pozitif değerler ortalamanın üzerinde stresi gösterir. Kaynak: Federal Reserve Bank of Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Hürmüz Ticaret Takipçisi</strong> Dünyanın en kritik petrol darboğazı olan Hürmüz Boğazı'ndan geçen AIS gemi takibi. Tanker sayılarını, aksama olaylarını ve haftalık akış değişikliklerini izler. Küresel petrol arzının yaklaşık %20'si buradan günlük geçmektedir."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Canlı Web Kameraları</strong> Dünya genelinde jeopolitik açıdan önemli konumlardan canlı yayınlar: çatışma bölgeleri, başkentler, sınır geçişleri ve stratejik darboğazlar. YouTube ve kamusal ağlardan akışlar."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Makro Göstergeler</strong> ABD ve Euro Bölgesi için temel makroekonomik göstergeler: CPI, işsizlik, GDP ve merkez bankası faizleri. Önceki dönem deltasıyla birlikte gösterilen değerler. Kaynak: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Anahtar Kelime Monitörleri</strong> Tüm WorldMonitor kaynaklarından gerçek zamanlı haber söz takibi için herhangi bir terim ekleyin. Eşleşen makaleler alındıkça sonuçlar gerçek zamanlı güncellenir."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Yenilenebilir Enerji</strong> Küresel yenilenebilir enerji proje hattı: güneş, rüzgâr, hidroelektrik ve depolama kapasitesi eklemeleri. Bölge ve teknoloji türüne göre duyurulan, yapım aşamasındaki ve devreye alınan projeleri izler."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Sosyal Hız</strong> Jeopolitik önem taşıyan trend konular ve viral içerik. Sosyal medya hızını ölçer: bir haberin baz çizgisine göre ne kadar hızlı yayıldığını. Ana akım haberlere ulaşmadan önce ortaya çıkan anlatıları tespit etmeye yardımcı olur."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Koruma Başarıları</strong> Olumlu doğa koruma haberleri: tür popülasyon toparlanmaları, habitat restorasyon kilometre taşları ve de-ekstinksiyon çabaları. Kaynak: IUCN, WWF ve koruma araştırma yayınları."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Dünya Saati</strong> Başlıca küresel finans merkezleri için gerçek zamanlı yerel saatler ve piyasa oturum durumu. NYSE, LSE, TSE, SGX ve diğer borsalar için açık/kapalı durumunu gösterir."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Getiri Eğrisi &amp; Faizler</strong> US Treasury getiri eğrisi (2Y, 5Y, 10Y, 30Y) ve 10Y-2Y tersine dönme göstergesi dahil temel faiz farkları. Ayrıca Euro Bölgesi faizlerini gösterir (EURIBOR, ESTR). Ters çevrilmiş eğri tarihsel olarak durgunlukları önceler. Kaynak: FRED."
     }
   },
   "popups": {

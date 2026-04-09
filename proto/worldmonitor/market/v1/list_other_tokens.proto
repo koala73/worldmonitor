@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/market_quote.proto";
+
+// ListOtherTokensRequest retrieves other/trending crypto token prices.
+message ListOtherTokensRequest {
+}
+
+// ListOtherTokensResponse contains other token price data.
+message ListOtherTokensResponse {
+  // The list of other token quotes.
+  repeated CryptoQuote tokens = 1;
+}

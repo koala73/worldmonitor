@@ -3,13 +3,12 @@ import {
   MarketServiceClient,
   type AnalyzeStockResponse,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { premiumFetch } from '@/services/premium-fetch';
 
 export type StockAnalysisSnapshot = AnalyzeStockResponse;
 export type StockAnalysisHistory = Record<string, StockAnalysisSnapshot[]>;
 
-const client = new MarketServiceClient(getRpcBaseUrl(), {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-});
+const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const DEFAULT_LIMIT = 4;
 const DEFAULT_LIMIT_PER_SYMBOL = 4;

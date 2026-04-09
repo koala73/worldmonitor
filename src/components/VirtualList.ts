@@ -396,6 +396,27 @@ export class WindowedList<T> {
   }
 
   /**
+   * Scroll to the first item matching the predicate, rendering its chunk if needed.
+   * Returns true if found.
+   */
+  scrollToItem(predicate: (item: T) => boolean): boolean {
+    const index = this.items.findIndex(predicate);
+    if (index === -1) return false;
+
+    const chunkIndex = Math.floor(index / this.chunkSize);
+    const chunkEl = this.chunkElements.get(chunkIndex);
+    if (!chunkEl) return false;
+
+    if (!this.renderedChunks.has(chunkIndex)) {
+      this.renderChunk(chunkIndex);
+      this.onRendered?.();
+    }
+
+    chunkEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
+  }
+
+  /**
    * Clean up resources
    */
   destroy(): void {

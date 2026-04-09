@@ -89,6 +89,7 @@ function buildSharedEvidencePrompt(primaryContext: string, recentNews: string[])
 export function buildDeductionPrompt(input: {
   query: string;
   geoContext: string;
+  predictionContext?: string;
   now?: Date;
 }): { mode: DeductionMode; systemPrompt: string; userPrompt: string } {
   const now = input.now ?? new Date();
@@ -96,6 +97,10 @@ export function buildDeductionPrompt(input: {
   const mode = inferDeductionMode(input.query);
   const { primaryContext, recentNews } = splitDeductionContext(input.geoContext);
   const evidence = buildSharedEvidencePrompt(primaryContext, recentNews);
+
+  const predictionBlock = input.predictionContext
+    ? `\n\n${input.predictionContext}`
+    : '';
 
   if (mode === 'brief') {
     return {
@@ -109,7 +114,7 @@ Return plain text in exactly 2 or 3 sentences.
 - Sentence 2: primary drivers or constraints.
 - Optional sentence 3: the most important trigger to watch next.
 No markdown, no bullets, no headings, no preamble.`,
-      userPrompt: `Question:\n${input.query}\n\n${evidence}`,
+      userPrompt: `Question:\n${input.query}\n\n${evidence}${predictionBlock}`,
     };
   }
 
@@ -140,7 +145,7 @@ Formatting rules:
 - In "Alternative paths", include 2 alternatives with rough likelihood bands.
 - In "Confidence", state High, Medium, or Low and explain why.
 - Ground claims in the supplied evidence by naming sources, dates, locations, or signal types when possible.`,
-    userPrompt: `Question:\n${input.query}\n\n${evidence}`,
+    userPrompt: `Question:\n${input.query}\n\n${evidence}${predictionBlock}`,
   };
 }
 

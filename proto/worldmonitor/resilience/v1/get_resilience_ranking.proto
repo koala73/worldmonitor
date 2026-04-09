@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "worldmonitor/resilience/v1/resilience.proto";
+
+message GetResilienceRankingRequest {}
+
+message GetResilienceRankingResponse {
+  repeated ResilienceRankingItem items = 1;
+  repeated ResilienceRankingItem greyed_out = 2;
+}

@@ -1,5 +1,6 @@
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { sanitizeWidgetHtml } from '@/utils/widget-sanitizer';
+import { getAuthState } from '@/services/auth-state';
 
 const STORAGE_KEY = 'wm-custom-widgets';
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -95,36 +96,83 @@ export function getWidget(id: string): CustomWidgetSpec | null {
   return loadWidgets().find(w => w.id === id) ?? null;
 }
 
-export function isWidgetFeatureEnabled(): boolean {
+// ── Cross-domain key helpers ──────────────────────────────────────────────
+// Cookies with domain=.worldmonitor.app are shared across all subdomains
+// (worldmonitor.app, tech., finance., commodity., happy., etc.).
+// We read cookie first and fall back to localStorage for migration compat.
+
+const COOKIE_DOMAIN = '.worldmonitor.app';
+const KEY_MAX_AGE = 365 * 24 * 60 * 60;
+
+function usesCookies(): boolean {
+  return location.hostname.endsWith('worldmonitor.app');
+}
+
+function getCookieValue(name: string): string {
   try {
-    return !!localStorage.getItem('wm-widget-key');
+    const match = document.cookie.split('; ').find((c) => c.startsWith(`${name}=`));
+    return match ? match.slice(name.length + 1) : '';
   } catch {
-    return false;
+    return '';
   }
+}
+
+function setDomainCookie(name: string, value: string): void {
+  if (!usesCookies()) return;
+  document.cookie = `${name}=${encodeURIComponent(value)}; domain=${COOKIE_DOMAIN}; path=/; max-age=${KEY_MAX_AGE}; SameSite=Lax; Secure`;
+}
+
+function getKey(name: string): string {
+  const cookieVal = getCookieValue(name);
+  if (cookieVal) return decodeURIComponent(cookieVal);
+  try { return localStorage.getItem(name) ?? ''; } catch { return ''; }
+}
+
+export function setWidgetKey(key: string): void {
+  setDomainCookie('wm-widget-key', key);
+  try { localStorage.setItem('wm-widget-key', key); } catch { /* ignore */ }
+}
+
+export function setProKey(key: string): void {
+  setDomainCookie('wm-pro-key', key);
+  try { localStorage.setItem('wm-pro-key', key); } catch { /* ignore */ }
+}
+
+export function isWidgetFeatureEnabled(): boolean {
+  return !!getKey('wm-widget-key');
 }
 
 export function getWidgetAgentKey(): string {
-  try {
-    return localStorage.getItem('wm-widget-key') ?? '';
-  } catch {
-    return '';
+  return getKey('wm-widget-key');
+}
+
+export function getBrowserTesterKeys(): string[] {
+  const keys = [getProWidgetKey(), getWidgetAgentKey()];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of keys) {
+    const key = raw.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(key);
   }
+  return result;
+}
+
+export function getBrowserTesterKey(): string {
+  return getBrowserTesterKeys()[0] ?? '';
 }
 
 export function isProWidgetEnabled(): boolean {
-  try {
-    return !!localStorage.getItem('wm-pro-key');
-  } catch {
-    return false;
-  }
+  return !!getKey('wm-pro-key');
+}
+
+export function isProUser(): boolean {
+  return isWidgetFeatureEnabled() || isProWidgetEnabled() || getAuthState().user?.role === 'pro';
 }
 
 export function getProWidgetKey(): string {
-  try {
-    return localStorage.getItem('wm-pro-key') ?? '';
-  } catch {
-    return '';
-  }
+  return getKey('wm-pro-key');
 }
 
 function cleanSpanEntry(storageKey: string, panelId: string): void {
