@@ -832,6 +832,19 @@ function orefCurlFetch(proxyAuth, url, { toFile } = {}) {
   return result;
 }
 
+function categorizeOrefThreat(threat) {
+  const t = (threat || '').toLowerCase();
+  if (t.includes('missile') || t.includes('טיל') || t.includes('ballistic')) return 'MISSILE';
+  if (t.includes('rocket') || t.includes('רקט')) return 'ROCKET';
+  if (t.includes('drone') || t.includes('uav') || t.includes('כטב') || t.includes('hostile aircraft') || t.includes('כלי טיס')) return 'DRONE';
+  if (t.includes('mortar')) return 'MORTAR';
+  if (t.includes('infiltration') || t.includes('חדיר') || t.includes('מחבל')) return 'INFILTRATION';
+  if (t.includes('earthquake') || t.includes('רעידת')) return 'EARTHQUAKE';
+  if (t.includes('tsunami') || t.includes('צונמי')) return 'TSUNAMI';
+  if (t.includes('chemical') || t.includes('hazmat') || t.includes('חומרים מסוכנים') || t.includes('רדיולוגי')) return 'HAZMAT';
+  return 'ALERT';
+}
+
 async function tzevaAdomFetchAlerts() {
   try {
     const resp = await fetch(TZEVA_ADOM_URL, {
@@ -844,12 +857,21 @@ async function tzevaAdomFetchAlerts() {
     return data.map((alert) => {
       const rawThreat = alert.threat || alert.title || '';
       const rawCities = Array.isArray(alert.cities) ? alert.cities : (alert.data ? [alert.data] : []);
+      let translatedThreat = translateHebrew(rawThreat);
+      const translatedLocations = rawCities.map(translateCity);
+      // API sometimes puts city name in threat field; detect and move to locations
+      if (OREF_CITY_TRANSLATIONS[rawThreat]) {
+        if (!rawCities.includes(rawThreat)) {
+          translatedLocations.push(OREF_CITY_TRANSLATIONS[rawThreat]);
+        }
+        translatedThreat = 'Rocket/Missile Alert';
+      }
       return {
         id: alert.notificationId || String(Date.now()),
-        cat: alert.cat || '',
-        title: translateHebrew(rawThreat),
+        cat: categorizeOrefThreat(rawThreat),
+        title: translatedThreat,
         titleHe: rawThreat,
-        data: rawCities.map(translateCity),
+        data: translatedLocations,
         dataHe: rawCities,
         desc: alert.desc || '',
         date: alert.date || new Date().toISOString(),
