@@ -3,6 +3,7 @@ import type {
   GetChokepointStatusRequest,
   GetChokepointStatusResponse,
   ChokepointInfo,
+  WarRiskTier,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
 import type {
@@ -33,6 +34,16 @@ const THREAT_CONFIG_STALE_NOTE = `Threat baseline last reviewed > ${THREAT_CONFI
 
 type ThreatLevel = 'war_zone' | 'critical' | 'high' | 'elevated' | 'normal';
 type GeoCoordinates = { latitude: number; longitude: number };
+
+function threatLevelToWarRiskTier(threatLevel: ThreatLevel): WarRiskTier {
+  switch (threatLevel) {
+    case 'war_zone': return 'WAR_RISK_TIER_WAR_ZONE';
+    case 'critical': return 'WAR_RISK_TIER_CRITICAL';
+    case 'high':     return 'WAR_RISK_TIER_HIGH';
+    case 'elevated': return 'WAR_RISK_TIER_ELEVATED';
+    case 'normal':   return 'WAR_RISK_TIER_NORMAL';
+  }
+}
 
 interface ChokepointConfig {
   id: string;
@@ -383,6 +394,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         hazardAlertLevel: flowsData[cp.id]!.hazardAlertLevel ?? '',
         hazardAlertName: flowsData[cp.id]!.hazardAlertName ?? '',
       } : undefined,
+      warRiskTier: threatLevelToWarRiskTier(cp.threatLevel),
     };
   });
 

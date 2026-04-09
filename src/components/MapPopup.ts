@@ -229,7 +229,7 @@ export class MapPopup {
     if (data.type === 'waterway') {
       const waterway = data.data as StrategicWaterway;
       const cp = this.chokepointData?.chokepoints?.find(
-        c => c.name.toLowerCase() === waterway.name.toLowerCase(),
+        c => c.id === waterway.chokepointId,
       );
       const chartEl = this.popup.querySelector<HTMLElement>('[data-transit-chart]');
       if (chartEl && cp?.transitSummary?.history?.length) {
@@ -1155,7 +1155,7 @@ export class MapPopup {
 
   private renderWaterwayPopup(waterway: StrategicWaterway): string {
     const cp = this.chokepointData?.chokepoints?.find(
-      c => c.name.toLowerCase() === waterway.name.toLowerCase(),
+      c => c.id === waterway.chokepointId,
     );
     const hasChart = !!(cp?.transitSummary?.history?.length);
     return `

@@ -30,10 +30,10 @@ import { ISO2_TO_COMTRADE } from './_comtrade-reporters';
 const SHOCK_CACHE_TTL = 300;
 
 const CP_TO_PORTWATCH: Record<string, string> = {
-  hormuz: 'hormuz_strait',
-  babelm: 'bab_el_mandeb',
+  hormuz_strait: 'hormuz_strait',
+  bab_el_mandeb: 'bab_el_mandeb',
   suez: 'suez',
-  malacca: 'malacca_strait',
+  malacca_strait: 'malacca_strait',
 };
 
 const PROXIED_GULF_SHARE = 0.40;
@@ -158,7 +158,7 @@ export async function computeEnergyShockScenario(
   if (!VALID_CHOKEPOINTS.has(chokepointId)) {
     return {
       ...EMPTY,
-      assessment: `Unknown chokepoint: ${chokepointId}. Valid chokepoints: hormuz, malacca, suez, babelm.`,
+      assessment: `Unknown chokepoint: ${chokepointId}. Valid chokepoints: hormuz_strait, malacca_strait, suez, bab_el_mandeb.`,
     };
   }
 

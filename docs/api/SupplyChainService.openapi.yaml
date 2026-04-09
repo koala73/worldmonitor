@@ -239,6 +239,21 @@ components:
                     $ref: '#/components/schemas/TransitSummary'
                 flowEstimate:
                     $ref: '#/components/schemas/FlowEstimate'
+                warRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
         DirectionalDwt:
             type: object
             properties:

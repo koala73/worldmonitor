@@ -781,7 +781,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const chokepointSelect = this.el('select', '') as HTMLSelectElement;
     chokepointSelect.style.cssText = 'background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:3px 6px;font-size:11px';
-    const chopkpts: Array<[string, string]> = [['hormuz', 'Strait of Hormuz'], ['malacca', 'Strait of Malacca'], ['suez', 'Suez Canal'], ['babelm', 'Bab el-Mandeb']];
+    const chopkpts: Array<[string, string]> = [['hormuz_strait', 'Strait of Hormuz'], ['malacca_strait', 'Strait of Malacca'], ['suez', 'Suez Canal'], ['bab_el_mandeb', 'Bab el-Mandeb']];
     for (const [cpValue, cpLabel] of chopkpts) {
       const opt = this.el('option', '') as HTMLOptionElement;
       opt.value = cpValue;

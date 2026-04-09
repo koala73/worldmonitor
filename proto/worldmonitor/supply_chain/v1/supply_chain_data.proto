@@ -28,6 +28,21 @@ message FlowEstimate {
   string hazard_alert_name = 7;
 }
 
+/**
+ * War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+ * This is a FREE field (no PRO gate) — it exposes the existing server-internal
+ * threatLevel from ChokepointConfig, making it available to clients for badges
+ * and bypass corridor scoring.
+ */
+enum WarRiskTier {
+  WAR_RISK_TIER_UNSPECIFIED = 0;
+  WAR_RISK_TIER_NORMAL = 1;
+  WAR_RISK_TIER_ELEVATED = 2;
+  WAR_RISK_TIER_HIGH = 3;
+  WAR_RISK_TIER_CRITICAL = 4;
+  WAR_RISK_TIER_WAR_ZONE = 5;
+}
+
 message ChokepointInfo {
   string id = 1;
   string name = 2;
@@ -44,6 +59,7 @@ message ChokepointInfo {
   repeated DirectionalDwt directional_dwt = 13 [deprecated = true];
   TransitSummary transit_summary = 14;
   FlowEstimate flow_estimate = 15;
+  WarRiskTier war_risk_tier = 16;
 }
 
 message DirectionalDwt {

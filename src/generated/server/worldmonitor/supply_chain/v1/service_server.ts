@@ -52,6 +52,7 @@ export interface ChokepointInfo {
   directionalDwt: DirectionalDwt[];
   transitSummary?: TransitSummary;
   flowEstimate?: FlowEstimate;
+  warRiskTier: WarRiskTier;
 }
 
 export interface DirectionalDwt {
@@ -145,6 +146,8 @@ export interface ShippingStressCarrier {
   carrierType: string;
   sparkline: number[];
 }
+
+export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 
 export interface FieldViolation {
   field: string;

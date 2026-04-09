@@ -1,12 +1,12 @@
 export const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364']);
 
-export const VALID_CHOKEPOINTS = new Set(['hormuz', 'malacca', 'suez', 'babelm']);
+export const VALID_CHOKEPOINTS = new Set(['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']);
 
 export const CHOKEPOINT_EXPOSURE: Record<string, number> = {
-  hormuz: 1.0,
-  babelm: 1.0,
+  hormuz_strait: 1.0,
+  bab_el_mandeb: 1.0,
   suez: 0.6,
-  malacca: 0.7,
+  malacca_strait: 0.7,
 };
 
 export const REFINERY_YIELD: Record<string, number> = {
@@ -114,10 +114,10 @@ export function buildAssessment(
 }
 
 export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {
-  hormuz: 0.30,
-  malacca: 0.50,
+  hormuz_strait: 0.30,
+  malacca_strait: 0.50,
   suez: 0.20,
-  babelm: 0.20,
+  bab_el_mandeb: 0.20,
 };
 
 export const EU_GAS_STORAGE_COUNTRIES = new Set([
