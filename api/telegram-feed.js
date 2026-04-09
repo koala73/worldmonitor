@@ -16,7 +16,7 @@ function normalizeTelegramMessage(msg) {
     ? null
     : typeof timestamp === 'number'
       ? (timestamp > 1e12 ? new Date(timestamp).toISOString() : new Date(timestamp * 1000).toISOString())
-      : (timestamp ? new Date(timestamp).toISOString() : null);
+      : (() => { const d = new Date(timestamp); return isNaN(d.getTime()) ? null : d.toISOString(); })();
 
   return {
     id: String(msg.id ?? ''),
@@ -76,7 +76,7 @@ export default async function handler(req) {
         : Array.isArray(parsed?.items) ? parsed.items
         : [];
       const normalizedItems = rawMessages.map(normalizeTelegramMessage);
-      const normalizedCount = parsed?.count ?? normalizedItems.length;
+      const normalizedCount = normalizedItems.length;
       const normalizedResponse = {
         enabled: parsed?.enabled ?? true,
         count: normalizedCount,
