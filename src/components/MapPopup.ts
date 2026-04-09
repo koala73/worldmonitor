@@ -21,6 +21,7 @@ import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
 import { getAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
@@ -274,7 +275,7 @@ export class MapPopup {
         this.transitChart.mount(chartEl, cp.transitSummary.history);
       }
       // Track PRO gate impression for sector ring chart
-      if (CHOKEPOINT_HS2_SECTORS[waterway.chokepointId] && getAuthState().user?.role !== 'pro') {
+      if (CHOKEPOINT_HS2_SECTORS[waterway.chokepointId] && !hasPremiumAccess(getAuthState())) {
         trackGateHit('chokepoint-sector-mix');
       }
     }
@@ -1199,7 +1200,7 @@ export class MapPopup {
       c => c.id === waterway.chokepointId,
     );
     const hasChart = !!(cp?.transitSummary?.history?.length);
-    const isPro = getAuthState().user?.role === 'pro';
+    const isPro = hasPremiumAccess(getAuthState());
     const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
 
     let sectorSection = '';
