@@ -38,14 +38,15 @@ export const setAlertRules = mutation({
     const now = Date.now();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
+      const patch: Record<string, unknown> = {
         enabled: args.enabled,
         eventTypes: args.eventTypes,
         sensitivity: args.sensitivity,
         channels: args.channels,
-        aiDigestEnabled: args.aiDigestEnabled,
         updatedAt: now,
-      });
+      };
+      if (args.aiDigestEnabled !== undefined) patch.aiDigestEnabled = args.aiDigestEnabled;
+      await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
         userId,
@@ -145,14 +146,15 @@ export const setAlertRulesForUser = internalMutation({
       .unique();
     const now = Date.now();
     if (existing) {
-      await ctx.db.patch(existing._id, {
+      const patch: Record<string, unknown> = {
         enabled: rest.enabled,
         eventTypes: rest.eventTypes,
         sensitivity: rest.sensitivity,
         channels: rest.channels,
-        aiDigestEnabled: rest.aiDigestEnabled,
         updatedAt: now,
-      });
+      };
+      if (rest.aiDigestEnabled !== undefined) patch.aiDigestEnabled = rest.aiDigestEnabled;
+      await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", { userId, ...rest, updatedAt: now });
     }

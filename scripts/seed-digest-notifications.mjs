@@ -453,7 +453,9 @@ async function generateAISummary(stories, rule) {
   const profile = formatUserProfile(ctx, rule.variant ?? 'full');
 
   const variant = rule.variant ?? 'full';
-  const storiesHash = hashShort(stories.map(s => s.titleHash ?? s.title).sort().join('|'));
+  const storiesHash = hashShort(stories.map(s =>
+    `${s.titleHash ?? s.title}:${s.severity ?? ''}:${s.phase ?? ''}:${(s.sources ?? []).slice(0, 3).join(',')}`
+  ).sort().join('|'));
   const ctxHash = hashShort(JSON.stringify(ctx));
   const cacheKey = `digest:ai-summary:v1:${variant}:${storiesHash}:${ctxHash}`;
 
@@ -686,6 +688,30 @@ async function main() {
       continue;
     }
 
+    let channels = [];
+    try {
+      const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${RELAY_SECRET}`,
+          'User-Agent': 'worldmonitor-digest/1.0',
+        },
+        body: JSON.stringify({ userId: rule.userId }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (chRes.ok) channels = await chRes.json();
+    } catch (err) {
+      console.warn(`[digest] Channel fetch failed for ${rule.userId}:`, err.message);
+    }
+
+    const ruleChannelSet = new Set(rule.channels ?? []);
+    const deliverableChannels = channels.filter(ch => ruleChannelSet.has(ch.channelType) && ch.verified);
+    if (deliverableChannels.length === 0) {
+      console.log(`[digest] No deliverable channels for ${rule.userId} — skipping`);
+      continue;
+    }
+
     let aiSummary = null;
     if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
       aiSummary = await generateAISummary(stories, rule);
@@ -712,28 +738,9 @@ async function main() {
     const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
     const subject = aiSummary ? `WorldMonitor Intelligence Brief — ${shortDate}` : `WorldMonitor Digest — ${shortDate}`;
 
-    let channels = [];
-    try {
-      const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${RELAY_SECRET}`,
-          'User-Agent': 'worldmonitor-digest/1.0',
-        },
-        body: JSON.stringify({ userId: rule.userId }),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (chRes.ok) channels = await chRes.json();
-    } catch (err) {
-      console.warn(`[digest] Channel fetch failed for ${rule.userId}:`, err.message);
-    }
-
-    const ruleChannelSet = new Set(rule.channels ?? []);
     let anyDelivered = false;
 
-    for (const ch of channels) {
-      if (!ruleChannelSet.has(ch.channelType) || !ch.verified) continue;
+    for (const ch of deliverableChannels) {
       let ok = false;
       if (ch.channelType === 'telegram' && ch.chatId) {
         ok = await sendTelegram(rule.userId, ch.chatId, text);
