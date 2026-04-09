@@ -301,7 +301,7 @@ function computeOverallCoverage(response: GetResilienceScoreResponse): number {
 function isRankStable(interval: ScoreInterval | null | undefined): boolean {
   if (!interval) return false;
   const width = interval.p95 - interval.p05;
-  return Number.isFinite(width) && width <= RANK_STABLE_MAX_INTERVAL_WIDTH;
+  return Number.isFinite(width) && width >= 0 && width <= RANK_STABLE_MAX_INTERVAL_WIDTH;
 }
 
 export function buildRankingItem(

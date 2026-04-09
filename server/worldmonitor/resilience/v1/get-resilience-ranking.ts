@@ -69,7 +69,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     }
   }
 
-  const intervals = await fetchIntervals(countryCodes);
+  const intervals = await fetchIntervals([...cachedScores.keys()]);
   const allItems = countryCodes.map((countryCode) => buildRankingItem(countryCode, cachedScores.get(countryCode), intervals.get(countryCode)));
   const response: GetResilienceRankingResponse = {
     items: sortRankingItems(allItems.filter((item) => item.overallCoverage >= GREY_OUT_COVERAGE_THRESHOLD)),
