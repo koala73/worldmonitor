@@ -497,7 +497,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.energyBody.replaceChildren();
 
     const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
-      || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable;
+      || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable
+      || data.emberAvailable;
 
     if (!hasAny) {
       this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildHistory } from '../scripts/seed-portwatch.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/portwatch-arcgis-sample.json'), 'utf-8'));
@@ -21,38 +22,6 @@ const ARCGIS_FIELDS_USED_BY_BUILD_HISTORY = [
   'capacity_roro',
   'capacity_tanker',
 ];
-
-function buildHistory(features) {
-  return features
-    .filter(f => f.attributes?.date)
-    .map(f => {
-      const a = f.attributes;
-      const container = Number(a.n_container ?? 0);
-      const dryBulk = Number(a.n_dry_bulk ?? 0);
-      const generalCargo = Number(a.n_general_cargo ?? 0);
-      const roro = Number(a.n_roro ?? 0);
-      const tanker = Number(a.n_tanker ?? 0);
-      const total = Number(a.n_total ?? container + dryBulk + generalCargo + roro + tanker);
-      return {
-        date: formatDate(a.date),
-        container, dryBulk, generalCargo, roro, tanker,
-        cargo: container + dryBulk + generalCargo + roro,
-        other: 0,
-        total,
-        capContainer: Number(a.capacity_container ?? 0),
-        capDryBulk: Number(a.capacity_dry_bulk ?? 0),
-        capGeneralCargo: Number(a.capacity_general_cargo ?? 0),
-        capRoro: Number(a.capacity_roro ?? 0),
-        capTanker: Number(a.capacity_tanker ?? 0),
-      };
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function formatDate(epochMs) {
-  const d = new Date(epochMs);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
 
 describe('PortWatch ArcGIS fixture matches upstream shape', () => {
   it('has features array', () => {

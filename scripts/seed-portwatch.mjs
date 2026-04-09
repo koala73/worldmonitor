@@ -81,7 +81,7 @@ async function fetchAllPages(portname, sinceEpoch) {
   return all;
 }
 
-function buildHistory(features) {
+export function buildHistory(features) {
   return features
     .filter(f => f.attributes?.date)
     .map(f => {
