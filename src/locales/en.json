@@ -1647,7 +1647,9 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "infoTooltip": "NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness >360K & confidence >80%."
+      "infoTooltip": "NASA FIRMS VIIRS satellite thermal detections across monitored conflict regions. High-intensity = brightness >360K & confidence >80%.",
+      "possibleExplosions": "{{count}} possible explosion(s) detected",
+      "explosionTooltip": "Thermal signature consistent with explosion (FRP >80 MW, brightness >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "State-Based",

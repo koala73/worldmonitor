@@ -28,6 +28,7 @@ export interface FireDetection {
   detectedAt: number;
   region: string;
   dayNight: string;
+  possibleExplosion: boolean;
 }
 
 export interface GeoCoordinates {

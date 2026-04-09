@@ -140,6 +140,29 @@
   font-weight: 600;
 }
 
+.fires-explosion-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--threat-critical);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.fires-explosion-alert {
+  padding: 6px 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--threat-critical) 12%, transparent);
+  color: var(--threat-critical);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .fires-footer {
   display: flex;
   justify-content: space-between;

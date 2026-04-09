@@ -202,6 +202,11 @@ components:
                 dayNight:
                     type: string
                     description: Day or night detection ("D" or "N").
+                possibleExplosion:
+                    type: boolean
+                    description: |-
+                        Whether the thermal signature suggests a possible explosion rather than a fire
+                         (FRP > 80 MW and brightness > 380 K).
             required:
                 - id
             description: FireDetection represents a satellite-detected active fire from NASA FIRMS.

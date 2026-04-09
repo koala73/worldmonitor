@@ -91,6 +91,7 @@ async function fetchAllRegions(apiKey) {
             detectedAt,
             region: regionName,
             dayNight: row.daynight || '',
+            possibleExplosion: (parseFloat(row.frp ?? '0') || 0) > 80 && (parseFloat(row.bright_ti4 ?? '0') || 0) > 380,
           });
         }
       } catch (err) {
