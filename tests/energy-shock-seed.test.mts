@@ -23,7 +23,7 @@ import {
 describe('energy shock scenario computation', () => {
   describe('chokepoint validation', () => {
     it('accepts all valid chokepoint IDs', () => {
-      for (const id of ['hormuz', 'malacca', 'suez', 'babelm']) {
+      for (const id of ['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']) {
         assert.ok(VALID_CHOKEPOINTS.has(id), `Expected ${id} to be valid`);
       }
     });
