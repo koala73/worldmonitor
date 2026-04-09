@@ -530,6 +530,7 @@ export interface GetCountryEnergyProfileResponse {
   ieaDaysOfCover: number;
   ieaNetExporter: boolean;
   ieaBelowObligation: boolean;
+  emberAvailable: boolean;
 }
 
 export interface ComputeEnergyShockScenarioRequest {

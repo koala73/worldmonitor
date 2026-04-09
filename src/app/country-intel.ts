@@ -329,6 +329,7 @@ export class CountryIntelManager implements AppModule {
           ieaDaysOfCover: profile.ieaDaysOfCover,
           ieaNetExporter: profile.ieaNetExporter,
           ieaBelowObligation: profile.ieaBelowObligation,
+          emberAvailable: profile.emberAvailable,
         });
       })
       .catch(() => {
@@ -346,6 +347,7 @@ export class CountryIntelManager implements AppModule {
           gasTotalDemandTj: 0, gasLngImportsTj: 0, gasPipeImportsTj: 0,
           gasLngShare: 0, ieaStocksAvailable: false, ieaStocksDataMonth: '',
           ieaDaysOfCover: 0, ieaNetExporter: false, ieaBelowObligation: false,
+          emberAvailable: false,
         });
       });
 

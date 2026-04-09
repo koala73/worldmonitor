@@ -61,4 +61,8 @@ message GetCountryEnergyProfileResponse {
   int32  iea_days_of_cover      = 39;
   bool   iea_net_exporter       = 40;
   bool   iea_below_obligation   = 41;
+
+  // Phase 3 — Ember monthly electricity mix
+  // fields 43-49 reserved for future Ember numeric fields
+  bool   ember_available      = 50;  // true when Ember monthly data exists for this country
 }

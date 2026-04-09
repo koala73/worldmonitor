@@ -122,6 +122,7 @@ export interface CountryEnergyProfileData {
   ieaDaysOfCover: number;
   ieaNetExporter: boolean;
   ieaBelowObligation: boolean;
+  emberAvailable: boolean;
 }
 
 export interface CountryPortActivityData {

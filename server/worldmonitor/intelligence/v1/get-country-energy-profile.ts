@@ -5,7 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
-import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
+import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX } from '../../../_shared/cache-keys';
 
 interface OwidMix {
   year?: number | null;
@@ -109,6 +109,14 @@ interface EnergySpine {
     hydroShare?: number;
     importShare?: number;
   };
+  electricity?: {
+    fossilShare?: number | null;
+    renewShare?: number | null;
+    nuclearShare?: number | null;
+    coalShare?: number | null;
+    gasShare?: number | null;
+    demandTwh?: number | null;
+  } | null;
 }
 
 const EMPTY: GetCountryEnergyProfileResponse = {
@@ -154,6 +162,7 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   ieaDaysOfCover: 0,
   ieaNetExporter: false,
   ieaBelowObligation: false,
+  emberAvailable: false,
 };
 
 function n(v: number | null | undefined): number {
@@ -164,10 +173,17 @@ function s(v: string | null | undefined): string {
   return typeof v === 'string' ? v : '';
 }
 
+interface EmberData {
+  fossilShare?: number | null;
+  renewShare?: number | null;
+  [key: string]: unknown;
+}
+
 function buildResponseFromSpine(
   spine: EnergySpine,
   gasStorage: GasStorage | null,
   electricity: ElectricityEntry | null,
+  emberData: EmberData | null,
 ): GetCountryEnergyProfileResponse {
   const cov = spine.coverage ?? {};
   const src = spine.sources ?? {};
@@ -176,6 +192,10 @@ function buildResponseFromSpine(
   const mix = spine.mix ?? {};
 
   const electricityAvailable = electricity != null && electricity.priceMwhEur != null;
+
+  const resolvedEmber: EmberData | null = (spine.electricity != null && typeof spine.electricity.fossilShare === 'number')
+    ? spine.electricity
+    : emberData;
 
   return {
     mixAvailable: cov.hasMix === true,
@@ -225,6 +245,8 @@ function buildResponseFromSpine(
     ieaDaysOfCover: n(oil.daysOfCover),
     ieaNetExporter: oil.netExporter === true,
     ieaBelowObligation: oil.belowObligation === true,
+
+    emberAvailable: resolvedEmber != null && typeof resolvedEmber.fossilShare === 'number',
   };
 }
 
@@ -249,22 +271,31 @@ export async function getCountryEnergyProfile(
   const electricity = electricityResult.status === 'fulfilled' ? (electricityResult.value as ElectricityEntry | null) : null;
 
   if (spine != null && typeof spine === 'object' && spine.coverage != null) {
-    return buildResponseFromSpine(spine, gasStorage, electricity);
+    let emberFallback: EmberData | null = null;
+    if (!spine.electricity || typeof spine.electricity.fossilShare !== 'number') {
+      const directEmber = await getCachedJson(`${EMBER_ELECTRICITY_KEY_PREFIX}${code}`, true).catch(() => null);
+      if (directEmber && typeof directEmber === 'object') {
+        emberFallback = directEmber as EmberData;
+      }
+    }
+    return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback);
   }
 
   // Fallback: 4-key direct join (cold cache or countries not yet in spine)
-  const [mixResult, jodiOilResult, jodiGasResult, ieaStocksResult] =
+  const [mixResult, jodiOilResult, jodiGasResult, ieaStocksResult, emberResult] =
     await Promise.allSettled([
       getCachedJson(`energy:mix:v1:${code}`, true),
       getCachedJson(`energy:jodi-oil:v1:${code}`, true),
       getCachedJson(`energy:jodi-gas:v1:${code}`, true),
       getCachedJson(`energy:iea-oil-stocks:v1:${code}`, true),
+      getCachedJson(`${EMBER_ELECTRICITY_KEY_PREFIX}${code}`, true),
     ]);
 
   const mix = mixResult.status === 'fulfilled' ? (mixResult.value as OwidMix | null) : null;
   const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
   const jodiGas = jodiGasResult.status === 'fulfilled' ? (jodiGasResult.value as JodiGas | null) : null;
   const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
+  const emberData = emberResult.status === 'fulfilled' ? (emberResult.value as EmberData | null) : null;
 
   const electricityAvailable = electricity != null && electricity.priceMwhEur != null;
 
@@ -316,5 +347,7 @@ export async function getCountryEnergyProfile(
     ieaDaysOfCover: n(ieaStocks?.daysOfCover),
     ieaNetExporter: ieaStocks?.netExporter === true,
     ieaBelowObligation: ieaStocks?.belowObligation === true,
+
+    emberAvailable: emberData != null && typeof emberData.fossilShare === 'number',
   };
 }

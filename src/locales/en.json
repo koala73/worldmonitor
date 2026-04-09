@@ -931,6 +931,7 @@
       "disruption": "Disruption",
       "vessels": "vessels",
       "incidents7d": "incidents (7d)",
+      "flowUnavailable": "Flow data unavailable",
       "containerRates": "Container Rates",
       "bulkShipping": "Bulk Shipping",
       "economicIndicators": "Economic Indicators",

@@ -2207,6 +2207,11 @@ components:
                     type: boolean
                 ieaBelowObligation:
                     type: boolean
+                emberAvailable:
+                    type: boolean
+                    description: |-
+                        Phase 3 — Ember monthly electricity mix
+                         fields 43-49 reserved for future Ember numeric fields
         ComputeEnergyShockScenarioRequest:
             type: object
             properties:
