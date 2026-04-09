@@ -20,6 +20,10 @@ export { SECTORS, COMMODITIES, MARKET_SYMBOLS, CRYPTO_MAP } from './markets';
 // Geo data (shared base)
 export { UNDERSEA_CABLES, MAP_URLS } from './geo';
 
+// Conflict scenes for the Conflicts dropdown
+export { CONFLICT_SCENES } from './conflicts';
+export type { ConflictSceneConfig } from './conflicts';
+
 // AI Datacenters (shared)
 export { AI_DATA_CENTERS } from './ai-datacenters';
 

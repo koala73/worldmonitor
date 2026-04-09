@@ -21,6 +21,7 @@ description: "Comprehensive documentation of all data sources, feed tiers, and c
 - GPS/GNSS jamming zones from ADS-B transponder analysis (H3 hex grid, interference % classification)
 - Geopolitical boundary overlays — Korean DMZ (43-point closed-ring polygon based on the Korean Armistice Agreement), with typed boundary categories (demilitarized, ceasefire, disputed, armistice) and info popups
 - Iran conflict events — geocoded attacks, strikes, and military incidents sourced from LiveUAMap with severity classification
+- **Conflict zone KML overlays** — on-demand overlay system sourced from Google My Maps KML exports. Selected via the ⚔ Conflicts dropdown in the header. KML is fetched, parsed client-side with `DOMParser` (no extra dependency), and rendered as native WebGL layers (lines for front lines, polygons for control zones) using the source map's own colors. Proxied through `/api/gmaps-kml` when direct fetch is CORS-blocked. To add a new conflict scene, append a `ConflictSceneConfig` entry to `src/config/conflicts.ts`.
 - Weather alerts and severe conditions
 
 </details>
