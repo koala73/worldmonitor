@@ -178,7 +178,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     };
   }
 
-  return await cachedFetchJson<GetResilienceScoreResponse>(
+  const cached = await cachedFetchJson<GetResilienceScoreResponse>(
     scoreCacheKey(normalizedCountryCode),
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
     async () => {
@@ -216,8 +216,6 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
 
       await appendHistory(normalizedCountryCode, overallScore);
 
-      const scoreInterval = await readScoreInterval(normalizedCountryCode);
-
       return {
         countryCode: normalizedCountryCode,
         overallScore,
@@ -231,7 +229,6 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         lowConfidence: computeLowConfidence(dimensions, imputationShare),
         imputationShare,
         dataVersion,
-        ...(scoreInterval && { scoreInterval }),
       };
     },
     300,
@@ -249,6 +246,12 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     imputationShare: 0,
     dataVersion: '',
   };
+
+  const scoreInterval = await readScoreInterval(normalizedCountryCode);
+  if (scoreInterval) {
+    return { ...cached, scoreInterval };
+  }
+  return cached;
 }
 
 export async function listScorableCountries(): Promise<string[]> {

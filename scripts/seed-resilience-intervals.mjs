@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 import {
+  acquireLockSafely,
   getRedisCredentials,
   loadEnvFile,
   logSeedResult,
+  releaseLock,
+  writeFreshnessMetadata,
 } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -42,8 +45,8 @@ export function computeIntervals(domainScores, domainWeights, draws = DRAWS) {
   }
   samples.sort((a, b) => a - b);
   return {
-    p05: Math.round(samples[Math.floor(draws * 0.05)] * 10) / 10,
-    p95: Math.round(samples[Math.floor(draws * 0.95)] * 10) / 10,
+    p05: Math.round(samples[Math.max(0, Math.ceil(draws * 0.05) - 1)] * 10) / 10,
+    p95: Math.round(samples[Math.min(draws - 1, Math.ceil(draws * 0.95) - 1)] * 10) / 10,
   };
 }
 
@@ -84,63 +87,71 @@ async function fetchScore(countryCode) {
 async function seedResilienceIntervals() {
   const { url, token } = getRedisCredentials();
 
-  console.log('[resilience-intervals] Fetching ranking...');
-  const ranking = await fetchRanking();
-  const allItems = [...(ranking.items ?? []), ...(ranking.greyedOut ?? [])];
-  console.log(`[resilience-intervals] ${allItems.length} countries in ranking`);
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const lockResult = await acquireLockSafely('resilience:intervals', runId, 600_000);
+  if (!lockResult.locked) return { skipped: true, reason: 'concurrent_run' };
 
-  if (allItems.length === 0) {
-    return { skipped: true, reason: 'empty_ranking' };
-  }
+  try {
+    console.log('[resilience-intervals] Fetching ranking...');
+    const ranking = await fetchRanking();
+    const allItems = [...(ranking.items ?? []), ...(ranking.greyedOut ?? [])];
+    console.log(`[resilience-intervals] ${allItems.length} countries in ranking`);
 
-  const BATCH = 10;
-  let computed = 0;
-  const commands = [];
+    if (allItems.length === 0) {
+      return { skipped: true, reason: 'empty_ranking' };
+    }
 
-  for (let i = 0; i < allItems.length; i += BATCH) {
-    const batch = allItems.slice(i, i + BATCH);
-    const results = await Promise.allSettled(
-      batch.map((item) => fetchScore(item.countryCode)),
-    );
+    const BATCH = 10;
+    let computed = 0;
+    const commands = [];
 
-    for (let j = 0; j < results.length; j++) {
-      const result = results[j];
-      if (result.status !== 'fulfilled') {
-        console.warn(`[resilience-intervals] Failed ${batch[j].countryCode}: ${result.reason?.message}`);
-        continue;
+    for (let i = 0; i < allItems.length; i += BATCH) {
+      const batch = allItems.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        batch.map((item) => fetchScore(item.countryCode)),
+      );
+
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
+        if (result.status !== 'fulfilled') {
+          console.warn(`[resilience-intervals] Failed ${batch[j].countryCode}: ${result.reason?.message}`);
+          continue;
+        }
+        const scoreData = result.value;
+        if (!scoreData?.domains?.length) continue;
+
+        const domainScores = DOMAIN_ORDER.map((id) => {
+          const d = scoreData.domains.find((dom) => dom.id === id);
+          return d?.score ?? 0;
+        });
+        const weights = DOMAIN_ORDER.map((id) => DOMAIN_WEIGHTS[id]);
+
+        const interval = computeIntervals(domainScores, weights, DRAWS);
+        const payload = {
+          p05: interval.p05,
+          p95: interval.p95,
+          draws: DRAWS,
+          computedAt: new Date().toISOString(),
+        };
+
+        const key = `${INTERVAL_KEY_PREFIX}${scoreData.countryCode}`;
+        commands.push(['SET', key, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
+        computed++;
       }
-      const scoreData = result.value;
-      if (!scoreData?.domains?.length) continue;
-
-      const domainScores = DOMAIN_ORDER.map((id) => {
-        const d = scoreData.domains.find((dom) => dom.id === id);
-        return d?.score ?? 0;
-      });
-      const weights = DOMAIN_ORDER.map((id) => DOMAIN_WEIGHTS[id]);
-
-      const interval = computeIntervals(domainScores, weights, DRAWS);
-      const payload = {
-        p05: interval.p05,
-        p95: interval.p95,
-        draws: DRAWS,
-        computedAt: new Date().toISOString(),
-      };
-
-      const key = `${INTERVAL_KEY_PREFIX}${scoreData.countryCode}`;
-      commands.push(['SET', key, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
-      computed++;
     }
-  }
 
-  if (commands.length > 0) {
-    const PIPE_BATCH = 50;
-    for (let i = 0; i < commands.length; i += PIPE_BATCH) {
-      await redisPipeline(url, token, commands.slice(i, i + PIPE_BATCH));
+    if (commands.length > 0) {
+      const PIPE_BATCH = 50;
+      for (let i = 0; i < commands.length; i += PIPE_BATCH) {
+        await redisPipeline(url, token, commands.slice(i, i + PIPE_BATCH));
+      }
     }
-  }
 
-  console.log(`[resilience-intervals] Wrote ${computed}/${allItems.length} intervals`);
-  return { skipped: false, recordCount: computed, total: allItems.length };
+    console.log(`[resilience-intervals] Wrote ${computed}/${allItems.length} intervals`);
+    return { skipped: false, recordCount: computed, total: allItems.length };
+  } finally {
+    await releaseLock('resilience:intervals', runId);
+  }
 }
 
 async function main() {
@@ -151,6 +162,7 @@ async function main() {
     ...(result.total != null && { total: result.total }),
     ...(result.reason != null && { reason: result.reason }),
   });
+  await writeFreshnessMetadata('resilience', 'intervals', result.recordCount ?? 0, '', 7 * 24 * 3600);
 }
 
 if (process.argv[1]?.endsWith('seed-resilience-intervals.mjs')) {
