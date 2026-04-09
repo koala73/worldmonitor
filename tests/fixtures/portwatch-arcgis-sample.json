@@ -2,50 +2,34 @@
   "features": [
     {
       "attributes": {
-        "date": 1735689600000,
+        "date": 1714521600000,
         "n_container": 12,
         "n_dry_bulk": 8,
-        "n_general_cargo": 5,
-        "n_roro": 2,
+        "n_general_cargo": 3,
+        "n_roro": 1,
         "n_tanker": 15,
-        "n_total": 42,
+        "n_total": 39,
         "capacity_container": 450000,
         "capacity_dry_bulk": 320000,
-        "capacity_general_cargo": 100000,
-        "capacity_roro": 60000,
-        "capacity_tanker": 1200000
-      }
-    },
-    {
-      "attributes": {
-        "date": 1735776000000,
-        "n_container": 14,
-        "n_dry_bulk": 9,
-        "n_general_cargo": 4,
-        "n_roro": 3,
-        "n_tanker": 18,
-        "n_total": 48,
-        "capacity_container": 520000,
-        "capacity_dry_bulk": 340000,
         "capacity_general_cargo": 85000,
-        "capacity_roro": 72000,
-        "capacity_tanker": 1450000
+        "capacity_roro": 25000,
+        "capacity_tanker": 620000
       }
     },
     {
       "attributes": {
-        "date": 1735862400000,
+        "date": 1714608000000,
         "n_container": 10,
-        "n_dry_bulk": 7,
-        "n_general_cargo": 6,
-        "n_roro": 1,
-        "n_tanker": 13,
-        "n_total": 37,
+        "n_dry_bulk": 6,
+        "n_general_cargo": 4,
+        "n_roro": 2,
+        "n_tanker": 18,
+        "n_total": 40,
         "capacity_container": 380000,
-        "capacity_dry_bulk": 290000,
-        "capacity_general_cargo": 120000,
-        "capacity_roro": 30000,
-        "capacity_tanker": 1050000
+        "capacity_dry_bulk": 240000,
+        "capacity_general_cargo": 110000,
+        "capacity_roro": 48000,
+        "capacity_tanker": 740000
       }
     }
   ],

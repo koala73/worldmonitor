@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildHistory } from '../scripts/seed-portwatch.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 const root = resolve(__dirname, '..');
 const src = readFileSync(resolve(root, 'server/worldmonitor/supply-chain/v1/_portwatch-upstream.ts'), 'utf-8');
 const relaySrc = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf-8');
@@ -194,5 +196,57 @@ describe('detectTrafficAnomaly', () => {
     const history = [...makeDays(7, 0, 0), ...makeDays(30, 1, 7)];
     const result = detectTrafficAnomaly(history, 'war_zone');
     assert.equal(result.signal, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Golden fixture: upstream ArcGIS FeatureServer format regression guard
+// ---------------------------------------------------------------------------
+
+describe('golden fixture (PortWatch ArcGIS JSON)', () => {
+  const fixture = JSON.parse(readFileSync(resolve(FIXTURE_DIR, 'portwatch-arcgis-sample.json'), 'utf-8'));
+
+  it('fixture has features array', () => {
+    assert.ok(Array.isArray(fixture.features), 'features should be an array');
+    assert.ok(fixture.features.length >= 1, `expected >=1 feature, got ${fixture.features.length}`);
+  });
+
+  it('each feature has attributes with required fields', () => {
+    for (const f of fixture.features) {
+      assert.ok(f.attributes != null, 'attributes missing');
+      assert.ok('date' in f.attributes, 'date missing');
+      assert.ok('n_container' in f.attributes, 'n_container missing');
+      assert.ok('n_dry_bulk' in f.attributes, 'n_dry_bulk missing');
+      assert.ok('n_tanker' in f.attributes, 'n_tanker missing');
+      assert.ok('n_total' in f.attributes, 'n_total missing');
+      assert.ok('capacity_container' in f.attributes, 'capacity_container missing');
+      assert.ok('capacity_tanker' in f.attributes, 'capacity_tanker missing');
+    }
+  });
+
+  it('buildHistory produces entries with expected shape', () => {
+    const history = buildHistory(fixture.features);
+    assert.ok(history.length >= 1, 'expected >=1 history entry');
+    const entry = history[0];
+    assert.ok('date' in entry, 'date missing');
+    assert.ok('container' in entry, 'container missing');
+    assert.ok('dryBulk' in entry, 'dryBulk missing');
+    assert.ok('tanker' in entry, 'tanker missing');
+    assert.ok('total' in entry, 'total missing');
+    assert.ok('cargo' in entry, 'cargo missing');
+    assert.ok('capContainer' in entry, 'capContainer missing');
+    assert.ok('capTanker' in entry, 'capTanker missing');
+  });
+
+  it('buildHistory date format is YYYY-MM-DD', () => {
+    const history = buildHistory(fixture.features);
+    for (const entry of history) {
+      assert.match(entry.date, /^\d{4}-\d{2}-\d{2}$/, `date format wrong: ${entry.date}`);
+    }
+  });
+
+  it('buildHistory total matches n_total from attributes', () => {
+    const history = buildHistory(fixture.features);
+    assert.equal(history[0].total, fixture.features[0].attributes.n_total);
   });
 });

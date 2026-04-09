@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   CANONICAL_KEY,
   MIN_COUNTRIES,
@@ -10,6 +13,9 @@ import {
   validateGasCountries,
   buildLngVulnerabilityIndex,
 } from '../scripts/seed-jodi-gas.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 
 describe('CANONICAL_KEY', () => {
   it('is energy:jodi-gas:v1:_countries', () => {
@@ -364,5 +370,58 @@ describe('buildLngVulnerabilityIndex', () => {
     assert.equal(entry.lngShareOfImports, 0.0);
     assert.equal(entry.pipeImportsTj, 380000);
     assert.ok(!('lngImportsTj' in entry));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Golden fixture: upstream CSV format regression guard
+// ---------------------------------------------------------------------------
+
+describe('golden fixture (JODI Gas CSV)', () => {
+  const csv = readFileSync(resolve(FIXTURE_DIR, 'jodi-gas-sample.csv'), 'utf-8');
+
+  it('parseCsvRows returns rows from the fixture', () => {
+    const rows = parseCsvRows(csv);
+    assert.ok(rows.length >= 1, `expected >=1 row, got ${rows.length}`);
+  });
+
+  it('parsed rows have expected shape (area, period, flow, obs)', () => {
+    const rows = parseCsvRows(csv);
+    for (const row of rows) {
+      assert.ok('area' in row, 'area field missing');
+      assert.ok('period' in row, 'period field missing');
+      assert.ok('flow' in row, 'flow field missing');
+      assert.ok('obs' in row, 'obs field missing');
+    }
+  });
+
+  it('buildCountryRecords produces DE with expected gas flow fields', () => {
+    const rows = parseCsvRows(csv);
+    const records = buildCountryRecords(rows);
+    const de = records.find(r => r.iso2 === 'DE');
+    assert.ok(de != null, 'DE record missing');
+    assert.ok('lngImportsTj' in de, 'lngImportsTj missing');
+    assert.ok('pipeImportsTj' in de, 'pipeImportsTj missing');
+    assert.ok('totalDemandTj' in de, 'totalDemandTj missing');
+    assert.ok('productionTj' in de, 'productionTj missing');
+    assert.ok('closingStockTj' in de, 'closingStockTj missing');
+    assert.ok('totalImportsTj' in de, 'totalImportsTj missing');
+  });
+
+  it('JP record has non-null lngImportsTj', () => {
+    const rows = parseCsvRows(csv);
+    const records = buildCountryRecords(rows);
+    const jp = records.find(r => r.iso2 === 'JP');
+    assert.ok(jp != null, 'JP record missing');
+    assert.ok(typeof jp.lngImportsTj === 'number', 'JP lngImportsTj should be a number');
+  });
+
+  it('lngShareOfImports is computed for DE', () => {
+    const rows = parseCsvRows(csv);
+    const records = buildCountryRecords(rows);
+    const de = records.find(r => r.iso2 === 'DE');
+    assert.ok(de != null);
+    assert.ok(typeof de.lngShareOfImports === 'number', 'lngShareOfImports should be computed');
+    assert.ok(de.lngShareOfImports > 0 && de.lngShareOfImports < 1, 'lngShareOfImports should be between 0 and 1');
   });
 });

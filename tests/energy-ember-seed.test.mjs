@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   parseEmberCsv,
   buildAllCountriesMap,
@@ -8,6 +11,9 @@ import {
   EMBER_META_KEY,
   EMBER_TTL_SECONDS,
 } from '../scripts/seed-ember-electricity.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 
 // ─── Fixture builders ──────────────────────────────────────────────────────
 
@@ -522,5 +528,58 @@ describe('dataWritten flag prevents stash restore after successful pipeline', ()
     const dataWritten = true;
     const shouldExtendTtl = !dataWritten;
     assert.equal(shouldExtendTtl, false, 'should not extend TTL when data is already correct');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Golden fixture: upstream CSV format regression guard
+// ---------------------------------------------------------------------------
+
+describe('golden fixture (Ember monthly CSV)', () => {
+  const csv = readFileSync(resolve(FIXTURE_DIR, 'ember-monthly-sample.csv'), 'utf-8');
+
+  it('parseEmberCsv returns at least 1 country from the fixture', () => {
+    const countries = parseEmberCsv(csv);
+    assert.ok(countries.size >= 1, `expected >=1 country, got ${countries.size}`);
+  });
+
+  it('fixture contains US and DE', () => {
+    const countries = parseEmberCsv(csv);
+    assert.ok(countries.has('US'), 'US missing');
+    assert.ok(countries.has('DE'), 'DE missing');
+  });
+
+  it('each entry has expected share fields', () => {
+    const expected = ['fossilShare', 'renewShare', 'nuclearShare', 'coalShare', 'gasShare', 'demandTwh', 'dataMonth'];
+    const countries = parseEmberCsv(csv);
+    for (const [iso2, entry] of countries) {
+      for (const field of expected) {
+        assert.ok(field in entry, `${iso2} missing field ${field}`);
+      }
+    }
+  });
+
+  it('share values are numbers or null', () => {
+    const countries = parseEmberCsv(csv);
+    for (const [iso2, entry] of countries) {
+      for (const key of ['fossilShare', 'renewShare', 'coalShare', 'gasShare']) {
+        const val = entry[key];
+        assert.ok(val === null || typeof val === 'number', `${iso2}.${key} should be number|null, got ${typeof val}`);
+      }
+    }
+  });
+
+  it('dataMonth is YYYY-MM format', () => {
+    const countries = parseEmberCsv(csv);
+    for (const [iso2, entry] of countries) {
+      assert.match(entry.dataMonth, /^\d{4}-\d{2}$/, `${iso2} dataMonth format wrong: ${entry.dataMonth}`);
+    }
+  });
+
+  it('US fossilShare is 50% (400/800)', () => {
+    const countries = parseEmberCsv(csv);
+    const us = countries.get('US');
+    assert.ok(us != null);
+    assert.ok(Math.abs(us.fossilShare - 50) < 0.01, `US fossilShare should be 50, got ${us.fossilShare}`);
   });
 });

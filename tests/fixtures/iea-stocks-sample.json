@@ -1,30 +1,12 @@
 {
   "latest": { "year": 2025, "month": 11 },
-  "monthly": [
-    {
-      "countryName": "Total",
-      "yearMonth": 202511,
-      "total": "145",
-      "industry": "145",
-      "publicData": "0",
-      "abroadIndustry": "0",
-      "abroadPublic": "0"
-    },
+  "records": [
     {
       "countryName": "Germany",
       "yearMonth": 202511,
       "total": "130",
-      "industry": "110",
-      "publicData": "20",
-      "abroadIndustry": "5",
-      "abroadPublic": "0"
-    },
-    {
-      "countryName": "France",
-      "yearMonth": 202511,
-      "total": "100",
-      "industry": "85",
-      "publicData": "15",
+      "industry": "130",
+      "publicData": "0",
       "abroadIndustry": "0",
       "abroadPublic": "0"
     },
@@ -38,49 +20,13 @@
       "abroadPublic": "0"
     },
     {
-      "countryName": "Greece",
-      "yearMonth": 202511,
-      "total": "75",
-      "industry": "75",
-      "publicData": "0",
-      "abroadIndustry": "0",
-      "abroadPublic": "0"
-    },
-    {
-      "countryName": "Estonia",
-      "yearMonth": 202511,
-      "total": "11111",
-      "industry": "11111",
-      "publicData": "0",
-      "abroadIndustry": "0",
-      "abroadPublic": "0"
-    },
-    {
       "countryName": "Japan",
       "yearMonth": 202511,
       "total": "171",
-      "industry": "171",
-      "publicData": "0",
-      "abroadIndustry": "0",
-      "abroadPublic": "0"
-    },
-    {
-      "countryName": "Canada",
-      "yearMonth": 202511,
-      "total": "Net Exporter",
-      "industry": "0",
-      "publicData": "0",
-      "abroadIndustry": "0",
-      "abroadPublic": "0"
-    },
-    {
-      "countryName": "United States",
-      "yearMonth": 202511,
-      "total": "Net Exporter",
-      "industry": "0",
-      "publicData": "0",
-      "abroadIndustry": "0",
-      "abroadPublic": "0"
+      "industry": "108",
+      "publicData": "33",
+      "abroadIndustry": "20",
+      "abroadPublic": "10"
     }
   ]
 }

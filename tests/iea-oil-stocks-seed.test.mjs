@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   COUNTRY_MAP,
   IEA_90_DAY_OBLIGATION,
@@ -9,6 +12,9 @@ import {
   CANONICAL_KEY,
   ANALYSIS_KEY,
 } from '../scripts/seed-iea-oil-stocks.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 
 const FIXED_TS = '2026-04-05T08:00:00.000Z';
 
@@ -338,5 +344,58 @@ describe('buildOilStocksAnalysis', () => {
     const members = [baseMember('FR', 90)];
     const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
     assert.equal(result.ieaMembers[0].obligationMet, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Golden fixture: upstream JSON format regression guard
+// ---------------------------------------------------------------------------
+
+describe('golden fixture (IEA Oil Stocks JSON)', () => {
+  const fixture = JSON.parse(readFileSync(resolve(FIXTURE_DIR, 'iea-stocks-sample.json'), 'utf-8'));
+
+  it('fixture has records array with at least 2 entries', () => {
+    assert.ok(Array.isArray(fixture.records), 'records should be an array');
+    assert.ok(fixture.records.length >= 2, `expected >=2 records, got ${fixture.records.length}`);
+  });
+
+  it('each record has required upstream fields', () => {
+    for (const record of fixture.records) {
+      assert.ok('countryName' in record, 'countryName missing');
+      assert.ok('yearMonth' in record, 'yearMonth missing');
+      assert.ok('total' in record, 'total missing');
+      assert.ok('industry' in record, 'industry missing');
+      assert.ok('publicData' in record, 'publicData missing');
+    }
+  });
+
+  it('parseRecord produces valid output for Germany', () => {
+    const de = fixture.records.find(r => r.countryName === 'Germany');
+    assert.ok(de != null, 'Germany record missing in fixture');
+    const parsed = parseRecord(de, FIXED_TS);
+    assert.ok(parsed !== null);
+    assert.equal(parsed.iso2, 'DE');
+    assert.equal(parsed.daysOfCover, 130);
+    assert.equal(parsed.netExporter, false);
+    assert.equal(parsed.belowObligation, false);
+  });
+
+  it('parseRecord identifies Norway as net exporter', () => {
+    const no = fixture.records.find(r => r.countryName === 'Norway');
+    assert.ok(no != null, 'Norway record missing in fixture');
+    const parsed = parseRecord(no, FIXED_TS);
+    assert.ok(parsed !== null);
+    assert.equal(parsed.iso2, 'NO');
+    assert.equal(parsed.netExporter, true);
+    assert.equal(parsed.daysOfCover, null);
+  });
+
+  it('parseRecord computes abroadDays correctly for Japan', () => {
+    const jp = fixture.records.find(r => r.countryName === 'Japan');
+    assert.ok(jp != null, 'Japan record missing in fixture');
+    const parsed = parseRecord(jp, FIXED_TS);
+    assert.ok(parsed !== null);
+    assert.equal(parsed.iso2, 'JP');
+    assert.equal(parsed.abroadDays, 30);
   });
 });

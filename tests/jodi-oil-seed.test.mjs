@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   parseCsv,
   parseObsValue,
@@ -11,6 +14,9 @@ import {
   COUNTRY_KEY_PREFIX,
   JODI_TTL,
 } from '../scripts/seed-jodi-oil.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 
 const SAMPLE_CSV_HEADER = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE';
 
@@ -355,5 +361,57 @@ describe('validateCoverage', () => {
 
   it('returns false for empty array', () => {
     assert.equal(validateCoverage([]), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Golden fixture: upstream CSV format regression guard
+// ---------------------------------------------------------------------------
+
+describe('golden fixture (JODI Oil CSV)', () => {
+  const csv = readFileSync(resolve(FIXTURE_DIR, 'jodi-oil-sample.csv'), 'utf-8');
+
+  it('parseCsv returns rows with expected columns', () => {
+    const rows = parseCsv(csv);
+    assert.ok(rows.length >= 1, 'expected at least 1 row');
+    const first = rows[0];
+    assert.ok('REF_AREA' in first, 'REF_AREA column missing');
+    assert.ok('TIME_PERIOD' in first, 'TIME_PERIOD column missing');
+    assert.ok('ENERGY_PRODUCT' in first, 'ENERGY_PRODUCT column missing');
+    assert.ok('FLOW_BREAKDOWN' in first, 'FLOW_BREAKDOWN column missing');
+    assert.ok('UNIT_MEASURE' in first, 'UNIT_MEASURE column missing');
+    assert.ok('OBS_VALUE' in first, 'OBS_VALUE column missing');
+    assert.ok('ASSESSMENT_CODE' in first, 'ASSESSMENT_CODE column missing');
+  });
+
+  it('extractCountryData returns diesel and gasoline fields for DE', () => {
+    const rows = parseCsv(csv);
+    const de = extractCountryData(rows, 'DE');
+    assert.ok(de !== null, 'DE should have data');
+    assert.ok('diesel' in de, 'diesel key missing');
+    assert.ok('gasoline' in de, 'gasoline key missing');
+    assert.ok('crude' in de, 'crude key missing');
+    assert.equal(de.iso2, 'DE');
+    assert.ok(typeof de.dataMonth === 'string');
+  });
+
+  it('extractCountryData returns jet field for JP', () => {
+    const rows = parseCsv(csv);
+    const jp = extractCountryData(rows, 'JP');
+    assert.ok(jp !== null, 'JP should have data');
+    assert.ok('jet' in jp, 'jet key missing');
+    assert.ok(jp.jet.demandKbd !== null, 'JP jet demandKbd should have a value');
+  });
+
+  it('secondary product sub-fields are numbers or null', () => {
+    const rows = parseCsv(csv);
+    const de = extractCountryData(rows, 'DE');
+    assert.ok(de !== null);
+    for (const prod of ['diesel', 'gasoline']) {
+      for (const field of ['demandKbd', 'refOutputKbd', 'importsKbd', 'exportsKbd']) {
+        const val = de[prod][field];
+        assert.ok(val === null || typeof val === 'number', `${prod}.${field} should be number|null, got ${typeof val}`);
+      }
+    }
   });
 });
