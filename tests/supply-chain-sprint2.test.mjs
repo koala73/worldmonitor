@@ -229,6 +229,20 @@ describe('get-country-cost-shock handler source code', () => {
     assert.match(src, /productDeficits/);
     assert.doesNotMatch(src, /product.*===.*'crude'/);
   });
+
+  it('productDeficits must NOT filter before averaging — zero-deficit products must stay in denominator', () => {
+    assert.ok(
+      !src.includes('.filter((d: number) => d > 0)') && !src.includes('.filter((d) => d > 0)'),
+      'productDeficits must NOT filter before averaging — zero-deficit products must stay in denominator'
+    );
+  });
+
+  it('coverageDays must clamp negative sentinel for net exporters', () => {
+    assert.ok(
+      src.includes('Math.max(0, shock?.effectiveCoverDays'),
+      'coverageDays must clamp negative sentinel for net exporters'
+    );
+  });
 });
 
 // ========================================================================

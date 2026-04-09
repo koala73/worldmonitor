@@ -74,9 +74,11 @@ export async function getCountryCostShock(
       }).catch(() => null)
     ).catch(() => null);
 
-    coverageDays = shock?.effectiveCoverDays ?? 0;
-    // Average deficit across refined products (Gasoline, Diesel, Jet fuel, LPG). No 'crude' entry.
-    const productDeficits = shock?.products?.map((p: { product: string; deficitPct: number }) => p.deficitPct).filter((d: number) => d > 0) ?? [];
+    coverageDays = Math.max(0, shock?.effectiveCoverDays ?? 0);
+    // Average deficit across all modelled products (Gasoline, Diesel, Jet fuel, LPG) with demand > 0.
+    // computeEnergyShockScenario already filters to products with demand; zero-deficit products
+    // are valid data points (demand exists but disruption causes no shortage) and must stay in the denominator.
+    const productDeficits = shock?.products?.map((p: { product: string; deficitPct: number }) => p.deficitPct) ?? [];
     supplyDeficitPct = productDeficits.length > 0
       ? productDeficits.reduce((a: number, b: number) => a + b, 0) / productDeficits.length
       : 0;

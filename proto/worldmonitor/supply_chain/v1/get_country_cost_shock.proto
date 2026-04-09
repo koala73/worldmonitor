@@ -26,7 +26,7 @@ message GetCountryCostShockResponse {
   string hs2 = 3;
   // Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
   double supply_deficit_pct = 4;
-  // Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors)
+  // Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors or net exporters)
   int32 coverage_days = 5;
   // War risk insurance premium in basis points for this chokepoint
   int32 war_risk_premium_bps = 6;
