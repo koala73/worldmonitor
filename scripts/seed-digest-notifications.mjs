@@ -633,6 +633,54 @@ async function sendEmail(email, subject, text, html) {
   }
 }
 
+async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
+  let url;
+  try { url = decrypt(webhookEnvelope); } catch (err) {
+    console.warn(`[digest] Webhook decrypt failed for ${userId}:`, err.message);
+    return false;
+  }
+  let parsed;
+  try { parsed = new URL(url); } catch {
+    console.warn(`[digest] Webhook invalid URL for ${userId}`);
+    await deactivateChannel(userId, 'webhook');
+    return false;
+  }
+  if (parsed.protocol !== 'https:') {
+    console.warn(`[digest] Webhook rejected non-HTTPS for ${userId}`);
+    return false;
+  }
+  try {
+    const addrs = await dns.resolve4(parsed.hostname).catch(() => []);
+    if (addrs.some(isPrivateIP)) { console.warn(`[digest] Webhook SSRF blocked for ${userId}`); return false; }
+  } catch { return false; }
+  const payload = JSON.stringify({
+    version: '1',
+    eventType: 'digest',
+    stories: stories.map(s => ({ title: s.title, severity: s.severity, phase: s.phase, sources: s.sources })),
+    summary: aiSummary ?? null,
+    storyCount: stories.length,
+  });
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      body: payload,
+      signal: AbortSignal.timeout(10000),
+    });
+    if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
+      console.warn(`[digest] Webhook ${resp.status} for ${userId} — deactivating`);
+      await deactivateChannel(userId, 'webhook');
+      return false;
+    }
+    if (!resp.ok) { console.warn(`[digest] Webhook ${resp.status} for ${userId}`); return false; }
+    console.log(`[digest] Webhook delivered for ${userId}`);
+    return true;
+  } catch (err) {
+    console.warn(`[digest] Webhook error for ${userId}:`, err.message);
+    return false;
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -750,6 +798,8 @@ async function main() {
         ok = await sendDiscord(rule.userId, ch.webhookEnvelope, text);
       } else if (ch.channelType === 'email' && ch.email) {
         ok = await sendEmail(ch.email, subject, text, html);
+      } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
+        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, stories, aiSummary);
       }
       if (ok) anyDelivered = true;
     }

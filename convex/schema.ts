@@ -65,6 +65,15 @@ export default defineSchema({
         discordGuildId: v.optional(v.string()),
         discordChannelId: v.optional(v.string()),
       }),
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("webhook"),
+        webhookEnvelope: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+        webhookLabel: v.optional(v.string()),
+        webhookSecret: v.optional(v.string()),
+      }),
     ),
   )
     .index("by_user", ["userId"])

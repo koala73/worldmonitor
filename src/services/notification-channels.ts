@@ -1,7 +1,7 @@
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
 
-export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord';
+export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'webhook';
 export type Sensitivity = 'all' | 'high' | 'critical';
 export type QuietHoursOverride = 'critical_only' | 'silence_all' | 'batch_on_wake';
 export type DigestMode = 'realtime' | 'daily' | 'twice_daily' | 'weekly';
@@ -15,6 +15,7 @@ export interface NotificationChannel {
   slackChannelName?: string;
   slackTeamName?: string;
   slackConfigurationUrl?: string;
+  webhookLabel?: string;
 }
 
 export interface AlertRule {
@@ -88,6 +89,15 @@ export async function setSlackChannel(webhookEnvelope: string): Promise<void> {
     body: JSON.stringify({ action: 'set-channel', channelType: 'slack', webhookEnvelope }),
   });
   if (!res.ok) throw new Error(`set slack channel: ${res.status}`);
+}
+
+export async function setWebhookChannel(webhookUrl: string, label?: string): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-channel', channelType: 'webhook', webhookEnvelope: webhookUrl, webhookLabel: label }),
+  });
+  if (!res.ok) throw new Error(`set webhook channel: ${res.status}`);
 }
 
 export async function startSlackOAuth(): Promise<string> {

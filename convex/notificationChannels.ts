@@ -42,6 +42,10 @@ export const setChannelForUser = internalMutation({
       if (!email) throw new ConvexError("email required for email channel");
       const doc = { userId, channelType: "email" as const, email, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { await ctx.db.insert("notificationChannels", doc); }
+    } else if (channelType === "webhook") {
+      if (!webhookEnvelope) throw new ConvexError("webhookEnvelope required for webhook channel");
+      const doc = { userId, channelType: "webhook" as const, webhookEnvelope, verified: true, linkedAt: now };
+      if (existing) { await ctx.db.replace(existing._id, doc); } else { await ctx.db.insert("notificationChannels", doc); }
     } else {
       throw new ConvexError("discord channel must be set via set-discord-oauth");
     }
@@ -216,6 +220,14 @@ export const setChannel = mutation({
     } else if (args.channelType === "email") {
       if (!args.email) throw new ConvexError("email required for email channel");
       const doc = { userId, channelType: "email" as const, email: args.email, verified: true, linkedAt: now };
+      if (existing) {
+        await ctx.db.replace(existing._id, doc);
+      } else {
+        await ctx.db.insert("notificationChannels", doc);
+      }
+    } else if (args.channelType === "webhook") {
+      if (!args.webhookEnvelope) throw new ConvexError("webhookEnvelope required for webhook channel");
+      const doc = { userId, channelType: "webhook" as const, webhookEnvelope: args.webhookEnvelope, verified: true, linkedAt: now };
       if (existing) {
         await ctx.db.replace(existing._id, doc);
       } else {
