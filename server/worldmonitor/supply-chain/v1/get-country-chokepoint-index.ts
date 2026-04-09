@@ -9,7 +9,7 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { CHOKEPOINT_EXPOSURE_KEY } from '../../../_shared/cache-keys';
 import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
-import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json' assert { type: 'json' };
+import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json' with { type: 'json' };
 
 const CACHE_TTL = 86400; // 24 hours
 

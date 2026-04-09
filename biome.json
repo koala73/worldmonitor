@@ -15,6 +15,24 @@
 		{
 			"includes": ["src/generated/**"],
 			"linter": { "enabled": false }
+		},
+		{
+			"includes": ["public/**"],
+			"linter": { "enabled": false }
+		},
+		{
+			"includes": ["pro-test/**"],
+			"linter": { "enabled": false }
+		},
+		{
+			"includes": ["*.html", "**/*.html"],
+			"linter": {
+				"rules": {
+					"suspicious": { "noVar": "off" },
+					"correctness": { "noInnerDeclarations": "off" },
+					"a11y": { "useButtonType": "off", "useValidAnchor": "off" }
+				}
+			}
 		}
 	],
 	"linter": {
