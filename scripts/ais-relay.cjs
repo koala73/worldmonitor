@@ -91,12 +91,39 @@ const OPENSKY_PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
 const PROXY_URL = process.env.PROXY_URL || ''; // generic residential proxy (US exit) — http://user:pass@host:port or host:port:user:pass (Decodo)
 
-// OREF (Israel Home Front Command) siren alerts — fetched via HTTP proxy (Israel exit)
+// Tzeva Adom (primary) + OREF (fallback) siren alerts
+const TZEVA_ADOM_URL = 'https://api.tzevaadom.co.il/notifications';
 const OREF_PROXY_AUTH = process.env.OREF_PROXY_AUTH || ''; // format: user:pass@host:port
 const OREF_ALERTS_URL = 'https://www.oref.org.il/WarningMessages/alert/alerts.json';
 const OREF_HISTORY_URL = 'https://www.oref.org.il/WarningMessages/alert/History/AlertsHistory.json';
 const OREF_POLL_INTERVAL_MS = Math.max(30_000, Number(process.env.OREF_POLL_INTERVAL_MS || 300_000));
 const OREF_ENABLED = !!OREF_PROXY_AUTH;
+
+// Hebrew→English translation dictionaries for siren alerts
+const OREF_THREAT_TRANSLATIONS = (() => {
+  try { return JSON.parse(require('fs').readFileSync(path.join(__dirname, '..', 'data', 'oref-threat-translations-he-en.json'), 'utf8')); }
+  catch { return {}; }
+})();
+const OREF_CITY_TRANSLATIONS = (() => {
+  try { return JSON.parse(require('fs').readFileSync(path.join(__dirname, '..', 'data', 'israeli-localities-he-en.json'), 'utf8')); }
+  catch { return {}; }
+})();
+
+function translateHebrew(text) {
+  if (!text) return text;
+  if (OREF_THREAT_TRANSLATIONS[text]) return OREF_THREAT_TRANSLATIONS[text];
+  if (OREF_CITY_TRANSLATIONS[text]) return OREF_CITY_TRANSLATIONS[text];
+  let result = text;
+  for (const [heb, eng] of Object.entries(OREF_THREAT_TRANSLATIONS)) {
+    if (result.includes(heb)) result = result.replace(heb, eng);
+  }
+  return result;
+}
+
+function translateCity(city) {
+  if (!city) return city;
+  return OREF_CITY_TRANSLATIONS[city] || city;
+}
 const OREF_DATA_DIR = process.env.OREF_DATA_DIR || '';
 const OREF_LOCAL_FILE = (() => {
   if (!OREF_DATA_DIR) return '';
@@ -805,19 +832,74 @@ function orefCurlFetch(proxyAuth, url, { toFile } = {}) {
   return result;
 }
 
-async function orefFetchAlerts() {
-  if (!OREF_ENABLED) return;
+async function tzevaAdomFetchAlerts() {
   try {
-    const raw = orefCurlFetch(OREF_PROXY_AUTH, OREF_ALERTS_URL);
-    const cleaned = stripBom(raw).trim();
+    const resp = await fetch(TZEVA_ADOM_URL, {
+      headers: { 'User-Agent': 'WorldMonitor/1.0', Accept: 'application/json' },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!Array.isArray(data) || data.length === 0) return [];
+    return data.map((alert) => {
+      const rawThreat = alert.threat || alert.title || '';
+      const rawCities = Array.isArray(alert.cities) ? alert.cities : (alert.data ? [alert.data] : []);
+      return {
+        id: alert.notificationId || String(Date.now()),
+        cat: alert.cat || '',
+        title: translateHebrew(rawThreat),
+        titleHe: rawThreat,
+        data: rawCities.map(translateCity),
+        dataHe: rawCities,
+        desc: alert.desc || '',
+        date: alert.date || new Date().toISOString(),
+        source: 'tzeva-adom',
+      };
+    });
+  } catch (err) {
+    console.warn(`[TzevaAdom] Fetch failed: ${err?.message || err}`);
+    return null;
+  }
+}
 
-    let alerts = [];
-    if (cleaned && cleaned !== '[]' && cleaned !== 'null') {
-      try {
-        const parsed = JSON.parse(cleaned);
-        alerts = Array.isArray(parsed) ? parsed : [parsed];
-      } catch { alerts = []; }
+async function orefFetchAlerts() {
+  let alerts = [];
+  let source = 'none';
+
+  // Primary: Tzeva Adom (free, no proxy needed)
+  const tzevaAlerts = await tzevaAdomFetchAlerts();
+  if (tzevaAlerts !== null) {
+    alerts = tzevaAlerts;
+    source = 'tzeva-adom';
+  } else if (OREF_ENABLED) {
+    // Fallback: OREF direct (requires Israeli proxy)
+    try {
+      const raw = orefCurlFetch(OREF_PROXY_AUTH, OREF_ALERTS_URL);
+      const cleaned = stripBom(raw).trim();
+      if (cleaned && cleaned !== '[]' && cleaned !== 'null') {
+        try {
+          const parsed = JSON.parse(cleaned);
+          const orefArr = Array.isArray(parsed) ? parsed : [parsed];
+          alerts = orefArr.map((a) => ({
+            ...a,
+            title: translateHebrew(a.title || ''),
+            titleHe: a.title || '',
+            data: Array.isArray(a.data) ? a.data.map(translateCity) : a.data ? [translateCity(a.data)] : [],
+            dataHe: Array.isArray(a.data) ? a.data : a.data ? [a.data] : [],
+            source: 'oref-direct',
+          }));
+          source = 'oref-direct';
+        } catch { alerts = []; }
+      }
+    } catch (err) {
+      const stderr = err.stderr ? err.stderr.toString().trim() : '';
+      orefState.lastError = redactOrefError(stderr || err.message);
+      console.warn('[Relay] OREF fallback poll error:', orefState.lastError);
     }
+  }
+  if (source === 'none' && !OREF_ENABLED) return;
+
+  try {
 
     const newJson = JSON.stringify(alerts);
     const changed = newJson !== orefState.lastAlertsJson;
@@ -843,7 +925,7 @@ async function orefFetchAlerts() {
         : '';
       publishNotificationEvent({
         eventType: 'oref_siren',
-        payload: { title: orefTitle + orefLocationSuffix, source: 'OREF Pikud HaOref' },
+        payload: { title: orefTitle + orefLocationSuffix, source: source === 'tzeva-adom' ? 'Tzeva Adom / Pikud HaOref' : 'OREF Pikud HaOref' },
         severity: 'critical',
         variant: undefined,
       }).catch(e => console.warn('[Notify] OREF publish error:', e?.message));
