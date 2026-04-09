@@ -35,6 +35,7 @@ const LOCKED_PREVIEW: ResilienceScoreResponse = {
   change30d: 2.4,
   lowConfidence: false,
   imputationShare: 0,
+  dataVersion: '',
 };
 
 function normalizeCountryCode(countryCode: string | null | undefined): string | null {

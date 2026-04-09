@@ -18,6 +18,7 @@ export interface GetResilienceScoreResponse {
   baselineScore: number;
   stressScore: number;
   stressFactor: number;
+  dataVersion: string;
 }
 
 export interface ResilienceDomain {

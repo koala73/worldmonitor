@@ -27,6 +27,7 @@ const baseResponse: ResilienceScoreResponse = {
   change30d: 2.4,
   lowConfidence: false,
   imputationShare: 0,
+  dataVersion: '2026-04-03',
 };
 
 test('getResilienceVisualLevel maps the score thresholds from the widget spec', () => {

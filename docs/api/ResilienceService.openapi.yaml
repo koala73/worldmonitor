@@ -130,6 +130,8 @@ components:
                 stressFactor:
                     type: number
                     format: double
+                dataVersion:
+                    type: string
         ResilienceDomain:
             type: object
             properties:

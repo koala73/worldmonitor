@@ -53,6 +53,7 @@ describe('resilience handlers', () => {
     assert.ok(response.baselineScore >= 0 && response.baselineScore <= 100, `baselineScore out of bounds: ${response.baselineScore}`);
     assert.ok(response.stressScore >= 0 && response.stressScore <= 100, `stressScore out of bounds: ${response.stressScore}`);
     assert.ok(response.stressFactor >= 0 && response.stressFactor <= 0.5, `stressFactor out of bounds: ${response.stressFactor}`);
+    assert.equal(response.dataVersion, '2024-04-03', 'dataVersion should be the ISO date from seed-meta fetchedAt');
 
     const cachedScore = redis.get('resilience:score:v6:US');
     assert.ok(cachedScore, 'expected score cache to be written');

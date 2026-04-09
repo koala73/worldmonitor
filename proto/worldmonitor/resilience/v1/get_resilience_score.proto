@@ -22,4 +22,5 @@ message GetResilienceScoreResponse {
   double baseline_score = 10;
   double stress_score = 11;
   double stress_factor = 12;
+  string data_version = 13;
 }

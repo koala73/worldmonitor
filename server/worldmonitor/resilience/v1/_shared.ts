@@ -26,6 +26,7 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v6:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v3:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v6';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
+const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
 const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0.40;
@@ -161,6 +162,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       change30d: 0,
       lowConfidence: true,
       imputationShare: 0,
+      dataVersion: '',
     };
   }
 
@@ -168,6 +170,11 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     scoreCacheKey(normalizedCountryCode),
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
     async () => {
+      const staticMeta = await getCachedJson(RESILIENCE_STATIC_META_KEY, true) as { fetchedAt?: number } | null;
+      const dataVersion = staticMeta?.fetchedAt
+        ? new Date(staticMeta.fetchedAt).toISOString().slice(0, 10)
+        : todayIsoDate();
+
       const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
       const dimensions = buildDimensionList(scoreMap);
       const domains = buildDomainList(dimensions);
@@ -209,6 +216,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         change30d: oldestScore == null ? 0 : round(overallScore - oldestScore),
         lowConfidence: computeLowConfidence(dimensions, imputationShare),
         imputationShare,
+        dataVersion,
       };
     },
     300,
@@ -224,6 +232,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     change30d: 0,
     lowConfidence: true,
     imputationShare: 0,
+    dataVersion: '',
   };
 }
 

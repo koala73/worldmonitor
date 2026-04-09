@@ -377,6 +377,10 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     seededAt: '2026-04-03T00:00:00.000Z',
     sourceVersion: 'resilience-static-v7',
   },
+  'seed-meta:resilience:static': {
+    fetchedAt: 1712102400000,
+    recordCount: 196,
+  },
 };
 
 export function fixtureReader(key: string): Promise<unknown | null> {
