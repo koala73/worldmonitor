@@ -181,6 +181,7 @@ export interface GetBypassOptionsResponse {
   closurePct: number;
   options: BypassOption[];
   fetchedAt: string;
+  primaryChokepointWarRiskTier: WarRiskTier;
 }
 
 export interface BypassOption {
@@ -208,7 +209,7 @@ export interface GetCountryCostShockResponse {
   iso2: string;
   chokepointId: string;
   hs2: string;
-  costIncreasePct: number;
+  supplyDeficitPct: number;
   coverageDays: number;
   warRiskPremiumBps: number;
   warRiskTier: WarRiskTier;

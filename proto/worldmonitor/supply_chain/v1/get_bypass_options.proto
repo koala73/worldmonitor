@@ -37,4 +37,5 @@ message GetBypassOptionsResponse {
   int32 closure_pct = 3;
   repeated BypassOption options = 4;    // ranked by live_score asc
   string fetched_at = 5;
+  WarRiskTier primary_chokepoint_war_risk_tier = 6; // war risk tier of the queried chokepoint
 }

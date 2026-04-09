@@ -24,14 +24,14 @@ message GetCountryCostShockResponse {
   string iso2 = 1;
   string chokepoint_id = 2;
   string hs2 = 3;
-  // Estimated annualized import cost increase as % of sector import value (HS 27 only; null for other sectors)
-  double cost_increase_pct = 4;
+  // Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+  double supply_deficit_pct = 4;
   // Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors)
   int32 coverage_days = 5;
   // War risk insurance premium in basis points for this chokepoint
   int32 war_risk_premium_bps = 6;
   WarRiskTier war_risk_tier = 7;
-  // Whether cost_increase_pct and coverage_days are modelled (true) or unavailable (false)
+  // Whether supply_deficit_pct and coverage_days are modelled (true) or unavailable (false)
   bool has_energy_model = 8;
   // Null/unavailable explanation for non-energy sectors
   string unavailable_reason = 9;

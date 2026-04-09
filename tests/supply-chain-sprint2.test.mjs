@@ -180,7 +180,7 @@ describe('get-bypass-options handler source code', () => {
   });
 
   it('reads chokepoint status cache via getCachedJson', () => {
-    assert.match(src, /getCachedJson\('supply_chain:chokepoints:v4'\)/);
+    assert.match(src, /getCachedJson\(CHOKEPOINT_STATUS_KEY\)/);
   });
 
   it('sorts options by liveScore ascending', () => {
@@ -204,12 +204,12 @@ describe('get-country-cost-shock handler source code', () => {
     assert.match(src, /if \(!isPro\) return empty/);
   });
 
-  it('uses threatLevelToInsurancePremiumBps for premium calculation', () => {
-    assert.match(src, /threatLevelToInsurancePremiumBps/);
+  it('uses warRiskTierToInsurancePremiumBps for premium calculation', () => {
+    assert.match(src, /warRiskTierToInsurancePremiumBps/);
   });
 
   it('reads chokepoint status cache via getCachedJson', () => {
-    assert.match(src, /getCachedJson\('supply_chain:chokepoints:v4'\)/);
+    assert.match(src, /getCachedJson\(CHOKEPOINT_STATUS_KEY\)/);
   });
 
   it('returns unavailableReason for non-energy sectors', () => {

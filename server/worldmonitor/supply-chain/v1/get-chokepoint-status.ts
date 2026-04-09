@@ -3,7 +3,6 @@ import type {
   GetChokepointStatusRequest,
   GetChokepointStatusResponse,
   ChokepointInfo,
-  WarRiskTier,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
 import type {
@@ -20,6 +19,7 @@ import type { PortWatchData } from './_portwatch-upstream';
 import { CANONICAL_CHOKEPOINTS } from './_chokepoint-ids';
 // @ts-expect-error — .mjs module, no declaration file
 import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL, detectTrafficAnomaly } from './_scoring.mjs';
+import { type ThreatLevel, threatLevelToWarRiskTier } from './_insurance-tier';
 
 const REDIS_CACHE_KEY = 'supply_chain:chokepoints:v4';
 const TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
@@ -32,18 +32,7 @@ const THREAT_CONFIG_MAX_AGE_DAYS = 120;
 const NEARBY_CHOKEPOINT_RADIUS_KM = 300;
 const THREAT_CONFIG_STALE_NOTE = `Threat baseline last reviewed > ${THREAT_CONFIG_MAX_AGE_DAYS} days ago — review recommended`;
 
-type ThreatLevel = 'war_zone' | 'critical' | 'high' | 'elevated' | 'normal';
 type GeoCoordinates = { latitude: number; longitude: number };
-
-function threatLevelToWarRiskTier(threatLevel: ThreatLevel): WarRiskTier {
-  switch (threatLevel) {
-    case 'war_zone': return 'WAR_RISK_TIER_WAR_ZONE';
-    case 'critical': return 'WAR_RISK_TIER_CRITICAL';
-    case 'high':     return 'WAR_RISK_TIER_HIGH';
-    case 'elevated': return 'WAR_RISK_TIER_ELEVATED';
-    case 'normal':   return 'WAR_RISK_TIER_NORMAL';
-  }
-}
 
 interface ChokepointConfig {
   id: string;

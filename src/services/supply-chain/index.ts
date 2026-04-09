@@ -1,4 +1,5 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import type { CargoType } from '@/config/bypass-corridors';
 import {
   SupplyChainServiceClient,
   type GetShippingRatesResponse,
@@ -120,10 +121,10 @@ export async function fetchCountryChokepointIndex(
 
 export async function fetchBypassOptions(
   chokepointId: string,
-  cargoType = 'container',
+  cargoType: CargoType = 'container',
   closurePct = 100,
 ): Promise<GetBypassOptionsResponse> {
-  const empty: GetBypassOptionsResponse = { chokepointId, cargoType, closurePct, options: [], fetchedAt: '' };
+  const empty: GetBypassOptionsResponse = { chokepointId, cargoType, closurePct, options: [], primaryChokepointWarRiskTier: 'WAR_RISK_TIER_UNSPECIFIED', fetchedAt: '' };
   try {
     return await client.getBypassOptions({ chokepointId, cargoType, closurePct });
   } catch {
@@ -138,7 +139,7 @@ export async function fetchCountryCostShock(
 ): Promise<GetCountryCostShockResponse> {
   const empty: GetCountryCostShockResponse = {
     iso2, chokepointId, hs2,
-    costIncreasePct: 0, coverageDays: 0, warRiskPremiumBps: 0,
+    supplyDeficitPct: 0, coverageDays: 0, warRiskPremiumBps: 0,
     warRiskTier: 'WAR_RISK_TIER_UNSPECIFIED',
     hasEnergyModel: false, unavailableReason: '', fetchedAt: '',
   };

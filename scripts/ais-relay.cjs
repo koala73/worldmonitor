@@ -9664,7 +9664,10 @@ aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (param
 intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
   get-social-velocity
 health: list-disease-outbreaks
-supply-chain: get-shipping-stress, get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId)
+supply-chain: get-shipping-stress,
+  get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId),
+  get-bypass-options (params: chokepointId required, cargoType default 'container', closurePct default 100; PRO-gated — returns options[] sorted by liveScore asc, each with addedTransitDays/addedCostMultiplier/bypassWarRiskTier; also primaryChokepointWarRiskTier),
+  get-country-cost-shock (params: iso2 required, chokepointId required, hs2 default '27'; PRO-gated — returns supplyDeficitPct 0-100%, coverageDays, warRiskPremiumBps, warRiskTier; hasEnergyModel=true only for HS 27 + Hormuz/Suez/Malacca/BEM)
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
 market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
 consumer-prices: list-retailer-price-spreads
@@ -10245,7 +10248,10 @@ aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (param
 intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
   get-social-velocity
 health: list-disease-outbreaks
-supply-chain: get-shipping-stress, get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId)
+supply-chain: get-shipping-stress,
+  get-country-chokepoint-index (params: iso2 required, hs2 default '27'; PRO-gated — returns exposures[], vulnerabilityIndex 0-100, primaryChokepointId),
+  get-bypass-options (params: chokepointId required, cargoType default 'container', closurePct default 100; PRO-gated — returns options[] sorted by liveScore asc, each with addedTransitDays/addedCostMultiplier/bypassWarRiskTier; also primaryChokepointWarRiskTier),
+  get-country-cost-shock (params: iso2 required, chokepointId required, hs2 default '27'; PRO-gated — returns supplyDeficitPct 0-100%, coverageDays, warRiskPremiumBps, warRiskTier; hasEnergyModel=true only for HS 27 + Hormuz/Suez/Malacca/BEM)
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
 market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
 consumer-prices: list-retailer-price-spreads

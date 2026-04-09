@@ -79,6 +79,11 @@ export const COST_SHOCK_KEY = (iso2: string, chokepointId: string) =>
   `supply-chain:cost-shock:${iso2}:${chokepointId}:v1` as const;
 
 /**
+ * Shared chokepoint status cache key — written by get-chokepoint-status, read by bypass-options and cost-shock handlers.
+ */
+export const CHOKEPOINT_STATUS_KEY = 'supply_chain:chokepoints:v4' as const;
+
+/**
  * Static cache keys for the bootstrap endpoint.
  * Only keys with NO request-varying suffixes are included.
  */
