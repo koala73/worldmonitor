@@ -329,6 +329,13 @@ export class CountryIntelManager implements AppModule {
           ieaDaysOfCover: profile.ieaDaysOfCover,
           ieaNetExporter: profile.ieaNetExporter,
           ieaBelowObligation: profile.ieaBelowObligation,
+          emberFossilShare: profile.emberFossilShare,
+          emberRenewShare: profile.emberRenewShare,
+          emberNuclearShare: profile.emberNuclearShare,
+          emberCoalShare: profile.emberCoalShare,
+          emberGasShare: profile.emberGasShare,
+          emberDemandTwh: profile.emberDemandTwh,
+          emberDataMonth: profile.emberDataMonth,
           emberAvailable: profile.emberAvailable,
         });
       })
@@ -347,7 +354,9 @@ export class CountryIntelManager implements AppModule {
           gasTotalDemandTj: 0, gasLngImportsTj: 0, gasPipeImportsTj: 0,
           gasLngShare: 0, ieaStocksAvailable: false, ieaStocksDataMonth: '',
           ieaDaysOfCover: 0, ieaNetExporter: false, ieaBelowObligation: false,
-          emberAvailable: false,
+          emberFossilShare: 0, emberRenewShare: 0, emberNuclearShare: 0,
+          emberCoalShare: 0, emberGasShare: 0, emberDemandTwh: 0,
+          emberDataMonth: '', emberAvailable: false,
         });
       });
 

@@ -703,6 +703,67 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(section);
     }
 
+    if (data.emberAvailable) {
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+      const monthLabel = data.emberDataMonth || 'latest';
+      section.append(this.el('div', 'cdp-subtitle', `Monthly Generation Mix (${monthLabel})`));
+
+      const segments: Array<{ label: string; color: string; value: number }> = [
+        { label: 'Fossil', color: '#8B4513', value: data.emberFossilShare },
+        { label: 'Renewable', color: '#22c55e', value: data.emberRenewShare },
+        { label: 'Nuclear', color: '#6A0DAD', value: data.emberNuclearShare },
+      ];
+      const total = segments.reduce((acc, seg) => acc + seg.value, 0);
+      const norm = total > 0 ? total : 1;
+
+      const bar = this.el('div', '');
+      bar.style.cssText = 'display:flex;width:100%;height:10px;border-radius:4px;overflow:hidden;margin-bottom:6px';
+      for (const seg of segments) {
+        const pct = (seg.value / norm) * 100;
+        if (pct <= 0.5) continue;
+        const span = this.el('span', '');
+        span.style.cssText = `width:${pct}%;background:${seg.color}`;
+        bar.append(span);
+      }
+      section.append(bar);
+
+      const legend = this.el('div', '');
+      for (const seg of segments) {
+        const pct = (seg.value / norm) * 100;
+        if (pct <= 0.5) continue;
+        const row = this.el('div', '');
+        row.style.cssText = 'font-size:11px;color:#aaa;display:flex;gap:4px;align-items:center';
+        const dot = this.el('span', '');
+        dot.textContent = '\u25CF';
+        dot.style.color = seg.color;
+        const label = this.el('span', '', `${seg.label}  ${Math.round(pct)}%`);
+        row.append(dot, label);
+        legend.append(row);
+      }
+      section.append(legend);
+
+      if (data.emberCoalShare > 0 || data.emberGasShare > 0) {
+        const breakdown = this.el('div', '');
+        breakdown.style.cssText = 'font-size:11px;color:#aaa;margin-top:4px';
+        const parts: string[] = [];
+        if (data.emberCoalShare > 0) parts.push(`Coal ${Math.round(data.emberCoalShare)}%`);
+        if (data.emberGasShare > 0) parts.push(`Gas ${Math.round(data.emberGasShare)}%`);
+        breakdown.textContent = `Fossil breakdown: ${parts.join(', ')}`;
+        section.append(breakdown);
+      }
+
+      if (data.emberDemandTwh > 0) {
+        const demand = this.el('div', '');
+        demand.style.cssText = 'font-size:11px;color:#aaa;margin-top:2px';
+        demand.textContent = `Total demand: ${data.emberDemandTwh.toFixed(1)} TWh`;
+        section.append(demand);
+      }
+
+      section.append(this.el('div', 'cdp-economic-source', 'Source: Ember Climate (monthly)'));
+      this.energyBody!.append(section);
+    }
+
     if (data.jodiOilAvailable || data.jodiGasAvailable) {
       this.energyBody.append(this.renderShockScenarioWidget());
     }

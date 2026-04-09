@@ -162,6 +162,13 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   ieaDaysOfCover: 0,
   ieaNetExporter: false,
   ieaBelowObligation: false,
+  emberFossilShare: 0,
+  emberRenewShare: 0,
+  emberNuclearShare: 0,
+  emberCoalShare: 0,
+  emberGasShare: 0,
+  emberDemandTwh: 0,
+  emberDataMonth: '',
   emberAvailable: false,
 };
 
@@ -176,6 +183,11 @@ function s(v: string | null | undefined): string {
 interface EmberData {
   fossilShare?: number | null;
   renewShare?: number | null;
+  nuclearShare?: number | null;
+  coalShare?: number | null;
+  gasShare?: number | null;
+  demandTwh?: number | null;
+  dataMonth?: string | null;
   [key: string]: unknown;
 }
 
@@ -246,6 +258,13 @@ function buildResponseFromSpine(
     ieaNetExporter: oil.netExporter === true,
     ieaBelowObligation: oil.belowObligation === true,
 
+    emberFossilShare: n(resolvedEmber?.fossilShare),
+    emberRenewShare: n(resolvedEmber?.renewShare),
+    emberNuclearShare: n(resolvedEmber?.nuclearShare),
+    emberCoalShare: n(resolvedEmber?.coalShare),
+    emberGasShare: n(resolvedEmber?.gasShare),
+    emberDemandTwh: n(resolvedEmber?.demandTwh),
+    emberDataMonth: s(resolvedEmber?.dataMonth),
     emberAvailable: resolvedEmber != null && typeof resolvedEmber.fossilShare === 'number',
   };
 }
@@ -348,6 +367,13 @@ export async function getCountryEnergyProfile(
     ieaNetExporter: ieaStocks?.netExporter === true,
     ieaBelowObligation: ieaStocks?.belowObligation === true,
 
+    emberFossilShare: n(emberData?.fossilShare),
+    emberRenewShare: n(emberData?.renewShare),
+    emberNuclearShare: n(emberData?.nuclearShare),
+    emberCoalShare: n(emberData?.coalShare),
+    emberGasShare: n(emberData?.gasShare),
+    emberDemandTwh: n(emberData?.demandTwh),
+    emberDataMonth: s(emberData?.dataMonth),
     emberAvailable: emberData != null && typeof emberData.fossilShare === 'number',
   };
 }
