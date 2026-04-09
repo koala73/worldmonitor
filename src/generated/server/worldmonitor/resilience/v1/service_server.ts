@@ -6,6 +6,11 @@ export interface GetResilienceScoreRequest {
   countryCode: string;
 }
 
+export interface ScoreInterval {
+  p05: number;
+  p95: number;
+}
+
 export interface GetResilienceScoreResponse {
   countryCode: string;
   overallScore: number;
@@ -19,6 +24,7 @@ export interface GetResilienceScoreResponse {
   stressScore: number;
   stressFactor: number;
   dataVersion: string;
+  scoreInterval?: ScoreInterval;
 }
 
 export interface ResilienceDomain {

@@ -262,6 +262,12 @@ export class ResilienceWidget {
             'div',
             { className: 'resilience-widget__overall-meta' },
             h('span', { className: 'resilience-widget__overall-score' }, String(Math.round(clampScore(data.overallScore)))),
+            ...(data.scoreInterval
+              ? [h('span', {
+                  className: 'resilience-widget__overall-interval',
+                  title: `95% confidence interval: ${data.scoreInterval.p05} - ${data.scoreInterval.p95}`,
+                }, `[${Math.round(data.scoreInterval.p05)}\u2013${Math.round(data.scoreInterval.p95)}]`)]
+              : []),
             h('span', { className: 'resilience-widget__overall-level', style: { color: levelColor } }, levelLabel),
             h('span', { className: 'resilience-widget__overall-trend' }, `${getResilienceTrendArrow(data.trend)} ${data.trend}`),
           ),

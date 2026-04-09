@@ -3,6 +3,7 @@ import type {
   ResilienceDimension,
   ResilienceDomain,
   ResilienceRankingItem,
+  ScoreInterval,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
@@ -26,6 +27,7 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v7:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v4:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v7';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
+export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
@@ -52,6 +54,16 @@ function normalizeCountryCode(countryCode: string): string {
 
 function scoreCacheKey(countryCode: string): string {
   return `${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`;
+}
+
+function intervalCacheKey(countryCode: string): string {
+  return `${RESILIENCE_INTERVAL_KEY_PREFIX}${countryCode}`;
+}
+
+async function readScoreInterval(countryCode: string): Promise<ScoreInterval | undefined> {
+  const raw = await getCachedJson(intervalCacheKey(countryCode), true) as { p05?: number; p95?: number } | null;
+  if (!raw || typeof raw.p05 !== 'number' || typeof raw.p95 !== 'number') return undefined;
+  return { p05: raw.p05, p95: raw.p95 };
 }
 
 function historyKey(countryCode: string): string {
@@ -204,6 +216,8 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
 
       await appendHistory(normalizedCountryCode, overallScore);
 
+      const scoreInterval = await readScoreInterval(normalizedCountryCode);
+
       return {
         countryCode: normalizedCountryCode,
         overallScore,
@@ -217,6 +231,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         lowConfidence: computeLowConfidence(dimensions, imputationShare),
         imputationShare,
         dataVersion,
+        ...(scoreInterval && { scoreInterval }),
       };
     },
     300,

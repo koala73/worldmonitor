@@ -9,6 +9,11 @@ message GetResilienceScoreRequest {
   string country_code = 1 [(sebuf.http.query) = { name: "countryCode", required: true }];
 }
 
+message ScoreInterval {
+  double p05 = 1;
+  double p95 = 2;
+}
+
 message GetResilienceScoreResponse {
   string country_code = 1;
   double overall_score = 2;
@@ -23,4 +28,5 @@ message GetResilienceScoreResponse {
   double stress_score = 11;
   double stress_factor = 12;
   string data_version = 13;
+  ScoreInterval score_interval = 14;
 }

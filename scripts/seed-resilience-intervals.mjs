@@ -1,0 +1,162 @@
+#!/usr/bin/env node
+import {
+  getRedisCredentials,
+  loadEnvFile,
+  logSeedResult,
+} from './_seed-utils.mjs';
+
+loadEnvFile(import.meta.url);
+
+const API_BASE = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
+const WM_KEY = process.env.WORLDMONITOR_API_KEY || '';
+const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
+
+const INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
+const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
+const DRAWS = 100;
+
+const DOMAIN_WEIGHTS = {
+  economic: 0.22,
+  infrastructure: 0.20,
+  energy: 0.15,
+  'social-governance': 0.25,
+  'health-food': 0.18,
+};
+
+const DOMAIN_ORDER = [
+  'economic',
+  'infrastructure',
+  'energy',
+  'social-governance',
+  'health-food',
+];
+
+export function computeIntervals(domainScores, domainWeights, draws = DRAWS) {
+  const samples = [];
+  for (let i = 0; i < draws; i++) {
+    const jittered = domainWeights.map((w) => w * (0.9 + Math.random() * 0.2));
+    const sum = jittered.reduce((s, w) => s + w, 0);
+    const normalized = jittered.map((w) => w / sum);
+    const score = domainScores.reduce((s, d, idx) => s + d * normalized[idx], 0);
+    samples.push(score);
+  }
+  samples.sort((a, b) => a - b);
+  return {
+    p05: Math.round(samples[Math.floor(draws * 0.05)] * 10) / 10,
+    p95: Math.round(samples[Math.floor(draws * 0.95)] * 10) / 10,
+  };
+}
+
+async function redisPipeline(url, token, commands) {
+  const resp = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Redis pipeline HTTP ${resp.status} — ${text.slice(0, 200)}`);
+  }
+  return resp.json();
+}
+
+async function fetchRanking() {
+  const headers = { 'User-Agent': SEED_UA, Accept: 'application/json' };
+  if (WM_KEY) headers['X-WorldMonitor-Key'] = WM_KEY;
+  const resp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking`, {
+    headers,
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!resp.ok) throw new Error(`Ranking endpoint returned HTTP ${resp.status}`);
+  return resp.json();
+}
+
+async function fetchScore(countryCode) {
+  const headers = { 'User-Agent': SEED_UA, Accept: 'application/json' };
+  if (WM_KEY) headers['X-WorldMonitor-Key'] = WM_KEY;
+  const url = `${API_BASE}/api/resilience/v1/get-resilience-score?countryCode=${countryCode}`;
+  const resp = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
+  if (!resp.ok) throw new Error(`Score endpoint returned HTTP ${resp.status} for ${countryCode}`);
+  return resp.json();
+}
+
+async function seedResilienceIntervals() {
+  const { url, token } = getRedisCredentials();
+
+  console.log('[resilience-intervals] Fetching ranking...');
+  const ranking = await fetchRanking();
+  const allItems = [...(ranking.items ?? []), ...(ranking.greyedOut ?? [])];
+  console.log(`[resilience-intervals] ${allItems.length} countries in ranking`);
+
+  if (allItems.length === 0) {
+    return { skipped: true, reason: 'empty_ranking' };
+  }
+
+  const BATCH = 10;
+  let computed = 0;
+  const commands = [];
+
+  for (let i = 0; i < allItems.length; i += BATCH) {
+    const batch = allItems.slice(i, i + BATCH);
+    const results = await Promise.allSettled(
+      batch.map((item) => fetchScore(item.countryCode)),
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status !== 'fulfilled') {
+        console.warn(`[resilience-intervals] Failed ${batch[j].countryCode}: ${result.reason?.message}`);
+        continue;
+      }
+      const scoreData = result.value;
+      if (!scoreData?.domains?.length) continue;
+
+      const domainScores = DOMAIN_ORDER.map((id) => {
+        const d = scoreData.domains.find((dom) => dom.id === id);
+        return d?.score ?? 0;
+      });
+      const weights = DOMAIN_ORDER.map((id) => DOMAIN_WEIGHTS[id]);
+
+      const interval = computeIntervals(domainScores, weights, DRAWS);
+      const payload = {
+        p05: interval.p05,
+        p95: interval.p95,
+        draws: DRAWS,
+        computedAt: new Date().toISOString(),
+      };
+
+      const key = `${INTERVAL_KEY_PREFIX}${scoreData.countryCode}`;
+      commands.push(['SET', key, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
+      computed++;
+    }
+  }
+
+  if (commands.length > 0) {
+    const PIPE_BATCH = 50;
+    for (let i = 0; i < commands.length; i += PIPE_BATCH) {
+      await redisPipeline(url, token, commands.slice(i, i + PIPE_BATCH));
+    }
+  }
+
+  console.log(`[resilience-intervals] Wrote ${computed}/${allItems.length} intervals`);
+  return { skipped: false, recordCount: computed, total: allItems.length };
+}
+
+async function main() {
+  const startedAt = Date.now();
+  const result = await seedResilienceIntervals();
+  logSeedResult('resilience:intervals', result.recordCount ?? 0, Date.now() - startedAt, {
+    skipped: Boolean(result.skipped),
+    ...(result.total != null && { total: result.total }),
+    ...(result.reason != null && { reason: result.reason }),
+  });
+}
+
+if (process.argv[1]?.endsWith('seed-resilience-intervals.mjs')) {
+  main().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`FATAL: ${message}`);
+    process.exit(1);
+  });
+}
