@@ -119,7 +119,7 @@ export class EnergyComplexPanel extends Panel {
     const rows = top5.map(e => `
       <tr class="oil-stocks-row">
         <td class="oil-stocks-iso">${escapeHtml(e.iso2)}</td>
-        <td class="oil-stocks-days">${escapeHtml(e.lngShareOfImports.toFixed(1))}%</td>
+        <td class="oil-stocks-days">${escapeHtml((e.lngShareOfImports * 100).toFixed(1))}%</td>
         <td class="oil-stocks-vs">${escapeHtml(e.lngImportsTj.toLocaleString())} TJ</td>
       </tr>`).join('');
 

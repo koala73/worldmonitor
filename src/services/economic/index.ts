@@ -894,15 +894,5 @@ export async function fetchLngVulnerability(): Promise<LngVulnerabilityData | nu
   const hydrated = getHydratedData('lngVulnerability') as LngVulnerabilityData | undefined;
   if (hydrated?.top20LngDependent?.length) return hydrated;
 
-  try {
-    const resp = await fetch(toApiUrl('/api/bootstrap?keys=lngVulnerability'), {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (resp.ok) {
-      const { data } = (await resp.json()) as { data: { lngVulnerability?: LngVulnerabilityData } };
-      if (data.lngVulnerability?.top20LngDependent?.length) return data.lngVulnerability;
-    }
-  } catch { /* fall through */ }
-
   return null;
 }
