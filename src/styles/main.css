@@ -1495,6 +1495,12 @@ body.panel-resize-active iframe {
   50% { opacity: 0.3; transform: scale(0.7); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .panel-severity-dot {
+    animation: none !important;
+  }
+}
+
 /* Push the first element after header-left to the right; subsequent siblings flow via gap */
 .panel-header > .panel-header-left + * {
   margin-left: auto;

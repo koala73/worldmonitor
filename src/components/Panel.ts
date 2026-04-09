@@ -260,6 +260,7 @@ export class Panel {
 
     this.severityDotEl = document.createElement('span');
     this.severityDotEl.className = 'panel-severity-dot';
+    this.severityDotEl.setAttribute('aria-hidden', 'true');
     headerLeft.appendChild(this.severityDotEl);
 
     if (options.infoTooltip) {
