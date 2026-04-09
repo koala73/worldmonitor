@@ -109,7 +109,9 @@ async function seedResilienceScores() {
 
       console.log(`[resilience-scores] Warmed: ${warmed}/${missingCodes.length} scores`);
     } catch (err) {
-      console.error(`[resilience-scores] Scorer import failed (needs --import tsx/esm): ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[resilience-scores] FATAL: Scorer import failed. Check Railway start command includes --import tsx/esm`);
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
     }
   }
 
