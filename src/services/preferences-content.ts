@@ -26,7 +26,7 @@ import {
   type DigestMode,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
-import { isEntitled } from '@/services/entitlements';
+import { hasTier, getEntitlementState } from '@/services/entitlements';
 import { SITE_VARIANT } from '@/config/variant';
 // When VITE_QUIET_HOURS_BATCH_ENABLED=0 the relay does not honour batch_on_wake.
 // Hide that option so users cannot select a mode that silently behaves as critical_only.
@@ -361,7 +361,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   if (!host.isDesktopApp) {
     if (!host.isSignedIn) {
       html += `<div class="ai-flow-toggle-desc us-notif-signin">Sign in to link notification channels.</div>`;
-    } else if (!isEntitled()) {
+    } else if (getEntitlementState() !== null && !hasTier(1)) {
       html += `<details class="wm-pref-group">`;
       html += `<summary>Notifications <span class="panel-toggle-pro-badge">PRO</span></summary>`;
       html += `<div class="wm-pref-group-content">`;
@@ -627,7 +627,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       if (!host.isDesktopApp) updateAiStatus(container);
 
       // ── Notifications section ──
-      if (!host.isDesktopApp && host.isSignedIn && !isEntitled()) {
+      if (!host.isDesktopApp && host.isSignedIn && getEntitlementState() !== null && !hasTier(1)) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
         if (upgradeBtn) {
           upgradeBtn.addEventListener('click', () => {
@@ -637,7 +637,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }, { signal });
         }
       }
-      if (!host.isDesktopApp && host.isSignedIn && isEntitled()) {
+      if (!host.isDesktopApp && host.isSignedIn && (getEntitlementState() === null || hasTier(1))) {
         let notifPollInterval: ReturnType<typeof setInterval> | null = null;
 
         function clearNotifPoll(): void {
