@@ -203,6 +203,21 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-channel') {
         const { channelType, email, webhookEnvelope, webhookLabel } = body;
         if (!channelType) return json({ error: 'channelType required' }, 400, corsHeaders);
+
+        if (channelType === 'webhook' && webhookEnvelope) {
+          try {
+            const parsed = new URL(webhookEnvelope);
+            if (parsed.protocol !== 'https:') {
+              return json({ error: 'Webhook URL must use HTTPS' }, 400, corsHeaders);
+            }
+            if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|0\.0\.0\.0)/.test(parsed.hostname)) {
+              return json({ error: 'Webhook URL must not point to a private/local address' }, 400, corsHeaders);
+            }
+          } catch {
+            return json({ error: 'Invalid webhook URL' }, 400, corsHeaders);
+          }
+        }
+
         const relayBody: Record<string, unknown> = { action: 'set-channel', userId: session.userId, channelType };
         if (email !== undefined) relayBody.email = email;
         if (webhookLabel !== undefined) relayBody.webhookLabel = String(webhookLabel).slice(0, 100);

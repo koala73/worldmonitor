@@ -187,6 +187,7 @@ export const setChannel = mutation({
     chatId: v.optional(v.string()),
     webhookEnvelope: v.optional(v.string()),
     email: v.optional(v.string()),
+    webhookLabel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -228,7 +229,7 @@ export const setChannel = mutation({
       }
     } else if (args.channelType === "webhook") {
       if (!args.webhookEnvelope) throw new ConvexError("webhookEnvelope required for webhook channel");
-      const doc = { userId, channelType: "webhook" as const, webhookEnvelope: args.webhookEnvelope, verified: true, linkedAt: now };
+      const doc = { userId, channelType: "webhook" as const, webhookEnvelope: args.webhookEnvelope, verified: true, linkedAt: now, webhookLabel: args.webhookLabel };
       if (existing) {
         await ctx.db.replace(existing._id, doc);
       } else {
