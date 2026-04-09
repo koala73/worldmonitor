@@ -8,6 +8,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
 import {
   clamp,
   CHOKEPOINT_EXPOSURE,
@@ -227,6 +228,19 @@ export async function computeEnergyShockScenario(
   const fossilShare = typeof emberData?.fossilShare === 'number' ? emberData.fossilShare : null;
   if (fossilShare !== null && fossilShare > 70) {
     limitations.push('high fossil grid dependency: limited electricity substitution capacity');
+  }
+
+  if (needsOil) {
+    const sprRegistryRaw = await getCachedJson(SPR_POLICIES_KEY, true).catch(() => null) as Record<string, unknown> | null;
+    const sprPolicies = (sprRegistryRaw as { policies?: Record<string, { regime?: string; ieaMember?: boolean; operator?: string; capacityMb?: number }> } | null)?.policies;
+    const sprPolicy = sprPolicies?.[code];
+    if (sprPolicy) {
+      if (sprPolicy.regime === 'government_spr' && !sprPolicy.ieaMember) {
+        limitations.push(`strategic reserves: ${sprPolicy.regime} (${sprPolicy.operator ?? 'state-run'}, ${sprPolicy.capacityMb ?? '?'}Mb capacity)`);
+      }
+    } else {
+      limitations.push('strategic reserve policy: not classified for this country');
+    }
   }
 
   const effectiveGulfShare = !comtradeCoverage ? PROXIED_GULF_SHARE : rawGulfShare;

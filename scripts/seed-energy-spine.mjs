@@ -185,7 +185,7 @@ function buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks, ember) {
 // electricity prices and gasStorage are intentionally excluded from the spine
 // (they update sub-daily; the spine seeds once at 06:00 UTC). However, Ember
 // monthly generation mix IS included — it updates at most twice monthly.
-export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember = null }) {
+export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember = null, sprPolicy = null }) {
   // Schema sentinel: OWID mix must have coalShare field if data is present
   if (mix != null && !('coalShare' in mix)) {
     throw new Error(`OWID mix schema changed for ${iso2} — missing coalShare field`);
@@ -203,7 +203,7 @@ export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember 
     countryCode: iso2,
     updatedAt: new Date().toISOString(),
     sources: buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks, ember),
-    coverage: { hasMix, hasJodiOil, hasJodiGas, hasIeaStocks, hasEmber },
+    coverage: { hasMix, hasJodiOil, hasJodiGas, hasIeaStocks, hasEmber, hasSprPolicy: sprPolicy != null && sprPolicy.regime !== 'unknown' },
     oil: buildOilFields(jodiOil, ieaStocks, hasIeaStocks),
     gas: buildGasFields(jodiGas),
     mix: buildMixFields(hasMix ? mix : null),
@@ -218,6 +218,10 @@ export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember 
     shockInputs: {
       comtradeReporterCode: comtradeCode,
       supportedChokepoints: comtradeCode ? SHOCK_CHOKEPOINTS : [],
+      sprRegime: sprPolicy?.regime ?? 'unknown',
+      sprCapacityMb: sprPolicy?.capacityMb ?? null,
+      sprOperator: sprPolicy?.operator ?? null,
+      sprIeaMember: sprPolicy?.ieaMember ?? false,
     },
   };
 }
@@ -286,6 +290,10 @@ export async function main() {
       }
     }
 
+    // Read SPR policy registry once (global key, not per-country)
+    const sprRegistry = await redisGet('energy:spr-policies:v1').catch(() => null);
+    const sprPolicies = sprRegistry?.policies ?? {};
+
     // Step 3: Batch-read all 6 domain keys per country via pipeline
     // Order: mix, jodiOil, jodiGas, ieaStocks (electricity + gasStorage excluded — they
     // update sub-daily and are always read directly by handlers, not from the spine)
@@ -318,7 +326,8 @@ export async function main() {
         const ember = values[base + 4];
 
         try {
-          const spine = buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember });
+          const sprPolicy = sprPolicies[iso2] ?? null;
+          const spine = buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, ember, sprPolicy });
           spineEntries.set(iso2, spine);
         } catch (err) {
           throw new Error(`Schema validation failed for ${iso2}: ${err.message}`);

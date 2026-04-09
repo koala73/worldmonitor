@@ -5,7 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
-import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX } from '../../../_shared/cache-keys';
+import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX, SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
 
 interface OwidMix {
   year?: number | null;
@@ -170,6 +170,15 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   emberDemandTwh: 0,
   emberDataMonth: '',
   emberAvailable: false,
+  sprRegime: 'unknown',
+  sprCapacityMb: 0,
+  sprOperator: '',
+  sprIeaMember: false,
+  sprStockholdingModel: '',
+  sprNote: '',
+  sprSource: '',
+  sprAsOf: '',
+  sprAvailable: false,
 };
 
 function n(v: number | null | undefined): number {
@@ -178,6 +187,21 @@ function n(v: number | null | undefined): number {
 
 function s(v: string | null | undefined): string {
   return typeof v === 'string' ? v : '';
+}
+
+interface SprPolicy {
+  regime?: string;
+  operator?: string;
+  capacityMb?: number;
+  ieaMember?: boolean;
+  stockholdingModel?: string;
+  note?: string;
+  source?: string;
+  asOf?: string;
+}
+
+interface SprRegistry {
+  policies?: Record<string, SprPolicy>;
 }
 
 interface EmberData {
@@ -191,11 +215,35 @@ interface EmberData {
   [key: string]: unknown;
 }
 
+function buildSprFields(sprPolicy: SprPolicy | null | undefined): Pick<
+  GetCountryEnergyProfileResponse,
+  'sprRegime' | 'sprCapacityMb' | 'sprOperator' | 'sprIeaMember' | 'sprStockholdingModel' | 'sprNote' | 'sprSource' | 'sprAsOf' | 'sprAvailable'
+> {
+  if (!sprPolicy) {
+    return {
+      sprRegime: 'unknown', sprCapacityMb: 0, sprOperator: '', sprIeaMember: false,
+      sprStockholdingModel: '', sprNote: '', sprSource: '', sprAsOf: '', sprAvailable: false,
+    };
+  }
+  return {
+    sprRegime: s(sprPolicy.regime) || 'unknown',
+    sprCapacityMb: n(sprPolicy.capacityMb),
+    sprOperator: s(sprPolicy.operator),
+    sprIeaMember: sprPolicy.ieaMember === true,
+    sprStockholdingModel: s(sprPolicy.stockholdingModel),
+    sprNote: s(sprPolicy.note),
+    sprSource: s(sprPolicy.source),
+    sprAsOf: s(sprPolicy.asOf),
+    sprAvailable: true,
+  };
+}
+
 function buildResponseFromSpine(
   spine: EnergySpine,
   gasStorage: GasStorage | null,
   electricity: ElectricityEntry | null,
   emberData: EmberData | null,
+  sprPolicy: SprPolicy | null | undefined,
 ): GetCountryEnergyProfileResponse {
   const cov = spine.coverage ?? {};
   const src = spine.sources ?? {};
@@ -266,6 +314,7 @@ function buildResponseFromSpine(
     emberDemandTwh: n(resolvedEmber?.demandTwh),
     emberDataMonth: s(resolvedEmber?.dataMonth),
     emberAvailable: resolvedEmber != null && typeof resolvedEmber.fossilShare === 'number',
+    ...buildSprFields(sprPolicy),
   };
 }
 
@@ -279,15 +328,18 @@ export async function getCountryEnergyProfile(
   // Always read gas-storage and electricity directly — both update sub-daily
   // (gas storage ~10:30 UTC, electricity ~14:00 UTC) while the spine seeds once
   // at 06:00 UTC. Serving them from the spine would return stale data for up to 8h.
-  const [spineResult, gasStorageResult, electricityResult] = await Promise.allSettled([
+  const [spineResult, gasStorageResult, electricityResult, sprRegistryResult] = await Promise.allSettled([
     getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${code}`, true),
     getCachedJson(`energy:gas-storage:v1:${code}`, true),
     getCachedJson(`energy:electricity:v1:${code}`, true),
+    getCachedJson(SPR_POLICIES_KEY, true),
   ]);
 
   const spine = spineResult.status === 'fulfilled' ? (spineResult.value as EnergySpine | null) : null;
   const gasStorage = gasStorageResult.status === 'fulfilled' ? (gasStorageResult.value as GasStorage | null) : null;
   const electricity = electricityResult.status === 'fulfilled' ? (electricityResult.value as ElectricityEntry | null) : null;
+  const sprRegistry = sprRegistryResult.status === 'fulfilled' ? (sprRegistryResult.value as SprRegistry | null) : null;
+  const sprPolicy = sprRegistry?.policies?.[code] ?? null;
 
   if (spine != null && typeof spine === 'object' && spine.coverage != null) {
     let emberFallback: EmberData | null = null;
@@ -297,7 +349,7 @@ export async function getCountryEnergyProfile(
         emberFallback = directEmber as EmberData;
       }
     }
-    return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback);
+    return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback, sprPolicy);
   }
 
   // Fallback: 4-key direct join (cold cache or countries not yet in spine)
@@ -375,5 +427,6 @@ export async function getCountryEnergyProfile(
     emberDemandTwh: n(emberData?.demandTwh),
     emberDataMonth: s(emberData?.dataMonth),
     emberAvailable: emberData != null && typeof emberData.fossilShare === 'number',
+    ...buildSprFields(sprPolicy),
   };
 }

@@ -337,6 +337,15 @@ export class CountryIntelManager implements AppModule {
           emberDemandTwh: profile.emberDemandTwh,
           emberDataMonth: profile.emberDataMonth,
           emberAvailable: profile.emberAvailable,
+          sprRegime: profile.sprRegime,
+          sprCapacityMb: profile.sprCapacityMb,
+          sprOperator: profile.sprOperator,
+          sprIeaMember: profile.sprIeaMember,
+          sprStockholdingModel: profile.sprStockholdingModel,
+          sprNote: profile.sprNote,
+          sprSource: profile.sprSource,
+          sprAsOf: profile.sprAsOf,
+          sprAvailable: profile.sprAvailable,
         });
       })
       .catch(() => {
@@ -357,6 +366,9 @@ export class CountryIntelManager implements AppModule {
           emberFossilShare: 0, emberRenewShare: 0, emberNuclearShare: 0,
           emberCoalShare: 0, emberGasShare: 0, emberDemandTwh: 0,
           emberDataMonth: '', emberAvailable: false,
+          sprRegime: 'unknown', sprCapacityMb: 0, sprOperator: '', sprIeaMember: false,
+          sprStockholdingModel: '', sprNote: '', sprSource: '', sprAsOf: '',
+          sprAvailable: false,
         });
       });
 

@@ -130,6 +130,15 @@ export interface CountryEnergyProfileData {
   emberDemandTwh: number;
   emberDataMonth: string;
   emberAvailable: boolean;
+  sprRegime: string;
+  sprCapacityMb: number;
+  sprOperator: string;
+  sprIeaMember: boolean;
+  sprStockholdingModel: string;
+  sprNote: string;
+  sprSource: string;
+  sprAsOf: string;
+  sprAvailable: boolean;
 }
 
 export interface CountryPortActivityData {

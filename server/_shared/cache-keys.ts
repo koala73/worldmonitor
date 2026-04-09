@@ -61,6 +61,7 @@ export const ENERGY_SPINE_COUNTRIES_KEY = 'energy:spine:v1:_countries';
 export const EMBER_ELECTRICITY_KEY_PREFIX = 'energy:ember:v1:';
 export const EMBER_ELECTRICITY_ALL_KEY = 'energy:ember:v1:_all';
 export const SPR_KEY = 'economic:spr:v1';
+export const SPR_POLICIES_KEY = 'energy:spr-policies:v1';
 export const REFINERY_UTIL_KEY = 'economic:refinery-util:v1';
 
 /**
@@ -171,6 +172,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
   oilStocksAnalysis:    'energy:oil-stocks-analysis:v1',
   lngVulnerability:     'energy:lng-vulnerability:v1',
+  sprPolicies:          'energy:spr-policies:v1',
 };
 
 export const PORTWATCH_PORT_ACTIVITY_KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';
@@ -225,6 +227,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   portwatchPortActivity: 'slow',
   oilStocksAnalysis: 'slow',
   lngVulnerability: 'slow',
+  sprPolicies: 'slow',
 };
 
 export const PORTWATCH_CHOKEPOINTS_REF_KEY = 'portwatch:chokepoints:ref:v1';

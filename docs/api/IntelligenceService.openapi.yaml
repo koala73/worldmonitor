@@ -2230,6 +2230,26 @@ components:
                     type: string
                 emberAvailable:
                     type: boolean
+                sprRegime:
+                    type: string
+                    description: Phase 4 — SPR policy classification
+                sprCapacityMb:
+                    type: number
+                    format: double
+                sprOperator:
+                    type: string
+                sprIeaMember:
+                    type: boolean
+                sprStockholdingModel:
+                    type: string
+                sprNote:
+                    type: string
+                sprSource:
+                    type: string
+                sprAsOf:
+                    type: string
+                sprAvailable:
+                    type: boolean
         ComputeEnergyShockScenarioRequest:
             type: object
             properties:

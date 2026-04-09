@@ -8,6 +8,7 @@ import {
   ELECTRICITY_INDEX_KEY,
   ENERGY_INTELLIGENCE_KEY,
   SPR_KEY,
+  SPR_POLICIES_KEY,
   REFINERY_UTIL_KEY,
   ENERGY_SPINE_KEY_PREFIX,
 } from '../../../_shared/cache-keys';
@@ -465,7 +466,9 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
 
 async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
   try {
-    // Try spine first
+    const parts: string[] = [];
+
+    // IEA part (existing logic: try spine first, fallback to direct key)
     const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
     if (spine != null && typeof spine === 'object') {
       const cov = spine.coverage as Record<string, unknown> | undefined;
@@ -475,28 +478,41 @@ async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
         const importNote = crudeImports != null && crudeImports > 0
           ? ` (still imports ${crudeImports} kbd crude for refinery feedstock)`
           : '';
-        return `IEA oil stocks: net oil exporter${importNote}`;
+        parts.push(`IEA oil stocks: net oil exporter${importNote}`);
+      } else if (cov?.hasIeaStocks && typeof oil?.daysOfCover === 'number') {
+        parts.push(`IEA oil stocks: ${oil.daysOfCover as number} days of cover`);
       }
-      if (cov?.hasIeaStocks && typeof oil?.daysOfCover === 'number') {
-        const days = oil.daysOfCover as number;
-        return `IEA oil stocks: ${days} days of cover`;
+    } else {
+      // Fallback to direct IEA key when spine is absent
+      const ieaDirect = await getCachedJson(`energy:iea-oil-stocks:v1:${iso2}`, true).catch(() => null) as Record<string, unknown> | null;
+      if (ieaDirect != null && typeof ieaDirect === 'object') {
+        if (ieaDirect.netExporter === true) {
+          parts.push('IEA oil stocks: net oil exporter');
+        } else if (typeof ieaDirect.daysOfCover === 'number') {
+          const threshold = typeof ieaDirect.obligationThreshold === 'number' ? ieaDirect.obligationThreshold as number : 90;
+          const breach = ieaDirect.belowObligation === true ? ' (below obligation)' : '';
+          parts.push(`IEA oil stocks: ${ieaDirect.daysOfCover as number} days of cover (obligation: ${threshold} days)${breach}`);
+        }
       }
-      // Spine present but no IEA stocks coverage — return undefined (don't fall through)
-      if (spine.coverage != null) return undefined;
     }
 
-    // Fallback to direct key
-    const data = await getCachedJson(`energy:iea-oil-stocks:v1:${iso2}`, true);
-    if (!data || typeof data !== 'object') return undefined;
-    const d = data as Record<string, unknown>;
-    if (d.netExporter === true) {
-      return 'IEA oil stocks: net oil exporter';
+    // SPR part (new: enrich from policy registry)
+    const registry = await getCachedJson(SPR_POLICIES_KEY, true).catch(() => null) as Record<string, unknown> | null;
+    const policies = (registry as { policies?: Record<string, Record<string, unknown>> } | null)?.policies;
+    const sprPolicy = policies?.[iso2];
+    if (sprPolicy && sprPolicy.regime !== 'unknown') {
+      const regime = sprPolicy.regime === 'government_spr' ? 'government strategic reserve'
+        : sprPolicy.regime === 'mandatory_stockholding' ? 'IEA mandatory stockholding'
+        : sprPolicy.regime === 'spare_capacity' ? 'spare production capacity (no stockpile)'
+        : sprPolicy.regime as string;
+      const capacity = typeof sprPolicy.capacityMb === 'number' && sprPolicy.capacityMb > 0
+        ? ` (${sprPolicy.capacityMb}Mb capacity)` : '';
+      const operator = typeof sprPolicy.operator === 'string' && sprPolicy.operator
+        ? `, ${sprPolicy.operator}` : '';
+      parts.push(`Reserve policy: ${regime}${operator}${capacity}`);
     }
-    const days = typeof d.daysOfCover === 'number' ? d.daysOfCover as number : null;
-    if (days == null) return undefined;
-    const threshold = typeof d.obligationThreshold === 'number' ? d.obligationThreshold as number : 90;
-    const breach = d.belowObligation === true ? ' (below obligation)' : '';
-    return `IEA oil stocks: ${days} days of cover (obligation: ${threshold} days)${breach}`;
+
+    return parts.length > 0 ? parts.join('. ') : undefined;
   } catch {
     return undefined;
   }

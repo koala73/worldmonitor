@@ -384,6 +384,44 @@ describe('buildSpineEntry with Ember data', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildSpineEntry with SPR policy data
+// ---------------------------------------------------------------------------
+
+describe('buildSpineEntry with SPR policy data', () => {
+  it('includes SPR fields in shockInputs when policy is provided', () => {
+    const sprPolicy = { regime: 'government_spr', operator: 'CNPC/Sinopec', capacityMb: 476, ieaMember: false };
+    const entry = buildSpineEntry('CN', { mix: makeMix(), jodiOil: makeJodiOil(), jodiGas: null, ieaStocks: null, sprPolicy });
+    assert.equal(entry.shockInputs.sprRegime, 'government_spr');
+    assert.equal(entry.shockInputs.sprCapacityMb, 476);
+    assert.equal(entry.shockInputs.sprOperator, 'CNPC/Sinopec');
+    assert.equal(entry.shockInputs.sprIeaMember, false);
+    assert.equal(entry.coverage.hasSprPolicy, true);
+  });
+
+  it('defaults SPR fields to unknown when no policy provided', () => {
+    const entry = buildSpineEntry('AF', { mix: null, jodiOil: null, jodiGas: null, ieaStocks: null, sprPolicy: null });
+    assert.equal(entry.shockInputs.sprRegime, 'unknown');
+    assert.equal(entry.shockInputs.sprCapacityMb, null);
+    assert.equal(entry.shockInputs.sprOperator, null);
+    assert.equal(entry.shockInputs.sprIeaMember, false);
+    assert.equal(entry.coverage.hasSprPolicy, false);
+  });
+
+  it('hasSprPolicy is false for unknown regime', () => {
+    const entry = buildSpineEntry('XX', { mix: null, jodiOil: null, jodiGas: null, ieaStocks: null, sprPolicy: { regime: 'unknown' } });
+    assert.equal(entry.coverage.hasSprPolicy, false);
+  });
+
+  it('hasSprPolicy is true for mandatory_stockholding regime', () => {
+    const sprPolicy = { regime: 'mandatory_stockholding', ieaMember: true };
+    const entry = buildSpineEntry('DE', { mix: makeMix(), jodiOil: makeJodiOil(), jodiGas: null, ieaStocks: null, sprPolicy });
+    assert.equal(entry.coverage.hasSprPolicy, true);
+    assert.equal(entry.shockInputs.sprRegime, 'mandatory_stockholding');
+    assert.equal(entry.shockInputs.sprIeaMember, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Core-source guard when JODI and OWID are empty
 // ---------------------------------------------------------------------------
 

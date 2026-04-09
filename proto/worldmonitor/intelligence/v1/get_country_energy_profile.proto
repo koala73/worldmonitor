@@ -71,4 +71,15 @@ message GetCountryEnergyProfileResponse {
   double ember_demand_twh     = 48;
   string ember_data_month     = 49;
   bool   ember_available      = 50;  // true when Ember monthly data exists for this country
+
+  // Phase 4 — SPR policy classification
+  string spr_regime            = 51;  // "mandatory_stockholding"|"government_spr"|"spare_capacity"|"commercial_only"|"none"|"unknown"
+  double spr_capacity_mb       = 52;  // million barrels capacity (0 if unknown)
+  string spr_operator          = 53;  // operator name (empty if unknown)
+  bool   spr_iea_member        = 54;  // IEA member country
+  string spr_stockholding_model = 55; // "government"|"mixed_public_private"|"industry"|"none"
+  string spr_note              = 56;  // human-readable context
+  string spr_source            = 57;  // data source citation
+  string spr_as_of             = 58;  // date string (YYYY-MM)
+  bool   spr_available         = 59;  // true when registry has classified data (not 'unknown')
 }
