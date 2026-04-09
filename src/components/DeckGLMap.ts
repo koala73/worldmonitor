@@ -369,6 +369,8 @@ export class DeckGLMap {
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
+  private activeFlightTrails = new Set<string>();
+  private clearTrailsBtn: HTMLButtonElement | null = null;
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private serverBases: MilitaryBaseEnriched[] = [];
@@ -1595,6 +1597,11 @@ export class DeckGLMap {
       layers.push(this.createMilitaryVesselClustersLayer(filteredMilitaryVesselClusters));
     }
 
+    // Military flight trails (rendered beneath dots)
+    if (mapLayers.military && this.activeFlightTrails.size > 0 && filteredMilitaryFlights.length > 0) {
+      layers.push(this.createMilitaryFlightTrailsLayer(filteredMilitaryFlights));
+    }
+
     // Military flights layer
     if (mapLayers.military && filteredMilitaryFlights.length > 0) {
       layers.push(this.createMilitaryFlightsLayer(filteredMilitaryFlights));
@@ -2617,6 +2624,22 @@ export class DeckGLMap {
       radiusMinPixels: 4,
       radiusMaxPixels: 12,
       pickable: true,
+    });
+  }
+
+  private createMilitaryFlightTrailsLayer(flights: MilitaryFlight[]): PathLayer {
+    const trailed = flights.filter(f => this.activeFlightTrails.has(f.hexCode.toLowerCase()) && f.track && f.track.length > 1);
+    return new PathLayer({
+      id: 'military-flight-trails-layer',
+      data: trailed,
+      getPath: (d) => d.track!.map(([lat, lon]: [number, number]) => [lon, lat]),
+      getColor: (d) => { const [r, g, b] = altitudeToColor(d.altitude); return [r, g, b, 140] as [number, number, number, number]; },
+      getWidth: 2,
+      widthUnits: 'pixels' as const,
+      getDashArray: [6, 4],
+      dashJustified: true,
+      pickable: false,
+      extensions: [new PathStyleExtension({ dash: true })],
     });
   }
 
@@ -4097,6 +4120,12 @@ export class DeckGLMap {
     const x = info.x ?? 0;
     const y = info.y ?? 0;
 
+    // Toggle flight trail on military flight click
+    if (popupType === 'militaryFlight') {
+      const hex = (data as MilitaryFlight).hexCode;
+      if (hex) this.toggleFlightTrail(hex);
+    }
+
     this.popup.show({
       type: popupType,
       data: data,
@@ -4234,6 +4263,14 @@ export class DeckGLMap {
     viewSelect.addEventListener('change', () => {
       this.setView(viewSelect.value as DeckMapView);
     });
+
+    // Clear flight trails button (hidden by default)
+    this.clearTrailsBtn = document.createElement('button');
+    this.clearTrailsBtn.className = 'map-clear-trails-btn';
+    this.clearTrailsBtn.textContent = t('components.map.clearTrails');
+    this.clearTrailsBtn.style.display = 'none';
+    this.clearTrailsBtn.addEventListener('click', () => this.clearFlightTrails());
+    controls.appendChild(this.clearTrailsBtn);
   }
 
   private createTimeSlider(): void {
@@ -4347,6 +4384,7 @@ export class DeckGLMap {
             }
           }
           this.state.layers[layer] = enabled;
+          if (layer === 'military' && !enabled) this.clearFlightTrails();
           if (layer === 'flights') this.manageAircraftTimer(enabled);
           if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
           else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
@@ -4818,6 +4856,7 @@ export class DeckGLMap {
     const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
     this.state.layers = normalizeExclusiveChoropleths(layers, this.state.layers);
+    if (!this.state.layers.military) this.clearFlightTrails();
     this.manageAircraftTimer(this.state.layers.flights);
     if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
     else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
@@ -5123,7 +5162,38 @@ export class DeckGLMap {
   public setMilitaryFlights(flights: MilitaryFlight[], clusters: MilitaryFlightCluster[] = []): void {
     this.militaryFlights = flights;
     this.militaryFlightClusters = clusters;
+    // Prune trails for aircraft no longer in the dataset
+    if (this.activeFlightTrails.size > 0) {
+      const currentHexes = new Set(flights.map(f => f.hexCode.toLowerCase()));
+      for (const hex of this.activeFlightTrails) {
+        if (!currentHexes.has(hex)) this.activeFlightTrails.delete(hex);
+      }
+      this.updateClearTrailsBtn();
+    }
     this.render();
+  }
+
+  public toggleFlightTrail(hexCode: string): void {
+    const key = hexCode.toLowerCase();
+    if (this.activeFlightTrails.has(key)) {
+      this.activeFlightTrails.delete(key);
+    } else {
+      this.activeFlightTrails.add(key);
+    }
+    this.updateClearTrailsBtn();
+    this.render();
+  }
+
+  public clearFlightTrails(): void {
+    if (this.activeFlightTrails.size === 0) return;
+    this.activeFlightTrails.clear();
+    this.updateClearTrailsBtn();
+    this.render();
+  }
+
+  private updateClearTrailsBtn(): void {
+    if (!this.clearTrailsBtn) return;
+    this.clearTrailsBtn.style.display = this.activeFlightTrails.size > 0 ? '' : 'none';
   }
 
   public setMilitaryVessels(vessels: MilitaryVessel[], clusters: MilitaryVesselCluster[] = []): void {
@@ -5581,6 +5651,7 @@ export class DeckGLMap {
       this.onLayerChange?.('resilienceScore', false, 'programmatic');
     }
     this.state.layers[layer] = !this.state.layers[layer];
+    if (layer === 'military' && !this.state.layers[layer]) this.clearFlightTrails();
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
     if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
@@ -6069,6 +6140,8 @@ export class DeckGLMap {
   }
 
   public destroy(): void {
+    this.activeFlightTrails.clear();
+    this.clearTrailsBtn = null;
     this._unsubscribeAuthState?.();
     this._unsubscribeAuthState = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);

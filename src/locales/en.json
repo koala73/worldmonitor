@@ -2065,7 +2065,8 @@
     },
     "map": {
       "showMap": "Show Map",
-      "hideMap": "Hide Map"
+      "hideMap": "Hide Map",
+      "clearTrails": "Clear trails"
     },
     "climateNews": {
       "infoTooltip": "<strong>Climate News</strong> Latest environment and climate intelligence from Carbon Brief, UNEP, NASA, The Guardian, and other authoritative sources. Updated every 30 minutes.",

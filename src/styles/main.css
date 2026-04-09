@@ -4307,6 +4307,22 @@ body.playback-mode .status-dot {
   background: var(--border);
 }
 
+.map-clear-trails-btn {
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.map-clear-trails-btn:hover {
+  background: var(--border);
+}
+
 .time-slider {
   position: absolute;
   top: 10px;
