@@ -8,12 +8,12 @@ import {
 } from '../scripts/seed-resilience-scores.mjs';
 
 describe('exported constants', () => {
-  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v6)', () => {
-    assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v6');
+  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v7)', () => {
+    assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v7');
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v6)', () => {
-    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v6:');
+  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v7)', () => {
+    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v7:');
   });
 
   it('RESILIENCE_RANKING_CACHE_TTL_SECONDS is 6 hours', () => {

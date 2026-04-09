@@ -26,7 +26,7 @@ import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 // Source of truth: server/worldmonitor/resilience/v1/_shared.ts
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v6:';
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v7:';
 
 const MIN_SCORED_COUNTRIES = 5;
 

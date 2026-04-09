@@ -22,9 +22,9 @@ import {
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v6:';
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v3:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v6';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v7:';
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v4:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v7';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 
