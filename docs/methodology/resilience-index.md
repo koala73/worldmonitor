@@ -261,6 +261,7 @@ When data is absent, the system distinguishes between two cases:
 ### Low Confidence Flag
 
 A score is flagged as `lowConfidence` when either:
+
 - Average dimension coverage falls below **0.55**, or
 - Imputation share (imputed weight / total weight) exceeds **0.40**.
 
