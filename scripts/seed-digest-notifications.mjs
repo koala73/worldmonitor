@@ -448,9 +448,10 @@ async function generateAISummary(stories, rule) {
   const ctx = extractUserContext(prefs);
   const profile = formatUserProfile(ctx, rule.variant ?? 'full');
 
+  const variant = rule.variant ?? 'full';
   const storiesHash = hashShort(stories.map(s => s.titleHash ?? s.title).sort().join('|'));
   const ctxHash = hashShort(JSON.stringify(ctx));
-  const cacheKey = `digest:ai-summary:v1:${storiesHash}:${ctxHash}`;
+  const cacheKey = `digest:ai-summary:v1:${variant}:${storiesHash}:${ctxHash}`;
 
   try {
     const cached = await upstashRest('GET', cacheKey);
@@ -699,7 +700,7 @@ async function main() {
 </div>`;
         html = html.replace(
           /(<div style="padding: 32px;">)/,
-          `$1\n${summaryHtml}`,
+          (_, p1) => `${p1}\n${summaryHtml}`,
         );
       }
     }

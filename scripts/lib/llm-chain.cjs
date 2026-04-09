@@ -1,6 +1,6 @@
 'use strict';
 
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+const SERVICE_UA = 'worldmonitor-llm/1.0';
 
 const TASK_NARRATION = /^(we need to|i need to|let me|i'll |i should|i will |the task is|the instructions|according to the rules|so we need to|okay[,.]\s*(i'll|let me|so|we need|the task|i should|i will)|sure[,.]\s*(i'll|let me|so|we need|the task|i should|i will|here)|first[, ]+(i|we|let)|to summarize (the headlines|the task|this)|my task (is|was|:)|step \d)/i;
 const PROMPT_ECHO = /^(summarize the top story|summarize the key|rules:|here are the rules|the top story is likely)/i;
@@ -22,7 +22,7 @@ const LLM_PROVIDERS = [
     apiUrlFn: (baseUrl) => new URL('/v1/chat/completions', baseUrl).toString(),
     model: () => process.env.OLLAMA_MODEL || 'llama3.1:8b',
     headers: (_key) => {
-      const h = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
+      const h = { 'Content-Type': 'application/json', 'User-Agent': SERVICE_UA };
       const apiKey = process.env.OLLAMA_API_KEY;
       if (apiKey) h.Authorization = `Bearer ${apiKey}`;
       return h;
@@ -35,7 +35,7 @@ const LLM_PROVIDERS = [
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
     model: 'llama-3.1-8b-instant',
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': SERVICE_UA }),
     timeout: 15_000,
   },
   {
@@ -43,7 +43,7 @@ const LLM_PROVIDERS = [
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'google/gemini-2.5-flash',
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': SERVICE_UA }),
     timeout: 20_000,
   },
 ];
@@ -112,4 +112,4 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
   return null;
 }
 
-module.exports = { callLLM, stripReasoningPreamble, CHROME_UA };
+module.exports = { callLLM, stripReasoningPreamble };
