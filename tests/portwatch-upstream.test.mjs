@@ -247,6 +247,9 @@ describe('golden fixture (PortWatch ArcGIS JSON)', () => {
 
   it('buildHistory total matches n_total from attributes', () => {
     const history = buildHistory(fixture.features);
-    assert.equal(history[0].total, fixture.features[0].attributes.n_total);
+    const expected = fixture.features[0].attributes;
+    const entry = history.find(e => e.date === '2024-05-01');
+    assert.ok(entry != null, 'entry for 2024-05-01 missing');
+    assert.equal(entry.total, expected.n_total);
   });
 });
