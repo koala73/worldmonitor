@@ -42,7 +42,7 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^MOOSE', operator: 'usaf', aircraftType: 'transport', description: 'C-17 operations' },
   { pattern: '^HERKY', operator: 'usaf', aircraftType: 'transport', description: 'C-130 operations' },
   { pattern: '^ATLAS', operator: 'usaf', aircraftType: 'transport', description: 'C-17 strategic airlift' },
-  { pattern: '^HERC', operator: 'usaf', aircraftType: 'transport', description: 'C-130 Hercules' },
+  { pattern: '^HERC(?!KY)', operator: 'usaf', aircraftType: 'transport', description: 'C-130 Hercules' },
   { pattern: '^STEEL', operator: 'usaf', aircraftType: 'transport', description: 'USAF transport/tanker' },
   { pattern: '^CASA', operator: 'usaf', aircraftType: 'transport', description: 'C-295/CN-235 tactical transport' },
   { pattern: '^COMET', operator: 'usaf', aircraftType: 'transport', description: 'USAF transport' },
@@ -58,7 +58,7 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^PACK', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/tactical ops' },
   { pattern: '^DAGGER', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/special ops' },
   { pattern: '^DEMON', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
-  { pattern: '^GHOST', operator: 'usaf', aircraftType: 'fighter', description: 'Stealth/special ops' },
+  { pattern: '^GHOST', operator: 'usaf', aircraftType: 'bomber', description: 'B-2 Spirit / stealth ops' },
   { pattern: '^LANCE', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
   { pattern: '^REBEL', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
   { pattern: '^SKULL', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/bomber ops' },
@@ -146,7 +146,7 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
   // India
   { pattern: '^AIR INDIA ONE', operator: 'other', aircraftType: 'vip', description: 'Indian Air Force One' },
   { pattern: '^IAM', operator: 'other', description: 'Indian Air Force' },
-  { pattern: '^INDIA', operator: 'other', description: 'Indian military' },
+  { pattern: '^INDIA[0-9]', operator: 'other', description: 'Indian military (INDIA + flight number)' },
 
   // Japan ASDF
   { pattern: '^JPN', operator: 'other', description: 'Japan Self-Defense Force' },
