@@ -87,32 +87,33 @@ async function seedResilienceScores() {
   if (missingCodes.length > 0) {
     console.log(`[resilience-scores] Computing ${missingCodes.length} missing scores directly...`);
 
+    let ensureResilienceScoreCached, createMemoizedSeedReader;
     try {
-      const { ensureResilienceScoreCached, } = await import('../server/worldmonitor/resilience/v1/_shared.ts');
-      const { createMemoizedSeedReader } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
-
-      const reader = createMemoizedSeedReader();
-      const BATCH_SIZE = 20;
-
-      for (let i = 0; i < missingCodes.length; i += BATCH_SIZE) {
-        const batch = missingCodes.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(
-          batch.map((cc) => ensureResilienceScoreCached(cc, reader)),
-        );
-        const batchWarmed = batchResults.filter((r) => r.status === 'fulfilled').length;
-        warmed += batchWarmed;
-        const failed = batchResults.filter((r) => r.status === 'rejected');
-        if (failed.length > 0) {
-          console.error(`[resilience-scores] Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${failed.length} failed`);
-        }
-      }
-
-      console.log(`[resilience-scores] Warmed: ${warmed}/${missingCodes.length} scores`);
+      ({ ensureResilienceScoreCached } = await import('../server/worldmonitor/resilience/v1/_shared.ts'));
+      ({ createMemoizedSeedReader } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts'));
     } catch (err) {
       console.error(`[resilience-scores] FATAL: Scorer import failed. Check Railway start command includes --import tsx/esm`);
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
+
+    const reader = createMemoizedSeedReader();
+    const BATCH_SIZE = 20;
+
+    for (let i = 0; i < missingCodes.length; i += BATCH_SIZE) {
+      const batch = missingCodes.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.allSettled(
+        batch.map((cc) => ensureResilienceScoreCached(cc, reader)),
+      );
+      const batchWarmed = batchResults.filter((r) => r.status === 'fulfilled').length;
+      warmed += batchWarmed;
+      const failed = batchResults.filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        console.error(`[resilience-scores] Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${failed.length} failed`);
+      }
+    }
+
+    console.log(`[resilience-scores] Warmed: ${warmed}/${missingCodes.length} scores`);
   }
 
   return { skipped: false, recordCount: scored + warmed, total: countryCodes.length };
