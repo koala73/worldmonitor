@@ -46,7 +46,7 @@ describe('resilience ranking contracts', () => {
       ],
       greyedOut: [],
     };
-    redis.set('resilience:ranking:v7', JSON.stringify(cached));
+    redis.set('resilience:ranking:v8', JSON.stringify(cached));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -65,7 +65,7 @@ describe('resilience ranking contracts', () => {
         { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12 },
       ],
     };
-    redis.set('resilience:ranking:v7', JSON.stringify(cached));
+    redis.set('resilience:ranking:v8', JSON.stringify(cached));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -103,7 +103,7 @@ describe('resilience ranking contracts', () => {
     assert.equal(totalItems, 3, `expected 3 total items across ranked + greyedOut, got ${totalItems}`);
     assert.ok(redis.has('resilience:score:v7:YE'), 'missing country should be warmed during first call');
     assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
-    assert.ok(redis.has('resilience:ranking:v7'), 'fully scored ranking should be cached');
+    assert.ok(redis.has('resilience:ranking:v8'), 'fully scored ranking should be cached');
   });
 
   it('sets rankStable=true when interval data exists and width <= 8', async () => {

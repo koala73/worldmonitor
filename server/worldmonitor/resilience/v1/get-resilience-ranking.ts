@@ -33,7 +33,7 @@ const SYNC_WARM_LIMIT = 200;
 
 async function fetchIntervals(countryCodes: string[]): Promise<Map<string, ScoreInterval>> {
   if (countryCodes.length === 0) return new Map();
-  const results = await runRedisPipeline(countryCodes.map((cc) => ['GET', `${RESILIENCE_INTERVAL_KEY_PREFIX}${cc}`]));
+  const results = await runRedisPipeline(countryCodes.map((cc) => ['GET', `${RESILIENCE_INTERVAL_KEY_PREFIX}${cc}`]), true);
   const map = new Map<string, ScoreInterval>();
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = results[i]?.result;

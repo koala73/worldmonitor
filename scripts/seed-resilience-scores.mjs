@@ -13,7 +13,7 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v7:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v7';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v8';
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
