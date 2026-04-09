@@ -1456,6 +1456,45 @@ body.panel-resize-active iframe {
   color: var(--text);
 }
 
+.panel-severity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: none;
+}
+
+.panel-severity-dot.severity-critical {
+  display: block;
+  background: var(--threat-critical);
+  box-shadow: 0 0 6px var(--threat-critical);
+  animation: severity-pulse 0.6s ease-in-out infinite;
+}
+
+.panel-severity-dot.severity-high {
+  display: block;
+  background: var(--threat-high);
+  box-shadow: 0 0 4px var(--threat-high);
+  animation: severity-pulse 1s ease-in-out infinite;
+}
+
+.panel-severity-dot.severity-medium {
+  display: block;
+  background: var(--threat-medium);
+  animation: severity-pulse 1.8s ease-in-out infinite;
+}
+
+.panel-severity-dot.severity-low {
+  display: block;
+  background: var(--threat-low);
+  animation: severity-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes severity-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.7); }
+}
+
 /* Push the first element after header-left to the right; subsequent siblings flow via gap */
 .panel-header > .panel-header-left + * {
   margin-left: auto;
