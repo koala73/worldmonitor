@@ -162,7 +162,9 @@ async function main() {
     ...(result.total != null && { total: result.total }),
     ...(result.reason != null && { reason: result.reason }),
   });
-  await writeFreshnessMetadata('resilience', 'intervals', result.recordCount ?? 0, '', 7 * 24 * 3600);
+  if (!result.skipped) {
+    await writeFreshnessMetadata('resilience', 'intervals', result.recordCount ?? 0, '', 7 * 24 * 3600);
+  }
 }
 
 if (process.argv[1]?.endsWith('seed-resilience-intervals.mjs')) {

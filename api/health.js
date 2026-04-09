@@ -152,6 +152,7 @@ const STANDALONE_KEYS = {
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
   chokepointFlows:          'energy:chokepoint-flows:v1',
   emberElectricity:         'energy:ember:v1:_all',
+  resilienceIntervals:      'resilience:intervals:v1:US',
 };
 
 const SEED_META = {
