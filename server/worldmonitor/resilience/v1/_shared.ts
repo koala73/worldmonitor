@@ -6,6 +6,8 @@ import type {
   ScoreInterval,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
+export type { ScoreInterval };
+
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { detectTrend, round } from '../../../_shared/resilience-stats';
 import {
@@ -286,11 +288,6 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
 }
 
 export const GREY_OUT_COVERAGE_THRESHOLD = 0.40;
-
-export interface ScoreInterval {
-  p05: number;
-  p95: number;
-}
 
 function computeOverallCoverage(response: GetResilienceScoreResponse): number {
   const coverages = response.domains.flatMap((domain) => domain.dimensions.map((dimension) => dimension.coverage));
