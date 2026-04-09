@@ -64,7 +64,7 @@ describe('script is self-contained .mjs', () => {
     assert.equal(src.includes('tsx/esm'), false, 'Must not reference tsx/esm');
   });
 
-  it('only imports from ./_seed-utils.mjs', async () => {
+  it('all imports are local ./ relative paths', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
