@@ -445,6 +445,10 @@ async function generateAISummary(stories, rule) {
   if (!stories || stories.length === 0) return null;
 
   const prefs = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
+  if (!prefs) {
+    console.log(`[digest] No preferences for ${rule.userId} — skipping AI summary`);
+    return null;
+  }
   const ctx = extractUserContext(prefs);
   const profile = formatUserProfile(ctx, rule.variant ?? 'full');
 
@@ -699,7 +703,7 @@ async function main() {
 <div style="font-size:14px;line-height:1.7;color:#d4d4d4;white-space:pre-wrap;">${escapeHtml(aiSummary)}</div>
 </div>`;
         html = html.replace(
-          /(<div style="padding: 32px;">)/,
+          /(<div style="padding: 40px 32px 0;">)/,
           (_, p1) => `${p1}\n${summaryHtml}`,
         );
       }
