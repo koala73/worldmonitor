@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 /**
- * Read-only health check for resilience country scores. Reads the static index
- * and checks how many countries have cached scores. Does NOT write rankings
- * (the Vercel ranking handler owns that with proper greyedOut split).
+ * Resilience score seeder: reads the static index, checks which countries have
+ * cached scores, and computes missing ones directly via the scoring engine.
  *
  * Runs every 5 hours via Railway cron (slightly inside the 6-hour score cache
- * TTL to keep monitoring warm).
+ * TTL to keep scores warm for the Vercel ranking handler).
  *
- * Missing scores are handled on-demand by the Vercel ranking handler
- * (warmMissingResilienceScores with SYNC_WARM_LIMIT=200 covers the full index
- * in parallel).
+ * Requires: node --import tsx/esm scripts/seed-resilience-scores.mjs
+ * (tsx/esm is needed to import the TypeScript scoring engine from server/)
  */
 
 import {
@@ -78,12 +76,44 @@ async function seedResilienceScores() {
 
   console.log(`[resilience-scores] ${scored}/${countryCodes.length} countries have cached scores`);
 
-  if (scored < countryCodes.length) {
-    const missing = countryCodes.length - scored;
-    console.warn(`[resilience-scores] ${missing} countries missing scores — will be warmed on-demand by ranking handler`);
+  const missingCodes = [];
+  for (let i = 0; i < countryCodes.length; i++) {
+    const raw = results[i]?.result;
+    const valid = typeof raw === 'string' && (() => { try { JSON.parse(raw); return true; } catch { return false; } })();
+    if (!valid) missingCodes.push(countryCodes[i]);
   }
 
-  return { skipped: false, recordCount: scored, total: countryCodes.length };
+  let warmed = 0;
+  if (missingCodes.length > 0) {
+    console.log(`[resilience-scores] Computing ${missingCodes.length} missing scores directly...`);
+
+    try {
+      const { ensureResilienceScoreCached, } = await import('../server/worldmonitor/resilience/v1/_shared.ts');
+      const { createMemoizedSeedReader } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+
+      const reader = createMemoizedSeedReader();
+      const BATCH_SIZE = 20;
+
+      for (let i = 0; i < missingCodes.length; i += BATCH_SIZE) {
+        const batch = missingCodes.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map((cc) => ensureResilienceScoreCached(cc, reader)),
+        );
+        const batchWarmed = batchResults.filter((r) => r.status === 'fulfilled').length;
+        warmed += batchWarmed;
+        const failed = batchResults.filter((r) => r.status === 'rejected');
+        if (failed.length > 0) {
+          console.error(`[resilience-scores] Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${failed.length} failed`);
+        }
+      }
+
+      console.log(`[resilience-scores] Warmed: ${warmed}/${missingCodes.length} scores`);
+    } catch (err) {
+      console.error(`[resilience-scores] Scorer import failed (needs --import tsx/esm): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { skipped: false, recordCount: scored + warmed, total: countryCodes.length };
 }
 
 async function main() {
