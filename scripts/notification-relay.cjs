@@ -501,8 +501,9 @@ async function generateEventImpact(event, rule) {
   const ctx = extractUserContext(prefs);
   if (ctx.tickers.length === 0 && ctx.airports.length === 0 && !ctx.frameworkName) return null;
 
+  const variant = rule.variant ?? 'full';
   const eventHash = sha256Hex(`${event.eventType}:${event.payload?.title ?? ''}`);
-  const ctxHash = sha256Hex(JSON.stringify(ctx)).slice(0, 16);
+  const ctxHash = sha256Hex(JSON.stringify({ ...ctx, variant })).slice(0, 16);
   const cacheKey = `impact:ai:v1:${eventHash.slice(0, 16)}:${ctxHash}`;
 
   try {
@@ -510,18 +511,29 @@ async function generateEventImpact(event, rule) {
     if (cached) return cached;
   } catch { /* miss */ }
 
-  const profile = formatUserProfile(ctx, rule.variant ?? 'full');
+  const profile = formatUserProfile(ctx, variant);
+  const safeTitle = String(event.payload?.title ?? event.eventType).replace(/[\r\n]/g, ' ').slice(0, 300);
+  const safeSource = event.payload?.source ? String(event.payload.source).replace(/[\r\n]/g, ' ').slice(0, 100) : '';
   const systemPrompt = `Assess how this event impacts a specific investor/analyst.
 Return 1-2 sentences: (1) direct impact on their assets/regions, (2) action implication.
 If no clear impact: "Low direct impact on your portfolio."
 Be specific about tickers and regions. No preamble.`;
 
-  const userPrompt = `Event: [${(event.severity ?? 'high').toUpperCase()}] ${event.payload?.title ?? event.eventType}
-${event.payload?.source ? `Source: ${event.payload.source}` : ''}
+  const userPrompt = `Event: [${(event.severity ?? 'high').toUpperCase()}] ${safeTitle}
+${safeSource ? `Source: ${safeSource}` : ''}
 
 ${profile}`;
 
-  const impact = await callLLM(systemPrompt, userPrompt, { maxTokens: 200, temperature: 0.2, timeoutMs: 8000 });
+  let impact;
+  try {
+    impact = await Promise.race([
+      callLLM(systemPrompt, userPrompt, { maxTokens: 200, temperature: 0.2, timeoutMs: 8000 }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('global timeout')), 10000)),
+    ]);
+  } catch {
+    console.warn(`[relay] AI impact global timeout for ${rule.userId}`);
+    return null;
+  }
   if (!impact) return null;
 
   try {
