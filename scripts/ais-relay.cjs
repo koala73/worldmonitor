@@ -97,7 +97,8 @@ const OREF_PROXY_AUTH = process.env.OREF_PROXY_AUTH || ''; // format: user:pass@
 const OREF_ALERTS_URL = 'https://www.oref.org.il/WarningMessages/alert/alerts.json';
 const OREF_HISTORY_URL = 'https://www.oref.org.il/WarningMessages/alert/History/AlertsHistory.json';
 const OREF_POLL_INTERVAL_MS = Math.max(30_000, Number(process.env.OREF_POLL_INTERVAL_MS || 300_000));
-const OREF_ENABLED = !!OREF_PROXY_AUTH;
+const OREF_PROXY_AVAILABLE = !!OREF_PROXY_AUTH;
+const SIREN_ALERTS_ENABLED = true; // Tzeva Adom is free, no proxy needed
 
 // Hebrew→English translation dictionaries for siren alerts
 const OREF_THREAT_TRANSLATIONS = (() => {
@@ -893,7 +894,7 @@ async function orefFetchAlerts() {
   if (tzevaAlerts !== null) {
     alerts = tzevaAlerts;
     source = 'tzeva-adom';
-  } else if (OREF_ENABLED) {
+  } else if (OREF_PROXY_AVAILABLE) {
     // Fallback: OREF direct (requires Israeli proxy)
     try {
       const raw = orefCurlFetch(OREF_PROXY_AUTH, OREF_ALERTS_URL);
@@ -919,7 +920,7 @@ async function orefFetchAlerts() {
       console.warn('[Relay] OREF fallback poll error:', orefState.lastError);
     }
   }
-  if (source === 'none' && !OREF_ENABLED) return;
+  if (source === 'none' && !SIREN_ALERTS_ENABLED) return;
 
   try {
 
@@ -980,7 +981,7 @@ async function orefFetchAlerts() {
 function orefPreSerializeResponses() {
   const ts = orefState.lastPollAt ? new Date(orefState.lastPollAt).toISOString() : new Date().toISOString();
   const alertsJson = JSON.stringify({
-    configured: OREF_ENABLED,
+    configured: SIREN_ALERTS_ENABLED,
     alerts: orefState.lastAlerts || [],
     historyCount24h: orefState.historyCount24h,
     totalHistoryCount: orefState.totalHistoryCount,
@@ -990,7 +991,7 @@ function orefPreSerializeResponses() {
   orefState._alertsCache = { json: alertsJson, gzip: gzipSyncBuffer(alertsJson), brotli: brotliSyncBuffer(alertsJson) };
 
   const historyJson = JSON.stringify({
-    configured: OREF_ENABLED,
+    configured: SIREN_ALERTS_ENABLED,
     history: orefState.history || [],
     historyCount24h: orefState.historyCount24h,
     totalHistoryCount: orefState.totalHistoryCount,
@@ -1214,10 +1215,11 @@ async function orefBootstrapHistoryWithRetry() {
 }
 
 async function startOrefPollLoop() {
-  if (!OREF_ENABLED) {
-    console.log('[Relay] OREF disabled (no OREF_PROXY_AUTH)');
+  if (!SIREN_ALERTS_ENABLED) {
+    console.log('[Relay] Siren alerts disabled');
     return;
   }
+  console.log(`[Relay] Siren alerts: primary=Tzeva Adom, fallback=${OREF_PROXY_AVAILABLE ? 'OREF (proxy)' : 'none'}`);
   await orefBootstrapHistoryWithRetry();
   console.log(`[Relay] OREF bootstrap complete (source: ${orefState.bootstrapSource || 'none'}, redis: ${UPSTASH_ENABLED})`);
   orefFetchAlerts().catch(e => console.warn('[Relay] OREF initial poll error:', e?.message || e));
@@ -8597,7 +8599,7 @@ const server = http.createServer(async (req, res) => {
         pollInFlightSince: telegramPollInFlight && telegramPollStartedAt ? new Date(telegramPollStartedAt).toISOString() : null,
       },
       oref: {
-        enabled: OREF_ENABLED,
+        enabled: SIREN_ALERTS_ENABLED,
         alertCount: orefState.lastAlerts?.length || 0,
         historyCount24h: orefState.historyCount24h,
         totalHistoryCount: orefState.totalHistoryCount,
@@ -9019,7 +9021,7 @@ const server = http.createServer(async (req, res) => {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=5, s-maxage=5, stale-while-revalidate=3',
       }, JSON.stringify({
-        configured: OREF_ENABLED,
+        configured: SIREN_ALERTS_ENABLED,
         alerts: orefState.lastAlerts || [],
         historyCount24h: orefState.historyCount24h,
         totalHistoryCount: orefState.totalHistoryCount,
@@ -9039,7 +9041,7 @@ const server = http.createServer(async (req, res) => {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=10',
       }, JSON.stringify({
-        configured: OREF_ENABLED,
+        configured: SIREN_ALERTS_ENABLED,
         history: orefState.history || [],
         historyCount24h: orefState.historyCount24h,
         totalHistoryCount: orefState.totalHistoryCount,
