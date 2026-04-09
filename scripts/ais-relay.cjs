@@ -920,7 +920,12 @@ async function orefFetchAlerts() {
       console.warn('[Relay] OREF fallback poll error:', orefState.lastError);
     }
   }
-  if (source === 'none' && !SIREN_ALERTS_ENABLED) return;
+  if (source === 'none') {
+    orefState.lastError = orefState.lastError || 'All siren sources unavailable';
+    orefState.lastPollAt = Date.now();
+    console.warn('[Relay] Siren poll: both Tzeva Adom and OREF failed');
+    return;
+  }
 
   try {
 
