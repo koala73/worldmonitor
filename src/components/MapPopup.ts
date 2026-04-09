@@ -274,9 +274,9 @@ export class MapPopup {
         this.transitChart = new TransitChart();
         this.transitChart.mount(chartEl, cp.transitSummary.history);
       }
-      // Track PRO gate impression for sector ring chart
-      if (CHOKEPOINT_HS2_SECTORS[waterway.chokepointId] && !hasPremiumAccess(getAuthState())) {
-        trackGateHit('chokepoint-sector-mix');
+      // Track PRO gate impression for transit chart
+      if (cp?.transitSummary?.history?.length && !hasPremiumAccess(getAuthState())) {
+        trackGateHit('chokepoint-transit-chart');
       }
     }
 
@@ -1203,22 +1203,24 @@ export class MapPopup {
     const isPro = hasPremiumAccess(getAuthState());
     const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
 
-    let sectorSection = '';
-    if (sectors) {
+    // Sector mix is always visible (static data, drives engagement)
+    const sectorSection = sectors
+      ? `<div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
+         ${renderSectorRing(sectors)}`
+      : '';
+
+    // Transit chart is PRO-gated (real-time PortWatch data)
+    let chartSection = '';
+    if (hasChart) {
       if (isPro) {
-        sectorSection = `
-          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
-          ${renderSectorRing(sectors)}`;
+        chartSection = `<div data-transit-chart="${escapeHtml(waterway.name)}" style="margin-top:10px;min-height:200px"></div>`;
       } else {
-        // Use uniform placeholder segments — never expose real sector data to non-PRO DOM
-        const placeholderSectors = sectors.map(s => ({ label: '?', share: 1 / sectors.length, color: s.color }));
-        sectorSection = `
-          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
-          <div class="sector-pro-gate" data-gate="chokepoint-sector-mix" style="position:relative;overflow:hidden;border-radius:6px;margin-top:6px">
-            <div style="filter:blur(4px);pointer-events:none;opacity:.5">${renderSectorRing(placeholderSectors)}</div>
+        chartSection = `
+          <div class="sector-pro-gate" data-gate="chokepoint-transit-chart" style="position:relative;overflow:hidden;border-radius:6px;margin-top:10px;min-height:120px;background:var(--surface-elevated, #111)">
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
               <span style="font-size:16px">🔒</span>
               <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>
+              <span style="font-size:9px;opacity:.5">Transit History</span>
             </div>
           </div>`;
       }
@@ -1238,8 +1240,8 @@ export class MapPopup {
             <span class="stat-value">${waterway.lat.toFixed(2)}°, ${waterway.lon.toFixed(2)}°</span>
           </div>
         </div>
-        ${hasChart ? `<div data-transit-chart="${escapeHtml(waterway.name)}" style="margin-top:10px;min-height:200px"></div>` : ''}
         ${sectorSection}
+        ${chartSection}
       </div>
     `;
   }
