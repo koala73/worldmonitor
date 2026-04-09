@@ -110,6 +110,7 @@ interface PostBody {
   channelType?: string;
   email?: string;
   webhookEnvelope?: string;
+  webhookLabel?: string;
   variant?: string;
   enabled?: boolean;
   eventTypes?: string[];
@@ -200,10 +201,11 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-channel') {
-        const { channelType, email, webhookEnvelope } = body;
+        const { channelType, email, webhookEnvelope, webhookLabel } = body;
         if (!channelType) return json({ error: 'channelType required' }, 400, corsHeaders);
         const relayBody: Record<string, unknown> = { action: 'set-channel', userId: session.userId, channelType };
         if (email !== undefined) relayBody.email = email;
+        if (webhookLabel !== undefined) relayBody.webhookLabel = String(webhookLabel).slice(0, 100);
         if (webhookEnvelope !== undefined) {
           try {
             relayBody.webhookEnvelope = await encryptSlackWebhook(webhookEnvelope);

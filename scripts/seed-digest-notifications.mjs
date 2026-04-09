@@ -650,9 +650,12 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
     return false;
   }
   try {
-    const addrs = await dns.resolve4(parsed.hostname).catch(() => []);
+    const addrs = await dns.resolve4(parsed.hostname);
     if (addrs.some(isPrivateIP)) { console.warn(`[digest] Webhook SSRF blocked for ${userId}`); return false; }
-  } catch { return false; }
+  } catch {
+    console.warn(`[digest] Webhook DNS resolve failed for ${userId}`);
+    return false;
+  }
   const payload = JSON.stringify({
     version: '1',
     eventType: 'digest',

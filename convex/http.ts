@@ -355,6 +355,7 @@ http.route({
       channelType?: string;
       chatId?: string;
       webhookEnvelope?: string;
+      webhookLabel?: string;
       email?: string;
       variant?: string;
       enabled?: boolean;
@@ -419,10 +420,11 @@ http.route({
         }
         const setResult = await ctx.runMutation((internal as any).notificationChannels.setChannelForUser, {
           userId,
-          channelType: body.channelType as "telegram" | "slack" | "email",
+          channelType: body.channelType as "telegram" | "slack" | "email" | "webhook",
           chatId: body.chatId,
           webhookEnvelope: body.webhookEnvelope,
           email: body.email,
+          webhookLabel: body.webhookLabel,
         });
         return new Response(JSON.stringify({ ok: true, isNew: setResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
