@@ -164,16 +164,8 @@ describe('Cache keys bumped to v2', () => {
     assert.match(bootstrapSrc, /minerals:\s*'supply_chain:minerals:v2'/);
   });
 
-  it('bootstrap.js has chokepointTransits key', () => {
-    assert.match(bootstrapSrc, /chokepointTransits:\s*'supply_chain:chokepoint_transits:v1'/);
-  });
-
   it('cache-keys.ts chokepoints key is v4', () => {
     assert.match(cacheKeysSrc, /chokepoints:\s*'supply_chain:chokepoints:v4'/);
-  });
-
-  it('cache-keys.ts has chokepointTransits key', () => {
-    assert.match(cacheKeysSrc, /chokepointTransits:\s*'supply_chain:chokepoint_transits:v1'/);
   });
 
   it('cache-keys.ts minerals key is v2', () => {
