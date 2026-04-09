@@ -374,6 +374,7 @@ http.route({
       digestMode?: string;
       digestHour?: number;
       digestTimezone?: string;
+      aiDigestEnabled?: boolean;
     };
     try {
       body = await request.json() as typeof body;
@@ -482,6 +483,7 @@ http.route({
           eventTypes: body.eventTypes as string[],
           sensitivity: (body.sensitivity ?? "all") as "all" | "high" | "critical",
           channels: body.channels as Array<"telegram" | "slack" | "email">,
+          aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }

@@ -776,6 +776,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
           const digestMode = alertRule?.digestMode ?? 'realtime';
           const digestHour = alertRule?.digestHour ?? 8;
+          const aiDigestEnabled = alertRule?.aiDigestEnabled ?? true;
 
           const hourOptions = Array.from({ length: 24 }, (_, h) => {
             const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
@@ -883,6 +884,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 </div>
                 <select class="unified-settings-select" id="usDigestHour" style="width:auto">${hourOptionsDigest}</select>
               </div>
+              <div class="ai-flow-toggle-row" style="margin-top:8px">
+                <div class="ai-flow-toggle-label-wrap">
+                  <div class="ai-flow-toggle-label">AI executive summary</div>
+                  <div class="ai-flow-toggle-desc">Prepend a personalized intelligence brief tailored to your watchlist and interests</div>
+                </div>
+                <label class="ai-flow-switch">
+                  <input type="checkbox" id="usAiDigestEnabled"${aiDigestEnabled ? ' checked' : ''}>
+                  <span class="ai-flow-slider"></span>
+                </label>
+              </div>
             </div>
             <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
             <select class="unified-settings-select" id="usSharedTimezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
@@ -922,7 +933,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             .filter(el => el.classList.contains('us-notif-ch-on'))
             .map(el => el.dataset.channelType as ChannelType);
           const channels = [...new Set([...existing, newChannel])];
-          void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
+          const aiEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
+          void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels, aiDigestEnabled: aiEl?.checked ?? true });
         }
 
         let slackOAuthPopup: Window | null = null;
@@ -1019,7 +1031,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             saveDigestSettings();
             return;
           }
-          if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
+          if (target.id === 'usAiDigestEnabled') {
             if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
             alertRuleDebounceTimer = setTimeout(() => {
               const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
@@ -1037,6 +1049,31 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 eventTypes: [],
                 sensitivity,
                 channels: connectedChannelTypes,
+                aiDigestEnabled: target.checked,
+              });
+            }, 500);
+            return;
+          }
+          if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
+            if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+            alertRuleDebounceTimer = setTimeout(() => {
+              const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+              const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
+              const enabled = enabledEl?.checked ?? false;
+              const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
+              const connectedChannelTypes = Array.from(
+                container.querySelectorAll<HTMLElement>('[data-channel-type]'),
+              )
+                .filter(el => el.classList.contains('us-notif-ch-on'))
+                .map(el => el.dataset.channelType as ChannelType);
+              const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
+              void saveAlertRules({
+                variant: SITE_VARIANT,
+                enabled,
+                eventTypes: [],
+                sensitivity,
+                channels: connectedChannelTypes,
+                aiDigestEnabled: aiDigestEl?.checked ?? true,
               });
             }, 1000);
           }

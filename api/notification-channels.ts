@@ -123,6 +123,7 @@ interface PostBody {
   digestMode?: string;
   digestHour?: number;
   digestTimezone?: string;
+  aiDigestEnabled?: boolean;
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -234,7 +235,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled } = body;
         const resp = await convexRelay({
           action: 'set-alert-rules',
           userId: session.userId,
@@ -243,6 +244,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           eventTypes,
           sensitivity,
           channels,
+          aiDigestEnabled,
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);

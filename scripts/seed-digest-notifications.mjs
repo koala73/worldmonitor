@@ -682,7 +682,7 @@ async function main() {
     }
 
     let aiSummary = null;
-    if (AI_DIGEST_ENABLED) {
+    if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
       aiSummary = await generateAISummary(stories, rule);
     }
 

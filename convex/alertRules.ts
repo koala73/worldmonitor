@@ -21,6 +21,7 @@ export const setAlertRules = mutation({
     eventTypes: v.array(v.string()),
     sensitivity: sensitivityValidator,
     channels: v.array(channelTypeValidator),
+    aiDigestEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -42,6 +43,7 @@ export const setAlertRules = mutation({
         eventTypes: args.eventTypes,
         sensitivity: args.sensitivity,
         channels: args.channels,
+        aiDigestEnabled: args.aiDigestEnabled,
         updatedAt: now,
       });
     } else {
@@ -52,6 +54,7 @@ export const setAlertRules = mutation({
         eventTypes: args.eventTypes,
         sensitivity: args.sensitivity,
         channels: args.channels,
+        aiDigestEnabled: args.aiDigestEnabled ?? true,
         updatedAt: now,
       });
     }
@@ -130,6 +133,7 @@ export const setAlertRulesForUser = internalMutation({
     eventTypes: v.array(v.string()),
     sensitivity: sensitivityValidator,
     channels: v.array(channelTypeValidator),
+    aiDigestEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId, ...rest } = args;
@@ -146,6 +150,7 @@ export const setAlertRulesForUser = internalMutation({
         eventTypes: rest.eventTypes,
         sensitivity: rest.sensitivity,
         channels: rest.channels,
+        aiDigestEnabled: rest.aiDigestEnabled,
         updatedAt: now,
       });
     } else {

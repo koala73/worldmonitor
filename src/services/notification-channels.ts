@@ -31,6 +31,7 @@ export interface AlertRule {
   digestMode?: DigestMode;
   digestHour?: number;
   digestTimezone?: string;
+  aiDigestEnabled?: boolean;
 }
 
 export interface ChannelsData {

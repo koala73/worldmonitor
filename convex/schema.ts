@@ -87,6 +87,7 @@ export default defineSchema({
     digestMode: v.optional(digestModeValidator),
     digestHour: v.optional(v.number()),       // 0-23 local hour for daily/twice_daily
     digestTimezone: v.optional(v.string()),   // IANA timezone, e.g. "America/New_York"
+    aiDigestEnabled: v.optional(v.boolean()), // opt-in AI executive summary in digests (default true for new rules)
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
