@@ -3862,6 +3862,7 @@ export class DeckGLMap {
   private static readonly CHOROPLETH_LAYER_IDS = new Set([
     'cii-choropleth-layer',
     'happiness-choropleth-layer',
+    'resilience-choropleth-layer',
   ]);
 
   private handleClick(info: PickingInfo): void {
