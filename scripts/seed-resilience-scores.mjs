@@ -98,7 +98,7 @@ async function seedResilienceScores() {
     const postResults = await redisPipeline(url, token, getCommands);
     const stillMissing = [];
     for (let i = 0; i < countryCodes.length; i++) {
-      const raw = postResults[i]?.[1] ?? postResults[i]?.result ?? null;
+      const raw = postResults[i]?.result ?? null;
       if (!raw || raw === 'null') { stillMissing.push(countryCodes[i]); continue; }
       try {
         const parsed = JSON.parse(raw);
@@ -107,6 +107,9 @@ async function seedResilienceScores() {
     }
 
     // Warm laggards individually (countries the bulk ranking timed out on)
+    if (stillMissing.length > 0 && !WM_KEY) {
+      console.warn(`[resilience-scores] ${stillMissing.length} laggards found but WORLDMONITOR_API_KEY not set — skipping individual warmup`);
+    }
     if (stillMissing.length > 0 && WM_KEY) {
       console.log(`[resilience-scores] Warming ${stillMissing.length} laggards individually...`);
       const BATCH = 5;
