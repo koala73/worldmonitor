@@ -94,10 +94,43 @@ async function seedResilienceScores() {
       console.warn(`[resilience-scores] Ranking warmup failed (best-effort): ${err.message}`);
     }
 
+    // Re-check which countries are still missing after bulk warmup
     const postResults = await redisPipeline(url, token, getCommands);
-    const postWarmed = countCachedFromPipeline(postResults);
-    console.log(`[resilience-scores] Final: ${postWarmed}/${countryCodes.length} cached`);
-    return { skipped: false, recordCount: postWarmed, total: countryCodes.length };
+    const stillMissing = [];
+    for (let i = 0; i < countryCodes.length; i++) {
+      const raw = postResults[i]?.[1] ?? postResults[i]?.result ?? null;
+      if (!raw || raw === 'null') { stillMissing.push(countryCodes[i]); continue; }
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.overallScore <= 0) stillMissing.push(countryCodes[i]);
+      } catch { stillMissing.push(countryCodes[i]); }
+    }
+
+    // Warm laggards individually (countries the bulk ranking timed out on)
+    if (stillMissing.length > 0 && WM_KEY) {
+      console.log(`[resilience-scores] Warming ${stillMissing.length} laggards individually...`);
+      const BATCH = 5;
+      let warmed = 0;
+      for (let i = 0; i < stillMissing.length; i += BATCH) {
+        const batch = stillMissing.slice(i, i + BATCH);
+        const results = await Promise.allSettled(batch.map(async (cc) => {
+          const scoreUrl = `${API_BASE}/api/resilience/v1/get-resilience-score?countryCode=${cc}`;
+          const resp = await fetch(scoreUrl, {
+            headers: { 'User-Agent': SEED_UA, 'Accept': 'application/json', 'X-WorldMonitor-Key': WM_KEY },
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (!resp.ok) throw new Error(`${cc}: HTTP ${resp.status}`);
+          return cc;
+        }));
+        warmed += results.filter(r => r.status === 'fulfilled').length;
+      }
+      console.log(`[resilience-scores] Laggards warmed: ${warmed}/${stillMissing.length}`);
+    }
+
+    const finalResults = await redisPipeline(url, token, getCommands);
+    const finalWarmed = countCachedFromPipeline(finalResults);
+    console.log(`[resilience-scores] Final: ${finalWarmed}/${countryCodes.length} cached`);
+    return { skipped: false, recordCount: finalWarmed, total: countryCodes.length };
   }
 
   return { skipped: false, recordCount: preWarmed, total: countryCodes.length };
