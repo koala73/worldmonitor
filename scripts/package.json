@@ -8,8 +8,8 @@
     "telegram:session": "node telegram/session-auth.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.79.0",
-    "fast-xml-parser": "^5.2.3",
+    "@anthropic-ai/sdk": "^0.82.0",
+    "fast-xml-parser": "^5.6.0",
     "h3-js": "^4.2.1",
     "telegram": "^2.22.2",
     "ws": "^8.18.0"
