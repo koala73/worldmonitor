@@ -196,32 +196,13 @@ Coverage weighting ensures that dimensions with sparse data (low coverage) contr
 
 ### Overall Score
 
-The overall score uses a **baseline-stress decomposition**:
+The overall score is a **domain-weighted sum**:
 
-1. Each dimension is classified as `baseline` (structural capacity), `stress` (current threats), or `mixed` (both).
-2. `baselineScore` = coverage-weighted mean of all baseline and mixed dimensions.
-3. `stressScore` = coverage-weighted mean of all stress and mixed dimensions.
-4. `stressFactor` = clamp(1 - stressScore / 100, 0, 0.5). When stress is low (stressScore near 100), the factor approaches 0. When stress is high (stressScore near 0), the factor reaches 0.5.
-5. `overallScore` = baselineScore * (1 - stressFactor).
+```
+overallScore = sum(domainScore_i * domainWeight_i)
+```
 
-This means a country's overall resilience is its baseline capacity discounted by current stress, with stress able to reduce the score by up to 50%.
-
-### Dimension Type Classification
-
-| Dimension | Type |
-|---|---|
-| Macro-Fiscal | Baseline |
-| Currency & External | Stress |
-| Trade & Sanctions | Stress |
-| Cyber & Digital | Stress |
-| Logistics & Supply | Mixed |
-| Infrastructure | Baseline |
-| Energy | Mixed |
-| Governance | Baseline |
-| Social Cohesion | Baseline |
-| Border Security | Stress |
-| Information & Cognitive | Stress |
-| Health & Public Service | Baseline |
+Each domain's weight is defined in the configuration. The weights sum to 1.0, so the overall score is a straightforward weighted average of domain scores.
 | Food & Water | Mixed |
 
 ### Resilience Level Classification
@@ -307,9 +288,8 @@ The API response includes `imputationShare` (0.0-1.0), representing the fraction
 
 The API response includes additional context fields that are informational and not part of the primary ranking:
 
-- **baselineScore**: Coverage-weighted mean of baseline and mixed dimensions. Reflects structural capacity (governance, health, infrastructure, fiscal strength).
-- **stressScore**: Coverage-weighted mean of stress and mixed dimensions. Reflects current threat environment (cyber, conflict, sanctions, supply disruption).
-- **stressFactor**: How much current stress discounts the baseline (0.0 = no discount, 0.5 = maximum 50% discount).
+- **baselineScore**: Coverage-weighted mean of baseline and mixed dimensions. Reflects structural capacity (governance, health, infrastructure, fiscal strength). Informational only, not used in `overallScore`.
+- **stressScore**: Coverage-weighted mean of stress and mixed dimensions. Reflects current threat environment (cyber, conflict, sanctions, supply disruption). Informational only, not used in `overallScore`.
 - **trend**: Direction of score movement over the last 30 days (`improving`, `stable`, or `declining`), based on daily score history.
 - **change30d**: Numeric score change over 30 days.
 - **imputationShare**: Fraction of indicator weight from imputed (synthetic) data.
@@ -317,4 +297,4 @@ The API response includes additional context fields that are informational and n
 
 ## Versioning
 
-Cache keys include a version suffix (currently `v5` for scores, `v2` for history). Score cache TTL is 6 hours. When the methodology changes materially, the version is bumped to invalidate stale caches and ensure all scores reflect the updated formula.
+Cache keys include a versioned suffix that is bumped on formula changes. This invalidates stale caches and ensures all scores reflect the updated methodology. Score cache TTL is 6 hours.
