@@ -78,20 +78,22 @@ async function fetchAllRegions(apiKey) {
           if (seen.has(id)) continue;
           seen.add(id);
           const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
+          const brightness = parseFloat(row.bright_ti4 ?? '0') || 0;
+          const frp = parseFloat(row.frp ?? '0') || 0;
           fireDetections.push({
             id,
             location: {
               latitude: parseFloat(row.latitude ?? '0') || 0,
               longitude: parseFloat(row.longitude ?? '0') || 0,
             },
-            brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
-            frp: parseFloat(row.frp ?? '0') || 0,
+            brightness,
+            frp,
             confidence: mapConfidence(row.confidence || ''),
             satellite: row.satellite || '',
             detectedAt,
             region: regionName,
             dayNight: row.daynight || '',
-            possibleExplosion: (parseFloat(row.frp ?? '0') || 0) > 80 && (parseFloat(row.bright_ti4 ?? '0') || 0) > 380,
+            possibleExplosion: frp > 80 && brightness > 380,
           });
         }
       } catch (err) {
