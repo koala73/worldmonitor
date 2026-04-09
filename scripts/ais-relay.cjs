@@ -3885,6 +3885,50 @@ async function fetchTheaterFlightsFromOpenSky() {
   return allFlights;
 }
 
+async function fetchTheaterFlightsFromAdsbLol() {
+  try {
+    const resp = await fetch('https://api.adsb.lol/v2/mil', {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      console.warn(`[adsb.lol] API error: ${resp.status}`);
+      return null;
+    }
+    const data = await resp.json();
+    const aircraft = data.ac || [];
+    const flights = [];
+    const seenIds = new Set();
+    for (const a of aircraft) {
+      const lat = a.lat; const lon = a.lon;
+      if (lat == null || lon == null) continue;
+      if (a.alt_baro === 'ground') continue;
+      const icao24 = (a.hex || '').trim().replace('~', '');
+      if (!icao24 || seenIds.has(icao24)) continue;
+      const inTheater = POSTURE_THEATERS.some((t) =>
+        lat >= t.bounds.south && lat <= t.bounds.north &&
+        lon >= t.bounds.west && lon <= t.bounds.east
+      );
+      if (!inTheater) continue;
+      seenIds.add(icao24);
+      const callsign = (a.flight || '').trim();
+      flights.push({
+        id: icao24, callsign,
+        lat, lon,
+        altitude: typeof a.alt_baro === 'number' ? a.alt_baro : 0,
+        heading: a.track || 0,
+        speed: a.gs || 0,
+        aircraftType: theaterDetectAircraftType(callsign),
+      });
+    }
+    console.log(`[adsb.lol] Fetched ${flights.length} military flights in theater (${aircraft.length} global mil)`);
+    return flights;
+  } catch (err) {
+    console.warn(`[adsb.lol] Fetch failed: ${err?.message || err}`);
+    return null;
+  }
+}
+
 async function fetchTheaterFlightsFromWingbits() {
   const apiKey = process.env.WINGBITS_API_KEY;
   if (!apiKey) {
@@ -4006,11 +4050,15 @@ async function seedTheaterPosture() {
     console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
   }
   if (flights.length === 0) {
+    const adsbLol = await fetchTheaterFlightsFromAdsbLol();
+    if (adsbLol && adsbLol.length > 0) flights = adsbLol;
+  }
+  if (flights.length === 0) {
     const wb = await fetchTheaterFlightsFromWingbits();
     if (wb && wb.length > 0) flights = wb;
   }
   if (flights.length === 0) {
-    console.warn('[TheaterPosture] No military flights from OpenSky or Wingbits — continuing with vessel-only posture');
+    console.warn('[TheaterPosture] No military flights from OpenSky, adsb.lol, or Wingbits — continuing with vessel-only posture');
   }
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
