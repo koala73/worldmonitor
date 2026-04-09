@@ -122,7 +122,8 @@ function computeCountryPorts(rawRows, refMap) {
     const portId = String(a.portid);
     if (!portGroups.has(portId)) portGroups.set(portId, []);
     portGroups.get(portId).push({
-      date: Number(a.date),
+      // ArcGIS changed date field to esriFieldTypeDateOnly — returns ISO string "YYYY-MM-DD", not epoch ms
+      date: typeof a.date === 'number' ? a.date : Date.parse(a.date + 'T12:00:00Z'),
       portname: String(a.portname || ''),
       portcalls_tanker: Number(a.portcalls_tanker ?? 0),
       import_tanker: Number(a.import_tanker ?? 0),
