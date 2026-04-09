@@ -64,7 +64,7 @@ export const SPR_KEY = 'economic:spr:v1';
 export const REFINERY_UTIL_KEY = 'economic:refinery-util:v1';
 
 /**
- * Per-country chokepoint exposure index. Request-varying — NOT in BOOTSTRAP_CACHE_KEYS.
+ * Per-country chokepoint exposure index. Request-varying — excluded from bootstrap.
  * Key: supply-chain:exposure:{iso2}:{hs2}:v1
  */
 export const CHOKEPOINT_EXPOSURE_KEY = (iso2: string, hs2: string) =>
