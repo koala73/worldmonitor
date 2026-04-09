@@ -765,7 +765,7 @@ components:
                 coverageDays:
                     type: integer
                     format: int32
-                    description: Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors)
+                    description: Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors or net exporters)
                 warRiskPremiumBps:
                     type: integer
                     format: int32
