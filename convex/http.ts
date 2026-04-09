@@ -569,7 +569,7 @@ http.route({
     }
     let body: { userId?: string; variant?: string };
     try {
-      body = await request.json();
+      body = await request.json() as { userId?: string; variant?: string };
     } catch {
       return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
         status: 400,
