@@ -554,6 +554,44 @@ http.route({
 });
 
 http.route({
+  path: "/relay/user-preferences",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    let body: { userId?: string; variant?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (!body.userId || !body.variant) {
+      return new Response(JSON.stringify({ error: "userId and variant required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const prefs = await ctx.runQuery(
+      (internal as any).userPreferences.getPreferencesByUserId,
+      { userId: body.userId, variant: body.variant },
+    );
+    return new Response(JSON.stringify(prefs?.data ?? null), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+http.route({
   path: "/dodopayments-webhook",
   method: "POST",
   handler: webhookHandler,

@@ -1,6 +1,18 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { CURRENT_PREFS_SCHEMA_VERSION, MAX_PREFS_BLOB_SIZE } from "./constants";
+
+export const getPreferencesByUserId = internalQuery({
+  args: { userId: v.string(), variant: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user_variant", (q) =>
+        q.eq("userId", args.userId).eq("variant", args.variant),
+      )
+      .unique();
+  },
+});
 
 export const getPreferences = query({
   args: { variant: v.string() },
