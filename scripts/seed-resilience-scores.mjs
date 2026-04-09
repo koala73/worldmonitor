@@ -13,17 +13,12 @@
  */
 
 import {
-  acquireLockSafely,
   getRedisCredentials,
   loadEnvFile,
   logSeedResult,
-  releaseLock,
 } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
-
-const LOCK_DOMAIN = 'resilience:scores';
-const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v6:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v6';
@@ -93,24 +88,12 @@ async function seedResilienceScores() {
 
 async function main() {
   const startedAt = Date.now();
-  const runId = `${LOCK_DOMAIN}:${startedAt}`;
-  const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
-  if (lock.skipped) return;
-  if (!lock.locked) {
-    console.log('[resilience-scores] Another seed run is already active');
-    return;
-  }
-
-  try {
-    const result = await seedResilienceScores();
-    logSeedResult('resilience:scores', result.recordCount ?? 0, Date.now() - startedAt, {
-      skipped: Boolean(result.skipped),
-      ...(result.total != null && { total: result.total }),
-      ...(result.reason != null && { reason: result.reason }),
-    });
-  } finally {
-    await releaseLock(LOCK_DOMAIN, runId);
-  }
+  const result = await seedResilienceScores();
+  logSeedResult('resilience:scores', result.recordCount ?? 0, Date.now() - startedAt, {
+    skipped: Boolean(result.skipped),
+    ...(result.total != null && { total: result.total }),
+    ...(result.reason != null && { reason: result.reason }),
+  });
 }
 
 if (process.argv[1]?.endsWith('seed-resilience-scores.mjs')) {

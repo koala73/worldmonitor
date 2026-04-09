@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Coverage perturbation Monte Carlo — tests ranking stability under coverage variation.
 // Perturbs each dimension's coverage ±10% and recomputes via the production
-// baselineScore * (1 - stressFactor) formula. Domain weights are NOT part of
-// the production formula and are intentionally excluded.
+// sum(domainScore * domainWeight) formula.
 // Usage: node --import tsx/esm scripts/validate-resilience-sensitivity.mjs
 
 import { loadEnvFile } from './_seed-utils.mjs';
@@ -42,29 +41,31 @@ function coverageWeightedMean(dims) {
   return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCoverage;
 }
 
-function computeOverallScorePerturbed(dimensions, dimensionTypes, perturb) {
-  const baselineDims = [];
-  const stressDims = [];
+function computeOverallScorePerturbed(dimensions, dimensionDomains, domainWeights, perturb) {
+  const grouped = new Map();
+  for (const domainId of Object.keys(domainWeights)) grouped.set(domainId, []);
+
   for (const dim of dimensions) {
     const scaledCoverage = perturb
       ? dim.coverage * (0.9 + Math.random() * 0.2)
       : dim.coverage;
-    const scaled = { score: dim.score, coverage: scaledCoverage };
-    const dimType = dimensionTypes[dim.id];
-    if (dimType === 'baseline' || dimType === 'mixed') baselineDims.push(scaled);
-    if (dimType === 'stress' || dimType === 'mixed') stressDims.push(scaled);
+    const domainId = dimensionDomains[dim.id];
+    if (domainId && grouped.has(domainId)) {
+      grouped.get(domainId).push({ score: dim.score, coverage: scaledCoverage });
+    }
   }
 
-  const baselineScore = coverageWeightedMean(baselineDims);
-  const stressScore = coverageWeightedMean(stressDims);
-  const stressFactor = Math.max(0, Math.min(1 - stressScore / 100, 0.5));
-  return baselineScore * (1 - stressFactor);
+  let overall = 0;
+  for (const [domainId, dims] of grouped) {
+    overall += coverageWeightedMean(dims) * domainWeights[domainId];
+  }
+  return overall;
 }
 
-function rankCountries(countryData, dimensionTypes, perturb) {
+function rankCountries(countryData, dimensionDomains, domainWeights, perturb) {
   const scored = countryData.map(({ countryCode, dimensions }) => ({
     countryCode,
-    score: computeOverallScorePerturbed(dimensions, dimensionTypes, perturb),
+    score: computeOverallScorePerturbed(dimensions, dimensionDomains, domainWeights, perturb),
   }));
   scored.sort((a, b) => b.score - a.score || a.countryCode.localeCompare(b.countryCode));
   const ranks = {};
@@ -78,11 +79,18 @@ async function run() {
   const {
     scoreAllDimensions,
     RESILIENCE_DIMENSION_ORDER,
+    RESILIENCE_DIMENSION_DOMAINS,
+    getResilienceDomainWeight,
+    RESILIENCE_DOMAIN_ORDER,
     createMemoizedSeedReader,
   } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
 
   const { listScorableCountries } = await import('../server/worldmonitor/resilience/v1/_shared.ts');
-  const { RESILIENCE_DIMENSION_TYPES } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+
+  const domainWeights = {};
+  for (const domainId of RESILIENCE_DOMAIN_ORDER) {
+    domainWeights[domainId] = getResilienceDomainWeight(domainId);
+  }
 
   const scorableCountries = await listScorableCountries();
   const validSample = SAMPLE.filter((c) => scorableCountries.includes(c));
@@ -118,7 +126,7 @@ async function run() {
   for (const cc of validSample) rankHistory[cc] = [];
 
   for (let draw = 0; draw < NUM_DRAWS; draw++) {
-    const ranks = rankCountries(countryData, RESILIENCE_DIMENSION_TYPES, true);
+    const ranks = rankCountries(countryData, RESILIENCE_DIMENSION_DOMAINS, domainWeights, true);
     for (const cc of validSample) {
       rankHistory[cc].push(ranks[cc]);
     }
@@ -149,7 +157,7 @@ async function run() {
     console.log(`  ${String(i + 1).padStart(2)}. ${s.countryCode}  mean_rank=${s.meanRank.toFixed(1)}  p05=${s.p05.toFixed(1)}  p95=${s.p95.toFixed(1)}  range=${s.range.toFixed(1)}`);
   }
 
-  const baselineRanks = rankCountries(countryData, RESILIENCE_DIMENSION_TYPES, false);
+  const baselineRanks = rankCountries(countryData, RESILIENCE_DIMENSION_DOMAINS, domainWeights, false);
   const top10 = Object.entries(baselineRanks)
     .sort(([, a], [, b]) => a - b)
     .slice(0, 10)
