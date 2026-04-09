@@ -16,6 +16,7 @@ import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureEdgeException } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
+import { getEntitlements } from '../server/_shared/entitlement-check';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -144,6 +145,15 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
   const session = await validateBearerToken(token);
   if (!session.valid || !session.userId) return json({ error: 'Unauthorized' }, 401, corsHeaders);
+
+  const ent = await getEntitlements(session.userId);
+  if (!ent || ent.features.tier < 1) {
+    return json({
+      error: 'pro_required',
+      message: 'Real-time alerts are available on the Pro plan.',
+      upgradeUrl: 'https://worldmonitor.app/pro',
+    }, 403, corsHeaders);
+  }
 
   if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
     return json({ error: 'Service unavailable' }, 503, corsHeaders);

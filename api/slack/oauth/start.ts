@@ -14,6 +14,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from '../../_cors.js';
 import { validateBearerToken } from '../../../server/auth-session';
+import { getEntitlements } from '../../../server/_shared/entitlement-check';
 
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? '';
 const SLACK_REDIRECT_URI = process.env.SLACK_REDIRECT_URI ?? '';
@@ -45,6 +46,11 @@ export default async function handler(req: Request): Promise<Response> {
   const session = await validateBearerToken(token);
   if (!session.valid || !session.userId) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  const ent = await getEntitlements(session.userId);
+  if (!ent || ent.features.tier < 1) {
+    return new Response(JSON.stringify({ error: 'pro_required', message: 'Slack notifications are available on the Pro plan.', upgradeUrl: 'https://worldmonitor.app/pro' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
 
   // Generate one-time state token (20 random bytes → base64url)

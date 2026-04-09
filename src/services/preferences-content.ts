@@ -26,6 +26,7 @@ import {
   type DigestMode,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
+import { isEntitled } from '@/services/entitlements';
 import { SITE_VARIANT } from '@/config/variant';
 // When VITE_QUIET_HOURS_BATCH_ENABLED=0 the relay does not honour batch_on_wake.
 // Hide that option so users cannot select a mode that silently behaves as critical_only.
@@ -356,10 +357,17 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   </a>`;
   html += `</div></details>`;
 
-  // ── Notifications group (web-only, signed-in) ──
+  // ── Notifications group (web-only, signed-in, PRO only) ──
   if (!host.isDesktopApp) {
     if (!host.isSignedIn) {
       html += `<div class="ai-flow-toggle-desc us-notif-signin">Sign in to link notification channels.</div>`;
+    } else if (!isEntitled()) {
+      html += `<details class="wm-pref-group">`;
+      html += `<summary>Notifications <span class="panel-toggle-pro-badge">PRO</span></summary>`;
+      html += `<div class="wm-pref-group-content">`;
+      html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
+      html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
+      html += `</div></details>`;
     } else {
       html += `<details class="wm-pref-group" id="usNotifGroup">`;
       html += `<summary>Notifications</summary>`;
@@ -619,7 +627,17 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       if (!host.isDesktopApp) updateAiStatus(container);
 
       // ── Notifications section ──
-      if (!host.isDesktopApp && host.isSignedIn) {
+      if (!host.isDesktopApp && host.isSignedIn && !isEntitled()) {
+        const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
+        if (upgradeBtn) {
+          upgradeBtn.addEventListener('click', () => {
+            import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+              window.open('https://worldmonitor.app/pro', '_blank');
+            });
+          }, { signal });
+        }
+      }
+      if (!host.isDesktopApp && host.isSignedIn && isEntitled()) {
         let notifPollInterval: ReturnType<typeof setInterval> | null = null;
 
         function clearNotifPoll(): void {

@@ -14,6 +14,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
 import { validateBearerToken } from '../server/auth-session';
+import { getEntitlements } from '../server/_shared/entitlement-check';
 
 export default async function handler(req: Request): Promise<Response> {
   if (isDisallowedOrigin(req)) {
@@ -39,6 +40,11 @@ export default async function handler(req: Request): Promise<Response> {
   const session = await validateBearerToken(token);
   if (!session.valid || !session.userId) {
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
+  }
+
+  const ent = await getEntitlements(session.userId);
+  if (!ent || ent.features.tier < 1) {
+    return jsonResponse({ error: 'pro_required', message: 'Event publishing is available on the Pro plan.', upgradeUrl: 'https://worldmonitor.app/pro' }, 403, cors);
   }
 
   let body: { eventType?: unknown; payload?: unknown; severity?: unknown; variant?: unknown };
