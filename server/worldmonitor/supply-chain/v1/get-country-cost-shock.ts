@@ -8,6 +8,7 @@ import type {
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { getCachedJson } from '../../../_shared/redis';
 import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
+import { computeEnergyShockScenario } from '../../intelligence/v1/compute-energy-shock';
 import { threatLevelToInsurancePremiumBps } from './_insurance-tier';
 import type { ThreatLevel } from './_insurance-tier';
 
@@ -80,11 +81,18 @@ export async function getCountryCostShock(
   } else if (!hasEnergyModel) {
     unavailableReason = `Cost shock modelling for ${registry?.displayName ?? chokepointId} is not yet supported. Only Suez, Hormuz, Malacca, and Bab el-Mandeb have energy models in v1.`;
   } else {
-    type EnergyShockEntry = { coverageDays?: number; disruptionImpactPct?: number };
-    const shockCacheKey = `energy:shock:${iso2}:${chokepointId}:v1`;
-    const shockData = await getCachedJson(shockCacheKey).catch(() => null) as EnergyShockEntry | null;
-    coverageDays = shockData?.coverageDays ?? 0;
-    costIncreasePct = shockData?.disruptionImpactPct ?? 0;
+    // Call computeEnergyShockScenario directly — it handles its own v2 cache internally.
+    // Use 100% disruption (full closure scenario) and oil mode for HS 27.
+    const shock = await computeEnergyShockScenario(ctx, {
+      countryCode: iso2,
+      chokepointId,
+      disruptionPct: 100,
+      fuelMode: 'oil',
+    }).catch(() => null);
+    coverageDays = shock?.effectiveCoverDays ?? 0;
+    // costIncreasePct: use crude product deficit % as supply-pressure proxy (v1 has no price model)
+    const crudeProduct = shock?.products?.find((p: { product: string; deficitPct: number }) => p.product === 'crude');
+    costIncreasePct = crudeProduct?.deficitPct ?? 0;
   }
 
   return {
