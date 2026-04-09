@@ -147,6 +147,28 @@ export interface ShippingStressCarrier {
   sparkline: number[];
 }
 
+export interface GetCountryChokepointIndexRequest {
+  iso2: string;
+  hs2: string;
+}
+
+export interface GetCountryChokepointIndexResponse {
+  iso2: string;
+  hs2: string;
+  exposures: ChokepointExposureEntry[];
+  primaryChokepointId: string;
+  vulnerabilityIndex: number;
+  fetchedAt: string;
+}
+
+export interface ChokepointExposureEntry {
+  chokepointId: string;
+  chokepointName: string;
+  exposureScore: number;
+  coastSide: string;
+  shockSupported: boolean;
+}
+
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 
 export interface FieldViolation {
@@ -287,6 +309,32 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetShippingStressResponse;
+  }
+
+  async getCountryChokepointIndex(req: GetCountryChokepointIndexRequest, options?: SupplyChainServiceCallOptions): Promise<GetCountryChokepointIndexResponse> {
+    let path = "/api/supply-chain/v1/get-country-chokepoint-index";
+    const params = new URLSearchParams();
+    if (req.iso2 != null && req.iso2 !== "") params.set("iso2", String(req.iso2));
+    if (req.hs2 != null && req.hs2 !== "") params.set("hs2", String(req.hs2));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryChokepointIndexResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

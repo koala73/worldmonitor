@@ -5,11 +5,13 @@ import {
   type GetChokepointStatusResponse,
   type GetCriticalMineralsResponse,
   type GetShippingStressResponse,
+  type GetCountryChokepointIndexResponse,
   type ShippingIndex,
   type ChokepointInfo,
   type CriticalMineral,
   type MineralProducer,
   type ShippingRatePoint,
+  type ChokepointExposureEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -19,11 +21,13 @@ export type {
   GetChokepointStatusResponse,
   GetCriticalMineralsResponse,
   GetShippingStressResponse,
+  GetCountryChokepointIndexResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
   MineralProducer,
   ShippingRatePoint,
+  ChokepointExposureEntry,
 };
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
@@ -85,5 +89,25 @@ export async function fetchShippingStress(): Promise<GetShippingStressResponse> 
     return await client.getShippingStress({});
   } catch {
     return emptyShippingStress;
+  }
+}
+
+const emptyChokepointIndex: GetCountryChokepointIndexResponse = {
+  iso2: '',
+  hs2: '27',
+  exposures: [],
+  primaryChokepointId: '',
+  vulnerabilityIndex: 0,
+  fetchedAt: '',
+};
+
+export async function fetchCountryChokepointIndex(
+  iso2: string,
+  hs2 = '27',
+): Promise<GetCountryChokepointIndexResponse> {
+  try {
+    return await client.getCountryChokepointIndex({ iso2, hs2 });
+  } catch {
+    return { ...emptyChokepointIndex, iso2, hs2 };
   }
 }

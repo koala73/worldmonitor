@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// GetCountryChokepointIndexRequest specifies the country and optional HS2 chapter.
+message GetCountryChokepointIndexRequest {
+  // ISO 3166-1 alpha-2 country code (uppercase).
+  string iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "iso2"}
+  ];
+  // HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
+  string hs2 = 2 [(sebuf.http.query) = {name: "hs2"}];
+}
+
+// ChokepointExposureEntry holds per-chokepoint exposure data for a country.
+message ChokepointExposureEntry {
+  // Canonical chokepoint ID from the chokepoint registry.
+  string chokepoint_id = 1;
+  // Human-readable chokepoint name.
+  string chokepoint_name = 2;
+  // Exposure score 0–100; higher = more dependent on this chokepoint.
+  double exposure_score = 3;
+  // Which ocean/basin side the country's ports face (atlantic, pacific, indian, med, multi, landlocked).
+  string coast_side = 4;
+  // Whether the shock model is supported for this chokepoint + hs2 combination.
+  bool shock_supported = 5;
+}
+
+// GetCountryChokepointIndexResponse returns exposure scores for all relevant chokepoints.
+message GetCountryChokepointIndexResponse {
+  // ISO 3166-1 alpha-2 country code echoed from the request.
+  string iso2 = 1;
+  // HS2 chapter used for the computation.
+  string hs2 = 2;
+  // Per-chokepoint exposure entries, sorted by exposure_score descending.
+  repeated ChokepointExposureEntry exposures = 3;
+  // Canonical ID of the chokepoint with the highest exposure score.
+  string primary_chokepoint_id = 4;
+  // Composite vulnerability index 0–100 (weighted sum of top-3 exposures).
+  double vulnerability_index = 5;
+  // ISO timestamp of when this data was last seeded.
+  string fetched_at = 6;
+}

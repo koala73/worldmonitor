@@ -104,6 +104,45 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-country-chokepoint-index:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetCountryChokepointIndex
+            description: GetCountryChokepointIndex returns per-chokepoint exposure scores for a country. PRO-gated.
+            operationId: GetCountryChokepointIndex
+            parameters:
+                - name: iso2
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code (uppercase).
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryChokepointIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -458,3 +497,60 @@ components:
                         format: double
                         description: 30-day price sparkline.
             description: ShippingStressCarrier represents market stress data for a carrier or shipping index.
+        GetCountryChokepointIndexRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code (uppercase).
+                hs2:
+                    type: string
+                    description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
+            required:
+                - iso2
+            description: GetCountryChokepointIndexRequest specifies the country and optional HS2 chapter.
+        GetCountryChokepointIndexResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code echoed from the request.
+                hs2:
+                    type: string
+                    description: HS2 chapter used for the computation.
+                exposures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChokepointExposureEntry'
+                primaryChokepointId:
+                    type: string
+                    description: Canonical ID of the chokepoint with the highest exposure score.
+                vulnerabilityIndex:
+                    type: number
+                    format: double
+                    description: Composite vulnerability index 0–100 (weighted sum of top-3 exposures).
+                fetchedAt:
+                    type: string
+                    description: ISO timestamp of when this data was last seeded.
+            description: GetCountryChokepointIndexResponse returns exposure scores for all relevant chokepoints.
+        ChokepointExposureEntry:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                    description: Canonical chokepoint ID from the chokepoint registry.
+                chokepointName:
+                    type: string
+                    description: Human-readable chokepoint name.
+                exposureScore:
+                    type: number
+                    format: double
+                    description: Exposure score 0–100; higher = more dependent on this chokepoint.
+                coastSide:
+                    type: string
+                    description: Which ocean/basin side the country's ports face (atlantic, pacific, indian, med, multi, landlocked).
+                shockSupported:
+                    type: boolean
+                    description: Whether the shock model is supported for this chokepoint + hs2 combination.
+            description: ChokepointExposureEntry holds per-chokepoint exposure data for a country.

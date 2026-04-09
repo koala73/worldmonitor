@@ -147,6 +147,28 @@ export interface ShippingStressCarrier {
   sparkline: number[];
 }
 
+export interface GetCountryChokepointIndexRequest {
+  iso2: string;
+  hs2: string;
+}
+
+export interface GetCountryChokepointIndexResponse {
+  iso2: string;
+  hs2: string;
+  exposures: ChokepointExposureEntry[];
+  primaryChokepointId: string;
+  vulnerabilityIndex: number;
+  fetchedAt: string;
+}
+
+export interface ChokepointExposureEntry {
+  chokepointId: string;
+  chokepointName: string;
+  exposureScore: number;
+  coastSide: string;
+  shockSupported: boolean;
+}
+
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 
 export interface FieldViolation {
@@ -198,6 +220,7 @@ export interface SupplyChainServiceHandler {
   getChokepointStatus(ctx: ServerContext, req: GetChokepointStatusRequest): Promise<GetChokepointStatusResponse>;
   getCriticalMinerals(ctx: ServerContext, req: GetCriticalMineralsRequest): Promise<GetCriticalMineralsResponse>;
   getShippingStress(ctx: ServerContext, req: GetShippingStressRequest): Promise<GetShippingStressResponse>;
+  getCountryChokepointIndex(ctx: ServerContext, req: GetCountryChokepointIndexRequest): Promise<GetCountryChokepointIndexResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -332,6 +355,54 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getShippingStress(ctx, body);
           return new Response(JSON.stringify(result as GetShippingStressResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-country-chokepoint-index",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryChokepointIndexRequest = {
+            iso2: params.get("iso2") ?? "",
+            hs2: params.get("hs2") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryChokepointIndex", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryChokepointIndex(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryChokepointIndexResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

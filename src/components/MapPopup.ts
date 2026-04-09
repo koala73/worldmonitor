@@ -20,6 +20,43 @@ import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot
 import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
+import { getAuthState } from '@/services/auth-state';
+import { trackGateHit } from '@/services/analytics';
+
+// ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
+// Based on IEA/UNCTAD estimated trade composition. Updated periodically.
+// Each entry: [label, share (0-100), color]
+const CHOKEPOINT_HS2_SECTORS: Record<string, Array<{ label: string; share: number; color: string }>> = {
+  suez:            [{ label: 'Energy', share: 30, color: '#f97316' }, { label: 'Machinery', share: 22, color: '#3b82f6' }, { label: 'Chemicals', share: 16, color: '#a855f7' }, { label: 'Food', share: 14, color: '#22c55e' }, { label: 'Other', share: 18, color: '#64748b' }],
+  malacca_strait:  [{ label: 'Energy', share: 34, color: '#f97316' }, { label: 'Electronics', share: 25, color: '#3b82f6' }, { label: 'Chemicals', share: 14, color: '#a855f7' }, { label: 'Food', share: 12, color: '#22c55e' }, { label: 'Other', share: 15, color: '#64748b' }],
+  hormuz_strait:   [{ label: 'Energy', share: 78, color: '#f97316' }, { label: 'Chemicals', share: 9, color: '#a855f7' }, { label: 'Food', share: 7, color: '#22c55e' }, { label: 'Other', share: 6, color: '#64748b' }],
+  bab_el_mandeb:   [{ label: 'Energy', share: 32, color: '#f97316' }, { label: 'Machinery', share: 20, color: '#3b82f6' }, { label: 'Chemicals', share: 15, color: '#a855f7' }, { label: 'Food', share: 13, color: '#22c55e' }, { label: 'Other', share: 20, color: '#64748b' }],
+  panama:          [{ label: 'Bulk', share: 28, color: '#eab308' }, { label: 'Energy', share: 18, color: '#f97316' }, { label: 'Containers', share: 35, color: '#3b82f6' }, { label: 'Other', share: 19, color: '#64748b' }],
+  taiwan_strait:   [{ label: 'Electronics', share: 40, color: '#3b82f6' }, { label: 'Machinery', share: 22, color: '#6366f1' }, { label: 'Energy', share: 14, color: '#f97316' }, { label: 'Chemicals', share: 12, color: '#a855f7' }, { label: 'Other', share: 12, color: '#64748b' }],
+  cape_of_good_hope: [{ label: 'Bulk', share: 35, color: '#eab308' }, { label: 'Energy', share: 22, color: '#f97316' }, { label: 'Containers', share: 28, color: '#3b82f6' }, { label: 'Other', share: 15, color: '#64748b' }],
+  gibraltar:       [{ label: 'Containers', share: 30, color: '#3b82f6' }, { label: 'Energy', share: 25, color: '#f97316' }, { label: 'Bulk', share: 20, color: '#eab308' }, { label: 'Other', share: 25, color: '#64748b' }],
+  bosphorus:       [{ label: 'Energy', share: 58, color: '#f97316' }, { label: 'Bulk', share: 18, color: '#eab308' }, { label: 'Containers', share: 14, color: '#3b82f6' }, { label: 'Other', share: 10, color: '#64748b' }],
+};
+
+function renderSectorRing(sectors: Array<{ label: string; share: number; color: string }>): string {
+  const R = 28;
+  const cx = 36;
+  const cy = 36;
+  const circumference = 2 * Math.PI * R;
+  let cumulativeOffset = 0;
+  const segments = sectors.map(s => {
+    const dash = (s.share / 100) * circumference;
+    const segment = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${s.color}" stroke-width="10" stroke-dasharray="${dash.toFixed(2)} ${(circumference - dash).toFixed(2)}" stroke-dashoffset="${(-cumulativeOffset).toFixed(2)}" />`;
+    cumulativeOffset += dash;
+    return segment;
+  });
+  const legend = sectors.map(s => `<span class="sector-legend-item"><span class="sector-dot" style="background:${s.color}"></span>${escapeHtml(s.label)}&nbsp;${s.share}%</span>`).join('');
+  return `
+    <div class="sector-ring-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" style="transform:rotate(-90deg)">${segments.join('')}</svg>
+      <div class="sector-legend">${legend}</div>
+    </div>`;
+}
 
 function formatPositionSource(source: string): string {
   if (source === 'POSITION_SOURCE_WINGBITS') {
@@ -235,6 +272,10 @@ export class MapPopup {
       if (chartEl && cp?.transitSummary?.history?.length) {
         this.transitChart = new TransitChart();
         this.transitChart.mount(chartEl, cp.transitSummary.history);
+      }
+      // Track PRO gate impression for sector ring chart
+      if (CHOKEPOINT_HS2_SECTORS[waterway.chokepointId] && getAuthState().user?.role !== 'pro') {
+        trackGateHit('chokepoint-sector-mix');
       }
     }
 
@@ -1158,6 +1199,28 @@ export class MapPopup {
       c => c.id === waterway.chokepointId,
     );
     const hasChart = !!(cp?.transitSummary?.history?.length);
+    const isPro = getAuthState().user?.role === 'pro';
+    const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
+
+    let sectorSection = '';
+    if (sectors) {
+      if (isPro) {
+        sectorSection = `
+          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
+          ${renderSectorRing(sectors)}`;
+      } else {
+        sectorSection = `
+          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
+          <div class="sector-pro-gate" data-gate="chokepoint-sector-mix" style="position:relative;overflow:hidden;border-radius:6px;margin-top:6px">
+            <div style="filter:blur(4px);pointer-events:none;opacity:.5">${renderSectorRing(sectors)}</div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
+              <span style="font-size:16px">🔒</span>
+              <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>
+            </div>
+          </div>`;
+      }
+    }
+
     return `
       <div class="popup-header waterway">
         <span class="popup-title">${escapeHtml(waterway.name)}</span>
@@ -1173,6 +1236,7 @@ export class MapPopup {
           </div>
         </div>
         ${hasChart ? `<div data-transit-chart="${escapeHtml(waterway.name)}" style="margin-top:10px;min-height:200px"></div>` : ''}
+        ${sectorSection}
       </div>
     `;
   }

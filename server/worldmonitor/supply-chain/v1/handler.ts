@@ -4,10 +4,12 @@ import { getShippingRates } from './get-shipping-rates';
 import { getChokepointStatus } from './get-chokepoint-status';
 import { getCriticalMinerals } from './get-critical-minerals';
 import { getShippingStress } from './get-shipping-stress';
+import { getCountryChokepointIndex } from './get-country-chokepoint-index';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
   getChokepointStatus,
   getCriticalMinerals,
   getShippingStress,
+  getCountryChokepointIndex,
 };
