@@ -858,6 +858,9 @@ export async function getEurostatCountryData(): Promise<GetEurostatCountryDataRe
 export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica };
 
 export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
+  const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
+  if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) return hydrated;
+
   try {
     return await oilStocksAnalysisBreaker.execute(
       () => client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) }),
@@ -867,4 +870,39 @@ export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisRe
   } catch {
     return emptyOilStocksAnalysisFallback;
   }
+}
+
+// ========================================================================
+// LNG Vulnerability (JODI Gas seeder)
+// ========================================================================
+
+export interface LngVulnerabilityEntry {
+  iso2: string;
+  lngShareOfImports: number;
+  lngImportsTj: number;
+  pipeImportsTj?: number;
+}
+
+export interface LngVulnerabilityData {
+  updatedAt: string;
+  dataMonth: string;
+  top20LngDependent: LngVulnerabilityEntry[];
+  top20PipelineDependent: Array<{ iso2: string; lngShareOfImports: number; pipeImportsTj: number }>;
+}
+
+export async function fetchLngVulnerability(): Promise<LngVulnerabilityData | null> {
+  const hydrated = getHydratedData('lngVulnerability') as LngVulnerabilityData | undefined;
+  if (hydrated?.top20LngDependent?.length) return hydrated;
+
+  try {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=lngVulnerability'), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (resp.ok) {
+      const { data } = (await resp.json()) as { data: { lngVulnerability?: LngVulnerabilityData } };
+      if (data.lngVulnerability?.top20LngDependent?.length) return data.lngVulnerability;
+    }
+  } catch { /* fall through */ }
+
+  return null;
 }

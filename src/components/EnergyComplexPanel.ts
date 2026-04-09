@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import type { OilAnalytics, CrudeInventoryWeek, NatGasStorageWeek, GetEuGasStorageResponse, GetOilStocksAnalysisResponse } from '@/services/economic';
+import type { OilAnalytics, CrudeInventoryWeek, NatGasStorageWeek, GetEuGasStorageResponse, GetOilStocksAnalysisResponse, LngVulnerabilityData } from '@/services/economic';
 import { formatOilValue, getTrendColor, getTrendIndicator } from '@/services/economic';
 import type { MarketData } from '@/types';
 import { t } from '@/services/i18n';
@@ -18,6 +18,7 @@ export class EnergyComplexPanel extends Panel {
   private natGasWeeks: NatGasStorageWeek[] = [];
   private euGas: GetEuGasStorageResponse | null = null;
   private oilStocksAnalysis: GetOilStocksAnalysisResponse | null = null;
+  private lngVulnerability: LngVulnerabilityData | null = null;
 
   constructor() {
     super({
@@ -55,6 +56,11 @@ export class EnergyComplexPanel extends Panel {
 
   public setOilStocksAnalysis(data: GetOilStocksAnalysisResponse): void {
     this.oilStocksAnalysis = data.unavailable ? null : data;
+    this.render();
+  }
+
+  public updateLngVulnerability(data: LngVulnerabilityData): void {
+    this.lngVulnerability = data.top20LngDependent?.length ? data : null;
     this.render();
   }
 
@@ -105,6 +111,29 @@ export class EnergyComplexPanel extends Panel {
       </div>`;
   }
 
+  private renderLngVulnerabilitySection(): string {
+    const d = this.lngVulnerability;
+    if (!d || d.top20LngDependent.length === 0) return '';
+
+    const top5 = d.top20LngDependent.slice(0, 5);
+    const rows = top5.map(e => `
+      <tr class="oil-stocks-row">
+        <td class="oil-stocks-iso">${escapeHtml(e.iso2)}</td>
+        <td class="oil-stocks-days">${escapeHtml(e.lngShareOfImports.toFixed(1))}%</td>
+        <td class="oil-stocks-vs">${escapeHtml(e.lngImportsTj.toLocaleString())} TJ</td>
+      </tr>`).join('');
+
+    return `
+      <div class="energy-tape-section" style="margin-top:8px">
+        <div class="energy-section-title">LNG Vulnerability</div>
+        <table class="oil-stocks-table">
+          <thead><tr><th>Country</th><th>LNG Share</th><th>LNG Imports</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="indicator-date" style="margin-top:4px">Data: ${escapeHtml(d.dataMonth)} (JODI Gas)</div>
+      </div>`;
+  }
+
   private render(): void {
     // Suppress EIA price cards when live tape already covers the same commodity
     // to avoid showing two different prices for the same product (EIA is weekly/stale).
@@ -119,7 +148,7 @@ export class EnergyComplexPanel extends Panel {
       this.analytics?.usInventory,
     ].filter(Boolean);
 
-    if (metrics.length === 0 && this.tape.length === 0 && this.crudeWeeks.length === 0 && this.natGasWeeks.length === 0 && !this.euGas && !this.oilStocksAnalysis) {
+    if (metrics.length === 0 && this.tape.length === 0 && this.crudeWeeks.length === 0 && this.natGasWeeks.length === 0 && !this.euGas && !this.oilStocksAnalysis && !this.lngVulnerability) {
       this.setContent(`<div class="economic-empty">${t('components.energyComplex.noData')}</div>`);
       return;
     }
@@ -129,6 +158,7 @@ export class EnergyComplexPanel extends Panel {
     if (this.tape.length > 0) footerParts.push(t('components.energyComplex.liveTapeSource'));
     if (this.euGas) footerParts.push('GIE AGSI+');
     if (this.oilStocksAnalysis) footerParts.push('IEA');
+    if (this.lngVulnerability) footerParts.push('JODI Gas');
 
     const latestWeek = this.crudeWeeks[0] ?? null;
     const wowChange = latestWeek?.weeklyChangeMb ?? null;
@@ -229,6 +259,7 @@ export class EnergyComplexPanel extends Panel {
           </div>
         ` : ''}
         ${this.renderOilStocksSection()}
+        ${this.renderLngVulnerabilitySection()}
       </div>
       <div class="economic-footer">
         <span class="economic-source">${escapeHtml(footerParts.join(' • '))}</span>
