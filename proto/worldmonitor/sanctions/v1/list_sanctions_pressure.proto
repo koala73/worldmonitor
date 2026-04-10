@@ -10,6 +10,7 @@ import "worldmonitor/sanctions/v1/sanctions_entry.proto";
 // ListSanctionsPressureRequest retrieves recent OFAC sanctions pressure state.
 message ListSanctionsPressureRequest {
   int32 max_items = 1 [(sebuf.http.query) = { name: "max_items" }];
+  string time_range = 2 [(sebuf.http.query) = { name: "time_range" }];
 }
 
 // ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.

@@ -4,6 +4,7 @@
 
 export interface ListSanctionsPressureRequest {
   maxItems: number;
+  timeRange?: string;
 }
 
 export interface ListSanctionsPressureResponse {
