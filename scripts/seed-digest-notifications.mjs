@@ -533,28 +533,33 @@ function isPrivateIP(ip) {
 
 async function sendTelegram(userId, chatId, text) {
   if (!TELEGRAM_BOT_TOKEN) {
-    console.warn('[digest] Telegram: TELEGRAM_BOT_TOKEN not set — skipping');
+    console.warn('[digest] Telegram: TELEGRAM_BOT_TOKEN not set, skipping');
     return false;
   }
-  const res = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-      body: JSON.stringify({ chat_id: chatId, text }),
-      signal: AbortSignal.timeout(10000),
-    },
-  );
-  if (res.status === 403) {
-    console.warn(`[digest] Telegram 403 for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'telegram');
-    return false;
-  } else if (!res.ok) {
-    console.warn(`[digest] Telegram send failed ${res.status} for ${userId}`);
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+        body: JSON.stringify({ chat_id: chatId, text }),
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    if (res.status === 403) {
+      console.warn(`[digest] Telegram 403 for ${userId}, deactivating`);
+      await deactivateChannel(userId, 'telegram');
+      return false;
+    } else if (!res.ok) {
+      console.warn(`[digest] Telegram send failed ${res.status} for ${userId}`);
+      return false;
+    }
+    console.log(`[digest] Telegram delivered to ${userId}`);
+    return true;
+  } catch (err) {
+    console.warn(`[digest] Telegram send error for ${userId}: ${err.code || err.message}`);
     return false;
   }
-  console.log(`[digest] Telegram delivered to ${userId}`);
-  return true;
 }
 
 const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
@@ -571,22 +576,27 @@ async function sendSlack(userId, webhookEnvelope, text) {
     const addrs = await dns.resolve4(hostname).catch(() => []);
     if (addrs.some(isPrivateIP)) { console.warn(`[digest] Slack SSRF blocked for ${userId}`); return false; }
   } catch { return false; }
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-    body: JSON.stringify({ text, unfurl_links: false }),
-    signal: AbortSignal.timeout(10000),
-  });
-  if (res.status === 404 || res.status === 410) {
-    console.warn(`[digest] Slack webhook gone for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'slack');
-    return false;
-  } else if (!res.ok) {
-    console.warn(`[digest] Slack send failed ${res.status} for ${userId}`);
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      body: JSON.stringify({ text, unfurl_links: false }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.status === 404 || res.status === 410) {
+      console.warn(`[digest] Slack webhook gone for ${userId}, deactivating`);
+      await deactivateChannel(userId, 'slack');
+      return false;
+    } else if (!res.ok) {
+      console.warn(`[digest] Slack send failed ${res.status} for ${userId}`);
+      return false;
+    }
+    console.log(`[digest] Slack delivered to ${userId}`);
+    return true;
+  } catch (err) {
+    console.warn(`[digest] Slack send error for ${userId}: ${err.code || err.message}`);
     return false;
   }
-  console.log(`[digest] Slack delivered to ${userId}`);
-  return true;
 }
 
 async function sendDiscord(userId, webhookEnvelope, text) {
@@ -601,22 +611,27 @@ async function sendDiscord(userId, webhookEnvelope, text) {
     if (addrs.some(isPrivateIP)) { console.warn(`[digest] Discord SSRF blocked for ${userId}`); return false; }
   } catch { return false; }
   const content = text.length > 2000 ? text.slice(0, 1999) + '\u2026' : text;
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-    body: JSON.stringify({ content }),
-    signal: AbortSignal.timeout(10000),
-  });
-  if (res.status === 404 || res.status === 410) {
-    console.warn(`[digest] Discord webhook gone for ${userId} — deactivating`);
-    await deactivateChannel(userId, 'discord');
-    return false;
-  } else if (!res.ok) {
-    console.warn(`[digest] Discord send failed ${res.status} for ${userId}`);
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      body: JSON.stringify({ content }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.status === 404 || res.status === 410) {
+      console.warn(`[digest] Discord webhook gone for ${userId}, deactivating`);
+      await deactivateChannel(userId, 'discord');
+      return false;
+    } else if (!res.ok) {
+      console.warn(`[digest] Discord send failed ${res.status} for ${userId}`);
+      return false;
+    }
+    console.log(`[digest] Discord delivered to ${userId}`);
+    return true;
+  } catch (err) {
+    console.warn(`[digest] Discord send error for ${userId}: ${err.code || err.message}`);
     return false;
   }
-  console.log(`[digest] Discord delivered to ${userId}`);
-  return true;
 }
 
 async function sendEmail(email, subject, text, html) {
