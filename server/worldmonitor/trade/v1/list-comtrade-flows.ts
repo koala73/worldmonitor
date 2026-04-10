@@ -5,6 +5,7 @@ import type {
   ComtradeFlowRecord,
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
 import { getCachedJsonBatch } from '../../../_shared/redis';
+import { isCallerPremium } from '../../../_shared/premium-check';
 
 const KEY_PREFIX = 'comtrade:flows';
 
@@ -17,9 +18,12 @@ function isValidCode(c: string): boolean {
 }
 
 export async function listComtradeFlows(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListComtradeFlowsRequest,
 ): Promise<ListComtradeFlowsResponse> {
+  const isPro = await isCallerPremium(ctx.request);
+  if (!isPro) return { flows: [], fetchedAt: '', upstreamUnavailable: true };
+
   try {
     const reporters = req.reporterCode && isValidCode(req.reporterCode) ? [req.reporterCode] : REPORTERS;
     const cmdCodes = req.cmdCode && /^\d{4,6}$/.test(req.cmdCode) ? [req.cmdCode] : CMD_CODES;

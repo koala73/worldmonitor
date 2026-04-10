@@ -46,6 +46,7 @@ import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import { getNearbyInfrastructure } from '@/services/related-assets';
 import { toFlagEmoji } from '@/utils/country-flag';
+import { iso2ToIso3, iso2ToUnCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 
@@ -529,7 +530,7 @@ export class CountryIntelManager implements AppModule {
     const tradeClient = new TradeServiceClient(rpcBase, { fetch: fetchFn });
     const supplyChainClient = new SupplyChainServiceClient(rpcBase, { fetch: fetchFn });
 
-    const iso3 = CountryIntelManager.iso2ToIso3(code);
+    const iso3 = iso2ToIso3(code);
 
     economicClient.getNationalDebt({}).then(resp => {
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
@@ -557,7 +558,7 @@ export class CountryIntelManager implements AppModule {
       if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateSanctionsPressure?.(null);
     });
 
-    const unCode = CountryIntelManager.iso2ToUnCode(code);
+    const unCode = iso2ToUnCode(code);
     if (unCode) {
       tradeClient.listComtradeFlows({ reporterCode: unCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
@@ -617,45 +618,6 @@ export class CountryIntelManager implements AppModule {
     });
   }
 
-  private static readonly ISO2_TO_ISO3: Record<string, string> = {
-    US: 'USA', CN: 'CHN', RU: 'RUS', IR: 'IRN', IN: 'IND', TW: 'TWN',
-    DE: 'DEU', GB: 'GBR', FR: 'FRA', JP: 'JPN', KR: 'KOR', BR: 'BRA',
-    SA: 'SAU', AE: 'ARE', IL: 'ISR', TR: 'TUR', AU: 'AUS', CA: 'CAN',
-    MX: 'MEX', EG: 'EGY', NG: 'NGA', ZA: 'ZAF', PK: 'PAK', UA: 'UKR',
-    PL: 'POL', IT: 'ITA', ES: 'ESP', NL: 'NLD', SE: 'SWE', NO: 'NOR',
-    CH: 'CHE', AT: 'AUT', BE: 'BEL', GR: 'GRC', PT: 'PRT', CZ: 'CZE',
-    RO: 'ROU', HU: 'HUN', FI: 'FIN', DK: 'DNK', SG: 'SGP', MY: 'MYS',
-    TH: 'THA', ID: 'IDN', PH: 'PHL', VN: 'VNM', AR: 'ARG', CL: 'CHL',
-    CO: 'COL', PE: 'PER', VE: 'VEN', IQ: 'IRQ', KW: 'KWT', QA: 'QAT',
-    OM: 'OMN', BH: 'BHR', JO: 'JOR', LB: 'LBN', SY: 'SYR', LY: 'LBY',
-    DZ: 'DZA', MA: 'MAR', TN: 'TUN', SD: 'SDN', ET: 'ETH', KE: 'KEN',
-    GH: 'GHA', TZ: 'TZA', UG: 'UGA', BD: 'BGD', MM: 'MMR', KH: 'KHM',
-    NZ: 'NZL', IE: 'IRL', BG: 'BGR', HR: 'HRV', SK: 'SVK', SI: 'SVN',
-    LT: 'LTU', LV: 'LVA', EE: 'EST', KZ: 'KAZ', UZ: 'UZB', GE: 'GEO',
-    AM: 'ARM', AZ: 'AZE', BY: 'BLR', RS: 'SRB', BA: 'BIH', AL: 'ALB',
-    MK: 'MKD', ME: 'MNE', XK: 'XKX', CY: 'CYP', MT: 'MLT', LU: 'LUX',
-    IS: 'ISL', KP: 'PRK', CU: 'CUB', AF: 'AFG', YE: 'YEM', SO: 'SOM',
-  };
-
-  private static readonly ISO2_TO_UN: Record<string, string> = {
-    US: '842', CN: '156', RU: '643', IR: '364', IN: '356', TW: '158',
-    DE: '276', GB: '826', FR: '251', JP: '392', KR: '410', BR: '076',
-    SA: '682', AE: '784', IL: '376', TR: '792', AU: '036', CA: '124',
-    MX: '484', EG: '818', NG: '566', ZA: '710', PK: '586', UA: '804',
-    PL: '616', IT: '380', ES: '724', NL: '528', SE: '752', NO: '578',
-    CH: '756', AT: '040', BE: '056', GR: '300', PT: '620', CZ: '203',
-    RO: '642', HU: '348', FI: '246', DK: '208', SG: '702', MY: '458',
-    TH: '764', ID: '360', PH: '608', VN: '704', AR: '032', CL: '152',
-    CO: '170', PE: '604', VE: '862', IQ: '368', KW: '414', QA: '634',
-  };
-
-  private static iso2ToIso3(code: string): string | null {
-    return CountryIntelManager.ISO2_TO_ISO3[code] ?? null;
-  }
-
-  private static iso2ToUnCode(code: string): string | null {
-    return CountryIntelManager.ISO2_TO_UN[code] ?? null;
-  }
 
   refreshOpenBrief(): void {
     const page = this.ctx.countryBriefPage;
