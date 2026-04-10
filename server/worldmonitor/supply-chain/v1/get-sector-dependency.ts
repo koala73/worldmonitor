@@ -49,6 +49,10 @@ interface ComtradeFlowsResult {
 }
 
 function computeExposures(nearestRouteIds: string[], hs2: string) {
+  // Landlocked or unmapped countries have no routes; return empty so callers
+  // receive primaryChokepointId = '' and primaryChokepointExposure = 0 rather than
+  // an arbitrary registry-first entry with score 0.
+  if (nearestRouteIds.length === 0) return [];
   const isEnergy = hs2 === '27';
   const routeSet = new Set(nearestRouteIds);
   return CHOKEPOINT_REGISTRY.map(cp => {
