@@ -346,8 +346,14 @@ export class MapPopup {
   ): void {
     this.hide();
 
-    const primaryCpId = chokepointIds[0] ?? '';
-    const cp = this.chokepointData?.chokepoints?.find(c => c.id === primaryCpId);
+    // Pick the waypoint with the highest disruption score — this is the driver of the arc
+    // color computed in refreshTradeRouteStatus() and must match what the user sees on the arc.
+    const allCps = this.chokepointData?.chokepoints ?? [];
+    const primaryCpId =
+      chokepointIds
+        .map(id => ({ id, score: allCps.find(c => c.id === id)?.disruptionScore ?? 0 }))
+        .sort((a, b) => b.score - a.score)[0]?.id ?? chokepointIds[0] ?? '';
+    const cp = allCps.find(c => c.id === primaryCpId);
     const sectors = primaryCpId ? (CHOKEPOINT_HS2_SECTORS[primaryCpId] ?? []) : [];
 
     const tierLabel: Record<string, string> = {
