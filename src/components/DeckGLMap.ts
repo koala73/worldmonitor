@@ -5089,9 +5089,24 @@ export class DeckGLMap {
     const activeColor: [number, number, number, number] = [100, 200, 255, 140];
     const disruptedColor: [number, number, number, number] = [255, 80, 80, 180];
     const highRiskColor: [number, number, number, number] = [255, 180, 50, 160];
+    const scenarioColor: [number, number, number, number] = [255, 140, 50, 170];
 
-    const colorFor = (status: string): [number, number, number, number] =>
-      status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
+    const isPremium = hasPremiumAccess(getAuthState());
+
+    const scenarioDisrupted = this.scenarioState
+      ? new Set(this.scenarioState.disruptedChokepointIds)
+      : null;
+
+    const colorForRoute = (routeId: string, status: string): [number, number, number, number] => {
+      if (scenarioDisrupted && scenarioDisrupted.size > 0) {
+        const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
+        if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
+          return scenarioColor;
+        }
+      }
+      if (!isPremium) return activeColor;
+      return status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
+    };
 
     const widthFor = (category: string): number =>
       category === 'energy' ? 4 : category === 'container' ? 2.5 : 2;
@@ -5127,14 +5142,12 @@ export class DeckGLMap {
       }
 
       const first = sorted[0]!;
-      const status = first.status;
-      const category = first.category;
 
       trips.push({
         path: fullPath,
         timestamps,
-        color: colorFor(status),
-        width: widthFor(category),
+        color: colorForRoute(first.routeId, first.status),
+        width: widthFor(first.category),
       });
     }
     this.tradeTrips = trips;
@@ -5602,6 +5615,7 @@ export class DeckGLMap {
   public setScenarioState(state: ScenarioVisualState | null): void {
     this.scenarioState = state;
     this.affectedIso2Set = new Set(state?.affectedIso2s ?? []);
+    this.buildTradeTrips();
     this.render();
   }
 
