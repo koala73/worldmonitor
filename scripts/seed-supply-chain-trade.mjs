@@ -360,14 +360,22 @@ async function fetchTradeFlows() {
 
 async function fetchTradeBarriers() {
   const currentYear = new Date().getFullYear();
-  const reporters = ALL_REPORTERS.join(',');
-
-  const [agriResult, nonAgriResult] = await Promise.allSettled([
-    wtoFetch('/data', { i: 'TP_A_0160', r: reporters, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500' }),
-    wtoFetch('/data', { i: 'TP_A_0430', r: reporters, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500' }),
-  ]);
-  const agriData = agriResult.status === 'fulfilled' ? agriResult.value : null;
-  const nonAgriData = nonAgriResult.status === 'fulfilled' ? nonAgriResult.value : null;
+  const BATCH = 30;
+  const allAgri = [];
+  const allNonAgri = [];
+  for (let i = 0; i < ALL_REPORTERS.length; i += BATCH) {
+    const batch = ALL_REPORTERS.slice(i, i + BATCH).join(',');
+    const [agriResult, nonAgriResult] = await Promise.allSettled([
+      wtoFetch('/data', { i: 'TP_A_0160', r: batch, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000' }),
+      wtoFetch('/data', { i: 'TP_A_0430', r: batch, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000' }),
+    ]);
+    if (agriResult.status === 'fulfilled' && agriResult.value) allAgri.push(agriResult.value);
+    if (nonAgriResult.status === 'fulfilled' && nonAgriResult.value) allNonAgri.push(nonAgriResult.value);
+    await sleep(1000);
+  }
+  const mergeDatasets = (results) => results.flatMap(d => Array.isArray(d) ? d : d?.Dataset ?? d?.dataset ?? []);
+  const agriData = allAgri.length > 0 ? { Dataset: mergeDatasets(allAgri) } : null;
+  const nonAgriData = allNonAgri.length > 0 ? { Dataset: mergeDatasets(allNonAgri) } : null;
   if (!agriData && !nonAgriData) return null;
 
   const parseRows = (data) => {
@@ -423,13 +431,20 @@ async function fetchTradeBarriers() {
 
 async function fetchTradeRestrictions() {
   const currentYear = new Date().getFullYear();
-  const data = await wtoFetch('/data', {
-    i: 'TP_A_0010', r: ALL_REPORTERS.join(','),
-    ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500',
-  });
-  if (!data) return null;
+  const BATCH = 30;
+  const allResults = [];
+  for (let i = 0; i < ALL_REPORTERS.length; i += BATCH) {
+    const batch = ALL_REPORTERS.slice(i, i + BATCH).join(',');
+    const data = await wtoFetch('/data', {
+      i: 'TP_A_0010', r: batch,
+      ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000',
+    });
+    if (data) allResults.push(data);
+    await sleep(1000);
+  }
+  if (allResults.length === 0) return null;
 
-  const dataset = Array.isArray(data) ? data : data?.Dataset ?? data?.dataset ?? [];
+  const dataset = allResults.flatMap(d => Array.isArray(d) ? d : d?.Dataset ?? d?.dataset ?? []);
   const latestByCountry = new Map();
   for (const row of dataset) {
     const code = String(row.ReportingEconomyCode ?? '');
