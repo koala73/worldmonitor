@@ -7235,6 +7235,50 @@ a.prediction-link:hover {
   margin-bottom: 5px;
 }
 
+.popup-hs2-ring-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.popup-hs2-ring-canvas {
+  display: block;
+}
+
+.popup-hs2-ring-legend {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.popup-hs2-ring-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.popup-hs2-ring-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.popup-hs2-ring-label {
+  flex: 1;
+  color: var(--text-secondary, #cbd5e1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popup-hs2-ring-pct {
+  color: var(--text-muted, #64748b);
+  font-size: 10px;
+}
+
 /* Collapsible sections */
 .popup-section details {
   border: none;

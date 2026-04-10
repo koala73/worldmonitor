@@ -24,6 +24,7 @@ import type {
   CountryEnergyProfileData,
   CountryPortActivityData,
 } from './CountryBriefPanel';
+import type { GetCountryChokepointIndexResponse } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 import { toApiUrl } from '@/services/runtime';
@@ -83,6 +84,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private resilienceWidget: ResilienceWidget | null = null;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
+  private tradeExposureBody: HTMLElement | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -1092,6 +1094,42 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
   }
 
+  public updateTradeExposure(data: GetCountryChokepointIndexResponse | null): void {
+    if (!this.tradeExposureBody) return;
+
+    if (data == null || data.exposures.length === 0) {
+      this.tradeExposureBody.parentElement?.remove();
+      this.tradeExposureBody = null;
+      return;
+    }
+
+    this.tradeExposureBody.replaceChildren();
+
+    const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${Math.round(data.vulnerabilityIndex)}/100`);
+    this.tradeExposureBody.append(vulnDiv);
+
+    const sorted = [...data.exposures].sort((a, b) => b.exposureScore - a.exposureScore).slice(0, 3);
+    const table = this.el('table', 'cdp-trade-exposure-table');
+    const tbody = this.el('tbody');
+    for (const entry of sorted) {
+      const tr = this.el('tr');
+      const nameCell = this.el('td', 'cdp-chokepoint-name');
+      nameCell.textContent = entry.chokepointName || entry.chokepointId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      const barWrap = this.el('td', 'cdp-exposure-bar-wrap');
+      const bar = this.el('div', 'cdp-exposure-bar');
+      bar.style.width = `${Math.min(entry.exposureScore, 100)}%`;
+      barWrap.append(bar);
+      const pctCell = this.el('td', 'cdp-exposure-pct', `${entry.exposureScore.toFixed(1)}%`);
+      tr.append(nameCell, barWrap, pctCell);
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    this.tradeExposureBody.append(table);
+
+    const footer = this.el('div', 'cdp-card-footer', 'Source: Comtrade \u00B7 HS2 sectors');
+    this.tradeExposureBody.append(footer);
+  }
+
   private factItem(label: string, value: string): HTMLElement {
     const wrapper = this.el('div', 'cdp-fact-item');
     wrapper.append(this.el('div', 'cdp-fact-label', label));
@@ -1334,6 +1372,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.maritimeBody = maritimeBody;
     maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
 
+    const [tradeCard, tradeBody] = this.sectionCard('Trade Exposure', 'Chokepoints most critical to this country\'s imports by sector');
+    this.tradeExposureBody = tradeBody;
+    tradeBody.append(this.makeLoading('Loading trade exposure\u2026'));
+
     this.signalsBody = signalBody;
     this.timelineBody = timelineBody;
     this.timelineBody.classList.add('cdp-timeline-mount');
@@ -1352,7 +1394,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -1367,6 +1409,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.scoreCard = null;
     this.energyBody = null;
     this.maritimeBody = null;
+    this.tradeExposureBody = null;
     this.content.replaceChildren();
   }
 

@@ -987,3 +987,11 @@
   opacity: 1;
 }
 .cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: 0.65rem; }
+
+.cdp-vuln-index { font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
+.cdp-trade-exposure-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+.cdp-chokepoint-name { color: #cbd5e1; padding: 3px 0; width: 45%; }
+.cdp-exposure-bar-wrap { width: 40%; padding: 3px 6px; }
+.cdp-exposure-bar { height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 3px; min-width: 2px; }
+.cdp-exposure-pct { color: #64748b; text-align: right; font-size: 11px; white-space: nowrap; }
+.cdp-card-footer { font-size: 10px; color: #475569; margin-top: 6px; }

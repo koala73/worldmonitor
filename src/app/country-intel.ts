@@ -42,6 +42,7 @@ import { getNearbyInfrastructure } from '@/services/related-assets';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
+import { fetchCountryChokepointIndex } from '@/services/supply-chain';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -394,6 +395,16 @@ export class CountryIntelManager implements AppModule {
       .catch(() => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
+      });
+
+    fetchCountryChokepointIndex(code, '27')
+      .then((result) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateTradeExposure?.(result);
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateTradeExposure?.(null);
       });
 
     this.mountCountryTimeline(code, country);
