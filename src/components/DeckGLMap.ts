@@ -54,7 +54,7 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
-import { H3HexagonLayer } from '@deck.gl/geo-layers';
+import { H3HexagonLayer, TripsLayer } from '@deck.gl/geo-layers';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
@@ -342,6 +342,45 @@ const ROUTE_WAYPOINTS_MAP = new Map<string, string[]>(
   TRADE_ROUTES_LIST.map(r => [r.id, r.waypoints]),
 );
 
+interface TripData {
+  path: [number, number][];
+  timestamps: number[];
+  color: [number, number, number, number];
+  width: number;
+}
+
+function interpolateGreatCircle(
+  start: [number, number],
+  end: [number, number],
+  numPoints: number,
+): [number, number][] {
+  const toRad = (d: number) => d * Math.PI / 180;
+  const toDeg = (r: number) => r * 180 / Math.PI;
+  const [lon1, lat1] = [toRad(start[0]), toRad(start[1])];
+  const [lon2, lat2] = [toRad(end[0]), toRad(end[1])];
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.sin((lat2 - lat1) / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2,
+  ));
+  if (d < 1e-10) return [start, end];
+  const points: [number, number][] = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const f = i / numPoints;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+    const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+    points.push([toDeg(Math.atan2(y, x)), toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)))]);
+  }
+  return points;
+}
+
+const TRADE_ANIMATION_CYCLE = 1000;
+const TRADE_TRAIL_LENGTH = 200;
+const TRADE_ANIMATION_SPEED = 0.3;
+const TRADE_GC_INTERPOLATION_POINTS = 20;
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
@@ -399,6 +438,9 @@ export class DeckGLMap {
   private radiationObservations: RadiationObservation[] = [];
   private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
+  private tradeTrips: TripData[] = [];
+  private tradeAnimationTime = 0;
+  private tradeAnimationFrame: number | null = null;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private affectedIso2Set: Set<string> = new Set();
@@ -1686,9 +1728,13 @@ export class DeckGLMap {
     // Trade routes layer
     if (mapLayers.tradeRoutes) {
       layers.push(this.createTradeRoutesLayer());
+      layers.push(this.createTradeRouteTripsLayer());
       layers.push(this.createTradeChokepointsLayer());
+      this.startTradeAnimation();
     } else {
+      this.stopTradeAnimation();
       this.layerCache.delete('trade-routes-layer');
+      this.layerCache.delete('trade-route-trips-layer');
       this.layerCache.delete('trade-chokepoints-layer');
     }
 
@@ -5039,6 +5085,105 @@ export class DeckGLMap {
     });
   }
 
+  private buildTradeTrips(): void {
+    const activeColor: [number, number, number, number] = [100, 200, 255, 140];
+    const disruptedColor: [number, number, number, number] = [255, 80, 80, 180];
+    const highRiskColor: [number, number, number, number] = [255, 180, 50, 160];
+
+    const colorFor = (status: string): [number, number, number, number] =>
+      status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
+
+    const widthFor = (category: string): number =>
+      category === 'energy' ? 4 : category === 'container' ? 2.5 : 2;
+
+    const routeGroups = new Map<string, TradeRouteSegment[]>();
+    for (const seg of this.tradeRouteSegments) {
+      const existing = routeGroups.get(seg.routeId);
+      if (existing) existing.push(seg);
+      else routeGroups.set(seg.routeId, [seg]);
+    }
+
+    const trips: TripData[] = [];
+    for (const [, segments] of routeGroups) {
+      const sorted = segments.sort((a, b) => a.segmentIndex - b.segmentIndex);
+      const fullPath: [number, number][] = [];
+      for (let i = 0; i < sorted.length; i++) {
+        const seg = sorted[i]!;
+        const arcPoints = interpolateGreatCircle(
+          seg.sourcePosition,
+          seg.targetPosition,
+          TRADE_GC_INTERPOLATION_POINTS,
+        );
+        if (i === 0) {
+          fullPath.push(...arcPoints);
+        } else {
+          fullPath.push(...arcPoints.slice(1));
+        }
+      }
+
+      const timestamps: number[] = [];
+      for (let i = 0; i < fullPath.length; i++) {
+        timestamps.push((i / (fullPath.length - 1)) * TRADE_ANIMATION_CYCLE);
+      }
+
+      const first = sorted[0]!;
+      const status = first.status;
+      const category = first.category;
+
+      trips.push({
+        path: fullPath,
+        timestamps,
+        color: colorFor(status),
+        width: widthFor(category),
+      });
+    }
+    this.tradeTrips = trips;
+  }
+
+  private createTradeRouteTripsLayer(): TripsLayer<TripData> | null {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return null;
+
+    if (this.tradeTrips.length === 0) this.buildTradeTrips();
+
+    return new TripsLayer<TripData>({
+      id: 'trade-route-trips-layer',
+      data: this.tradeTrips,
+      getPath: (d: TripData) => d.path,
+      getTimestamps: (d: TripData) => d.timestamps,
+      getColor: (d: TripData) => d.color,
+      getWidth: (d: TripData) => d.width,
+      widthMinPixels: 2,
+      currentTime: this.tradeAnimationTime % TRADE_ANIMATION_CYCLE,
+      trailLength: TRADE_TRAIL_LENGTH,
+      pickable: false,
+    });
+  }
+
+  private startTradeAnimation(): void {
+    if (this.tradeAnimationFrame !== null) return;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
+
+    let lastTime = performance.now();
+    const animate = (now: number) => {
+      const delta = now - lastTime;
+      lastTime = now;
+      this.tradeAnimationTime = (this.tradeAnimationTime + delta * TRADE_ANIMATION_SPEED) % TRADE_ANIMATION_CYCLE;
+      this.render();
+      this.tradeAnimationFrame = requestAnimationFrame(animate);
+    };
+    this.tradeAnimationFrame = requestAnimationFrame(animate);
+  }
+
+  private stopTradeAnimation(): void {
+    if (this.tradeAnimationFrame !== null) {
+      cancelAnimationFrame(this.tradeAnimationFrame);
+      this.tradeAnimationFrame = null;
+    }
+    this.tradeAnimationTime = 0;
+  }
+
   private createTradeChokepointsLayer(): ScatterplotLayer {
     const routeWaypointIds = new Set<string>();
     for (const seg of this.tradeRouteSegments) {
@@ -5445,6 +5590,7 @@ export class DeckGLMap {
       const status: TradeRouteStatus = maxScore > 70 ? 'disrupted' : maxScore > 30 ? 'high_risk' : 'active';
       return { ...seg, status };
     });
+    this.buildTradeTrips();
     this.render();
   }
 
@@ -6231,6 +6377,7 @@ export class DeckGLMap {
   }
 
   public destroy(): void {
+    this.stopTradeAnimation();
     this.activeFlightTrails.clear();
     this.clearTrailsBtn = null;
     this._unsubscribeAuthState?.();
