@@ -57,9 +57,9 @@ describe('get-country-port-activity handler: unavailable country', () => {
 
 // ── handler: top 5 slice ──────────────────────────────────────────────────────
 
-describe('get-country-port-activity handler: top 5 ports', () => {
-  it('slices top 5 ports', () => {
-    assert.match(handlerSrc, /\.slice\(0,\s*5\)/);
+describe('get-country-port-activity handler: port limit', () => {
+  it('slices top 25 ports', () => {
+    assert.match(handlerSrc, /\.slice\(0,\s*25\)/);
   });
 });
 

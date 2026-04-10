@@ -952,9 +952,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     norm: number,
     centerText: string,
   ): HTMLElement {
-    const size = 90;
-    const r = 35;
-    const stroke = 14;
+    const size = 120;
+    const r = 46;
+    const stroke = 18;
     const cx = size / 2;
     const cy = size / 2;
     const circ = 2 * Math.PI * r;
@@ -1279,7 +1279,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       tbody.append(tr);
     }
     table.append(tbody);
-    this.maritimeBody.append(table);
+    const scrollWrap = this.el('div', 'cdp-maritime-scroll');
+    scrollWrap.append(table);
+    this.maritimeBody.append(scrollWrap);
 
     if (data.fetchedAt) {
       const dateStr = data.fetchedAt.split('T')[0] ?? data.fetchedAt;
