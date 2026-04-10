@@ -12,10 +12,7 @@ const RSS_MAX_BYTES = 500_000;
 const FEEDS = [
   { sourceName: 'Carbon Brief', url: 'https://www.carbonbrief.org/feed' },
   { sourceName: 'The Guardian Environment', url: 'https://www.theguardian.com/environment/climate-crisis/rss' },
-  { sourceName: 'ReliefWeb Disasters', urls: [
-    'https://api.reliefweb.int/v1/reports?appname=worldmonitor&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source',
-    'https://api.reliefweb.int/v2/reports?appname=worldmonitor&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source',
-  ], isApi: true },
+  { sourceName: 'ReliefWeb Disasters', isApi: true },
   { sourceName: 'NASA Earth Observatory', url: 'https://earthobservatory.nasa.gov/feeds/earth-observatory.rss' },
   { sourceName: 'UNEP', url: 'https://www.unep.org/rss.xml' },
   { sourceName: 'Phys.org Earth Science', url: 'https://phys.org/rss-feed/earth-news/earth-sciences/' },
@@ -108,8 +105,18 @@ function parseRssItems(xml, sourceName) {
 }
 
 async function fetchReliefWebApi(feed) {
+  const appname = (process.env.RELIEFWEB_APPNAME || process.env.RELIEFWEB_APP_NAME || '').trim();
+  if (!appname) {
+    console.warn(`[ClimateNews] RELIEFWEB_APPNAME not set, skipping ${feed.sourceName}`);
+    return [];
+  }
+  const qs = `appname=${encodeURIComponent(appname)}&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source`;
+  const endpoints = [
+    `https://api.reliefweb.int/v1/reports?${qs}`,
+    `https://api.reliefweb.int/v2/reports?${qs}`,
+  ];
   let lastErr;
-  for (const url of feed.urls) {
+  for (const url of endpoints) {
     try {
       const resp = await fetch(url, {
         headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -130,7 +137,8 @@ async function fetchReliefWebApi(feed) {
       return items;
     } catch (err) { lastErr = err; }
   }
-  throw lastErr || new Error('All ReliefWeb API endpoints failed');
+  console.warn(`[ClimateNews] ${feed.sourceName} failed: ${lastErr?.message}`);
+  return [];
 }
 
 async function fetchFeed(feed) {
