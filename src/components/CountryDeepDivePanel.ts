@@ -11,6 +11,8 @@ import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { getCSSColor } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { getAuthState } from '@/services/auth-state';
 import { haversineDistanceKm } from '@/services/related-assets';
 import type {
   CountryBriefPanel,
@@ -83,6 +85,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private resilienceWidget: ResilienceWidget | null = null;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
+  private debtBody: HTMLElement | null = null;
+  private sanctionsBody: HTMLElement | null = null;
+  private comtradeBody: HTMLElement | null = null;
+  private tariffBody: HTMLElement | null = null;
+  private chokepointBody: HTMLElement | null = null;
+  private costShockBody: HTMLElement | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -485,6 +493,168 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     grid.append(this.factItem(t('countryBrief.facts.currencies'), data.currencies.join(', ')));
 
     this.factsBody.append(grid);
+  }
+
+  public updateNationalDebt(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void {
+    if (!this.debtBody) return;
+    this.debtBody.replaceChildren();
+    if (!entry) {
+      this.debtBody.append(this.makeEmpty('No national debt data available'));
+      return;
+    }
+    const grid = this.el('div', 'cdp-pro-metric-grid');
+    grid.append(
+      this.proMetricBox('Debt-to-GDP', `${entry.debtToGdp.toFixed(1)}%`),
+      this.proMetricBox('Total Debt', this.formatMoney(entry.debtUsd)),
+      this.proMetricBox('YoY Growth', this.formatPctTrend(entry.annualGrowth)),
+      this.proMetricBox('Source', entry.source),
+    );
+    this.debtBody.append(grid);
+  }
+
+  public updateSanctionsPressure(data: { entryCount: number; newEntryCount: number; vesselCount: number; aircraftCount: number } | null): void {
+    if (!this.sanctionsBody) return;
+    this.sanctionsBody.replaceChildren();
+    if (!data) {
+      this.sanctionsBody.append(this.makeEmpty('No sanctions data available'));
+      return;
+    }
+    const grid = this.el('div', 'cdp-pro-metric-grid');
+    grid.append(
+      this.proMetricBox('Sanctioned Entities', String(data.entryCount)),
+      this.proMetricBox('New Entries', String(data.newEntryCount)),
+      this.proMetricBox('Vessels', String(data.vesselCount)),
+      this.proMetricBox('Aircraft', String(data.aircraftCount)),
+    );
+    this.sanctionsBody.append(grid);
+  }
+
+  public updateComtradeFlows(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void {
+    if (!this.comtradeBody) return;
+    this.comtradeBody.replaceChildren();
+    if (!flows || flows.length === 0) {
+      this.comtradeBody.append(this.makeEmpty('No trade flow data available'));
+      return;
+    }
+    const table = this.el('table', 'cdp-pro-flow-table');
+    const thead = this.el('thead');
+    const hr = this.el('tr');
+    for (const col of ['Partner', 'Commodity', 'Value', 'YoY']) {
+      hr.append(this.el('th', '', col));
+    }
+    thead.append(hr);
+    table.append(thead);
+    const tbody = this.el('tbody');
+    for (const f of flows.slice(0, 5)) {
+      const tr = this.el('tr');
+      tr.append(this.el('td', '', f.partnerName));
+      const cmdTd = this.el('td', '');
+      cmdTd.textContent = f.cmdDesc.length > 25 ? f.cmdDesc.slice(0, 22) + '...' : f.cmdDesc;
+      cmdTd.title = f.cmdDesc;
+      tr.append(cmdTd);
+      tr.append(this.el('td', '', this.formatMoney(f.tradeValueUsd)));
+      const yoyTd = this.el('td', f.yoyChange >= 0 ? 'cdp-pro-trend-up' : 'cdp-pro-trend-down');
+      yoyTd.textContent = this.formatPctTrend(f.yoyChange);
+      tr.append(yoyTd);
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    this.comtradeBody.append(table);
+  }
+
+  public updateTariffTrends(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void {
+    if (!this.tariffBody) return;
+    this.tariffBody.replaceChildren();
+    if (!data) {
+      this.tariffBody.append(this.makeEmpty('No tariff data available'));
+      return;
+    }
+    const grid = this.el('div', 'cdp-pro-metric-grid');
+    grid.append(
+      this.proMetricBox('Effective Rate', `${data.currentRate.toFixed(2)}%`),
+      this.proMetricBox('Trend', data.trend === 'rising' ? '\u2191 Rising' : '\u2193 Falling'),
+    );
+    this.tariffBody.append(grid);
+  }
+
+  public updateChokepointExposure(data: { vulnerabilityIndex: number; exposures: Array<{ chokepointName: string; exposureScore: number }> } | null): void {
+    if (!this.chokepointBody) return;
+    this.chokepointBody.replaceChildren();
+    if (!data) {
+      this.chokepointBody.append(this.makeEmpty('No chokepoint exposure data'));
+      return;
+    }
+    const vulnClass = data.vulnerabilityIndex >= 75 ? 'cdp-pro-badge-critical'
+      : data.vulnerabilityIndex >= 50 ? 'cdp-pro-badge-high'
+      : data.vulnerabilityIndex >= 25 ? 'cdp-pro-badge-elevated'
+      : 'cdp-pro-badge-normal';
+    const badge = this.el('span', `cdp-pro-badge ${vulnClass}`, `Vulnerability: ${data.vulnerabilityIndex.toFixed(0)}`);
+    this.chokepointBody.append(badge);
+    for (const exp of data.exposures.slice(0, 3)) {
+      const row = this.el('div', 'cdp-pro-exposure-item');
+      row.append(this.el('span', 'cdp-pro-exposure-name', exp.chokepointName));
+      const scoreEl = this.el('span', 'cdp-pro-exposure-score');
+      scoreEl.textContent = exp.exposureScore.toFixed(1);
+      scoreEl.style.background = exp.exposureScore >= 60
+        ? 'color-mix(in srgb, var(--semantic-critical) 20%, transparent)'
+        : 'color-mix(in srgb, var(--semantic-normal) 20%, transparent)';
+      row.append(scoreEl);
+      this.chokepointBody.append(row);
+    }
+  }
+
+  public updateCostShock(data: { supplyDeficitPct: number; coverageDays: number; warRiskTier: string } | null): void {
+    if (!this.costShockBody) return;
+    this.costShockBody.replaceChildren();
+    if (!data) {
+      this.costShockBody.append(this.makeEmpty('No cost shock data'));
+      return;
+    }
+    const grid = this.el('div', 'cdp-pro-metric-grid');
+    grid.append(
+      this.proMetricBox('Supply Deficit', `${data.supplyDeficitPct.toFixed(1)}%`),
+      this.proMetricBox('Coverage Days', String(Math.round(data.coverageDays))),
+    );
+    this.costShockBody.append(grid);
+    const tierLabel = data.warRiskTier.replace('WAR_RISK_TIER_', '').replace(/_/g, ' ');
+    const tierClass = tierLabel === 'CRITICAL' || tierLabel === 'WAR ZONE' ? 'cdp-pro-badge-critical'
+      : tierLabel === 'HIGH' ? 'cdp-pro-badge-high'
+      : tierLabel === 'ELEVATED' ? 'cdp-pro-badge-elevated'
+      : 'cdp-pro-badge-normal';
+    const tierBadge = this.el('span', `cdp-pro-badge ${tierClass}`, `War Risk: ${tierLabel}`);
+    tierBadge.style.marginTop = '8px';
+    tierBadge.style.display = 'inline-block';
+    this.costShockBody.append(tierBadge);
+  }
+
+  private makeProLocked(text: string): HTMLElement {
+    const wrap = this.el('div', 'cdp-pro-locked');
+    wrap.append(
+      this.el('span', 'cdp-pro-lock-icon', '\uD83D\uDD12'),
+      this.el('span', 'cdp-pro-lock-text', text),
+    );
+    return wrap;
+  }
+
+  private proMetricBox(label: string, value: string): HTMLElement {
+    const box = this.el('div', 'cdp-pro-metric-box');
+    box.append(
+      this.el('div', 'cdp-pro-metric-label', label),
+      this.el('div', 'cdp-pro-metric-value', value),
+    );
+    return box;
+  }
+
+  private formatMoney(usd: number): string {
+    if (usd >= 1e12) return `$${(usd / 1e12).toFixed(1)}T`;
+    if (usd >= 1e9) return `$${(usd / 1e9).toFixed(1)}B`;
+    if (usd >= 1e6) return `$${(usd / 1e6).toFixed(1)}M`;
+    return `$${Math.round(usd).toLocaleString()}`;
+  }
+
+  private formatPctTrend(pct: number): string {
+    const sign = pct >= 0 ? '+' : '';
+    return `${sign}${pct.toFixed(1)}%`;
   }
 
   public updateEnergyProfile(data: CountryEnergyProfileData): void {
@@ -1334,6 +1504,32 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.maritimeBody = maritimeBody;
     maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
 
+    const isPro = hasPremiumAccess(getAuthState());
+
+    const [debtCard, debtBody] = this.sectionCard('National Debt', 'Government debt-to-GDP ratio, total debt, and year-over-year growth.');
+    this.debtBody = debtBody;
+    debtBody.append(isPro ? this.makeLoading('Loading debt data\u2026') : this.makeProLocked('Upgrade to PRO for national debt data'));
+
+    const [sanctionsCard, sanctionsBody] = this.sectionCard('Sanctions Pressure', 'Sanctioned entities, vessels, and aircraft linked to this country.');
+    this.sanctionsBody = sanctionsBody;
+    sanctionsBody.append(isPro ? this.makeLoading('Loading sanctions data\u2026') : this.makeProLocked('Upgrade to PRO for sanctions data'));
+
+    const [comtradeCard, comtradeBody] = this.sectionCard('Trade Flows', 'Top Comtrade trade flows sorted by value, with partner and commodity.');
+    this.comtradeBody = comtradeBody;
+    comtradeBody.append(isPro ? this.makeLoading('Loading trade flows\u2026') : this.makeProLocked('Upgrade to PRO for trade flow data'));
+
+    const [tariffCard, tariffBody] = this.sectionCard('Tariff Trends', 'Effective tariff rate and historical trend direction.');
+    this.tariffBody = tariffBody;
+    tariffBody.append(isPro ? this.makeLoading('Loading tariff data\u2026') : this.makeProLocked('Upgrade to PRO for tariff trend data'));
+
+    const [chokepointCard, chokepointBody] = this.sectionCard('Chokepoint Exposure', 'Vulnerability index and top chokepoint exposures for energy imports (HS 27).');
+    this.chokepointBody = chokepointBody;
+    chokepointBody.append(isPro ? this.makeLoading('Loading chokepoint data\u2026') : this.makeProLocked('Upgrade to PRO for chokepoint exposure'));
+
+    const [costShockCard, costShockBody] = this.sectionCard('Cost Shock', 'Supply deficit, coverage days, and war risk tier for the primary chokepoint.');
+    this.costShockBody = costShockBody;
+    costShockBody.append(isPro ? this.makeLoading('Loading cost shock data\u2026') : this.makeProLocked('Upgrade to PRO for cost shock analysis'));
+
     this.signalsBody = signalBody;
     this.timelineBody = timelineBody;
     this.timelineBody.classList.add('cdp-timeline-mount');
@@ -1352,7 +1548,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, debtCard, sanctionsCard, comtradeCard, tariffCard, chokepointCard, costShockCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -1367,6 +1563,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.scoreCard = null;
     this.energyBody = null;
     this.maritimeBody = null;
+    this.debtBody = null;
+    this.sanctionsBody = null;
+    this.comtradeBody = null;
+    this.tariffBody = null;
+    this.chokepointBody = null;
+    this.costShockBody = null;
     this.content.replaceChildren();
   }
 

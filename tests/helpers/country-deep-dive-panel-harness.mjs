@@ -87,6 +87,13 @@ async function loadCountryDeepDivePanel() {
     ['intelligence-client-stub', `
       export class IntelligenceServiceClient {}
     `],
+    ['panel-gating-stub', `
+      export function hasPremiumAccess() { return false; }
+      export function getPanelGateReason() { return 'none'; }
+    `],
+    ['auth-state-stub', `
+      export function getAuthState() { return { user: null }; }
+    `],
     ['resilience-widget-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
       export class ResilienceWidget {
@@ -122,6 +129,8 @@ async function loadCountryDeepDivePanel() {
     ['./ResilienceWidget', 'resilience-widget-stub'],
     ['@/services/runtime', 'runtime-stub'],
     ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
+    ['@/services/panel-gating', 'panel-gating-stub'],
+    ['@/services/auth-state', 'auth-state-stub'],
   ]);
 
   const plugin = {

@@ -186,4 +186,10 @@ export interface CountryBriefPanel {
   minimize?(): void;
   getIsMaximized?(): boolean;
   onStateChange?(cb: (state: { visible: boolean; maximized: boolean }) => void): void;
+  updateNationalDebt?(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void;
+  updateSanctionsPressure?(data: { entryCount: number; newEntryCount: number; vesselCount: number; aircraftCount: number } | null): void;
+  updateComtradeFlows?(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void;
+  updateTariffTrends?(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void;
+  updateChokepointExposure?(data: { vulnerabilityIndex: number; exposures: Array<{ chokepointName: string; exposureScore: number }> } | null): void;
+  updateCostShock?(data: { supplyDeficitPct: number; coverageDays: number; warRiskTier: string } | null): void;
 }

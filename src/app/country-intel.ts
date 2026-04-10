@@ -28,6 +28,12 @@ import { renderStoryToCanvas } from '@/services/story-renderer';
 import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { TradeServiceClient } from '@/generated/client/worldmonitor/trade/v1/service_client';
+import { SanctionsServiceClient } from '@/generated/client/worldmonitor/sanctions/v1/service_client';
+import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { getAuthState } from '@/services/auth-state';
 import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
 import { MILITARY_BASES } from '@/config';
@@ -396,6 +402,10 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
       });
 
+    if (hasPremiumAccess(getAuthState())) {
+      this.fetchProSections(code);
+    }
+
     this.mountCountryTimeline(code, country);
 
     try {
@@ -509,6 +519,142 @@ export class CountryIntelManager implements AppModule {
       console.error('[CountryBrief] fetch error:', err);
       this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'Failed to generate brief' });
     }
+  }
+
+  private fetchProSections(code: string): void {
+    const rpcBase = getRpcBaseUrl();
+    const fetchFn = (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args);
+    const economicClient = new EconomicServiceClient(rpcBase, { fetch: fetchFn });
+    const sanctionsClient = new SanctionsServiceClient(rpcBase, { fetch: fetchFn });
+    const tradeClient = new TradeServiceClient(rpcBase, { fetch: fetchFn });
+    const supplyChainClient = new SupplyChainServiceClient(rpcBase, { fetch: fetchFn });
+
+    const iso3 = CountryIntelManager.iso2ToIso3(code);
+
+    economicClient.getNationalDebt({}).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      const entry = iso3 ? resp.entries?.find(e => e.iso3 === iso3) : null;
+      this.ctx.countryBriefPage.updateNationalDebt?.(entry ? {
+        debtToGdp: entry.debtToGdp,
+        debtUsd: entry.debtUsd,
+        annualGrowth: entry.annualGrowth,
+        source: entry.source,
+      } : null);
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateNationalDebt?.(null);
+    });
+
+    sanctionsClient.listSanctionsPressure({ maxItems: 250 }).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      const match = resp.countries?.find(c => c.countryCode === code);
+      this.ctx.countryBriefPage.updateSanctionsPressure?.(match ? {
+        entryCount: match.entryCount,
+        newEntryCount: match.newEntryCount,
+        vesselCount: match.vesselCount,
+        aircraftCount: match.aircraftCount,
+      } : null);
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateSanctionsPressure?.(null);
+    });
+
+    const unCode = CountryIntelManager.iso2ToUnCode(code);
+    if (unCode) {
+      tradeClient.listComtradeFlows({ reporterCode: unCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        const topFlows = (resp.flows || [])
+          .sort((a, b) => b.tradeValueUsd - a.tradeValueUsd)
+          .slice(0, 5)
+          .map(f => ({ partnerName: f.partnerName, cmdDesc: f.cmdDesc, tradeValueUsd: f.tradeValueUsd, yoyChange: f.yoyChange }));
+        this.ctx.countryBriefPage.updateComtradeFlows?.(topFlows.length > 0 ? topFlows : null);
+      }).catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateComtradeFlows?.(null);
+      });
+
+      tradeClient.getTariffTrends({ reportingCountry: unCode, productSector: '', years: 10, partnerCountry: '' }).then(resp => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        const pts = resp.datapoints || [];
+        const latest = pts[pts.length - 1];
+        this.ctx.countryBriefPage.updateTariffTrends?.(latest ? {
+          currentRate: resp.effectiveTariffRate?.tariffRate ?? latest.tariffRate,
+          trend: pts.length >= 2 && pts[pts.length - 1]!.tariffRate > pts[pts.length - 2]!.tariffRate ? 'rising' : 'falling',
+          datapoints: pts.map(p => ({ year: p.year, tariffRate: p.tariffRate })),
+        } : null);
+      }).catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateTariffTrends?.(null);
+      });
+    } else {
+      this.ctx.countryBriefPage?.updateComtradeFlows?.(null);
+      this.ctx.countryBriefPage?.updateTariffTrends?.(null);
+    }
+
+    supplyChainClient.getCountryChokepointIndex({ iso2: code, hs2: '27' }).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      const exps = resp.exposures || [];
+      this.ctx.countryBriefPage.updateChokepointExposure?.(exps.length > 0 ? {
+        vulnerabilityIndex: resp.vulnerabilityIndex,
+        exposures: exps.slice(0, 3).map(e => ({ chokepointName: e.chokepointName, exposureScore: e.exposureScore })),
+      } : null);
+
+      if (resp.primaryChokepointId) {
+        supplyChainClient.getCountryCostShock({ iso2: code, chokepointId: resp.primaryChokepointId, hs2: '27' }).then(shock => {
+          if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          this.ctx.countryBriefPage.updateCostShock?.((shock.supplyDeficitPct > 0 || shock.coverageDays > 0) ? {
+            supplyDeficitPct: shock.supplyDeficitPct,
+            coverageDays: shock.coverageDays,
+            warRiskTier: shock.warRiskTier,
+          } : null);
+        }).catch(() => {
+          if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateCostShock?.(null);
+        });
+      } else {
+        this.ctx.countryBriefPage.updateCostShock?.(null);
+      }
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) {
+        this.ctx.countryBriefPage.updateChokepointExposure?.(null);
+        this.ctx.countryBriefPage.updateCostShock?.(null);
+      }
+    });
+  }
+
+  private static readonly ISO2_TO_ISO3: Record<string, string> = {
+    US: 'USA', CN: 'CHN', RU: 'RUS', IR: 'IRN', IN: 'IND', TW: 'TWN',
+    DE: 'DEU', GB: 'GBR', FR: 'FRA', JP: 'JPN', KR: 'KOR', BR: 'BRA',
+    SA: 'SAU', AE: 'ARE', IL: 'ISR', TR: 'TUR', AU: 'AUS', CA: 'CAN',
+    MX: 'MEX', EG: 'EGY', NG: 'NGA', ZA: 'ZAF', PK: 'PAK', UA: 'UKR',
+    PL: 'POL', IT: 'ITA', ES: 'ESP', NL: 'NLD', SE: 'SWE', NO: 'NOR',
+    CH: 'CHE', AT: 'AUT', BE: 'BEL', GR: 'GRC', PT: 'PRT', CZ: 'CZE',
+    RO: 'ROU', HU: 'HUN', FI: 'FIN', DK: 'DNK', SG: 'SGP', MY: 'MYS',
+    TH: 'THA', ID: 'IDN', PH: 'PHL', VN: 'VNM', AR: 'ARG', CL: 'CHL',
+    CO: 'COL', PE: 'PER', VE: 'VEN', IQ: 'IRQ', KW: 'KWT', QA: 'QAT',
+    OM: 'OMN', BH: 'BHR', JO: 'JOR', LB: 'LBN', SY: 'SYR', LY: 'LBY',
+    DZ: 'DZA', MA: 'MAR', TN: 'TUN', SD: 'SDN', ET: 'ETH', KE: 'KEN',
+    GH: 'GHA', TZ: 'TZA', UG: 'UGA', BD: 'BGD', MM: 'MMR', KH: 'KHM',
+    NZ: 'NZL', IE: 'IRL', BG: 'BGR', HR: 'HRV', SK: 'SVK', SI: 'SVN',
+    LT: 'LTU', LV: 'LVA', EE: 'EST', KZ: 'KAZ', UZ: 'UZB', GE: 'GEO',
+    AM: 'ARM', AZ: 'AZE', BY: 'BLR', RS: 'SRB', BA: 'BIH', AL: 'ALB',
+    MK: 'MKD', ME: 'MNE', XK: 'XKX', CY: 'CYP', MT: 'MLT', LU: 'LUX',
+    IS: 'ISL', KP: 'PRK', CU: 'CUB', AF: 'AFG', YE: 'YEM', SO: 'SOM',
+  };
+
+  private static readonly ISO2_TO_UN: Record<string, string> = {
+    US: '842', CN: '156', RU: '643', IR: '364', IN: '356', TW: '158',
+    DE: '276', GB: '826', FR: '251', JP: '392', KR: '410', BR: '076',
+    SA: '682', AE: '784', IL: '376', TR: '792', AU: '036', CA: '124',
+    MX: '484', EG: '818', NG: '566', ZA: '710', PK: '586', UA: '804',
+    PL: '616', IT: '380', ES: '724', NL: '528', SE: '752', NO: '578',
+    CH: '756', AT: '040', BE: '056', GR: '300', PT: '620', CZ: '203',
+    RO: '642', HU: '348', FI: '246', DK: '208', SG: '702', MY: '458',
+    TH: '764', ID: '360', PH: '608', VN: '704', AR: '032', CL: '152',
+    CO: '170', PE: '604', VE: '862', IQ: '368', KW: '414', QA: '634',
+  };
+
+  private static iso2ToIso3(code: string): string | null {
+    return CountryIntelManager.ISO2_TO_ISO3[code] ?? null;
+  }
+
+  private static iso2ToUnCode(code: string): string | null {
+    return CountryIntelManager.ISO2_TO_UN[code] ?? null;
   }
 
   refreshOpenBrief(): void {

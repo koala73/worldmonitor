@@ -987,3 +987,128 @@
   opacity: 1;
 }
 .cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: 0.65rem; }
+
+.cdp-pro-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.cdp-pro-lock-icon {
+  font-size: 20px;
+  opacity: 0.5;
+}
+
+.cdp-pro-lock-text {
+  text-align: center;
+}
+
+.cdp-pro-section-group {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-subtle, var(--border));
+  padding-top: 8px;
+}
+
+.cdp-pro-section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cdp-pro-metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cdp-pro-metric-box {
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--surface, var(--panel-bg));
+  border: 1px solid var(--border);
+}
+
+.cdp-pro-metric-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.cdp-pro-metric-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cdp-pro-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.cdp-pro-badge-normal { background: color-mix(in srgb, var(--semantic-normal) 20%, transparent); color: var(--semantic-normal); }
+.cdp-pro-badge-elevated { background: color-mix(in srgb, var(--semantic-elevated) 20%, transparent); color: var(--semantic-elevated); }
+.cdp-pro-badge-high { background: color-mix(in srgb, var(--semantic-high) 20%, transparent); color: var(--semantic-high); }
+.cdp-pro-badge-critical { background: color-mix(in srgb, var(--semantic-critical) 20%, transparent); color: var(--semantic-critical); }
+
+.cdp-pro-flow-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.cdp-pro-flow-table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.cdp-pro-flow-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.cdp-pro-trend-up { color: var(--semantic-normal); }
+.cdp-pro-trend-down { color: var(--semantic-critical); }
+
+.cdp-pro-exposure-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cdp-pro-exposure-item:last-child {
+  border-bottom: none;
+}
+
+.cdp-pro-exposure-name {
+  color: var(--text);
+}
+
+.cdp-pro-exposure-score {
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
