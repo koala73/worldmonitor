@@ -93,18 +93,20 @@ function getCredentials() {
 
 /**
  * Execute a raw Redis command via Upstash REST API.
- * @param {string} cmd  e.g. "blmove"
+ * Uses the base-URL POST format (command as first body element) which is the only
+ * format Upstash supports reliably — POST /{cmd} with args-only body is broken.
+ * @param {string} cmd  e.g. "BLMOVE"
  * @param {unknown[]} args
  */
 async function redisCmd(cmd, args) {
   const { url, token } = getCredentials();
-  const resp = await fetch(`${url}/${cmd}`, {
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(args),
+    body: JSON.stringify([cmd.toUpperCase(), ...args]),
     signal: AbortSignal.timeout(40_000), // > BLMOVE_TIMEOUT_SECONDS
   });
   if (!resp.ok) {
@@ -353,8 +355,10 @@ async function runWorker() {
   while (!shuttingDown) {
     let raw;
     try {
-      // Atomic FIFO dequeue+claim: moves item from pending → processing
-      // BLMOVE source destination LEFT RIGHT timeout (Upstash / Redis 6.2+)
+      // Atomic FIFO dequeue+claim: moves item from pending → processing.
+      // Note: Upstash REST API does not honour the BLMOVE blocking timeout —
+      // it returns null immediately for empty queues. The 5s sleep below prevents
+      // busy-looping when the queue is idle.
       raw = await redisCmd('blmove', [QUEUE_KEY, PROCESSING_KEY, 'LEFT', 'RIGHT', BLMOVE_TIMEOUT_SECONDS]);
     } catch (err) {
       console.error('[scenario-worker] BLMOVE error:', err.message);
@@ -363,7 +367,12 @@ async function runWorker() {
       continue;
     }
 
-    if (!raw) continue; // timeout — no job in queue, loop back
+    if (!raw) {
+      // Upstash REST returns null immediately for empty queue (no true HTTP blocking).
+      // Sleep before retrying to avoid busy-loop burning CPU.
+      await new Promise(r => setTimeout(r, 5_000));
+      continue;
+    }
 
     /** @type {ScenarioJob | null} */
     let job = null;
