@@ -683,16 +683,20 @@ async function processEvent(event) {
 
   if (matching.length === 0) return;
 
+  // Batch PRO check: resolve all unique userIds in parallel instead of one-by-one.
+  // isUserPro() has a 15-min Redis cache, so this is cheap after the first call.
+  const uniqueUserIds = [...new Set(matching.map(r => r.userId))];
+  const proResults = await Promise.all(uniqueUserIds.map(async uid => [uid, await isUserPro(uid)]));
+  const proSet = new Set(proResults.filter(([, isPro]) => isPro).map(([uid]) => uid));
+  const skippedCount = uniqueUserIds.length - proSet.size;
+  if (skippedCount > 0) console.log(`[relay] Skipping ${skippedCount} non-PRO user(s)`);
+
   const text = formatMessage(event);
   const subject = `WorldMonitor Alert: ${event.payload?.title ?? event.eventType}`;
   const eventSeverity = event.severity ?? 'high';
 
   for (const rule of matching) {
-    const pro = await isUserPro(rule.userId);
-    if (!pro) {
-      console.log(`[relay] Skipping ${rule.userId} — not PRO`);
-      continue;
-    }
+    if (!proSet.has(rule.userId)) continue;
 
     const quietAction = resolveQuietAction(rule, eventSeverity);
 
