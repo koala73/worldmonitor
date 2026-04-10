@@ -5386,29 +5386,29 @@ async function seedUsniFleet() {
   console.log('[USNI] Fetching fleet tracker...');
   const t0 = Date.now();
   try {
-    // USNI (WordPress) returns 403 from Railway datacenter IPs via Cloudflare.
-    // Use PROXY_URL (US-targeted proxy). OREF_PROXY_AUTH is IL-only and must NOT be used here.
+    // USNI (WordPress): try direct fetch first (Railway Virginia should work),
+    // fall back to proxy if Cloudflare blocks the datacenter IP.
     let wpData;
-    const proxiesToTry = [
-      PROXY_URL ? { ...parseProxyUrl(PROXY_URL), tls: true } : null, // Decodo gate.*.com:10001 is HTTPS
-    ].filter(Boolean);
     let fetched = false;
-    for (const proxy of proxiesToTry) {
-      try {
-        const result = await ytFetchViaProxy(USNI_URL, proxy);
-        if (!result?.ok) { console.warn(`[USNI] Proxy ${proxy.host} returned HTTP ${result?.status ?? 'unavailable'}`); continue; }
-        try { wpData = JSON.parse(result.body); fetched = true; break; }
-        catch (parseErr) { console.warn(`[USNI] Proxy ${proxy.host} returned non-JSON (CF challenge?):`, parseErr?.message); }
-      } catch (proxyErr) { console.warn(`[USNI] Proxy ${proxy.host} error:`, proxyErr?.message); }
-    }
-    if (!fetched) {
+    try {
       const res = await fetch(USNI_URL, {
         headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15000),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      wpData = await res.json();
+      if (res.ok) { wpData = await res.json(); fetched = true; }
+      else { console.warn(`[USNI] Direct fetch HTTP ${res.status}, trying proxy`); }
+    } catch (directErr) { console.warn(`[USNI] Direct fetch failed: ${directErr?.message}, trying proxy`); }
+    if (!fetched && PROXY_URL) {
+      try {
+        const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+        const result = await ytFetchViaProxy(USNI_URL, proxy);
+        if (result?.ok) {
+          wpData = JSON.parse(result.body);
+          fetched = true;
+        } else { console.warn(`[USNI] Proxy returned HTTP ${result?.status ?? 'unavailable'}`); }
+      } catch (proxyErr) { console.warn(`[USNI] Proxy error: ${proxyErr?.message}`); }
     }
+    if (!fetched) throw new Error('USNI fetch failed (direct + proxy)');
     if (!Array.isArray(wpData) || !wpData.length) throw new Error('No fleet tracker articles');
 
     const post = wpData[0];
@@ -7335,7 +7335,7 @@ function _openskyProxyConnect(targetHost, targetPort, timeoutMs = 10000) {
   const { proxyConnectTunnel, parseProxyConfig } = require('./_proxy-utils.cjs');
   const proxyConfig = parseProxyConfig(OPENSKY_PROXY_AUTH);
   if (!proxyConfig) return Promise.resolve(null);
-  // proxyConfig.tls defaults to true from parseProxyConfig (Decodo requires TLS)
+  proxyConfig.tls = true; // Decodo always requires TLS; http:// scheme in PROXY_URL would set false
   return proxyConnectTunnel(targetHost, proxyConfig, { timeoutMs, targetPort })
     .then(({ socket }) => socket);
 }

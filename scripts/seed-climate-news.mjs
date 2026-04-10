@@ -12,7 +12,7 @@ const RSS_MAX_BYTES = 500_000;
 const FEEDS = [
   { sourceName: 'Carbon Brief', url: 'https://www.carbonbrief.org/feed' },
   { sourceName: 'The Guardian Environment', url: 'https://www.theguardian.com/environment/climate-crisis/rss' },
-  { sourceName: 'ReliefWeb Disasters', url: 'https://reliefweb.int/updates/rss.xml?content=reports&country=0&theme=4590' },
+  { sourceName: 'ReliefWeb Disasters', url: 'https://api.reliefweb.int/v1/reports?appname=worldmonitor&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source', isApi: true },
   { sourceName: 'NASA Earth Observatory', url: 'https://earthobservatory.nasa.gov/feeds/earth-observatory.rss' },
   { sourceName: 'UNEP', url: 'https://www.unep.org/rss.xml' },
   { sourceName: 'Phys.org Earth Science', url: 'https://phys.org/rss-feed/earth-news/earth-sciences/' },
@@ -104,8 +104,26 @@ function parseRssItems(xml, sourceName) {
   return items;
 }
 
+async function fetchReliefWebApi(feed) {
+  const resp = await fetch(feed.url, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  const items = (data.data || []).map(r => ({
+    title: r.fields?.title || '',
+    link: r.fields?.url_alias ? `https://reliefweb.int${r.fields.url_alias}` : '',
+    pubDate: r.fields?.date?.created ? new Date(r.fields.date.created) : new Date(),
+    source: feed.sourceName,
+  })).filter(i => i.title && i.link);
+  console.log(`[ClimateNews] ${feed.sourceName}: ${items.length} items (API)`);
+  return items;
+}
+
 async function fetchFeed(feed) {
   try {
+    if (feed.isApi) return await fetchReliefWebApi(feed);
     const resp = await fetch(feed.url, {
       headers: {
         Accept: 'application/rss+xml, application/xml, text/xml, */*',
