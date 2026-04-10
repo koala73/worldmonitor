@@ -225,3 +225,39 @@ export async function fetchSectorDependency(
     return { ...emptySectorDependency, iso2, hs2 };
   }
 }
+
+export interface ProductExporter {
+  partnerIso2: string;
+  value: number;
+  share: number;
+}
+
+export interface CountryProduct {
+  hs4: string;
+  description: string;
+  totalValue: number;
+  topExporters: ProductExporter[];
+  year: number;
+}
+
+export interface CountryProductsResponse {
+  iso2: string;
+  products: CountryProduct[];
+  fetchedAt: string;
+}
+
+const emptyProducts: CountryProductsResponse = { iso2: '', products: [], fetchedAt: '' };
+
+export async function fetchCountryProducts(iso2: string): Promise<CountryProductsResponse> {
+  try {
+    const { premiumFetch } = await import('@/services/premium-fetch');
+    const { toApiUrl } = await import('@/services/runtime');
+    const resp = await premiumFetch(
+      toApiUrl(`/api/supply-chain/v1/country-products?iso2=${encodeURIComponent(iso2)}`),
+    );
+    if (!resp.ok) return { ...emptyProducts, iso2 };
+    return await resp.json() as CountryProductsResponse;
+  } catch {
+    return { ...emptyProducts, iso2 };
+  }
+}
