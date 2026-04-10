@@ -85,14 +85,21 @@ const SIGNAL_KEYS = [
   'market:commodities-bootstrap:v1',
 ];
 
+const MIN_SIGNAL_KEYS = Math.ceil(SIGNAL_KEYS.length * 0.6); // need at least 60% of keys
+
 async function readSignals() {
   const results = {};
+  let loaded = 0;
   for (const key of SIGNAL_KEYS) {
     try {
       const raw = await upstashRest('GET', key);
-      if (raw) results[key] = JSON.parse(raw);
+      if (raw) {
+        results[key] = JSON.parse(raw);
+        loaded++;
+      }
     } catch { /* skip */ }
   }
+  results._loaded = loaded;
   return results;
 }
 
@@ -405,6 +412,12 @@ async function main() {
 
   console.log('[proactive] Reading signal landscape...');
   const signals = await readSignals();
+  const loaded = signals._loaded ?? 0;
+  console.log(`[proactive] Loaded ${loaded}/${SIGNAL_KEYS.length} signal keys`);
+  if (loaded < MIN_SIGNAL_KEYS) {
+    console.error(`[proactive] Only ${loaded} signal keys loaded (need ${MIN_SIGNAL_KEYS}) — aborting to avoid false diffs`);
+    return;
+  }
   const currentLandscape = extractLandscape(signals);
   const convergenceZones = detectConvergence(signals);
 
@@ -454,7 +467,7 @@ async function main() {
 
     const prefs = await fetchUserPreferences(rule.userId, variant);
     if (!prefs) {
-      await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
+      console.log(`[proactive] No preferences for ${rule.userId} — retrying next run`);
       continue;
     }
 
