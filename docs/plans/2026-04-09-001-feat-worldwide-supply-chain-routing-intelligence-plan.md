@@ -11,7 +11,7 @@ origin: docs/brainstorms/2026-04-09-worldwide-shipping-intelligence-requirements
 | Sprint | Scope | PR | Status |
 |---|---|---|---|
 | 0–2 | Backend: bypass corridors, exposure seeder, chokepoint index | — | ✅ Merged |
-| A | Supply Chain Panel UI: bypass cards, sector exposure, war risk badges | — | ⏳ Not started |
+| A | Supply Chain Panel UI: bypass cards, sector exposure, war risk badges | #2896 | 🔁 Review |
 | B | Map Arc Intelligence: disruption-score arc coloring + arc click popup | — | ⏳ Not started |
 | C | Scenario Engine: templates, job API, Railway worker, map activation | #2890 | 🔁 Review — ready to merge |
 | D | Sector Dependency RPC + Vendor API + Sprint C visual deferrals | — | ⏳ Not started |

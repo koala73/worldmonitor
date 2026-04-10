@@ -218,6 +218,26 @@ export interface GetCountryCostShockResponse {
   fetchedAt: string;
 }
 
+export interface GetSectorDependencyRequest {
+  iso2: string;
+  hs2: string;
+}
+
+export interface GetSectorDependencyResponse {
+  iso2: string;
+  hs2: string;
+  hs2Label: string;
+  flags: DependencyFlag[];
+  primaryExporterIso2: string;
+  primaryExporterShare: number;
+  primaryChokepointId: string;
+  primaryChokepointExposure: number;
+  hasViableBypass: boolean;
+  fetchedAt: string;
+}
+
+export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
+
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 
 export interface FieldViolation {
@@ -272,6 +292,7 @@ export interface SupplyChainServiceHandler {
   getCountryChokepointIndex(ctx: ServerContext, req: GetCountryChokepointIndexRequest): Promise<GetCountryChokepointIndexResponse>;
   getBypassOptions(ctx: ServerContext, req: GetBypassOptionsRequest): Promise<GetBypassOptionsResponse>;
   getCountryCostShock(ctx: ServerContext, req: GetCountryCostShockRequest): Promise<GetCountryCostShockResponse>;
+  getSectorDependency(ctx: ServerContext, req: GetSectorDependencyRequest): Promise<GetSectorDependencyResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -552,6 +573,54 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getCountryCostShock(ctx, body);
           return new Response(JSON.stringify(result as GetCountryCostShockResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-sector-dependency",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetSectorDependencyRequest = {
+            iso2: params.get("iso2") ?? "",
+            hs2: params.get("hs2") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getSectorDependency", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getSectorDependency(ctx, body);
+          return new Response(JSON.stringify(result as GetSectorDependencyResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

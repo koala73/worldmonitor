@@ -218,6 +218,26 @@ export interface GetCountryCostShockResponse {
   fetchedAt: string;
 }
 
+export interface GetSectorDependencyRequest {
+  iso2: string;
+  hs2: string;
+}
+
+export interface GetSectorDependencyResponse {
+  iso2: string;
+  hs2: string;
+  hs2Label: string;
+  flags: DependencyFlag[];
+  primaryExporterIso2: string;
+  primaryExporterShare: number;
+  primaryChokepointId: string;
+  primaryChokepointExposure: number;
+  hasViableBypass: boolean;
+  fetchedAt: string;
+}
+
+export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
+
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 
 export interface FieldViolation {
@@ -438,6 +458,32 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetCountryCostShockResponse;
+  }
+
+  async getSectorDependency(req: GetSectorDependencyRequest, options?: SupplyChainServiceCallOptions): Promise<GetSectorDependencyResponse> {
+    let path = "/api/supply-chain/v1/get-sector-dependency";
+    const params = new URLSearchParams();
+    if (req.iso2 != null && req.iso2 !== "") params.set("iso2", String(req.iso2));
+    if (req.hs2 != null && req.hs2 !== "") params.set("hs2", String(req.hs2));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetSectorDependencyResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

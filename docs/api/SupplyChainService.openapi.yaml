@@ -231,6 +231,44 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-sector-dependency:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetSectorDependency
+            description: GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated.
+            operationId: GetSectorDependency
+            parameters:
+                - name: iso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSectorDependencyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -791,5 +829,57 @@ components:
                 unavailableReason:
                     type: string
                     description: Null/unavailable explanation for non-energy sectors
+                fetchedAt:
+                    type: string
+        GetSectorDependencyRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                hs2:
+                    type: string
+                    description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
+            required:
+                - iso2
+                - hs2
+        GetSectorDependencyResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                hs2:
+                    type: string
+                hs2Label:
+                    type: string
+                    description: Human-readable HS2 chapter name.
+                flags:
+                    type: array
+                    items:
+                        type: string
+                        enum:
+                            - DEPENDENCY_FLAG_UNSPECIFIED
+                            - DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL
+                            - DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL
+                            - DEPENDENCY_FLAG_COMPOUND_RISK
+                            - DEPENDENCY_FLAG_DIVERSIFIABLE
+                        description: DependencyFlag classifies how a country+sector dependency can fail.
+                primaryExporterIso2:
+                    type: string
+                    description: ISO2 of the country supplying the largest share of this sector's imports.
+                primaryExporterShare:
+                    type: number
+                    format: double
+                    description: Share of imports from the primary exporter (0–1). 0 = no Comtrade data available.
+                primaryChokepointId:
+                    type: string
+                    description: Chokepoint ID with the highest exposure score for this country+sector.
+                primaryChokepointExposure:
+                    type: number
+                    format: double
+                    description: Exposure score for the primary chokepoint (0–100).
+                hasViableBypass:
+                    type: boolean
+                    description: Whether at least one viable bypass corridor exists for the primary chokepoint.
                 fetchedAt:
                     type: string

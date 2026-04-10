@@ -10,6 +10,7 @@ import "worldmonitor/supply_chain/v1/get_shipping_stress.proto";
 import "worldmonitor/supply_chain/v1/get_country_chokepoint_index.proto";
 import "worldmonitor/supply_chain/v1/get_bypass_options.proto";
 import "worldmonitor/supply_chain/v1/get_country_cost_shock.proto";
+import "worldmonitor/supply_chain/v1/get_sector_dependency.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -44,5 +45,10 @@ service SupplyChainService {
   // GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated.
   rpc GetCountryCostShock(GetCountryCostShockRequest) returns (GetCountryCostShockResponse) {
     option (sebuf.http.config) = {path: "/get-country-cost-shock", method: HTTP_METHOD_GET};
+  }
+
+  // GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated.
+  rpc GetSectorDependency(GetSectorDependencyRequest) returns (GetSectorDependencyResponse) {
+    option (sebuf.http.config) = {path: "/get-sector-dependency", method: HTTP_METHOD_GET};
   }
 }
