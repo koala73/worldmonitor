@@ -512,7 +512,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.debtBody.append(grid);
   }
 
-  public updateSanctionsPressure(data: { entryCount: number; newEntryCount: number; vesselCount: number; aircraftCount: number } | null): void {
+  public updateSanctionsPressure(data: { entryCount: number; sanctionsActive?: boolean } | null): void {
     if (!this.sanctionsBody) return;
     this.sanctionsBody.replaceChildren();
     if (!data) {
@@ -522,9 +522,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const grid = this.el('div', 'cdp-pro-metric-grid');
     grid.append(
       this.proMetricBox('Sanctioned Entities', String(data.entryCount)),
-      this.proMetricBox('New Entries', String(data.newEntryCount)),
-      this.proMetricBox('Vessels', String(data.vesselCount)),
-      this.proMetricBox('Aircraft', String(data.aircraftCount)),
+      this.proMetricBox('Status', data.sanctionsActive ? 'Active' : 'None'),
     );
     this.sanctionsBody.append(grid);
   }

@@ -29,7 +29,6 @@ import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { TradeServiceClient } from '@/generated/client/worldmonitor/trade/v1/service_client';
-import { SanctionsServiceClient } from '@/generated/client/worldmonitor/sanctions/v1/service_client';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -526,7 +525,7 @@ export class CountryIntelManager implements AppModule {
     const rpcBase = getRpcBaseUrl();
     const fetchFn = (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args);
     const economicClient = new EconomicServiceClient(rpcBase, { fetch: fetchFn });
-    const sanctionsClient = new SanctionsServiceClient(rpcBase, { fetch: fetchFn });
+    const intelClientPro = new IntelligenceServiceClient(rpcBase, { fetch: fetchFn });
     const tradeClient = new TradeServiceClient(rpcBase, { fetch: fetchFn });
     const supplyChainClient = new SupplyChainServiceClient(rpcBase, { fetch: fetchFn });
 
@@ -545,14 +544,11 @@ export class CountryIntelManager implements AppModule {
       if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateNationalDebt?.(null);
     });
 
-    sanctionsClient.listSanctionsPressure({ maxItems: 250 }).then(resp => {
+    intelClientPro.getCountryRisk({ countryCode: code }).then(resp => {
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
-      const match = resp.countries?.find(c => c.countryCode === code);
-      this.ctx.countryBriefPage.updateSanctionsPressure?.(match ? {
-        entryCount: match.entryCount,
-        newEntryCount: match.newEntryCount,
-        vesselCount: match.vesselCount,
-        aircraftCount: match.aircraftCount,
+      this.ctx.countryBriefPage.updateSanctionsPressure?.(resp.sanctionsCount > 0 ? {
+        entryCount: resp.sanctionsCount,
+        sanctionsActive: resp.sanctionsActive,
       } : null);
     }).catch(() => {
       if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateSanctionsPressure?.(null);
