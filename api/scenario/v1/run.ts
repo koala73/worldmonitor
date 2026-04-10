@@ -1,7 +1,5 @@
 export const config = { runtime: 'edge' };
 
-// @ts-expect-error — .js import resolved by Vercel edge bundler
-import { validateApiKey } from '../../_api-key.js';
 import { isCallerPremium } from '../../../server/_shared/premium-check';
 import { getScenarioTemplate } from '../../../server/worldmonitor/supply-chain/v1/scenario-templates';
 
@@ -16,12 +14,19 @@ function generateJobId(): string {
   return `scenario:${ts}:${suffix}`;
 }
 
+function getClientIp(req: Request): string {
+  return (
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    '0.0.0.0'
+  );
+}
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response('', { status: 405 });
   }
-
-  validateApiKey(req, { forceKey: false });
 
   const isPro = await isCallerPremium(req);
   if (!isPro) {
@@ -29,6 +34,57 @@ export default async function handler(req: Request): Promise<Response> {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
+  }
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Per-user rate limit: 10 scenario jobs per user per minute (sliding window via INCR+EXPIRE).
+  const identifier = getClientIp(req);
+  const minute = Math.floor(Date.now() / 60_000);
+  const rateLimitKey = `rate:scenario:${identifier}:${minute}`;
+
+  const rlResp = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify([
+      ['INCR', rateLimitKey],
+      ['EXPIRE', rateLimitKey, 60],
+      ['LLEN', 'scenario-queue:pending'],
+    ]),
+    signal: AbortSignal.timeout(5_000),
+  }).catch(() => null);
+
+  if (rlResp?.ok) {
+    const rlResults = (await rlResp.json()) as Array<{ result: number }>;
+    const count = rlResults[0]?.result ?? 0;
+    const queueDepth = rlResults[2]?.result ?? 0;
+
+    if (count > 10) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded: 10 scenario jobs per minute' }), {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': '60',
+        },
+      });
+    }
+
+    if (queueDepth > 100) {
+      return new Response(JSON.stringify({ error: 'Scenario queue is at capacity, please try again later' }), {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': '30',
+        },
+      });
+    }
   }
 
   let body: Record<string, unknown>;
@@ -64,15 +120,6 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
   const jobId = generateJobId();
   const payload = JSON.stringify({
     jobId,
@@ -100,7 +147,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   return new Response(
-    JSON.stringify({ jobId, status: 'pending' }),
+    JSON.stringify({ jobId, status: 'pending', statusUrl: `/api/scenario/v1/status?jobId=${jobId}` }),
     {
       status: 202,
       headers: { 'Content-Type': 'application/json' },

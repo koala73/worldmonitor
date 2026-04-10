@@ -26,7 +26,8 @@ const BLMOVE_TIMEOUT_SECONDS = 30;  // block for up to 30s waiting for a job
 
 /**
  * Inline copy of SCENARIO_TEMPLATES (no TypeScript import).
- * Keep in sync with src/config/scenario-templates.ts.
+ * Keep in sync with server/worldmonitor/supply-chain/v1/scenario-templates.ts.
+ * Worker only needs: id, affectedChokepointIds, disruptionPct, durationDays, affectedHs2, costShockMultiplier.
  *
  * @type {Array<{ id: string; affectedChokepointIds: string[]; disruptionPct: number; durationDays: number; affectedHs2: string[] | null; costShockMultiplier: number }>}
  */
@@ -148,6 +149,37 @@ async function redisLrem(key, value) {
   await redisCmd('lrem', [key, 1, value]);
 }
 
+/**
+ * Batch-GET multiple keys via a single Upstash pipeline request.
+ * Returns an array of parsed JSON values (null for missing/unparseable keys).
+ * @param {string[]} keys
+ * @returns {Promise<Array<unknown | null>>}
+ */
+async function redisPipelineGet(keys) {
+  if (keys.length === 0) return [];
+  const { url, token } = getCredentials();
+  const pipeline = keys.map(k => ['GET', k]);
+  const resp = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(pipeline),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Redis pipeline HTTP ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  const results = /** @type {Array<{ result: string | null }>} */ (await resp.json());
+  return results.map(r => {
+    if (!r?.result) return null;
+    try { return JSON.parse(r.result); }
+    catch { return null; }
+  });
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Scenario computation
 // ────────────────────────────────────────────────────────────────────────────
@@ -195,18 +227,26 @@ async function computeScenario(scenarioId, iso2) {
   // They affect all countries that trade the targeted HS2 sectors regardless of route.
   const isTariffShock = template.affectedChokepointIds.length === 0;
 
-  for (const reporter of reportersToCheck) {
-    // Read HS2 exposure indexes for this reporter.
-    // Cache shape: GetCountryChokepointIndexResponse =
-    //   { iso2, hs2, exposures: [{ chokepointId, exposureScore, chokepointName, ... }],
-    //     primaryChokepointId, vulnerabilityIndex, fetchedAt }
-    // Note: exposures[] does NOT include importValue — impact is ranked by exposureScore only.
-    const hs2Chapters = template.affectedHs2 ?? Array.from({ length: 99 }, (_, i) => String(i + 1).padStart(2, '0'));
+  // Hoist hs2Chapters outside the reporter loop — depends only on template, not reporter.
+  const hs2Chapters = template.affectedHs2 ?? Array.from({ length: 99 }, (_, i) => String(i + 1).padStart(2, '0'));
 
+  // Build all keys upfront for a single pipeline GET (avoids N×M sequential requests).
+  /** @type {string[]} */
+  const allKeys = [];
+  for (const reporter of reportersToCheck) {
     for (const hs2 of hs2Chapters) {
-      const key = `supply-chain:exposure:${reporter}:${hs2}:v1`;
-      /** @type {{ iso2?: string; hs2?: string; exposures?: Array<{ chokepointId: string; exposureScore: number }>; vulnerabilityIndex?: number } | null} */
-      const data = await redisGet(key).catch(() => null);
+      allKeys.push(`supply-chain:exposure:${reporter}:${hs2}:v1`);
+    }
+  }
+
+  // Single pipeline call replaces the nested sequential redisGet() calls.
+  const pipelineResults = await redisPipelineGet(allKeys);
+
+  // Process results with the same tariff-shock vs regular logic.
+  let idx = 0;
+  for (const reporter of reportersToCheck) {
+    for (const hs2 of hs2Chapters) {
+      const data = /** @type {{ iso2?: string; hs2?: string; exposures?: Array<{ chokepointId: string; exposureScore: number }>; vulnerabilityIndex?: number } | null} */ (pipelineResults[idx++]);
       if (!data || !Array.isArray(data.exposures)) continue;
 
       if (isTariffShock) {
@@ -245,7 +285,7 @@ async function computeScenario(scenarioId, iso2) {
   }
 
   const sorted = [...byCountry.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
-  const maxImpact = sorted[0]?.[1] ?? 1;
+  const maxImpact = Math.max(sorted[0]?.[1] ?? 0, 1);
   const topImpactCountries = sorted.map(([countryIso2, totalImpact]) => ({
     iso2: countryIso2,
     totalImpact,
@@ -273,13 +313,44 @@ async function computeScenario(scenarioId, iso2) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Orphan drain + SIGTERM handling
+// ────────────────────────────────────────────────────────────────────────────
+
+let shuttingDown = false;
+
+process.on('SIGTERM', () => {
+  shuttingDown = true;
+});
+
+/**
+ * At startup, requeue any jobs left in the processing list from a previous crash.
+ */
+async function requeueOrphanedJobs() {
+  let moved;
+  let count = 0;
+  do {
+    moved = await redisCmd('lmove', [PROCESSING_KEY, QUEUE_KEY, 'RIGHT', 'LEFT']).catch(() => null);
+    if (moved) count++;
+  } while (moved);
+  if (count > 0) console.log(`[scenario-worker] requeued ${count} orphaned jobs`);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Job payload validation
+// ────────────────────────────────────────────────────────────────────────────
+
+const JOB_ID_RE = /^scenario:\d{13}:[a-z0-9]{8}$/;
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main worker loop
 // ────────────────────────────────────────────────────────────────────────────
 
 async function runWorker() {
   console.log('[scenario-worker] starting — listening on scenario-queue:pending');
 
-  while (true) {
+  await requeueOrphanedJobs();
+
+  while (!shuttingDown) {
     let raw;
     try {
       // Atomic FIFO dequeue+claim: moves item from pending → processing
@@ -305,6 +376,18 @@ async function runWorker() {
     }
 
     const { jobId, scenarioId, iso2 } = job;
+
+    // Validate payload fields before using any as Redis key fragments.
+    if (
+      typeof jobId !== 'string' || !JOB_ID_RE.test(jobId) ||
+      typeof scenarioId !== 'string' ||
+      (iso2 !== null && (typeof iso2 !== 'string' || !/^[A-Z]{2}$/.test(iso2)))
+    ) {
+      console.error('[scenario-worker] Job failed field validation, discarding:', String(raw).slice(0, 100));
+      await redisLrem(PROCESSING_KEY, String(raw)).catch(() => null);
+      continue;
+    }
+
     console.log(`[scenario-worker] processing ${jobId} (${scenarioId}, iso2=${iso2 ?? 'all'})`);
 
     // Idempotency: skip if result already written
@@ -315,6 +398,11 @@ async function runWorker() {
       await redisLrem(PROCESSING_KEY, String(raw)).catch(() => null);
       continue;
     }
+
+    // Write processing state immediately so status.ts can reflect in-flight work.
+    await redisSetex(resultKey, RESULT_TTL_SECONDS,
+      JSON.stringify({ status: 'processing', startedAt: Date.now() }),
+    ).catch(() => null);
 
     try {
       const result = await computeScenario(scenarioId, iso2);
@@ -329,13 +417,15 @@ async function runWorker() {
       await redisSetex(
         resultKey,
         RESULT_TTL_SECONDS,
-        JSON.stringify({ status: 'failed', error: err.message, failedAt: Date.now() }),
+        JSON.stringify({ status: 'failed', error: 'computation_error', failedAt: Date.now() }),
       ).catch(() => null);
     } finally {
       // Always remove from processing list so the queue doesn't stall
       await redisLrem(PROCESSING_KEY, String(raw)).catch(() => null);
     }
   }
+
+  console.log('[scenario-worker] shutdown complete (SIGTERM received)');
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));

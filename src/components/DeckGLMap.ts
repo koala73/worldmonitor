@@ -336,6 +336,11 @@ function ensureClosedRing(ring: [number, number][]): [number, number][] {
   return [...ring, first];
 }
 
+/** Module-level Map from routeId → waypoint IDs. Built once, reused across all layer renders. */
+const ROUTE_WAYPOINTS_MAP = new Map<string, string[]>(
+  TRADE_ROUTES_LIST.map(r => [r.id, r.waypoints]),
+);
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
@@ -4967,18 +4972,14 @@ export class DeckGLMap {
       status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
 
     // When a scenario is active, override colors for routes that transit disrupted chokepoints.
-    // Pre-build a Map once so getColor() is O(1) per segment instead of O(n) per frame.
+    // ROUTE_WAYPOINTS_MAP is module-level so getColor() is O(1) per segment instead of O(n) per frame.
     const scenarioDisrupted = this.scenarioState
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
-    const routeWaypoints = new Map<string, string[]>(
-      TRADE_ROUTES_LIST.map(r => [r.id, r.waypoints]),
-    );
-
     const getColor = (d: TradeRouteSegment): [number, number, number, number] => {
       if (scenarioDisrupted && scenarioDisrupted.size > 0) {
-        const waypoints = routeWaypoints.get(d.routeId);
+        const waypoints = ROUTE_WAYPOINTS_MAP.get(d.routeId);
         if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
           return scenario;
         }
@@ -5004,8 +5005,8 @@ export class DeckGLMap {
   private createTradeChokepointsLayer(): ScatterplotLayer {
     const routeWaypointIds = new Set<string>();
     for (const seg of this.tradeRouteSegments) {
-      const route = TRADE_ROUTES_LIST.find(r => r.id === seg.routeId);
-      if (route) for (const wp of route.waypoints) routeWaypointIds.add(wp);
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(seg.routeId);
+      if (waypoints) for (const wp of waypoints) routeWaypointIds.add(wp);
     }
     const chokepoints = STRATEGIC_WATERWAYS.filter(w => routeWaypointIds.has(w.id));
     const isLight = getCurrentTheme() === 'light';

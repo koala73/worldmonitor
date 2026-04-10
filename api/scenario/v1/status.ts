@@ -1,7 +1,5 @@
 export const config = { runtime: 'edge' };
 
-// @ts-expect-error — .js import resolved by Vercel edge bundler
-import { validateApiKey } from '../../_api-key.js';
 import { isCallerPremium } from '../../../server/_shared/premium-check';
 
 /** Matches jobIds produced by run.ts: "scenario:{timestamp}:{8-char-suffix}" */
@@ -11,8 +9,6 @@ export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'GET') {
     return new Response('', { status: 405 });
   }
-
-  validateApiKey(req, { forceKey: false });
 
   const isPro = await isCallerPremium(req);
   if (!isPro) {
