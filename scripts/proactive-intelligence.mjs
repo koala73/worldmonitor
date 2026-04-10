@@ -17,6 +17,7 @@ const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const { Resend } = require('resend');
+const { ConvexHttpClient } = require('convex/browser');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ if (!CONVEX_SITE_URL || !RELAY_SECRET) {
 }
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+const CONVEX_URL = process.env.CONVEX_URL ?? '';
+const convex = CONVEX_URL ? new ConvexHttpClient(CONVEX_URL) : null;
 
 const LANDSCAPE_TTL = 172800; // 48h
 const BRIEF_TTL = 43200; // 12h
@@ -214,13 +217,21 @@ function computeDiff(prev, curr) {
 // ── Convergence detection ────────────────────────────────────────────────────
 
 function detectConvergence(signals) {
-  const countrySignals = {};
+  // Track which signal TYPES (not individual events) mention each country.
+  // A country with risk + unrest + sanctions = 3 types, not 3 events.
+  const countryTypes = {};
+
+  function addType(iso2, type) {
+    if (!iso2) return;
+    if (!countryTypes[iso2]) countryTypes[iso2] = new Set();
+    countryTypes[iso2].add(type);
+  }
 
   const risk = signals['risk:scores:sebuf:stale:v1'];
   if (Array.isArray(risk)) {
     for (const r of risk) {
-      if (r?.iso2 && (r.level === 'high' || r.level === 'critical')) {
-        countrySignals[r.iso2] = (countrySignals[r.iso2] ?? 0) + 1;
+      if (r?.iso2 && (r.level === 'high' || r.level === 'critical' || r.level === 'elevated')) {
+        addType(r.iso2, 'risk');
       }
     }
   }
@@ -228,8 +239,7 @@ function detectConvergence(signals) {
   const unrest = signals['unrest:events:v1'];
   if (Array.isArray(unrest)) {
     for (const u of unrest) {
-      const cc = u?.country_code ?? u?.iso2;
-      if (cc) countrySignals[cc] = (countrySignals[cc] ?? 0) + 1;
+      addType(u?.country_code ?? u?.iso2, 'unrest');
     }
   }
 
@@ -237,14 +247,36 @@ function detectConvergence(signals) {
   if (Array.isArray(sanctions)) {
     for (const s of sanctions) {
       if (s?.iso2 && (s.pressure === 'high' || s.pressure === 'critical')) {
-        countrySignals[s.iso2] = (countrySignals[s.iso2] ?? 0) + 1;
+        addType(s.iso2, 'sanctions');
       }
     }
   }
 
-  return Object.entries(countrySignals)
-    .filter(([, count]) => count >= 3)
-    .map(([iso2, count]) => ({ iso2, signalCount: count }))
+  const gps = signals['intelligence:gpsjam:v2'];
+  if (Array.isArray(gps)) {
+    for (const g of gps) addType(g?.country_code ?? g?.iso2, 'gps_interference');
+  } else if (gps?.zones && Array.isArray(gps.zones)) {
+    for (const z of gps.zones) addType(z?.country_code ?? z?.iso2, 'gps_interference');
+  }
+
+  const cyber = signals['cyber:threats-bootstrap:v2'];
+  if (Array.isArray(cyber)) {
+    for (const c of cyber) addType(c?.country_code ?? c?.iso2 ?? c?.target_country, 'cyber');
+  }
+
+  const thermal = signals['thermal:escalation:v1'];
+  if (Array.isArray(thermal)) {
+    for (const t of thermal) addType(t?.country_code ?? t?.iso2, 'thermal');
+  }
+
+  const weather = signals['weather:alerts:v1'];
+  if (Array.isArray(weather)) {
+    for (const w of weather) addType(w?.country_code ?? w?.iso2, 'weather');
+  }
+
+  return Object.entries(countryTypes)
+    .filter(([, types]) => types.size >= 3)
+    .map(([iso2, types]) => ({ iso2, signalCount: types.size, types: [...types] }))
     .sort((a, b) => b.signalCount - a.signalCount);
 }
 
@@ -332,15 +364,10 @@ async function main() {
 
   let rules;
   try {
-    const res = await fetch(`${CONVEX_SITE_URL}/relay/digest-rules`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-proactive/1.0' },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) { console.error('[proactive] Failed to fetch rules:', res.status); return; }
-    rules = await res.json();
+    if (!convex) { console.error('[proactive] CONVEX_URL not set'); return; }
+    rules = await convex.query('alertRules:getByEnabled', { enabled: true });
   } catch (err) {
-    console.error('[proactive] Fetch rules failed:', err.message);
+    console.error('[proactive] Failed to fetch rules:', err.message);
     return;
   }
 
@@ -391,7 +418,7 @@ async function main() {
     const dateStr = new Date().toISOString().split('T')[0];
 
     const convergenceInfo = convergenceZones.length > 0
-      ? `\nConvergence zones (3+ signal types): ${convergenceZones.map(z => z.iso2).join(', ')}`
+      ? `\nConvergence zones (3+ signal types): ${convergenceZones.map(z => `${z.iso2} [${z.types.join(', ')}]`).join('; ')}`
       : '';
 
     const systemPrompt = `You are WorldMonitor's proactive intelligence agent. Today is ${dateStr}.
@@ -453,7 +480,7 @@ Current snapshot: ${JSON.stringify({ topRiskCountries: currentLandscape.topRiskC
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(ch.webhookEnvelope, {
         brief,
         changes,
-        convergenceZones: convergenceZones.map(z => z.iso2),
+        convergenceZones: convergenceZones.map(z => ({ iso2: z.iso2, types: z.types })),
         diffScore: score,
         timestamp: nowMs,
       });
