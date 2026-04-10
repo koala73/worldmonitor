@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const DAY = 24 * 60 * 60 * 1000;
+import { runBundle, DAY } from './_bundle-runner.mjs';
 
 await runBundle('energy-sources', [
   { label: 'GIE-Gas-Storage', script: 'seed-gie-gas-storage.mjs', seedMetaKey: 'economic:eu-gas-storage', intervalMs: DAY, timeoutMs: 180_000 },

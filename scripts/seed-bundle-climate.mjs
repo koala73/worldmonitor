@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
+import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 
 await runBundle('climate', [
   { label: 'Zone-Normals', script: 'seed-climate-zone-normals.mjs', seedMetaKey: 'climate:zone-normals', intervalMs: 30 * DAY, timeoutMs: 600_000 },

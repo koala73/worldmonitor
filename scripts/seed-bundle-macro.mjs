@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
+import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 
 await runBundle('macro', [
   { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', intervalMs: 12 * HOUR, timeoutMs: 300_000 },

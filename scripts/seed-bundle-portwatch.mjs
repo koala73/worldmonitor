@@ -1,9 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
-const WEEK = 7 * DAY;
+import { runBundle, HOUR, WEEK } from './_bundle-runner.mjs';
 
 await runBundle('portwatch', [
   { label: 'PW-Disruptions', script: 'seed-portwatch-disruptions.mjs', seedMetaKey: 'portwatch:disruptions', intervalMs: HOUR, timeoutMs: 120_000 },

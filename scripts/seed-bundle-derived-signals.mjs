@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const MIN = 60 * 1000;
+import { runBundle, MIN } from './_bundle-runner.mjs';
 
 await runBundle('derived-signals', [
   { label: 'Correlation', script: 'seed-correlation.mjs', seedMetaKey: 'correlation:cards', intervalMs: 5 * MIN, timeoutMs: 60_000 },

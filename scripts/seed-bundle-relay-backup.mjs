@@ -1,9 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const MIN = 60 * 1000;
-const HOUR = 60 * MIN;
-const DAY = 24 * HOUR;
+import { runBundle, MIN, HOUR, DAY } from './_bundle-runner.mjs';
 
 await runBundle('relay-backup', [
   { label: 'Climate-News', script: 'seed-climate-news.mjs', seedMetaKey: 'climate:news-intelligence', intervalMs: 30 * MIN, timeoutMs: 240_000 },

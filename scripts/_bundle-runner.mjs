@@ -17,6 +17,11 @@ import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+export const MIN = 60_000;
+export const HOUR = 3_600_000;
+export const DAY = 86_400_000;
+export const WEEK = 604_800_000;
+
 loadEnvFile(import.meta.url);
 
 async function readSeedMeta(seedMetaKey) {

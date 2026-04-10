@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const DAY = 24 * 60 * 60 * 1000;
-const WEEK = 7 * DAY;
+import { runBundle, DAY, WEEK } from './_bundle-runner.mjs';
 
 await runBundle('ecb-eu', [
   { label: 'ECB-FX-Rates', script: 'seed-ecb-fx-rates.mjs', seedMetaKey: 'economic:ecb-fx-rates', intervalMs: DAY, timeoutMs: 120_000 },

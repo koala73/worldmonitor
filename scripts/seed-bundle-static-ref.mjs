@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const DAY = 24 * 60 * 60 * 1000;
-const WEEK = 7 * DAY;
+import { runBundle, DAY, WEEK } from './_bundle-runner.mjs';
 
 await runBundle('static-ref', [
   { label: 'Submarine-Cables', script: 'seed-submarine-cables.mjs', seedMetaKey: 'infrastructure:submarine-cables', intervalMs: WEEK, timeoutMs: 300_000 },

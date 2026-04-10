@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
+import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 
 await runBundle('health', [
   { label: 'Air-Quality', script: 'seed-health-air-quality.mjs', seedMetaKey: 'health:air-quality', intervalMs: 3 * HOUR, timeoutMs: 600_000 },

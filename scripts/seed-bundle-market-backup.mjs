@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { runBundle } from './_bundle-runner.mjs';
-
-const MIN = 60 * 1000;
+import { runBundle, MIN } from './_bundle-runner.mjs';
 
 await runBundle('market-backup', [
   { label: 'Crypto-Quotes', script: 'seed-crypto-quotes.mjs', seedMetaKey: 'market:crypto', intervalMs: 15 * MIN, timeoutMs: 120_000 },
