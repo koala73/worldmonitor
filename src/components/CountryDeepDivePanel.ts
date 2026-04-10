@@ -1411,10 +1411,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private handleSectorRowClick(hs2: string): void {
     this.sectorBypassAbort?.abort();
     this.sectorBypassAbort = null;
+    this.map?.clearHighlightedRoute();
 
     if (this.selectedSectorHs2 === hs2) {
       this.selectedSectorHs2 = null;
-      this.map?.clearHighlightedRoute();
       this.renderTradeExposureContent();
       return;
     }
