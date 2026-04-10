@@ -20,14 +20,34 @@ const TRADE_TTL = 21600;
 const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
-// ALL economies from un-to-iso2.json. WorldMonitor = WORLD coverage.
-// Loaded dynamically so we never miss a country by forgetting to add it.
+// Reporter list fetched dynamically from WTO API at startup.
+// WorldMonitor = WORLD coverage — use whatever the WTO API supports.
 import { readFileSync as _readFileSync } from 'node:fs';
 import { dirname as _dirname, join as _join } from 'node:path';
 import { fileURLToPath as _fileURLToPath } from 'node:url';
 const __dirname = _dirname(_fileURLToPath(import.meta.url));
 const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
-const ALL_REPORTERS = Object.keys(_un2iso2);
+
+// Populated by fetchWtoReporters() before any data fetches
+let ALL_REPORTERS = [];
+
+async function fetchWtoReporters() {
+  const apiKey = process.env.WTO_API_KEY;
+  if (!apiKey) { console.warn('[WTO] WTO_API_KEY not set'); return; }
+  try {
+    const resp = await fetch('https://api.wto.org/timeseries/v1/reporters', {
+      headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    ALL_REPORTERS = data.map(r => String(r.code)).filter(c => /^\d+$/.test(c) && c !== '000');
+    console.log(`  WTO reporters: ${ALL_REPORTERS.length} economies`);
+  } catch (err) {
+    console.warn(`[WTO] Failed to fetch reporter list: ${err.message}, using un-to-iso2.json fallback`);
+    ALL_REPORTERS = Object.keys(_un2iso2);
+  }
+}
 
 // ISO2 lookup for cache keys — derived from the same un-to-iso2.json
 const WTO_CODE_TO_ISO2 = { ..._un2iso2 };
@@ -575,6 +595,7 @@ async function fetchCustomsRevenue() {
 // ─── Main ───
 
 async function fetchAll() {
+  await fetchWtoReporters();
   const [shipping, scfi, ccfi, bdi, barriers, restrictions, flows, tariffs, customs] = await Promise.allSettled([
     fetchShippingRates(),
     fetchSCFI(),
