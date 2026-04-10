@@ -2,6 +2,7 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — .js import resolved by Vercel edge bundler
 import { validateApiKey } from '../../_api-key.js';
+import { isCallerPremium } from '../../../server/_shared/premium-check';
 
 /** Matches jobIds produced by run.ts: "scenario:{timestamp}:{8-char-suffix}" */
 const JOB_ID_RE = /^scenario:\d{13}:[a-z0-9]{8}$/;
@@ -12,6 +13,14 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   validateApiKey(req, { forceKey: false });
+
+  const isPro = await isCallerPremium(req);
+  if (!isPro) {
+    return new Response(JSON.stringify({ error: 'PRO subscription required' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   const { searchParams } = new URL(req.url);
   const jobId = searchParams.get('jobId');

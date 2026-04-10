@@ -171,16 +171,16 @@ async function computeScenario(scenarioId, iso2) {
   const template = SCENARIO_TEMPLATES.find(t => t.id === scenarioId);
   if (!template) throw new Error(`Unknown scenario: ${scenarioId}`);
 
-  // Read live chokepoint data for context (best-effort)
+  // Read live chokepoint data for context (best-effort).
+  // Cache shape: { chokepoints: ChokepointInfo[], fetchedAt, upstreamUnavailable }
   const cpData = await redisGet('supply_chain:chokepoints:v4').catch(() => null);
 
   /** @type {Map<string, number>} chokepointId → current disruptionScore */
   const currentScores = new Map();
-  if (cpData && Array.isArray(cpData)) {
-    for (const cp of cpData) {
-      if (cp?.id && typeof cp.disruptionScore === 'number') {
-        currentScores.set(cp.id, cp.disruptionScore);
-      }
+  const cpArray = Array.isArray(cpData?.chokepoints) ? cpData.chokepoints : [];
+  for (const cp of cpArray) {
+    if (cp?.id && typeof cp.disruptionScore === 'number') {
+      currentScores.set(cp.id, cp.disruptionScore);
     }
   }
 
@@ -188,30 +188,35 @@ async function computeScenario(scenarioId, iso2) {
   const SEEDED_REPORTERS = ['US', 'CN', 'RU', 'IR', 'IN', 'TW'];
   const reportersToCheck = iso2 ? [iso2] : SEEDED_REPORTERS;
 
-  /** @type {Array<{ iso2: string; hs2: string; exposureScore: number; importValue: number; adjustedImpact: number; chokepointId: string }>} */
+  /** @type {Array<{ iso2: string; hs2: string; exposureScore: number; adjustedImpact: number; chokepointId: string }>} */
   const impacts = [];
 
   for (const reporter of reportersToCheck) {
-    // Read all HS2 exposures for this reporter across affected chokepoints
-    for (const chokepointId of template.affectedChokepointIds) {
-      // Read all seeded HS2 chapters (full 99-chapter pass is expensive; check affected or all)
-      const hs2Chapters = template.affectedHs2 ?? Array.from({ length: 99 }, (_, i) => String(i + 1).padStart(2, '0'));
+    // Read HS2 exposure indexes for this reporter.
+    // Cache shape: GetCountryChokepointIndexResponse =
+    //   { iso2, hs2, exposures: [{ chokepointId, exposureScore, chokepointName, ... }],
+    //     primaryChokepointId, vulnerabilityIndex, fetchedAt }
+    // Note: exposures[] does NOT include importValue — impact is ranked by exposureScore only.
+    const hs2Chapters = template.affectedHs2 ?? Array.from({ length: 99 }, (_, i) => String(i + 1).padStart(2, '0'));
 
-      for (const hs2 of hs2Chapters) {
-        const key = `supply-chain:exposure:${reporter}:${hs2}:v1`;
-        const data = await redisGet(key).catch(() => null);
-        if (!data || typeof data !== 'object') continue;
+    for (const hs2 of hs2Chapters) {
+      const key = `supply-chain:exposure:${reporter}:${hs2}:v1`;
+      /** @type {{ iso2?: string; hs2?: string; exposures?: Array<{ chokepointId: string; exposureScore: number }> } | null} */
+      const data = await redisGet(key).catch(() => null);
+      if (!data || !Array.isArray(data.exposures)) continue;
 
-        const entry = data[chokepointId];
-        if (!entry || typeof entry.exposureScore !== 'number') continue;
+      for (const entry of data.exposures) {
+        if (!entry?.chokepointId || typeof entry.exposureScore !== 'number') continue;
+        // Only count chokepoints that this scenario actually disrupts
+        if (!template.affectedChokepointIds.includes(entry.chokepointId)) continue;
 
-        const exposureScore = entry.exposureScore ?? 0;
-        const importValue = entry.importValue ?? 0;
-        const adjustedImpact =
-          exposureScore * (template.disruptionPct / 100) * template.costShockMultiplier * importValue;
+        const exposureScore = entry.exposureScore;
+        // adjustedImpact: exposureScore × disruptionPct% × costShockMultiplier
+        // (No importValue in cache — relative ranking by score is sufficient for v1)
+        const adjustedImpact = exposureScore * (template.disruptionPct / 100) * template.costShockMultiplier;
 
-        if (adjustedImpact > 0 || exposureScore > 0) {
-          impacts.push({ iso2: reporter, hs2, exposureScore, importValue, adjustedImpact, chokepointId });
+        if (exposureScore > 0) {
+          impacts.push({ iso2: reporter, hs2, exposureScore, adjustedImpact, chokepointId: entry.chokepointId });
         }
       }
     }
