@@ -5633,7 +5633,8 @@ const WSB_TICKERS_INTERVAL_MS = 10 * 60 * 1000;
 const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
 const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
 
-const TICKER_REGEX = /\$([A-Z]{1,5})\b|\b([A-Z]{1,5})\b/g;
+// Case-insensitive: matches $nvda, $NVDA, Amd, BRK.B, BRK-B
+const TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.\-][a-zA-Z]{1,2})?)\b|\b([A-Z]{1,5}(?:[.\-][A-Z]{1,2})?)\b/g;
 const TICKER_BLACKLIST = new Set([
   'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
   'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
