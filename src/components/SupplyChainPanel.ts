@@ -660,7 +660,8 @@ export class SupplyChainPanel extends Panel {
 
   private attachScenarioTriggers(): void {
     this.content.querySelectorAll<HTMLElement>('.sc-scenario-trigger').forEach(el => {
-      el.querySelector('.sc-scenario-btn')?.addEventListener('click', async () => {
+      el.querySelector('.sc-scenario-btn')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
         const btn = el.querySelector<HTMLButtonElement>('.sc-scenario-btn')!;
         if (btn.dataset.gated === '1') {
           trackGateHit('scenario-engine');

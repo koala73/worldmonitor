@@ -788,6 +788,7 @@ export class PanelLayoutManager implements AppModule {
       supplyChainPanel.setOnDismissScenario(() => {
         this.ctx.map?.deactivateScenario();
       });
+      this.ctx.map?.setSupplyChainPanel(supplyChainPanel);
     }
 
     this.createNewsPanel('africa', 'panels.africa');
