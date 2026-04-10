@@ -321,7 +321,7 @@ Sentry.init({
       /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
       || /Maximum call stack size exceeded/.test(msg)
       || /out of memory/i.test(msg)
-      || /^\w{1,2} is not a function/.test(msg)
+      || /^\w{1,2} is not a (?:function|constructor)/.test(msg)
       || /Cannot add property \w+, object is not extensible/.test(msg)
       || /^TypeError: Internal error$/.test(msg)
       || /NotSupportedError/.test(msg)
@@ -337,6 +337,8 @@ Sentry.init({
       || /^Operation timed out/.test(msg)
       || /signal timed out/.test(msg)
       || /Cannot inject key into script value/.test(msg)
+      || /Connection lost while action was in flight/.test(msg)
+      || /WEBGLRenderPipeline.*Link error/.test(msg)
     )) return null;
     return event;
   },
