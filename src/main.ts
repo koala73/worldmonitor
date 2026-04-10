@@ -335,6 +335,7 @@ Sentry.init({
       || /Invalid or unexpected token/.test(msg)
       || /^Operation timed out/.test(msg)
       || /signal timed out/.test(msg)
+      || /Cannot inject key into script value/.test(msg)
     )) return null;
     return event;
   },
