@@ -303,7 +303,7 @@ async function sendTelegram(userId, chatId, text) {
     const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
       signal: AbortSignal.timeout(10000),
     });
     if (resp.status === 403 || resp.status === 404) {
@@ -448,8 +448,7 @@ async function main() {
     const ruleChannelSet = new Set(rule.channels ?? []);
     const deliverable = channels.filter(c => c.verified && ruleChannelSet.has(c.channelType));
     if (deliverable.length === 0) {
-      console.log(`[proactive] No deliverable channels for ${rule.userId} — skipping`);
-      await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
+      console.log(`[proactive] No deliverable channels for ${rule.userId} — retrying next run`);
       continue;
     }
 
@@ -490,8 +489,7 @@ Current snapshot: ${JSON.stringify({ topRiskCountries: currentLandscape.topRiskC
 
     const brief = await callLLM(systemPrompt, userPrompt, { maxTokens: 400, temperature: 0.3, timeoutMs: 15000 });
     if (!brief) {
-      console.warn(`[proactive] LLM failed for ${rule.userId}`);
-      await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
+      console.warn(`[proactive] LLM failed for ${rule.userId} — retrying next run`);
       continue;
     }
 
