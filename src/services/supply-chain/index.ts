@@ -144,14 +144,17 @@ export interface SectorExposureSummary {
 }
 
 /**
- * Fetch chokepoint exposure + dependency flags for all seeded sectors in parallel.
- * Returns sorted by vulnerability index descending.
+ * Fetch chokepoint exposure + dependency flags for all seeded sectors.
+ * Exposure fetched first (10 requests), then dependency only for sectors with data (fewer requests).
  */
 export async function fetchMultiSectorExposure(iso2: string): Promise<SectorExposureSummary[]> {
-  const [exposureResults, depResults] = await Promise.all([
-    Promise.all(SEEDED_HS2_CODES.map(hs2 => fetchCountryChokepointIndex(iso2, hs2))),
-    Promise.all(SEEDED_HS2_CODES.map(hs2 => fetchSectorDependency(iso2, hs2))),
-  ]);
+  const exposureResults = await Promise.all(
+    SEEDED_HS2_CODES.map(hs2 => fetchCountryChokepointIndex(iso2, hs2)),
+  );
+  const activeCodes = exposureResults.filter(r => r.exposures.length > 0).map(r => r.hs2);
+  const depResults = activeCodes.length > 0
+    ? await Promise.all(activeCodes.map(hs2 => fetchSectorDependency(iso2, hs2)))
+    : [];
 
   const depMap = new Map(depResults.map(d => [d.hs2, d]));
 

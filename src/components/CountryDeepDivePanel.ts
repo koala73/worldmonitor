@@ -29,6 +29,13 @@ import type {
 import type { GetCountryChokepointIndexResponse, SectorExposureSummary } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
+
+const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
+  DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
+  DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL: { text: 'Single Corridor', cls: 'cdp-dep-critical' },
+  DEPENDENCY_FLAG_COMPOUND_RISK:            { text: 'Compound Risk',   cls: 'cdp-dep-compound' },
+  DEPENDENCY_FLAG_DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
+};
 import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
@@ -1319,19 +1326,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       thead.append(headerRow);
       table.append(thead);
 
-      const FLAG_LABELS: Record<string, { text: string; cls: string }> = {
-        DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
-        DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL: { text: 'Single Corridor', cls: 'cdp-dep-critical' },
-        DEPENDENCY_FLAG_COMPOUND_RISK:            { text: 'Compound Risk',   cls: 'cdp-dep-compound' },
-        DEPENDENCY_FLAG_DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
-      };
-
       const tbody = this.el('tbody');
       for (const s of sectors.slice(0, 10)) {
         const tr = this.el('tr');
         const sectorCell = this.el('td', 'cdp-sector-label');
         sectorCell.textContent = s.label;
-        const flag = FLAG_LABELS[s.dependencyFlag];
+        const flag = DEPENDENCY_FLAG_LABELS[s.dependencyFlag];
         if (flag) {
           const badge = this.el('span', `cdp-dep-badge ${flag.cls}`, flag.text);
           sectorCell.append(document.createTextNode(' '), badge);
