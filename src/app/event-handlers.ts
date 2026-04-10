@@ -66,6 +66,7 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { showToast } from '@/utils/toast';
 
 export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
@@ -1059,7 +1060,7 @@ export class EventHandlerManager implements AppModule {
           const allSources = this.getAllSourceNames();
           const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
           if (currentlyEnabled + 1 > FREE_MAX_SOURCES) {
-            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
             return;
           }
         }
@@ -1076,7 +1077,7 @@ export class EventHandlerManager implements AppModule {
           const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
           const wouldEnable = names.filter(n => this.ctx.disabledSources.has(n) && allSources.includes(n)).length;
           if (currentlyEnabled + wouldEnable > FREE_MAX_SOURCES) {
-            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
             return;
           }
         }
@@ -1273,16 +1274,6 @@ export class EventHandlerManager implements AppModule {
         }
       }
     }
-  }
-
-  showToast(msg: string): void {
-    document.querySelector('.toast-notification')?.remove();
-    const el = document.createElement('div');
-    el.className = 'toast-notification';
-    el.textContent = msg;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('visible'));
-    setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
   }
 
   shouldShowIntelligenceNotifications(): boolean {

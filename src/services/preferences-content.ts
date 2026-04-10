@@ -51,6 +51,7 @@ export interface PreferencesHost {
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
   isSignedIn?: boolean;
+  onSettingSaved?: () => void;
 }
 
 export interface PreferencesResult {
@@ -102,6 +103,88 @@ function updateAiStatus(container: HTMLElement): void {
     dot.classList.add('disabled');
     text.textContent = t('components.insights.aiFlowStatusDisabled');
   }
+}
+
+function handleSettingsImport(target: HTMLInputElement, container: HTMLElement): boolean {
+  if (target.id !== 'usImportInput') return false;
+
+  const file = target.files?.[0];
+  if (!file) return true;
+
+  importSettings(file).then((result: ImportResult) => {
+    showToast(container, t('components.settings.importSuccess', { count: String(result.keysImported) }), true);
+  }).catch(() => {
+    showToast(container, t('components.settings.importFailed'), false);
+  });
+  target.value = '';
+  return true;
+}
+
+function handlePreferenceChange(target: HTMLInputElement, container: HTMLElement, host: PreferencesHost): boolean {
+  if (target.id === 'us-stream-quality') {
+    setStreamQuality(target.value as StreamQuality);
+    return true;
+  }
+  if (target.id === 'us-globe-visual-preset') {
+    setGlobeVisualPreset(target.value as GlobeVisualPreset);
+    return true;
+  }
+  if (target.id === 'us-theme') {
+    setThemePreference(target.value as ThemePreference);
+    return true;
+  }
+  if (target.id === 'us-font-family') {
+    setFontFamily(target.value as FontFamily);
+    return true;
+  }
+  if (target.id === 'us-map-provider') {
+    const provider = target.value as MapProvider;
+    setMapProvider(provider);
+    renderMapThemeDropdown(container, provider);
+    host.onMapProviderChange?.(provider);
+    window.dispatchEvent(new CustomEvent('map-theme-changed'));
+    return true;
+  }
+  if (target.id === 'us-map-theme') {
+    const provider = getMapProvider();
+    setMapTheme(provider, target.value);
+    window.dispatchEvent(new CustomEvent('map-theme-changed'));
+    return true;
+  }
+  if (target.id === 'us-live-streams-always-on') {
+    setLiveStreamsAlwaysOn(target.checked);
+    return true;
+  }
+  if (target.id === 'us-language') {
+    trackLanguageChange(target.value);
+    void changeLanguage(target.value);
+    return true;
+  }
+  if (target.id === 'us-cloud') {
+    setAiFlowSetting('cloudLlm', target.checked);
+    updateAiStatus(container);
+    return true;
+  }
+  if (target.id === 'us-browser') {
+    setAiFlowSetting('browserModel', target.checked);
+    const warn = container.querySelector('.ai-flow-toggle-warn') as HTMLElement;
+    if (warn) warn.style.display = target.checked ? 'block' : 'none';
+    updateAiStatus(container);
+    return true;
+  }
+  if (target.id === 'us-map-flash') {
+    setAiFlowSetting('mapNewsFlash', target.checked);
+    return true;
+  }
+  if (target.id === 'us-headline-memory') {
+    setAiFlowSetting('headlineMemory', target.checked);
+    return true;
+  }
+  if (target.id === 'us-badge-anim') {
+    setAiFlowSetting('badgeAnimation', target.checked);
+    return true;
+  }
+  return false;
 }
 
 export function renderPreferences(host: PreferencesHost): PreferencesResult {
@@ -393,72 +476,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       container.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;
 
-        if (target.id === 'usImportInput') {
-          const file = target.files?.[0];
-          if (!file) return;
-          importSettings(file).then((result: ImportResult) => {
-            showToast(container, t('components.settings.importSuccess', { count: String(result.keysImported) }), true);
-          }).catch(() => {
-            showToast(container, t('components.settings.importFailed'), false);
-          });
-          target.value = '';
-          return;
-        }
-
-        if (target.id === 'us-stream-quality') {
-          setStreamQuality(target.value as StreamQuality);
-          return;
-        }
-        if (target.id === 'us-globe-visual-preset') {
-          setGlobeVisualPreset(target.value as GlobeVisualPreset);
-          return;
-        }
-        if (target.id === 'us-theme') {
-          setThemePreference(target.value as ThemePreference);
-          return;
-        }
-        if (target.id === 'us-font-family') {
-          setFontFamily(target.value as FontFamily);
-          return;
-        }
-        if (target.id === 'us-map-provider') {
-          const provider = target.value as MapProvider;
-          setMapProvider(provider);
-          renderMapThemeDropdown(container, provider);
-          host.onMapProviderChange?.(provider);
-          window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-map-theme') {
-          const provider = getMapProvider();
-          setMapTheme(provider, target.value);
-          window.dispatchEvent(new CustomEvent('map-theme-changed'));
-          return;
-        }
-        if (target.id === 'us-live-streams-always-on') {
-          setLiveStreamsAlwaysOn(target.checked);
-          return;
-        }
-        if (target.id === 'us-language') {
-          trackLanguageChange(target.value);
-          void changeLanguage(target.value);
-          return;
-        }
-        if (target.id === 'us-cloud') {
-          setAiFlowSetting('cloudLlm', target.checked);
-          updateAiStatus(container);
-        } else if (target.id === 'us-browser') {
-          setAiFlowSetting('browserModel', target.checked);
-          const warn = container.querySelector('.ai-flow-toggle-warn') as HTMLElement;
-          if (warn) warn.style.display = target.checked ? 'block' : 'none';
-          updateAiStatus(container);
-        } else if (target.id === 'us-map-flash') {
-          setAiFlowSetting('mapNewsFlash', target.checked);
-        } else if (target.id === 'us-headline-memory') {
-          setAiFlowSetting('headlineMemory', target.checked);
-        } else if (target.id === 'us-badge-anim') {
-          setAiFlowSetting('badgeAnimation', target.checked);
-        }
+        if (handleSettingsImport(target, container)) return;
+        if (!handlePreferenceChange(target, container, host)) return;
+        host.onSettingSaved?.();
       }, { signal });
 
       container.addEventListener('click', (e) => {
