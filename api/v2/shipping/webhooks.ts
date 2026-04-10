@@ -81,13 +81,24 @@ function webhookKey(subscriberId: string): string {
   return `webhook:sub:${subscriberId}:v1`;
 }
 
+/** Stable identifier for the caller derived from their API key. Not secret. */
+function callerFingerprint(req: Request): string {
+  const key = req.headers.get('X-WorldMonitor-Key') ?? '';
+  // Use last 12 chars of the key as a non-secret owner tag. Full key is never stored.
+  return key.length >= 12 ? key.slice(-12) : key || 'anon';
+}
+
 interface WebhookRecord {
   subscriberId: string;
+  ownerTag: string;      // last-12 chars of the registrant's API key for ownership checks
   callbackUrl: string;
   chokepointIds: string[];
   alertThreshold: number;
   createdAt: string;
   active: boolean;
+  // secret is persisted so delivery workers can sign payloads via HMAC-SHA256.
+  // Stored in trusted Redis; rotated via /rotate-secret.
+  secret: string;
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -115,9 +126,12 @@ export default async function handler(req: Request): Promise<Response> {
 
   const url = new URL(req.url);
   const pathParts = url.pathname.replace(/\/+$/, '').split('/');
-  const subscriberId = pathParts[pathParts.length - 1]?.startsWith('wh_')
-    ? pathParts[pathParts.length - 1]
-    : null;
+
+  // Find the wh_* segment anywhere in the path (handles /webhooks/wh_xxx/action)
+  const whIndex = pathParts.findIndex(p => p.startsWith('wh_'));
+  const subscriberId = whIndex !== -1 ? pathParts[whIndex] : null;
+  // Action is the segment after the wh_* segment, if present
+  const action = whIndex !== -1 ? (pathParts[whIndex + 1] ?? null) : null;
 
   // POST /api/v2/shipping/webhooks — Register new webhook
   if (req.method === 'POST' && !subscriberId) {
@@ -168,14 +182,15 @@ export default async function handler(req: Request): Promise<Response> {
 
     const record: WebhookRecord = {
       subscriberId: newSubscriberId,
+      ownerTag: callerFingerprint(req),
       callbackUrl,
       chokepointIds: chokepointIds.length ? chokepointIds : [...VALID_CHOKEPOINT_IDS],
       alertThreshold,
       createdAt: new Date().toISOString(),
       active: true,
+      secret, // persisted so delivery workers can compute HMAC signatures
     };
 
-    // Store webhook record (without secret — secret is only returned once at registration)
     await setCachedJson(webhookKey(newSubscriberId), record, WEBHOOK_TTL);
 
     return new Response(JSON.stringify({ subscriberId: newSubscriberId, secret }), {
@@ -184,23 +199,32 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  // Helper: load record + verify ownership in one place
+  async function loadOwned(subId: string): Promise<WebhookRecord | 'not_found' | 'forbidden'> {
+    const record = await getCachedJson(webhookKey(subId)).catch(() => null) as WebhookRecord | null;
+    if (!record) return 'not_found';
+    if (record.ownerTag !== callerFingerprint(req)) return 'forbidden';
+    return record;
+  }
+
   // GET /api/v2/shipping/webhooks/{subscriberId} — Status check
-  if (req.method === 'GET' && subscriberId) {
-    const record = await getCachedJson(webhookKey(subscriberId)).catch(() => null) as WebhookRecord | null;
-    if (!record) {
-      return new Response(JSON.stringify({ error: 'Webhook not found' }), {
-        status: 404,
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      });
+  if (req.method === 'GET' && subscriberId && !action) {
+    const result = await loadOwned(subscriberId);
+    if (result === 'not_found') {
+      return new Response(JSON.stringify({ error: 'Webhook not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (result === 'forbidden') {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
     return new Response(JSON.stringify({
-      subscriberId: record.subscriberId,
-      callbackUrl: record.callbackUrl,
-      chokepointIds: record.chokepointIds,
-      alertThreshold: record.alertThreshold,
-      createdAt: record.createdAt,
-      active: record.active,
+      subscriberId: result.subscriberId,
+      callbackUrl: result.callbackUrl,
+      chokepointIds: result.chokepointIds,
+      alertThreshold: result.alertThreshold,
+      createdAt: result.createdAt,
+      active: result.active,
+      // secret is intentionally omitted from status responses
     }), {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json' },
@@ -208,45 +232,40 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret
-  if (req.method === 'POST' && subscriberId) {
-    const action = pathParts[pathParts.length - 1];
-
-    if (action === 'rotate-secret') {
-      const record = await getCachedJson(webhookKey(subscriberId)).catch(() => null) as WebhookRecord | null;
-      if (!record) {
-        return new Response(JSON.stringify({ error: 'Webhook not found' }), {
-          status: 404,
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        });
-      }
-
-      const newSecret = await generateSecret();
-      // TTL refresh on rotation
-      await setCachedJson(webhookKey(subscriberId), record, WEBHOOK_TTL);
-
-      return new Response(JSON.stringify({ subscriberId, secret: newSecret, rotatedAt: new Date().toISOString() }), {
-        status: 200,
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      });
+  if (req.method === 'POST' && subscriberId && action === 'rotate-secret') {
+    const result = await loadOwned(subscriberId);
+    if (result === 'not_found') {
+      return new Response(JSON.stringify({ error: 'Webhook not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    if (result === 'forbidden') {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
 
-    if (action === 'reactivate') {
-      const record = await getCachedJson(webhookKey(subscriberId)).catch(() => null) as WebhookRecord | null;
-      if (!record) {
-        return new Response(JSON.stringify({ error: 'Webhook not found' }), {
-          status: 404,
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        });
-      }
+    const newSecret = await generateSecret();
+    await setCachedJson(webhookKey(subscriberId), { ...result, secret: newSecret }, WEBHOOK_TTL);
 
-      const updated = { ...record, active: true };
-      await setCachedJson(webhookKey(subscriberId), updated, WEBHOOK_TTL);
+    return new Response(JSON.stringify({ subscriberId, secret: newSecret, rotatedAt: new Date().toISOString() }), {
+      status: 200,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
 
-      return new Response(JSON.stringify({ subscriberId, active: true }), {
-        status: 200,
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      });
+  // POST /api/v2/shipping/webhooks/{subscriberId}/reactivate
+  if (req.method === 'POST' && subscriberId && action === 'reactivate') {
+    const result = await loadOwned(subscriberId);
+    if (result === 'not_found') {
+      return new Response(JSON.stringify({ error: 'Webhook not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    if (result === 'forbidden') {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    await setCachedJson(webhookKey(subscriberId), { ...result, active: true }, WEBHOOK_TTL);
+
+    return new Response(JSON.stringify({ subscriberId, active: true }), {
+      status: 200,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
   }
 
   return new Response(JSON.stringify({ error: 'Not found' }), {
