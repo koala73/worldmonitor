@@ -414,13 +414,8 @@ export class MapPopup {
     if (this.outsideListenerTimeoutId !== null) clearTimeout(this.outsideListenerTimeoutId);
     this.outsideListenerTimeoutId = window.setTimeout(() => {
       this.outsideListenerTimeoutId = null;
-      const outsideHandler = (e: MouseEvent) => {
-        if (this.popup && !this.popup.contains(e.target as Node)) {
-          this.hide();
-          document.removeEventListener('click', outsideHandler);
-        }
-      };
-      document.addEventListener('click', outsideHandler);
+      document.addEventListener('click', this.handleOutsideClick);
+      document.addEventListener('keydown', this.handleEscapeKey);
     }, 200);
   }
 
