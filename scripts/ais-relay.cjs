@@ -5633,8 +5633,10 @@ const WSB_TICKERS_INTERVAL_MS = 10 * 60 * 1000;
 const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
 const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
 
-// Case-insensitive: matches $nvda, $NVDA, Amd, BRK.B, BRK-B
-const TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.\-][a-zA-Z]{1,2})?)\b|\b([A-Z]{1,5}(?:[.\-][A-Z]{1,2})?)\b/g;
+// $-prefixed: case-insensitive ($nvda, $NVDA, $BRK.B). Bare: uppercase only (NVDA, BRK.B).
+// $-prefixed tickers skip whitelist validation (strong signal). Bare uppercase validated against known set.
+const DOLLAR_TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.\-][a-zA-Z]{1,2})?)\b/g;
+const BARE_TICKER_REGEX = /\b([A-Z]{1,5}(?:[.\-][A-Z]{1,2})?)\b/g;
 const TICKER_BLACKLIST = new Set([
   'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
   'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
@@ -5673,18 +5675,35 @@ async function fetchWsbRedditHot(subreddit) {
   return (data?.data?.children || []).map(c => c.data).filter(Boolean);
 }
 
+function normalizeTicker(raw) {
+  // BRK.B → BRK-B (Yahoo Finance uses dash, Reddit uses dot)
+  return raw.toUpperCase().replace(/\./g, '-');
+}
+
 function extractTickers(text, knownTickers) {
   const found = new Set();
   if (!text) return found;
   let m;
-  TICKER_REGEX.lastIndex = 0;
-  while ((m = TICKER_REGEX.exec(text)) !== null) {
-    const sym = (m[1] || m[2] || '').toUpperCase();
+
+  // $-prefixed tickers: strong signal, skip whitelist validation (only blacklist)
+  DOLLAR_TICKER_REGEX.lastIndex = 0;
+  while ((m = DOLLAR_TICKER_REGEX.exec(text)) !== null) {
+    const sym = normalizeTicker(m[1] || '');
+    if (!sym || sym.length < 1) continue;
+    if (TICKER_BLACKLIST.has(sym)) continue;
+    found.add(sym);
+  }
+
+  // Bare uppercase: high false-positive risk, validate against known ticker set
+  BARE_TICKER_REGEX.lastIndex = 0;
+  while ((m = BARE_TICKER_REGEX.exec(text)) !== null) {
+    const sym = normalizeTicker(m[1] || '');
     if (!sym || sym.length < 1) continue;
     if (TICKER_BLACKLIST.has(sym)) continue;
     if (knownTickers.size > 0 && !knownTickers.has(sym)) continue;
     found.add(sym);
   }
+
   return found;
 }
 
@@ -5697,10 +5716,7 @@ async function seedWsbTickers() {
   try {
     const knownTickers = await loadWsbTickerSet();
     if (knownTickers.size === 0) {
-      console.warn('[WsbTickers] Ticker validation set empty (bootstrap unavailable). Skipping seed to avoid publishing unvalidated data.');
-      try { await upstashExpire(WSB_TICKERS_REDIS_KEY, WSB_TICKERS_TTL); } catch {}
-      wsbTickersRetryTimer = setTimeout(() => { seedWsbTickers().catch(() => {}); }, WSB_TICKERS_RETRY_MS);
-      return;
+      console.warn('[WsbTickers] Known ticker set empty (bootstrap unavailable). $-prefixed tickers will still be extracted; bare uppercase validation disabled.');
     }
     const nowSec = Date.now() / 1000;
     const tickerMap = new Map();
