@@ -9,7 +9,6 @@
  * Phase 4 of the AI Notification Roadmap.
  */
 import { createRequire } from 'node:module';
-import { createHash } from 'node:crypto';
 import dns from 'node:dns/promises';
 
 const require = createRequire(import.meta.url);
@@ -50,7 +49,6 @@ const CONVEX_URL = process.env.CONVEX_URL ?? '';
 const convex = CONVEX_URL ? new ConvexHttpClient(CONVEX_URL) : null;
 
 const LANDSCAPE_TTL = 172800; // 48h
-const BRIEF_TTL = 43200; // 12h
 const DIFF_THRESHOLD = 3; // minimum diff score to generate a brief
 
 // ── Redis helpers ──────────────────────────────────────────────────────────────
@@ -290,7 +288,7 @@ function detectConvergence(signals) {
 // ── Channel delivery (reuse patterns from digest/relay) ──────────────────────
 
 function isPrivateIP(ip) {
-  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|::1|fc|fd)/.test(ip);
+  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|169\.254\.|::1|fe80|fc|fd)/.test(ip);
 }
 
 async function deactivateChannel(userId, channelType) {
@@ -324,8 +322,9 @@ async function sendTelegram(userId, chatId, text) {
 async function sendSlack(userId, webhookEnvelope, text) {
   try {
     const url = decrypt(webhookEnvelope);
-    const hostname = new URL(url).hostname;
-    const addrs = await dns.resolve4(hostname);
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    const addrs = await dns.resolve4(parsed.hostname);
     if (addrs.some(isPrivateIP)) return false;
     const resp = await fetch(url, {
       method: 'POST',
@@ -344,8 +343,9 @@ async function sendSlack(userId, webhookEnvelope, text) {
 async function sendDiscord(userId, webhookEnvelope, text) {
   try {
     const url = decrypt(webhookEnvelope);
-    const hostname = new URL(url).hostname;
-    const addrs = await dns.resolve4(hostname);
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    const addrs = await dns.resolve4(parsed.hostname);
     if (addrs.some(isPrivateIP)) return false;
     const resp = await fetch(url, {
       method: 'POST',
@@ -430,7 +430,7 @@ async function main() {
   for (const rule of rules) {
     if (!rule.userId || !rule.variant) continue;
 
-    const variant = rule.variant ?? 'full';
+    const variant = rule.variant;
     const landscapeKey = `proactive:landscape:v1:${rule.userId}:${variant}`;
     const prevLandscape = await upstashGet(landscapeKey);
 
@@ -456,7 +456,9 @@ async function main() {
         signal: AbortSignal.timeout(10000),
       });
       if (chRes.ok) channels = await chRes.json();
-    } catch {}
+    } catch (err) {
+      console.warn(`[proactive] Channel fetch failed for ${rule.userId}:`, err.message);
+    }
 
     const ruleChannelSet = new Set(rule.channels ?? []);
     const deliverable = channels.filter(c => c.verified && ruleChannelSet.has(c.channelType));
