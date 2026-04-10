@@ -3,7 +3,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — .js import resolved by Vercel edge bundler
 import { validateApiKey } from '../../_api-key.js';
 import { isCallerPremium } from '../../../server/_shared/premium-check';
-import { getScenarioTemplate } from '../../../src/config/scenario-templates';
+import { getScenarioTemplate } from '../../../server/worldmonitor/supply-chain/v1/scenario-templates';
 
 const JOB_ID_CHARSET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
