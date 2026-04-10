@@ -111,12 +111,15 @@ async function fetchReliefWebApi(feed) {
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  const items = (data.data || []).map(r => ({
-    title: r.fields?.title || '',
-    link: r.fields?.url_alias ? `https://reliefweb.int${r.fields.url_alias}` : '',
-    pubDate: r.fields?.date?.created ? new Date(r.fields.date.created) : new Date(),
-    source: feed.sourceName,
-  })).filter(i => i.title && i.link);
+  const items = [];
+  for (const r of data.data || []) {
+    const title = r.fields?.title || '';
+    const url = r.fields?.url_alias ? `https://reliefweb.int${r.fields.url_alias}` : '';
+    const publishedAt = r.fields?.date?.created ? new Date(r.fields.date.created).getTime() : 0;
+    if (!title || !url || !publishedAt) continue;
+    const id = `${stableHash(url)}-${publishedAt}`;
+    items.push({ id, title, url, sourceName: feed.sourceName, publishedAt, summary: '' });
+  }
   console.log(`[ClimateNews] ${feed.sourceName}: ${items.length} items (API)`);
   return items;
 }
