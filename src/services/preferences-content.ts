@@ -358,18 +358,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   </a>`;
   html += `</div></details>`;
 
-  // ── Notifications group (web-only, signed-in, PRO only) ──
+  // ── Notifications group (web-only) ──
   if (!host.isDesktopApp) {
-    if (!host.isSignedIn) {
-      html += `<div class="ai-flow-toggle-desc us-notif-signin">Sign in to link notification channels.</div>`;
-    } else if (getEntitlementState() !== null && !hasTier(1)) {
+    if (!host.isSignedIn || (getEntitlementState() !== null && !hasTier(1))) {
       html += `<details class="wm-pref-group">`;
       html += `<summary>Notifications <span class="panel-toggle-pro-badge">PRO</span></summary>`;
       html += `<div class="wm-pref-group-content">`;
       html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
       html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
       html += `</div></details>`;
-    } else {
+    } else if (host.isSignedIn && (getEntitlementState() === null || hasTier(1))) {
       html += `<details class="wm-pref-group" id="usNotifGroup">`;
       html += `<summary>Notifications</summary>`;
       html += `<div class="wm-pref-group-content">`;
@@ -628,10 +626,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       if (!host.isDesktopApp) updateAiStatus(container);
 
       // ── Notifications section ──
-      if (!host.isDesktopApp && host.isSignedIn && getEntitlementState() !== null && !hasTier(1)) {
+      if (!host.isDesktopApp && (!host.isSignedIn || (getEntitlementState() !== null && !hasTier(1)))) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
         if (upgradeBtn) {
           upgradeBtn.addEventListener('click', () => {
+            if (!host.isSignedIn) {
+              import('@/services/clerk').then(m => m.openSignIn()).catch(() => {
+                window.open('https://worldmonitor.app/pro', '_blank');
+              });
+              return;
+            }
             import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
               window.open('https://worldmonitor.app/pro', '_blank');
             });
