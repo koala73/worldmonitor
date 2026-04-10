@@ -21,8 +21,21 @@ const KEY_PREFIX = 'comtrade:bilateral-hs4:';
 const TTL_SECONDS = 259200; // 72h
 const LOCK_DOMAIN = 'comtrade:bilateral-hs4';
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
-const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1';
-const INTER_REQUEST_DELAY_MS = 3500;
+
+const COMTRADE_KEYS = (process.env.COMTRADE_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+let keyIndex = 0;
+function getNextKey() {
+  if (COMTRADE_KEYS.length === 0) return '';
+  const key = COMTRADE_KEYS[keyIndex % COMTRADE_KEYS.length];
+  keyIndex++;
+  return key;
+}
+
+const usePublicApi = COMTRADE_KEYS.length === 0;
+const COMTRADE_FETCH_URL = usePublicApi
+  ? 'https://comtradeapi.un.org/public/v1/preview/C/A/HS'
+  : 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
+const INTER_REQUEST_DELAY_MS = usePublicApi ? 3500 : 1500;
 
 const HS4_CODES = [
   '2709', '2711', '8542', '8517', '8703', '3004', '7108', '2710',
@@ -90,10 +103,12 @@ async function redisPipeline(commands) {
  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
  */
 async function fetchBilateral(reporterCode, hs4Batch) {
-  const url = new URL(`${COMTRADE_BASE}/preview/C/A/HS`);
+  const url = new URL(COMTRADE_FETCH_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('cmdCode', hs4Batch.join(','));
   url.searchParams.set('flowCode', 'M');
+  const key = getNextKey();
+  if (key) url.searchParams.set('subscription-key', key);
 
   const resp = await fetch(url.toString(), {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -103,7 +118,13 @@ async function fetchBilateral(reporterCode, hs4Batch) {
   if (resp.status === 429) {
     console.warn(`  429 rate-limited for reporter ${reporterCode}, waiting 60s...`);
     await sleep(60_000);
-    const retry = await fetch(url.toString(), {
+    const retryKey = getNextKey();
+    const retryUrl = new URL(COMTRADE_FETCH_URL);
+    retryUrl.searchParams.set('reporterCode', reporterCode);
+    retryUrl.searchParams.set('cmdCode', hs4Batch.join(','));
+    retryUrl.searchParams.set('flowCode', 'M');
+    if (retryKey) retryUrl.searchParams.set('subscription-key', retryKey);
+    const retry = await fetch(retryUrl.toString(), {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       signal: AbortSignal.timeout(20_000),
     });
@@ -201,7 +222,8 @@ export async function main() {
   };
 
   try {
-    console.log(`[bilateral-hs4] Fetching bilateral HS4 data for ${countries.length} countries × ${HS4_CODES.length} products...`);
+    const apiMode = usePublicApi ? 'public preview (no COMTRADE_API_KEYS)' : `authenticated (${COMTRADE_KEYS.length} key(s), ${INTER_REQUEST_DELAY_MS}ms delay)`;
+    console.log(`[bilateral-hs4] Fetching bilateral HS4 data for ${countries.length} countries × ${HS4_CODES.length} products [${apiMode}]...`);
 
     const commands = [];
     let writtenCount = 0;
