@@ -55,7 +55,7 @@ describe('get-country-port-activity handler: unavailable country', () => {
   });
 });
 
-// ── handler: top 5 slice ──────────────────────────────────────────────────────
+// ── handler: top 25 slice ─────────────────────────────────────────────────────
 
 describe('get-country-port-activity handler: port limit', () => {
   it('slices top 25 ports', () => {

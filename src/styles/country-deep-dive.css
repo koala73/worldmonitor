@@ -308,6 +308,10 @@
 }
 
 .cdp-maritime-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg, #0a0a0a);
   text-align: left;
   color: var(--text-muted);
   font-weight: 600;

@@ -51,9 +51,9 @@ export async function getCountryPortActivity(
 
   const payload = data as SeederPayload;
   const rawPorts = Array.isArray(payload.ports) ? payload.ports : [];
-  const top5 = rawPorts.slice(0, 25);
+  const topPorts = rawPorts.slice(0, 25);
 
-  const ports: PortActivityEntry[] = top5.map((p) => {
+  const ports: PortActivityEntry[] = topPorts.map((p) => {
     const calls30d = typeof p.tankerCalls30d === 'number' ? Math.round(p.tankerCalls30d) : 0;
 
     return {
