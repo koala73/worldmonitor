@@ -20,26 +20,36 @@ const TRADE_TTL = 21600;
 const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
-const MAJOR_REPORTERS = ['840', '156', '276', '392', '826', '356', '076', '643', '410', '036', '124', '484', '250', '380', '528'];
+// ALL WTO member economies with UN M49 codes. WorldMonitor = WORLD coverage.
+const ALL_REPORTERS = [
+  '840','156','276','392','826','250','356','643','076','410','036','124','484','380','528', // original 15
+  '784','682','376','792','566','818','710','764','360','608','704','404','218','170','604', // UAE,SAU,ISR,TUR,NGA,EGY,ZAF,THA,IDN,PHL,VNM,KEN,ECU,COL,PER
+  '586','050','144','862','152','032','558','320','068','188','340','600','858','233','348', // PAK,BGD,LKA,VEN,CHL,ARG,NIC,GTM,BOL,CRI,HND,PRY,URY,EST,HUN
+  '203','616','642','100','703','191','705','442','804','112','268','398','860','417','762', // CZE,POL,ROU,BGR,SVK,HRV,SVN,LUX,UKR,BLR,GEO,KAZ,UZB,KGZ,TJK
+  '578','752','246','208','372','620','300','756','040','056','196','470','428','440','352', // NOR,SWE,FIN,DNK,IRL,PRT,GRC,CHE,AUT,BEL,CYP,MLT,LVA,LTU,ISL
+  '458','702','344','446','496','116','418','104','524','064','462','048','634','414','512', // MYS,SGP,HKG,MAC,MNG,KHM,LAO,MMR,NPL,BTN,MDV,BHR,QAT,KWT,OMN
+  '400','422','275','368','887','012','504','788','434','728','834','800','894','180','024', // JOR,LBN,PSE,IRQ,YEM,DZA,MAR,TUN,LBY,SSD,TZA,UGA,ZMB,COD,AGO
+  '288','384','686','854','266','120','174','178','646','508','450','480','740','328','780', // GHA,CIV,SEN,BFA,GAB,CMR,COM,COG,RWA,MOZ,MDG,MUS,SUR,GUY,TTO
+];
 
-const WTO_MEMBER_CODES = {
-  '840': 'United States', '156': 'China', '276': 'Germany', '392': 'Japan',
-  '826': 'United Kingdom', '250': 'France', '356': 'India', '643': 'Russia',
-  '076': 'Brazil', '410': 'South Korea', '036': 'Australia', '124': 'Canada',
-  '484': 'Mexico', '380': 'Italy', '528': 'Netherlands', '000': 'World',
-};
+// ISO2 lookup for cache keys — built from shared/iso3-to-iso2 at init
+const WTO_CODE_TO_ISO2 = {};
+try {
+  const { readFileSync } = require('fs');
+  const { join } = require('path');
+  const un2iso2 = JSON.parse(readFileSync(join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
+  for (const code of ALL_REPORTERS) { if (un2iso2[code]) WTO_CODE_TO_ISO2[code] = un2iso2[code]; }
+} catch {
+  // Fallback: minimal mapping for the original 15
+  Object.assign(WTO_CODE_TO_ISO2, {
+    '840': 'US', '156': 'CN', '276': 'DE', '392': 'JP', '826': 'GB',
+    '356': 'IN', '076': 'BR', '643': 'RU', '410': 'KR', '036': 'AU',
+    '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
+    '784': 'AE', '682': 'SA', '376': 'IL', '792': 'TR', '566': 'NG',
+  });
+}
 
-const WTO_CODE_TO_ISO2 = {
-  '840': 'US', '156': 'CN', '276': 'DE', '392': 'JP', '826': 'GB',
-  '356': 'IN', '076': 'BR', '643': 'RU', '410': 'KR', '036': 'AU',
-  '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
-};
-
-const REPORTER_ISO2 = MAJOR_REPORTERS.map(c => {
-  const iso2 = WTO_CODE_TO_ISO2[c];
-  if (!iso2) throw new Error(`WTO code '${c}' has no ISO2 mapping — add it to WTO_CODE_TO_ISO2`);
-  return iso2;
-});
+const REPORTER_ISO2 = ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
 
 // ─── Shipping Rates (FRED) ───
 
@@ -312,8 +322,8 @@ function buildFlowRecords(rows, reporterCode, partnerCode) {
     const cur = byYear.get(year);
     const prev = i > 0 ? byYear.get(sortedYears[i - 1]) : null;
     return {
-      reportingCountry: WTO_MEMBER_CODES[reporterCode] ?? reporterCode,
-      partnerCountry: partnerCode === '000' ? 'World' : (WTO_MEMBER_CODES[partnerCode] ?? partnerCode),
+      reportingCountry: String(row.ReportingEconomy ?? reporterCode),
+      partnerCountry: partnerCode === '000' ? 'World' : String(row.PartnerEconomy ?? partnerCode),
       year, exportValueUsd: cur.exports, importValueUsd: cur.imports,
       yoyExportChange: prev?.exports > 0 ? Math.round(((cur.exports - prev.exports) / prev.exports) * 10000) / 100 : 0,
       yoyImportChange: prev?.imports > 0 ? Math.round(((cur.imports - prev.imports) / prev.imports) * 10000) / 100 : 0,
@@ -344,7 +354,7 @@ async function fetchTradeFlows() {
   const flows = {};
   const years = 10;
 
-  for (const reporter of MAJOR_REPORTERS) {
+  for (const reporter of ALL_REPORTERS) {
     await fetchFlowPair(reporter, '000', years, flows);
     await sleep(500);
   }
@@ -354,7 +364,7 @@ async function fetchTradeFlows() {
     await sleep(500);
   }
 
-  console.log(`  Trade flows: ${Object.keys(flows).length} pairs (${MAJOR_REPORTERS.length} world + ${BILATERAL_PAIRS.length} bilateral)`);
+  console.log(`  Trade flows: ${Object.keys(flows).length} pairs (${ALL_REPORTERS.length} world + ${BILATERAL_PAIRS.length} bilateral)`);
   return flows;
 }
 
@@ -362,7 +372,7 @@ async function fetchTradeFlows() {
 
 async function fetchTradeBarriers() {
   const currentYear = new Date().getFullYear();
-  const reporters = MAJOR_REPORTERS.join(',');
+  const reporters = ALL_REPORTERS.join(',');
 
   const [agriResult, nonAgriResult] = await Promise.allSettled([
     wtoFetch('/data', { i: 'TP_A_0160', r: reporters, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500' }),
@@ -378,7 +388,7 @@ async function fetchTradeBarriers() {
       const year = parseInt(row.Year ?? row.year ?? '0', 10);
       const value = parseFloat(row.Value ?? row.value ?? '');
       const cc = String(row.ReportingEconomyCode ?? '');
-      return !Number.isNaN(year) && !Number.isNaN(value) && cc ? { country: WTO_MEMBER_CODES[cc] ?? '', countryCode: cc, year, value } : null;
+      return !Number.isNaN(year) && !Number.isNaN(value) && cc ? { country: String(row.ReportingEconomy ?? ''), countryCode: cc, year, value } : null;
     }).filter(Boolean);
   };
 
@@ -426,7 +436,7 @@ async function fetchTradeBarriers() {
 async function fetchTradeRestrictions() {
   const currentYear = new Date().getFullYear();
   const data = await wtoFetch('/data', {
-    i: 'TP_A_0010', r: MAJOR_REPORTERS.join(','),
+    i: 'TP_A_0010', r: ALL_REPORTERS.join(','),
     ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500',
   });
   if (!data) return null;
@@ -447,7 +457,7 @@ async function fetchTradeRestrictions() {
     const year = String(row.Year ?? row.year ?? '');
     return {
       id: `${cc}-${year}-${row.IndicatorCode ?? ''}`,
-      reportingCountry: WTO_MEMBER_CODES[cc] ?? String(row.ReportingEconomy ?? ''),
+      reportingCountry: String(row.ReportingEconomy ?? cc),
       affectedCountry: 'All trading partners', productSector: 'All products',
       measureType: 'WTO MFN Baseline', description: `WTO MFN baseline: ${value.toFixed(1)}%`,
       status: value > 10 ? 'high' : value > 5 ? 'moderate' : 'low',
@@ -470,36 +480,50 @@ async function fetchTariffTrends() {
   const trends = {};
   const usEffectiveTariffRate = await fetchBudgetLabEffectiveTariffRate();
 
-  for (const reporter of MAJOR_REPORTERS) {
-    const years = 10;
+  // Batch WTO requests in groups of 30 to avoid URL length limits
+  const BATCH_SIZE = 30;
+  const years = 10;
+  for (let i = 0; i < ALL_REPORTERS.length; i += BATCH_SIZE) {
+    const batch = ALL_REPORTERS.slice(i, i + BATCH_SIZE);
     const data = await wtoFetch('/data', {
-      i: 'TP_A_0010', r: reporter,
-      ps: `${currentYear - years}-${currentYear}`, fmt: 'json', mode: 'full', max: '500',
+      i: 'TP_A_0010', r: batch.join(','),
+      ps: `${currentYear - years}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000',
     });
-    if (!data) { await sleep(500); continue; }
+    if (!data) { await sleep(1000); continue; }
     const dataset = Array.isArray(data) ? data : data?.Dataset ?? data?.dataset ?? [];
-    const datapoints = dataset.map(row => {
-      const year = parseInt(row.Year ?? row.year ?? '', 10);
-      const tariffRate = parseFloat(row.Value ?? row.value ?? '');
-      if (Number.isNaN(year) || Number.isNaN(tariffRate)) return null;
-      return {
-        reportingCountry: WTO_MEMBER_CODES[reporter] ?? reporter,
-        partnerCountry: 'World', productSector: 'All products',
-        year, tariffRate: Math.round(tariffRate * 100) / 100,
-        boundRate: 0, indicatorCode: 'TP_A_0010',
-      };
-    }).filter(Boolean).sort((a, b) => a.year - b.year);
 
-    if (datapoints.length > 0) {
-      const cacheKey = `trade:tariffs:v1:${reporter}:all:${years}`;
-      trends[cacheKey] = {
-        datapoints,
-        ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
-        fetchedAt: new Date().toISOString(),
-        upstreamUnavailable: false,
-      };
+    // Group by reporter code
+    const byReporter = new Map();
+    for (const row of dataset) {
+      const code = String(row.ReportingEconomyCode ?? '');
+      if (!byReporter.has(code)) byReporter.set(code, []);
+      byReporter.get(code).push(row);
     }
-    await sleep(500);
+
+    for (const [reporter, rows] of byReporter) {
+      const datapoints = rows.map(row => {
+        const year = parseInt(row.Year ?? row.year ?? '', 10);
+        const tariffRate = parseFloat(row.Value ?? row.value ?? '');
+        if (Number.isNaN(year) || Number.isNaN(tariffRate)) return null;
+        return {
+          reportingCountry: row.ReportingEconomy ?? reporter,
+          partnerCountry: 'World', productSector: 'All products',
+          year, tariffRate: Math.round(tariffRate * 100) / 100,
+          boundRate: 0, indicatorCode: 'TP_A_0010',
+        };
+      }).filter(Boolean).sort((a, b) => a.year - b.year);
+
+      if (datapoints.length > 0) {
+        const cacheKey = `trade:tariffs:v1:${reporter}:all:${years}`;
+        trends[cacheKey] = {
+          datapoints,
+          ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
+          fetchedAt: new Date().toISOString(),
+          upstreamUnavailable: false,
+        };
+      }
+    }
+    await sleep(1000);
   }
   console.log(`  Tariff trends: ${Object.keys(trends).length} countries`);
   return trends;
