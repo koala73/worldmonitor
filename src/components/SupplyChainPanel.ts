@@ -5,11 +5,15 @@ import type {
   GetCriticalMineralsResponse,
   GetShippingStressResponse,
 } from '@/services/supply-chain';
+import { fetchBypassOptions } from '@/services/supply-chain';
 import { TransitChart } from '@/utils/transit-chart';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { trackGateHit } from '@/services/analytics';
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
@@ -25,6 +29,8 @@ export class SupplyChainPanel extends Panel {
   private transitChart = new TransitChart();
   private chartObserver: MutationObserver | null = null;
   private chartMountTimer: ReturnType<typeof setTimeout> | null = null;
+  private bypassUnsubscribe: (() => void) | null = null;
+  private bypassGateTracked = false;
 
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
@@ -53,6 +59,8 @@ export class SupplyChainPanel extends Panel {
     if (this.chartMountTimer) { clearTimeout(this.chartMountTimer); this.chartMountTimer = null; }
     if (this.chartObserver) { this.chartObserver.disconnect(); this.chartObserver = null; }
     this.transitChart.destroy();
+    if (this.bypassUnsubscribe) { this.bypassUnsubscribe(); this.bypassUnsubscribe = null; }
+    this.bypassGateTracked = false;
   }
 
   public updateShippingRates(data: GetShippingRatesResponse): void {
@@ -131,18 +139,35 @@ export class SupplyChainPanel extends Panel {
     `);
 
     if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {
+      const expandedCpName = this.expandedChokepoint;
+      const cp = this.chokepointData?.chokepoints?.find(c => c.name === expandedCpName);
+
       const mountTransitChart = (): boolean => {
-        const el = this.content.querySelector(`[data-chart-cp="${this.expandedChokepoint}"]`) as HTMLElement | null;
+        const el = this.content.querySelector(`[data-chart-cp="${expandedCpName}"]`) as HTMLElement | null;
         if (!el) return false;
-        const cp = this.chokepointData?.chokepoints?.find(c => c.name === this.expandedChokepoint);
         if (cp?.transitSummary?.history?.length) {
           this.transitChart.mount(el, cp.transitSummary.history);
         }
         return true;
       };
 
+      const mountBypassOptions = (): boolean => {
+        const bypassEl = this.content.querySelector(`[data-bypass-cp="${cp?.id ?? ''}"]`) as HTMLElement | null;
+        if (!bypassEl) return false;
+        this.renderBypassSection(bypassEl, cp?.id ?? '');
+        return true;
+      };
+
+      // Use the bypass element as the "card is in DOM" sentinel — it is always rendered for
+      // expanded cards, unlike the chart placeholder which is conditional on transit history.
+      const mountAfterRender = (): boolean => {
+        if (!mountBypassOptions()) return false;
+        mountTransitChart();
+        return true;
+      };
+
       this.chartObserver = new MutationObserver(() => {
-        if (!mountTransitChart()) return;
+        if (!mountAfterRender()) return;
         if (this.chartMountTimer) { clearTimeout(this.chartMountTimer); this.chartMountTimer = null; }
         this.chartObserver?.disconnect();
         this.chartObserver = null;
@@ -151,11 +176,84 @@ export class SupplyChainPanel extends Panel {
 
       // Fallback for no-op renders where setContent short-circuits and no mutation fires.
       this.chartMountTimer = setTimeout(() => {
-        if (!mountTransitChart()) return;
+        if (!mountAfterRender()) return;
         if (this.chartObserver) { this.chartObserver.disconnect(); this.chartObserver = null; }
         this.chartMountTimer = null;
       }, 220);
     }
+  }
+
+  private renderBypassSection(container: HTMLElement, chokepointId: string): void {
+    if (!chokepointId) return;
+
+    const renderGate = (): string => {
+      return `<div class="sc-bypass-gate"><span class="sc-bypass-lock">\uD83D\uDD12</span><span class="sc-bypass-gate-text">Bypass corridors available with PRO</span></div>`;
+    };
+
+    const renderRows = (options: import('@/services/supply-chain').BypassOption[]): string => {
+      const top3 = options.slice(0, 3);
+      if (!top3.length) return `<div class="sc-bypass-error">No bypass options available</div>`;
+      const rows = top3.map(opt => {
+        const days = opt.addedTransitDays > 0 ? `+${opt.addedTransitDays}d` : '-';
+        const cost = opt.addedCostMultiplier > 1 ? `+${((opt.addedCostMultiplier - 1) * 100).toFixed(0)}%` : '-';
+        const riskTierMap: Record<string, string> = {
+          WAR_RISK_TIER_WAR_ZONE: 'War Zone',
+          WAR_RISK_TIER_CRITICAL: 'Critical',
+          WAR_RISK_TIER_HIGH: 'High',
+          WAR_RISK_TIER_ELEVATED: 'Elevated',
+          WAR_RISK_TIER_NORMAL: 'Normal',
+        };
+        const risk = riskTierMap[opt.bypassWarRiskTier] ?? opt.bypassWarRiskTier;
+        return `<tr><td>${escapeHtml(opt.name)}</td><td>${days}</td><td>${cost}</td><td>${escapeHtml(risk)}</td></tr>`;
+      }).join('');
+      return `<table class="sc-bypass-table">
+        <thead><tr><th>Corridor</th><th>+Days</th><th>+Cost</th><th>Risk</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    };
+
+    const applyAuthState = (isPro: boolean, bypassOptions?: import('@/services/supply-chain').BypassOption[]): void => {
+      if (!isPro) {
+        container.innerHTML = renderGate();
+        if (!this.bypassGateTracked) {
+          trackGateHit('bypass-corridors');
+          this.bypassGateTracked = true;
+        }
+        return;
+      }
+      if (bypassOptions !== undefined) {
+        container.innerHTML = renderRows(bypassOptions);
+      }
+    };
+
+    const isPro = hasPremiumAccess(getAuthState());
+    if (!isPro) {
+      applyAuthState(false);
+      if (this.bypassUnsubscribe) { this.bypassUnsubscribe(); }
+      this.bypassUnsubscribe = subscribeAuthState(state => {
+        if (hasPremiumAccess(state)) {
+          if (this.bypassUnsubscribe) { this.bypassUnsubscribe(); this.bypassUnsubscribe = null; }
+          if (!this.content.contains(container)) return;
+          container.innerHTML = `<div class="sc-bypass-loading">Loading bypass options\u2026</div>`;
+          void fetchBypassOptions(chokepointId, 'container', 100).then(resp => {
+            if (!this.content.contains(container)) return;
+            container.innerHTML = renderRows(resp.options);
+          }).catch(() => {
+            if (!this.content.contains(container)) return;
+            container.innerHTML = `<div class="sc-bypass-error">Bypass data unavailable</div>`;
+          });
+        }
+      });
+      return;
+    }
+
+    void fetchBypassOptions(chokepointId, 'container', 100).then(resp => {
+      if (!this.content.contains(container)) return;
+      applyAuthState(true, resp.options);
+    }).catch(() => {
+      if (!this.content.contains(container)) return;
+      container.innerHTML = `<div class="sc-bypass-error">Bypass data unavailable</div>`;
+    });
   }
 
   private renderChokepoints(): string {
@@ -185,6 +283,27 @@ export class SupplyChainPanel extends Panel {
           ? `<div data-chart-cp="${escapeHtml(cp.name)}" style="margin-top:8px;min-height:200px"></div>`
           : '';
 
+        const tier = cp.warRiskTier ?? 'WAR_RISK_TIER_NORMAL';
+        const tierLabel: Record<string, string> = {
+          WAR_RISK_TIER_WAR_ZONE: 'War Zone',
+          WAR_RISK_TIER_CRITICAL: 'Critical',
+          WAR_RISK_TIER_HIGH: 'High',
+          WAR_RISK_TIER_ELEVATED: 'Elevated',
+          WAR_RISK_TIER_NORMAL: 'Normal',
+        };
+        const tierClass: Record<string, string> = {
+          WAR_RISK_TIER_WAR_ZONE: 'war',
+          WAR_RISK_TIER_CRITICAL: 'critical',
+          WAR_RISK_TIER_HIGH: 'high',
+          WAR_RISK_TIER_ELEVATED: 'elevated',
+          WAR_RISK_TIER_NORMAL: 'normal',
+        };
+        const warRiskBadge = `<span class="sc-war-risk-badge sc-war-risk-badge--${tierClass[tier] ?? 'normal'}">${tierLabel[tier] ?? 'Normal'}</span>`;
+
+        const bypassSection = expanded
+          ? `<div class="sc-bypass-section" data-bypass-cp="${escapeHtml(cp.id)}"><div class="sc-bypass-loading">Loading bypass options\u2026</div></div>`
+          : '';
+
         return `<div class="trade-restriction-card${expanded ? ' expanded' : ''}" data-cp-id="${escapeHtml(cp.name)}" style="cursor:pointer">
           <div class="trade-restriction-header">
             <span class="trade-country">${escapeHtml(cp.name)}</span>
@@ -206,6 +325,7 @@ export class SupplyChainPanel extends Panel {
               <span>${t('components.supplyChain.riskLevel')}: <span class="${riskClass}">${escapeHtml(ts.riskLevel)}</span></span>
               <span>${ts.incidentCount7d} ${t('components.supplyChain.incidents7d')}</span>
             </div>` : ''}
+            <div class="sc-metric-row">${warRiskBadge}</div>
             ${cp.flowEstimate ? (() => {
               const fe = cp.flowEstimate;
               const pct = Math.round(fe.flowRatio * 100);
@@ -223,6 +343,7 @@ export class SupplyChainPanel extends Panel {
             <div class="trade-affected">${cp.affectedRoutes.slice(0, 3).map(r => escapeHtml(r)).join(', ')}</div>
             ${actionRow}
             ${chartPlaceholder}
+            ${bypassSection}
           </div>
         </div>`;
       }).join('')}

@@ -295,6 +295,117 @@
   font-size: 11px;
 }
 
+/* Maritime Activity Table */
+.cdp-maritime-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+}
+
+.cdp-maritime-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cdp-maritime-table td {
+  padding: 6px 8px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cdp-maritime-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.cdp-maritime-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.cdp-maritime-port {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.cdp-maritime-anomaly {
+  margin-left: 4px;
+  color: var(--semantic-warning);
+  font-size: 12px;
+}
+
+.cdp-maritime-trend.cdp-trend-up {
+  color: var(--semantic-positive, #22c55e);
+  font-weight: 600;
+}
+
+.cdp-maritime-trend.cdp-trend-down {
+  color: var(--semantic-critical, #ef4444);
+  font-weight: 600;
+}
+
+/* Energy Donut Charts */
+.cdp-energy-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.cdp-energy-donut {
+  position: relative;
+  width: 90px;
+  height: 90px;
+  flex-shrink: 0;
+}
+
+.cdp-energy-donut svg {
+  transform: rotate(-90deg);
+}
+
+.cdp-energy-donut-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.2;
+  pointer-events: none;
+  white-space: pre;
+}
+
+.cdp-energy-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cdp-energy-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.cdp-energy-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .cdp-score-row {
   display: flex;
   align-items: center;
@@ -987,6 +1098,14 @@
   opacity: 1;
 }
 .cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: 0.65rem; }
+
+.cdp-vuln-index { font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
+.cdp-trade-exposure-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+.cdp-chokepoint-name { color: #cbd5e1; padding: 3px 0; width: 45%; }
+.cdp-exposure-bar-wrap { width: 40%; padding: 3px 6px; }
+.cdp-exposure-bar { height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 3px; min-width: 2px; }
+.cdp-exposure-pct { color: #64748b; text-align: right; font-size: 11px; white-space: nowrap; }
+.cdp-card-footer { font-size: 10px; color: #475569; margin-top: 6px; }
 
 .cdp-pro-locked {
   display: flex;

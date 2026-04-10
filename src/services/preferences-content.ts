@@ -901,6 +901,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 </div>
                 <select class="unified-settings-select" id="usDigestHour" style="width:auto">${hourOptionsDigest}</select>
               </div>
+              <div id="usTwiceDailyHint" class="ai-flow-toggle-desc" style="margin-top:4px;${digestMode === 'twice_daily' ? '' : 'display:none'}">Also sends at ${((digestHour + 12) % 24) === 0 ? '12 AM' : ((digestHour + 12) % 24) < 12 ? `${(digestHour + 12) % 24} AM` : ((digestHour + 12) % 24) === 12 ? '12 PM' : `${((digestHour + 12) % 24) - 12} PM`}</div>
               <div class="ai-flow-toggle-row" style="margin-top:8px">
                 <div class="ai-flow-toggle-label-wrap">
                   <div class="ai-flow-toggle-label">AI executive summary</div>
@@ -1024,8 +1025,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const isRt = target.value === 'realtime';
             const realtimeSection = container.querySelector<HTMLElement>('#usRealtimeSection');
             const digestDetails = container.querySelector<HTMLElement>('#usDigestDetails');
+            const twiceHint = container.querySelector<HTMLElement>('#usTwiceDailyHint');
             if (realtimeSection) realtimeSection.style.display = isRt ? '' : 'none';
             if (digestDetails) digestDetails.style.display = isRt ? 'none' : '';
+            if (twiceHint) twiceHint.style.display = target.value === 'twice_daily' ? '' : 'none';
             saveDigestSettings();
             // Switching to digest mode: auto-enable the alert rule so the
             // backend schedules digests. The enable toggle is hidden in
@@ -1040,6 +1043,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             return;
           }
           if (target.id === 'usDigestHour') {
+            const twiceHint = container.querySelector<HTMLElement>('#usTwiceDailyHint');
+            if (twiceHint) {
+              const h = (Number(target.value) + 12) % 24;
+              twiceHint.textContent = `Also sends at ${h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`}`;
+            }
             saveDigestSettings();
             return;
           }

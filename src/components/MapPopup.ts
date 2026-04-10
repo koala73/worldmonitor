@@ -10,6 +10,7 @@ import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { TransitChart } from '@/utils/transit-chart';
+import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import { t } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
@@ -277,6 +278,17 @@ export class MapPopup {
       // Track PRO gate impression for transit chart
       if (cp?.transitSummary?.history?.length && !hasPremiumAccess(getAuthState())) {
         trackGateHit('chokepoint-transit-chart');
+      }
+
+      // Mount HS2 sector ring chart for PRO users
+      const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
+      if (sectors?.length) {
+        const ringEl = this.popup.querySelector<HTMLElement>(`[data-hs2-ring="${waterway.chokepointId}"]`);
+        if (ringEl) {
+          new HS2RingChart().mount(ringEl, sectors);
+        } else if (!hasPremiumAccess(getAuthState())) {
+          trackGateHit('chokepoint-sector-ring');
+        }
       }
     }
 
@@ -1226,6 +1238,25 @@ export class MapPopup {
       }
     }
 
+    // Sector exposure ring is PRO-gated (canvas donut with legend)
+    let ringSection = '';
+    if (sectors) {
+      if (isPro) {
+        ringSection = `
+          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Sector Exposure</div>
+          <div data-hs2-ring="${escapeHtml(waterway.chokepointId)}" class="popup-hs2-ring-container"></div>`;
+      } else {
+        ringSection = `
+          <div class="sector-pro-gate" data-gate="chokepoint-sector-ring" style="position:relative;overflow:hidden;border-radius:6px;margin-top:10px;min-height:80px;background:var(--surface-elevated, #111)">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
+              <span style="font-size:16px">🔒</span>
+              <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>
+              <span style="font-size:9px;opacity:.5">Sector Breakdown</span>
+            </div>
+          </div>`;
+      }
+    }
+
     return `
       <div class="popup-header waterway">
         <span class="popup-title">${escapeHtml(waterway.name)}</span>
@@ -1241,6 +1272,7 @@ export class MapPopup {
           </div>
         </div>
         ${sectorSection}
+        ${ringSection}
         ${chartSection}
       </div>
     `;

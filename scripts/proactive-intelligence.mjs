@@ -50,6 +50,7 @@ const convex = CONVEX_URL ? new ConvexHttpClient(CONVEX_URL) : null;
 
 const LANDSCAPE_TTL = 172800; // 48h
 const DIFF_THRESHOLD = 3; // minimum diff score to generate a brief
+const ENTITLEMENT_CACHE_TTL = 900; // 15 min
 
 // ── Redis helpers ──────────────────────────────────────────────────────────────
 
@@ -68,6 +69,30 @@ async function upstashGet(key) {
   const raw = await upstashRest('GET', key);
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { return null; }
+}
+
+// ── Entitlement check ────────────────────────────────────────────────────────
+
+async function isUserPro(userId) {
+  const cacheKey = `relay:entitlement:${userId}`;
+  try {
+    const cached = await upstashRest('GET', cacheKey);
+    if (cached !== null) return Number(cached) >= 1;
+  } catch { /* miss */ }
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/relay/entitlement`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-proactive/1.0' },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return true; // fail-open
+    const { tier } = await res.json();
+    await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
+    return (tier ?? 0) >= 1;
+  } catch {
+    return true; // fail-open
+  }
 }
 
 // ── Signal reading ───────────────────────────────────────────────────────────
@@ -443,6 +468,13 @@ async function main() {
     const { changes, score } = computeDiff(prevLandscape, currentLandscape);
     if (score < DIFF_THRESHOLD) {
       console.log(`[proactive] No significant changes for ${rule.userId} (score=${score})`);
+      await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
+      continue;
+    }
+
+    const pro = await isUserPro(rule.userId);
+    if (!pro) {
+      console.log(`[proactive] Skipping ${rule.userId} — not PRO`);
       await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
       continue;
     }

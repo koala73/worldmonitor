@@ -26,6 +26,7 @@ import type {
   CountryEnergyProfileData,
   CountryPortActivityData,
 } from './CountryBriefPanel';
+import type { GetCountryChokepointIndexResponse } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 import { toApiUrl } from '@/services/runtime';
@@ -85,6 +86,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private resilienceWidget: ResilienceWidget | null = null;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
+  private tradeExposureBody: HTMLElement | null = null;
   private debtBody: HTMLElement | null = null;
   private sanctionsBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
@@ -689,31 +691,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const total = segments.reduce((s, seg) => s + seg.value, 0);
       const norm = total > 0 ? total : 1;
 
-      const bar = this.el('div', '');
-      bar.style.cssText = 'display:flex;width:100%;height:12px;border-radius:4px;overflow:hidden;margin-bottom:8px';
+      const wrap = this.el('div', 'cdp-energy-donut-wrap');
+      wrap.append(this.buildDonutSvg(segments, norm, 'Primary\nEnergy'));
+      const legend = this.el('div', 'cdp-energy-legend');
       for (const seg of segments) {
         const pct = (seg.value / norm) * 100;
         if (pct <= 0.5) continue;
-        const span = this.el('span', '');
-        span.style.cssText = `width:${pct}%;background:${seg.color}`;
-        bar.append(span);
-      }
-      this.energyBody.append(bar);
-
-      const legend = this.el('div', '');
-      for (const seg of segments) {
-        const pct = (seg.value / norm) * 100;
-        if (pct <= 0.5) continue;
-        const row = this.el('div', '');
-        row.style.cssText = 'font-size:11px;color:#aaa;display:flex;gap:4px;align-items:center';
-        const dot = this.el('span', '');
-        dot.textContent = '\u25CF';
-        dot.style.color = seg.color;
+        const row = this.el('div', 'cdp-energy-legend-row');
+        const dot = this.el('span', 'cdp-energy-legend-dot');
+        dot.style.background = seg.color;
         const label = this.el('span', '', `${seg.label}  ${Math.round(pct)}%`);
         row.append(dot, label);
         legend.append(row);
       }
-      this.energyBody.append(legend);
+      wrap.append(legend);
+      this.energyBody.append(wrap);
 
       const src = this.el('div', 'cdp-economic-source', `Data: ${data.mixYear} (OWID)`);
       this.energyBody.append(src);
@@ -913,31 +905,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const total = segments.reduce((acc, seg) => acc + seg.value, 0);
       const norm = total > 0 ? total : 1;
 
-      const bar = this.el('div', '');
-      bar.style.cssText = 'display:flex;width:100%;height:10px;border-radius:4px;overflow:hidden;margin-bottom:6px';
+      const wrap = this.el('div', 'cdp-energy-donut-wrap');
+      wrap.append(this.buildDonutSvg(segments, norm, 'Monthly\nMix'));
+      const legend = this.el('div', 'cdp-energy-legend');
       for (const seg of segments) {
         const pct = (seg.value / norm) * 100;
         if (pct <= 0.5) continue;
-        const span = this.el('span', '');
-        span.style.cssText = `width:${pct}%;background:${seg.color}`;
-        bar.append(span);
-      }
-      section.append(bar);
-
-      const legend = this.el('div', '');
-      for (const seg of segments) {
-        const pct = (seg.value / norm) * 100;
-        if (pct <= 0.5) continue;
-        const row = this.el('div', '');
-        row.style.cssText = 'font-size:11px;color:#aaa;display:flex;gap:4px;align-items:center';
-        const dot = this.el('span', '');
-        dot.textContent = '\u25CF';
-        dot.style.color = seg.color;
+        const row = this.el('div', 'cdp-energy-legend-row');
+        const dot = this.el('span', 'cdp-energy-legend-dot');
+        dot.style.background = seg.color;
         const label = this.el('span', '', `${seg.label}  ${Math.round(pct)}%`);
         row.append(dot, label);
         legend.append(row);
       }
-      section.append(legend);
+      wrap.append(legend);
+      section.append(wrap);
 
       if (data.emberCoalShare > 0 || data.emberGasShare > 0) {
         const breakdown = this.el('div', '');
@@ -963,6 +945,51 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.jodiOilAvailable || data.jodiGasAvailable) {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
+  }
+
+  private buildDonutSvg(
+    segments: Array<{ label: string; color: string; value: number }>,
+    norm: number,
+    centerText: string,
+  ): HTMLElement {
+    const size = 90;
+    const r = 35;
+    const stroke = 14;
+    const cx = size / 2;
+    const cy = size / 2;
+    const circ = 2 * Math.PI * r;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+
+    let offset = 0;
+    for (const seg of segments) {
+      const pct = (seg.value / norm) * 100;
+      if (pct <= 0.5) continue;
+      const dash = (pct / 100) * circ;
+      const gap = circ - dash;
+      const circle = document.createElementNS(ns, 'circle');
+      circle.setAttribute('cx', String(cx));
+      circle.setAttribute('cy', String(cy));
+      circle.setAttribute('r', String(r));
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke', seg.color);
+      circle.setAttribute('stroke-width', String(stroke));
+      circle.setAttribute('stroke-dasharray', `${dash} ${gap}`);
+      circle.setAttribute('stroke-dashoffset', String(-offset));
+      svg.append(circle);
+      offset += dash;
+    }
+
+    const wrap = this.el('div', 'cdp-energy-donut');
+    wrap.append(svg);
+    const label = this.el('div', 'cdp-energy-donut-label');
+    label.textContent = centerText;
+    wrap.append(label);
+    return wrap;
   }
 
   private renderShockScenarioWidget(): HTMLElement {
@@ -1234,9 +1261,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const trendCell = this.el('td', 'cdp-maritime-trend');
       const pct = port.trendDeltaPct;
       if (pct !== 0 || port.tankerCalls30d > 0) {
-        const sign = pct >= 0 ? '+' : '';
+        const sign = pct > 0 ? '+' : '';
         trendCell.textContent = `${sign}${pct.toFixed(1)}%`;
-        trendCell.classList.add(pct >= 0 ? 'cdp-trend-up' : 'cdp-trend-down');
+        if (pct > 0) trendCell.classList.add('cdp-trend-up');
+        else if (pct < 0) trendCell.classList.add('cdp-trend-down');
       } else {
         trendCell.textContent = 'n/a';
       }
@@ -1258,6 +1286,42 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const footer = this.el('div', 'cdp-section-source', `Source: IMF PortWatch \u00B7 as of ${dateStr}`);
       this.maritimeBody.append(footer);
     }
+  }
+
+  public updateTradeExposure(data: GetCountryChokepointIndexResponse | null): void {
+    if (!this.tradeExposureBody) return;
+
+    if (data == null || data.exposures.length === 0) {
+      this.tradeExposureBody.parentElement?.remove();
+      this.tradeExposureBody = null;
+      return;
+    }
+
+    this.tradeExposureBody.replaceChildren();
+
+    const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${Math.round(data.vulnerabilityIndex)}/100`);
+    this.tradeExposureBody.append(vulnDiv);
+
+    const sorted = [...data.exposures].sort((a, b) => b.exposureScore - a.exposureScore).slice(0, 3);
+    const table = this.el('table', 'cdp-trade-exposure-table');
+    const tbody = this.el('tbody');
+    for (const entry of sorted) {
+      const tr = this.el('tr');
+      const nameCell = this.el('td', 'cdp-chokepoint-name');
+      nameCell.textContent = entry.chokepointName || entry.chokepointId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      const barWrap = this.el('td', 'cdp-exposure-bar-wrap');
+      const bar = this.el('div', 'cdp-exposure-bar');
+      bar.style.width = `${Math.min(entry.exposureScore, 100)}%`;
+      barWrap.append(bar);
+      const pctCell = this.el('td', 'cdp-exposure-pct', `${entry.exposureScore.toFixed(1)}%`);
+      tr.append(nameCell, barWrap, pctCell);
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    this.tradeExposureBody.append(table);
+
+    const footer = this.el('div', 'cdp-card-footer', 'Source: Comtrade \u00B7 HS2 sectors');
+    this.tradeExposureBody.append(footer);
   }
 
   private factItem(label: string, value: string): HTMLElement {
@@ -1502,6 +1566,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.maritimeBody = maritimeBody;
     maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
 
+    const [tradeCard, tradeBody] = this.sectionCard('Trade Exposure', 'Chokepoints most critical to this country\'s imports by sector');
+    this.tradeExposureBody = tradeBody;
+    tradeBody.append(this.makeLoading('Loading trade exposure\u2026'));
+
     const isPro = hasPremiumAccess(getAuthState());
 
     const [debtCard, debtBody] = this.sectionCard('National Debt', 'Government debt-to-GDP ratio, total debt, and year-over-year growth.');
@@ -1546,7 +1614,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, debtCard, sanctionsCard, comtradeCard, tariffCard, chokepointCard, costShockCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, debtCard, sanctionsCard, comtradeCard, tariffCard, chokepointCard, costShockCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -1561,6 +1629,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.scoreCard = null;
     this.energyBody = null;
     this.maritimeBody = null;
+    this.tradeExposureBody = null;
     this.debtBody = null;
     this.sanctionsBody = null;
     this.comtradeBody = null;

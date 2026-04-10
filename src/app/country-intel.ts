@@ -48,6 +48,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToUnCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
+import { fetchCountryChokepointIndex } from '@/services/supply-chain';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -400,6 +401,17 @@ export class CountryIntelManager implements AppModule {
       .catch(() => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
+      });
+
+    // hs2='27' (mineral fuels) is the default; omit explicit arg to use the function default
+    fetchCountryChokepointIndex(code)
+      .then((result) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateTradeExposure?.(result);
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateTradeExposure?.(null);
       });
 
     if (hasPremiumAccess(getAuthState())) {
