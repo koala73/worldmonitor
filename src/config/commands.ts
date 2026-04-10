@@ -177,6 +177,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:climate-news', keywords: ['climate news', 'climate headlines', 'environment news', 'climate intelligence', 'carbon brief', 'copernicus'], label: 'Panel: Climate News', icon: '\u{1F30D}', category: 'panels' },
   { id: 'panel:disease-outbreaks', keywords: ['disease outbreaks', 'outbreaks', 'who alerts', 'epidemic', 'health alerts', 'promed'], label: 'Panel: Disease Outbreaks', icon: '\u{1F9A0}', category: 'panels' },
   { id: 'panel:social-velocity', keywords: ['social velocity', 'reddit trending', 'social signals', 'viral', 'trending posts'], label: 'Panel: Social Velocity', icon: '\u{1F4F1}', category: 'panels' },
+  { id: 'panel:wsb-ticker-scanner', keywords: ['wsb', 'wallstreetbets', 'reddit stocks', 'ticker scanner', 'social sentiment', 'meme stocks'], label: 'Panel: WSB Ticker Scanner', icon: '\u{1F680}', category: 'panels' },
 
   // Crypto panels
   { id: 'panel:crypto-heatmap', keywords: ['crypto sectors', 'crypto heatmap', 'altcoin sectors'], label: 'Panel: Crypto Sectors', icon: '\u{1F7E9}', category: 'panels' },

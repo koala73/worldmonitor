@@ -319,6 +319,10 @@
     "etfFlows": "BTC ETF Tracker",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
+    "wsbTickerScanner": {
+      "title": "WSB Ticker Scanner",
+      "tooltip": "Real-time ticker mentions from r/wallstreetbets, r/stocks, and r/investing ranked by frequency and engagement."
+    },
     "ucdpEvents": "Armed Conflict Events",
     "giving": "Global Giving",
     "displacement": "UNHCR Displacement",
@@ -2111,6 +2115,9 @@
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Social Velocity</strong> Trending topics and viral content with geopolitical significance. Measures social media velocity: how rapidly a story spreads relative to baseline. Helps surface emerging narratives before they hit mainstream news."
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSB Ticker Scanner</strong> Real-time ticker mentions from r/wallstreetbets, r/stocks, and r/investing. Ranked by mention frequency and engagement. Velocity measures how rapidly a ticker gains momentum across posts."
     },
     "conservationWins": {
       "infoTooltip": "<strong>Conservation Wins</strong> Positive conservation news: species population recoveries, habitat restoration milestones, and de-extinction efforts. Sourced from IUCN, WWF, and conservation research publications."

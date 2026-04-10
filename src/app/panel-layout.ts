@@ -70,6 +70,7 @@ import {
   CotPositioningPanel,
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
+  WsbTickerScannerPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
@@ -114,6 +115,7 @@ const WEB_PREMIUM_PANELS = new Set([
   'market-implications',
   'deduction',
   'chat-analyst',
+  'wsb-ticker-scanner',
 ]);
 
 export interface PanelLayoutManagerCallbacks {
@@ -897,6 +899,7 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('disease-outbreaks', () => new DiseaseOutbreaksPanel());
     this.createPanel('social-velocity', () => new SocialVelocityPanel());
+    this.createPanel('wsb-ticker-scanner', () => new WsbTickerScannerPanel());
 
     this.lazyPanel('displacement', () =>
       import('@/components/DisplacementPanel').then(m => {

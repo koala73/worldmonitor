@@ -83,4 +83,5 @@ export { HormuzPanel } from './HormuzPanel';
 export * from './ClimateNewsPanel';
 export * from './DiseaseOutbreaksPanel';
 export * from './SocialVelocityPanel';
+export * from './WsbTickerScannerPanel';
 export * from './ResilienceWidget';
