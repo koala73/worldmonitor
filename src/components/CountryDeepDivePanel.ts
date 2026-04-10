@@ -1091,9 +1091,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const trendCell = this.el('td', 'cdp-maritime-trend');
       const pct = port.trendDeltaPct;
       if (pct !== 0 || port.tankerCalls30d > 0) {
-        const sign = pct >= 0 ? '+' : '';
+        const sign = pct > 0 ? '+' : '';
         trendCell.textContent = `${sign}${pct.toFixed(1)}%`;
-        trendCell.classList.add(pct >= 0 ? 'cdp-trend-up' : 'cdp-trend-down');
+        if (pct > 0) trendCell.classList.add('cdp-trend-up');
+        else if (pct < 0) trendCell.classList.add('cdp-trend-down');
       } else {
         trendCell.textContent = 'n/a';
       }

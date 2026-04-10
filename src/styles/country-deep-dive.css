@@ -380,6 +380,7 @@
   text-align: center;
   line-height: 1.2;
   pointer-events: none;
+  white-space: pre;
 }
 
 .cdp-energy-legend {
