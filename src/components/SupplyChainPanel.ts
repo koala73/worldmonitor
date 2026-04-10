@@ -197,6 +197,7 @@ export class SupplyChainPanel extends Panel {
         const days = opt.addedTransitDays > 0 ? `+${opt.addedTransitDays}d` : '-';
         const cost = opt.addedCostMultiplier > 1 ? `+${((opt.addedCostMultiplier - 1) * 100).toFixed(0)}%` : '-';
         const riskTierMap: Record<string, string> = {
+          WAR_RISK_TIER_UNSPECIFIED: 'Normal',
           WAR_RISK_TIER_WAR_ZONE: 'War Zone',
           WAR_RISK_TIER_CRITICAL: 'Critical',
           WAR_RISK_TIER_HIGH: 'High',
