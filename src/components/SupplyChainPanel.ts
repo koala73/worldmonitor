@@ -7,7 +7,7 @@ import type {
 } from '@/services/supply-chain';
 import { fetchBypassOptions } from '@/services/supply-chain';
 import type { ScenarioResult } from '@/config/scenario-templates';
-import { SCENARIO_TEMPLATES } from '../../server/worldmonitor/supply-chain/v1/scenario-templates';
+import { SCENARIO_TEMPLATES } from '@/config/scenario-templates';
 import { TransitChart } from '@/utils/transit-chart';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
@@ -36,6 +36,7 @@ export class SupplyChainPanel extends Panel {
   private onDismissScenario: (() => void) | null = null;
   private onScenarioActivate: ((scenarioId: string, result: ScenarioResult) => void) | null = null;
   private activeScenarioState: { scenarioId: string; result: ScenarioResult } | null = null;
+  private scenarioPollController: AbortController | null = null;
 
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
@@ -321,8 +322,8 @@ export class SupplyChainPanel extends Panel {
           : '';
 
         const scenarioSection = expanded ? (() => {
-          const template = SCENARIO_TEMPLATES.find(t =>
-            t.affectedChokepointIds.includes(cp.id) && t.type !== 'tariff_shock'
+          const template = SCENARIO_TEMPLATES.find(tmpl =>
+            tmpl.affectedChokepointIds.includes(cp.id) && tmpl.type !== 'tariff_shock'
           );
           if (!template) return '';
           const isPro = hasPremiumAccess(getAuthState());
@@ -633,7 +634,8 @@ export class SupplyChainPanel extends Panel {
     ).join(' \u00B7 ');
     const banner = document.createElement('div');
     banner.className = 'sc-scenario-banner';
-    banner.innerHTML = `<span class="sc-scenario-icon">\u26A0</span><span class="sc-scenario-name">${escapeHtml(scenarioId.replace(/-/g, ' '))}</span><span class="sc-scenario-countries">${countriesHtml}</span><button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button>`;
+    const scenarioName = SCENARIO_TEMPLATES.find(tmpl => tmpl.id === scenarioId)?.name ?? scenarioId.replace(/-/g, ' ');
+    banner.innerHTML = `<span class="sc-scenario-icon">\u26A0</span><span class="sc-scenario-name">${escapeHtml(scenarioName)}</span><span class="sc-scenario-countries">${countriesHtml}</span><button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button>`;
     banner.querySelector('.sc-scenario-dismiss')!.addEventListener('click', () => this.onDismissScenario?.());
     this.content.prepend(banner);
   }
@@ -659,6 +661,10 @@ export class SupplyChainPanel extends Panel {
           trackGateHit('scenario-engine');
           return;
         }
+        this.scenarioPollController?.abort();
+        this.scenarioPollController = new AbortController();
+        const { signal } = this.scenarioPollController;
+
         const scenarioId = el.dataset.scenarioId!;
         btn.disabled = true;
         btn.textContent = 'Computing\u2026';
@@ -667,23 +673,31 @@ export class SupplyChainPanel extends Panel {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scenarioId }),
+            signal,
           });
           if (!runResp.ok) throw new Error('Run failed');
           const { jobId } = await runResp.json() as { jobId: string };
           let result: ScenarioResult | null = null;
           for (let i = 0; i < 30; i++) {
-            if (!this.content.isConnected) return;
+            if (signal.aborted || !this.content.isConnected) return;
             await new Promise(r => setTimeout(r, 2000));
-            const statusResp = await fetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`);
+            const statusResp = await fetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`, { signal });
+            if (!statusResp.ok) throw new Error(`Status poll failed: ${statusResp.status}`);
             const status = await statusResp.json() as { status: string; result?: ScenarioResult };
-            if (status.status === 'done') { result = status.result!; break; }
+            if (status.status === 'done') {
+              const r = status.result;
+              if (!r || !Array.isArray(r.topImpactCountries)) throw new Error('done without valid result');
+              result = r;
+              break;
+            }
             if (status.status === 'failed') throw new Error('Scenario failed');
           }
           if (!result) throw new Error('Timeout');
-          if (!this.content.isConnected) return;
+          if (signal.aborted || !this.content.isConnected) return;
           this.onScenarioActivate?.(scenarioId, result);
           btn.textContent = 'Active';
-        } catch {
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') return;
           btn.textContent = 'Error \u2014 retry';
           btn.disabled = false;
         }

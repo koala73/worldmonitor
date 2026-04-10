@@ -10,3 +10,5 @@ export type {
   ScenarioVisualState,
   ScenarioResult,
 } from '../../server/worldmonitor/supply-chain/v1/scenario-templates';
+
+export { SCENARIO_TEMPLATES } from '../../server/worldmonitor/supply-chain/v1/scenario-templates';

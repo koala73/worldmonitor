@@ -401,6 +401,7 @@ export class DeckGLMap {
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private scenarioState: ScenarioVisualState | null = null;
+  private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
   private imageryScenes: ImageryScene[] = [];
@@ -3530,8 +3531,7 @@ export class DeckGLMap {
   }
 
   private createScenarioHeatLayer(): GeoJsonLayer | null {
-    if (!this.scenarioState?.affectedIso2s?.length || !this.countriesGeoJsonData) return null;
-    const affected = new Set(this.scenarioState.affectedIso2s);
+    if (!this.affectedIso2Set.size || !this.countriesGeoJsonData) return null;
     return new GeoJsonLayer({
       id: 'scenario-heat-layer',
       data: this.countriesGeoJsonData,
@@ -3541,7 +3541,7 @@ export class DeckGLMap {
       pickable: false,
       getFillColor: (feature: { properties?: Record<string, unknown> }) => {
         const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
-        return (code && affected.has(code) ? [220, 60, 40, 80] : [0, 0, 0, 0]) as [number, number, number, number];
+        return (code && this.affectedIso2Set.has(code) ? [220, 60, 40, 80] : [0, 0, 0, 0]) as [number, number, number, number];
       },
       updateTriggers: { getFillColor: [this.scenarioState] },
     });
@@ -5455,6 +5455,7 @@ export class DeckGLMap {
    */
   public setScenarioState(state: ScenarioVisualState | null): void {
     this.scenarioState = state;
+    this.affectedIso2Set = new Set(state?.affectedIso2s ?? []);
     this.render();
   }
 

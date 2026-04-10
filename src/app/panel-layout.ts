@@ -780,7 +780,15 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('trade-policy', () => new TradePolicyPanel());
     this.createPanel('sanctions-pressure', () => new SanctionsPressurePanel());
-    this.createPanel('supply-chain', () => new SupplyChainPanel());
+    const supplyChainPanel = this.createPanel('supply-chain', () => new SupplyChainPanel());
+    if (supplyChainPanel) {
+      supplyChainPanel.setOnScenarioActivate((id, result) => {
+        this.ctx.map?.activateScenario(id, result);
+      });
+      supplyChainPanel.setOnDismissScenario(() => {
+        this.ctx.map?.deactivateScenario();
+      });
+    }
 
     this.createNewsPanel('africa', 'panels.africa');
     this.createNewsPanel('latam', 'panels.latam');

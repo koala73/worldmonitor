@@ -20,4 +20,6 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/sanctions/v1/list-sanctions-pressure',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
+  '/api/scenario/v1/run',
+  '/api/scenario/v1/status',
 ]);
