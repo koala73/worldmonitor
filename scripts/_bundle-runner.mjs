@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Bundle orchestrator — spawns multiple seed scripts sequentially
+ * Bundle orchestrator: spawns multiple seed scripts sequentially
  * via child_process.execFile, with freshness-gated skipping.
  *
  * Pattern matches ais-relay.cjs:5645-5695 (ClimateNews/ChokepointFlows spawns).
@@ -13,7 +13,7 @@
 import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
+import { loadEnvFile } from './_seed-utils.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -24,11 +24,14 @@ export const WEEK = 604_800_000;
 
 loadEnvFile(import.meta.url);
 
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
 async function readSeedMeta(seedMetaKey) {
+  if (!REDIS_URL || !REDIS_TOKEN) return null;
   try {
-    const { url, token } = getRedisCredentials();
-    const resp = await fetch(`${url}/get/${encodeURIComponent(`seed-meta:${seedMetaKey}`)}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const resp = await fetch(`${REDIS_URL}/get/${encodeURIComponent(`seed-meta:${seedMetaKey}`)}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
       signal: AbortSignal.timeout(5_000),
     });
     if (!resp.ok) return null;
@@ -94,7 +97,7 @@ export async function runBundle(label, sections) {
       if (elapsed < section.intervalMs * 0.8) {
         const agoMin = Math.round(elapsed / 60_000);
         const intervalMin = Math.round(section.intervalMs / 60_000);
-        console.log(`  [${section.label}] Skipped — last seeded ${agoMin}min ago (interval: ${intervalMin}min)`);
+        console.log(`  [${section.label}] Skipped, last seeded ${agoMin}min ago (interval: ${intervalMin}min)`);
         skipped++;
         continue;
       }
