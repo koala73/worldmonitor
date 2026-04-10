@@ -6,13 +6,17 @@ import { t } from '@/services/i18n';
 import { getCountryInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
-import { sanitizeUrl } from '@/utils/sanitize';
+import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { getCSSColor } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
+import { getChokepointRoutes } from '@/config/trade-routes';
+import { STRATEGIC_WATERWAYS } from '@/config/geo';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
+import { trackGateHit } from '@/services/analytics';
+import { fetchBypassOptions } from '@/services/supply-chain';
 import { haversineDistanceKm } from '@/services/related-assets';
 import type {
   CountryBriefPanel,
@@ -94,6 +98,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
   private tradeExposureBody: HTMLElement | null = null;
+  private selectedSectorHs2: string | null = null;
+  private sectorBypassAbort: AbortController | null = null;
+  private cachedTradeExposureData: GetCountryChokepointIndexResponse | null = null;
+  private cachedSectors: SectorExposureSummary[] = [];
   private debtBody: HTMLElement | null = null;
   private sanctionsBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
@@ -1306,13 +1314,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       return;
     }
 
+    this.cachedTradeExposureData = data;
+    this.cachedSectors = sectors ?? [];
+
+    this.renderTradeExposureContent();
+  }
+
+  private renderTradeExposureContent(): void {
+    if (!this.tradeExposureBody || !this.cachedTradeExposureData) return;
+    const data = this.cachedTradeExposureData;
+    const sectors = this.cachedSectors;
+
     this.tradeExposureBody.replaceChildren();
 
-    // Vulnerability index header
     const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${Math.round(data.vulnerabilityIndex)}/100`);
     this.tradeExposureBody.append(vulnDiv);
 
-    // Sector-by-chokepoint matrix (if multi-sector data available)
     if (sectors && sectors.length > 0) {
       const sectorLabel = this.el('div', 'cdp-section-sublabel', 'Sector exposure by primary chokepoint');
       this.tradeExposureBody.append(sectorLabel);
@@ -1328,7 +1345,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const tbody = this.el('tbody');
       for (const s of sectors.slice(0, 10)) {
+        const isSelected = this.selectedSectorHs2 === s.hs2;
         const tr = this.el('tr');
+        tr.className = `cdp-sector-row${isSelected ? ' cdp-sector-row--selected' : ''}`;
+        tr.dataset.hs2 = s.hs2;
         const sectorCell = this.el('td', 'cdp-sector-label');
         sectorCell.textContent = s.label;
         const flag = DEPENDENCY_FLAG_LABELS[s.dependencyFlag];
@@ -1344,11 +1364,27 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         scoreCell.style.color = scoreColor;
         tr.append(sectorCell, cpCell, scoreCell);
         tbody.append(tr);
+
+        if (isSelected) {
+          const detailRow = this.el('tr');
+          detailRow.className = 'cdp-sector-detail-row';
+          const detailCell = this.el('td');
+          detailCell.setAttribute('colspan', '3');
+          detailCell.append(this.buildRouteDetail(s));
+          detailRow.append(detailCell);
+          tbody.append(detailRow);
+        }
       }
       table.append(tbody);
+
+      tbody.addEventListener('click', (e) => {
+        const row = (e.target as HTMLElement).closest<HTMLElement>('tr.cdp-sector-row');
+        if (!row?.dataset.hs2) return;
+        this.handleSectorRowClick(row.dataset.hs2);
+      });
+
       this.tradeExposureBody.append(table);
     } else {
-      // Fallback: original chokepoint-only bars
       const sorted = [...data.exposures].sort((a, b) => b.exposureScore - a.exposureScore).slice(0, 3);
       const table = this.el('table', 'cdp-trade-exposure-table');
       const tbody = this.el('tbody');
@@ -1370,6 +1406,134 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const footer = this.el('div', 'cdp-card-footer', 'Source: Comtrade \u00B7 HS2 sectors \u00B7 Scores indicate route overlap, not share');
     this.tradeExposureBody.append(footer);
+  }
+
+  private handleSectorRowClick(hs2: string): void {
+    this.sectorBypassAbort?.abort();
+    this.sectorBypassAbort = null;
+
+    if (this.selectedSectorHs2 === hs2) {
+      this.selectedSectorHs2 = null;
+      this.map?.clearHighlightedRoute();
+      this.renderTradeExposureContent();
+      return;
+    }
+
+    if (this.isMaximizedState) this.minimize();
+
+    this.selectedSectorHs2 = hs2;
+    this.renderTradeExposureContent();
+
+    const sector = this.cachedSectors.find(s => s.hs2 === hs2);
+    if (!sector) return;
+
+    const matchingRoutes = getChokepointRoutes(sector.primaryChokepointId);
+    const matchingRouteIds = matchingRoutes.map(r => r.id);
+
+    if (matchingRouteIds.length > 0) {
+      this.map?.highlightRoute(matchingRouteIds);
+      this.map?.zoomToRoutes(matchingRouteIds);
+    }
+  }
+
+  private buildRouteDetail(sector: SectorExposureSummary): HTMLElement {
+    const wrap = this.el('div', 'cdp-route-detail');
+
+    const matchingRoutes = getChokepointRoutes(sector.primaryChokepointId);
+
+    if (matchingRoutes.length === 0) {
+      wrap.append(this.el('div', 'cdp-route-path', 'No maritime route data'));
+      return wrap;
+    }
+
+    const portMap = new Map(PORTS.map(p => [p.id, p.name]));
+    const waterwayMap = new Map(STRATEGIC_WATERWAYS.map(w => [w.id, w.name]));
+
+    const route = matchingRoutes[0]!;
+    const pathParts: string[] = [];
+    pathParts.push(portMap.get(route.from) ?? route.from);
+    for (const wp of route.waypoints) {
+      pathParts.push(waterwayMap.get(wp) ?? wp);
+    }
+    pathParts.push(portMap.get(route.to) ?? route.to);
+    const pathStr = pathParts.map(p => escapeHtml(p)).join(' \u2192 ');
+
+    const pathEl = this.el('div', 'cdp-route-path');
+    pathEl.innerHTML = pathStr;
+    wrap.append(pathEl);
+
+    const statsEl = this.el('div', 'cdp-route-stats');
+    const distEl = this.el('div');
+    distEl.innerHTML = `Distance: <span>\u2014</span>`;
+    const transitEl = this.el('div');
+    transitEl.innerHTML = `Transit: <span>\u2014</span>`;
+    const riskEl = this.el('div');
+    const riskScore = sector.exposureScore;
+    const riskColor = riskScore >= 70 ? '#ef4444' : riskScore > 30 ? '#f59e0b' : '#94a3b8';
+    riskEl.innerHTML = `Chokepoint Risk: <span style="color:${riskColor}">${riskScore.toFixed(0)}/100</span>`;
+    const routeCountEl = this.el('div');
+    routeCountEl.innerHTML = `Routes via chokepoint: <span>${matchingRoutes.length}</span>`;
+    statsEl.append(distEl, transitEl, riskEl, routeCountEl);
+    wrap.append(statsEl);
+
+    const bypassSection = this.el('div', 'cdp-bypass-section');
+    const bypassHeading = this.el('div', 'cdp-bypass-heading', 'Bypass Options');
+    bypassSection.append(bypassHeading);
+    const bypassContent = this.el('div');
+
+    const isPro = hasPremiumAccess(getAuthState());
+    if (!isPro) {
+      bypassContent.append(this.makeProLocked('Bypass corridors available with PRO'));
+      trackGateHit('sector-bypass-corridors');
+    } else {
+      bypassContent.append(this.makeLoading('Loading bypass options\u2026'));
+      this.sectorBypassAbort = new AbortController();
+      const signal = this.sectorBypassAbort.signal;
+      void fetchBypassOptions(sector.primaryChokepointId, 'container', 100).then(resp => {
+        if (signal.aborted) return;
+        bypassContent.replaceChildren();
+        const top3 = resp.options.slice(0, 3);
+        if (top3.length === 0) {
+          bypassContent.append(this.el('div', 'cdp-route-path', 'No bypass options available'));
+          return;
+        }
+        const tbl = this.el('table', 'cdp-trade-exposure-table');
+        const tHead = this.el('thead');
+        const hRow = this.el('tr');
+        hRow.append(this.el('th', '', 'Corridor'), this.el('th', '', '+Days'), this.el('th', '', '+Cost'), this.el('th', '', 'Risk'));
+        tHead.append(hRow);
+        tbl.append(tHead);
+        const tBody = this.el('tbody');
+        const riskTierMap: Record<string, string> = {
+          WAR_RISK_TIER_UNSPECIFIED: 'Normal',
+          WAR_RISK_TIER_WAR_ZONE: 'War Zone',
+          WAR_RISK_TIER_CRITICAL: 'Critical',
+          WAR_RISK_TIER_HIGH: 'High',
+          WAR_RISK_TIER_ELEVATED: 'Elevated',
+          WAR_RISK_TIER_NORMAL: 'Normal',
+        };
+        for (const opt of top3) {
+          const r = this.el('tr');
+          r.append(
+            this.el('td', '', opt.name),
+            this.el('td', '', opt.addedTransitDays > 0 ? `+${opt.addedTransitDays}d` : '\u2014'),
+            this.el('td', '', opt.addedCostMultiplier > 1 ? `+${((opt.addedCostMultiplier - 1) * 100).toFixed(0)}%` : '\u2014'),
+            this.el('td', '', riskTierMap[opt.bypassWarRiskTier] ?? opt.bypassWarRiskTier),
+          );
+          tBody.append(r);
+        }
+        tbl.append(tBody);
+        bypassContent.append(tbl);
+      }).catch(() => {
+        if (signal.aborted) return;
+        bypassContent.replaceChildren();
+        bypassContent.append(this.el('div', 'cdp-route-path', 'Bypass data unavailable'));
+      });
+    }
+
+    bypassSection.append(bypassContent);
+    wrap.append(bypassSection);
+    return wrap;
   }
 
   private factItem(label: string, value: string): HTMLElement {
@@ -1674,6 +1838,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   private resetPanelContent(): void {
     this.destroyResilienceWidget();
+    this.selectedSectorHs2 = null;
+    this.sectorBypassAbort?.abort();
+    this.sectorBypassAbort = null;
+    this.cachedTradeExposureData = null;
+    this.cachedSectors = [];
+    this.map?.clearHighlightedRoute();
     this.scoreCard = null;
     this.energyBody = null;
     this.maritimeBody = null;

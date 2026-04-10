@@ -972,6 +972,20 @@ export class MapContainer {
     }
   }
 
+  // ─── Route Highlight ─────────────────────────────────────────────────────────
+
+  public highlightRoute(routeIds: string[]): void {
+    this.deckGLMap?.highlightRoute(routeIds);
+  }
+
+  public clearHighlightedRoute(): void {
+    this.deckGLMap?.clearHighlightedRoute();
+  }
+
+  public zoomToRoutes(routeIds: string[]): void {
+    this.deckGLMap?.zoomToRoutes(routeIds);
+  }
+
   // ─── Scenario Engine ─────────────────────────────────────────────────────────
 
   public setSupplyChainPanel(panel: import('@/components/SupplyChainPanel').SupplyChainPanel): void {

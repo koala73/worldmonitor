@@ -443,6 +443,7 @@ export class DeckGLMap {
   private tradeAnimationFrame: number | null = null;
   private tradeAnimationFrameCount = 0;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
+  private highlightedRouteIds: Set<string> = new Set();
   private scenarioState: ScenarioVisualState | null = null;
   private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
@@ -5060,15 +5061,30 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
+    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlIds = this.highlightedRouteIds;
+
+    const dimColor = (c: [number, number, number, number]): [number, number, number, number] =>
+      [c[0], c[1], c[2], 40];
+
     const getColor = (d: TradeRouteSegment): [number, number, number, number] => {
+      let base: [number, number, number, number];
       if (scenarioDisrupted && scenarioDisrupted.size > 0) {
         const waypoints = ROUTE_WAYPOINTS_MAP.get(d.routeId);
         if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
-          return scenario;
+          base = scenario;
+        } else if (!hasPremiumAccess(getAuthState())) {
+          base = active;
+        } else {
+          base = colorFor(d.status);
         }
+      } else if (!hasPremiumAccess(getAuthState())) {
+        base = active;
+      } else {
+        base = colorFor(d.status);
       }
-      if (!hasPremiumAccess(getAuthState())) return active;  // free users: always blue
-      return colorFor(d.status);
+      if (hlActive && !hlIds.has(d.routeId)) return dimColor(base);
+      return base;
     };
 
     return new ArcLayer<TradeRouteSegment>({
@@ -5078,9 +5094,12 @@ export class DeckGLMap {
       getTargetPosition: (d) => d.targetPosition,
       getSourceColor: getColor,
       getTargetColor: getColor,
-      getWidth: (d) => d.category === 'energy' ? 3 : 2,
+      getWidth: (d) => {
+        if (hlActive && hlIds.has(d.routeId)) return 6;
+        return d.category === 'energy' ? 3 : 2;
+      },
       widthMinPixels: 1,
-      widthMaxPixels: 6,
+      widthMaxPixels: 8,
       greatCircle: true,
       pickable: true,
     });
@@ -5098,15 +5117,27 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
+    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlIds = this.highlightedRouteIds;
+
     const colorForRoute = (routeId: string, status: string): [number, number, number, number] => {
+      let base: [number, number, number, number];
       if (scenarioDisrupted && scenarioDisrupted.size > 0) {
         const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
         if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
-          return scenarioColor;
+          base = scenarioColor;
+        } else if (!isPremium) {
+          base = activeColor;
+        } else {
+          base = status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
         }
+      } else if (!isPremium) {
+        base = activeColor;
+      } else {
+        base = status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
       }
-      if (!isPremium) return activeColor;
-      return status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
+      if (hlActive && !hlIds.has(routeId)) return [base[0], base[1], base[2], 40];
+      return base;
     };
 
     const widthFor = (category: string): number =>
@@ -5619,6 +5650,45 @@ export class DeckGLMap {
     this.affectedIso2Set = new Set(state?.affectedIso2s ?? []);
     this.buildTradeTrips();
     this.render();
+  }
+
+  public highlightRoute(routeIds: string[]): void {
+    this.highlightedRouteIds = new Set(routeIds);
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  public clearHighlightedRoute(): void {
+    if (this.highlightedRouteIds.size === 0) return;
+    this.highlightedRouteIds.clear();
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  public zoomToRoutes(routeIds: string[]): void {
+    if (!this.maplibreMap || routeIds.length === 0) return;
+    const ids = new Set(routeIds);
+    let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+    let found = false;
+    for (const seg of this.tradeRouteSegments) {
+      if (!ids.has(seg.routeId)) continue;
+      found = true;
+      const [sLng, sLat] = seg.sourcePosition;
+      const [tLng, tLat] = seg.targetPosition;
+      if (sLng < minLng) minLng = sLng;
+      if (sLng > maxLng) maxLng = sLng;
+      if (sLat < minLat) minLat = sLat;
+      if (sLat > maxLat) maxLat = sLat;
+      if (tLng < minLng) minLng = tLng;
+      if (tLng > maxLng) maxLng = tLng;
+      if (tLat < minLat) minLat = tLat;
+      if (tLat > maxLat) maxLat = tLat;
+    }
+    if (!found) return;
+    this.maplibreMap.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+      padding: 60,
+      duration: 1000,
+    });
   }
 
   public setHappinessScores(data: HappinessData): void {

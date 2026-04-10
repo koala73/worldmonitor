@@ -1249,3 +1249,48 @@
   border-radius: 4px;
   font-size: 10px;
 }
+
+.cdp-trade-exposure-table tbody tr.cdp-sector-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cdp-trade-exposure-table tbody tr.cdp-sector-row:hover {
+  background: rgba(100, 160, 255, 0.06);
+}
+.cdp-trade-exposure-table tbody tr.cdp-sector-row--selected {
+  background: rgba(100, 160, 255, 0.1);
+}
+.cdp-route-detail {
+  padding: 10px 0;
+  border-top: 1px solid rgba(100, 116, 139, 0.12);
+}
+.cdp-route-path {
+  font-size: 12px;
+  color: #e2e8f0;
+  font-family: var(--mono-font, 'JetBrains Mono', monospace);
+  padding: 6px 8px;
+  background: rgba(100, 116, 139, 0.06);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.cdp-route-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 10px;
+}
+.cdp-route-stats span { color: #e2e8f0; font-weight: 500; }
+.cdp-bypass-heading {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.cdp-sector-detail-row td {
+  padding: 0 4px 8px;
+}
