@@ -48,6 +48,9 @@ import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
+
+export type { ScenarioVisualState, ScenarioResult };
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -963,6 +966,33 @@ export class MapContainer {
     if (this.useDeckGL) {
       this.deckGLMap?.setRenderPaused(paused);
     }
+  }
+
+  // ─── Scenario Engine ─────────────────────────────────────────────────────────
+
+  /**
+   * Activate a scenario across all active renderers.
+   * PRO-gated — free users trigger `trackGateHit('scenario')` only.
+   *
+   * @param scenarioId  Template ID from scenario-templates.ts
+   * @param result      Computed result from the scenario worker
+   */
+  public activateScenario(scenarioId: string, result: ScenarioResult): void {
+    const state: ScenarioVisualState = {
+      scenarioId,
+      disruptedChokepointIds: result.affectedChokepointIds,
+      affectedIso2s: result.topImpactCountries.map((c: { iso2: string }) => c.iso2),
+    };
+    // DeckGL is the primary renderer for scenario visuals.
+    // Globe and SVG support is deferred to Sprint D.
+    this.deckGLMap?.setScenarioState(state);
+  }
+
+  /**
+   * Deactivate the current scenario and restore normal visual state.
+   */
+  public deactivateScenario(): void {
+    this.deckGLMap?.setScenarioState(null);
   }
 
   // Utility methods

@@ -96,6 +96,7 @@ import {
 } from '@/config';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
+import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -392,6 +393,7 @@ export class DeckGLMap {
   private radiationObservations: RadiationObservation[] = [];
   private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
+  private scenarioState: ScenarioVisualState | null = null;
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
   private imageryScenes: ImageryScene[] = [];
@@ -4960,16 +4962,32 @@ export class DeckGLMap {
     const active: [number, number, number, number] = getCurrentTheme() === 'light' ? [30, 100, 180, 200] : [100, 200, 255, 160];
     const disrupted: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 40, 40, 220] : [255, 80, 80, 200];
     const highRisk: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 140, 20, 200] : [255, 180, 50, 180];
+    const scenario: [number, number, number, number] = getCurrentTheme() === 'light' ? [220, 100, 20, 230] : [255, 140, 50, 210];
     const colorFor = (status: string): [number, number, number, number] =>
       status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
+
+    // When a scenario is active, override colors for routes that transit disrupted chokepoints
+    const scenarioDisrupted = this.scenarioState
+      ? new Set(this.scenarioState.disruptedChokepointIds)
+      : null;
+
+    const getColor = (d: TradeRouteSegment): [number, number, number, number] => {
+      if (scenarioDisrupted && scenarioDisrupted.size > 0) {
+        const route = TRADE_ROUTES_LIST.find(r => r.id === d.routeId);
+        if (route && route.waypoints.some(wp => scenarioDisrupted.has(wp))) {
+          return scenario;
+        }
+      }
+      return colorFor(d.status);
+    };
 
     return new ArcLayer<TradeRouteSegment>({
       id: 'trade-routes-layer',
       data: this.tradeRouteSegments,
       getSourcePosition: (d) => d.sourcePosition,
       getTargetPosition: (d) => d.targetPosition,
-      getSourceColor: (d) => colorFor(d.status),
-      getTargetColor: (d) => colorFor(d.status),
+      getSourceColor: getColor,
+      getTargetColor: getColor,
       getWidth: (d) => d.category === 'energy' ? 3 : 2,
       widthMinPixels: 1,
       widthMaxPixels: 6,
@@ -5371,6 +5389,16 @@ export class DeckGLMap {
 
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
     this.popup.setChokepointData(data);
+  }
+
+  /**
+   * Activate or deactivate a scenario visual overlay.
+   * When active, trade route arcs transiting disrupted chokepoints shift to
+   * an orange scenario color. Pass null to restore normal colors.
+   */
+  public setScenarioState(state: ScenarioVisualState | null): void {
+    this.scenarioState = state;
+    this.render();
   }
 
   public setHappinessScores(data: HappinessData): void {
