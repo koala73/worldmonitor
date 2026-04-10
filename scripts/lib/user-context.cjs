@@ -13,10 +13,13 @@ const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
  * @param {string} variant
  * @returns {Promise<Record<string, unknown> | null>}
  */
+/**
+ * @returns {{ data: object|null, error: boolean }} data=null + error=false means no prefs saved; error=true means transient failure
+ */
 async function fetchUserPreferences(userId, variant) {
   if (!CONVEX_SITE_URL || !RELAY_SECRET) {
     console.warn('[user-context] CONVEX_SITE_URL or RELAY_SHARED_SECRET not set');
-    return null;
+    return { data: null, error: true };
   }
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/relay/user-preferences`, {
@@ -31,12 +34,13 @@ async function fetchUserPreferences(userId, variant) {
     });
     if (!res.ok) {
       console.warn(`[user-context] fetchUserPreferences: ${res.status}`);
-      return null;
+      return { data: null, error: true };
     }
-    return await res.json();
+    const data = await res.json();
+    return { data, error: false };
   } catch (err) {
     console.warn(`[user-context] fetchUserPreferences failed: ${err.message}`);
-    return null;
+    return { data: null, error: true };
   }
 }
 

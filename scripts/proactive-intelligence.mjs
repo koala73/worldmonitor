@@ -465,9 +465,14 @@ async function main() {
       continue;
     }
 
-    const prefs = await fetchUserPreferences(rule.userId, variant);
+    const { data: prefs, error: prefsFetchError } = await fetchUserPreferences(rule.userId, variant);
+    if (prefsFetchError) {
+      console.warn(`[proactive] Prefs fetch failed for ${rule.userId} — retrying next run`);
+      continue;
+    }
     if (!prefs) {
-      console.log(`[proactive] No preferences for ${rule.userId} — retrying next run`);
+      console.log(`[proactive] No saved preferences for ${rule.userId} — skipping`);
+      await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
       continue;
     }
 

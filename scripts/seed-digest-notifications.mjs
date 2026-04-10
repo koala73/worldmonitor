@@ -444,7 +444,7 @@ async function generateAISummary(stories, rule) {
   if (!AI_DIGEST_ENABLED) return null;
   if (!stories || stories.length === 0) return null;
 
-  const prefs = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
+  const { data: prefs } = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
   if (!prefs) {
     console.log(`[digest] No preferences for ${rule.userId} — skipping AI summary`);
     return null;
