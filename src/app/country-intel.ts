@@ -48,7 +48,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToUnCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import { fetchCountryChokepointIndex } from '@/services/supply-chain';
+import { fetchCountryChokepointIndex, fetchMultiSectorExposure } from '@/services/supply-chain';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -403,11 +403,23 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
       });
 
-    // hs2='27' (mineral fuels) is the default; omit explicit arg to use the function default
-    fetchCountryChokepointIndex(code)
-      .then((result) => {
+    // Fetch multi-sector exposure (all 10 seeded HS2 codes in parallel)
+    fetchMultiSectorExposure(code)
+      .then((sectors) => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateTradeExposure?.(result);
+        // Pass the original single-sector result for backward compat, plus the multi-sector data
+        if (sectors.length === 0) {
+          this.ctx.countryBriefPage.updateTradeExposure?.(null);
+        } else {
+          // Build a compat response from the energy sector (hs2=27) or first available
+          const energySector = sectors.find(s => s.hs2 === '27');
+          fetchCountryChokepointIndex(code, energySector ? '27' : sectors[0]!.hs2)
+            .then(result => {
+              if (this.ctx.countryBriefPage?.getCode() !== code) return;
+              this.ctx.countryBriefPage.updateTradeExposure?.(result, sectors);
+            })
+            .catch(() => this.ctx.countryBriefPage?.updateTradeExposure?.(null));
+        }
       })
       .catch(() => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;

@@ -14,6 +14,7 @@
 .sc-war-risk-badge--normal { background: rgba(100,116,139,0.1); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
 
 .sc-bypass-section { margin-top: 10px; }
+.sc-bypass-heading { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .sc-bypass-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .sc-bypass-table th { color: #64748b; font-weight: 500; padding: 4px 6px; text-align: left; border-bottom: 1px solid rgba(100,116,139,0.15); }
 .sc-bypass-table td { padding: 4px 6px; border-bottom: 1px solid rgba(100,116,139,0.08); }

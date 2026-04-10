@@ -1108,11 +1108,21 @@
 .cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: 0.65rem; }
 
 .cdp-vuln-index { font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
+.cdp-section-sublabel { font-size: 10px; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
 .cdp-trade-exposure-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
-.cdp-chokepoint-name { color: #cbd5e1; padding: 3px 0; width: 45%; }
+.cdp-trade-exposure-table th { color: #64748b; font-weight: 500; padding: 3px 0; text-align: left; border-bottom: 1px solid rgba(100,116,139,0.15); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.cdp-trade-exposure-table th.cdp-exposure-score-header { text-align: right; }
+.cdp-chokepoint-name { color: #cbd5e1; padding: 3px 0; }
+.cdp-sector-label { color: #e2e8f0; padding: 3px 0; font-weight: 500; }
+.cdp-exposure-score { text-align: right; padding: 3px 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cdp-trade-exposure-table tbody tr { border-bottom: 1px solid rgba(100,116,139,0.08); }
 .cdp-exposure-bar-wrap { width: 40%; padding: 3px 6px; }
 .cdp-exposure-bar { height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 3px; min-width: 2px; }
 .cdp-exposure-pct { color: #64748b; text-align: right; font-size: 11px; white-space: nowrap; }
+.cdp-dep-badge { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; font-weight: 600; vertical-align: middle; letter-spacing: 0.02em; }
+.cdp-dep-critical { background: rgba(220,38,38,0.12); color: #f87171; }
+.cdp-dep-compound { background: rgba(220,38,38,0.18); color: #ef4444; }
+.cdp-dep-ok { background: rgba(34,197,94,0.12); color: #4ade80; }
 .cdp-card-footer { font-size: 10px; color: #475569; margin-top: 6px; }
 
 .cdp-pro-locked {

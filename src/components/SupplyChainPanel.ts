@@ -52,6 +52,7 @@ export class SupplyChainPanel extends Panel {
         }
         return;
       }
+      if ((e.target as HTMLElement).closest('.sc-scenario-trigger')) return;
       const card = (e.target as HTMLElement).closest('.trade-restriction-card') as HTMLElement | null;
       if (card?.dataset.cpId) {
         const newId = this.expandedChokepoint === card.dataset.cpId ? null : card.dataset.cpId;
@@ -319,7 +320,7 @@ export class SupplyChainPanel extends Panel {
         const warRiskBadge = `<span class="sc-war-risk-badge sc-war-risk-badge--${tierClass[tier] ?? 'normal'}">${tierLabel[tier] ?? 'Normal'}</span>`;
 
         const bypassSection = expanded
-          ? `<div class="sc-bypass-section" data-bypass-cp="${escapeHtml(cp.id)}"><div class="sc-bypass-loading">Loading bypass options\u2026</div></div>`
+          ? `<div class="sc-bypass-section" data-bypass-cp="${escapeHtml(cp.id)}"><div class="sc-bypass-heading">Bypass Options</div><div class="sc-bypass-loading">Loading bypass options\u2026</div></div>`
           : '';
 
         const scenarioSection = expanded ? (() => {

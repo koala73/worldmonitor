@@ -26,7 +26,7 @@ import type {
   CountryEnergyProfileData,
   CountryPortActivityData,
 } from './CountryBriefPanel';
-import type { GetCountryChokepointIndexResponse } from '@/services/supply-chain';
+import type { GetCountryChokepointIndexResponse, SectorExposureSummary } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 import { toApiUrl } from '@/services/runtime';
@@ -1290,7 +1290,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
   }
 
-  public updateTradeExposure(data: GetCountryChokepointIndexResponse | null): void {
+  public updateTradeExposure(data: GetCountryChokepointIndexResponse | null, sectors?: SectorExposureSummary[]): void {
     if (!this.tradeExposureBody) return;
 
     if (data == null || data.exposures.length === 0) {
@@ -1301,28 +1301,74 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     this.tradeExposureBody.replaceChildren();
 
+    // Vulnerability index header
     const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${Math.round(data.vulnerabilityIndex)}/100`);
     this.tradeExposureBody.append(vulnDiv);
 
-    const sorted = [...data.exposures].sort((a, b) => b.exposureScore - a.exposureScore).slice(0, 3);
-    const table = this.el('table', 'cdp-trade-exposure-table');
-    const tbody = this.el('tbody');
-    for (const entry of sorted) {
-      const tr = this.el('tr');
-      const nameCell = this.el('td', 'cdp-chokepoint-name');
-      nameCell.textContent = entry.chokepointName || entry.chokepointId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      const barWrap = this.el('td', 'cdp-exposure-bar-wrap');
-      const bar = this.el('div', 'cdp-exposure-bar');
-      bar.style.width = `${Math.min(entry.exposureScore, 100)}%`;
-      barWrap.append(bar);
-      const pctCell = this.el('td', 'cdp-exposure-pct', `${entry.exposureScore.toFixed(1)}%`);
-      tr.append(nameCell, barWrap, pctCell);
-      tbody.append(tr);
-    }
-    table.append(tbody);
-    this.tradeExposureBody.append(table);
+    // Sector-by-chokepoint matrix (if multi-sector data available)
+    if (sectors && sectors.length > 0) {
+      const sectorLabel = this.el('div', 'cdp-section-sublabel', 'Sector exposure by primary chokepoint');
+      this.tradeExposureBody.append(sectorLabel);
 
-    const footer = this.el('div', 'cdp-card-footer', 'Source: Comtrade \u00B7 HS2 sectors');
+      const table = this.el('table', 'cdp-trade-exposure-table');
+      const thead = this.el('thead');
+      const headerRow = this.el('tr');
+      headerRow.append(this.el('th', '', 'Sector'));
+      headerRow.append(this.el('th', '', 'Chokepoint'));
+      headerRow.append(this.el('th', 'cdp-exposure-score-header', 'Risk'));
+      thead.append(headerRow);
+      table.append(thead);
+
+      const FLAG_LABELS: Record<string, { text: string; cls: string }> = {
+        SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
+        SINGLE_CORRIDOR_CRITICAL: { text: 'Single Corridor', cls: 'cdp-dep-critical' },
+        COMPOUND_RISK:            { text: 'Compound Risk',   cls: 'cdp-dep-compound' },
+        DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
+      };
+
+      const tbody = this.el('tbody');
+      for (const s of sectors.slice(0, 10)) {
+        const tr = this.el('tr');
+        const sectorCell = this.el('td', 'cdp-sector-label');
+        sectorCell.textContent = s.label;
+        const flag = FLAG_LABELS[s.dependencyFlag];
+        if (flag) {
+          const badge = this.el('span', `cdp-dep-badge ${flag.cls}`, flag.text);
+          sectorCell.append(document.createTextNode(' '), badge);
+        }
+        const cpCell = this.el('td', 'cdp-chokepoint-name');
+        cpCell.textContent = s.primaryChokepointName;
+        const scoreCell = this.el('td', 'cdp-exposure-score');
+        const scoreColor = s.exposureScore >= 70 ? 'var(--danger, #ef4444)' : s.exposureScore > 30 ? 'var(--warning, #f59e0b)' : 'var(--text-muted, #64748b)';
+        scoreCell.textContent = `${s.exposureScore.toFixed(0)}`;
+        scoreCell.style.color = scoreColor;
+        tr.append(sectorCell, cpCell, scoreCell);
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      this.tradeExposureBody.append(table);
+    } else {
+      // Fallback: original chokepoint-only bars
+      const sorted = [...data.exposures].sort((a, b) => b.exposureScore - a.exposureScore).slice(0, 3);
+      const table = this.el('table', 'cdp-trade-exposure-table');
+      const tbody = this.el('tbody');
+      for (const entry of sorted) {
+        const tr = this.el('tr');
+        const nameCell = this.el('td', 'cdp-chokepoint-name');
+        nameCell.textContent = entry.chokepointName || entry.chokepointId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const barWrap = this.el('td', 'cdp-exposure-bar-wrap');
+        const bar = this.el('div', 'cdp-exposure-bar');
+        bar.style.width = `${Math.min(entry.exposureScore, 100)}%`;
+        barWrap.append(bar);
+        const pctCell = this.el('td', 'cdp-exposure-pct', `${entry.exposureScore.toFixed(1)}`);
+        tr.append(nameCell, barWrap, pctCell);
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      this.tradeExposureBody.append(table);
+    }
+
+    const footer = this.el('div', 'cdp-card-footer', 'Source: Comtrade \u00B7 HS2 sectors \u00B7 Scores indicate route overlap, not share');
     this.tradeExposureBody.append(footer);
   }
 

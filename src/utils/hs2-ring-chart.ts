@@ -10,11 +10,11 @@ export class HS2RingChart {
 
     const total = sectors.reduce((s, e) => s + e.share, 0) || 1;
 
-    const size = 110;
+    const size = 80;
     const cx = size / 2;
     const cy = size / 2;
-    const r = 42;
-    const innerR = 24;
+    const r = 34;
+    const innerR = 18;
 
     const dpr = window.devicePixelRatio || 1;
     const canvas = document.createElement('canvas');

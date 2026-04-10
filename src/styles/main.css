@@ -7237,18 +7237,20 @@ a.prediction-link:hover {
 
 .popup-hs2-ring-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  gap: 12px;
   padding: 6px 0;
 }
 
 .popup-hs2-ring-canvas {
   display: block;
+  flex-shrink: 0;
 }
 
 .popup-hs2-ring-legend {
-  width: 100%;
-  margin-top: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
 .popup-hs2-ring-legend-item {
@@ -7277,6 +7279,32 @@ a.prediction-link:hover {
 .popup-hs2-ring-pct {
   color: var(--text-muted, #64748b);
   font-size: 10px;
+}
+
+.sector-ring-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.sector-legend {
+  font-size: 11px;
+  color: var(--text-secondary, #cbd5e1);
+  line-height: 1.6;
+}
+
+.sector-legend-item {
+  white-space: nowrap;
+}
+
+.sector-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
 }
 
 /* Collapsible sections */

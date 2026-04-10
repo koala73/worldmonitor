@@ -53,7 +53,7 @@ function renderSectorRing(sectors: Array<{ label: string; share: number; color: 
     cumulativeOffset += dash;
     return segment;
   });
-  const legend = sectors.map(s => `<span class="sector-legend-item"><span class="sector-dot" style="background:${s.color}"></span>${escapeHtml(s.label)}&nbsp;${s.share}%</span>`).join('');
+  const legend = sectors.map(s => `<span class="sector-legend-item"><span class="sector-dot" style="background:${s.color}"></span>${escapeHtml(s.label)}&nbsp;${s.share}%</span>`).join(' \u00B7 ');
   return `
     <div class="sector-ring-wrap">
       <svg width="72" height="72" viewBox="0 0 72 72" style="transform:rotate(-90deg)">${segments.join('')}</svg>
@@ -1297,8 +1297,8 @@ export class MapPopup {
     const isPro = hasPremiumAccess(getAuthState());
     const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
 
-    // Sector mix is always visible (static data, drives engagement)
-    const sectorSection = sectors
+    // Sector mix: only show the compact SVG ring for free users (PRO users get the full HS2RingChart below)
+    const sectorSection = (sectors && !isPro)
       ? `<div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
          ${renderSectorRing(sectors)}`
       : '';

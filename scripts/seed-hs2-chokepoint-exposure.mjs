@@ -25,8 +25,19 @@ export const TTL_SECONDS = 172800; // 48h — 2× daily cron interval
 const LOCK_DOMAIN = 'supply_chain:chokepoint-exposure';
 const LOCK_TTL_MS = 5 * 60 * 1000;
 
-// HS2 chapters to pre-seed. '27' = energy/mineral fuels (primary use case).
-const HS2_CODES = ['27'];
+// Top 10 HS2 chapters by global trade volume and strategic importance.
+const HS2_CODES = [
+  '27', // Mineral Fuels (energy)
+  '84', // Machinery & Mechanical Appliances
+  '85', // Electrical Machinery & Electronics
+  '87', // Vehicles
+  '30', // Pharmaceuticals
+  '72', // Iron & Steel
+  '39', // Plastics
+  '29', // Organic Chemicals
+  '10', // Cereals (food security)
+  '62', // Apparel (textiles)
+];
 
 // Lightweight copy of the chokepoint registry fields needed for exposure computation.
 // Kept in sync with src/config/chokepoint-registry.ts — update both together.

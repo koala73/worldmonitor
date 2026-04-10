@@ -5442,7 +5442,7 @@ export class DeckGLMap {
     this.tradeRouteSegments = initialSegments.map(seg => {
       const waypoints = ROUTE_WAYPOINTS_MAP.get(seg.routeId) ?? [];
       const maxScore = waypoints.reduce((max, id) => Math.max(max, scoreMap.get(id) ?? 0), 0);
-      const status: TradeRouteStatus = maxScore > 70 ? 'disrupted' : maxScore > 30 ? 'high_risk' : 'active';
+      const status: TradeRouteStatus = maxScore >= 70 ? 'disrupted' : maxScore > 30 ? 'high_risk' : 'active';
       return { ...seg, status };
     });
     this.render();

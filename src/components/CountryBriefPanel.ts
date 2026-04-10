@@ -2,7 +2,7 @@ import type { CountryBriefSignals } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
-import type { GetCountryChokepointIndexResponse } from '@/services/supply-chain';
+import type { GetCountryChokepointIndexResponse, SectorExposureSummary } from '@/services/supply-chain';
 
 export interface CountryIntelData {
   brief: string;
@@ -183,7 +183,7 @@ export interface CountryBriefPanel {
   updateCountryFacts?(data: CountryFactsData): void;
   updateEnergyProfile?(data: CountryEnergyProfileData): void;
   updateMaritimeActivity?(data: CountryPortActivityData): void;
-  updateTradeExposure?(data: GetCountryChokepointIndexResponse | null): void;
+  updateTradeExposure?(data: GetCountryChokepointIndexResponse | null, sectors?: SectorExposureSummary[]): void;
   maximize?(): void;
   minimize?(): void;
   getIsMaximized?(): boolean;
