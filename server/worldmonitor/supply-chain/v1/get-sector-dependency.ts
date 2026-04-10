@@ -8,8 +8,8 @@ import type {
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { SECTOR_DEPENDENCY_KEY } from '../../../_shared/cache-keys';
-import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
-import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../../src/config/bypass-corridors';
+import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
+import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../_shared/bypass-corridors';
 import { ISO2_TO_COMTRADE } from '../../intelligence/v1/_comtrade-reporters';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 

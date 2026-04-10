@@ -7,8 +7,14 @@
  *
  * Security:
  * - X-WorldMonitor-Key required (forceKey: true)
- * - SSRF prevention: callbackUrl hostname is validated against private IP ranges
+ * - SSRF prevention: callbackUrl hostname is validated against private IP ranges.
+ *   LIMITATION: DNS rebinding is not mitigated in the edge runtime (no DNS resolution
+ *   at registration time). The delivery worker MUST resolve the URL before sending and
+ *   re-check it against PRIVATE_HOSTNAME_PATTERNS. HTTPS-only is required to limit
+ *   exposure (TLS certs cannot be issued for private IPs via public CAs).
  * - HMAC signatures: webhook deliveries include X-WM-Signature: sha256=<HMAC-SHA256(payload, secret)>
+ * - Ownership: SHA-256 of the caller's API key is stored as ownerTag; an owner index (Redis Set)
+ *   enables list queries without a full scan.
  */
 
 export const config = { runtime: 'edge' };
@@ -18,24 +24,41 @@ import { validateApiKey } from '../../_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from '../../_cors.js';
 import { isCallerPremium } from '../../../server/_shared/premium-check';
-import { getCachedJson, setCachedJson } from '../../../server/_shared/redis';
+import { getCachedJson, setCachedJson, runRedisPipeline } from '../../../server/_shared/redis';
 import { CHOKEPOINT_REGISTRY } from '../../../server/_shared/chokepoint-registry';
 
 const WEBHOOK_TTL = 86400 * 30; // 30 days
 const VALID_CHOKEPOINT_IDS = new Set(CHOKEPOINT_REGISTRY.map(c => c.id));
 
-// Private IP ranges that should never receive webhook deliveries (SSRF prevention).
+// Private IP ranges + known cloud metadata hostnames blocked at registration.
+// NOTE: DNS rebinding bypass is not mitigated here (no DNS resolution in edge runtime).
+// The delivery worker must re-validate the resolved IP before sending.
 const PRIVATE_HOSTNAME_PATTERNS = [
   /^localhost$/i,
   /^127\.\d+\.\d+\.\d+$/,
   /^10\.\d+\.\d+\.\d+$/,
   /^192\.168\.\d+\.\d+$/,
   /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
-  /^169\.254\.\d+\.\d+$/,   // link-local + AWS/GCP metadata
-  /^fd00:/i,                 // IPv6 ULA
+  /^169\.254\.\d+\.\d+$/,   // link-local + AWS/GCP/Azure IMDS
+  /^fd[0-9a-f]{2}:/i,       // IPv6 ULA (fd00::/8)
+  /^fe80:/i,                 // IPv6 link-local
   /^::1$/,                   // IPv6 loopback
   /^0\.0\.0\.0$/,
+  /^0\.\d+\.\d+\.\d+$/,     // RFC 1122 "this network"
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+$/,  // RFC 6598 shared address
 ];
+
+// Known cloud metadata endpoints that must be blocked explicitly even if the
+// IP regex above misses a future alias or IPv6 variant.
+const BLOCKED_METADATA_HOSTNAMES = new Set([
+  '169.254.169.254',          // AWS/Azure/GCP IMDS (IPv4)
+  'metadata.google.internal', // GCP metadata server
+  'metadata.internal',        // GCP alternative alias
+  'instance-data',            // OpenStack metadata
+  'metadata',                 // generic cloud metadata alias
+  'computemetadata',          // GCP legacy
+  'link-local.s3.amazonaws.com',
+]);
 
 function isBlockedCallbackUrl(rawUrl: string): string | null {
   let parsed: URL;
@@ -45,14 +68,15 @@ function isBlockedCallbackUrl(rawUrl: string): string | null {
     return 'callbackUrl is not a valid URL';
   }
 
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return 'callbackUrl must use http or https';
+  // HTTPS is required — TLS certs cannot be issued for private IPs via public CAs,
+  // which prevents the most common DNS-rebinding variant in practice.
+  if (parsed.protocol !== 'https:') {
+    return 'callbackUrl must use https';
   }
 
-  const hostname = parsed.hostname;
+  const hostname = parsed.hostname.toLowerCase();
 
-  // Block known metadata endpoints explicitly
-  if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
+  if (BLOCKED_METADATA_HOSTNAMES.has(hostname)) {
     return 'callbackUrl hostname is a blocked metadata endpoint';
   }
 
@@ -81,16 +105,22 @@ function webhookKey(subscriberId: string): string {
   return `webhook:sub:${subscriberId}:v1`;
 }
 
-/** Stable identifier for the caller derived from their API key. Not secret. */
-function callerFingerprint(req: Request): string {
+function ownerIndexKey(ownerHash: string): string {
+  return `webhook:owner:${ownerHash}:v1`;
+}
+
+/** SHA-256 hash of the caller's API key — used as ownerTag and owner index key. Never secret. */
+async function callerFingerprint(req: Request): Promise<string> {
   const key = req.headers.get('X-WorldMonitor-Key') ?? '';
-  // Use last 12 chars of the key as a non-secret owner tag. Full key is never stored.
-  return key.length >= 12 ? key.slice(-12) : key || 'anon';
+  if (!key) return 'anon';
+  const encoded = new TextEncoder().encode(key);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 interface WebhookRecord {
   subscriberId: string;
-  ownerTag: string;      // last-12 chars of the registrant's API key for ownership checks
+  ownerTag: string;      // SHA-256 hash of the registrant's API key for ownership checks
   callbackUrl: string;
   chokepointIds: string[];
   alertThreshold: number;
@@ -177,12 +207,13 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
+    const ownerTag = await callerFingerprint(req);
     const newSubscriberId = generateSubscriberId();
     const secret = await generateSecret();
 
     const record: WebhookRecord = {
       subscriberId: newSubscriberId,
-      ownerTag: callerFingerprint(req),
+      ownerTag,
       callbackUrl,
       chokepointIds: chokepointIds.length ? chokepointIds : [...VALID_CHOKEPOINT_IDS],
       alertThreshold,
@@ -191,7 +222,13 @@ export default async function handler(req: Request): Promise<Response> {
       secret, // persisted so delivery workers can compute HMAC signatures
     };
 
-    await setCachedJson(webhookKey(newSubscriberId), record, WEBHOOK_TTL);
+    // Persist record + update owner index (Redis Set) atomically via pipeline.
+    // raw = false so all keys are prefixed consistently with getCachedJson reads.
+    await runRedisPipeline([
+      ['SET', webhookKey(newSubscriberId), JSON.stringify(record), 'EX', String(WEBHOOK_TTL)],
+      ['SADD', ownerIndexKey(ownerTag), newSubscriberId],
+      ['EXPIRE', ownerIndexKey(ownerTag), String(WEBHOOK_TTL)],
+    ]);
 
     return new Response(JSON.stringify({ subscriberId: newSubscriberId, secret }), {
       status: 201,
@@ -203,8 +240,49 @@ export default async function handler(req: Request): Promise<Response> {
   async function loadOwned(subId: string): Promise<WebhookRecord | 'not_found' | 'forbidden'> {
     const record = await getCachedJson(webhookKey(subId)).catch(() => null) as WebhookRecord | null;
     if (!record) return 'not_found';
-    if (record.ownerTag !== callerFingerprint(req)) return 'forbidden';
+    const ownerHash = await callerFingerprint(req);
+    if (record.ownerTag !== ownerHash) return 'forbidden';
     return record;
+  }
+
+  // GET /api/v2/shipping/webhooks — List caller's webhooks
+  if (req.method === 'GET' && !subscriberId) {
+    const ownerHash = await callerFingerprint(req);
+    const smembersResult = await runRedisPipeline([['SMEMBERS', ownerIndexKey(ownerHash)]]);
+    const memberIds = (smembersResult[0]?.result as string[] | null) ?? [];
+
+    if (memberIds.length === 0) {
+      return new Response(JSON.stringify({ webhooks: [] }), {
+        status: 200,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const getResults = await runRedisPipeline(memberIds.map(id => ['GET', webhookKey(id)]));
+    const webhooks = getResults
+      .map((r) => {
+        if (!r.result || typeof r.result !== 'string') return null;
+        try {
+          const record = JSON.parse(r.result) as WebhookRecord;
+          if (record.ownerTag !== ownerHash) return null; // defensive ownership check
+          return {
+            subscriberId: record.subscriberId,
+            callbackUrl: record.callbackUrl,
+            chokepointIds: record.chokepointIds,
+            alertThreshold: record.alertThreshold,
+            createdAt: record.createdAt,
+            active: record.active,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    return new Response(JSON.stringify({ webhooks }), {
+      status: 200,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
   }
 
   // GET /api/v2/shipping/webhooks/{subscriberId} — Status check
