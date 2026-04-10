@@ -16,6 +16,7 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { premiumFetch } from '@/services/premium-fetch';
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
@@ -643,6 +644,10 @@ export class SupplyChainPanel extends Panel {
   public hideScenarioSummary(): void {
     this.activeScenarioState = null;
     this.content.querySelector('.sc-scenario-banner')?.remove();
+    this.content.querySelectorAll<HTMLButtonElement>('.sc-scenario-btn').forEach(btn => {
+      btn.disabled = false;
+      btn.textContent = 'Simulate Closure';
+    });
   }
 
   public setOnDismissScenario(cb: () => void): void {
@@ -669,7 +674,7 @@ export class SupplyChainPanel extends Panel {
         btn.disabled = true;
         btn.textContent = 'Computing\u2026';
         try {
-          const runResp = await fetch('/api/scenario/v1/run', {
+          const runResp = await premiumFetch('/api/scenario/v1/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scenarioId }),
@@ -680,8 +685,8 @@ export class SupplyChainPanel extends Panel {
           let result: ScenarioResult | null = null;
           for (let i = 0; i < 30; i++) {
             if (signal.aborted || !this.content.isConnected) return;
-            await new Promise(r => setTimeout(r, 2000));
-            const statusResp = await fetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`, { signal });
+            if (i > 0) await new Promise(r => setTimeout(r, 2000));
+            const statusResp = await premiumFetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`, { signal });
             if (!statusResp.ok) throw new Error(`Status poll failed: ${statusResp.status}`);
             const status = await statusResp.json() as { status: string; result?: ScenarioResult };
             if (status.status === 'done') {

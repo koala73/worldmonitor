@@ -527,7 +527,7 @@ export class GlobeMap {
   private cableDegradedIds = new Set<string>();
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
   private countriesGeoData: FeatureCollection<Geometry> | null = null;
-  private scenarioState: ScenarioVisualState | null = null;
+  private scenarioPolygons: GlobePolygon[] = [];
 
   // Current layers state
   private layers: MapLayers;
@@ -2093,18 +2093,8 @@ export class GlobeMap {
       polys.push(...this.stormConePolygons);
     }
 
-    if (this.scenarioState?.affectedIso2s?.length && this.countriesGeoData) {
-      const affected = new Set(this.scenarioState.affectedIso2s);
-      for (const feat of this.countriesGeoData.features) {
-        const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
-        if (!code || !affected.has(code)) continue;
-        const geom = feat.geometry;
-        if (!geom) continue;
-        const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
-        for (const ring of rings) {
-          polys.push({ coords: ring as number[][][], name: code, _kind: 'scenario' });
-        }
-      }
+    if (this.scenarioPolygons.length) {
+      polys.push(...this.scenarioPolygons);
     }
 
     (this.globe as any).polygonsData(polys);
@@ -2113,7 +2103,20 @@ export class GlobeMap {
   // ─── Public data setters ──────────────────────────────────────────────────
 
   public setScenarioState(state: ScenarioVisualState | null): void {
-    this.scenarioState = state;
+    this.scenarioPolygons = [];
+    if (state?.affectedIso2s?.length && this.countriesGeoData) {
+      const affected = new Set(state.affectedIso2s);
+      for (const feat of this.countriesGeoData.features) {
+        const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        if (!code || !affected.has(code)) continue;
+        const geom = feat.geometry;
+        if (!geom) continue;
+        const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+        for (const ring of rings) {
+          this.scenarioPolygons.push({ coords: ring as number[][][], name: code, _kind: 'scenario' });
+        }
+      }
+    }
     this.flushPolygons();
   }
 
