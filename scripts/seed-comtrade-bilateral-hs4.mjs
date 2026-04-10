@@ -227,6 +227,7 @@ export async function main() {
 
     const commands = [];
     let writtenCount = 0;
+    let failedCount = 0;
     let requestCount = 0;
 
     for (let i = 0; i < countries.length; i++) {
@@ -239,34 +240,32 @@ export async function main() {
 
       if (requestCount > 0) await sleep(INTER_REQUEST_DELAY_MS);
 
-      let allRecords = [];
       try {
         console.log(`  [${i + 1}/${countries.length}] ${iso2} batch 1/2...`);
         const batch1 = await fetchBilateral(unCode, BATCH_1);
-        allRecords.push(...batch1);
         requestCount++;
 
         await sleep(INTER_REQUEST_DELAY_MS);
 
         console.log(`  [${i + 1}/${countries.length}] ${iso2} batch 2/2...`);
         const batch2 = await fetchBilateral(unCode, BATCH_2);
-        allRecords.push(...batch2);
         requestCount++;
+
+        const products = groupByProduct([...batch1, ...batch2]);
+        const payload = JSON.stringify({
+          iso2,
+          products,
+          fetchedAt: new Date().toISOString(),
+        });
+        commands.push(['SET', `${KEY_PREFIX}${iso2}:v1`, payload, 'EX', String(TTL_SECONDS)]);
+        writtenCount++;
+
+        if (products.length > 0) {
+          console.log(`    ${iso2}: ${products.length} products, ${batch1.length + batch2.length} records`);
+        }
       } catch (err) {
-        console.warn(`  ${iso2}: fetch failed (${err.message})`);
-      }
-
-      const products = groupByProduct(allRecords);
-      const payload = JSON.stringify({
-        iso2,
-        products,
-        fetchedAt: new Date().toISOString(),
-      });
-      commands.push(['SET', `${KEY_PREFIX}${iso2}:v1`, payload, 'EX', String(TTL_SECONDS)]);
-      writtenCount++;
-
-      if (products.length > 0) {
-        console.log(`    ${iso2}: ${products.length} products, ${allRecords.length} records`);
+        console.warn(`  [bilateral-hs4] ${iso2}: fetch failed, preserving existing data: ${err.message}`);
+        failedCount++;
       }
 
       if (commands.length >= 50) {
@@ -282,11 +281,12 @@ export async function main() {
 
     logSeedResult('comtrade:bilateral-hs4', writtenCount, Date.now() - startedAt, {
       countries: countries.length,
+      failed: failedCount,
       hs4Codes: HS4_CODES.length,
       requests: requestCount,
       ttlH: TTL_SECONDS / 3600,
     });
-    console.log(`[bilateral-hs4] Seeded ${writtenCount} country keys`);
+    console.log(`[bilateral-hs4] Seeded ${writtenCount} country keys (${failedCount} failed, existing data preserved)`);
   } catch (err) {
     console.error('[bilateral-hs4] Seed failed:', err.message || err);
     await extendExistingTtl([...allKeys, META_KEY], TTL_SECONDS)

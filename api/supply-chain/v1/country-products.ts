@@ -33,12 +33,19 @@ export default async function handler(req: Request): Promise<Response> {
     if (!data) {
       return new Response(
         JSON.stringify({ iso2, products: [], fetchedAt: '' }),
-        { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' } },
+        { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } },
       );
     }
     return new Response(
       JSON.stringify(data),
-      { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' } },
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'private, max-age=3600',
+          'Vary': 'Authorization, Cookie',
+        },
+      },
     );
   } catch {
     return new Response(
