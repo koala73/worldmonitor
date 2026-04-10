@@ -148,15 +148,6 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   const session = await validateBearerToken(token);
   if (!session.valid || !session.userId) return json({ error: 'Unauthorized' }, 401, corsHeaders);
 
-  const ent = await getEntitlements(session.userId);
-  if (!ent || ent.features.tier < 1) {
-    return json({
-      error: 'pro_required',
-      message: 'Real-time alerts are available on the Pro plan.',
-      upgradeUrl: 'https://worldmonitor.app/pro',
-    }, 403, corsHeaders);
-  }
-
   if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
     return json({ error: 'Service unavailable' }, 503, corsHeaders);
   }
@@ -179,6 +170,15 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   }
 
   if (req.method === 'POST') {
+    const ent = await getEntitlements(session.userId);
+    if (!ent || ent.features.tier < 1) {
+      return json({
+        error: 'pro_required',
+        message: 'Real-time alerts are available on the Pro plan.',
+        upgradeUrl: 'https://worldmonitor.app/pro',
+      }, 403, corsHeaders);
+    }
+
     let body: PostBody;
     try {
       body = (await req.json()) as PostBody;
