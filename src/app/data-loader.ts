@@ -2816,7 +2816,11 @@ export class DataLoaderManager implements AppModule {
   async loadWsbTickers(): Promise<void> {
     const panel = this.ctx.panels['wsb-ticker-scanner'] as WsbTickerScannerPanel | undefined;
     if (!panel) return;
-    panel.fetchData();
+    try {
+      await panel.fetchData();
+    } catch (e) {
+      console.error('[App] WSB tickers load failed:', e);
+    }
   }
 
   async loadEconomicStress(): Promise<void> {

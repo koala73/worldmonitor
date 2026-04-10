@@ -948,7 +948,7 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
   if (!config.premium) return true;
   // Dodo entitlements unlock all premium panels
   if (isEntitled()) return true;
-  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'deduction', 'chat-analyst'];
+  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'deduction', 'chat-analyst', 'wsb-ticker-scanner'];
   if (apiKeyPanels.includes(key)) {
     return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
   }

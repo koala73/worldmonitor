@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 
 export interface WsbTicker {
@@ -12,7 +13,6 @@ export interface WsbTicker {
   topPost?: { title: string; url: string; score: number; subreddit: string };
   subreddits: string[];
   velocityScore: number;
-  sentiment: 'bullish' | 'bearish' | 'neutral';
 }
 
 type SortField = 'mentionCount' | 'totalScore' | 'velocityScore';
@@ -28,12 +28,6 @@ function velocityColor(score: number): string {
   if (score >= 50) return '#e67e22';
   if (score >= 25) return '#f1c40f';
   return '#27ae60';
-}
-
-function sentimentBadge(s: string): string {
-  const colors: Record<string, string> = { bullish: '#27ae60', bearish: '#e74c3c', neutral: '#95a5a6' };
-  const color = colors[s] ?? '#95a5a6';
-  return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${color}33;color:${color};font-weight:600;text-transform:uppercase">${escapeHtml(s)}</span>`;
 }
 
 export class WsbTickerScannerPanel extends Panel {
@@ -66,12 +60,24 @@ export class WsbTickerScannerPanel extends Panel {
     });
   }
 
-  public fetchData(): boolean {
-    const data = getHydratedData('wsbTickers') as { tickers?: WsbTicker[] } | undefined;
-    if (data?.tickers?.length) {
-      this.updateData(data.tickers);
+  public async fetchData(): Promise<boolean> {
+    const hydrated = getHydratedData('wsbTickers') as { tickers?: WsbTicker[] } | undefined;
+    if (hydrated?.tickers?.length) {
+      this.updateData(hydrated.tickers);
       return true;
     }
+    try {
+      const resp = await fetch(toApiUrl('/api/bootstrap?keys=wsbTickers'), {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (resp.ok) {
+        const { data } = (await resp.json()) as { data: { wsbTickers?: { tickers?: WsbTicker[] } } };
+        if (data.wsbTickers?.tickers?.length) {
+          this.updateData(data.wsbTickers.tickers);
+          return true;
+        }
+      }
+    } catch { /* fallback failed */ }
     return false;
   }
 
@@ -121,7 +127,6 @@ export class WsbTickerScannerPanel extends Panel {
             </div>
           </div>
         </td>
-        <td style="${cellStyle}">${sentimentBadge(tk.sentiment)}</td>
         <td style="${cellStyle}">${subs}</td>
       </tr>`;
     }).join('');
@@ -136,11 +141,10 @@ export class WsbTickerScannerPanel extends Panel {
               <th style="${headerStyle};text-align:right" data-sort="mentionCount">Mentions${this._sortIndicator('mentionCount')}</th>
               <th style="${headerStyle};text-align:right" data-sort="totalScore">Score${this._sortIndicator('totalScore')}</th>
               <th style="${headerStyle};text-align:left" data-sort="velocityScore">Velocity${this._sortIndicator('velocityScore')}</th>
-              <th style="${headerStyle};text-align:left">Sent.</th>
               <th style="${headerStyle};text-align:left">Source</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">No ticker data</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">No ticker data</td></tr>'}</tbody>
         </table>
       </div>
       <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Reddit \u00B7 r/wallstreetbets, r/stocks, r/investing \u00B7 sorted by ${this._sortField.replace(/([A-Z])/g, ' $1').toLowerCase()}</div>

@@ -1283,6 +1283,13 @@ export class App {
       () => this.isPanelNearViewport('strategic-risk')
     );
 
+    this.refreshScheduler.scheduleRefresh(
+      'wsb-tickers',
+      () => this.dataLoader.loadWsbTickers(),
+      REFRESH_INTERVALS.wsbTickers,
+      () => hasPremiumAccess() && this.isPanelNearViewport('wsb-ticker-scanner'),
+    );
+
     // Server-side temporal anomalies (news + satellite_fires)
     if (SITE_VARIANT !== 'happy') {
       this.refreshScheduler.scheduleRefresh('temporalBaseline', () => this.dataLoader.refreshTemporalBaseline(), REFRESH_INTERVALS.temporalBaseline, () => this.shouldRefreshIntelligence());
