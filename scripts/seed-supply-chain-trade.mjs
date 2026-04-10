@@ -32,22 +32,27 @@ const ALL_REPORTERS = [
   '288','384','686','854','266','120','174','178','646','508','450','480','740','328','780', // GHA,CIV,SEN,BFA,GAB,CMR,COM,COG,RWA,MOZ,MDG,MUS,SUR,GUY,TTO
 ];
 
-// ISO2 lookup for cache keys — built from shared/iso3-to-iso2 at init
-const WTO_CODE_TO_ISO2 = {};
-try {
-  const { readFileSync } = require('fs');
-  const { join } = require('path');
-  const un2iso2 = JSON.parse(readFileSync(join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
-  for (const code of ALL_REPORTERS) { if (un2iso2[code]) WTO_CODE_TO_ISO2[code] = un2iso2[code]; }
-} catch {
-  // Fallback: minimal mapping for the original 15
-  Object.assign(WTO_CODE_TO_ISO2, {
-    '840': 'US', '156': 'CN', '276': 'DE', '392': 'JP', '826': 'GB',
-    '356': 'IN', '076': 'BR', '643': 'RU', '410': 'KR', '036': 'AU',
-    '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
-    '784': 'AE', '682': 'SA', '376': 'IL', '792': 'TR', '566': 'NG',
-  });
-}
+// ISO2 lookup for cache keys — loaded from shared/un-to-iso2.json
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WTO_CODE_TO_ISO2 = (() => {
+  try {
+    const un2iso2 = JSON.parse(readFileSync(join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
+    const map = {};
+    for (const code of ALL_REPORTERS) { if (un2iso2[code]) map[code] = un2iso2[code]; }
+    return map;
+  } catch {
+    console.warn('[Trade] Failed to load un-to-iso2.json, using minimal fallback');
+    return {
+      '840': 'US', '156': 'CN', '276': 'DE', '392': 'JP', '826': 'GB',
+      '356': 'IN', '076': 'BR', '643': 'RU', '410': 'KR', '036': 'AU',
+      '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
+      '784': 'AE', '682': 'SA', '376': 'IL', '792': 'TR', '566': 'NG',
+    };
+  }
+})();
 
 const REPORTER_ISO2 = ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
 
@@ -306,24 +311,29 @@ function parseFlowRows(data, indicator) {
   return dataset.map(row => {
     const year = parseInt(row.Year ?? row.year ?? '', 10);
     const value = parseFloat(row.Value ?? row.value ?? '');
-    return !Number.isNaN(year) && !Number.isNaN(value) ? { year, indicator, value } : null;
+    if (Number.isNaN(year) || Number.isNaN(value)) return null;
+    return { year, indicator, value, reporterName: row.ReportingEconomy ?? '', partnerName: row.PartnerEconomy ?? '' };
   }).filter(Boolean);
 }
 
 function buildFlowRecords(rows, reporterCode, partnerCode) {
   const byYear = new Map();
+  let reporterName = reporterCode;
+  let partnerName = partnerCode === '000' ? 'World' : partnerCode;
   for (const row of rows) {
     if (!byYear.has(row.year)) byYear.set(row.year, { exports: 0, imports: 0 });
     const e = byYear.get(row.year);
     if (row.indicator === 'ITS_MTV_AX') e.exports = row.value; else e.imports = row.value;
+    if (row.reporterName) reporterName = row.reporterName;
+    if (row.partnerName && partnerCode !== '000') partnerName = row.partnerName;
   }
   const sortedYears = [...byYear.keys()].sort((a, b) => a - b);
   return sortedYears.map((year, i) => {
     const cur = byYear.get(year);
     const prev = i > 0 ? byYear.get(sortedYears[i - 1]) : null;
     return {
-      reportingCountry: String(row.ReportingEconomy ?? reporterCode),
-      partnerCountry: partnerCode === '000' ? 'World' : String(row.PartnerEconomy ?? partnerCode),
+      reportingCountry: reporterName,
+      partnerCountry: partnerName,
       year, exportValueUsd: cur.exports, importValueUsd: cur.imports,
       yoyExportChange: prev?.exports > 0 ? Math.round(((cur.exports - prev.exports) / prev.exports) * 10000) / 100 : 0,
       yoyImportChange: prev?.imports > 0 ? Math.round(((cur.imports - prev.imports) / prev.imports) * 10000) / 100 : 0,
