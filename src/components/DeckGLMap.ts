@@ -95,11 +95,12 @@ import {
   SANCTIONED_COUNTRIES_ALPHA2,
 } from '@/config';
 import type { GulfInvestment } from '@/types';
-import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
+import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import {
@@ -398,6 +399,7 @@ export class DeckGLMap {
   private radiationObservations: RadiationObservation[] = [];
   private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
+  private storedChokepointData: GetChokepointStatusResponse | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
@@ -430,6 +432,7 @@ export class DeckGLMap {
 
   // Callbacks
   private onHotspotClick?: (hotspot: Hotspot) => void;
+  private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
   private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void;
@@ -4051,6 +4054,18 @@ export class DeckGLMap {
       return;
     }
 
+    if (layerId === 'trade-routes-layer') {
+      const segment = info.object as TradeRouteSegment;
+      if (!hasPremiumAccess(getAuthState())) {
+        trackGateHit('trade-arc-intel');
+        return;
+      }
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(segment.routeId) ?? [];
+      this.popup.showRouteBreakdown(segment, waypoints, info.x, info.y);
+      this.onTradeArcClick?.(segment, waypoints, info.x, info.y);
+      return;
+    }
+
     // Map layer IDs to popup types
     const layerToPopupType: Record<string, PopupType> = {
       'conflict-zones-layer': 'conflict',
@@ -4984,6 +4999,7 @@ export class DeckGLMap {
           return scenario;
         }
       }
+      if (!hasPremiumAccess(getAuthState())) return active;  // free users: always blue
       return colorFor(d.status);
     };
 
@@ -4998,7 +5014,7 @@ export class DeckGLMap {
       widthMinPixels: 1,
       widthMaxPixels: 6,
       greatCircle: true,
-      pickable: false,
+      pickable: true,
     });
   }
 
@@ -5395,6 +5411,20 @@ export class DeckGLMap {
 
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
     this.popup.setChokepointData(data);
+    this.storedChokepointData = data;
+    if (this.storedChokepointData) this.refreshTradeRouteStatus(this.storedChokepointData);
+  }
+
+  private refreshTradeRouteStatus(data: GetChokepointStatusResponse): void {
+    const scoreMap = new Map(data.chokepoints.map(cp => [cp.id, cp.disruptionScore ?? 0]));
+    const initialSegments = resolveTradeRouteSegments();
+    this.tradeRouteSegments = initialSegments.map(seg => {
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(seg.routeId) ?? [];
+      const maxScore = waypoints.reduce((max, id) => Math.max(max, scoreMap.get(id) ?? 0), 0);
+      const status: TradeRouteStatus = maxScore > 70 ? 'disrupted' : maxScore > 30 ? 'high_risk' : 'active';
+      return { ...seg, status };
+    });
+    this.render();
   }
 
   /**
@@ -5540,6 +5570,10 @@ export class DeckGLMap {
 
   public setOnHotspotClick(callback: (hotspot: Hotspot) => void): void {
     this.onHotspotClick = callback;
+  }
+
+  public setOnTradeArcClick(cb: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void): void {
+    this.onTradeArcClick = cb;
   }
 
   public setOnTimeRangeChange(callback: (range: TimeRange) => void): void {

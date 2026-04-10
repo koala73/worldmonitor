@@ -1,4 +1,5 @@
 import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat } from '@/types';
+import type { TradeRouteSegment } from '@/config/trade-routes';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
@@ -335,6 +336,86 @@ export class MapPopup {
       document.addEventListener('keydown', this.handleEscapeKey);
       this.outsideListenerTimeoutId = null;
     }, 0);
+  }
+
+  public showRouteBreakdown(
+    segment: TradeRouteSegment,
+    chokepointIds: string[],
+    x: number,
+    y: number,
+  ): void {
+    this.hide();
+
+    const primaryCpId = chokepointIds[0] ?? '';
+    const cp = this.chokepointData?.chokepoints?.find(c => c.id === primaryCpId);
+    const sectors = primaryCpId ? (CHOKEPOINT_HS2_SECTORS[primaryCpId] ?? []) : [];
+
+    const tierLabel: Record<string, string> = {
+      WAR_RISK_TIER_WAR_ZONE: 'War Zone', WAR_RISK_TIER_CRITICAL: 'Critical',
+      WAR_RISK_TIER_HIGH: 'High', WAR_RISK_TIER_ELEVATED: 'Elevated',
+      WAR_RISK_TIER_NORMAL: 'Normal',
+    };
+    const tierColor: Record<string, string> = {
+      WAR_RISK_TIER_WAR_ZONE: '#ef4444', WAR_RISK_TIER_CRITICAL: '#ef4444',
+      WAR_RISK_TIER_HIGH: '#f59e0b', WAR_RISK_TIER_ELEVATED: '#f59e0b',
+      WAR_RISK_TIER_NORMAL: 'var(--text-dim,#888)',
+    };
+
+    const tier = cp?.warRiskTier ?? 'WAR_RISK_TIER_NORMAL';
+    const disruptionScore = cp?.disruptionScore ?? 0;
+    const scoreColor = disruptionScore > 70 ? '#ef4444' : disruptionScore > 30 ? '#f59e0b' : 'var(--text-dim,#888)';
+
+    const topSectors = sectors.slice(0, 2);
+    const sectorHtml = topSectors.length
+      ? topSectors.map(s =>
+          `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:6px">` +
+          `<span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block"></span>` +
+          `<span style="font-size:10px">${escapeHtml(s.label)} ${s.share}%</span></span>`
+        ).join('')
+      : `<span style="font-size:10px;opacity:.5">No sector data</span>`;
+
+    const html = `
+      <div class="popup-header">
+        <span class="popup-title" style="font-size:12px">${escapeHtml(segment.routeName)}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body" style="padding:8px 12px;min-width:200px">
+        ${cp ? `<div style="font-size:11px;font-weight:600;margin-bottom:6px">${escapeHtml(cp.name)}</div>` : ''}
+        <div style="display:flex;gap:10px;margin-bottom:6px">
+          <span style="font-size:10px;opacity:.6">Disruption</span>
+          <span style="font-size:10px;font-weight:600;color:${scoreColor}">${disruptionScore}/100</span>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:6px">
+          <span style="font-size:10px;opacity:.6">War Risk</span>
+          <span style="font-size:10px;font-weight:600;color:${tierColor[tier] ?? 'inherit'}">${tierLabel[tier] ?? 'Normal'}</span>
+        </div>
+        <div style="margin-top:4px">${sectorHtml}</div>
+      </div>`;
+
+    this.isMobileSheet = false;
+    this.popup = document.createElement('div');
+    this.popup.className = 'map-popup map-popup-route-breakdown';
+    this.popup.innerHTML = html;
+
+    const containerRect = this.container.getBoundingClientRect();
+    this.positionDesktopPopup({ x, y, type: 'waterway', data: {} as never }, containerRect);
+    document.body.appendChild(this.popup);
+
+    this.popup.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.popup-close')) this.hide();
+    });
+
+    if (this.outsideListenerTimeoutId !== null) clearTimeout(this.outsideListenerTimeoutId);
+    this.outsideListenerTimeoutId = window.setTimeout(() => {
+      this.outsideListenerTimeoutId = null;
+      const outsideHandler = (e: MouseEvent) => {
+        if (this.popup && !this.popup.contains(e.target as Node)) {
+          this.hide();
+          document.removeEventListener('click', outsideHandler);
+        }
+      };
+      document.addEventListener('click', outsideHandler);
+    }, 200);
   }
 
   private positionDesktopPopup(data: PopupData, containerRect: DOMRect): void {
