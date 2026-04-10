@@ -158,21 +158,27 @@ export class SupplyChainPanel extends Panel {
         return true;
       };
 
+      // Use the bypass element as the "card is in DOM" sentinel — it is always rendered for
+      // expanded cards, unlike the chart placeholder which is conditional on transit history.
+      const mountAfterRender = (): boolean => {
+        if (!mountBypassOptions()) return false;
+        mountTransitChart();
+        return true;
+      };
+
       this.chartObserver = new MutationObserver(() => {
-        if (!mountTransitChart()) return;
+        if (!mountAfterRender()) return;
         if (this.chartMountTimer) { clearTimeout(this.chartMountTimer); this.chartMountTimer = null; }
         this.chartObserver?.disconnect();
         this.chartObserver = null;
-        mountBypassOptions();
       });
       this.chartObserver.observe(this.content, { childList: true, subtree: true });
 
       // Fallback for no-op renders where setContent short-circuits and no mutation fires.
       this.chartMountTimer = setTimeout(() => {
-        if (!mountTransitChart()) return;
+        if (!mountAfterRender()) return;
         if (this.chartObserver) { this.chartObserver.disconnect(); this.chartObserver = null; }
         this.chartMountTimer = null;
-        mountBypassOptions();
       }, 220);
     }
   }
