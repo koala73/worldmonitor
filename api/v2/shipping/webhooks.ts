@@ -19,7 +19,7 @@ import { validateApiKey } from '../../_api-key.js';
 import { getCorsHeaders } from '../../_cors.js';
 import { isCallerPremium } from '../../../server/_shared/premium-check';
 import { getCachedJson, setCachedJson } from '../../../server/_shared/redis';
-import { CHOKEPOINT_REGISTRY } from '../../../src/config/chokepoint-registry';
+import { CHOKEPOINT_REGISTRY } from '../../../server/_shared/chokepoint-registry';
 
 const WEBHOOK_TTL = 86400 * 30; // 30 days
 const VALID_CHOKEPOINT_IDS = new Set(CHOKEPOINT_REGISTRY.map(c => c.id));

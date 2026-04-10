@@ -18,8 +18,8 @@ import { getCorsHeaders } from '../../_cors.js';
 import { isCallerPremium } from '../../../server/_shared/premium-check';
 import { getCachedJson } from '../../../server/_shared/redis';
 import { CHOKEPOINT_STATUS_KEY } from '../../../server/_shared/cache-keys';
-import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../src/config/bypass-corridors';
-import { CHOKEPOINT_REGISTRY } from '../../../src/config/chokepoint-registry';
+import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../server/_shared/bypass-corridors';
+import { CHOKEPOINT_REGISTRY } from '../../../server/_shared/chokepoint-registry';
 import COUNTRY_PORT_CLUSTERS from '../../../scripts/shared/country-port-clusters.json';
 
 interface PortClusterEntry {
