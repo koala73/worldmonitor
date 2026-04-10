@@ -20,39 +20,17 @@ const TRADE_TTL = 21600;
 const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
-// ALL WTO member economies with UN M49 codes. WorldMonitor = WORLD coverage.
-const ALL_REPORTERS = [
-  '840','156','276','392','826','250','356','643','076','410','036','124','484','380','528', // original 15
-  '784','682','376','792','566','818','710','764','360','608','704','404','218','170','604', // UAE,SAU,ISR,TUR,NGA,EGY,ZAF,THA,IDN,PHL,VNM,KEN,ECU,COL,PER
-  '586','050','144','862','152','032','558','320','068','188','340','600','858','233','348', // PAK,BGD,LKA,VEN,CHL,ARG,NIC,GTM,BOL,CRI,HND,PRY,URY,EST,HUN
-  '203','616','642','100','703','191','705','442','804','112','268','398','860','417','762', // CZE,POL,ROU,BGR,SVK,HRV,SVN,LUX,UKR,BLR,GEO,KAZ,UZB,KGZ,TJK
-  '578','752','246','208','372','620','300','756','040','056','196','470','428','440','352', // NOR,SWE,FIN,DNK,IRL,PRT,GRC,CHE,AUT,BEL,CYP,MLT,LVA,LTU,ISL
-  '458','702','344','446','496','116','418','104','524','064','462','048','634','414','512', // MYS,SGP,HKG,MAC,MNG,KHM,LAO,MMR,NPL,BTN,MDV,BHR,QAT,KWT,OMN
-  '400','422','275','368','887','012','504','788','434','728','834','800','894','180','024', // JOR,LBN,PSE,IRQ,YEM,DZA,MAR,TUN,LBY,SSD,TZA,UGA,ZMB,COD,AGO
-  '288','384','686','854','266','120','174','178','646','508','450','480','740','328','780', // GHA,CIV,SEN,BFA,GAB,CMR,COM,COG,RWA,MOZ,MDG,MUS,SUR,GUY,TTO
-];
+// ALL economies from un-to-iso2.json. WorldMonitor = WORLD coverage.
+// Loaded dynamically so we never miss a country by forgetting to add it.
+import { readFileSync as _readFileSync } from 'node:fs';
+import { dirname as _dirname, join as _join } from 'node:path';
+import { fileURLToPath as _fileURLToPath } from 'node:url';
+const __dirname = _dirname(_fileURLToPath(import.meta.url));
+const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
+const ALL_REPORTERS = Object.keys(_un2iso2);
 
-// ISO2 lookup for cache keys — loaded from shared/un-to-iso2.json
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const WTO_CODE_TO_ISO2 = (() => {
-  try {
-    const un2iso2 = JSON.parse(readFileSync(join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
-    const map = {};
-    for (const code of ALL_REPORTERS) { if (un2iso2[code]) map[code] = un2iso2[code]; }
-    return map;
-  } catch {
-    console.warn('[Trade] Failed to load un-to-iso2.json, using minimal fallback');
-    return {
-      '840': 'US', '156': 'CN', '276': 'DE', '392': 'JP', '826': 'GB',
-      '356': 'IN', '076': 'BR', '643': 'RU', '410': 'KR', '036': 'AU',
-      '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
-      '784': 'AE', '682': 'SA', '376': 'IL', '792': 'TR', '566': 'NG',
-    };
-  }
-})();
+// ISO2 lookup for cache keys — derived from the same un-to-iso2.json
+const WTO_CODE_TO_ISO2 = { ..._un2iso2 };
 
 const REPORTER_ISO2 = ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
 
@@ -438,7 +416,7 @@ async function fetchTradeBarriers() {
     return gapB - gapA;
   });
   console.log(`  Trade barriers: ${barriers.length} countries`);
-  return { barriers: barriers.slice(0, 50), _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { barriers, _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Trade Restrictions (WTO) ───
@@ -477,7 +455,7 @@ async function fetchTradeRestrictions() {
     const rateA = parseFloat(a.description.match(/[\d.]+/)?.[0] ?? '0');
     const rateB = parseFloat(b.description.match(/[\d.]+/)?.[0] ?? '0');
     return rateB - rateA;
-  }).slice(0, 50);
+  });
 
   console.log(`  Trade restrictions: ${restrictions.length} countries`);
   return { restrictions, _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
