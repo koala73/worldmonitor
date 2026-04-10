@@ -106,7 +106,7 @@ else
   fi
   if [ "$RUN_SEED" = true ]; then
     echo "Running seed tests (scripts/ changed)..."
-    SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | while read -r t; do [ -f "$t" ] && echo "$t"; done)
+    SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | grep "^tests/" | while read -r t; do [ -f "$t" ] && echo "$t"; done)
     if [ -n "$SEED_TESTS" ]; then
       timeout 120 npx tsx --test $SEED_TESTS || exit 1
     else
