@@ -82,6 +82,7 @@ const BOOTSTRAP_KEYS = {
   diseaseOutbreaks:  'health:disease-outbreaks:v1',
   healthAirQuality:  'health:air-quality:v1',
   socialVelocity:    'intelligence:social:reddit:v1',
+  wsbTickers:        'intelligence:wsb-tickers:v1',
   vpdTrackerRealtime:   'health:vpd-tracker:realtime:v1',
   vpdTrackerHistorical: 'health:vpd-tracker:historical:v1',
   electricityPrices:    'energy:electricity:v1:index',
@@ -266,6 +267,7 @@ const SEED_META = {
   diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
   healthAirQuality:  { key: 'seed-meta:health:air-quality',            maxStaleMin: 180 }, // hourly cron; 180 = 3x interval for shared health/climate seed
   socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval (was 20 = equals retry window, too tight)
+  wsbTickers:        { key: 'seed-meta:intelligence:wsb-tickers',      maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
   pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval

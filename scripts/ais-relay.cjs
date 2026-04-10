@@ -5624,6 +5624,172 @@ async function startSocialVelocitySeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// WSB Ticker Scanner — Reddit r/wallstreetbets + r/stocks + r/investing
+// ─────────────────────────────────────────────────────────────
+
+const WSB_TICKERS_REDIS_KEY = 'intelligence:wsb-tickers:v1';
+const WSB_TICKERS_TTL = 1800; // 30min — seed runs every 10min (3× safety margin)
+const WSB_TICKERS_INTERVAL_MS = 10 * 60 * 1000;
+const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
+const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
+
+const TICKER_REGEX = /\$([A-Z]{1,5})\b|\b([A-Z]{1,5})\b/g;
+const TICKER_BLACKLIST = new Set([
+  'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
+  'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
+  'AM','PM','ON','BE','SO','GO','AT','TO','UP','NO','IF','AS','BY','AN','DO',
+  'IN','OF','IS','HAS','NEW','CEO','CFO','CTO','IRS','FBI','CIA','UN','WHO',
+  'IMO','PSA','FYI','TL','DR','OP','OC','US','ER','RE','VS',
+]);
+
+let wsbTickersInFlight = false;
+let wsbTickersRetryTimer = null;
+let wsbTickerSetCache = null;
+let wsbTickerSetCacheTs = 0;
+const WSB_TICKER_SET_CACHE_TTL_MS = 30 * 60 * 1000; // refresh known ticker set every 30min
+
+async function loadWsbTickerSet() {
+  if (wsbTickerSetCache && (Date.now() - wsbTickerSetCacheTs < WSB_TICKER_SET_CACHE_TTL_MS)) return wsbTickerSetCache;
+  try {
+    const data = await upstashGet('market:stocks-bootstrap:v1');
+    if (data && Array.isArray(data.quotes)) {
+      wsbTickerSetCache = new Set(data.quotes.map(s => s.symbol?.toUpperCase()).filter(Boolean));
+      wsbTickerSetCacheTs = Date.now();
+      return wsbTickerSetCache;
+    }
+  } catch {}
+  return wsbTickerSetCache || new Set();
+}
+
+async function fetchWsbRedditHot(subreddit) {
+  const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=50&raw_json=1`;
+  const resp = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!resp.ok) { console.warn(`[WsbTickers] Reddit r/${subreddit} HTTP ${resp.status}`); return []; }
+  const data = await resp.json();
+  return (data?.data?.children || []).map(c => c.data).filter(Boolean);
+}
+
+function extractTickers(text, knownTickers) {
+  const found = new Set();
+  if (!text) return found;
+  let m;
+  TICKER_REGEX.lastIndex = 0;
+  while ((m = TICKER_REGEX.exec(text)) !== null) {
+    const sym = (m[1] || m[2] || '').toUpperCase();
+    if (!sym || sym.length < 1) continue;
+    if (TICKER_BLACKLIST.has(sym)) continue;
+    if (knownTickers.size > 0 && !knownTickers.has(sym)) continue;
+    found.add(sym);
+  }
+  return found;
+}
+
+async function seedWsbTickers() {
+  if (wsbTickersInFlight) { console.log('[WsbTickers] Skipped (in-flight)'); return; }
+  wsbTickersInFlight = true;
+  if (wsbTickersRetryTimer) { clearTimeout(wsbTickersRetryTimer); wsbTickersRetryTimer = null; }
+  console.log('[WsbTickers] Fetching...');
+  const t0 = Date.now();
+  try {
+    const knownTickers = await loadWsbTickerSet();
+    const nowSec = Date.now() / 1000;
+    const tickerMap = new Map();
+    let postsScanned = 0;
+
+    for (const sub of WSB_SUBREDDITS) {
+      await new Promise(r => setTimeout(r, 500));
+      const posts = await fetchWsbRedditHot(sub);
+      for (const p of posts) {
+        postsScanned++;
+        const text = `${p.title || ''} ${p.selftext || ''}`;
+        const tickers = extractTickers(text, knownTickers);
+        for (const sym of tickers) {
+          let entry = tickerMap.get(sym);
+          if (!entry) {
+            entry = {
+              symbol: sym,
+              mentionCount: 0,
+              postIds: new Set(),
+              totalScore: 0,
+              upvoteRatioSum: 0,
+              topPost: null,
+              subreddits: new Set(),
+            };
+            tickerMap.set(sym, entry);
+          }
+          entry.mentionCount++;
+          entry.postIds.add(p.id);
+          entry.totalScore += (p.score || 0);
+          entry.upvoteRatioSum += (p.upvote_ratio || 0);
+          entry.subreddits.add(sub);
+          if (!entry.topPost || (p.score || 0) > entry.topPost.score) {
+            entry.topPost = {
+              title: String(p.title || '').slice(0, 300),
+              url: `https://reddit.com${p.permalink || ''}`,
+              score: p.score || 0,
+              subreddit: sub,
+            };
+          }
+        }
+      }
+    }
+
+    if (tickerMap.size === 0) {
+      console.warn('[WsbTickers] No tickers found — extending TTL, retrying in 20min');
+      try { await upstashExpire(WSB_TICKERS_REDIS_KEY, WSB_TICKERS_TTL); } catch {}
+      wsbTickersRetryTimer = setTimeout(() => { seedWsbTickers().catch(() => {}); }, WSB_TICKERS_RETRY_MS);
+      return;
+    }
+
+    const tickers = [];
+    for (const [, entry] of tickerMap) {
+      const uniquePosts = entry.postIds.size;
+      const avgUpvoteRatio = uniquePosts > 0 ? Math.round((entry.upvoteRatioSum / entry.mentionCount) * 100) / 100 : 0;
+      const ageFactor = 1; // all posts are "hot" (recent)
+      const velocityScore = Math.round(Math.log1p(entry.totalScore) * entry.mentionCount * ageFactor * 10) / 10;
+      tickers.push({
+        symbol: entry.symbol,
+        mentionCount: entry.mentionCount,
+        uniquePosts,
+        totalScore: entry.totalScore,
+        avgUpvoteRatio,
+        topPost: entry.topPost,
+        subreddits: [...entry.subreddits],
+        velocityScore,
+      });
+    }
+
+    tickers.sort((a, b) => b.velocityScore - a.velocityScore);
+    const top = tickers.slice(0, 50);
+    const payload = { tickers: top, fetchedAt: Date.now(), subredditsScanned: WSB_SUBREDDITS.length, postsScanned };
+    const ok = await upstashSet(WSB_TICKERS_REDIS_KEY, payload, WSB_TICKERS_TTL);
+    await upstashSet('seed-meta:intelligence:wsb-tickers', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
+    console.log(`[WsbTickers] Seeded ${top.length} tickers from ${postsScanned} posts (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.warn('[WsbTickers] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');
+    try { await upstashExpire(WSB_TICKERS_REDIS_KEY, WSB_TICKERS_TTL); } catch {}
+    wsbTickersRetryTimer = setTimeout(() => { seedWsbTickers().catch(() => {}); }, WSB_TICKERS_RETRY_MS);
+  } finally {
+    wsbTickersInFlight = false;
+  }
+}
+
+async function startWsbTickersSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[WsbTickers] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[WsbTickers] Seed loop starting (interval ${WSB_TICKERS_INTERVAL_MS / 1000 / 60}min)`);
+  seedWsbTickers().catch(e => console.warn('[WsbTickers] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedWsbTickers().catch(e => console.warn('[WsbTickers] Seed error:', e?.message || e));
+  }, WSB_TICKERS_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
 // Climate News Intelligence — delegated to standalone seed script
 // ─────────────────────────────────────────────────────────────
 
@@ -10472,6 +10638,7 @@ server.listen(PORT, () => {
   startUsniFleetSeedLoop();
   startShippingStressSeedLoop();
   startSocialVelocitySeedLoop();
+  startWsbTickersSeedLoop();
   startClimateNewsSeedLoop();
   startChokepointFlowsSeedLoop();
   startPizzintSeedLoop();
