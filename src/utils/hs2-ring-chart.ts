@@ -16,13 +16,17 @@ export class HS2RingChart {
     const r = 42;
     const innerR = 24;
 
+    const dpr = window.devicePixelRatio || 1;
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
     canvas.className = 'popup-hs2-ring-canvas';
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    ctx.scale(dpr, dpr);
 
     let startAngle = -Math.PI / 2;
     sectors.forEach(slice => {
@@ -43,10 +47,18 @@ export class HS2RingChart {
     sectors.forEach(slice => {
       const item = document.createElement('div');
       item.className = 'popup-hs2-ring-legend-item';
-      item.innerHTML =
-        `<span class="popup-hs2-ring-dot" style="background:${slice.color}"></span>` +
-        `<span class="popup-hs2-ring-label">${slice.label}</span>` +
-        `<span class="popup-hs2-ring-pct">${slice.share}%</span>`;
+      const dot = document.createElement('span');
+      dot.className = 'popup-hs2-ring-dot';
+      dot.style.background = slice.color;
+      const label = document.createElement('span');
+      label.className = 'popup-hs2-ring-label';
+      label.textContent = slice.label;
+      const pct = document.createElement('span');
+      pct.className = 'popup-hs2-ring-pct';
+      pct.textContent = `${slice.share}%`;
+      item.appendChild(dot);
+      item.appendChild(label);
+      item.appendChild(pct);
       legend.appendChild(item);
     });
     container.appendChild(legend);

@@ -281,14 +281,14 @@ export class MapPopup {
       }
 
       // Mount HS2 sector ring chart for PRO users
-      const ringEl = this.popup.querySelector<HTMLElement>(`[data-hs2-ring="${waterway.chokepointId}"]`);
-      if (ringEl) {
-        const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
-        if (sectors?.length) {
+      const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
+      if (sectors?.length) {
+        const ringEl = this.popup.querySelector<HTMLElement>(`[data-hs2-ring="${waterway.chokepointId}"]`);
+        if (ringEl) {
           new HS2RingChart().mount(ringEl, sectors);
+        } else if (!hasPremiumAccess(getAuthState())) {
+          trackGateHit('chokepoint-sector-ring');
         }
-      } else if (!hasPremiumAccess(getAuthState())) {
-        trackGateHit('chokepoint-sector-ring');
       }
     }
 

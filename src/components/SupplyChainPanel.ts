@@ -233,10 +233,13 @@ export class SupplyChainPanel extends Panel {
       this.bypassUnsubscribe = subscribeAuthState(state => {
         if (hasPremiumAccess(state)) {
           if (this.bypassUnsubscribe) { this.bypassUnsubscribe(); this.bypassUnsubscribe = null; }
+          if (!this.content.contains(container)) return;
           container.innerHTML = `<div class="sc-bypass-loading">Loading bypass options\u2026</div>`;
           void fetchBypassOptions(chokepointId, 'container', 100).then(resp => {
+            if (!this.content.contains(container)) return;
             container.innerHTML = renderRows(resp.options);
           }).catch(() => {
+            if (!this.content.contains(container)) return;
             container.innerHTML = `<div class="sc-bypass-error">Bypass data unavailable</div>`;
           });
         }

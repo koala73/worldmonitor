@@ -397,7 +397,8 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
       });
 
-    fetchCountryChokepointIndex(code, '27')
+    // hs2='27' (mineral fuels) is the default; omit explicit arg to use the function default
+    fetchCountryChokepointIndex(code)
       .then((result) => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         this.ctx.countryBriefPage.updateTradeExposure?.(result);
