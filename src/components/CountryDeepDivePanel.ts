@@ -1449,18 +1449,23 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const portMap = new Map(PORTS.map(p => [p.id, p.name]));
     const waterwayMap = new Map(STRATEGIC_WATERWAYS.map(w => [w.id, w.name]));
 
-    const route = matchingRoutes[0]!;
-    const pathParts: string[] = [];
-    pathParts.push(portMap.get(route.from) ?? route.from);
-    for (const wp of route.waypoints) {
-      pathParts.push(waterwayMap.get(wp) ?? wp);
-    }
-    pathParts.push(portMap.get(route.to) ?? route.to);
-    const pathStr = pathParts.map(p => escapeHtml(p)).join(' \u2192 ');
+    const cpName = waterwayMap.get(sector.primaryChokepointId) ?? sector.primaryChokepointName;
+    const routesLabel = this.el('div', 'cdp-bypass-heading', `Routes via ${escapeHtml(cpName)}:`);
+    wrap.append(routesLabel);
 
-    const pathEl = this.el('div', 'cdp-route-path');
-    pathEl.innerHTML = pathStr;
-    wrap.append(pathEl);
+    for (const route of matchingRoutes) {
+      const pathParts: string[] = [];
+      pathParts.push(portMap.get(route.from) ?? route.from);
+      for (const wp of route.waypoints) {
+        pathParts.push(waterwayMap.get(wp) ?? wp);
+      }
+      pathParts.push(portMap.get(route.to) ?? route.to);
+      const pathStr = pathParts.map(p => escapeHtml(p)).join(' \u2192 ');
+
+      const pathEl = this.el('div', 'cdp-route-path');
+      pathEl.innerHTML = `${escapeHtml(route.name)}: ${pathStr}`;
+      wrap.append(pathEl);
+    }
 
     const statsEl = this.el('div', 'cdp-route-stats');
     const distEl = this.el('div');
@@ -1483,8 +1488,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const isPro = hasPremiumAccess(getAuthState());
     if (!isPro) {
-      bypassContent.append(this.makeProLocked('Bypass corridors available with PRO'));
-      trackGateHit('sector-bypass-corridors');
+      const gateEl = this.makeProLocked('Bypass corridors available with PRO');
+      gateEl.addEventListener('click', () => trackGateHit('sector-bypass-corridors'), { once: true });
+      bypassContent.append(gateEl);
     } else {
       bypassContent.append(this.makeLoading('Loading bypass options\u2026'));
       this.sectorBypassAbort = new AbortController();
