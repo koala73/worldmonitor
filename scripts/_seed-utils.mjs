@@ -353,20 +353,26 @@ export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeo
 }
 
 // Fetch JSON from a FRED URL, routing through proxy when available.
+// Proxy-first: FRED consistently blocks/throttles Railway datacenter IPs,
+// so try proxy first to avoid 20s timeout on every direct attempt.
 export async function fredFetchJson(url, proxyAuth) {
-  try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
-    if (r.ok) return r.json();
-    throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
-  } catch (directErr) {
-    if (!proxyAuth) throw directErr;
-    console.warn(`  [fredFetch] direct failed (${directErr.message}) — retrying via proxy`);
+  if (proxyAuth) {
     try {
       return await httpsProxyFetchJson(url, proxyAuth);
     } catch (proxyErr) {
-      throw Object.assign(new Error(`proxy: ${proxyErr.message}`), { cause: proxyErr });
+      console.warn(`  [fredFetch] proxy failed (${proxyErr.message}) — retrying direct`);
+      try {
+        const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+        if (r.ok) return r.json();
+        throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+      } catch (directErr) {
+        throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
+      }
     }
   }
+  const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+  if (r.ok) return r.json();
+  throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
 }
 
 // ---------------------------------------------------------------------------

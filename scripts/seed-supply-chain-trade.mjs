@@ -263,7 +263,9 @@ async function fetchBudgetLabEffectiveTariffRate() {
     const html = await resp.text();
     const parsed = parseBudgetLabEffectiveTariffHtml(html);
     if (!parsed) {
-      console.warn('  Budget Lab tariffs: effective tariff rate not found in page content');
+      const hasBody = html.length > 5000 && /<body/i.test(html);
+      const reason = hasBody ? 'page structure changed' : 'JS-rendered SPA (no static content)';
+      console.log(`  Budget Lab tariffs: skipped (${reason})`);
       return null;
     }
     console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);

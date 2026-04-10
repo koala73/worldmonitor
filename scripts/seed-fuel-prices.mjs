@@ -1,9 +1,28 @@
 #!/usr/bin/env node
 
 import ExcelJS from 'exceljs';
-import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxyForConnect();
+
+// Fetch with proxy fallback for government APIs that block datacenter IPs.
+async function fetchWithProxyFallback(url, { timeoutMs = 20_000, accept = 'text/csv,text/plain,*/*' } = {}) {
+  try {
+    const r = await globalThis.fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: accept },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (r.ok) return r;
+    throw new Error(`HTTP ${r.status}`);
+  } catch (directErr) {
+    if (!_proxyAuth) throw directErr;
+    console.warn(`    direct failed (${directErr.message}) — retrying via proxy`);
+    const { buffer, contentType } = await httpsProxyFetchRaw(url, _proxyAuth, { accept, timeoutMs });
+    return new Response(buffer, { headers: { 'Content-Type': contentType || 'text/plain' } });
+  }
+}
 
 const CANONICAL_KEY = 'economic:fuel-prices:v1';
 const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
@@ -145,10 +164,7 @@ async function fetchMexico() {
   try {
     const url = 'https://api.datos.gob.mx/v2/precio.gasolina.publico?pageSize=1000';
     console.log(`  [MX] API: ${url}`);
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
-    });
+    const resp = await fetchWithProxyFallback(url, { accept: 'application/json' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     const results = data?.results;
@@ -404,9 +420,9 @@ async function fetchBrazil() {
     console.log(`  [BR] dsl CSV: ${DSL_URL}`);
     // Use allSettled so a 429 on the diesel CSV doesn't discard gasoline data
     const [gasResult, dslResult] = await Promise.allSettled([
-      globalThis.fetch(GAS_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(30000) })
+      fetchWithProxyFallback(GAS_URL, { timeoutMs: 30000 })
         .then(r => r.ok ? r.text() : Promise.reject(new Error(`Gas HTTP ${r.status}`))),
-      globalThis.fetch(DSL_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(30000) })
+      fetchWithProxyFallback(DSL_URL, { timeoutMs: 30000 })
         .then(r => r.ok ? r.text() : Promise.reject(new Error(`Dsl HTTP ${r.status}`))),
     ]);
     if (gasResult.status === 'rejected') console.warn(`  [BR] gas CSV failed: ${gasResult.reason.message}`);
@@ -434,10 +450,7 @@ async function fetchNewZealand() {
   const url = 'https://www.mbie.govt.nz/assets/Data-Files/Energy/Weekly-fuel-price-monitoring/weekly-table.csv';
   try {
     console.log(`  [NZ] CSV: ${url}`);
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
-    });
+    const resp = await fetchWithProxyFallback(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const text = await resp.text();
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);

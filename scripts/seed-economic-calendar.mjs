@@ -64,18 +64,44 @@ async function fetchFomcDates(fallback) {
     };
     const MON = Object.keys(MONTHS).join('|');
     const dates = [];
-    // Same-month: "January 27-28, 2026" → day2=28
+
+    // Strategy A: inline format "January 27-28, 2026" (legacy)
     const reSame = new RegExp(`\\b(${MON})\\s+\\d{1,2}[-\u2013](\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
-    // Cross-month: "January 28 - February 1, 2026" → month2+day2
     const reCross = new RegExp(`\\b${MON}\\s+\\d{1,2}\\s*[-\u2013]\\s*(${MON})\\s+(\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
     let m;
     while ((m = reSame.exec(html)) !== null) {
       const [, month, day2, year] = m;
-      dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
+      if (month && day2 && year) dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
     }
     while ((m = reCross.exec(html)) !== null) {
       const [, month2, day2, year] = m;
-      dates.push(`${year}-${MONTHS[month2]}-${day2.padStart(2, '0')}`);
+      if (month2 && day2 && year) dates.push(`${year}-${MONTHS[month2]}-${day2.padStart(2, '0')}`);
+    }
+
+    // Strategy B: structured sections — year in heading, month + "dd-dd" in body.
+    // Matches pages where year/month/range are in separate HTML elements.
+    if (dates.length === 0) {
+      const yearRe = /\b(20\d{2})\s+FOMC\s+Meetings/gi;
+      let yearMatch;
+      while ((yearMatch = yearRe.exec(html)) !== null) {
+        const year = yearMatch[1];
+        const sectionStart = yearMatch.index;
+        const nextYearIdx = html.indexOf(' FOMC Meetings', sectionStart + 20);
+        const sectionEnd = nextYearIdx > sectionStart ? nextYearIdx : html.length;
+        const section = html.slice(sectionStart, sectionEnd);
+
+        const monthRe = new RegExp(`\\b(${MON})\\b`, 'g');
+        let monthMatch;
+        while ((monthMatch = monthRe.exec(section)) !== null) {
+          const month = monthMatch[1];
+          const afterMonth = section.slice(monthMatch.index + month.length, monthMatch.index + month.length + 80);
+          const rangeMatch = afterMonth.match(/(\d{1,2})\s*[-\u2013]\s*(\d{1,2})/);
+          if (rangeMatch) {
+            const day2 = rangeMatch[2];
+            dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
+          }
+        }
+      }
     }
 
     const unique = [...new Set(dates)].sort();
@@ -101,8 +127,8 @@ async function fetchEcbCouncilDates(fallback) {
     const html = await resp.text();
 
     const dates = [];
-    // Find all datetime="YYYY-MM-DD" positions; for each, scan only up to the NEXT datetime= attr
-    // to avoid bleeding context from adjacent calendar entries
+
+    // Strategy A: datetime="YYYY-MM-DD" attributes with "monetary policy" + "Day 2" context
     const dateRe = /datetime="(\d{4}-\d{2}-\d{2})"/g;
     const allMatches = [...html.matchAll(dateRe)];
     for (let i = 0; i < allMatches.length; i++) {
@@ -111,6 +137,37 @@ async function fetchEcbCouncilDates(fallback) {
       const ctx = html.slice(match.index, nextIdx);
       if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
         dates.push(match[1]);
+      }
+    }
+
+    // Strategy B: DD/MM/YYYY format in text near "monetary policy" + "Day 2"
+    if (dates.length === 0) {
+      const dateRe2 = /(\d{1,2})\/(\d{2})\/(\d{4})/g;
+      const allMatches2 = [...html.matchAll(dateRe2)];
+      for (let i = 0; i < allMatches2.length; i++) {
+        const match = allMatches2[i];
+        const ctxStart = Math.max(0, match.index - 400);
+        const ctxEnd = Math.min(html.length, match.index + 400);
+        const ctx = html.slice(ctxStart, ctxEnd);
+        if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
+          const [, dd, mm, yyyy] = match;
+          dates.push(`${yyyy}-${mm}-${dd.padStart(2, '0')}`);
+        }
+      }
+    }
+
+    // Strategy C: ISO dates (YYYY-MM-DD) in text near "monetary policy" + "Day 2"
+    if (dates.length === 0) {
+      const dateRe3 = /\b(20\d{2}-\d{2}-\d{2})\b/g;
+      const allMatches3 = [...html.matchAll(dateRe3)];
+      for (let i = 0; i < allMatches3.length; i++) {
+        const match = allMatches3[i];
+        const ctxStart = Math.max(0, match.index - 400);
+        const ctxEnd = Math.min(html.length, match.index + 400);
+        const ctx = html.slice(ctxStart, ctxEnd);
+        if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
+          dates.push(match[1]);
+        }
       }
     }
 
