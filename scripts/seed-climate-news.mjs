@@ -12,7 +12,10 @@ const RSS_MAX_BYTES = 500_000;
 const FEEDS = [
   { sourceName: 'Carbon Brief', url: 'https://www.carbonbrief.org/feed' },
   { sourceName: 'The Guardian Environment', url: 'https://www.theguardian.com/environment/climate-crisis/rss' },
-  { sourceName: 'ReliefWeb Disasters', url: 'https://api.reliefweb.int/v1/reports?appname=worldmonitor&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source', isApi: true },
+  { sourceName: 'ReliefWeb Disasters', urls: [
+    'https://api.reliefweb.int/v1/reports?appname=worldmonitor&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source',
+    'https://api.reliefweb.int/v2/reports?appname=worldmonitor&limit=20&preset=latest&filter[field]=theme.id&filter[value]=4590&fields[include][]=title&fields[include][]=url_alias&fields[include][]=date.created&fields[include][]=source',
+  ], isApi: true },
   { sourceName: 'NASA Earth Observatory', url: 'https://earthobservatory.nasa.gov/feeds/earth-observatory.rss' },
   { sourceName: 'UNEP', url: 'https://www.unep.org/rss.xml' },
   { sourceName: 'Phys.org Earth Science', url: 'https://phys.org/rss-feed/earth-news/earth-sciences/' },
@@ -105,23 +108,29 @@ function parseRssItems(xml, sourceName) {
 }
 
 async function fetchReliefWebApi(feed) {
-  const resp = await fetch(feed.url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const items = [];
-  for (const r of data.data || []) {
-    const title = r.fields?.title || '';
-    const url = r.fields?.url_alias ? `https://reliefweb.int${r.fields.url_alias}` : '';
-    const publishedAt = r.fields?.date?.created ? new Date(r.fields.date.created).getTime() : 0;
-    if (!title || !url || !publishedAt) continue;
-    const id = `${stableHash(url)}-${publishedAt}`;
-    items.push({ id, title, url, sourceName: feed.sourceName, publishedAt, summary: '' });
+  let lastErr;
+  for (const url of feed.urls) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) { lastErr = new Error(`HTTP ${resp.status}`); continue; }
+      const data = await resp.json();
+      const items = [];
+      for (const r of data.data || []) {
+        const title = r.fields?.title || '';
+        const itemUrl = r.fields?.url_alias ? `https://reliefweb.int${r.fields.url_alias}` : '';
+        const publishedAt = r.fields?.date?.created ? new Date(r.fields.date.created).getTime() : 0;
+        if (!title || !itemUrl || !publishedAt) continue;
+        const id = `${stableHash(itemUrl)}-${publishedAt}`;
+        items.push({ id, title, url: itemUrl, sourceName: feed.sourceName, publishedAt, summary: '' });
+      }
+      console.log(`[ClimateNews] ${feed.sourceName}: ${items.length} items (API)`);
+      return items;
+    } catch (err) { lastErr = err; }
   }
-  console.log(`[ClimateNews] ${feed.sourceName}: ${items.length} items (API)`);
-  return items;
+  throw lastErr || new Error('All ReliefWeb API endpoints failed');
 }
 
 async function fetchFeed(feed) {
