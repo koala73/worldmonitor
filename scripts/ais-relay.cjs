@@ -5638,7 +5638,7 @@ const TICKER_BLACKLIST = new Set([
   'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
   'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
   'AM','PM','ON','BE','SO','GO','AT','TO','UP','NO','IF','AS','BY','AN','DO',
-  'IN','OF','IS','HAS','NEW','CEO','CFO','CTO','IRS','FBI','CIA','UN','WHO',
+  'IN','OF','IS','HAS','NEW','CFO','CTO','IRS','FBI','CIA','UN','WHO',
   'IMO','PSA','FYI','TL','DR','OP','OC','US','ER','RE','VS',
 ]);
 
@@ -5747,7 +5747,7 @@ async function seedWsbTickers() {
     const tickers = [];
     for (const [, entry] of tickerMap) {
       const uniquePosts = entry.postIds.size;
-      const avgUpvoteRatio = uniquePosts > 0 ? Math.round((entry.upvoteRatioSum / entry.mentionCount) * 100) / 100 : 0;
+      const avgUpvoteRatio = uniquePosts > 0 ? Math.round((entry.upvoteRatioSum / uniquePosts) * 100) / 100 : 0;
       const ageFactor = 1; // all posts are "hot" (recent)
       const velocityScore = Math.round(Math.log1p(entry.totalScore) * entry.mentionCount * ageFactor * 10) / 10;
       tickers.push({
