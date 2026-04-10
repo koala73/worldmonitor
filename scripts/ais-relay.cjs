@@ -5695,6 +5695,12 @@ async function seedWsbTickers() {
   const t0 = Date.now();
   try {
     const knownTickers = await loadWsbTickerSet();
+    if (knownTickers.size === 0) {
+      console.warn('[WsbTickers] Ticker validation set empty (bootstrap unavailable). Skipping seed to avoid publishing unvalidated data.');
+      try { await upstashExpire(WSB_TICKERS_REDIS_KEY, WSB_TICKERS_TTL); } catch {}
+      wsbTickersRetryTimer = setTimeout(() => { seedWsbTickers().catch(() => {}); }, WSB_TICKERS_RETRY_MS);
+      return;
+    }
     const nowSec = Date.now() / 1000;
     const tickerMap = new Map();
     let postsScanned = 0;
@@ -5765,9 +5771,13 @@ async function seedWsbTickers() {
     tickers.sort((a, b) => b.velocityScore - a.velocityScore);
     const top = tickers.slice(0, 50);
     const payload = { tickers: top, fetchedAt: Date.now(), subredditsScanned: WSB_SUBREDDITS.length, postsScanned };
-    const ok = await upstashSet(WSB_TICKERS_REDIS_KEY, payload, WSB_TICKERS_TTL);
-    await upstashSet('seed-meta:intelligence:wsb-tickers', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
-    console.log(`[WsbTickers] Seeded ${top.length} tickers from ${postsScanned} posts (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const writeOk = await upstashSet(WSB_TICKERS_REDIS_KEY, payload, WSB_TICKERS_TTL);
+    if (writeOk) {
+      await upstashSet('seed-meta:intelligence:wsb-tickers', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
+    } else {
+      console.error('[WsbTickers] Canonical write failed. Skipping seed-meta.');
+    }
+    console.log(`[WsbTickers] Seeded ${top.length} tickers from ${postsScanned} posts (redis: ${writeOk ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[WsbTickers] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');
     try { await upstashExpire(WSB_TICKERS_REDIS_KEY, WSB_TICKERS_TTL); } catch {}
