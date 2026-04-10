@@ -114,6 +114,6 @@ export async function runBundle(label, sections) {
   }
 
   const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[Bundle:${label}] Finished in ${totalSec}s — ran:${ran} skipped:${skipped} failed:${failed}`);
-  process.exit(0);
+  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} failed:${failed}`);
+  process.exit(failed > 0 ? 1 : 0);
 }
