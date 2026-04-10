@@ -318,7 +318,10 @@ async function runWorker() {
   }
 }
 
-runWorker().catch(err => {
-  console.error('[scenario-worker] fatal:', err);
-  process.exit(1);
-});
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+if (isMain) {
+  runWorker().catch(err => {
+    console.error('[scenario-worker] fatal:', err);
+    process.exit(1);
+  });
+}
