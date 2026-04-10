@@ -521,31 +521,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const total = segments.reduce((s, seg) => s + seg.value, 0);
       const norm = total > 0 ? total : 1;
 
-      const bar = this.el('div', '');
-      bar.style.cssText = 'display:flex;width:100%;height:12px;border-radius:4px;overflow:hidden;margin-bottom:8px';
+      const wrap = this.el('div', 'cdp-energy-donut-wrap');
+      wrap.append(this.buildDonutSvg(segments, norm, 'Primary\nEnergy'));
+      const legend = this.el('div', 'cdp-energy-legend');
       for (const seg of segments) {
         const pct = (seg.value / norm) * 100;
         if (pct <= 0.5) continue;
-        const span = this.el('span', '');
-        span.style.cssText = `width:${pct}%;background:${seg.color}`;
-        bar.append(span);
-      }
-      this.energyBody.append(bar);
-
-      const legend = this.el('div', '');
-      for (const seg of segments) {
-        const pct = (seg.value / norm) * 100;
-        if (pct <= 0.5) continue;
-        const row = this.el('div', '');
-        row.style.cssText = 'font-size:11px;color:#aaa;display:flex;gap:4px;align-items:center';
-        const dot = this.el('span', '');
-        dot.textContent = '\u25CF';
-        dot.style.color = seg.color;
+        const row = this.el('div', 'cdp-energy-legend-row');
+        const dot = this.el('span', 'cdp-energy-legend-dot');
+        dot.style.background = seg.color;
         const label = this.el('span', '', `${seg.label}  ${Math.round(pct)}%`);
         row.append(dot, label);
         legend.append(row);
       }
-      this.energyBody.append(legend);
+      wrap.append(legend);
+      this.energyBody.append(wrap);
 
       const src = this.el('div', 'cdp-economic-source', `Data: ${data.mixYear} (OWID)`);
       this.energyBody.append(src);
@@ -745,31 +735,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const total = segments.reduce((acc, seg) => acc + seg.value, 0);
       const norm = total > 0 ? total : 1;
 
-      const bar = this.el('div', '');
-      bar.style.cssText = 'display:flex;width:100%;height:10px;border-radius:4px;overflow:hidden;margin-bottom:6px';
+      const wrap = this.el('div', 'cdp-energy-donut-wrap');
+      wrap.append(this.buildDonutSvg(segments, norm, 'Monthly\nMix'));
+      const legend = this.el('div', 'cdp-energy-legend');
       for (const seg of segments) {
         const pct = (seg.value / norm) * 100;
         if (pct <= 0.5) continue;
-        const span = this.el('span', '');
-        span.style.cssText = `width:${pct}%;background:${seg.color}`;
-        bar.append(span);
-      }
-      section.append(bar);
-
-      const legend = this.el('div', '');
-      for (const seg of segments) {
-        const pct = (seg.value / norm) * 100;
-        if (pct <= 0.5) continue;
-        const row = this.el('div', '');
-        row.style.cssText = 'font-size:11px;color:#aaa;display:flex;gap:4px;align-items:center';
-        const dot = this.el('span', '');
-        dot.textContent = '\u25CF';
-        dot.style.color = seg.color;
+        const row = this.el('div', 'cdp-energy-legend-row');
+        const dot = this.el('span', 'cdp-energy-legend-dot');
+        dot.style.background = seg.color;
         const label = this.el('span', '', `${seg.label}  ${Math.round(pct)}%`);
         row.append(dot, label);
         legend.append(row);
       }
-      section.append(legend);
+      wrap.append(legend);
+      section.append(wrap);
 
       if (data.emberCoalShare > 0 || data.emberGasShare > 0) {
         const breakdown = this.el('div', '');
@@ -795,6 +775,51 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.jodiOilAvailable || data.jodiGasAvailable) {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
+  }
+
+  private buildDonutSvg(
+    segments: Array<{ label: string; color: string; value: number }>,
+    norm: number,
+    centerText: string,
+  ): HTMLElement {
+    const size = 90;
+    const r = 35;
+    const stroke = 14;
+    const cx = size / 2;
+    const cy = size / 2;
+    const circ = 2 * Math.PI * r;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+
+    let offset = 0;
+    for (const seg of segments) {
+      const pct = (seg.value / norm) * 100;
+      if (pct <= 0.5) continue;
+      const dash = (pct / 100) * circ;
+      const gap = circ - dash;
+      const circle = document.createElementNS(ns, 'circle');
+      circle.setAttribute('cx', String(cx));
+      circle.setAttribute('cy', String(cy));
+      circle.setAttribute('r', String(r));
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke', seg.color);
+      circle.setAttribute('stroke-width', String(stroke));
+      circle.setAttribute('stroke-dasharray', `${dash} ${gap}`);
+      circle.setAttribute('stroke-dashoffset', String(-offset));
+      svg.append(circle);
+      offset += dash;
+    }
+
+    const wrap = this.el('div', 'cdp-energy-donut');
+    wrap.append(svg);
+    const label = this.el('div', 'cdp-energy-donut-label');
+    label.textContent = centerText;
+    wrap.append(label);
+    return wrap;
   }
 
   private renderShockScenarioWidget(): HTMLElement {
