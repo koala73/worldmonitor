@@ -596,6 +596,45 @@ http.route({
 });
 
 http.route({
+  path: "/relay/entitlement",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    let body: { userId?: string };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (!body.userId) {
+      return new Response(JSON.stringify({ error: "userId required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const ent = await ctx.runQuery(
+      internal.entitlements.getEntitlementsByUserId,
+      { userId: body.userId },
+    );
+    const tier = ent?.features?.tier ?? 0;
+    return new Response(JSON.stringify({ tier }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+http.route({
   path: "/dodopayments-webhook",
   method: "POST",
   handler: webhookHandler,

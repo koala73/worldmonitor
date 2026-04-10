@@ -80,6 +80,32 @@ async function deactivateChannel(userId, channelType) {
   }
 }
 
+// ── Entitlement check (PRO gate for delivery) ───────────────────────────────
+
+const ENTITLEMENT_CACHE_TTL = 900; // 15 min
+
+async function isUserPro(userId) {
+  const cacheKey = `relay:entitlement:${userId}`;
+  try {
+    const cached = await upstashRest('GET', cacheKey);
+    if (cached !== null) return Number(cached) >= 1;
+  } catch { /* miss */ }
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/relay/entitlement`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return true; // fail-open: don't block delivery on entitlement service failure
+    const { tier } = await res.json();
+    await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
+    return (tier ?? 0) >= 1;
+  } catch {
+    return true; // fail-open
+  }
+}
+
 // ── Private IP guard ─────────────────────────────────────────────────────────
 
 function isPrivateIP(ip) {
@@ -662,6 +688,12 @@ async function processEvent(event) {
   const eventSeverity = event.severity ?? 'high';
 
   for (const rule of matching) {
+    const pro = await isUserPro(rule.userId);
+    if (!pro) {
+      console.log(`[relay] Skipping ${rule.userId} — not PRO`);
+      continue;
+    }
+
     const quietAction = resolveQuietAction(rule, eventSeverity);
 
     if (quietAction === 'suppress') {
