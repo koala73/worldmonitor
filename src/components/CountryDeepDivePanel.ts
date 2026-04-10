@@ -1320,10 +1320,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       table.append(thead);
 
       const FLAG_LABELS: Record<string, { text: string; cls: string }> = {
-        SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
-        SINGLE_CORRIDOR_CRITICAL: { text: 'Single Corridor', cls: 'cdp-dep-critical' },
-        COMPOUND_RISK:            { text: 'Compound Risk',   cls: 'cdp-dep-compound' },
-        DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
+        DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
+        DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL: { text: 'Single Corridor', cls: 'cdp-dep-critical' },
+        DEPENDENCY_FLAG_COMPOUND_RISK:            { text: 'Compound Risk',   cls: 'cdp-dep-compound' },
+        DEPENDENCY_FLAG_DIVERSIFIABLE:            { text: 'Diversifiable',   cls: 'cdp-dep-ok' },
       };
 
       const tbody = this.el('tbody');

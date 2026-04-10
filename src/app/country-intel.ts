@@ -48,7 +48,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToUnCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import { fetchCountryChokepointIndex, fetchMultiSectorExposure } from '@/services/supply-chain';
+import { fetchMultiSectorExposure } from '@/services/supply-chain';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -407,19 +407,27 @@ export class CountryIntelManager implements AppModule {
     fetchMultiSectorExposure(code)
       .then((sectors) => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        // Pass the original single-sector result for backward compat, plus the multi-sector data
         if (sectors.length === 0) {
           this.ctx.countryBriefPage.updateTradeExposure?.(null);
-        } else {
-          // Build a compat response from the energy sector (hs2=27) or first available
-          const energySector = sectors.find(s => s.hs2 === '27');
-          fetchCountryChokepointIndex(code, energySector ? '27' : sectors[0]!.hs2)
-            .then(result => {
-              if (this.ctx.countryBriefPage?.getCode() !== code) return;
-              this.ctx.countryBriefPage.updateTradeExposure?.(result, sectors);
-            })
-            .catch(() => this.ctx.countryBriefPage?.updateTradeExposure?.(null));
+          return;
         }
+        // Build a synthetic compat response from sector data (no extra fetch needed)
+        const top = sectors[0]!;
+        const syntheticResponse = {
+          iso2: code,
+          hs2: top.hs2,
+          exposures: sectors.slice(0, 3).map(s => ({
+            chokepointId: s.primaryChokepointId,
+            chokepointName: s.primaryChokepointName,
+            exposureScore: s.exposureScore,
+            coastSide: '',
+            shockSupported: s.hs2 === '27',
+          })),
+          primaryChokepointId: top.primaryChokepointId,
+          vulnerabilityIndex: top.vulnerabilityIndex,
+          fetchedAt: new Date().toISOString(),
+        };
+        this.ctx.countryBriefPage.updateTradeExposure?.(syntheticResponse, sectors);
       })
       .catch(() => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
