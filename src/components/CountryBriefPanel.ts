@@ -2,7 +2,7 @@ import type { CountryBriefSignals } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
-import type { GetCountryChokepointIndexResponse, SectorExposureSummary } from '@/services/supply-chain';
+import type { GetCountryChokepointIndexResponse, SectorExposureSummary, CountryProductsResponse } from '@/services/supply-chain';
 
 export interface CountryIntelData {
   brief: string;
@@ -194,4 +194,5 @@ export interface CountryBriefPanel {
   updateTariffTrends?(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void;
   updateChokepointExposure?(data: { vulnerabilityIndex: number; exposures: Array<{ chokepointName: string; exposureScore: number }> } | null): void;
   updateCostShock?(data: { supplyDeficitPct: number; coverageDays: number; warRiskTier: string } | null): void;
+  updateProductImports?(data: CountryProductsResponse | null): void;
 }

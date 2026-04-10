@@ -30,7 +30,7 @@ import type {
   CountryEnergyProfileData,
   CountryPortActivityData,
 } from './CountryBriefPanel';
-import type { GetCountryChokepointIndexResponse, SectorExposureSummary } from '@/services/supply-chain';
+import type { GetCountryChokepointIndexResponse, SectorExposureSummary, CountryProductsResponse, CountryProduct } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 
@@ -102,6 +102,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private sectorBypassAbort: AbortController | null = null;
   private cachedTradeExposureData: GetCountryChokepointIndexResponse | null = null;
   private cachedSectors: SectorExposureSummary[] = [];
+  private productImportsBody: HTMLElement | null = null;
   private debtBody: HTMLElement | null = null;
   private sanctionsBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
@@ -1542,6 +1543,119 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return wrap;
   }
 
+  public updateProductImports(data: CountryProductsResponse | null): void {
+    if (!this.productImportsBody) return;
+    this.productImportsBody.replaceChildren();
+    if (!data || data.products.length === 0) {
+      this.productImportsBody.append(this.makeEmpty('No product import data available'));
+      return;
+    }
+    this.renderProductSelector(data.products);
+  }
+
+  private renderProductSelector(products: CountryProduct[]): void {
+    if (!this.productImportsBody) return;
+    const wrap = this.el('div', 'cdp-product-selector');
+    const input = this.el('input', 'cdp-product-search');
+    input.type = 'text';
+    input.placeholder = 'Search products...';
+    input.setAttribute('autocomplete', 'off');
+
+    const list = this.el('div', 'cdp-product-list');
+    const detailMount = this.el('div', 'cdp-product-detail');
+
+    const renderList = (filter: string) => {
+      list.replaceChildren();
+      const lower = filter.toLowerCase();
+      const filtered = lower
+        ? products.filter(p => p.description.toLowerCase().includes(lower) || p.hs4.includes(lower))
+        : products;
+      for (const p of filtered.slice(0, 12)) {
+        const item = this.el('button', 'cdp-product-item');
+        item.type = 'button';
+        item.textContent = `${p.description} (HS ${p.hs4})`;
+        item.addEventListener('click', () => {
+          input.value = p.description;
+          list.replaceChildren();
+          this.renderProductDetail(detailMount, p);
+        });
+        list.append(item);
+      }
+    };
+
+    input.addEventListener('input', () => renderList(input.value));
+    input.addEventListener('focus', () => {
+      if (list.children.length === 0) renderList(input.value);
+    });
+
+    this.productImportsBody.addEventListener('click', (e) => {
+      if (!(e.target instanceof HTMLElement) || e.target.closest('.cdp-product-selector')) return;
+      list.replaceChildren();
+    });
+
+    wrap.append(input, list);
+    this.productImportsBody.append(wrap, detailMount);
+
+    const first = products[0];
+    if (first) {
+      input.value = first.description;
+      this.renderProductDetail(detailMount, first);
+    }
+  }
+
+  private renderProductDetail(mount: HTMLElement, product: CountryProduct): void {
+    mount.replaceChildren();
+
+    const header = this.el('div', 'cdp-product-header');
+    header.append(
+      this.el('span', 'cdp-product-name', `${product.description} (HS ${product.hs4})`),
+      this.el('span', 'cdp-product-value', this.formatMoney(product.totalValue)),
+    );
+    mount.append(header);
+
+    if (product.topExporters.length === 0) {
+      mount.append(this.makeEmpty('No exporter data'));
+      return;
+    }
+
+    const table = this.el('table', 'cdp-product-suppliers-table');
+    const thead = this.el('thead');
+    const hr = this.el('tr');
+    hr.append(this.el('th', '', 'Supplier'));
+    hr.append(this.el('th', '', 'Share'));
+    hr.append(this.el('th', '', 'Value'));
+    thead.append(hr);
+    table.append(thead);
+
+    const tbody = this.el('tbody');
+    for (const exp of product.topExporters) {
+      const tr = this.el('tr');
+      const supplierTd = this.el('td', 'cdp-product-supplier');
+      const flag = exp.partnerIso2 ? CountryDeepDivePanel.toFlagEmoji(exp.partnerIso2) : '';
+      supplierTd.textContent = `${flag} ${exp.partnerIso2 || 'N/A'}`;
+      tr.append(supplierTd);
+
+      const shareTd = this.el('td', 'cdp-product-share');
+      const pct = Math.round(exp.share * 100);
+      shareTd.textContent = `${pct}%`;
+      const barWrap = this.el('div', 'cdp-product-share-bar-wrap');
+      const bar = this.el('div', 'cdp-product-share-bar');
+      bar.style.width = `${Math.min(pct, 100)}%`;
+      if (pct >= 50) bar.classList.add('cdp-product-share-high');
+      barWrap.append(bar);
+      shareTd.append(barWrap);
+      tr.append(shareTd);
+
+      tr.append(this.el('td', 'cdp-product-val', this.formatMoney(exp.value)));
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    mount.append(table);
+
+    const source = this.el('div', 'cdp-card-footer', `Source: UN Comtrade HS4 bilateral \u00B7 ${product.year}`);
+    mount.append(source);
+  }
+
   private factItem(label: string, value: string): HTMLElement {
     const wrapper = this.el('div', 'cdp-fact-item');
     wrapper.append(this.el('div', 'cdp-fact-label', label));
@@ -1790,6 +1904,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const isPro = hasPremiumAccess(getAuthState());
 
+    const [productImportsCard, productImportsCardBody] = this.sectionCard('Product Imports', 'Top imported products by HS4 code with supplier breakdown and concentration risk.');
+    this.productImportsBody = productImportsCardBody;
+    productImportsCardBody.append(isPro ? this.makeLoading('Loading product data\u2026') : this.makeProLocked('Upgrade to PRO for product import data'));
+
     const [debtCard, debtBody] = this.sectionCard('National Debt', 'Government debt-to-GDP ratio, total debt, and year-over-year growth.');
     this.debtBody = debtBody;
     debtBody.append(isPro ? this.makeLoading('Loading debt data\u2026') : this.makeProLocked('Upgrade to PRO for national debt data'));
@@ -1832,7 +1950,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, debtCard, sanctionsCard, comtradeCard, tariffCard, chokepointCard, costShockCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, chokepointCard, costShockCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -1854,6 +1972,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.energyBody = null;
     this.maritimeBody = null;
     this.tradeExposureBody = null;
+    this.productImportsBody = null;
     this.debtBody = null;
     this.sanctionsBody = null;
     this.comtradeBody = null;

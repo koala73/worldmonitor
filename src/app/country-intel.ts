@@ -48,7 +48,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToUnCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import { fetchMultiSectorExposure } from '@/services/supply-chain';
+import { fetchMultiSectorExposure, fetchCountryProducts } from '@/services/supply-chain';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -642,6 +642,15 @@ export class CountryIntelManager implements AppModule {
       if (this.ctx.countryBriefPage?.getCode() === code) {
         this.ctx.countryBriefPage.updateChokepointExposure?.(null);
         this.ctx.countryBriefPage.updateCostShock?.(null);
+      }
+    });
+
+    fetchCountryProducts(code).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateProductImports?.(resp.products.length > 0 ? resp : null);
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) {
+        this.ctx.countryBriefPage.updateProductImports?.(null);
       }
     });
   }
