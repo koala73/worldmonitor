@@ -441,6 +441,7 @@ export class DeckGLMap {
   private tradeTrips: TripData[] = [];
   private tradeAnimationTime = 0;
   private tradeAnimationFrame: number | null = null;
+  private tradeAnimationFrameCount = 0;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private scenarioState: ScenarioVisualState | null = null;
   private affectedIso2Set: Set<string> = new Set();
@@ -5167,7 +5168,7 @@ export class DeckGLMap {
       getColor: (d: TripData) => d.color,
       getWidth: (d: TripData) => d.width,
       widthMinPixels: 2,
-      currentTime: this.tradeAnimationTime % TRADE_ANIMATION_CYCLE,
+      currentTime: this.tradeAnimationTime,
       trailLength: TRADE_TRAIL_LENGTH,
       pickable: false,
     });
@@ -5183,8 +5184,9 @@ export class DeckGLMap {
       const delta = now - lastTime;
       lastTime = now;
       this.tradeAnimationTime = (this.tradeAnimationTime + delta * TRADE_ANIMATION_SPEED) % TRADE_ANIMATION_CYCLE;
-      this.render();
       this.tradeAnimationFrame = requestAnimationFrame(animate);
+      this.tradeAnimationFrameCount++;
+      if (this.tradeAnimationFrameCount % 2 === 0) this.render();
     };
     this.tradeAnimationFrame = requestAnimationFrame(animate);
   }
