@@ -52,7 +52,9 @@ async function fetchWtoReporters() {
 // ISO2 lookup for cache keys — derived from the same un-to-iso2.json
 const WTO_CODE_TO_ISO2 = { ..._un2iso2 };
 
-const REPORTER_ISO2 = ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
+function getReporterIso2() {
+  return ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
+}
 
 // ─── Shipping Rates (FRED) ───
 
@@ -444,7 +446,7 @@ async function fetchTradeBarriers() {
     return gapB - gapA;
   });
   console.log(`  Trade barriers: ${barriers.length} countries`);
-  return { barriers, _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { barriers, _reporterCountries: getReporterIso2(), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Trade Restrictions (WTO) ───
@@ -493,7 +495,7 @@ async function fetchTradeRestrictions() {
   });
 
   console.log(`  Trade restrictions: ${restrictions.length} countries`);
-  return { restrictions, _reporterCountries: REPORTER_ISO2, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { restrictions, _reporterCountries: getReporterIso2(), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Tariff Trends (WTO) — pre-seed major reporters ───
