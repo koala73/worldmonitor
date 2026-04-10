@@ -516,9 +516,10 @@ Current snapshot: ${JSON.stringify({ topRiskCountries: currentLandscape.topRiskC
     if (anyDelivered) {
       briefCount++;
       console.log(`[proactive] Brief delivered to ${rule.userId} (${variant}, score=${score}, changes=${changes.length})`);
+      await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
+    } else {
+      console.warn(`[proactive] All deliveries failed for ${rule.userId} — retrying next run`);
     }
-
-    await upstashRest('SET', landscapeKey, JSON.stringify(currentLandscape), 'EX', String(LANDSCAPE_TTL));
   }
 
   console.log(`[proactive] Run complete: ${briefCount} brief(s) delivered`);
