@@ -27,7 +27,7 @@ import {
   type DigestMode,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
-import { hasTier, getEntitlementState } from '@/services/entitlements';
+import { hasTier } from '@/services/entitlements';
 import { SITE_VARIANT } from '@/config/variant';
 // When VITE_QUIET_HOURS_BATCH_ENABLED=0 the relay does not honour batch_on_wake.
 // Hide that option so users cannot select a mode that silently behaves as critical_only.
@@ -359,20 +359,22 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `</div></details>`;
 
   // ── Notifications group (web-only) ──
+  // Three states: (a) confirmed PRO → full UI, (b) everything else → locked [PRO] section.
+  // When entitlements haven't loaded yet (null), show locked to avoid flashing full UI to free users.
   if (!host.isDesktopApp) {
-    if (!host.isSignedIn || (getEntitlementState() !== null && !hasTier(1))) {
-      html += `<details class="wm-pref-group">`;
-      html += `<summary>Notifications <span class="panel-toggle-pro-badge">PRO</span></summary>`;
-      html += `<div class="wm-pref-group-content">`;
-      html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
-      html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
-      html += `</div></details>`;
-    } else if (host.isSignedIn && (getEntitlementState() === null || hasTier(1))) {
+    if (host.isSignedIn && hasTier(1)) {
       html += `<details class="wm-pref-group" id="usNotifGroup">`;
       html += `<summary>Notifications</summary>`;
       html += `<div class="wm-pref-group-content">`;
       html += `<div class="us-notif-loading" id="usNotifLoading">Loading...</div>`;
       html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
+      html += `</div></details>`;
+    } else {
+      html += `<details class="wm-pref-group">`;
+      html += `<summary>Notifications <span class="panel-toggle-pro-badge">PRO</span></summary>`;
+      html += `<div class="wm-pref-group-content">`;
+      html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
+      html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
       html += `</div></details>`;
     }
   }
@@ -625,8 +627,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
       if (!host.isDesktopApp) updateAiStatus(container);
 
-      // ── Notifications section ──
-      if (!host.isDesktopApp && (!host.isSignedIn || (getEntitlementState() !== null && !hasTier(1)))) {
+      // ── Notifications section: locked [PRO] upgrade button ──
+      if (!host.isDesktopApp && !(host.isSignedIn && hasTier(1))) {
         const upgradeBtn = container.querySelector<HTMLButtonElement>('#usNotifUpgradeBtn');
         if (upgradeBtn) {
           upgradeBtn.addEventListener('click', () => {
@@ -642,7 +644,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }, { signal });
         }
       }
-      if (!host.isDesktopApp && host.isSignedIn && (getEntitlementState() === null || hasTier(1))) {
+      // ── Notifications section: full PRO UI ──
+      if (!host.isDesktopApp && host.isSignedIn && hasTier(1)) {
         let notifPollInterval: ReturnType<typeof setInterval> | null = null;
 
         function clearNotifPoll(): void {
