@@ -1744,6 +1744,9 @@ export class DeckGLMap {
       const sanctionsLayer = this.createSanctionsChoroplethLayer();
       if (sanctionsLayer) layers.push(sanctionsLayer);
     }
+    // Scenario heat layer (affected countries tint)
+    const scenarioHeat = this.scenarioState ? this.createScenarioHeatLayer() : null;
+    if (scenarioHeat) layers.push(scenarioHeat);
     // Phase 8: Species recovery zones
     if (mapLayers.speciesRecovery && this.speciesRecoveryZones.length > 0) {
       layers.push(this.createSpeciesRecoveryLayer());
@@ -3523,6 +3526,24 @@ export class DeckGLMap {
         return [0, 0, 0, 0] as [number, number, number, number];
       },
       pickable: false,
+    });
+  }
+
+  private createScenarioHeatLayer(): GeoJsonLayer | null {
+    if (!this.scenarioState?.affectedIso2s?.length || !this.countriesGeoJsonData) return null;
+    const affected = new Set(this.scenarioState.affectedIso2s);
+    return new GeoJsonLayer({
+      id: 'scenario-heat-layer',
+      data: this.countriesGeoJsonData,
+      stroked: false,
+      filled: true,
+      extruded: false,
+      pickable: false,
+      getFillColor: (feature: { properties?: Record<string, unknown> }) => {
+        const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        return (code && affected.has(code) ? [220, 60, 40, 80] : [0, 0, 0, 0]) as [number, number, number, number];
+      },
+      updateTriggers: { getFillColor: [this.scenarioState] },
     });
   }
 

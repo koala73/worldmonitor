@@ -49,6 +49,9 @@ import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/g
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
+import { getAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { trackGateHit } from '@/services/analytics';
 
 export type { ScenarioVisualState, ScenarioResult };
 
@@ -90,6 +93,7 @@ export class MapContainer {
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
+  private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
   private useGlobe: boolean;
@@ -970,22 +974,31 @@ export class MapContainer {
 
   // ─── Scenario Engine ─────────────────────────────────────────────────────────
 
+  public setSupplyChainPanel(panel: import('@/components/SupplyChainPanel').SupplyChainPanel): void {
+    this.supplyChainPanel = panel;
+  }
+
   /**
    * Activate a scenario across all active renderers.
-   * PRO-gated — free users trigger `trackGateHit('scenario')` only.
+   * PRO-gated — free users trigger `trackGateHit('scenario-engine')` only.
    *
    * @param scenarioId  Template ID from scenario-templates.ts
    * @param result      Computed result from the scenario worker
    */
   public activateScenario(scenarioId: string, result: ScenarioResult): void {
+    if (!hasPremiumAccess(getAuthState())) {
+      trackGateHit('scenario-engine');
+      return;
+    }
     const state: ScenarioVisualState = {
       scenarioId,
       disruptedChokepointIds: result.affectedChokepointIds,
       affectedIso2s: result.topImpactCountries.map((c: { iso2: string }) => c.iso2),
     };
-    // DeckGL is the primary renderer for scenario visuals.
-    // Globe and SVG support is deferred to Sprint D.
     this.deckGLMap?.setScenarioState(state);
+    this.svgMap?.setScenarioState(state);
+    this.globeMap?.setScenarioState(state);
+    this.supplyChainPanel?.showScenarioSummary(scenarioId, result);
   }
 
   /**
@@ -993,6 +1006,9 @@ export class MapContainer {
    */
   public deactivateScenario(): void {
     this.deckGLMap?.setScenarioState(null);
+    this.svgMap?.setScenarioState(null);
+    this.globeMap?.setScenarioState(null);
+    this.supplyChainPanel?.hideScenarioSummary();
   }
 
   // Utility methods

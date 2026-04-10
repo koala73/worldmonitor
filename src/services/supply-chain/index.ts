@@ -9,6 +9,7 @@ import {
   type GetCountryChokepointIndexResponse,
   type GetBypassOptionsResponse,
   type GetCountryCostShockResponse,
+  type GetSectorDependencyResponse,
   type ShippingIndex,
   type ChokepointInfo,
   type CriticalMineral,
@@ -28,6 +29,7 @@ export type {
   GetCountryChokepointIndexResponse,
   GetBypassOptionsResponse,
   GetCountryCostShockResponse,
+  GetSectorDependencyResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
@@ -147,5 +149,23 @@ export async function fetchCountryCostShock(
     return await client.getCountryCostShock({ iso2, chokepointId, hs2 });
   } catch {
     return empty;
+  }
+}
+
+const emptySectorDependency: GetSectorDependencyResponse = {
+  iso2: '', hs2: '27', hs2Label: '', flags: [],
+  primaryExporterIso2: '', primaryExporterShare: 0,
+  primaryChokepointId: '', primaryChokepointExposure: 0,
+  hasViableBypass: false, fetchedAt: '',
+};
+
+export async function fetchSectorDependency(
+  iso2: string,
+  hs2 = '27',
+): Promise<GetSectorDependencyResponse> {
+  try {
+    return await client.getSectorDependency({ iso2, hs2 });
+  } catch {
+    return { ...emptySectorDependency, iso2, hs2 };
   }
 }

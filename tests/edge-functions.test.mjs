@@ -340,3 +340,103 @@ describe('Edge Function module isolation', () => {
     });
   }
 });
+
+describe('Scenario run endpoint (api/scenario/v1/run.ts)', () => {
+  const runPath = join(root, 'api', 'scenario', 'v1', 'run.ts');
+
+  it('exports edge config with runtime: edge', () => {
+    const src = readFileSync(runPath, 'utf-8');
+    assert.ok(
+      src.includes("runtime: 'edge'") || src.includes('runtime: "edge"'),
+      'run.ts: must export config with runtime: edge',
+    );
+  });
+
+  it('has a default export handler function', () => {
+    const src = readFileSync(runPath, 'utf-8');
+    assert.ok(
+      src.includes('export default') && src.includes('function handler'),
+      'run.ts: must have a default export handler function',
+    );
+  });
+
+  it('returns 405 for non-POST requests', () => {
+    const src = readFileSync(runPath, 'utf-8');
+    assert.ok(
+      src.includes('405'),
+      'run.ts: must return 405 for non-POST requests',
+    );
+    assert.ok(
+      src.includes("!== 'POST'") || src.includes('!== "POST"'),
+      'run.ts: must check for POST method and reject other methods with 405',
+    );
+  });
+
+  it('validates scenarioId is required', () => {
+    const src = readFileSync(runPath, 'utf-8');
+    assert.ok(
+      src.includes('scenarioId'),
+      'run.ts: must validate scenarioId field',
+    );
+    assert.ok(
+      src.includes('400'),
+      'run.ts: must return 400 for invalid/missing scenarioId',
+    );
+  });
+
+  it('uses per-user rate limiting', () => {
+    const src = readFileSync(runPath, 'utf-8');
+    assert.ok(
+      src.includes('rate') && src.includes('429'),
+      'run.ts: must implement rate limiting with 429 response',
+    );
+  });
+
+  it('uses AbortSignal.timeout on Redis fetch', () => {
+    const src = readFileSync(runPath, 'utf-8');
+    assert.ok(
+      src.includes('AbortSignal.timeout'),
+      'run.ts: all Redis fetches must have AbortSignal.timeout to prevent hanging edge isolates',
+    );
+  });
+});
+
+describe('Scenario status endpoint (api/scenario/v1/status.ts)', () => {
+  const statusPath = join(root, 'api', 'scenario', 'v1', 'status.ts');
+
+  it('exports edge config with runtime: edge', () => {
+    const src = readFileSync(statusPath, 'utf-8');
+    assert.ok(
+      src.includes("runtime: 'edge'") || src.includes('runtime: "edge"'),
+      'status.ts: must export config with runtime: edge',
+    );
+  });
+
+  it('returns 400 for missing or invalid jobId', () => {
+    const src = readFileSync(statusPath, 'utf-8');
+    assert.ok(
+      src.includes('400'),
+      'status.ts: must return 400 for missing or invalid jobId',
+    );
+    assert.ok(
+      src.includes('jobId'),
+      'status.ts: must validate jobId query parameter',
+    );
+  });
+
+  it('validates jobId format to guard against path traversal', () => {
+    const src = readFileSync(statusPath, 'utf-8');
+    assert.ok(
+      src.includes('JOB_ID_RE') || src.includes('/^scenario:'),
+      'status.ts: must validate jobId against a regex to prevent path traversal attacks (e.g. ../../etc/passwd)',
+    );
+  });
+
+  it('uses AbortSignal.timeout on Redis fetch', () => {
+    const src = readFileSync(statusPath, 'utf-8');
+    assert.ok(
+      src.includes('AbortSignal.timeout'),
+      'status.ts: Redis fetch must have AbortSignal.timeout to prevent hanging edge isolates',
+    );
+  });
+});

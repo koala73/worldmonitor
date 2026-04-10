@@ -51,6 +51,7 @@ import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { RadiationObservation } from '@/services/radiation';
+import type { ScenarioVisualState } from '@/config/scenario-templates';
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
@@ -396,7 +397,7 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone';
+  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario';
   level?: string;
   score?: number;
 
@@ -526,6 +527,7 @@ export class GlobeMap {
   private cableDegradedIds = new Set<string>();
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
   private countriesGeoData: FeatureCollection<Geometry> | null = null;
+  private scenarioState: ScenarioVisualState | null = null;
 
   // Current layers state
   private layers: MapLayers;
@@ -828,6 +830,7 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_CAP[d.intensity!] ?? GlobeMap.CONFLICT_CAP.low;
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
+        if (d._kind === 'scenario') return 'rgba(220,60,40,0.3)';
         return 'rgba(255,60,60,0.15)';
       })
       .polygonSideColor((d: GlobePolygon) => {
@@ -835,6 +838,7 @@ export class GlobeMap {
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_SIDE[d.intensity!] ?? GlobeMap.CONFLICT_SIDE.low;
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.1)';
+        if (d._kind === 'scenario') return 'rgba(0,0,0,0)';
         return 'rgba(255,60,60,0.08)';
       })
       .polygonStrokeColor((d: GlobePolygon) => {
@@ -2088,10 +2092,29 @@ export class GlobeMap {
       polys.push(...this.stormConePolygons);
     }
 
+    if (this.scenarioState?.affectedIso2s?.length && this.countriesGeoData) {
+      const affected = new Set(this.scenarioState.affectedIso2s);
+      for (const feat of this.countriesGeoData.features) {
+        const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        if (!code || !affected.has(code)) continue;
+        const geom = feat.geometry;
+        if (!geom) continue;
+        const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+        for (const ring of rings) {
+          polys.push({ coords: ring as number[][][], name: code, _kind: 'scenario' });
+        }
+      }
+    }
+
     (this.globe as any).polygonsData(polys);
   }
 
   // ─── Public data setters ──────────────────────────────────────────────────
+
+  public setScenarioState(state: ScenarioVisualState | null): void {
+    this.scenarioState = state;
+    this.flushPolygons();
+  }
 
   public setCIIScores(scores: Array<{ code: string; score: number; level: string }>): void {
     this.ciiScoresMap = new Map(scores.map(s => [s.code, { score: s.score, level: s.level }]));

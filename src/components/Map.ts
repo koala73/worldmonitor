@@ -61,6 +61,7 @@ import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
+import type { ScenarioVisualState } from '@/config/scenario-templates';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -3405,6 +3406,10 @@ export class MapComponent {
 
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
     this.popup.setChokepointData(data);
+  }
+
+  public setScenarioState(_state: ScenarioVisualState | null): void {
+    // SVG renderer: scenario fill deferred (no iso2 data binding on country elements)
   }
 
   public setLayerLoading(layer: keyof MapLayers, loading: boolean): void {

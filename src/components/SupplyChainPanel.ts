@@ -6,6 +6,8 @@ import type {
   GetShippingStressResponse,
 } from '@/services/supply-chain';
 import { fetchBypassOptions } from '@/services/supply-chain';
+import type { ScenarioResult } from '@/config/scenario-templates';
+import { SCENARIO_TEMPLATES } from '../../server/worldmonitor/supply-chain/v1/scenario-templates';
 import { TransitChart } from '@/utils/transit-chart';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
@@ -31,6 +33,9 @@ export class SupplyChainPanel extends Panel {
   private chartMountTimer: ReturnType<typeof setTimeout> | null = null;
   private bypassUnsubscribe: (() => void) | null = null;
   private bypassGateTracked = false;
+  private onDismissScenario: (() => void) | null = null;
+  private onScenarioActivate: ((scenarioId: string, result: ScenarioResult) => void) | null = null;
+  private activeScenarioState: { scenarioId: string; result: ScenarioResult } | null = null;
 
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
@@ -181,6 +186,16 @@ export class SupplyChainPanel extends Panel {
         this.chartMountTimer = null;
       }, 220);
     }
+
+    // Re-insert scenario banner after setContent replaces inner content.
+    if (this.activeScenarioState) {
+      this.showScenarioSummary(this.activeScenarioState.scenarioId, this.activeScenarioState.result);
+    }
+
+    // Attach scenario trigger buttons for expanded chokepoint cards.
+    if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {
+      this.attachScenarioTriggers();
+    }
   }
 
   private renderBypassSection(container: HTMLElement, chokepointId: string): void {
@@ -305,6 +320,20 @@ export class SupplyChainPanel extends Panel {
           ? `<div class="sc-bypass-section" data-bypass-cp="${escapeHtml(cp.id)}"><div class="sc-bypass-loading">Loading bypass options\u2026</div></div>`
           : '';
 
+        const scenarioSection = expanded ? (() => {
+          const template = SCENARIO_TEMPLATES.find(t =>
+            t.affectedChokepointIds.includes(cp.id) && t.type !== 'tariff_shock'
+          );
+          if (!template) return '';
+          const isPro = hasPremiumAccess(getAuthState());
+          const btnClass = isPro ? 'sc-scenario-btn' : 'sc-scenario-btn sc-scenario-btn--gated';
+          return `<div class="sc-scenario-trigger" data-scenario-id="${escapeHtml(template.id)}" data-chokepoint-id="${escapeHtml(cp.id)}">
+            <button class="${btnClass}" ${!isPro ? 'data-gated="1"' : ''} aria-label="Simulate ${escapeHtml(template.name)}">
+              Simulate Closure
+            </button>
+          </div>`;
+        })() : '';
+
         return `<div class="trade-restriction-card${expanded ? ' expanded' : ''}" data-cp-id="${escapeHtml(cp.name)}" style="cursor:pointer">
           <div class="trade-restriction-header">
             <span class="trade-country">${escapeHtml(cp.name)}</span>
@@ -345,6 +374,7 @@ export class SupplyChainPanel extends Panel {
             ${actionRow}
             ${chartPlaceholder}
             ${bypassSection}
+            ${scenarioSection}
           </div>
         </div>`;
       }).join('')}
@@ -590,5 +620,74 @@ export class SupplyChainPanel extends Panel {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+  }
+
+  // ─── Scenario banner ─────────────────────────────────────────────────────────
+
+  public showScenarioSummary(scenarioId: string, result: ScenarioResult): void {
+    this.activeScenarioState = { scenarioId, result };
+    this.content.querySelector('.sc-scenario-banner')?.remove();
+    const top5 = result.topImpactCountries.slice(0, 5);
+    const countriesHtml = top5.map(c =>
+      `<span class="sc-scenario-country">${escapeHtml(c.iso2)} <em>${(c.impactPct * 100).toFixed(0)}%</em></span>`
+    ).join(' \u00B7 ');
+    const banner = document.createElement('div');
+    banner.className = 'sc-scenario-banner';
+    banner.innerHTML = `<span class="sc-scenario-icon">\u26A0</span><span class="sc-scenario-name">${escapeHtml(scenarioId.replace(/-/g, ' '))}</span><span class="sc-scenario-countries">${countriesHtml}</span><button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button>`;
+    banner.querySelector('.sc-scenario-dismiss')!.addEventListener('click', () => this.onDismissScenario?.());
+    this.content.prepend(banner);
+  }
+
+  public hideScenarioSummary(): void {
+    this.activeScenarioState = null;
+    this.content.querySelector('.sc-scenario-banner')?.remove();
+  }
+
+  public setOnDismissScenario(cb: () => void): void {
+    this.onDismissScenario = cb;
+  }
+
+  public setOnScenarioActivate(cb: (scenarioId: string, result: ScenarioResult) => void): void {
+    this.onScenarioActivate = cb;
+  }
+
+  private attachScenarioTriggers(): void {
+    this.content.querySelectorAll<HTMLElement>('.sc-scenario-trigger').forEach(el => {
+      el.querySelector('.sc-scenario-btn')?.addEventListener('click', async () => {
+        const btn = el.querySelector<HTMLButtonElement>('.sc-scenario-btn')!;
+        if (btn.dataset.gated === '1') {
+          trackGateHit('scenario-engine');
+          return;
+        }
+        const scenarioId = el.dataset.scenarioId!;
+        btn.disabled = true;
+        btn.textContent = 'Computing\u2026';
+        try {
+          const runResp = await fetch('/api/scenario/v1/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scenarioId }),
+          });
+          if (!runResp.ok) throw new Error('Run failed');
+          const { jobId } = await runResp.json() as { jobId: string };
+          let result: ScenarioResult | null = null;
+          for (let i = 0; i < 30; i++) {
+            if (!this.content.isConnected) return;
+            await new Promise(r => setTimeout(r, 2000));
+            const statusResp = await fetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`);
+            const status = await statusResp.json() as { status: string; result?: ScenarioResult };
+            if (status.status === 'done') { result = status.result!; break; }
+            if (status.status === 'failed') throw new Error('Scenario failed');
+          }
+          if (!result) throw new Error('Timeout');
+          if (!this.content.isConnected) return;
+          this.onScenarioActivate?.(scenarioId, result);
+          btn.textContent = 'Active';
+        } catch {
+          btn.textContent = 'Error \u2014 retry';
+          btn.disabled = false;
+        }
+      });
+    });
   }
 }
