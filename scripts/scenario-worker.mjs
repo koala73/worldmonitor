@@ -191,6 +191,10 @@ async function computeScenario(scenarioId, iso2) {
   /** @type {Array<{ iso2: string; hs2: string; exposureScore: number; adjustedImpact: number; chokepointId: string }>} */
   const impacts = [];
 
+  // Tariff-shock scenarios have no physical chokepoint closure (affectedChokepointIds: []).
+  // They affect all countries that trade the targeted HS2 sectors regardless of route.
+  const isTariffShock = template.affectedChokepointIds.length === 0;
+
   for (const reporter of reportersToCheck) {
     // Read HS2 exposure indexes for this reporter.
     // Cache shape: GetCountryChokepointIndexResponse =
@@ -201,9 +205,20 @@ async function computeScenario(scenarioId, iso2) {
 
     for (const hs2 of hs2Chapters) {
       const key = `supply-chain:exposure:${reporter}:${hs2}:v1`;
-      /** @type {{ iso2?: string; hs2?: string; exposures?: Array<{ chokepointId: string; exposureScore: number }> } | null} */
+      /** @type {{ iso2?: string; hs2?: string; exposures?: Array<{ chokepointId: string; exposureScore: number }>; vulnerabilityIndex?: number } | null} */
       const data = await redisGet(key).catch(() => null);
       if (!data || !Array.isArray(data.exposures)) continue;
+
+      if (isTariffShock) {
+        // Tariff shock: all reporters trading this HS2 sector are impacted.
+        // Use vulnerabilityIndex as a proxy for overall trade exposure.
+        const vulnScore = typeof data.vulnerabilityIndex === 'number' ? data.vulnerabilityIndex : 0;
+        if (vulnScore > 0) {
+          const adjustedImpact = vulnScore * template.costShockMultiplier;
+          impacts.push({ iso2: reporter, hs2, exposureScore: vulnScore, adjustedImpact, chokepointId: 'tariff' });
+        }
+        continue;
+      }
 
       for (const entry of data.exposures) {
         if (!entry?.chokepointId || typeof entry.exposureScore !== 'number') continue;
@@ -229,14 +244,14 @@ async function computeScenario(scenarioId, iso2) {
     byCountry.set(item.iso2, (byCountry.get(item.iso2) ?? 0) + item.adjustedImpact);
   }
 
-  const topImpactCountries = [...byCountry.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([countryIso2, totalImpact]) => ({
-      iso2: countryIso2,
-      totalImpact,
-      impactPct: template.disruptionPct,
-    }));
+  const sorted = [...byCountry.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
+  const maxImpact = sorted[0]?.[1] ?? 1;
+  const topImpactCountries = sorted.map(([countryIso2, totalImpact]) => ({
+    iso2: countryIso2,
+    totalImpact,
+    // Relative share of the worst-hit country, capped at 100
+    impactPct: Math.min(Math.round((totalImpact / maxImpact) * 100), 100),
+  }));
 
   return {
     scenarioId,

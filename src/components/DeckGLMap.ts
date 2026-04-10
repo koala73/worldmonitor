@@ -4966,15 +4966,20 @@ export class DeckGLMap {
     const colorFor = (status: string): [number, number, number, number] =>
       status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
 
-    // When a scenario is active, override colors for routes that transit disrupted chokepoints
+    // When a scenario is active, override colors for routes that transit disrupted chokepoints.
+    // Pre-build a Map once so getColor() is O(1) per segment instead of O(n) per frame.
     const scenarioDisrupted = this.scenarioState
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
+    const routeWaypoints = new Map<string, string[]>(
+      TRADE_ROUTES_LIST.map(r => [r.id, r.waypoints]),
+    );
+
     const getColor = (d: TradeRouteSegment): [number, number, number, number] => {
       if (scenarioDisrupted && scenarioDisrupted.size > 0) {
-        const route = TRADE_ROUTES_LIST.find(r => r.id === d.routeId);
-        if (route && route.waypoints.some(wp => scenarioDisrupted.has(wp))) {
+        const waypoints = routeWaypoints.get(d.routeId);
+        if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
           return scenario;
         }
       }
