@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
   classifyDimensionFreshness,
   readFreshnessMap,
+  resolveSeedMetaKey,
 } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
 import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import {
@@ -131,12 +135,15 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
   it('builds the map from a fake reader that returns { fetchedAt } for some keys and null for others', async () => {
     const fetchedAt = 1_699_000_000_000;
     // Pick two real sourceKeys from the registry so the Set-dedupe path
-    // is exercised with actual registry data.
-    const sourceKeyA = 'economic:imf:macro:v2'; // macroFiscal
-    const sourceKeyB = 'sanctions:country-counts:v1'; // tradeSanctions
+    // is exercised with actual registry data. Both resolve to drift
+    // cases (v-strip + override) so this also exercises resolveSeedMetaKey.
+    const sourceKeyA = 'economic:imf:macro:v2'; // macroFiscal -> seed-meta:economic:imf-macro
+    const sourceKeyB = 'sanctions:country-counts:v1'; // tradeSanctions -> seed-meta:sanctions:country-counts
+    const metaKeyA = resolveSeedMetaKey(sourceKeyA);
+    const metaKeyB = resolveSeedMetaKey(sourceKeyB);
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === `seed-meta:${sourceKeyA}`) return { fetchedAt };
-      if (key === `seed-meta:${sourceKeyB}`) return { fetchedAt: fetchedAt + 1 };
+      if (key === metaKeyA) return { fetchedAt };
+      if (key === metaKeyB) return { fetchedAt: fetchedAt + 1 };
       return null;
     };
     const map = await readFreshnessMap(reader);
@@ -148,6 +155,7 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
 
   it('omits malformed entries: fetchedAt not a number, NaN, zero, negative', async () => {
     const sourceKey = 'economic:imf:macro:v2';
+    const metaKey = resolveSeedMetaKey(sourceKey);
     const bogusCases: unknown[] = [
       { fetchedAt: 'not-a-number' },
       { fetchedAt: Number.NaN },
@@ -162,7 +170,7 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     ];
     for (const bogus of bogusCases) {
       const reader = async (key: string): Promise<unknown | null> => {
-        if (key === `seed-meta:${sourceKey}`) return bogus;
+        if (key === metaKey) return bogus;
         return null;
       };
       const map = await readFreshnessMap(reader);
@@ -173,10 +181,10 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     }
   });
 
-  it('deduplicates sourceKeys so shared keys are read only once', async () => {
-    // macroFiscal has two indicators backed by `economic:imf:macro:v2`.
-    // readFreshnessMap must dedupe so the reader is only called once
-    // per unique sourceKey.
+  it('deduplicates by resolved meta key so shared keys are read only once', async () => {
+    // 15+ resilience:static:{ISO2} registry entries collapse to one
+    // seed-meta:resilience:static read. macroFiscal has two indicators
+    // backed by economic:imf:macro:v2 that dedupe to one meta fetch.
     const callCount = new Map<string, number>();
     const reader = async (key: string): Promise<unknown | null> => {
       callCount.set(key, (callCount.get(key) ?? 0) + 1);
@@ -186,17 +194,203 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     for (const [, count] of callCount) {
       assert.equal(count, 1, 'every seed-meta key should be read at most once');
     }
+    // Spot-check: seed-meta:resilience:static was read exactly once even
+    // though the registry has many resilience:static:{ISO2} / * entries.
+    assert.equal(callCount.get('seed-meta:resilience:static'), 1);
   });
 
   it('swallows reader errors for a single key without failing the whole map', async () => {
+    const failingSourceKey = 'economic:imf:macro:v2';
+    const goodSourceKey = 'sanctions:country-counts:v1';
+    const failingMetaKey = resolveSeedMetaKey(failingSourceKey);
+    const goodMetaKey = resolveSeedMetaKey(goodSourceKey);
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'seed-meta:economic:imf:macro:v2') throw new Error('redis down');
-      if (key === 'seed-meta:sanctions:country-counts:v1') return { fetchedAt: NOW };
+      if (key === failingMetaKey) throw new Error('redis down');
+      if (key === goodMetaKey) return { fetchedAt: NOW };
       return null;
     };
     const map = await readFreshnessMap(reader);
     // The failing key is absent; the good key is present.
-    assert.ok(!map.has('economic:imf:macro:v2'));
-    assert.equal(map.get('sanctions:country-counts:v1'), NOW);
+    assert.ok(!map.has(failingSourceKey));
+    assert.equal(map.get(goodSourceKey), NOW);
+  });
+
+  it('projects one seed-meta:resilience:static fetchedAt onto every resilience:static:{ISO2} / * sourceKey', async () => {
+    // Greptile P1 regression (#2961): readFreshnessMap used to issue
+    // literal seed-meta:resilience:static:{ISO2} reads, so every
+    // templated entry was missing from the map. Assert every registry
+    // sourceKey that resolves to seed-meta:resilience:static is
+    // populated by a single fetchedAt read.
+    const fetchedAt = NOW - 1_000_000;
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'seed-meta:resilience:static') return { fetchedAt };
+      return null;
+    };
+    const map = await readFreshnessMap(reader);
+
+    const staticSourceKeys = INDICATOR_REGISTRY.filter((i) =>
+      /^resilience:static(:\{|:\*|$)/.test(i.sourceKey),
+    ).map((i) => i.sourceKey);
+    assert.ok(staticSourceKeys.length >= 10, 'registry should have many resilience:static:* entries');
+    for (const sourceKey of staticSourceKeys) {
+      assert.equal(
+        map.get(sourceKey),
+        fetchedAt,
+        `registry sourceKey ${sourceKey} should be populated from seed-meta:resilience:static`,
+      );
+    }
+  });
+
+  it('healthPublicService classifies fresh when seed-meta:resilience:static is recent', async () => {
+    // End-to-end integration for the P1 fix. healthPublicService has
+    // three indicators, all sharing resilience:static:{ISO2} as their
+    // sourceKey. Before the fix, readFreshnessMap would miss all three
+    // and classifyDimensionFreshness returned stale on healthy seeds.
+    const fetchedAt = freshAt('annual', 0.1);
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'seed-meta:resilience:static') return { fetchedAt };
+      return null;
+    };
+    const map = await readFreshnessMap(reader);
+    const result = classifyDimensionFreshness('healthPublicService', map, NOW);
+    assert.equal(
+      result.staleness,
+      'fresh',
+      'healthPublicService should be fresh when seed-meta:resilience:static is recent',
+    );
+    assert.equal(result.lastObservedAtMs, fetchedAt);
+  });
+});
+
+describe('resolveSeedMetaKey (T1.5 propagation pass, P1 fix)', () => {
+  it('strips {ISO2} template tokens', () => {
+    assert.equal(resolveSeedMetaKey('resilience:static:{ISO2}'), 'seed-meta:resilience:static');
+  });
+
+  it('strips :* wildcard segments', () => {
+    assert.equal(resolveSeedMetaKey('resilience:static:*'), 'seed-meta:resilience:static');
+  });
+
+  it('strips {year} template tokens and trailing :v1', () => {
+    // displacement:summary:v1:{year} -> strip :{year} -> displacement:summary:v1
+    //   -> strip trailing :v1 -> displacement:summary
+    assert.equal(
+      resolveSeedMetaKey('displacement:summary:v1:{year}'),
+      'seed-meta:displacement:summary',
+    );
+  });
+
+  it('strips trailing :v\\d+ on ordinary version suffixes', () => {
+    assert.equal(resolveSeedMetaKey('cyber:threats:v2'), 'seed-meta:cyber:threats');
+    assert.equal(resolveSeedMetaKey('infra:outages:v1'), 'seed-meta:infra:outages');
+    assert.equal(resolveSeedMetaKey('unrest:events:v1'), 'seed-meta:unrest:events');
+    assert.equal(resolveSeedMetaKey('intelligence:gpsjam:v2'), 'seed-meta:intelligence:gpsjam');
+    assert.equal(
+      resolveSeedMetaKey('economic:national-debt:v1'),
+      'seed-meta:economic:national-debt',
+    );
+    assert.equal(
+      resolveSeedMetaKey('sanctions:country-counts:v1'),
+      'seed-meta:sanctions:country-counts',
+    );
+  });
+
+  it('leaves embedded :v1 alone when followed by more segments', () => {
+    // :v1 is not at the end, so the trailing-version strip must not
+    // touch it. writeExtraKeyWithMeta has the same carve-out.
+    assert.equal(
+      resolveSeedMetaKey('trade:restrictions:v1:tariff-overview:50'),
+      'seed-meta:trade:restrictions:v1:tariff-overview:50',
+    );
+    assert.equal(
+      resolveSeedMetaKey('trade:barriers:v1:tariff-gap:50'),
+      'seed-meta:trade:barriers:v1:tariff-gap:50',
+    );
+  });
+
+  it('applies SOURCE_KEY_META_OVERRIDES for the drift cases', () => {
+    // Overrides for sourceKeys that still diverge after strip.
+    assert.equal(resolveSeedMetaKey('economic:imf:macro:v2'), 'seed-meta:economic:imf-macro');
+    assert.equal(resolveSeedMetaKey('economic:bis:eer:v1'), 'seed-meta:economic:bis');
+    assert.equal(resolveSeedMetaKey('economic:energy:v1:all'), 'seed-meta:economic:energy-prices');
+    assert.equal(resolveSeedMetaKey('energy:mix:v1:{ISO2}'), 'seed-meta:economic:owid-energy-mix');
+    assert.equal(
+      resolveSeedMetaKey('energy:gas-storage:v1:{ISO2}'),
+      'seed-meta:energy:gas-storage-countries',
+    );
+    assert.equal(resolveSeedMetaKey('news:threat:summary:v1'), 'seed-meta:news:threat-summary');
+    assert.equal(
+      resolveSeedMetaKey('intelligence:social:reddit:v1'),
+      'seed-meta:intelligence:social-reddit',
+    );
+  });
+});
+
+// Registry-coverage assertion: every sourceKey in INDICATOR_REGISTRY must
+// resolve to a seed-meta key that is actually written by some seeder,
+// verified against the literal seed-meta:<...> strings in api/health.js
+// and api/seed-health.js. This locks the drift down so a future registry
+// entry with a bad sourceKey fails CI loudly instead of silently
+// returning stale. To add a sourceKey that is intentionally untracked
+// by the health files, allowlist it in KNOWN_SEEDS_NOT_IN_HEALTH with a
+// one-line justification.
+describe('INDICATOR_REGISTRY seed-meta coverage (T1.5 P1 regression lock)', () => {
+  // Seeds that are legitimately written by some seeder but do not appear
+  // in api/health.js or api/seed-health.js (e.g. because they are
+  // extra-key writes via writeExtraKeyWithMeta that no health monitor
+  // tracks yet). Each entry must be verified against scripts/seed-*.mjs
+  // before being added.
+  const KNOWN_SEEDS_NOT_IN_HEALTH: ReadonlySet<string> = new Set([
+    // scripts/seed-supply-chain-trade.mjs writes these via
+    // writeExtraKeyWithMeta. The :v\d+ is not trailing (has :tariff-*:50
+    // suffix) so the strip is a no-op and the meta key equals the key.
+    'seed-meta:trade:restrictions:v1:tariff-overview:50',
+    'seed-meta:trade:barriers:v1:tariff-gap:50',
+    // scripts/seed-sanctions-pressure.mjs afterPublish writes this via
+    // writeExtraKeyWithMeta(COUNTRY_COUNTS_KEY, ...). The :v1 suffix is
+    // stripped by writeExtraKeyWithMeta's regex, matching resolveSeedMetaKey.
+    'seed-meta:sanctions:country-counts',
+    // scripts/seed-economy.mjs: runSeed('economic', 'energy-prices', ...)
+    // writes this. The registry sourceKey economic:energy:v1:all does
+    // not strip to this shape, so SOURCE_KEY_META_OVERRIDES maps it.
+    'seed-meta:economic:energy-prices',
+  ]);
+
+  function extractSeedMetaKeys(filePath: string): Set<string> {
+    const text = readFileSync(filePath, 'utf8');
+    const set = new Set<string>();
+    // Capture every 'seed-meta:...' literal up to the closing quote.
+    for (const match of text.matchAll(/['"`](seed-meta:[^'"`]+)['"`]/g)) {
+      set.add(match[1]!);
+    }
+    return set;
+  }
+
+  it('every registry sourceKey resolves to a known seed-meta key', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const repoRoot = resolve(here, '..');
+    const known = new Set<string>(KNOWN_SEEDS_NOT_IN_HEALTH);
+    for (const path of ['api/health.js', 'api/seed-health.js']) {
+      for (const key of extractSeedMetaKeys(resolve(repoRoot, path))) {
+        known.add(key);
+      }
+    }
+
+    const unknownResolutions: { sourceKey: string; metaKey: string }[] = [];
+    const uniqueSourceKeys = [...new Set(INDICATOR_REGISTRY.map((i) => i.sourceKey))];
+    for (const sourceKey of uniqueSourceKeys) {
+      const metaKey = resolveSeedMetaKey(sourceKey);
+      if (!known.has(metaKey)) {
+        unknownResolutions.push({ sourceKey, metaKey });
+      }
+    }
+
+    assert.deepEqual(
+      unknownResolutions,
+      [],
+      `INDICATOR_REGISTRY sourceKeys resolved to seed-meta keys that do not appear in api/health.js, api/seed-health.js, or KNOWN_SEEDS_NOT_IN_HEALTH. ` +
+        `Either update SOURCE_KEY_META_OVERRIDES in _dimension-freshness.ts or allowlist the key in KNOWN_SEEDS_NOT_IN_HEALTH with verification against scripts/seed-*.mjs: ` +
+        JSON.stringify(unknownResolutions, null, 2),
+    );
   });
 });
