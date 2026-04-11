@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 interface WeekData {
   date: string;
@@ -131,13 +132,33 @@ export class AAIISentimentPanel extends Panel {
   }
 
   public async fetchData(): Promise<boolean> {
+    // SSR hydration is one-shot: getHydratedData deletes the key after the
+    // first read. Only the initial page-load call will hit this path — all
+    // subsequent hourly refreshes fall through to the bootstrap API below.
     const hydrated = getHydratedData('aaiiSentiment') as AAIIData | undefined;
     if (hydrated?.latest) {
       this.data = hydrated;
       this.renderPanel();
       return true;
     }
-    this.showLoading();
+    // Refresh path: fetch directly from the bootstrap API so the weekly
+    // dataset keeps flowing after the first paint.
+    try {
+      const resp = await fetch(toApiUrl('/api/bootstrap?keys=aaiiSentiment'), {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (resp.ok) {
+        const { data } = (await resp.json()) as { data: { aaiiSentiment?: AAIIData } };
+        if (data.aaiiSentiment?.latest) {
+          this.data = data.aaiiSentiment;
+          this.renderPanel();
+          return true;
+        }
+      }
+    } catch { /* fallback below */ }
+    // Retry after ~5 minutes so the panel recovers on its own if the seed
+    // arrives late (AAII cadence is weekly but the cron can be delayed).
+    this.showError('AAII sentiment data unavailable', () => { void this.fetchData(); }, 300);
     return false;
   }
 

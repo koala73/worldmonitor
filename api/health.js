@@ -87,6 +87,7 @@ const BOOTSTRAP_KEYS = {
   vpdTrackerHistorical: 'health:vpd-tracker:historical:v1',
   electricityPrices:    'energy:electricity:v1:index',
   gasStorageCountries: 'energy:gas-storage:v1:_countries',
+  aaiiSentiment:       'market:aaii-sentiment:v1',
 };
 
 const STANDALONE_KEYS = {
