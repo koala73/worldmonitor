@@ -26,7 +26,7 @@ import { readFileSync as _readFileSync } from 'node:fs';
 import { dirname as _dirname, join as _join } from 'node:path';
 import { fileURLToPath as _fileURLToPath } from 'node:url';
 const __dirname = _dirname(_fileURLToPath(import.meta.url));
-const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
+const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, 'shared', 'un-to-iso2.json'), 'utf8'));
 
 // Populated by fetchWtoReporters() before any data fetches
 let ALL_REPORTERS = [];
