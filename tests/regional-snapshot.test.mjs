@@ -16,6 +16,7 @@ import {
   regionForCountry,
   getRegionCorridors,
   countryCriticality,
+  isSignalInRegion,
 } from '../shared/geography.js';
 
 import { computeBalanceVector, SCORING_VERSION } from '../scripts/regional-snapshot/balance-vector.mjs';
@@ -102,6 +103,70 @@ describe('shared/geography', () => {
 
   it('GEOGRAPHY_VERSION follows semver', () => {
     assert.match(GEOGRAPHY_VERSION, /^\d+\.\d+\.\d+$/);
+  });
+
+  it('every region exposes a signalAliases array', () => {
+    for (const r of REGIONS) {
+      assert.ok(Array.isArray(r.signalAliases), `${r.id} missing signalAliases`);
+    }
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// isSignalInRegion: cross-source signal theater matching
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Regression coverage for the silent-drop bug: seed-cross-source-signals.mjs
+// emits broad display labels ("Middle East", "Sub-Saharan Africa") that
+// don't substring-match any theater ID in region.theaters. The helper must
+// handle both fine-grained theater IDs and these broad aliases.
+
+describe('isSignalInRegion', () => {
+  it('matches fine-grained theater IDs (kebab-case -> space)', () => {
+    assert.equal(isSignalInRegion('persian-gulf', 'mena'), true);
+    assert.equal(isSignalInRegion('persian gulf', 'mena'), true);
+    assert.equal(isSignalInRegion('Persian Gulf', 'mena'), true);
+    assert.equal(isSignalInRegion('Red Sea', 'mena'), true);
+    assert.equal(isSignalInRegion('North Africa', 'mena'), true);
+    assert.equal(isSignalInRegion('Eastern Europe', 'europe'), true);
+    assert.equal(isSignalInRegion('Western Europe', 'europe'), true);
+    assert.equal(isSignalInRegion('East Asia', 'east-asia'), true);
+    assert.equal(isSignalInRegion('Horn of Africa', 'sub-saharan-africa'), true);
+  });
+
+  it('matches the broad display labels the seed actually emits', () => {
+    // This is the core regression. Before the fix, these all returned false.
+    assert.equal(isSignalInRegion('Middle East', 'mena'), true);
+    assert.equal(isSignalInRegion('Sub-Saharan Africa', 'sub-saharan-africa'), true);
+    assert.equal(isSignalInRegion('Global', 'global'), true);
+  });
+
+  it('is case-insensitive and tolerates whitespace', () => {
+    assert.equal(isSignalInRegion('  middle east  ', 'mena'), true);
+    assert.equal(isSignalInRegion('MIDDLE EAST', 'mena'), true);
+  });
+
+  it('rejects theater labels that belong to other regions', () => {
+    assert.equal(isSignalInRegion('Middle East', 'east-asia'), false);
+    assert.equal(isSignalInRegion('Middle East', 'sub-saharan-africa'), false);
+    assert.equal(isSignalInRegion('Taiwan Strait', 'mena'), false);
+    assert.equal(isSignalInRegion('Sub-Saharan Africa', 'mena'), false);
+    assert.equal(isSignalInRegion('Eastern Europe', 'mena'), false);
+  });
+
+  it('returns false for empty or missing theater', () => {
+    assert.equal(isSignalInRegion('', 'mena'), false);
+    assert.equal(isSignalInRegion(null, 'mena'), false);
+    assert.equal(isSignalInRegion(undefined, 'mena'), false);
+  });
+
+  it('returns false for unknown region IDs', () => {
+    assert.equal(isSignalInRegion('Middle East', 'not-a-region'), false);
+  });
+
+  it('accepts a region object as well as a region ID', () => {
+    const mena = REGIONS.find((r) => r.id === 'mena');
+    assert.equal(isSignalInRegion('Middle East', mena), true);
   });
 });
 
@@ -555,6 +620,118 @@ describe('diffRegionalSnapshot', () => {
   it('inferTriggerReason falls back to scheduled_6h when nothing changed', () => {
     const diff = { regime_changed: null, scenario_jumps: [], trigger_activations: [], trigger_deactivations: [], corridor_breaks: [], leverage_shifts: [], buffer_failures: [], reroute_waves: null, mobility_disruptions: [] };
     assert.equal(inferTriggerReason(diff), 'scheduled_6h');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Evidence collector: region scoping
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Regression coverage: the chokepoint loop used to iterate all chokepoints
+// without filtering by regionId, leaking Taiwan/Baltic events into MENA/SSA
+// evidence chains.
+
+describe('collectEvidence region scoping', () => {
+  const mixedChokepoints = () => ({
+    'supply_chain:chokepoints:v4': {
+      chokepoints: [
+        { id: 'hormuz', name: 'Strait of Hormuz', threatLevel: 'elevated' },
+        { id: 'suez', name: 'Suez', threatLevel: 'high' },
+        { id: 'babelm', name: 'Bab el-Mandeb', threatLevel: 'high' },
+        { id: 'taiwan_strait', name: 'Taiwan Strait', threatLevel: 'high' },
+        { id: 'malacca', name: 'Strait of Malacca', threatLevel: 'elevated' },
+        { id: 'panama', name: 'Panama Canal', threatLevel: 'elevated' },
+        { id: 'danish', name: 'Danish Straits', threatLevel: 'high' },
+        { id: 'bosphorus', name: 'Bosphorus', threatLevel: 'elevated' },
+      ],
+    },
+  });
+
+  it('MENA evidence only includes MENA-owned chokepoints', () => {
+    const evidence = collectEvidence('mena', mixedChokepoints());
+    const ids = evidence.filter((e) => e.type === 'chokepoint_status').map((e) => e.corridor);
+    assert.deepEqual(ids.sort(), ['babelm', 'hormuz', 'suez']);
+    assert.ok(!ids.includes('taiwan_strait'));
+    assert.ok(!ids.includes('danish'));
+    assert.ok(!ids.includes('malacca'));
+  });
+
+  it('East Asia evidence only includes East Asia chokepoints', () => {
+    const evidence = collectEvidence('east-asia', mixedChokepoints());
+    const ids = evidence.filter((e) => e.type === 'chokepoint_status').map((e) => e.corridor);
+    assert.deepEqual(ids.sort(), ['malacca', 'taiwan_strait']);
+    assert.ok(!ids.includes('hormuz'));
+  });
+
+  it('Europe evidence only includes Europe chokepoints', () => {
+    const evidence = collectEvidence('europe', mixedChokepoints());
+    const ids = evidence.filter((e) => e.type === 'chokepoint_status').map((e) => e.corridor);
+    assert.deepEqual(ids.sort(), ['bosphorus', 'danish']);
+  });
+
+  it('SSA evidence contains no chokepoints (SSA has only tier-3 Cape corridor)', () => {
+    // Cape of Good Hope is a tier-3 corridor with chokepointId: null, so no
+    // chokepoint_status evidence should ever surface for SSA. Before the fix
+    // this returned every Hormuz/Taiwan/etc. event in the source payload.
+    const evidence = collectEvidence('sub-saharan-africa', mixedChokepoints());
+    const ids = evidence.filter((e) => e.type === 'chokepoint_status').map((e) => e.corridor);
+    assert.deepEqual(ids, []);
+  });
+
+  it('skips chokepoints with normal or empty threat levels even when in region', () => {
+    const evidence = collectEvidence('mena', {
+      'supply_chain:chokepoints:v4': {
+        chokepoints: [
+          { id: 'hormuz', threatLevel: 'normal' },
+          { id: 'suez', threatLevel: '' },
+          { id: 'babelm', threatLevel: 'high' },
+        ],
+      },
+    });
+    const ids = evidence.filter((e) => e.type === 'chokepoint_status').map((e) => e.corridor);
+    assert.deepEqual(ids, ['babelm']);
+  });
+
+  it('cross-source signals emitted with broad "Middle East" label land in MENA evidence', () => {
+    // Regression for the theater-matching bug: before the fix, this signal
+    // was silently dropped because 'middle east' does not substring-match
+    // any of MENA's theater IDs ('levant', 'persian-gulf', 'red-sea',
+    // 'north-africa') after kebab-to-space transform.
+    const evidence = collectEvidence('mena', {
+      'intelligence:cross-source-signals:v1': {
+        signals: [
+          {
+            id: 'sig-broad-mena',
+            summary: 'Broad MENA pressure signal',
+            theater: 'Middle East',
+            severity: 'HIGH',
+            severityScore: 80,
+            detectedAt: Date.now(),
+          },
+        ],
+      },
+    });
+    const xssIds = evidence.filter((e) => e.source === 'cross-source').map((e) => e.id);
+    assert.ok(xssIds.includes('sig-broad-mena'));
+  });
+
+  it('cross-source signals emitted with broad "Sub-Saharan Africa" label land in SSA evidence', () => {
+    const evidence = collectEvidence('sub-saharan-africa', {
+      'intelligence:cross-source-signals:v1': {
+        signals: [
+          {
+            id: 'sig-broad-ssa',
+            summary: 'Broad SSA unrest signal',
+            theater: 'Sub-Saharan Africa',
+            severity: 'HIGH',
+            severityScore: 75,
+            detectedAt: Date.now(),
+          },
+        ],
+      },
+    });
+    const xssIds = evidence.filter((e) => e.source === 'cross-source').map((e) => e.id);
+    assert.ok(xssIds.includes('sig-broad-ssa'));
   });
 });
 

@@ -5,8 +5,14 @@
 
 import { clip, num, weightedAverage, percentile } from './_helpers.mjs';
 // Use scripts/shared mirror (not repo-root shared/): Railway service has
-// rootDirectory=scripts so ../../shared/ escapes the deploy root.
-import { getRegionCountries, getRegionCorridors, countryCriticality, REGIONS } from '../shared/geography.js';
+// rootDirectory=scripts so ../../shared/ escapes the deploy root. See #2954.
+import {
+  getRegionCountries,
+  getRegionCorridors,
+  countryCriticality,
+  REGIONS,
+  isSignalInRegion,
+} from '../shared/geography.js';
 import iso3ToIso2Raw from '../shared/iso3-to-iso2.json' with { type: 'json' };
 
 /** @type {Record<string, string>} */
@@ -66,14 +72,12 @@ export function computeBalanceVector(regionId, sources) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function computeCoercivePressure(region, sources, drivers) {
-  // Cross-source signals scoped by theater label substring matching
+  // Cross-source signals scoped by theater label. Matching handles both
+  // fine-grained theater IDs (levant, persian-gulf) and broad display labels
+  // the seed emits (Middle East, Sub-Saharan Africa) — see isSignalInRegion.
   const xss = sources['intelligence:cross-source-signals:v1'];
   const signals = Array.isArray(xss?.signals) ? xss.signals : [];
-  const theaterLabels = region.theaters; // theater IDs are kebab-case; cross-source uses display names
-  const inRegion = signals.filter((s) => {
-    const t = String(s?.theater ?? '').toLowerCase();
-    return theaterLabels.some((label) => t.includes(label.replace(/-/g, ' ')));
-  });
+  const inRegion = signals.filter((s) => isSignalInRegion(s?.theater, region));
   const criticalCount = inRegion.filter((s) => /CRITICAL/i.test(String(s?.severity ?? ''))).length;
   const highCount = inRegion.filter((s) => /HIGH/i.test(String(s?.severity ?? ''))).length;
 

@@ -9,6 +9,13 @@ export interface RegionDef {
   forecastLabel: string;
   wbCode: string;
   theaters: string[];
+  /**
+   * Broad display labels emitted by cross-source feeds that do not substring-
+   * match any fine-grained theater ID. Lowercased so the matching helper can
+   * compare directly. Example: MENA includes "middle east", SSA includes
+   * "sub-saharan africa".
+   */
+  signalAliases: string[];
   feedRegion: string;
   mapView: string;
   keyCountries: string[];
@@ -48,3 +55,14 @@ export function getRegionTheaters(regionId: string): TheaterDef[];
 export function getTheaterCorridors(theaterId: string): CorridorDef[];
 export function getRegionCorridors(regionId: string): CorridorDef[];
 export function countryCriticality(iso2: string): number;
+
+/**
+ * Returns true when a cross-source signal's raw `theater` label belongs to
+ * the given region. Case-insensitive, tolerates kebab-case or spaced labels,
+ * and matches against both fine-grained theater IDs and the region's
+ * `signalAliases` for broad display labels.
+ */
+export function isSignalInRegion(
+  theater: string | null | undefined,
+  regionOrId: string | RegionDef,
+): boolean;

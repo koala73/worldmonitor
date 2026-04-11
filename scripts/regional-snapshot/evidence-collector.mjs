@@ -5,8 +5,8 @@
 
 import { num } from './_helpers.mjs';
 // Use scripts/shared mirror (not repo-root shared/): Railway service has
-// rootDirectory=scripts so ../../shared/ escapes the deploy root.
-import { REGIONS } from '../shared/geography.js';
+// rootDirectory=scripts so ../../shared/ escapes the deploy root. See #2954.
+import { REGIONS, getRegionCorridors, isSignalInRegion } from '../shared/geography.js';
 
 const MAX_EVIDENCE_PER_SNAPSHOT = 30;
 
@@ -22,12 +22,13 @@ export function collectEvidence(regionId, sources) {
   /** @type {import('../../shared/regions.types.js').EvidenceItem[]} */
   const out = [];
 
-  // Cross-source signals
+  // Cross-source signals. Match against both fine-grained theater IDs and
+  // the broad display labels the seed emits ("Middle East", "Sub-Saharan
+  // Africa") — see isSignalInRegion in shared/geography.js.
   const xss = sources['intelligence:cross-source-signals:v1']?.signals;
   if (Array.isArray(xss)) {
     for (const s of xss) {
-      const theater = String(s?.theater ?? '').toLowerCase();
-      if (!region.theaters.some((t) => theater.includes(t.replace(/-/g, ' ')))) continue;
+      if (!isSignalInRegion(s?.theater, region)) continue;
       out.push({
         id: String(s?.id ?? `xss:${out.length}`),
         type: 'market_signal',
@@ -61,21 +62,30 @@ export function collectEvidence(regionId, sources) {
     }
   }
 
-  // Chokepoint status changes for region's corridors
+  // Chokepoint status changes — scoped to this region's corridors only.
+  // Without this filter, Taiwan / Baltic / Panama events would leak into
+  // MENA and SSA evidence chains.
+  const regionChokepointIds = new Set(
+    getRegionCorridors(regionId)
+      .map((c) => c.chokepointId)
+      .filter((id) => typeof id === 'string' && id.length > 0),
+  );
   const cps = sources['supply_chain:chokepoints:v4']?.chokepoints;
   if (Array.isArray(cps)) {
     for (const cp of cps) {
+      const cpId = String(cp?.id ?? '');
+      if (!regionChokepointIds.has(cpId)) continue;
       const threat = String(cp?.threatLevel ?? '').toLowerCase();
       if (threat === 'normal' || threat === '') continue;
       out.push({
-        id: `chokepoint:${cp.id}`,
+        id: `chokepoint:${cpId}`,
         type: 'chokepoint_status',
         source: 'supply-chain',
-        summary: `${cp?.name ?? cp?.id}: ${threat}`,
+        summary: `${cp?.name ?? cpId}: ${threat}`,
         confidence: 0.95,
         observed_at: Date.now(),
         theater: '',
-        corridor: String(cp?.id ?? ''),
+        corridor: cpId,
       });
     }
   }
