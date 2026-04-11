@@ -1652,7 +1652,7 @@ function fetchYahooQuoteSummary(symbol) {
           resolve({
             trailingPE: raw(sd.trailingPE),
             forwardPE: raw(sd.forwardPE),
-            beta: raw(sd.beta) ?? raw(sd.beta3Year),
+            beta: raw(sd.beta) ?? raw(ks.beta3Year),
             ytdReturn: raw(ks.ytdReturn),
             threeYearReturn: raw(ks.threeYearAverageReturn),
             fiveYearReturn: raw(ks.fiveYearAverageReturn),

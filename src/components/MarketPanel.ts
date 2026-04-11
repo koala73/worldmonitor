@@ -316,7 +316,7 @@ export class HeatmapPanel extends Panel {
   <td style="padding:3px 6px;text-align:right;font-size:11px;color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px;color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px">${fmtBeta(e.beta)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:11px;color:${e.ytdReturn !== null && e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
+  <td style="padding:3px 6px;text-align:right;font-size:11px;color:${e.ytdReturn === null ? 'var(--text-dim)' : e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
 </tr>`;
       })
       .join('');
