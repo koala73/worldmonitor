@@ -18,6 +18,7 @@ import {
   createMemoizedSeedReader,
   getResilienceDomainWeight,
   scoreAllDimensions,
+  type ImputationClass,
   type ResilienceDimensionId,
   type ResilienceDomainId,
   type ResilienceSeedReader,
@@ -84,7 +85,16 @@ function classifyResilienceLevel(score: number): string {
 }
 
 function buildDimensionList(
-  scores: Record<ResilienceDimensionId, { score: number; coverage: number; observedWeight: number; imputedWeight: number }>,
+  scores: Record<
+    ResilienceDimensionId,
+    {
+      score: number;
+      coverage: number;
+      observedWeight: number;
+      imputedWeight: number;
+      imputationClass: ImputationClass | null;
+    }
+  >,
 ): ResilienceDimension[] {
   return RESILIENCE_DIMENSION_ORDER.map((dimensionId) => ({
     id: dimensionId,
@@ -92,6 +102,8 @@ function buildDimensionList(
     coverage: round(scores[dimensionId].coverage),
     observedWeight: round(scores[dimensionId].observedWeight, 4),
     imputedWeight: round(scores[dimensionId].imputedWeight, 4),
+    // T1.7 schema pass: empty string = dimension has any observed data.
+    imputationClass: scores[dimensionId].imputationClass ?? '',
   }));
 }
 

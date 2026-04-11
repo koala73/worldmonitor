@@ -30,6 +30,10 @@ export interface ResilienceDimensionScore {
   coverage: number;
   observedWeight: number;
   imputedWeight: number;
+  // T1.7 schema pass: the dominant imputation class when the dimension is
+  // fully imputed (observedWeight === 0 && imputedWeight > 0), null when the
+  // dimension has any observed data or no data at all.
+  imputationClass: ImputationClass | null;
 }
 
 export type ResilienceSeedReader = (key: string) => Promise<unknown | null>;
@@ -45,6 +49,9 @@ interface WeightedMetric {
   // Proxy data with certaintyCoverage < 1 (e.g. IMF inflation fallback) is still
   // observed real data and should NOT set this flag.
   imputed?: boolean;
+  // T1.7 schema pass: populated only when imputed=true so weightedBlend can
+  // aggregate a dominant class at the dimension level.
+  imputationClass?: ImputationClass;
 }
 
 // Four-class imputation taxonomy (Phase 1 T1.7 of the country-resilience
@@ -351,13 +358,23 @@ function stddev(values: number[]): number | null {
   return Math.sqrt(variance);
 }
 
+// T1.7 schema pass: tie-break order when multiple imputed metrics share
+// weight. Earlier classes in this list win on ties. stable-absence expresses
+// the most actionable signal, so it ranks first.
+const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
+  'stable-absence',
+  'unmonitored',
+  'source-failure',
+  'not-applicable',
+];
+
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
   const available = metrics.filter((metric) => metric.score != null);
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
 
   if (!availableWeight || !totalWeight) {
-    return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0 };
+    return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null };
   }
 
   const weightedScore = available.reduce((sum, metric) => sum + (metric.score || 0) * metric.weight, 0) / availableWeight;
@@ -375,13 +392,35 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   // Metrics with null score → neither (excluded from both).
   let observedWeight = 0;
   let imputedWeight = 0;
+  const classWeights = new Map<ImputationClass, number>();
   for (const metric of metrics) {
     if (metric.score == null) continue;
     if (metric.imputed === true) {
       imputedWeight += metric.weight;
+      if (metric.imputationClass) {
+        classWeights.set(metric.imputationClass, (classWeights.get(metric.imputationClass) ?? 0) + metric.weight);
+      }
     } else {
       observedWeight += metric.weight;
     }
+  }
+
+  // T1.7 schema pass: report the dominant imputation class only when the
+  // dimension is fully imputed. Any observed data at all wins over every
+  // imputation class, so imputationClass is null whenever observedWeight > 0.
+  let imputationClass: ImputationClass | null = null;
+  if (observedWeight === 0 && imputedWeight > 0 && classWeights.size > 0) {
+    let bestWeight = -Infinity;
+    let bestClass: ImputationClass | null = null;
+    for (const candidate of IMPUTATION_CLASS_TIE_BREAK) {
+      const weight = classWeights.get(candidate);
+      if (weight == null) continue;
+      if (weight > bestWeight) {
+        bestWeight = weight;
+        bestClass = candidate;
+      }
+    }
+    imputationClass = bestClass;
   }
 
   return {
@@ -389,6 +428,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
     coverage: roundCoverage(weightedCertainty),
     observedWeight: Number(observedWeight.toFixed(4)),
     imputedWeight: Number(imputedWeight.toFixed(4)),
+    imputationClass,
   };
 }
 
@@ -750,18 +790,24 @@ export async function scoreCurrencyExternal(
       const inflScore = normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50);
       const blended = inflScore * 0.6 + reservesScore * 0.4;
       const coverage = bisExchangeRaw != null ? 0.55 : 0.45;
-      return { score: roundScore(blended), coverage, observedWeight: 1, imputedWeight: 0 };
+      return { score: roundScore(blended), coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null };
     }
     if (hasInflation) {
       const coverage = bisExchangeRaw != null ? 0.45 : 0.35;
-      return { score: normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50), coverage, observedWeight: 1, imputedWeight: 0 };
+      return { score: normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50), coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null };
     }
     if (hasReserves) {
       const coverage = bisExchangeRaw != null ? 0.4 : 0.3;
-      return { score: reservesScore, coverage, observedWeight: 1, imputedWeight: 0 };
+      return { score: reservesScore, coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null };
     }
-    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0 };
-    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage, observedWeight: 0, imputedWeight: 1 };
+    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null };
+    return {
+      score: IMPUTE.bisEer.score,
+      coverage: IMPUTE.bisEer.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.bisEer.imputationClass,
+    };
   }
 
   // BIS EER data present: volatility + deviation are primary, reserves supplementary.
@@ -803,12 +849,12 @@ export async function scoreTradeSanctions(
     restrictionsRaw == null
       ? { score: null, weight: 0.15 }
       : !inRestrictionsReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
+        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
         : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.15 },
     barriersRaw == null
       ? { score: null, weight: 0.15 }
       : !inBarriersReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
+        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
         : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.15 },
     { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.25 },
   ]);
@@ -998,7 +1044,7 @@ export async function scoreBorderSecurity(
     displacementRaw == null
       ? { score: null, weight: 0.35 }
       : displacementMetric == null
-        ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage, imputed: true }
+        ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage, imputed: true, imputationClass: IMPUTE.unhcrDisplacement.imputationClass }
         : { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35 },
   ]);
 }
@@ -1059,7 +1105,7 @@ export async function scoreFoodWater(
     return weightedBlend([
       staticRecord == null
         ? { score: null, weight: 0.6 }
-        : { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true },
+        : { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true, imputationClass: IMPUTE.ipcFood.imputationClass },
       { score: aquastatScore, weight: 0.4 },
     ]);
   }

@@ -25,7 +25,7 @@ import {
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
 async function scoreTriple(
-  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number }>,
+  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number; imputationClass: ImputationClass | null }>,
 ) {
   const [no, us, ye] = await Promise.all([
     scorer('NO', fixtureReader),
@@ -797,5 +797,120 @@ describe('resilience imputation taxonomy (T1.7)', () => {
       `stable-absence entries: ${stableAbsence.map((e) => `${e.label}=${e.entry.certaintyCoverage}`).join(', ')}. ` +
       `unmonitored entries: ${unmonitored.map((e) => `${e.label}=${e.entry.certaintyCoverage}`).join(', ')}.`,
     );
+  });
+});
+
+// T1.7 schema pass: imputationClass propagation through weightedBlend and
+// the direct early-return paths that bypass weightedBlend (e.g.
+// scoreCurrencyExternal when BIS EER is the only source). These tests use
+// real scorers with crafted readers so weightedBlend's aggregation
+// semantics are exercised without exporting it.
+describe('resilience dimension imputationClass propagation (T1.7)', () => {
+  it('single fully-imputed metric: foodWater reports stable-absence via IMPUTE.ipcFood', async () => {
+    // resilience:static:{ISO2} loaded with fao:null and aquastat:null → the
+    // IPC metric imputes (weight 0.6) and aquastat is null (weight 0.4).
+    // availableWeight = 0.6, observed = 0, imputed = 0.6 → fully imputed,
+    // dominant class is stable-absence (the only class present).
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return { fao: null, aquastat: null };
+      return null;
+    };
+    const result = await scoreFoodWater('XX', reader);
+    assert.equal(result.observedWeight, 0, 'no observed data');
+    assert.ok(result.imputedWeight > 0, 'imputed data present');
+    assert.equal(result.imputationClass, 'stable-absence',
+      `foodWater should propagate stable-absence from IMPUTE.ipcFood, got ${result.imputationClass}`);
+  });
+
+  it('single fully-imputed metric: tradeSanctions reports unmonitored via IMPUTE.wtoData', async () => {
+    // Non-reporter in WTO restrictions + barriers, no sanctions/tariff data.
+    // Both imputed metrics share the unmonitored class.
+    const reporterSet = ['US', 'DE'];
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      return null;
+    };
+    const result = await scoreTradeSanctions('BF', reader);
+    assert.equal(result.observedWeight, 0, 'no observed data for BF in this reader');
+    assert.ok(result.imputedWeight > 0, 'WTO imputation should produce imputed weight');
+    assert.equal(result.imputationClass, 'unmonitored',
+      `tradeSanctions should propagate unmonitored from IMPUTE.wtoData, got ${result.imputationClass}`);
+  });
+
+  it('observed + imputed: imputationClass is null when the dimension has any real data', async () => {
+    // Mix: real sanctions data (observed) + WTO impute (imputed) → observedWeight > 0
+    // means imputationClass must be null.
+    const reporterSet = ['US'];
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:country-counts:v1') return { BF: 2 };
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      return null;
+    };
+    const result = await scoreTradeSanctions('BF', reader);
+    assert.ok(result.observedWeight > 0, 'sanctions provide observed weight');
+    assert.ok(result.imputedWeight > 0, 'WTO still imputes for non-reporter');
+    assert.equal(result.imputationClass, null,
+      `observed + imputed must yield null imputationClass, got ${result.imputationClass}`);
+  });
+
+  it('zero observed + zero imputed: imputationClass is null (true no-data case)', async () => {
+    // cyberDigital with all sources null returns score=0 coverage=0 (no
+    // data at all). This must not be mislabelled as an imputation class.
+    const reader = async (_key: string): Promise<unknown | null> => null;
+    const result = await scoreCyberDigital('XX', reader);
+    assert.equal(result.observedWeight, 0);
+    assert.equal(result.imputedWeight, 0);
+    assert.equal(result.imputationClass, null,
+      `no-data case must yield null imputationClass, got ${result.imputationClass}`);
+  });
+
+  it('scoreCurrencyExternal early-return: curated_list_absent propagates unmonitored', async () => {
+    // BIS loaded but country not listed, IMF macro null, no reserves → the
+    // function early-returns with IMPUTE.bisEer, which aliases
+    // IMPUTATION.curated_list_absent → unmonitored.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.0, realEer: 100, date: '2025-09' }] };
+      return null;
+    };
+    const result = await scoreCurrencyExternal('MZ', reader);
+    assert.equal(result.observedWeight, 0);
+    assert.equal(result.imputedWeight, 1);
+    assert.equal(result.imputationClass, 'unmonitored',
+      `scoreCurrencyExternal BIS-absent early return must propagate unmonitored, got ${result.imputationClass}`);
+  });
+
+  it('scoreBorderSecurity: UNHCR displacement absent propagates stable-absence', async () => {
+    // UCDP loaded but zero events for XX, displacement loaded but country
+    // absent → IMPUTE.unhcrDisplacement (stable-absence) on the 0.35
+    // weight metric. The UCDP metric is observed (0 events → score != null),
+    // which means the dimension still has observedWeight > 0 and the
+    // imputationClass must be null.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'conflict:ucdp-events:v1') return { events: [] };
+      if (key.startsWith('displacement:summary:v1')) return { summary: { countries: [] } };
+      return null;
+    };
+    const result = await scoreBorderSecurity('XX', reader);
+    assert.ok(result.observedWeight > 0, 'UCDP contributes observed weight');
+    assert.equal(result.imputationClass, null,
+      `observed + imputed mix must yield null imputationClass, got ${result.imputationClass}`);
+  });
+
+  it('scoreBorderSecurity: UCDP outage + displacement impute → fully imputed stable-absence', async () => {
+    // UCDP source null (returns null score, excluded), displacement loaded
+    // with country absent → only the imputed unhcrDisplacement metric
+    // contributes. observedWeight = 0, imputedWeight > 0, dominant class
+    // is stable-absence.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key.startsWith('displacement:summary:v1')) return { summary: { countries: [] } };
+      return null;
+    };
+    const result = await scoreBorderSecurity('XX', reader);
+    assert.equal(result.observedWeight, 0, 'UCDP null → no observed');
+    assert.ok(result.imputedWeight > 0, 'displacement imputed');
+    assert.equal(result.imputationClass, 'stable-absence',
+      `borderSecurity with only displacement impute must be stable-absence, got ${result.imputationClass}`);
   });
 });

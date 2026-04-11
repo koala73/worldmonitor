@@ -35,6 +35,7 @@ export interface ResilienceDimension {
   coverage: number;
   observedWeight: number;
   imputedWeight: number;
+  imputationClass: string;
 }
 
 export interface ScoreInterval {

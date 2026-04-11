@@ -166,6 +166,12 @@ components:
                 imputedWeight:
                     type: number
                     format: double
+                imputationClass:
+                    type: string
+                    description: |-
+                        Four-class imputation taxonomy (Phase 1 T1.7). Empty string when the
+                         dimension has any observed data. One of: "stable-absence", "unmonitored",
+                         "source-failure", "not-applicable". See docs/methodology/country-resilience-index.mdx.
         ScoreInterval:
             type: object
             properties:

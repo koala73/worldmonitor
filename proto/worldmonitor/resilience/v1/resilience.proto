@@ -8,6 +8,10 @@ message ResilienceDimension {
   double coverage = 3;
   double observed_weight = 4;
   double imputed_weight = 5;
+  // Four-class imputation taxonomy (Phase 1 T1.7). Empty string when the
+  // dimension has any observed data. One of: "stable-absence", "unmonitored",
+  // "source-failure", "not-applicable". See docs/methodology/country-resilience-index.mdx.
+  string imputation_class = 6;
 }
 
 message ResilienceDomain {

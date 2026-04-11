@@ -219,4 +219,52 @@ describe('resilience release gate', () => {
       assert.ok(choropleth.has(countryCode), `expected choropleth data for ${countryCode}`);
     }
   });
+
+  // T1.7 schema pass: the serialized ResilienceDimension now carries an
+  // imputationClass field that downstream consumers (widget icon column,
+  // methodology changelog) can use to distinguish stable-absence,
+  // unmonitored, source-failure, and not-applicable from observed data.
+  // This test pins the shape so the field is not silently dropped.
+  it('T1.7: every serialized ResilienceDimension carries an imputationClass field', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
+    assert.equal(allDimensions.length, 13, 'US response should carry all 13 dimensions');
+    for (const dimension of allDimensions) {
+      assert.equal(
+        typeof dimension.imputationClass,
+        'string',
+        `dimension ${dimension.id} must carry a string imputationClass (got ${typeof dimension.imputationClass})`,
+      );
+      const valid = ['', 'stable-absence', 'unmonitored', 'source-failure', 'not-applicable'];
+      assert.ok(
+        valid.includes(dimension.imputationClass),
+        `dimension ${dimension.id} imputationClass="${dimension.imputationClass}" must be one of [${valid.join(', ')}]`,
+      );
+    }
+  });
+
+  it('T1.7: fully imputed dimension serializes a non-empty imputationClass', async () => {
+    // XX has no fixture: every scorer will fall through to either null (no
+    // data at all) or imputation. scoreFoodWater requires resilience:static
+    // to be loaded before it imputes, so we supply a minimal static record
+    // with fao:null and aquastat:null to trigger the IPC impute path.
+    // This exercises the full pipeline: scorer → weightedBlend → buildDimensionList
+    // → ResilienceDimension → response.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return { fao: null, aquastat: null };
+      return null;
+    };
+    const scores = await scoreAllDimensions('XX', reader);
+    assert.equal(
+      scores.foodWater.imputationClass,
+      'stable-absence',
+      `foodWater with fao:null should be stable-absence at the scorer boundary, got ${scores.foodWater.imputationClass}`,
+    );
+  });
 });
