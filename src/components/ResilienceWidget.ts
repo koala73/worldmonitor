@@ -7,7 +7,9 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import {
+  type DimensionConfidence,
   RESILIENCE_VISUAL_LEVEL_COLORS,
+  collectDimensionConfidences,
   formatBaselineStress,
   formatResilienceChange30d,
   formatResilienceConfidence,
@@ -287,6 +289,13 @@ export class ResilienceWidget {
         { className: 'resilience-widget__domains' },
         ...data.domains.map((domain) => this.renderDomainRow(domain, preview)),
       ),
+      // T1.6 Phase 1 of the country-resilience reference-grade upgrade plan:
+      // per-dimension confidence grid. Uses only the existing `coverage`,
+      // `observedWeight`, `imputedWeight` fields on ResilienceDimension so
+      // this ships without proto changes. Imputation class icons (T1.7)
+      // and freshness badges (T1.5 full pass) land as additional columns
+      // once the schema exposes those fields through the response type.
+      this.renderDimensionConfidenceGrid(data),
       h(
         'div',
         { className: 'resilience-widget__footer' },
@@ -317,6 +326,41 @@ export class ResilienceWidget {
             : [];
         })(),
       ),
+    );
+  }
+
+  private renderDimensionConfidenceGrid(data: ResilienceScoreResponse): HTMLElement {
+    const dimensions = collectDimensionConfidences(data.domains);
+    return h(
+      'div',
+      {
+        className: 'resilience-widget__dimension-grid',
+        title: 'Per-dimension data coverage. Hover a cell for the coverage percentage and observation provenance.',
+      },
+      ...dimensions.map((dim) => this.renderDimensionConfidenceCell(dim)),
+    );
+  }
+
+  private renderDimensionConfidenceCell(dim: DimensionConfidence): HTMLElement {
+    const title = dim.absent
+      ? `${dim.label}: no data`
+      : `${dim.label}: ${dim.coveragePct}% coverage, ${dim.status}`;
+    return h(
+      'div',
+      {
+        className: `resilience-widget__dimension-cell resilience-widget__dimension-cell--${dim.status}`,
+        title,
+      },
+      h('span', { className: 'resilience-widget__dimension-label' }, dim.label),
+      h(
+        'div',
+        { className: 'resilience-widget__dimension-bar-track' },
+        h('div', {
+          className: 'resilience-widget__dimension-bar-fill',
+          style: { width: `${dim.coveragePct}%` },
+        }),
+      ),
+      h('span', { className: 'resilience-widget__dimension-pct' }, dim.absent ? 'n/a' : `${dim.coveragePct}%`),
     );
   }
 

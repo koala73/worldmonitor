@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  collectDimensionConfidences,
   formatBaselineStress,
+  formatDimensionConfidence,
   formatResilienceChange30d,
   formatResilienceConfidence,
   formatResilienceDataVersion,
+  getResilienceDimensionLabel,
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
@@ -124,4 +127,138 @@ test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
   assert.equal(typeof baseResponse.dataVersion, 'string');
   assert.ok(baseResponse.dataVersion.length > 0, 'baseResponse should carry a non-empty dataVersion for regression coverage');
   assert.equal(formatResilienceDataVersion(baseResponse.dataVersion), `Data ${baseResponse.dataVersion}`);
+});
+
+// T1.6 Phase 1 of the country-resilience reference-grade upgrade plan.
+// Per-dimension confidence helpers. The widget renders a compact
+// coverage grid below the 5-domain rows using these helpers; each
+// scorer dimension must have a stable display label and a consistent
+// status classification.
+
+test('getResilienceDimensionLabel returns short stable labels for all 13 dimensions', () => {
+  assert.equal(getResilienceDimensionLabel('macroFiscal'), 'Macro');
+  assert.equal(getResilienceDimensionLabel('currencyExternal'), 'Currency');
+  assert.equal(getResilienceDimensionLabel('tradeSanctions'), 'Trade');
+  assert.equal(getResilienceDimensionLabel('cyberDigital'), 'Cyber');
+  assert.equal(getResilienceDimensionLabel('logisticsSupply'), 'Logistics');
+  assert.equal(getResilienceDimensionLabel('infrastructure'), 'Infra');
+  assert.equal(getResilienceDimensionLabel('energy'), 'Energy');
+  assert.equal(getResilienceDimensionLabel('governanceInstitutional'), 'Gov');
+  assert.equal(getResilienceDimensionLabel('socialCohesion'), 'Social');
+  assert.equal(getResilienceDimensionLabel('borderSecurity'), 'Border');
+  assert.equal(getResilienceDimensionLabel('informationCognitive'), 'Info');
+  assert.equal(getResilienceDimensionLabel('healthPublicService'), 'Health');
+  assert.equal(getResilienceDimensionLabel('foodWater'), 'Food');
+  // Unknown dimension IDs fall through to the raw ID so the render
+  // never silently drops a row.
+  assert.equal(getResilienceDimensionLabel('unknownDim'), 'unknownDim');
+});
+
+test('formatDimensionConfidence classifies observed-heavy dimensions as observed', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 0.9,
+    imputedWeight: 0.1,
+  });
+  assert.equal(result.label, 'Macro');
+  assert.equal(result.coveragePct, 90);
+  assert.equal(result.status, 'observed');
+  assert.equal(result.absent, false);
+});
+
+test('formatDimensionConfidence classifies partial dimensions (mixed observed and imputed)', () => {
+  const result = formatDimensionConfidence({
+    id: 'currencyExternal',
+    coverage: 0.55,
+    observedWeight: 0.4,
+    imputedWeight: 0.6,
+  });
+  assert.equal(result.status, 'partial');
+  assert.equal(result.coveragePct, 55);
+  assert.equal(result.absent, false);
+});
+
+test('formatDimensionConfidence classifies all-imputed dimensions as imputed', () => {
+  const result = formatDimensionConfidence({
+    id: 'tradeSanctions',
+    coverage: 0.3,
+    observedWeight: 0,
+    imputedWeight: 1,
+  });
+  assert.equal(result.status, 'imputed');
+  assert.equal(result.coveragePct, 30);
+  assert.equal(result.absent, false);
+});
+
+test('formatDimensionConfidence handles absent dimensions (no data at all)', () => {
+  const result = formatDimensionConfidence({
+    id: 'borderSecurity',
+    coverage: 0,
+    observedWeight: 0,
+    imputedWeight: 0,
+  });
+  assert.equal(result.status, 'absent');
+  assert.equal(result.coveragePct, 0);
+  assert.equal(result.absent, true);
+});
+
+test('formatDimensionConfidence clamps out-of-range coverage and guards against NaN', () => {
+  // Coverage above 1 is clamped to 100%.
+  const high = formatDimensionConfidence({
+    id: 'energy',
+    coverage: 1.5,
+    observedWeight: 1,
+    imputedWeight: 0,
+  });
+  assert.equal(high.coveragePct, 100);
+
+  // Negative coverage is clamped to 0%.
+  const negative = formatDimensionConfidence({
+    id: 'energy',
+    coverage: -0.3,
+    observedWeight: 1,
+    imputedWeight: 0,
+  });
+  assert.equal(negative.coveragePct, 0);
+
+  // NaN fields fall through to 0 weight and absent status without throwing.
+  const nanResult = formatDimensionConfidence({
+    id: 'energy',
+    coverage: Number.NaN,
+    observedWeight: Number.NaN,
+    imputedWeight: Number.NaN,
+  });
+  assert.equal(nanResult.coveragePct, 0);
+  assert.equal(nanResult.status, 'absent');
+  assert.equal(nanResult.absent, true);
+});
+
+test('collectDimensionConfidences preserves scorer order across domains and dimensions', () => {
+  const domains = [
+    {
+      dimensions: [
+        { id: 'macroFiscal', coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1 },
+        { id: 'currencyExternal', coverage: 0.8, observedWeight: 0.75, imputedWeight: 0.25 },
+      ],
+    },
+    {
+      dimensions: [
+        { id: 'governanceInstitutional', coverage: 0.95, observedWeight: 1.0, imputedWeight: 0 },
+      ],
+    },
+  ];
+  const result = collectDimensionConfidences(domains);
+  assert.equal(result.length, 3);
+  assert.equal(result[0].id, 'macroFiscal');
+  assert.equal(result[1].id, 'currencyExternal');
+  assert.equal(result[2].id, 'governanceInstitutional');
+  // Labels are resolved for every entry.
+  assert.equal(result[0].label, 'Macro');
+  assert.equal(result[2].label, 'Gov');
+});
+
+test('collectDimensionConfidences returns an empty list for an empty response', () => {
+  assert.deepEqual(collectDimensionConfidences([]), []);
+  assert.deepEqual(collectDimensionConfidences([{ dimensions: [] }]), []);
 });

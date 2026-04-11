@@ -78,3 +78,122 @@ export function formatResilienceDataVersion(dataVersion: string | null | undefin
   if (parsed.toISOString().slice(0, 10) !== dataVersion) return '';
   return `Data ${dataVersion}`;
 }
+
+// T1.6 Phase 1 of the country-resilience reference-grade upgrade plan.
+// Per-dimension confidence helpers. The widget uses these to render a
+// compact confidence grid below the 5-domain rows so analysts can see
+// per-dimension data coverage without opening the deep-dive panel.
+//
+// This slice uses ONLY the existing ResilienceDimension fields (`id`,
+// `coverage`, `observedWeight`, `imputedWeight`) already on every
+// response, so no proto or schema changes are needed. The downstream
+// adds (imputation class icon from T1.7, freshness badge from T1.5)
+// land as additional columns in later PRs once the schema exposes
+// those fields through the response type.
+
+// Short labels for each of the 13 dimensions so the compact grid does
+// not wrap. Keys match `ResilienceDimensionId` from
+// server/worldmonitor/resilience/v1/_dimension-scorers.ts. The doc
+// linter test (resilience-methodology-lint.test.mts) already pins the
+// scorer side, so any new dimension must land in both places together.
+const DIMENSION_LABELS: Record<string, string> = {
+  macroFiscal: 'Macro',
+  currencyExternal: 'Currency',
+  tradeSanctions: 'Trade',
+  cyberDigital: 'Cyber',
+  logisticsSupply: 'Logistics',
+  infrastructure: 'Infra',
+  energy: 'Energy',
+  governanceInstitutional: 'Gov',
+  socialCohesion: 'Social',
+  borderSecurity: 'Border',
+  informationCognitive: 'Info',
+  healthPublicService: 'Health',
+  foodWater: 'Food',
+};
+
+export function getResilienceDimensionLabel(dimensionId: string): string {
+  return DIMENSION_LABELS[dimensionId] ?? dimensionId;
+}
+
+// Minimal shape the confidence helpers need from a ResilienceDimension.
+// Defined locally so this module does not take a hard dependency on the
+// generated service types; the real ResilienceDimension from the proto
+// already has these fields (plus more).
+export interface DimensionConfidenceInput {
+  id: string;
+  coverage: number;
+  observedWeight: number;
+  imputedWeight: number;
+}
+
+export type DimensionCoverageStatus = 'observed' | 'partial' | 'imputed' | 'absent';
+
+export interface DimensionConfidence {
+  id: string;
+  label: string;
+  coveragePct: number;
+  status: DimensionCoverageStatus;
+  /** True when total weight (observed + imputed) is zero, meaning no data at all. */
+  absent: boolean;
+}
+
+/**
+ * Classify a dimension's coverage into one of four semantic buckets so
+ * the widget can render a status icon without re-deriving the logic.
+ *
+ * - `absent`: no observed or imputed weight at all (dimension scorer
+ *   returned an empty result). Rare, indicates a data-collection bug.
+ * - `imputed`: all weight came from imputation, zero real data.
+ * - `partial`: mix of observed and imputed weight; less than 80%
+ *   observed share.
+ * - `observed`: at least 80% of weight came from real data.
+ *
+ * The 80% threshold mirrors the existing `lowConfidence` rule in
+ * `_shared.ts` where imputation share above 40% (i.e. below 60% observed)
+ * flips the widget-wide low-confidence flag. The per-dimension threshold
+ * is stricter because a single well-covered dimension should not be
+ * obscured by the domain's worst case.
+ */
+export function formatDimensionConfidence(input: DimensionConfidenceInput): DimensionConfidence {
+  const coverage = Number.isFinite(input.coverage) ? input.coverage : 0;
+  const coveragePct = Math.round(Math.max(0, Math.min(1, coverage)) * 100);
+  const observed = Number.isFinite(input.observedWeight) ? input.observedWeight : 0;
+  const imputed = Number.isFinite(input.imputedWeight) ? input.imputedWeight : 0;
+  const total = observed + imputed;
+  const label = getResilienceDimensionLabel(input.id);
+
+  if (total <= 0) {
+    return { id: input.id, label, coveragePct: 0, status: 'absent', absent: true };
+  }
+
+  const observedShare = observed / total;
+  let status: DimensionCoverageStatus;
+  if (observed === 0) {
+    status = 'imputed';
+  } else if (observedShare >= 0.8) {
+    status = 'observed';
+  } else {
+    status = 'partial';
+  }
+
+  return { id: input.id, label, coveragePct, status, absent: false };
+}
+
+/**
+ * Collect every dimension across every domain in the response into a
+ * flat, stable-ordered list of DimensionConfidence entries. Preserves
+ * the order the scorer emits (domain order, then dimension order inside
+ * each domain) so the widget can render a predictable grid.
+ */
+export function collectDimensionConfidences(
+  domains: ReadonlyArray<{ dimensions: ReadonlyArray<DimensionConfidenceInput> }>,
+): DimensionConfidence[] {
+  const out: DimensionConfidence[] = [];
+  for (const domain of domains) {
+    for (const dim of domain.dimensions) {
+      out.push(formatDimensionConfidence(dim));
+    }
+  }
+  return out;
+}
