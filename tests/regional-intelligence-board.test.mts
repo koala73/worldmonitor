@@ -15,6 +15,7 @@ import {
   buildTransmissionBlock,
   buildWatchlistBlock,
   buildMetaFooter,
+  isLatestSequence,
 } from '../src/components/regional-intelligence-board-utils';
 import type {
   RegionalSnapshot,
@@ -506,5 +507,143 @@ describe('buildBoardHtml', () => {
     assert.match(html, /No scenario data/);
     assert.match(html, /No active transmissions/);
     assert.match(html, /No active triggers or watch items/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Request-sequence arbitrator (P2 fix for PR #2963 review)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('isLatestSequence', () => {
+  it('returns true when the claimed sequence still matches latest', () => {
+    assert.equal(isLatestSequence(1, 1), true);
+    assert.equal(isLatestSequence(42, 42), true);
+  });
+
+  it('returns false when a newer sequence has claimed latest', () => {
+    assert.equal(isLatestSequence(1, 2), false);
+    assert.equal(isLatestSequence(9, 10), false);
+  });
+
+  it('returns false for any mismatch (even when mine > latest, defensive)', () => {
+    assert.equal(isLatestSequence(5, 3), false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Simulated fast-dropdown race (P2 fix for PR #2963 review)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Mimics the loadCurrent() flow without instantiating the Panel class
+// (which transitively imports @/services/i18n and fails node:test).
+// Each "load" claims a sequence, awaits a controllable RPC, then calls a
+// rendered callback ONLY if isLatestSequence(mySeq, latestSeq). The test
+// orchestrates two overlapping loads where the first RPC resolves AFTER
+// the second, and asserts only the second render fires.
+
+describe('loadCurrent race simulation', () => {
+  it('drops an earlier in-flight response when a later region is selected', async () => {
+    const state = { latestSequence: 0, currentRegion: 'mena', rendered: [] as string[] };
+
+    // Two resolvable deferreds so the test controls finish order.
+    let resolveA: (value: string) => void;
+    let resolveB: (value: string) => void;
+    const pA = new Promise<string>((resolve) => { resolveA = resolve; });
+    const pB = new Promise<string>((resolve) => { resolveB = resolve; });
+
+    async function loadCurrent(regionId: string, promise: Promise<string>) {
+      state.latestSequence += 1;
+      const mySeq = state.latestSequence;
+      state.currentRegion = regionId;
+      const result = await promise;
+      if (!isLatestSequence(mySeq, state.latestSequence)) return;
+      state.rendered.push(`${regionId}:${result}`);
+    }
+
+    // Kick off call A (mena), then call B (east-asia) — call B claims
+    // the later sequence. Order of resolution is intentionally reversed:
+    // B resolves first, then A. A must be discarded as stale.
+    const loadA = loadCurrent('mena', pA);
+    const loadB = loadCurrent('east-asia', pB);
+
+    resolveB!('snapshot-east-asia');
+    await loadB;
+    resolveA!('snapshot-mena');
+    await loadA;
+
+    assert.deepEqual(state.rendered, ['east-asia:snapshot-east-asia']);
+  });
+
+  it('renders the latest load even when it resolves before an earlier one', async () => {
+    const state = { latestSequence: 0, rendered: [] as string[] };
+
+    let resolveA: (value: string) => void;
+    let resolveB: (value: string) => void;
+    const pA = new Promise<string>((resolve) => { resolveA = resolve; });
+    const pB = new Promise<string>((resolve) => { resolveB = resolve; });
+
+    async function loadCurrent(regionId: string, promise: Promise<string>) {
+      state.latestSequence += 1;
+      const mySeq = state.latestSequence;
+      const result = await promise;
+      if (!isLatestSequence(mySeq, state.latestSequence)) return;
+      state.rendered.push(`${regionId}:${result}`);
+    }
+
+    const loadA = loadCurrent('mena', pA);
+    const loadB = loadCurrent('europe', pB);
+
+    // A resolves first (normal ordering), but B has claimed a later seq,
+    // so when A checks the arbitrator (seq 1 vs latest 2) it discards.
+    resolveA!('snap-a');
+    await loadA;
+    resolveB!('snap-b');
+    await loadB;
+
+    assert.deepEqual(state.rendered, ['europe:snap-b']);
+  });
+
+  it('three rapid switches render only the last one', async () => {
+    const state = { latestSequence: 0, rendered: [] as string[] };
+
+    const resolvers: Array<(value: string) => void> = [];
+    const promises = [0, 1, 2].map(
+      () => new Promise<string>((resolve) => { resolvers.push(resolve); }),
+    );
+
+    async function loadCurrent(regionId: string, promise: Promise<string>) {
+      state.latestSequence += 1;
+      const mySeq = state.latestSequence;
+      const result = await promise;
+      if (!isLatestSequence(mySeq, state.latestSequence)) return;
+      state.rendered.push(`${regionId}:${result}`);
+    }
+
+    const loadMena = loadCurrent('mena', promises[0]!);
+    const loadEu = loadCurrent('europe', promises[1]!);
+    const loadEa = loadCurrent('east-asia', promises[2]!);
+
+    // Resolve out of order: middle first, then last, then first.
+    resolvers[1]!('snap-eu');
+    await loadEu;
+    resolvers[2]!('snap-ea');
+    await loadEa;
+    resolvers[0]!('snap-mena');
+    await loadMena;
+
+    assert.deepEqual(state.rendered, ['east-asia:snap-ea']);
+  });
+
+  it('a single load (no race) still renders', async () => {
+    const state = { latestSequence: 0, rendered: [] as string[] };
+    async function loadCurrent(regionId: string, promise: Promise<string>) {
+      state.latestSequence += 1;
+      const mySeq = state.latestSequence;
+      const result = await promise;
+      if (!isLatestSequence(mySeq, state.latestSequence)) return;
+      state.rendered.push(`${regionId}:${result}`);
+    }
+    await loadCurrent('mena', Promise.resolve('snap'));
+    assert.deepEqual(state.rendered, ['mena:snap']);
   });
 });

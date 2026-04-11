@@ -4,7 +4,7 @@ import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intel
 import type { RegionalSnapshot } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
-import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml } from './regional-intelligence-board-utils';
+import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml, isLatestSequence } from './regional-intelligence-board-utils';
 
 const client = new IntelligenceServiceClient(getRpcBaseUrl(), {
   fetch: (...args) => globalThis.fetch(...args),
@@ -36,7 +36,15 @@ export class RegionalIntelligenceBoard extends Panel {
   private selector: HTMLSelectElement;
   private body: HTMLElement;
   private currentRegion: string = DEFAULT_REGION_ID;
-  private loading = false;
+  /**
+   * Monotonically-increasing request sequence. Each `loadCurrent()` call
+   * claims a new sequence before it awaits the RPC; when the response comes
+   * back, it renders ONLY if its sequence still matches `latestSequence`.
+   * Earlier in-flight fetches whose user has already moved on are discarded.
+   * Replaces a naive `loading` boolean that used to drop rapid region
+   * switches — see PR #2963 review.
+   */
+  private latestSequence = 0;
 
   constructor() {
     super({
@@ -80,12 +88,17 @@ export class RegionalIntelligenceBoard extends Panel {
   }
 
   private async loadCurrent(): Promise<void> {
-    if (this.loading) return;
-    this.loading = true;
+    // Claim a sequence number BEFORE we await anything. The latest claim
+    // wins — any response from an earlier sequence is dropped so fast
+    // dropdown switches can't leave the panel rendering a stale region.
+    this.latestSequence += 1;
+    const mySequence = this.latestSequence;
+    const myRegion = this.currentRegion;
     this.renderLoading();
 
     try {
-      const resp = await client.getRegionalSnapshot({ regionId: this.currentRegion });
+      const resp = await client.getRegionalSnapshot({ regionId: myRegion });
+      if (!isLatestSequence(mySequence, this.latestSequence)) return;
       const snapshot = resp.snapshot;
       if (!snapshot?.regionId) {
         this.renderEmpty();
@@ -93,10 +106,9 @@ export class RegionalIntelligenceBoard extends Panel {
       }
       this.renderBoard(snapshot);
     } catch (err) {
+      if (!isLatestSequence(mySequence, this.latestSequence)) return;
       console.error('[RegionalIntelligenceBoard] load failed', err);
       this.renderError(err instanceof Error ? err.message : String(err));
-    } finally {
-      this.loading = false;
     }
   }
 

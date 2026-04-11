@@ -31,6 +31,28 @@ export const BOARD_REGIONS: ReadonlyArray<{ id: string; label: string }> = [
 export const DEFAULT_REGION_ID = 'mena';
 
 // ────────────────────────────────────────────────────────────────────────────
+// Request-sequence arbitrator (race condition fix for PR #2963 review)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Request-sequence arbitrator. The panel's loadCurrent() claims a monotonic
+ * sequence before awaiting its RPC; when the response comes back it passes
+ * (mySequence, latestSequence) to this helper and only renders when it wins.
+ *
+ * A rapid dropdown switch therefore goes: seq=1 claims → seq=2 claims →
+ * seq=1 returns, stale (1 !== 2), discarded → seq=2 returns, fresh, renders.
+ * Without this check the earlier in-flight response could overwrite the
+ * newer region's render.
+ *
+ * Pure — exported only so it can be unit tested in isolation from the
+ * Panel class (which can't be imported by node:test due to import.meta.glob
+ * in @/services/i18n).
+ */
+export function isLatestSequence(mySequence: number, latestSequence: number): boolean {
+  return mySequence === latestSequence;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Top-level
 // ────────────────────────────────────────────────────────────────────────────
 
