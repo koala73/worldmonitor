@@ -49,11 +49,29 @@ describe('resilience scorer contracts', () => {
 
     // Imputation only applies when the source is loaded but the country is absent.
     // A null source (seed outage) must NOT be reclassified as a "stable country" signal.
-    // Exception: scoreFoodWater reads per-country static data; fao=null in a loaded static
-    // record is a legitimate "not in active crisis" signal, so coverage may be > 0.
+    // Exceptions:
+    //   - scoreFoodWater reads per-country static data; fao=null in a loaded static
+    //     record is a legitimate "not in active crisis" signal.
+    //   - scoreCurrencyExternal (T1.7 source-failure wiring): the legacy absence
+    //     branch (score=50, coverage=0, imputationClass=null) was deleted so every
+    //     imputed return path carries a taxonomy tag. When BIS + IMF + reserves are
+    //     all absent, the scorer falls through to IMPUTE.bisEer (curated_list_absent
+    //     → unmonitored, coverage=0.3). The aggregation pass then re-tags to
+    //     source-failure when the adapter is in seed-meta failedDatasets. This is the
+    //     single source of truth for "no currency data"; null-imputationClass paths
+    //     on non-real-data return branches are no longer permitted.
+    const coverageZeroExempt = new Set(['currencyExternal']);
     for (const [dimensionId, scorer] of Object.entries(RESILIENCE_DIMENSION_SCORERS)) {
       const result = await scorer('US');
       assert.ok(result.score >= 0 && result.score <= 100, `${dimensionId} fallback score out of bounds: ${result.score}`);
+      if (coverageZeroExempt.has(dimensionId)) {
+        // The scorer emits the curated_list_absent taxonomy entry directly;
+        // coverage is the taxonomy's certaintyCoverage (0.3) rather than 0.
+        assert.ok(result.imputedWeight > 0, `${dimensionId} must emit imputed weight on T1.7 fall-through`);
+        assert.equal(result.imputationClass, 'unmonitored',
+          `${dimensionId} fall-through must tag unmonitored, got ${result.imputationClass}`);
+        continue;
+      }
       assert.equal(result.coverage, 0, `${dimensionId} must have coverage=0 when all seeds missing (source outage ≠ country absence)`);
     }
   });

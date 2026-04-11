@@ -3,6 +3,7 @@ import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap } from './_dimension-freshness';
+import { failedDimensionsFromDatasets, readFailedDatasets } from './_source-failure';
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -808,7 +809,14 @@ export async function scoreCurrencyExternal(
       const coverage = bisExchangeRaw != null ? 0.4 : 0.3;
       return { score: reservesScore, coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
     }
-    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
+    // No BIS EER, no IMF inflation fallback, no WB reserves fallback.
+    // This is true structural absence: the country isn't covered by any
+    // currency-stability source we track. Tag with curated_list_absent
+    // (= 'unmonitored') so the taxonomy is the single source of truth
+    // and the aggregation pass can still re-tag it as 'source-failure'
+    // when the underlying adapter fails. The prior absence-based branch
+    // returned { score: 50, imputationClass: null } which silently
+    // bypassed the taxonomy; replaced in T1.7 source-failure wiring.
     return {
       score: IMPUTE.bisEer.score,
       coverage: IMPUTE.bisEer.certaintyCoverage,
@@ -1158,7 +1166,7 @@ export async function scoreAllDimensions(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<Record<ResilienceDimensionId, ResilienceDimensionScore>> {
   const memoizedReader = createMemoizedSeedReader(reader);
-  const [entries, freshnessMap] = await Promise.all([
+  const [entries, freshnessMap, failedDatasets] = await Promise.all([
     Promise.all(
       RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => [
         dimensionId,
@@ -1171,14 +1179,51 @@ export async function scoreAllDimensions(
     // the scorers' source reads (though seed-meta keys don't overlap
     // with the scorer keys in practice, the shared reader is cheap).
     readFreshnessMap(memoizedReader),
+    readFailedDatasets(memoizedReader),
   ]);
   const scores = Object.fromEntries(entries) as Record<ResilienceDimensionId, ResilienceDimensionScore>;
+
+  // T1.5 freshness decoration pass. Attach dimension-level freshness
+  // derived from the aggregated seed-meta map. Runs before the T1.7
+  // source-failure pass because source-failure only touches
+  // imputationClass and does not interact with freshness.
   for (const dimensionId of RESILIENCE_DIMENSION_ORDER) {
     scores[dimensionId] = {
       ...scores[dimensionId],
       freshness: classifyDimensionFreshness(dimensionId, freshnessMap),
     };
   }
+
+  // T1.7 source-failure wiring. When the resilience-static seed reports
+  // failed adapter fetches in its meta, any dimension that consumes that
+  // adapter AND is already imputed (observedWeight === 0, imputationClass
+  // non-null) gets re-tagged from the table default (stable-absence /
+  // unmonitored) to source-failure. Real-data dimensions are untouched:
+  // a seed adapter failing does not invalidate a country that was served
+  // from the prior-snapshot recovery path.
+  if (failedDatasets.length > 0) {
+    const affected = failedDimensionsFromDatasets(failedDatasets);
+    if (affected.size > 0) {
+      // Single info log per request so ops can see which adapters went
+      // down without having to dump Redis. The country code is included
+      // because scoreAllDimensions runs per-country; a flood of these
+      // during a failed-seed window is the expected signal.
+      console.info(
+        `[Resilience] source-failure decoration country=${countryCode} failedDatasets=${failedDatasets.join(',')} affectedDimensions=${[...affected].join(',')}`,
+      );
+      for (const dimId of affected) {
+        const current = scores[dimId];
+        // Only re-tag imputed dimensions. Dimensions with any observed
+        // weight keep their existing null class (which is the correct
+        // semantics: the seed failing did not prevent us from producing
+        // a real-data score for this country).
+        if (current != null && current.imputationClass != null) {
+          scores[dimId] = { ...current, imputationClass: 'source-failure' };
+        }
+      }
+    }
+  }
+
   return scores;
 }
 

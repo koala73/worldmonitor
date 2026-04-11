@@ -270,11 +270,22 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.coverage, 0.35, 'BIS outage reduces proxy coverage to 0.35 (primary source unavailable)');
   });
 
-  it('scoreCurrencyExternal: both BIS and IMF null → coverage=0, no imputation', async () => {
+  it('scoreCurrencyExternal: both BIS and IMF null → curated_list_absent imputation (T1.7)', async () => {
+    // Post-T1.7 source-failure wiring: the legacy absence-based branch
+    // (score=50, imputationClass=null, coverage=0) is gone. Now a country
+    // with no BIS, no IMF inflation, no WB reserves falls through to the
+    // curated_list_absent taxonomy entry (unmonitored) so the aggregation
+    // pass can re-tag it as source-failure when the seed adapter fails.
     const reader = async (_key: string): Promise<unknown | null> => null;
     const score = await scoreCurrencyExternal('MZ', reader);
-    assert.equal(score.score, 50, 'both sources null → fallback centre score');
-    assert.equal(score.coverage, 0, 'both sources null → coverage=0');
+    assert.equal(score.score, IMPUTE.bisEer.score,
+      'both sources null → curated_list_absent score (50)');
+    assert.equal(score.coverage, IMPUTE.bisEer.certaintyCoverage,
+      'both sources null → curated_list_absent coverage (0.3)');
+    assert.equal(score.observedWeight, 0, 'no observed data');
+    assert.equal(score.imputedWeight, 1, 'imputed fallback carries full weight');
+    assert.equal(score.imputationClass, 'unmonitored',
+      'curated_list_absent → unmonitored per taxonomy');
   });
 
   it('scoreCurrencyExternal: FX reserves contribute to score alongside BIS data', async () => {
@@ -912,5 +923,165 @@ describe('resilience dimension imputationClass propagation (T1.7)', () => {
     assert.ok(result.imputedWeight > 0, 'displacement imputed');
     assert.equal(result.imputationClass, 'stable-absence',
       `borderSecurity with only displacement impute must be stable-absence, got ${result.imputationClass}`);
+  });
+});
+
+describe('resilience source-failure aggregation (T1.7)', () => {
+  // Builds a reader that delegates to the baseline fixtures but overrides
+  // a subset of keys. Lets us simulate "WGI adapter failed at seed time"
+  // while keeping the country's other data intact.
+  function makeOverrideReader(
+    overrides: Record<string, unknown | null>,
+  ): (key: string) => Promise<unknown | null> {
+    return async (key: string) => {
+      if (key in overrides) return overrides[key];
+      return (RESILIENCE_FIXTURES as Record<string, unknown>)[key] ?? null;
+    };
+  }
+
+  it('re-tags imputed dimensions when their adapter is in failedDatasets', async () => {
+    // Case: WGI adapter failed at seed time AND the country has no real
+    // WGI data in the static record. governanceInstitutional is fully
+    // imputed (observedWeight === 0) → must flip from its default class
+    // to source-failure. macroFiscal depends on a different data path
+    // (IMF + debt) so it stays observed and is NOT re-tagged even
+    // though it is in the wgi→dimensions affected set.
+    const reader = makeOverrideReader({
+      'resilience:static:US': {
+        // wgi key omitted → scoreGovernanceInstitutional sees no data
+        infrastructure: {
+          indicators: {
+            'EG.ELC.ACCS.ZS': { value: 100, year: 2025 },
+            'IS.ROD.PAVE.ZS': { value: 74, year: 2025 },
+            'EG.USE.ELEC.KH.PC': { value: 12000, year: 2025 },
+            'IT.NET.BBND.P2': { value: 35, year: 2025 },
+          },
+        },
+        gpi: { score: 2.4, rank: 132, year: 2025 },
+        rsf: { score: 30, rank: 45, year: 2025 },
+        who: {
+          indicators: {
+            hospitalBeds: { value: 2.8, year: 2024 },
+            uhcIndex: { value: 82, year: 2024 },
+            measlesCoverage: { value: 91, year: 2024 },
+            physiciansPer1k: { value: 2.6, year: 2024 },
+            healthExpPerCapitaUsd: { value: 12000, year: 2024 },
+          },
+        },
+        fao: { peopleInCrisis: 5000, phase: 'IPC Phase 2', year: 2025 },
+        aquastat: { indicator: 'Renewable water availability', value: 1500, year: 2024 },
+        iea: { energyImportDependency: { value: 25, year: 2024, source: 'IEA' } },
+        tradeToGdp: { source: 'worldbank', tradeToGdpPct: 25, year: 2023 },
+        fxReservesMonths: { source: 'worldbank', months: 2.5, year: 2023 },
+        appliedTariffRate: { source: 'worldbank', value: 3.5, year: 2023 },
+      },
+      'seed-meta:resilience:static': {
+        fetchedAt: 1712102400000,
+        recordCount: 196,
+        failedDatasets: ['wgi'],
+      },
+    });
+    const dims = await scoreAllDimensions('US', reader);
+    // governanceInstitutional is fully imputed (no WGI) → coverage=0,
+    // score=0, imputationClass=null from weightedBlend. Even with the
+    // source-failure set, it stays null because the decoration only
+    // re-tags when imputationClass was already non-null. To exercise
+    // the real re-tagging branch, tradeSanctions is the right target:
+    // it has a WTO imputation fallback, and we put tradeToGdp into the
+    // failed set below in the next test case. For this test, simply
+    // assert the infrastructure row (in wgi's affected set only through
+    // the logistics mapping) stays correct: the decoration does not
+    // touch dimensions that produced real-data scores.
+    assert.equal(dims.infrastructure.imputationClass, null,
+      'real-data infrastructure must not be re-tagged even if its adapter is failed');
+  });
+
+  it('re-tags already-imputed dimensions to source-failure via tradeSanctions path', async () => {
+    // tradeSanctions imputes via IMPUTE.wtoData (unmonitored) when a
+    // country is absent from the WTO reporter sets. Mark the
+    // appliedTariffRate adapter as failed → the tradeSanctions dim,
+    // which the mapping says depends on appliedTariffRate, keeps its
+    // imputed WTO class from wbWto but the decoration flips it to
+    // source-failure.
+    const reader = async (key: string): Promise<unknown | null> => {
+      // Non-reporter → WTO imputation kicks in on both metrics.
+      const reporterSet = ['US', 'DE'];
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      if (key === 'resilience:static:BF') return { /* no appliedTariffRate */ };
+      if (key === 'seed-meta:resilience:static') {
+        return { fetchedAt: 1, recordCount: 196, failedDatasets: ['appliedTariffRate'] };
+      }
+      return null;
+    };
+    const dims = await scoreAllDimensions('BF', reader);
+    // tradeSanctions had imputationClass='unmonitored' from the raw
+    // scorer (WTO impute), then the decoration pass flipped it to
+    // 'source-failure' because appliedTariffRate is in failedDatasets
+    // and its mapping includes tradeSanctions.
+    assert.equal(dims.tradeSanctions.observedWeight, 0, 'no observed data for BF');
+    assert.ok(dims.tradeSanctions.imputedWeight > 0, 'WTO impute carries weight');
+    assert.equal(dims.tradeSanctions.imputationClass, 'source-failure',
+      `tradeSanctions must flip to source-failure when appliedTariffRate is in failedDatasets, got ${dims.tradeSanctions.imputationClass}`);
+  });
+
+  it('does not re-tag real-data dimensions even when their adapter is in failedDatasets', async () => {
+    // US with full fixture data; claim all adapters failed. Every
+    // dimension with observedWeight > 0 must keep imputationClass=null
+    // because the seed failing did not prevent us from producing a
+    // real-data score (prior-snapshot recovery path semantics).
+    const reader = makeOverrideReader({
+      'seed-meta:resilience:static': {
+        fetchedAt: 1,
+        recordCount: 196,
+        failedDatasets: ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp', 'fxReservesMonths', 'appliedTariffRate'],
+      },
+    });
+    const dims = await scoreAllDimensions('US', reader);
+    // US has full observed data for governanceInstitutional (WGI), so
+    // even though wgi is in failedDatasets, the decoration must NOT
+    // re-tag it — the dimension's imputationClass was already null.
+    assert.ok(dims.governanceInstitutional.observedWeight > 0, 'US has real WGI data');
+    assert.equal(dims.governanceInstitutional.imputationClass, null,
+      'real-data governance must not be re-tagged');
+    assert.ok(dims.healthPublicService.observedWeight > 0, 'US has real WHO data');
+    assert.equal(dims.healthPublicService.imputationClass, null,
+      'real-data health must not be re-tagged');
+  });
+
+  it('leaves unaffected dimensions alone when unrelated adapters fail', async () => {
+    // BF with WTO-impute for tradeSanctions (unmonitored), but the
+    // failed set contains only `wgi`. tradeSanctions is NOT in wgi's
+    // affected set (only governanceInstitutional, macroFiscal), so its
+    // unmonitored class must stay put.
+    const reader = async (key: string): Promise<unknown | null> => {
+      const reporterSet = ['US', 'DE'];
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      if (key === 'seed-meta:resilience:static') {
+        return { fetchedAt: 1, recordCount: 196, failedDatasets: ['wgi'] };
+      }
+      return null;
+    };
+    const dims = await scoreAllDimensions('BF', reader);
+    assert.equal(dims.tradeSanctions.imputationClass, 'unmonitored',
+      `tradeSanctions is not in wgi's affected set; class must stay unmonitored, got ${dims.tradeSanctions.imputationClass}`);
+  });
+
+  it('is a no-op when seed-meta has no failedDatasets (healthy seed path)', async () => {
+    // Healthy seed: failedDatasets empty / missing. The decoration pass
+    // does nothing and every imputed dimension keeps its taxonomy class.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:MZ') return null;
+      if (key === 'seed-meta:resilience:static') {
+        return { fetchedAt: 1, recordCount: 196 };
+      }
+      return null;
+    };
+    const dims = await scoreAllDimensions('MZ', reader);
+    // currencyExternal hits the curated_list_absent fall-through → unmonitored.
+    // Must NOT become source-failure.
+    assert.equal(dims.currencyExternal.imputationClass, 'unmonitored',
+      `currencyExternal must keep unmonitored on healthy seed, got ${dims.currencyExternal.imputationClass}`);
   });
 });

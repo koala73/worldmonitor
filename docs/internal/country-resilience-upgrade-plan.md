@@ -607,6 +607,11 @@ methodology page and reproduce any country score from the Redis cache keys.
   `resilience:static:signal:<id>:<cc>` key. Scorer context reads this
   instead of branching on `value == null`. Update
   `resilience-dimension-scorers.test.mts` with cases for each class.
+  T1.7 schema pass shipped in PR #2959 (imputationClass on the
+  ResilienceDimension proto). T1.7 source-failure wiring shipped in
+  PR #2963 (consult seed-meta failedDatasets and re-tag affected
+  dimensions at the aggregation layer + delete the one remaining
+  absence-based branch in scoreCurrencyExternal).
 - **T1.8** Test suite updates: ceiling-bug regression (T1.1), methodology
   doc linter (checks every dimension in registry has a subsection in the
   mdx), `data_version` round-trip, imputation-class plumbing.
