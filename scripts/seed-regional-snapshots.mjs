@@ -8,7 +8,10 @@
  * structured trigger thresholds, builds normalized scenario sets, resolves
  * pre-built transmission templates, and persists to Redis with idempotency.
  *
- * Phase 0: NO LLM narrative call. Phase 1+ adds the narrative layer.
+ * Phase 1 (PR2): LLM narrative layer added. One structured-JSON call per
+ * region via generateRegionalNarrative(), ship-empty on any failure. The
+ * 'global' region is skipped inside the generator. Provider + model flow
+ * through SnapshotMeta.narrative_provider / narrative_model.
  *
  * Architecture: docs/internal/pro-regional-intelligence-upgrade.md
  * Engineering:  docs/internal/pro-regional-intelligence-appendix-engineering.md
@@ -39,6 +42,7 @@ import { diffRegionalSnapshot, inferTriggerReason } from './regional-snapshot/di
 import { persistSnapshot, readLatestSnapshot } from './regional-snapshot/persist-snapshot.mjs';
 import { ALL_INPUT_KEYS } from './regional-snapshot/freshness.mjs';
 import { generateSnapshotId } from './regional-snapshot/_helpers.mjs';
+import { generateRegionalNarrative, emptyNarrative } from './regional-snapshot/narrative.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -86,10 +90,13 @@ async function readAllInputs() {
  *   7. transmissions
  *   8. mobility (empty in Phase 0)
  *   9. evidence
- *   10. (skip narrative LLM call in Phase 0)
- *   11. snapshot_id
- *   12. read previous + diff
- *   13. final_meta
+ *   10. snapshot_id
+ *   11. read previous + derive regime
+ *   12. build snapshot-for-prompt (no narrative yet)
+ *   13. LLM narrative call (ship-empty on failure; skipped for 'global')
+ *   14. splice narrative into tentative snapshot
+ *   15. diff → trigger_reason
+ *   16. final_meta with narrative_provider/narrative_model
  */
 async function computeSnapshot(regionId, sources) {
   // Step 2: pre-meta
@@ -122,30 +129,21 @@ async function computeSnapshot(regionId, sources) {
   // Step 9: evidence chain
   const evidence = collectEvidence(regionId, sources);
 
-  // Step 10: SKIPPED in Phase 0 (no narrative LLM call)
-  /** @type {import('../shared/regions.types.js').RegionalNarrative} */
-  const narrative = {
-    situation: { text: '', evidence_ids: [] },
-    balance_assessment: { text: '', evidence_ids: [] },
-    outlook_24h: { text: '', evidence_ids: [] },
-    outlook_7d: { text: '', evidence_ids: [] },
-    outlook_30d: { text: '', evidence_ids: [] },
-    watch_items: [],
-  };
-
-  // Step 11: snapshot_id
+  // Step 10: snapshot_id
   const snapshotId = generateSnapshotId();
 
-  // Step 12: read previous, run diff
+  // Step 11: read previous + derive regime. Must happen before narrative
+  // generation because the prompt consumes the regime label.
   const previous = await readLatestSnapshot(regionId).catch(() => null);
   const previousLabel = previous?.regime?.label ?? '';
   const regime = buildRegimeState(balance, previousLabel, '');
 
-  // Build a tentative snapshot purely so the diff engine can compare against
-  // the previously-persisted snapshot. The tentative snapshot's meta is a
-  // throwaway placeholder; the real meta is built after the diff so trigger_reason
-  // can be derived from the diff result.
-  const tentativeSnapshot = {
+  // Step 12: snapshot-shaped input for the narrative prompt. The narrative
+  // generator reads regime/balance/actors/scenarios/triggers/evidence from
+  // this object and does NOT inspect `meta` or the placeholder narrative.
+  // Meta here is a throwaway — the real meta is built after diff so
+  // trigger_reason and narrative_* can flow in together.
+  const snapshotForPrompt = {
     region_id: regionId,
     generated_at: Date.now(),
     meta: buildFinalMeta(pre, { snapshot_id: snapshotId, trigger_reason: 'scheduled_6h' }),
@@ -158,16 +156,33 @@ async function computeSnapshot(regionId, sources) {
     triggers,
     mobility,
     evidence,
-    narrative,
+    narrative: emptyNarrative(),
   };
 
+  // Step 13: LLM narrative. Ship-empty on any failure — the snapshot remains
+  // valuable without the narrative, and the narrative generator itself
+  // never throws. 'global' is skipped inside the generator.
+  const region = REGIONS.find((r) => r.id === regionId);
+  const narrativeResult = region
+    ? await generateRegionalNarrative(region, snapshotForPrompt, evidence)
+    : { narrative: emptyNarrative(), provider: '', model: '' };
+
+  // Step 14: tentative snapshot with the real narrative spliced in.
+  const tentativeSnapshot = {
+    ...snapshotForPrompt,
+    narrative: narrativeResult.narrative,
+  };
+
+  // Step 15: diff against previous for trigger_reason inference
   const diff = diffRegionalSnapshot(previous, tentativeSnapshot);
   const triggerReason = inferTriggerReason(diff);
 
-  // Step 13: final_meta with diff-derived trigger_reason
+  // Step 16: final_meta with diff-derived trigger_reason and narrative metadata
   const finalMeta = buildFinalMeta(pre, {
     snapshot_id: snapshotId,
     trigger_reason: triggerReason,
+    narrative_provider: narrativeResult.provider,
+    narrative_model: narrativeResult.model,
   });
 
   // Return the snapshot WITHOUT the diff. The diff is a runtime artifact for
