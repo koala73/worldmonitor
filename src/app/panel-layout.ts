@@ -71,6 +71,7 @@ import {
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
   WsbTickerScannerPanel,
+  AAIISentimentPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
@@ -1078,6 +1079,7 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('macro-signals', () => new MacroSignalsPanel());
     this.createPanel('fear-greed', () => new FearGreedPanel());
+    this.createPanel('aaii-sentiment', () => new AAIISentimentPanel());
     this.createPanel('macro-tiles', () => new MacroTilesPanel());
     this.createPanel('fsi', () => new FSIPanel());
     this.createPanel('yield-curve', () => new YieldCurvePanel());

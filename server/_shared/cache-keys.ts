@@ -181,6 +181,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   oilStocksAnalysis:    'energy:oil-stocks-analysis:v1',
   lngVulnerability:     'energy:lng-vulnerability:v1',
   sprPolicies:          'energy:spr-policies:v1',
+  aaiiSentiment:        'market:aaii-sentiment:v1',
 };
 
 export const PORTWATCH_PORT_ACTIVITY_KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';
@@ -237,6 +238,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   oilStocksAnalysis: 'slow',
   lngVulnerability: 'slow',
   sprPolicies: 'slow',
+  aaiiSentiment: 'slow',
 };
 
 export const PORTWATCH_CHOKEPOINTS_REF_KEY = 'portwatch:chokepoints:ref:v1';
