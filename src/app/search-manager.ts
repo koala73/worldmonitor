@@ -539,6 +539,10 @@ export class SearchManager implements AppModule {
           } else {
             this.ctx.map?.setLayers(this.ctx.mapLayers);
           }
+        } else if (action === 'route-explorer') {
+          void import('@/components/RouteExplorer/RouteExplorer').then((m) => {
+            m.getRouteExplorer().open();
+          });
         }
         break;
 
