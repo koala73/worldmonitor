@@ -1,0 +1,99 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// Status of a bypass corridor for UI labeling. "active" means usable today;
+// "proposed" means documented but not yet built/operational; "unavailable"
+// means blockaded or otherwise blocked from use.
+enum CorridorStatus {
+  CORRIDOR_STATUS_UNSPECIFIED = 0;
+  CORRIDOR_STATUS_ACTIVE = 1;
+  CORRIDOR_STATUS_PROPOSED = 2;
+  CORRIDOR_STATUS_UNAVAILABLE = 3;
+}
+
+// GeoPoint is a [longitude, latitude] pair.
+message GeoPoint {
+  double lon = 1;
+  double lat = 2;
+}
+
+// BypassCorridorOption is a single enriched bypass corridor for the Route Explorer UI.
+// Includes coordinate endpoints so the client can call MapContainer.setBypassRoutes
+// directly without any client-side geometry lookup.
+message BypassCorridorOption {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  int32 added_transit_days = 4;
+  double added_cost_multiplier = 5;
+  string war_risk_tier = 6;
+  CorridorStatus status = 7;
+  GeoPoint from_port = 8;
+  GeoPoint to_port = 9;
+}
+
+message ChokepointExposureSummary {
+  string chokepoint_id = 1;
+  string chokepoint_name = 2;
+  int32 exposure_pct = 3;
+}
+
+// Inclusive integer range for transit days / freight USD estimates.
+message NumberRange {
+  int32 min = 1;
+  int32 max = 2;
+}
+
+message GetRouteExplorerLaneRequest {
+  string from_iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "fromIso2"}
+  ];
+  string to_iso2 = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "toIso2"}
+  ];
+  // HS2 chapter code, e.g. "27", "85"
+  string hs2 = 3 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "hs2"}
+  ];
+  // One of: container, tanker, bulk, roro
+  string cargo_type = 4 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "cargoType"}
+  ];
+}
+
+message GetRouteExplorerLaneResponse {
+  string from_iso2 = 1;
+  string to_iso2 = 2;
+  string hs2 = 3;
+  string cargo_type = 4;
+  // Primary trade route ID from TRADE_ROUTES config. Empty when no modeled lane.
+  string primary_route_id = 5;
+  // Polyline waypoints for the primary route (lon/lat), used for map rendering.
+  repeated GeoPoint primary_route_geometry = 6;
+  // Chokepoints on the primary route, ranked by exposure descending.
+  repeated ChokepointExposureSummary chokepoint_exposures = 7;
+  // Ranked bypass options with geometry endpoints for map rendering.
+  repeated BypassCorridorOption bypass_options = 8;
+  string war_risk_tier = 9;
+  double disruption_score = 10;
+  // Static transit estimate from a hand-curated table keyed by primary_route_id.
+  NumberRange est_transit_days_range = 11;
+  // Static freight estimate (USD per TEU or equivalent) from a hand-curated table
+  // keyed by cargo_type. Not a live rate quote.
+  NumberRange est_freight_usd_per_teu_range = 12;
+  // True when the wrapper fell back to the origin's first route (no shared route
+  // between origin and destination clusters). Signals "no modeled lane" to the UI.
+  bool no_modeled_lane = 13;
+  string fetched_at = 14;
+}

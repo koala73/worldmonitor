@@ -236,6 +236,60 @@ export interface GetSectorDependencyResponse {
   fetchedAt: string;
 }
 
+export interface GetRouteExplorerLaneRequest {
+  fromIso2: string;
+  toIso2: string;
+  hs2: string;
+  cargoType: string;
+}
+
+export interface GetRouteExplorerLaneResponse {
+  fromIso2: string;
+  toIso2: string;
+  hs2: string;
+  cargoType: string;
+  primaryRouteId: string;
+  primaryRouteGeometry: GeoPoint[];
+  chokepointExposures: ChokepointExposureSummary[];
+  bypassOptions: BypassCorridorOption[];
+  warRiskTier: string;
+  disruptionScore: number;
+  estTransitDaysRange?: NumberRange;
+  estFreightUsdPerTeuRange?: NumberRange;
+  noModeledLane: boolean;
+  fetchedAt: string;
+}
+
+export interface GeoPoint {
+  lon: number;
+  lat: number;
+}
+
+export interface ChokepointExposureSummary {
+  chokepointId: string;
+  chokepointName: string;
+  exposurePct: number;
+}
+
+export interface BypassCorridorOption {
+  id: string;
+  name: string;
+  type: string;
+  addedTransitDays: number;
+  addedCostMultiplier: number;
+  warRiskTier: string;
+  status: CorridorStatus;
+  fromPort?: GeoPoint;
+  toPort?: GeoPoint;
+}
+
+export interface NumberRange {
+  min: number;
+  max: number;
+}
+
+export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
+
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
 
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
@@ -484,6 +538,34 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetSectorDependencyResponse;
+  }
+
+  async getRouteExplorerLane(req: GetRouteExplorerLaneRequest, options?: SupplyChainServiceCallOptions): Promise<GetRouteExplorerLaneResponse> {
+    let path = "/api/supply-chain/v1/get-route-explorer-lane";
+    const params = new URLSearchParams();
+    if (req.fromIso2 != null && req.fromIso2 !== "") params.set("fromIso2", String(req.fromIso2));
+    if (req.toIso2 != null && req.toIso2 !== "") params.set("toIso2", String(req.toIso2));
+    if (req.hs2 != null && req.hs2 !== "") params.set("hs2", String(req.hs2));
+    if (req.cargoType != null && req.cargoType !== "") params.set("cargoType", String(req.cargoType));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetRouteExplorerLaneResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

@@ -269,6 +269,60 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-route-explorer-lane:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetRouteExplorerLane
+            description: |-
+                GetRouteExplorerLane returns the primary maritime route, chokepoint exposures,
+                 bypass options with geometry, war risk, and static transit/freight estimates for
+                 a country pair + HS2 + cargo type. PRO-gated. Wraps the route-intelligence vendor
+                 endpoint's compute with browser-callable auth and adds fields needed by the
+                 Route Explorer UI.
+            operationId: GetRouteExplorerLane
+            parameters:
+                - name: fromIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: toIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: HS2 chapter code, e.g. "27", "85"
+                  required: false
+                  schema:
+                    type: string
+                - name: cargoType
+                  in: query
+                  description: 'One of: container, tanker, bulk, roro'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRouteExplorerLaneResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -883,3 +937,131 @@ components:
                     description: Whether at least one viable bypass corridor exists for the primary chokepoint.
                 fetchedAt:
                     type: string
+        GetRouteExplorerLaneRequest:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                toIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                hs2:
+                    type: string
+                    description: HS2 chapter code, e.g. "27", "85"
+                cargoType:
+                    type: string
+                    description: 'One of: container, tanker, bulk, roro'
+            required:
+                - fromIso2
+                - toIso2
+                - hs2
+                - cargoType
+        GetRouteExplorerLaneResponse:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                toIso2:
+                    type: string
+                hs2:
+                    type: string
+                cargoType:
+                    type: string
+                primaryRouteId:
+                    type: string
+                    description: Primary trade route ID from TRADE_ROUTES config. Empty when no modeled lane.
+                primaryRouteGeometry:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GeoPoint'
+                chokepointExposures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChokepointExposureSummary'
+                bypassOptions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BypassCorridorOption'
+                warRiskTier:
+                    type: string
+                disruptionScore:
+                    type: number
+                    format: double
+                estTransitDaysRange:
+                    $ref: '#/components/schemas/NumberRange'
+                estFreightUsdPerTeuRange:
+                    $ref: '#/components/schemas/NumberRange'
+                noModeledLane:
+                    type: boolean
+                    description: |-
+                        True when the wrapper fell back to the origin's first route (no shared route
+                         between origin and destination clusters). Signals "no modeled lane" to the UI.
+                fetchedAt:
+                    type: string
+        GeoPoint:
+            type: object
+            properties:
+                lon:
+                    type: number
+                    format: double
+                lat:
+                    type: number
+                    format: double
+            description: GeoPoint is a [longitude, latitude] pair.
+        ChokepointExposureSummary:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                chokepointName:
+                    type: string
+                exposurePct:
+                    type: integer
+                    format: int32
+        BypassCorridorOption:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                type:
+                    type: string
+                addedTransitDays:
+                    type: integer
+                    format: int32
+                addedCostMultiplier:
+                    type: number
+                    format: double
+                warRiskTier:
+                    type: string
+                status:
+                    type: string
+                    enum:
+                        - CORRIDOR_STATUS_UNSPECIFIED
+                        - CORRIDOR_STATUS_ACTIVE
+                        - CORRIDOR_STATUS_PROPOSED
+                        - CORRIDOR_STATUS_UNAVAILABLE
+                    description: |-
+                        Status of a bypass corridor for UI labeling. "active" means usable today;
+                         "proposed" means documented but not yet built/operational; "unavailable"
+                         means blockaded or otherwise blocked from use.
+                fromPort:
+                    $ref: '#/components/schemas/GeoPoint'
+                toPort:
+                    $ref: '#/components/schemas/GeoPoint'
+            description: |-
+                BypassCorridorOption is a single enriched bypass corridor for the Route Explorer UI.
+                 Includes coordinate endpoints so the client can call MapContainer.setBypassRoutes
+                 directly without any client-side geometry lookup.
+        NumberRange:
+            type: object
+            properties:
+                min:
+                    type: integer
+                    format: int32
+                max:
+                    type: integer
+                    format: int32
+            description: Inclusive integer range for transit days / freight USD estimates.

@@ -8,6 +8,7 @@ import { getCountryChokepointIndex } from './get-country-chokepoint-index';
 import { getBypassOptions } from './get-bypass-options';
 import { getCountryCostShock } from './get-country-cost-shock';
 import { getSectorDependency } from './get-sector-dependency';
+import { getRouteExplorerLane } from './get-route-explorer-lane';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
@@ -18,4 +19,5 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   getBypassOptions,
   getCountryCostShock,
   getSectorDependency,
+  getRouteExplorerLane,
 };

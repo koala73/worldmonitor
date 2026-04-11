@@ -10,6 +10,7 @@ import {
   type GetBypassOptionsResponse,
   type GetCountryCostShockResponse,
   type GetSectorDependencyResponse,
+  type GetRouteExplorerLaneResponse,
   type ShippingIndex,
   type ChokepointInfo,
   type CriticalMineral,
@@ -30,6 +31,7 @@ export type {
   GetBypassOptionsResponse,
   GetCountryCostShockResponse,
   GetSectorDependencyResponse,
+  GetRouteExplorerLaneResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
@@ -223,6 +225,37 @@ export async function fetchSectorDependency(
     return await client.getSectorDependency({ iso2, hs2 });
   } catch {
     return { ...emptySectorDependency, iso2, hs2 };
+  }
+}
+
+const emptyRouteExplorerLane: GetRouteExplorerLaneResponse = {
+  fromIso2: '', toIso2: '', hs2: '', cargoType: '',
+  primaryRouteId: '',
+  primaryRouteGeometry: [],
+  chokepointExposures: [],
+  bypassOptions: [],
+  warRiskTier: 'WAR_RISK_TIER_NORMAL',
+  disruptionScore: 0,
+  estTransitDaysRange: { min: 14, max: 28 },
+  estFreightUsdPerTeuRange: { min: 1800, max: 3200 },
+  noModeledLane: true,
+  fetchedAt: '',
+};
+
+export interface FetchRouteExplorerLaneArgs {
+  fromIso2: string;
+  toIso2: string;
+  hs2: string;
+  cargoType: string;
+}
+
+export async function fetchRouteExplorerLane(
+  args: FetchRouteExplorerLaneArgs,
+): Promise<GetRouteExplorerLaneResponse> {
+  try {
+    return await client.getRouteExplorerLane(args);
+  } catch {
+    return { ...emptyRouteExplorerLane, ...args };
   }
 }
 

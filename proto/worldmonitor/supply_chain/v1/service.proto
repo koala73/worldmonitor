@@ -11,6 +11,7 @@ import "worldmonitor/supply_chain/v1/get_country_chokepoint_index.proto";
 import "worldmonitor/supply_chain/v1/get_bypass_options.proto";
 import "worldmonitor/supply_chain/v1/get_country_cost_shock.proto";
 import "worldmonitor/supply_chain/v1/get_sector_dependency.proto";
+import "worldmonitor/supply_chain/v1/get_route_explorer_lane.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -50,5 +51,14 @@ service SupplyChainService {
   // GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated.
   rpc GetSectorDependency(GetSectorDependencyRequest) returns (GetSectorDependencyResponse) {
     option (sebuf.http.config) = {path: "/get-sector-dependency", method: HTTP_METHOD_GET};
+  }
+
+  // GetRouteExplorerLane returns the primary maritime route, chokepoint exposures,
+  // bypass options with geometry, war risk, and static transit/freight estimates for
+  // a country pair + HS2 + cargo type. PRO-gated. Wraps the route-intelligence vendor
+  // endpoint's compute with browser-callable auth and adds fields needed by the
+  // Route Explorer UI.
+  rpc GetRouteExplorerLane(GetRouteExplorerLaneRequest) returns (GetRouteExplorerLaneResponse) {
+    option (sebuf.http.config) = {path: "/get-route-explorer-lane", method: HTTP_METHOD_GET};
   }
 }

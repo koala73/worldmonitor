@@ -87,6 +87,17 @@ export const SECTOR_DEPENDENCY_KEY = (iso2: string, hs2: string) =>
   `supply-chain:sector-dep:${iso2}:${hs2}:v1` as const;
 
 /**
+ * Route Explorer lane cache — per (fromIso2, toIso2, hs2, cargoType).
+ * NOT in bootstrap — request-varying, PRO-gated.
+ */
+export const ROUTE_EXPLORER_LANE_KEY = (
+  fromIso2: string,
+  toIso2: string,
+  hs2: string,
+  cargoType: string,
+) => `supply-chain:route-explorer-lane:${fromIso2}:${toIso2}:${hs2}:${cargoType}:v1` as const;
+
+/**
  * Shared chokepoint status cache key — written by get-chokepoint-status, read by bypass-options and cost-shock handlers.
  */
 export const CHOKEPOINT_STATUS_KEY = 'supply_chain:chokepoints:v4' as const;
