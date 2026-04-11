@@ -2,6 +2,18 @@ syntax = "proto3";
 
 package worldmonitor.resilience.v1;
 
+message DimensionFreshness {
+  // Unix milliseconds when the oldest constituent signal in this
+  // dimension was last observed (min fetchedAt across INDICATOR_REGISTRY
+  // entries for this dimension). 0 when no signal has ever been
+  // observed.
+  int64 last_observed_at_ms = 1;
+  // Worst staleness level across the dimension's constituent signals,
+  // classified by classifyStaleness against each signal's cadence.
+  // One of: "fresh", "aging", "stale". Empty string when no signals.
+  string staleness = 2;
+}
+
 message ResilienceDimension {
   string id = 1;
   double score = 2;
@@ -12,6 +24,11 @@ message ResilienceDimension {
   // dimension has any observed data. One of: "stable-absence", "unmonitored",
   // "source-failure", "not-applicable". See docs/methodology/country-resilience-index.mdx.
   string imputation_class = 6;
+  // Freshness aggregated across the constituent signals of the
+  // dimension. Phase 1 T1.5 of the reference-grade upgrade plan.
+  // Empty `last_observed_at_ms=0` + `staleness=""` when the dimension
+  // has no signals tracked in the indicator registry.
+  DimensionFreshness freshness = 7;
 }
 
 message ResilienceDomain {

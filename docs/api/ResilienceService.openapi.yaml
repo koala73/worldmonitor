@@ -172,6 +172,25 @@ components:
                         Four-class imputation taxonomy (Phase 1 T1.7). Empty string when the
                          dimension has any observed data. One of: "stable-absence", "unmonitored",
                          "source-failure", "not-applicable". See docs/methodology/country-resilience-index.mdx.
+                freshness:
+                    $ref: '#/components/schemas/DimensionFreshness'
+        DimensionFreshness:
+            type: object
+            properties:
+                lastObservedAtMs:
+                    type: string
+                    format: int64
+                    description: |-
+                        Unix milliseconds when the oldest constituent signal in this
+                         dimension was last observed (min fetchedAt across INDICATOR_REGISTRY
+                         entries for this dimension). 0 when no signal has ever been
+                         observed.
+                staleness:
+                    type: string
+                    description: |-
+                        Worst staleness level across the dimension's constituent signals,
+                         classified by classifyStaleness against each signal's cadence.
+                         One of: "fresh", "aging", "stale". Empty string when no signals.
         ScoreInterval:
             type: object
             properties:

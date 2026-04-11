@@ -249,6 +249,47 @@ describe('resilience release gate', () => {
     }
   });
 
+  // T1.5 propagation pass: the serialized ResilienceDimension now carries
+  // a `freshness` payload aggregated across the dimension's constituent
+  // signals. PR #2947 shipped the classifier; this test pins the end-to-end
+  // response shape so the field is not silently dropped.
+  it('T1.5: every serialized ResilienceDimension carries a freshness payload', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
+    assert.equal(allDimensions.length, 13, 'US response should carry all 13 dimensions');
+    const validLevels = ['', 'fresh', 'aging', 'stale'];
+    for (const dimension of allDimensions) {
+      assert.ok(dimension.freshness != null, `dimension ${dimension.id} must carry a freshness payload`);
+      const freshness = dimension.freshness!;
+      assert.equal(
+        typeof freshness.lastObservedAtMs,
+        'string',
+        `dimension ${dimension.id} freshness.lastObservedAtMs must be a string (proto int64), got ${typeof freshness.lastObservedAtMs}`,
+      );
+      assert.equal(
+        typeof freshness.staleness,
+        'string',
+        `dimension ${dimension.id} freshness.staleness must be a string`,
+      );
+      assert.ok(
+        validLevels.includes(freshness.staleness),
+        `dimension ${dimension.id} freshness.staleness="${freshness.staleness}" must be one of [${validLevels.join(', ')}]`,
+      );
+      // The serialized int64 string must parse cleanly to a non-negative
+      // integer so downstream consumers (widget badge, CMD+K Freshness
+      // column) can render it without defensive string handling.
+      const asNumber = Number(freshness.lastObservedAtMs);
+      assert.ok(Number.isFinite(asNumber), `lastObservedAtMs="${freshness.lastObservedAtMs}" must parse to a finite number`);
+      assert.ok(asNumber >= 0, `lastObservedAtMs="${freshness.lastObservedAtMs}" must be non-negative`);
+    }
+  });
+
   it('T1.7: fully imputed dimension serializes a non-empty imputationClass', async () => {
     // XX has no fixture: every scorer will fall through to either null (no
     // data at all) or imputation. scoreFoodWater requires resilience:static

@@ -36,6 +36,12 @@ export interface ResilienceDimension {
   observedWeight: number;
   imputedWeight: number;
   imputationClass: string;
+  freshness?: DimensionFreshness;
+}
+
+export interface DimensionFreshness {
+  lastObservedAtMs: string;
+  staleness: string;
 }
 
 export interface ScoreInterval {

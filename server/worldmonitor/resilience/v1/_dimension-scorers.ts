@@ -2,6 +2,7 @@ import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
+import { classifyDimensionFreshness, readFreshnessMap } from './_dimension-freshness';
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -34,6 +35,12 @@ export interface ResilienceDimensionScore {
   // fully imputed (observedWeight === 0 && imputedWeight > 0), null when the
   // dimension has any observed data or no data at all.
   imputationClass: ImputationClass | null;
+  // T1.5 propagation pass: freshness aggregated across the dimension's
+  // constituent signals. Individual scorers return the zero value
+  // (`{ lastObservedAtMs: 0, staleness: '' }`); `scoreAllDimensions`
+  // decorates the real value in using `classifyDimensionFreshness`.
+  // See server/worldmonitor/resilience/v1/_dimension-freshness.ts.
+  freshness: { lastObservedAtMs: number; staleness: '' | 'fresh' | 'aging' | 'stale' };
 }
 
 export type ResilienceSeedReader = (key: string) => Promise<unknown | null>;
@@ -374,7 +381,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
 
   if (!availableWeight || !totalWeight) {
-    return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null };
+    return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
   }
 
   const weightedScore = available.reduce((sum, metric) => sum + (metric.score || 0) * metric.weight, 0) / availableWeight;
@@ -429,6 +436,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
     observedWeight: Number(observedWeight.toFixed(4)),
     imputedWeight: Number(imputedWeight.toFixed(4)),
     imputationClass,
+    freshness: { lastObservedAtMs: 0, staleness: '' },
   };
 }
 
@@ -790,23 +798,24 @@ export async function scoreCurrencyExternal(
       const inflScore = normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50);
       const blended = inflScore * 0.6 + reservesScore * 0.4;
       const coverage = bisExchangeRaw != null ? 0.55 : 0.45;
-      return { score: roundScore(blended), coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null };
+      return { score: roundScore(blended), coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
     }
     if (hasInflation) {
       const coverage = bisExchangeRaw != null ? 0.45 : 0.35;
-      return { score: normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50), coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null };
+      return { score: normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50), coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
     }
     if (hasReserves) {
       const coverage = bisExchangeRaw != null ? 0.4 : 0.3;
-      return { score: reservesScore, coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null };
+      return { score: reservesScore, coverage, observedWeight: 1, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
     }
-    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null };
+    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
     return {
       score: IMPUTE.bisEer.score,
       coverage: IMPUTE.bisEer.certaintyCoverage,
       observedWeight: 0,
       imputedWeight: 1,
       imputationClass: IMPUTE.bisEer.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
     };
   }
 
@@ -1149,13 +1158,28 @@ export async function scoreAllDimensions(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<Record<ResilienceDimensionId, ResilienceDimensionScore>> {
   const memoizedReader = createMemoizedSeedReader(reader);
-  const entries = await Promise.all(
-    RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => [
-      dimensionId,
-      await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader),
-    ] as const),
-  );
-  return Object.fromEntries(entries) as Record<ResilienceDimensionId, ResilienceDimensionScore>;
+  const [entries, freshnessMap] = await Promise.all([
+    Promise.all(
+      RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => [
+        dimensionId,
+        await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader),
+      ] as const),
+    ),
+    // T1.5 propagation pass: aggregate freshness at the caller level so
+    // the 13 dimension scorers stay mechanical. We share the memoized
+    // reader so each `seed-meta:<key>` read lands in the same cache as
+    // the scorers' source reads (though seed-meta keys don't overlap
+    // with the scorer keys in practice, the shared reader is cheap).
+    readFreshnessMap(memoizedReader),
+  ]);
+  const scores = Object.fromEntries(entries) as Record<ResilienceDimensionId, ResilienceDimensionScore>;
+  for (const dimensionId of RESILIENCE_DIMENSION_ORDER) {
+    scores[dimensionId] = {
+      ...scores[dimensionId],
+      freshness: classifyDimensionFreshness(dimensionId, freshnessMap),
+    };
+  }
+  return scores;
 }
 
 export function getResilienceDomainWeight(domainId: ResilienceDomainId): number {

@@ -94,6 +94,7 @@ function buildDimensionList(
       observedWeight: number;
       imputedWeight: number;
       imputationClass: ImputationClass | null;
+      freshness: { lastObservedAtMs: number; staleness: '' | 'fresh' | 'aging' | 'stale' };
     }
   >,
 ): ResilienceDimension[] {
@@ -105,6 +106,13 @@ function buildDimensionList(
     imputedWeight: round(scores[dimensionId].imputedWeight, 4),
     // T1.7 schema pass: empty string = dimension has any observed data.
     imputationClass: scores[dimensionId].imputationClass ?? '',
+    // T1.5 propagation pass: proto `int64 last_observed_at_ms` comes through
+    // as `string` on the generated TS interface; stringify the number here
+    // so the response conforms to the generated type.
+    freshness: {
+      lastObservedAtMs: String(scores[dimensionId].freshness.lastObservedAtMs),
+      staleness: scores[dimensionId].freshness.staleness,
+    },
   }));
 }
 

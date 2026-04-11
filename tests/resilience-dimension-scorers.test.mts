@@ -25,7 +25,7 @@ import {
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
 async function scoreTriple(
-  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number; imputationClass: ImputationClass | null }>,
+  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number; imputationClass: ImputationClass | null; freshness: { lastObservedAtMs: number; staleness: '' | 'fresh' | 'aging' | 'stale' } }>,
 ) {
   const [no, us, ye] = await Promise.all([
     scorer('NO', fixtureReader),
