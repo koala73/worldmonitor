@@ -80,14 +80,15 @@ describe('getInsiderTransactions handler', () => {
     assert.equal(resp.unavailable, true);
   });
 
-  it('returns unavailable when Finnhub returns empty data', async () => {
+  it('returns no-activity when Finnhub returns empty data', async () => {
     process.env.FINNHUB_API_KEY = 'test-key';
     globalThis.fetch = (async () => {
       return mockFinnhubResponse([]);
     }) as typeof fetch;
 
     const resp = await getInsiderTransactions({} as never, { symbol: 'AAPL' });
-    assert.equal(resp.unavailable, true);
+    assert.equal(resp.unavailable, false);
+    assert.equal(resp.transactions.length, 0);
   });
 
   it('passes the symbol in the Finnhub URL', async () => {
