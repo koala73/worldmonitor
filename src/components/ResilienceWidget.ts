@@ -15,9 +15,12 @@ import {
   formatResilienceChange30d,
   formatResilienceConfidence,
   formatResilienceDataVersion,
+  getImputationClassIcon,
+  getImputationClassLabel,
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
+  getStalenessLabel,
 } from './resilience-widget-utils';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
 
@@ -328,9 +331,25 @@ export class ResilienceWidget {
   }
 
   private renderDimensionConfidenceCell(dim: DimensionConfidence): HTMLElement {
-    const title = dim.absent
-      ? `${dim.label}: no data`
-      : `${dim.label}: ${dim.coveragePct}% coverage, ${dim.status}`;
+    // Compose the tooltip from three independent fragments so the order
+    // is stable regardless of which optional fields the scorer
+    // populated. Imputation class + freshness are added by T1.7 / T1.5
+    // and may both be null (observed + unknown cadence), in which case
+    // only the base coverage string is shown.
+    const titleParts: string[] = [
+      dim.absent ? `${dim.label}: no data` : `${dim.label}: ${dim.coveragePct}% coverage, ${dim.status}`,
+    ];
+    if (dim.imputationClass) titleParts.push(getImputationClassLabel(dim.imputationClass));
+    if (dim.staleness) titleParts.push(getStalenessLabel(dim.staleness));
+    const title = titleParts.join(' | ');
+
+    const imputationClassName = dim.imputationClass
+      ? `resilience-widget__dimension-imputation resilience-widget__dimension-imputation--${dim.imputationClass}`
+      : 'resilience-widget__dimension-imputation';
+    const freshnessClassName = dim.staleness
+      ? `resilience-widget__dimension-freshness resilience-widget__dimension-freshness--${dim.staleness}`
+      : 'resilience-widget__dimension-freshness';
+
     return h(
       'div',
       {
@@ -346,7 +365,23 @@ export class ResilienceWidget {
           style: { width: `${dim.coveragePct}%` },
         }),
       ),
+      h(
+        'span',
+        {
+          className: imputationClassName,
+          'aria-label': dim.imputationClass ? getImputationClassLabel(dim.imputationClass) : undefined,
+        },
+        dim.imputationClass ? getImputationClassIcon(dim.imputationClass) : '',
+      ),
       h('span', { className: 'resilience-widget__dimension-pct' }, dim.absent ? 'n/a' : `${dim.coveragePct}%`),
+      h(
+        'span',
+        {
+          className: freshnessClassName,
+          'aria-label': dim.staleness ? getStalenessLabel(dim.staleness) : undefined,
+        },
+        dim.staleness ? '\u25CF' : '',
+      ),
     );
   }
 

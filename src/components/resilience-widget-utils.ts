@@ -11,6 +11,15 @@ import type { ResilienceScoreResponse } from '@/services/resilience';
 // pulling in the full ResilienceWidget class (the class indirectly
 // depends on `import.meta.env.DEV` via proxy.ts, which breaks plain
 // node test runners).
+// Snapshot-stable clock so the locked preview fixture does not drift
+// in snapshot tests or re-render with a different lastObservedAtMs on
+// every mount. Date picked arbitrarily within the "fresh" window of a
+// typical dimension cadence. Epoch-millis string mirrors the proto
+// wire shape (int64 strings).
+const LOCKED_PREVIEW_FRESH_AT_MS = '1712000000000';
+const LOCKED_PREVIEW_AGING_AT_MS = '1700000000000';
+const LOCKED_PREVIEW_STALE_AT_MS = '1680000000000';
+
 export const LOCKED_PREVIEW: ResilienceScoreResponse = {
   countryCode: 'US',
   overallScore: 73,
@@ -24,9 +33,9 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       score: 82,
       weight: 0.22,
       dimensions: [
-        { id: 'macroFiscal', score: 85, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '' },
-        { id: 'currencyExternal', score: 80, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '' },
-        { id: 'tradeSanctions', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '' },
+        { id: 'macroFiscal', score: 85, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'currencyExternal', score: 80, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'tradeSanctions', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -34,9 +43,9 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       score: 68,
       weight: 0.2,
       dimensions: [
-        { id: 'cyberDigital', score: 72, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '' },
-        { id: 'logisticsSupply', score: 70, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2, imputationClass: '' },
-        { id: 'infrastructure', score: 65, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '' },
+        { id: 'cyberDigital', score: 72, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'logisticsSupply', score: 70, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2, imputationClass: 'stable-absence', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'infrastructure', score: 65, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -44,7 +53,7 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       score: 88,
       weight: 0.15,
       dimensions: [
-        { id: 'energy', score: 88, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '' },
+        { id: 'energy', score: 88, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -52,10 +61,10 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       score: 71,
       weight: 0.25,
       dimensions: [
-        { id: 'governanceInstitutional', score: 78, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '' },
-        { id: 'socialCohesion', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '' },
-        { id: 'borderSecurity', score: 68, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: '' },
-        { id: 'informationCognitive', score: 66, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '' },
+        { id: 'governanceInstitutional', score: 78, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'socialCohesion', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: 'stable-absence', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'borderSecurity', score: 68, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
+        { id: 'informationCognitive', score: 66, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -63,8 +72,8 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       score: 54,
       weight: 0.18,
       dimensions: [
-        { id: 'healthPublicService', score: 58, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '' },
-        { id: 'foodWater', score: 50, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '' },
+        { id: 'healthPublicService', score: 58, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'foodWater', score: 50, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_STALE_AT_MS, staleness: 'stale' } },
       ],
     },
   ],
@@ -200,9 +209,33 @@ export interface DimensionConfidenceInput {
   coverage: number;
   observedWeight: number;
   imputedWeight: number;
+  // PR 1 (#2959) T1.7 schema pass: four-class imputation taxonomy.
+  // Empty string when the dimension has any observed data (i.e. the
+  // taxonomy only applies to fully-imputed dimensions). Downstream
+  // `formatDimensionConfidence` normalizes empty string and any
+  // unknown value to `null`.
+  imputationClass?: string;
+  // PR 2 (#2961) T1.5 propagation pass: aggregated dimension freshness
+  // surfaced from the per-signal staleness classifier. Optional on the
+  // input so existing fixtures and mock data keep compiling. The
+  // `lastObservedAtMs` field is a proto int64 so the wire shape is a
+  // string; `formatDimensionConfidence` coerces it to a number.
+  freshness?: {
+    lastObservedAtMs?: string | number;
+    staleness?: string;
+  };
 }
 
 export type DimensionCoverageStatus = 'observed' | 'partial' | 'imputed' | 'absent';
+
+export type DimensionImputationClass =
+  | 'stable-absence'
+  | 'unmonitored'
+  | 'source-failure'
+  | 'not-applicable'
+  | null;
+
+export type DimensionStaleness = 'fresh' | 'aging' | 'stale' | null;
 
 export interface DimensionConfidence {
   id: string;
@@ -211,6 +244,73 @@ export interface DimensionConfidence {
   status: DimensionCoverageStatus;
   /** True when total weight (observed + imputed) is zero, meaning no data at all. */
   absent: boolean;
+  /** PR 1 (#2959) taxonomy class, or null when the dimension has observed data or the class is unset/unknown. */
+  imputationClass: DimensionImputationClass;
+  /** PR 2 (#2961) staleness level, or null when freshness is unset/unknown. */
+  staleness: DimensionStaleness;
+  /** Epoch millis of the most recent observation in this dimension, or null when unknown. */
+  lastObservedAtMs: number | null;
+}
+
+const IMPUTATION_CLASS_VALUES: ReadonlySet<string> = new Set([
+  'stable-absence',
+  'unmonitored',
+  'source-failure',
+  'not-applicable',
+]);
+
+const STALENESS_VALUES: ReadonlySet<string> = new Set(['fresh', 'aging', 'stale']);
+
+function normalizeImputationClass(value: string | undefined): DimensionImputationClass {
+  if (!value) return null;
+  return IMPUTATION_CLASS_VALUES.has(value) ? (value as Exclude<DimensionImputationClass, null>) : null;
+}
+
+function normalizeStaleness(value: string | undefined): DimensionStaleness {
+  if (!value) return null;
+  return STALENESS_VALUES.has(value) ? (value as Exclude<DimensionStaleness, null>) : null;
+}
+
+function normalizeLastObservedAtMs(value: string | number | undefined): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+const IMPUTATION_CLASS_LABELS: Record<Exclude<DimensionImputationClass, null>, string> = {
+  'stable-absence': 'Stable absence: country is not in source because the phenomenon is not happening',
+  unmonitored: 'Unmonitored: source is curated and absence is ambiguous',
+  'source-failure': 'Source down: upstream seeder failed',
+  'not-applicable': 'Not applicable: structurally N/A for this country',
+};
+
+const IMPUTATION_CLASS_ICONS: Record<Exclude<DimensionImputationClass, null>, string> = {
+  'stable-absence': '\u2713',
+  unmonitored: '?',
+  'source-failure': '!',
+  'not-applicable': '\u2014',
+};
+
+const STALENESS_LABELS: Record<Exclude<DimensionStaleness, null>, string> = {
+  fresh: 'Fresh (within 1.5x cadence)',
+  aging: 'Aging (1.5 to 3x cadence)',
+  stale: 'Stale (beyond 3x cadence)',
+};
+
+export function getImputationClassLabel(c: DimensionImputationClass): string {
+  if (!c) return 'Unknown imputation class';
+  return IMPUTATION_CLASS_LABELS[c];
+}
+
+export function getImputationClassIcon(c: DimensionImputationClass): string {
+  if (!c) return '';
+  return IMPUTATION_CLASS_ICONS[c];
+}
+
+export function getStalenessLabel(s: DimensionStaleness): string {
+  if (!s) return 'Unknown freshness';
+  return STALENESS_LABELS[s];
 }
 
 /**
@@ -237,9 +337,21 @@ export function formatDimensionConfidence(input: DimensionConfidenceInput): Dime
   const imputed = Number.isFinite(input.imputedWeight) ? input.imputedWeight : 0;
   const total = observed + imputed;
   const label = getResilienceDimensionLabel(input.id);
+  const imputationClass = normalizeImputationClass(input.imputationClass);
+  const staleness = normalizeStaleness(input.freshness?.staleness);
+  const lastObservedAtMs = normalizeLastObservedAtMs(input.freshness?.lastObservedAtMs);
 
   if (total <= 0) {
-    return { id: input.id, label, coveragePct: 0, status: 'absent', absent: true };
+    return {
+      id: input.id,
+      label,
+      coveragePct: 0,
+      status: 'absent',
+      absent: true,
+      imputationClass,
+      staleness,
+      lastObservedAtMs,
+    };
   }
 
   const observedShare = observed / total;
@@ -252,7 +364,16 @@ export function formatDimensionConfidence(input: DimensionConfidenceInput): Dime
     status = 'partial';
   }
 
-  return { id: input.id, label, coveragePct, status, absent: false };
+  return {
+    id: input.id,
+    label,
+    coveragePct,
+    status,
+    absent: false,
+    imputationClass,
+    staleness,
+    lastObservedAtMs,
+  };
 }
 
 /**

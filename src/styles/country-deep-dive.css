@@ -978,7 +978,8 @@
 
 .resilience-widget__dimension-cell {
   display: grid;
-  grid-template-columns: minmax(56px, 72px) minmax(0, 1fr) 28px;
+  /* label | coverage-bar | imputation-icon | percentage | freshness-dot */
+  grid-template-columns: minmax(56px, 72px) minmax(0, 1fr) 12px 28px 10px;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -1040,6 +1041,40 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* T1.6 full grid: imputation class icon column between the coverage
+   bar and the percentage. Rendered as a single glyph (checkmark,
+   question mark, exclamation, em-dash) tinted per class. Empty span
+   when the dimension has observed data or the scorer has not tagged
+   the class. Tooltip is carried on the parent cell's `title`. */
+.resilience-widget__dimension-imputation {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.resilience-widget__dimension-imputation--stable-absence { color: #84cc16; }
+.resilience-widget__dimension-imputation--unmonitored { color: #eab308; }
+.resilience-widget__dimension-imputation--source-failure { color: #ef4444; }
+.resilience-widget__dimension-imputation--not-applicable { color: var(--text-faint); }
+
+/* T1.5 propagation: freshness dot at the far right. Colors mirror the
+   fresh/aging/stale staleness levels from the classifier. Empty span
+   when freshness is unknown so the grid column reserves its 10px slot
+   and rows stay aligned. */
+.resilience-widget__dimension-freshness {
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+  cursor: help;
+}
+
+.resilience-widget__dimension-freshness--fresh { color: #22c55e; }
+.resilience-widget__dimension-freshness--aging { color: #eab308; }
+.resilience-widget__dimension-freshness--stale { color: #ef4444; }
+
 .resilience-widget__footer {
   display: flex;
   align-items: center;
@@ -1099,6 +1134,15 @@
 
   .resilience-widget__dimension-grid {
     grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  /* T1.6 full grid on narrow widths: tighten the label column and
+     shrink the inter-column gap so all five cells stay on one row
+     without wrapping. The imputation / freshness slots stay at their
+     12px / 10px intrinsic widths. */
+  .resilience-widget__dimension-cell {
+    grid-template-columns: minmax(48px, 64px) minmax(0, 1fr) 12px 24px 10px;
     gap: 4px;
   }
 }

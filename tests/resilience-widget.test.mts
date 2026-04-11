@@ -9,10 +9,13 @@ import {
   formatResilienceChange30d,
   formatResilienceConfidence,
   formatResilienceDataVersion,
+  getImputationClassIcon,
+  getImputationClassLabel,
   getResilienceDimensionLabel,
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
+  getStalenessLabel,
 } from '../src/components/resilience-widget-utils';
 import type { ResilienceScoreResponse } from '../src/services/resilience';
 
@@ -289,4 +292,145 @@ test('LOCKED_PREVIEW populates all 13 dimensions for the gated preview (PR #2949
       `${dim.id} should not be absent in the locked preview (all fixture values are populated)`,
     );
   }
+});
+
+// T1.6 full grid (PR 3 of 5): formatDimensionConfidence must surface
+// the new imputationClass and freshness fields from PR 1 / PR 2 as
+// typed nulls when unset or unknown, and the label/glyph helpers must
+// map every four-class / three-level value without throwing.
+
+test('formatDimensionConfidence normalizes imputationClass=stable-absence', () => {
+  const result = formatDimensionConfidence({
+    id: 'borderSecurity',
+    coverage: 0,
+    observedWeight: 0,
+    imputedWeight: 1,
+    imputationClass: 'stable-absence',
+  });
+  assert.equal(result.imputationClass, 'stable-absence');
+});
+
+test('formatDimensionConfidence coerces empty imputationClass to null', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 1,
+    imputedWeight: 0,
+    imputationClass: '',
+  });
+  assert.equal(result.imputationClass, null);
+});
+
+test('formatDimensionConfidence coerces unknown imputationClass to null (defensive)', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 1,
+    imputedWeight: 0,
+    imputationClass: 'lol-nope',
+  });
+  assert.equal(result.imputationClass, null);
+});
+
+test('formatDimensionConfidence normalizes freshness.staleness=fresh', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 1,
+    imputedWeight: 0,
+    freshness: { staleness: 'fresh', lastObservedAtMs: 1712000000000 },
+  });
+  assert.equal(result.staleness, 'fresh');
+});
+
+test('formatDimensionConfidence coerces empty freshness.staleness to null', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 1,
+    imputedWeight: 0,
+    freshness: { staleness: '', lastObservedAtMs: 1712000000000 },
+  });
+  assert.equal(result.staleness, null);
+});
+
+test('formatDimensionConfidence coerces freshness.lastObservedAtMs string to number', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 1,
+    imputedWeight: 0,
+    freshness: { staleness: 'fresh', lastObservedAtMs: '1712000000000' },
+  });
+  assert.equal(result.lastObservedAtMs, 1712000000000);
+});
+
+test('formatDimensionConfidence treats lastObservedAtMs=0 as null (no data)', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 1,
+    imputedWeight: 0,
+    freshness: { staleness: 'fresh', lastObservedAtMs: 0 },
+  });
+  assert.equal(result.lastObservedAtMs, null);
+});
+
+test('formatDimensionConfidence handles missing freshness and imputationClass fields', () => {
+  const result = formatDimensionConfidence({
+    id: 'macroFiscal',
+    coverage: 0.9,
+    observedWeight: 1,
+    imputedWeight: 0,
+  });
+  assert.equal(result.imputationClass, null);
+  assert.equal(result.staleness, null);
+  assert.equal(result.lastObservedAtMs, null);
+});
+
+test('getImputationClassIcon returns the correct glyph for each class', () => {
+  assert.equal(getImputationClassIcon('stable-absence'), '\u2713');
+  assert.equal(getImputationClassIcon('unmonitored'), '?');
+  assert.equal(getImputationClassIcon('source-failure'), '!');
+  assert.equal(getImputationClassIcon('not-applicable'), '\u2014');
+  assert.equal(getImputationClassIcon(null), '');
+});
+
+test('getImputationClassLabel returns a non-empty string for each class', () => {
+  for (const c of ['stable-absence', 'unmonitored', 'source-failure', 'not-applicable'] as const) {
+    const label = getImputationClassLabel(c);
+    assert.ok(label.length > 0, `${c} should have a tooltip label`);
+  }
+  // Null still returns a descriptive fallback (never an empty string)
+  // so the widget tooltip never breaks assembly.
+  assert.ok(getImputationClassLabel(null).length > 0);
+});
+
+test('getStalenessLabel returns a non-empty string for each level', () => {
+  for (const s of ['fresh', 'aging', 'stale'] as const) {
+    const label = getStalenessLabel(s);
+    assert.ok(label.length > 0, `${s} should have a tooltip label`);
+  }
+  assert.ok(getStalenessLabel(null).length > 0);
+});
+
+test('LOCKED_PREVIEW smoke: at least one dimension has imputationClass and one has staleness set (PR 3 / T1.6)', () => {
+  const all = collectDimensionConfidences(LOCKED_PREVIEW.domains);
+  const withClass = all.filter((d) => d.imputationClass != null);
+  const withStaleness = all.filter((d) => d.staleness != null);
+  assert.ok(
+    withClass.length >= 1,
+    `locked preview should exercise at least one imputation class, got ${withClass.length}`,
+  );
+  assert.ok(
+    withStaleness.length >= 1,
+    `locked preview should exercise at least one staleness level, got ${withStaleness.length}`,
+  );
+  // Non-fresh staleness should appear at least once so the preview
+  // visibly shows off the aging/stale color variants.
+  const nonFresh = withStaleness.filter((d) => d.staleness !== 'fresh');
+  assert.ok(
+    nonFresh.length >= 1,
+    `locked preview should exercise at least one non-fresh staleness level, got ${nonFresh.length}`,
+  );
 });
