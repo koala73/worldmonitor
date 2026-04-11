@@ -29,8 +29,18 @@ export function parseXlsRows(buffer) {
         const charCount = bytes[pos] | (bytes[pos + 1] << 8);
         const flags = bytes[pos + 2];
         pos += 3;
-        if (flags & 0x08) pos += 2; // rich text run count
-        if (flags & 0x04) pos += 4; // extended string size
+        let cRun = 0;
+        let cbExtRst = 0;
+        if (flags & 0x08) {
+          // rich text: cRun (u16) = number of formatting runs (4 bytes each) after char data
+          cRun = bytes[pos] | (bytes[pos + 1] << 8);
+          pos += 2;
+        }
+        if (flags & 0x04) {
+          // extended string: cbExtRst (u32) = byte length of ext-rst block after char data
+          cbExtRst = bytes[pos] | (bytes[pos + 1] << 8) | (bytes[pos + 2] << 16) | (bytes[pos + 3] << 24);
+          pos += 4;
+        }
         if (flags & 0x01) {
           // UTF-16
           const strBytes = charCount * 2;
@@ -48,6 +58,9 @@ export function parseXlsRows(buffer) {
           strings.push(s);
           pos += charCount;
         }
+        // Skip trailing formatting-run and ext-rst bytes (BIFF8 spec)
+        if (flags & 0x08) pos += 4 * cRun;
+        if (flags & 0x04) pos += cbExtRst;
       }
     }
     i += 4 + recLen;
@@ -204,13 +217,13 @@ export function parseHtmlSentiment(html) {
     .map(m => parseFloat(m[1]));
 
   if (pcts.length >= 3) {
-    const today = new Date();
-    // AAII publishes on Thursdays; find the most recent Thursday
-    const dayOfWeek = today.getDay();
+    // AAII publishes on Thursdays; find the most recent Thursday in UTC
+    // (local-TZ arithmetic can drift by a day on Railway when TZ != UTC)
+    const nowUTC = new Date();
+    const dayOfWeek = nowUTC.getUTCDay();
     const daysToThursday = (dayOfWeek >= 4) ? dayOfWeek - 4 : dayOfWeek + 3;
-    const lastThursday = new Date(today);
-    lastThursday.setDate(today.getDate() - daysToThursday);
-    const date = lastThursday.toISOString().slice(0, 10);
+    const tsThursday = Date.UTC(nowUTC.getUTCFullYear(), nowUTC.getUTCMonth(), nowUTC.getUTCDate() - daysToThursday);
+    const date = new Date(tsThursday).toISOString().slice(0, 10);
 
     rows.push({
       date,
