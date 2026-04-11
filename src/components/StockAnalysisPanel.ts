@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { StockAnalysisResult } from '@/services/stock-analysis';
+import type { AnalystConsensus, PriceTarget, UpgradeDowngrade } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
@@ -130,7 +131,94 @@ export class StockAnalysisPanel extends Panel {
           </div>
         ` : ''}
         ${headlines ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">${headlines}</div>` : ''}
+        ${this.renderAnalystConsensus(item)}
       </section>
+    `;
+  }
+
+  private renderAnalystConsensus(item: StockAnalysisResult): string {
+    const consensus = item.analystConsensus;
+    const pt = item.priceTarget;
+    const upgrades = item.recentUpgrades;
+    const hasConsensus = consensus && consensus.total > 0;
+    const hasPriceTarget = pt && pt.numberOfAnalysts > 0 && pt.mean > 0;
+    const hasUpgrades = upgrades && upgrades.length > 0;
+
+    if (!hasConsensus && !hasPriceTarget && !hasUpgrades) return '';
+
+    return `
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:10px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">Analyst Consensus</div>
+        ${hasConsensus ? this.renderRatingBar(consensus) : ''}
+        ${hasPriceTarget ? this.renderPriceTarget(pt, item.currentPrice) : ''}
+        ${hasUpgrades ? this.renderRecentUpgrades(upgrades) : ''}
+      </div>
+    `;
+  }
+
+  private renderRatingBar(c: AnalystConsensus): string {
+    const total = c.total || 1;
+    const pct = (v: number) => ((v / total) * 100).toFixed(1);
+    const segments = [
+      { label: 'Strong Buy', count: c.strongBuy, color: '#16a34a', pct: pct(c.strongBuy) },
+      { label: 'Buy', count: c.buy, color: '#4ade80', pct: pct(c.buy) },
+      { label: 'Hold', count: c.hold, color: '#facc15', pct: pct(c.hold) },
+      { label: 'Sell', count: c.sell, color: '#f87171', pct: pct(c.sell) },
+      { label: 'Strong Sell', count: c.strongSell, color: '#dc2626', pct: pct(c.strongSell) },
+    ].filter((s) => s.count > 0);
+
+    const bar = segments.map((s) =>
+      `<div style="flex:${s.count};background:${s.color};height:8px;min-width:2px" title="${escapeHtml(s.label)}: ${s.count} (${s.pct}%)"></div>`
+    ).join('');
+
+    const legend = segments.map((s) =>
+      `<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:${s.color};display:inline-block"></span>${s.count}</span>`
+    ).join('<span style="color:var(--border);margin:0 4px">|</span>');
+
+    return `
+      <div style="margin-bottom:8px">
+        <div style="display:flex;gap:1px;border-radius:4px;overflow:hidden;margin-bottom:4px">${bar}</div>
+        <div style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:2px">${legend}<span style="margin-left:6px;color:var(--text-dim)">(${total} analysts)</span></div>
+      </div>
+    `;
+  }
+
+  private renderPriceTarget(pt: PriceTarget, currentPrice: number): string {
+    const fmt = (v: number) => `$${v.toFixed(2)}`;
+    const upsidePct = currentPrice > 0 ? ((pt.median - currentPrice) / currentPrice * 100) : 0;
+    const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+    const upsideStr = `${upsidePct >= 0 ? '+' : ''}${upsidePct.toFixed(1)}%`;
+
+    return `
+      <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;margin-bottom:8px">
+        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Low</div><div style="margin-top:2px">${escapeHtml(fmt(pt.low))}</div></div>
+        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Median</div><div style="margin-top:2px">${escapeHtml(fmt(pt.median))}</div></div>
+        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">High</div><div style="margin-top:2px">${escapeHtml(fmt(pt.high))}</div></div>
+        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">vs Current</div><div style="margin-top:2px;color:${upsideColor}">${escapeHtml(upsideStr)}</div></div>
+      </div>
+    `;
+  }
+
+  private renderRecentUpgrades(upgrades: UpgradeDowngrade[]): string {
+    const rows = upgrades.slice(0, 3).map((u) => {
+      const actionColor = u.action === 'up' || u.action === 'init' ? 'var(--semantic-normal)' : u.action === 'down' ? 'var(--semantic-critical)' : 'var(--text-dim)';
+      const actionLabel = u.action === 'up' ? 'Upgrade' : u.action === 'down' ? 'Downgrade' : u.action === 'init' ? 'Initiated' : escapeHtml(u.action);
+      const gradeChange = u.fromGrade ? `${escapeHtml(u.fromGrade)} → ${escapeHtml(u.toGrade)}` : escapeHtml(u.toGrade);
+
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--border);background:rgba(255,255,255,0.02);font-size:11px">
+          <span style="font-weight:500">${escapeHtml(u.firm)}</span>
+          <span style="color:${actionColor};white-space:nowrap">${actionLabel}</span>
+          <span style="color:var(--text-dim);white-space:nowrap">${gradeChange}</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="display:grid;gap:4px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Recent Actions</div>
+        ${rows}
+      </div>
     `;
   }
 }

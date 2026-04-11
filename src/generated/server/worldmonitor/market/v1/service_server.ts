@@ -220,6 +220,36 @@ export interface AnalyzeStockResponse {
   stopLoss: number;
   takeProfit: number;
   engineVersion: string;
+  analystConsensus: AnalystConsensus;
+  priceTarget: PriceTarget;
+  recentUpgrades: UpgradeDowngrade[];
+}
+
+export interface AnalystConsensus {
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+  total: number;
+  period: string;
+}
+
+export interface PriceTarget {
+  high: number;
+  low: number;
+  mean: number;
+  median: number;
+  current: number;
+  numberOfAnalysts: number;
+}
+
+export interface UpgradeDowngrade {
+  firm: string;
+  toGrade: string;
+  fromGrade: string;
+  action: string;
+  epochGradeDate: number;
 }
 
 export interface StockAnalysisHeadline {

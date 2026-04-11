@@ -1,6 +1,9 @@
 import type {
   AnalyzeStockRequest,
   AnalyzeStockResponse,
+  AnalystConsensus,
+  PriceTarget,
+  UpgradeDowngrade,
   ServerContext,
   StockAnalysisHeadline,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
@@ -98,6 +101,50 @@ type YahooChartResponse = {
       };
     }>;
   };
+};
+
+type YahooRecommendationEntry = {
+  strongBuy?: number;
+  buy?: number;
+  hold?: number;
+  sell?: number;
+  strongSell?: number;
+  period?: string;
+};
+
+type YahooUpgradeEntry = {
+  firm?: string;
+  toGrade?: string;
+  fromGrade?: string;
+  action?: string;
+  epochGradeDate?: number;
+};
+
+type YahooQuoteSummaryResponse = {
+  quoteSummary?: {
+    result?: Array<{
+      recommendationTrend?: {
+        trend?: YahooRecommendationEntry[];
+      };
+      financialData?: {
+        targetHighPrice?: { raw?: number };
+        targetLowPrice?: { raw?: number };
+        targetMeanPrice?: { raw?: number };
+        targetMedianPrice?: { raw?: number };
+        currentPrice?: { raw?: number };
+        numberOfAnalystOpinions?: { raw?: number };
+      };
+      upgradeDowngradeHistory?: {
+        history?: YahooUpgradeEntry[];
+      };
+    }>;
+  };
+};
+
+export type AnalystData = {
+  analystConsensus: AnalystConsensus;
+  priceTarget: PriceTarget;
+  recentUpgrades: UpgradeDowngrade[];
 };
 
 const CACHE_TTL_SECONDS = 900;
@@ -254,6 +301,71 @@ export async function fetchYahooHistory(symbol: string): Promise<{ candles: Cand
 
   if (candles.length < 30) return null;
   return { candles, currency: result?.meta?.currency || 'USD' };
+}
+
+function safeRaw(field: { raw?: number } | undefined): number {
+  return typeof field?.raw === 'number' && Number.isFinite(field.raw) ? field.raw : 0;
+}
+
+const EMPTY_ANALYST_DATA: AnalystData = {
+  analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
+  priceTarget: { high: 0, low: 0, mean: 0, median: 0, current: 0, numberOfAnalysts: 0 },
+  recentUpgrades: [],
+};
+
+export async function fetchYahooAnalystData(symbol: string): Promise<AnalystData> {
+  try {
+    await yahooGate();
+    const modules = 'recommendationTrend,financialData,upgradeDowngradeHistory';
+    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!response.ok) return EMPTY_ANALYST_DATA;
+
+    const data = await response.json() as YahooQuoteSummaryResponse;
+    const result = data.quoteSummary?.result?.[0];
+    if (!result) return EMPTY_ANALYST_DATA;
+
+    const currentPeriod = result.recommendationTrend?.trend?.find((t) => t.period === '0m') || result.recommendationTrend?.trend?.[0];
+    const analystConsensus: AnalystConsensus = currentPeriod ? {
+      strongBuy: typeof currentPeriod.strongBuy === 'number' ? currentPeriod.strongBuy : 0,
+      buy: typeof currentPeriod.buy === 'number' ? currentPeriod.buy : 0,
+      hold: typeof currentPeriod.hold === 'number' ? currentPeriod.hold : 0,
+      sell: typeof currentPeriod.sell === 'number' ? currentPeriod.sell : 0,
+      strongSell: typeof currentPeriod.strongSell === 'number' ? currentPeriod.strongSell : 0,
+      total: (typeof currentPeriod.strongBuy === 'number' ? currentPeriod.strongBuy : 0)
+        + (typeof currentPeriod.buy === 'number' ? currentPeriod.buy : 0)
+        + (typeof currentPeriod.hold === 'number' ? currentPeriod.hold : 0)
+        + (typeof currentPeriod.sell === 'number' ? currentPeriod.sell : 0)
+        + (typeof currentPeriod.strongSell === 'number' ? currentPeriod.strongSell : 0),
+      period: currentPeriod.period || '0m',
+    } : EMPTY_ANALYST_DATA.analystConsensus;
+
+    const fd = result.financialData;
+    const priceTarget: PriceTarget = fd ? {
+      high: safeRaw(fd.targetHighPrice),
+      low: safeRaw(fd.targetLowPrice),
+      mean: safeRaw(fd.targetMeanPrice),
+      median: safeRaw(fd.targetMedianPrice),
+      current: safeRaw(fd.currentPrice),
+      numberOfAnalysts: safeRaw(fd.numberOfAnalystOpinions),
+    } : EMPTY_ANALYST_DATA.priceTarget;
+
+    const rawHistory = result.upgradeDowngradeHistory?.history ?? [];
+    const recentUpgrades: UpgradeDowngrade[] = rawHistory.slice(0, 5).map((entry) => ({
+      firm: typeof entry.firm === 'string' ? entry.firm : '',
+      toGrade: typeof entry.toGrade === 'string' ? entry.toGrade : '',
+      fromGrade: typeof entry.fromGrade === 'string' ? entry.fromGrade : '',
+      action: typeof entry.action === 'string' ? entry.action : '',
+      epochGradeDate: typeof entry.epochGradeDate === 'number' ? entry.epochGradeDate : 0,
+    })).filter((u) => u.firm);
+
+    return { analystConsensus, priceTarget, recentUpgrades };
+  } catch {
+    return EMPTY_ANALYST_DATA;
+  }
 }
 
 export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
@@ -693,6 +805,7 @@ export function buildAnalysisResponse(params: {
   technical: TechnicalSnapshot;
   headlines: StockAnalysisHeadline[];
   overlay: AiOverlay;
+  analystData: AnalystData;
   includeNews: boolean;
   analysisAt: number;
   generatedAt: string;
@@ -705,6 +818,7 @@ export function buildAnalysisResponse(params: {
     technical,
     headlines,
     overlay,
+    analystData,
     includeNews,
     analysisAt,
     generatedAt,
@@ -764,6 +878,9 @@ export function buildAnalysisResponse(params: {
     stopLoss,
     takeProfit,
     engineVersion: STOCK_ANALYSIS_ENGINE_VERSION,
+    analystConsensus: analystData.analystConsensus,
+    priceTarget: analystData.priceTarget,
+    recentUpgrades: analystData.recentUpgrades,
   };
 }
 
@@ -815,6 +932,9 @@ function buildEmptyAnalysisResponse(symbol: string, name: string, includeNews: b
     stopLoss: 0,
     takeProfit: 0,
     engineVersion: STOCK_ANALYSIS_ENGINE_VERSION,
+    analystConsensus: EMPTY_ANALYST_DATA.analystConsensus,
+    priceTarget: EMPTY_ANALYST_DATA.priceTarget,
+    recentUpgrades: [],
   };
 }
 
@@ -830,10 +950,13 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  const cacheKey = `market:analyze-stock:v1:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  const cacheKey = `market:analyze-stock:v2:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const cached = await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
-    const history = await fetchYahooHistory(symbol);
+    const [history, analystData] = await Promise.all([
+      fetchYahooHistory(symbol),
+      fetchYahooAnalystData(symbol),
+    ]);
     if (!history) return null;
 
     const technical = buildTechnicalSnapshot(history.candles);
@@ -848,6 +971,7 @@ export async function analyzeStock(
       technical,
       headlines,
       overlay,
+      analystData,
       includeNews,
       analysisAt,
       generatedAt: new Date().toISOString(),
