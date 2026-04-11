@@ -1267,6 +1267,8 @@ export class DataLoaderManager implements AppModule {
       const r = results[i];
       if (r && r.status === 'fulfilled') {
         panel.setInsiderData(symbols[i]!, r.value);
+      } else {
+        panel.setInsiderData(symbols[i]!, { unavailable: true, symbol: symbols[i]!, totalBuys: 0, totalSells: 0, netValue: 0, transactions: [], fetchedAt: '' });
       }
     }
   }

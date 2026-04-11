@@ -61,7 +61,13 @@ export async function getInsiderTransactions(
       });
       if (!resp.ok) return null;
       const raw = (await resp.json()) as FinnhubInsiderResponse;
-      if (!raw.data || raw.data.length === 0) return null;
+      if (!raw.data || raw.data.length === 0) return {
+        totalBuys: 0,
+        totalSells: 0,
+        netValue: 0,
+        transactions: [] as InsiderTransaction[],
+        fetchedAt: new Date().toISOString(),
+      };
 
       const cutoff = Date.now() - SIX_MONTHS_MS;
       const recent = raw.data.filter(tx => {
