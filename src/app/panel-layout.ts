@@ -836,6 +836,24 @@ export class PanelLayoutManager implements AppModule {
       this.updatePanelGating(getAuthState());
     });
 
+    import('@/components/RegionalIntelligenceBoard').then(({ RegionalIntelligenceBoard }) => {
+      const regionalBoard = new RegionalIntelligenceBoard();
+      this.ctx.panels['regional-intelligence'] = regionalBoard;
+      const el = regionalBoard.getElement();
+      this.makeDraggable(el, 'regional-intelligence');
+      const grid = document.getElementById('panelsGrid');
+      if (grid) {
+        const deductionEl = this.ctx.panels['deduction']?.getElement();
+        if (deductionEl?.parentNode === grid && deductionEl.nextSibling) {
+          grid.insertBefore(el, deductionEl.nextSibling);
+        } else {
+          grid.appendChild(el);
+        }
+      }
+      this.applyPanelSettings();
+      this.updatePanelGating(getAuthState());
+    });
+
     if (this.shouldCreatePanel('cii')) {
       const ciiPanel = new CIIPanel();
       ciiPanel.setShareStoryHandler((code, name) => {
