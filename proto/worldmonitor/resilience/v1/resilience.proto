@@ -46,3 +46,21 @@ message ResilienceRankingItem {
   double overall_coverage = 5;
   bool rank_stable = 6;
 }
+
+// Phase 2 T2.1 of the country-resilience reference-grade upgrade plan.
+// Three-pillar response shape that regroups the existing 5 domains into
+// long-run capacity, current shock pressure, and recovery capability.
+// Shipped as a shaped-but-empty payload in T2.1 (score=0, coverage=0);
+// real aggregation lands in T2.3 / PR 4 of the Phase 2 rebuild.
+message ResiliencePillar {
+  // "structural-readiness" | "live-shock-exposure" | "recovery-capacity".
+  string id = 1;
+  // Pillar score in [0, 100]. 0 when shipped empty (T2.1).
+  double score = 2;
+  // Pillar weight in the overall combine. Per the plan: 0.40 / 0.35 / 0.25.
+  double weight = 3;
+  // Coverage in [0, 1]. 0 when shipped empty (T2.1).
+  double coverage = 4;
+  // Subset of the 5 ResilienceDomains that compose this pillar.
+  repeated ResilienceDomain domains = 5;
+}

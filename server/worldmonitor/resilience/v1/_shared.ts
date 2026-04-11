@@ -24,6 +24,20 @@ import {
   type ResilienceDomainId,
   type ResilienceSeedReader,
 } from './_dimension-scorers';
+import { buildPillarList } from './_pillar-membership';
+
+// Phase 2 T2.1: feature flag for the three-pillar response shape.
+// When `true`, responses carry `schemaVersion: "2.0"` and a non-empty
+// `pillars` array (shaped but with score=0/coverage=0 until PR 4 wires
+// the real aggregation). When `false` (default), responses preserve the
+// Phase 1 shape: `schemaVersion: "1.0"` and `pillars: []`.
+//
+// The `overallScore`, `baselineScore`, `stressScore`, etc. top-level
+// fields remain populated in BOTH modes for one release cycle to
+// preserve backward compat for widget + map layer + Country Brief
+// consumers per the plan ("Schema changes (OpenAPI + proto)" section).
+export const RESILIENCE_SCHEMA_V2_ENABLED =
+  (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'false').toLowerCase() === 'true';
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
@@ -199,6 +213,11 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       lowConfidence: true,
       imputationShare: 0,
       dataVersion: '',
+      // Phase 2 T2.1: fallback path always ships the v1 shape so the
+      // generated TS types stay satisfied without dragging the empty
+      // helper into a code path that has no domains to walk.
+      pillars: [],
+      schemaVersion: '1.0',
     };
   }
 
@@ -214,6 +233,9 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
       const dimensions = buildDimensionList(scoreMap);
       const domains = buildDomainList(dimensions);
+      // Phase 2 T2.1: empty array when the v2 flag is off, three
+      // shaped-but-empty pillars when on. Real aggregation in PR 4.
+      const pillars = buildPillarList(domains, RESILIENCE_SCHEMA_V2_ENABLED);
 
       const baselineDims: ResilienceDimension[] = [];
       const stressDims: ResilienceDimension[] = [];
@@ -253,6 +275,10 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         lowConfidence: computeLowConfidence(dimensions, imputationShare),
         imputationShare,
         dataVersion,
+        // Phase 2 T2.1: pillars empty until v2 flag flips; schemaVersion
+        // matches so downstream consumers can branch on a single field.
+        pillars,
+        schemaVersion: RESILIENCE_SCHEMA_V2_ENABLED ? '2.0' : '1.0',
       };
     },
     300,
@@ -269,6 +295,10 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     lowConfidence: true,
     imputationShare: 0,
     dataVersion: '',
+    // Phase 2 T2.1: cachedFetchJson-null fallback. Stays on the v1 shape
+    // because there are no domains to wrap into pillars here.
+    pillars: [],
+    schemaVersion: '1.0',
   };
 
   const scoreInterval = await readScoreInterval(normalizedCountryCode);

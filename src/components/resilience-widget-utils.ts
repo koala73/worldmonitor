@@ -82,6 +82,12 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
   lowConfidence: false,
   imputationShare: 0,
   dataVersion: '',
+  // Phase 2 T2.1: locked preview ships the v1 shape (pillars empty,
+  // schemaVersion="1.0") so the gated card matches what unentitled
+  // users would see live, and so the type checker is satisfied without
+  // dragging pillar logic into a fixture.
+  pillars: [],
+  schemaVersion: '1.0',
 };
 
 export type ResilienceVisualLevel = 'very_high' | 'high' | 'moderate' | 'low' | 'very_low' | 'unknown';

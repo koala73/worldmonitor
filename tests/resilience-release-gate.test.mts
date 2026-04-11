@@ -290,6 +290,76 @@ describe('resilience release gate', () => {
     }
   });
 
+  // Phase 2 T2.1 of the country-resilience reference-grade upgrade plan.
+  // The new three-pillar schema (`pillars` + `schemaVersion`) ships
+  // additively behind RESILIENCE_SCHEMA_V2_ENABLED. The default-off
+  // path must preserve the v1 shape exactly: pillars=[] and
+  // schemaVersion="1.0". The flag-on path is exercised through the
+  // pure buildPillarList helper in tests/resilience-pillar-schema.test.mts
+  // because the env flag is read at module load time.
+  it('T2.1: default response shape preserves v1 (pillars=[], schemaVersion="1.0")', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    assert.equal(
+      response.schemaVersion,
+      '1.0',
+      'with RESILIENCE_SCHEMA_V2_ENABLED unset (default), response must report schemaVersion="1.0"',
+    );
+    assert.deepEqual(
+      response.pillars,
+      [],
+      'with the v2 flag off, pillars must be the empty array (preserves v1 wire shape under proto3 defaults)',
+    );
+  });
+
+  it('T2.1: v1 default response keeps every Phase 1 top-level field populated', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    // The plan promises one release cycle of parallel field population
+    // so widget / map layer / Country Brief consumers can migrate. Pin
+    // every field that the v1 widget reads so a future PR cannot drop
+    // them prematurely.
+    assert.equal(typeof response.overallScore, 'number');
+    assert.equal(typeof response.baselineScore, 'number');
+    assert.equal(typeof response.stressScore, 'number');
+    assert.equal(typeof response.stressFactor, 'number');
+    assert.equal(typeof response.level, 'string');
+    assert.ok(Array.isArray(response.domains));
+    assert.equal(response.domains.length, 5, 'v1 shape keeps all 5 domains under the top-level domains[] field');
+    assert.equal(typeof response.imputationShare, 'number');
+    assert.equal(typeof response.lowConfidence, 'boolean');
+    assert.equal(typeof response.dataVersion, 'string');
+    assert.equal(typeof response.trend, 'string');
+    assert.equal(typeof response.change30d, 'number');
+  });
+
+  it('T2.1: response carries the pillars and schemaVersion fields on the wire', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=NO') } as never,
+      { countryCode: 'NO' },
+    );
+
+    // Both fields must be present (not undefined) so downstream
+    // consumers can branch on schemaVersion without optional-chaining
+    // every read. proto3 defaults handle returning users gracefully.
+    assert.ok('pillars' in response, 'response must serialize the pillars field');
+    assert.ok('schemaVersion' in response, 'response must serialize the schemaVersion field');
+    assert.ok(Array.isArray(response.pillars));
+    assert.equal(typeof response.schemaVersion, 'string');
+  });
+
   it('T1.7: fully imputed dimension serializes a non-empty imputationClass', async () => {
     // XX has no fixture: every scorer will fall through to either null (no
     // data at all) or imputation. scoreFoodWater requires resilience:static
