@@ -142,7 +142,8 @@ export class StockAnalysisPanel extends Panel {
     const upgrades = item.recentUpgrades;
     const hasConsensus = consensus && consensus.total > 0;
     const hasMean = typeof pt?.mean === 'number' && pt.mean > 0;
-    const hasPriceTarget = !!pt && pt.numberOfAnalysts > 0 && hasMean;
+    const hasMedian = typeof pt?.median === 'number' && pt.median > 0;
+    const hasPriceTarget = !!pt && pt.numberOfAnalysts > 0 && (hasMean || hasMedian);
     const hasUpgrades = upgrades && upgrades.length > 0;
 
     if (!hasConsensus && !hasPriceTarget && !hasUpgrades) return '';

@@ -81,7 +81,7 @@ import {
   fetchRadiationWatch,
 } from '@/services';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
-import { fetchStockAnalysesForTargets, getStockAnalysisTargets } from '@/services/stock-analysis';
+import { fetchStockAnalysesForTargets, getStockAnalysisTargets, type StockAnalysisResult } from '@/services/stock-analysis';
 import {
   fetchStockBacktestsForTargets,
   fetchStoredStockBacktests,
@@ -1227,7 +1227,25 @@ export class DataLoaderManager implements AppModule {
         return;
       }
       const nextHistory = mergeStockAnalysisHistory(storedHistory, results);
-      panel.renderAnalyses(results, nextHistory, 'live');
+      // Build a combined view so a partial refetch does not shrink the panel:
+      // preserve still-fresh cached snapshots for symbols we did NOT refetch,
+      // and use live results for symbols we did. Watchlist order is preserved.
+      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
+      const combined: StockAnalysisResult[] = [];
+      for (const target of targets) {
+        const live = resultBySymbol.get(target.symbol);
+        if (live) {
+          combined.push(live);
+          continue;
+        }
+        const cached = storedHistory[target.symbol]?.[0];
+        if (cached?.available) combined.push(cached);
+      }
+      if (combined.length > 0) {
+        panel.renderAnalyses(combined, nextHistory, 'live');
+      } else {
+        panel.renderAnalyses(results, nextHistory, 'live');
+      }
     } catch (error) {
       console.error('[StockAnalysis] failed:', error);
       const cachedHistory = await fetchStockAnalysisHistory().catch(() => ({}));
