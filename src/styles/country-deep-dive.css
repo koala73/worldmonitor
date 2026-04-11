@@ -1421,3 +1421,62 @@
   text-align: right;
   white-space: nowrap;
 }
+
+.cdp-product-risk {
+  white-space: nowrap;
+}
+
+.cdp-risk-badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.cdp-risk-safe {
+  background: rgba(34,197,94,0.12);
+  color: #4ade80;
+}
+
+.cdp-risk-at-risk {
+  background: rgba(249,115,22,0.12);
+  color: #fb923c;
+}
+
+.cdp-risk-critical {
+  background: rgba(220,38,38,0.15);
+  color: #ef4444;
+}
+
+.cdp-risk-chokepoints {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.cdp-recommendations {
+  margin-top: 10px;
+  padding: 8px;
+  background: rgba(100,116,139,0.06);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.cdp-recommendations:empty {
+  display: none;
+}
+
+.cdp-recommendation-item {
+  padding: 4px 0;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.cdp-recommendation-safe {
+  color: #4ade80;
+}
+
+.cdp-recommendation-warn {
+  color: #fb923c;
+}
