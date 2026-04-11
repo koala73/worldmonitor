@@ -444,6 +444,7 @@ export class DeckGLMap {
   private tradeAnimationFrameCount = 0;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private highlightedRouteIds: Set<string> = new Set();
+  private bypassArcData: Array<{source: [number, number]; target: [number, number]; name: string; addedDays: number}> = [];
   private scenarioState: ScenarioVisualState | null = null;
   private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
@@ -1732,6 +1733,10 @@ export class DeckGLMap {
       layers.push(this.createTradeRoutesLayer());
       layers.push(this.createTradeRouteTripsLayer());
       layers.push(this.createTradeChokepointsLayer());
+      const hlMarkers = this.createHighlightedChokepointMarkers();
+      if (hlMarkers) layers.push(hlMarkers);
+      const bypassArcs = this.createBypassArcsLayer();
+      if (bypassArcs) layers.push(bypassArcs);
       this.startTradeAnimation();
     } else {
       this.stopTradeAnimation();
@@ -5254,11 +5259,69 @@ export class DeckGLMap {
     });
   }
 
-  /**
-   * Compute the solar terminator polygon (night side of the Earth).
-   * Uses standard astronomical formulas to find the subsolar point,
-   * then traces the terminator line and closes around the dark pole.
-   */
+  private createHighlightedChokepointMarkers(): ScatterplotLayer | null {
+    if (this.highlightedRouteIds.size === 0) return null;
+
+    const cpIds = new Set<string>();
+    for (const routeId of this.highlightedRouteIds) {
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
+      if (waypoints) for (const wp of waypoints) cpIds.add(wp);
+    }
+
+    const markers = STRATEGIC_WATERWAYS
+      .filter(w => cpIds.has(w.id))
+      .map(w => {
+        const score = this.storedChokepointData?.chokepoints?.find(cp => cp.id === w.id)?.disruptionScore ?? 0;
+        return { ...w, score };
+      });
+
+    if (markers.length === 0) return null;
+
+    const pulse = Math.sin(this.tradeAnimationTime * 0.01) * 0.3 + 1;
+
+    return new ScatterplotLayer({
+      id: 'highlighted-chokepoint-markers',
+      data: markers,
+      getPosition: (d: { lon: number; lat: number }) => [d.lon, d.lat],
+      getRadius: (d: { score: number }) => (d.score >= 70 ? 12000 : d.score > 30 ? 10000 : 8000) * pulse,
+      getFillColor: (d: { score: number }) => d.score >= 70
+        ? [255, 60, 60, 180] as [number, number, number, number]
+        : d.score > 30
+          ? [255, 180, 50, 160] as [number, number, number, number]
+          : [60, 200, 120, 140] as [number, number, number, number],
+      radiusUnits: 'meters' as const,
+      pickable: false,
+      stroked: true,
+      getLineColor: (d: { score: number }) => d.score >= 70
+        ? [255, 80, 80, 255] as [number, number, number, number]
+        : d.score > 30
+          ? [255, 200, 80, 255] as [number, number, number, number]
+          : [80, 220, 140, 255] as [number, number, number, number],
+      getLineWidth: 2,
+      lineWidthUnits: 'pixels' as const,
+      updateTriggers: {
+        getRadius: [this.tradeAnimationTime],
+        getFillColor: [this.storedChokepointData],
+      },
+    });
+  }
+
+  private createBypassArcsLayer(): ArcLayer | null {
+    if (this.bypassArcData.length === 0) return null;
+    return new ArcLayer({
+      id: 'bypass-arcs-layer',
+      data: this.bypassArcData,
+      getSourcePosition: (d: { source: [number, number] }) => d.source,
+      getTargetPosition: (d: { target: [number, number] }) => d.target,
+      getSourceColor: [60, 200, 120, 160],
+      getTargetColor: [60, 200, 120, 160],
+      getWidth: 3,
+      widthMinPixels: 2,
+      greatCircle: true,
+      pickable: false,
+    });
+  }
+
   private computeNightPolygon(): [number, number][] {
     const now = new Date();
     const JD = now.getTime() / 86400000 + 2440587.5;
@@ -5662,6 +5725,22 @@ export class DeckGLMap {
     if (this.highlightedRouteIds.size === 0) return;
     this.highlightedRouteIds.clear();
     this.buildTradeTrips();
+    this.render();
+  }
+
+  public setBypassRoutes(corridors: Array<{name: string; fromPort: [number, number]; toPort: [number, number]; addedDays: number}>): void {
+    this.bypassArcData = corridors.map(c => ({
+      source: c.fromPort,
+      target: c.toPort,
+      name: c.name,
+      addedDays: c.addedDays,
+    }));
+    this.render();
+  }
+
+  public clearBypassRoutes(): void {
+    if (this.bypassArcData.length === 0) return;
+    this.bypassArcData = [];
     this.render();
   }
 
