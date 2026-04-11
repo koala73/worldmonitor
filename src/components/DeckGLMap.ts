@@ -349,6 +349,13 @@ interface TripData {
   width: number;
 }
 
+type HighlightedMarker = { id: string; lon: number; lat: number; name: string; score: number };
+
+interface BypassArcDatum {
+  source: [number, number];
+  target: [number, number];
+}
+
 function interpolateGreatCircle(
   start: [number, number],
   end: [number, number],
@@ -380,6 +387,8 @@ const TRADE_ANIMATION_CYCLE = 1000;
 const TRADE_TRAIL_LENGTH = 200;
 const TRADE_ANIMATION_SPEED = 0.3;
 const TRADE_GC_INTERPOLATION_POINTS = 20;
+const CHOKEPOINT_PULSE_FREQ = 0.01;
+const CHOKEPOINT_PULSE_AMP = 0.3;
 
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
@@ -444,7 +453,8 @@ export class DeckGLMap {
   private tradeAnimationFrameCount = 0;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
   private highlightedRouteIds: Set<string> = new Set();
-  private bypassArcData: Array<{source: [number, number]; target: [number, number]; name: string; addedDays: number}> = [];
+  private highlightedMarkers: HighlightedMarker[] = [];
+  private bypassArcData: BypassArcDatum[] = [];
   private scenarioState: ScenarioVisualState | null = null;
   private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
@@ -1743,6 +1753,8 @@ export class DeckGLMap {
       this.layerCache.delete('trade-routes-layer');
       this.layerCache.delete('trade-route-trips-layer');
       this.layerCache.delete('trade-chokepoints-layer');
+      this.layerCache.delete('highlighted-chokepoint-markers');
+      this.layerCache.delete('bypass-arcs-layer');
     }
 
     // Tech variant layers (Supercluster-based deck.gl layers for HQs and events)
@@ -5259,32 +5271,32 @@ export class DeckGLMap {
     });
   }
 
-  private createHighlightedChokepointMarkers(): ScatterplotLayer | null {
-    if (this.highlightedRouteIds.size === 0) return null;
-
+  private rebuildHighlightedMarkers(): void {
+    if (this.highlightedRouteIds.size === 0) { this.highlightedMarkers = []; return; }
     const cpIds = new Set<string>();
     for (const routeId of this.highlightedRouteIds) {
       const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
       if (waypoints) for (const wp of waypoints) cpIds.add(wp);
     }
-
-    const markers = STRATEGIC_WATERWAYS
+    this.highlightedMarkers = STRATEGIC_WATERWAYS
       .filter(w => cpIds.has(w.id))
       .map(w => {
         const score = this.storedChokepointData?.chokepoints?.find(cp => cp.id === w.id)?.disruptionScore ?? 0;
-        return { ...w, score };
+        return { id: w.id, lon: w.lon, lat: w.lat, name: w.name, score };
       });
+  }
 
-    if (markers.length === 0) return null;
+  private createHighlightedChokepointMarkers(): ScatterplotLayer | null {
+    if (this.highlightedMarkers.length === 0) return null;
 
-    const pulse = Math.sin(this.tradeAnimationTime * 0.01) * 0.3 + 1;
+    const pulse = Math.sin(this.tradeAnimationTime * CHOKEPOINT_PULSE_FREQ) * CHOKEPOINT_PULSE_AMP + 1;
 
     return new ScatterplotLayer({
       id: 'highlighted-chokepoint-markers',
-      data: markers,
-      getPosition: (d: { lon: number; lat: number }) => [d.lon, d.lat],
-      getRadius: (d: { score: number }) => (d.score >= 70 ? 12000 : d.score > 30 ? 10000 : 8000) * pulse,
-      getFillColor: (d: { score: number }) => d.score >= 70
+      data: this.highlightedMarkers,
+      getPosition: (d: HighlightedMarker) => [d.lon, d.lat],
+      getRadius: (d: HighlightedMarker) => (d.score >= 70 ? 12000 : d.score > 30 ? 10000 : 8000) * pulse,
+      getFillColor: (d: HighlightedMarker) => d.score >= 70
         ? [255, 60, 60, 180] as [number, number, number, number]
         : d.score > 30
           ? [255, 180, 50, 160] as [number, number, number, number]
@@ -5292,7 +5304,7 @@ export class DeckGLMap {
       radiusUnits: 'meters' as const,
       pickable: false,
       stroked: true,
-      getLineColor: (d: { score: number }) => d.score >= 70
+      getLineColor: (d: HighlightedMarker) => d.score >= 70
         ? [255, 80, 80, 255] as [number, number, number, number]
         : d.score > 30
           ? [255, 200, 80, 255] as [number, number, number, number]
@@ -5311,8 +5323,8 @@ export class DeckGLMap {
     return new ArcLayer({
       id: 'bypass-arcs-layer',
       data: this.bypassArcData,
-      getSourcePosition: (d: { source: [number, number] }) => d.source,
-      getTargetPosition: (d: { target: [number, number] }) => d.target,
+      getSourcePosition: (d: BypassArcDatum) => d.source,
+      getTargetPosition: (d: BypassArcDatum) => d.target,
       getSourceColor: [60, 200, 120, 160],
       getTargetColor: [60, 200, 120, 160],
       getWidth: 3,
@@ -5687,6 +5699,7 @@ export class DeckGLMap {
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
     this.popup.setChokepointData(data);
     this.storedChokepointData = data;
+    this.rebuildHighlightedMarkers();
     if (this.storedChokepointData) this.refreshTradeRouteStatus(this.storedChokepointData);
   }
 
@@ -5717,6 +5730,7 @@ export class DeckGLMap {
 
   public highlightRoute(routeIds: string[]): void {
     this.highlightedRouteIds = new Set(routeIds);
+    this.rebuildHighlightedMarkers();
     this.buildTradeTrips();
     this.render();
   }
@@ -5724,16 +5738,15 @@ export class DeckGLMap {
   public clearHighlightedRoute(): void {
     if (this.highlightedRouteIds.size === 0) return;
     this.highlightedRouteIds.clear();
+    this.rebuildHighlightedMarkers();
     this.buildTradeTrips();
     this.render();
   }
 
-  public setBypassRoutes(corridors: Array<{name: string; fromPort: [number, number]; toPort: [number, number]; addedDays: number}>): void {
+  public setBypassRoutes(corridors: Array<{fromPort: [number, number]; toPort: [number, number]}>): void {
     this.bypassArcData = corridors.map(c => ({
       source: c.fromPort,
       target: c.toPort,
-      name: c.name,
-      addedDays: c.addedDays,
     }));
     this.render();
   }

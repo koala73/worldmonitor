@@ -15,22 +15,43 @@ describe('Pulsing chokepoint markers', () => {
     );
   });
 
-  it('returns null when highlightedRouteIds is empty', () => {
+  it('returns null when highlightedMarkers cache is empty', () => {
     const defIdx = deckGLMapSrc.indexOf('private createHighlightedChokepointMarkers');
     assert.ok(defIdx !== -1);
     const method = deckGLMapSrc.slice(defIdx, defIdx + 2500);
     assert.ok(
-      method.includes('highlightedRouteIds.size === 0') && method.includes('return null'),
-      'Must return null when no routes highlighted',
+      method.includes('highlightedMarkers.length === 0') && method.includes('return null'),
+      'Must return null when cached markers array is empty',
     );
   });
 
-  it('collects chokepoint IDs from ROUTE_WAYPOINTS_MAP', () => {
-    const defIdx = deckGLMapSrc.indexOf('private createHighlightedChokepointMarkers');
-    const method = deckGLMapSrc.slice(defIdx, defIdx + 2500);
+  it('rebuildHighlightedMarkers collects IDs from ROUTE_WAYPOINTS_MAP', () => {
+    const defIdx = deckGLMapSrc.indexOf('private rebuildHighlightedMarkers');
+    assert.ok(defIdx !== -1, 'rebuildHighlightedMarkers must exist');
+    const method = deckGLMapSrc.slice(defIdx, defIdx + 1500);
     assert.ok(
       method.includes('ROUTE_WAYPOINTS_MAP'),
-      'Must use ROUTE_WAYPOINTS_MAP to collect chokepoint IDs',
+      'rebuildHighlightedMarkers must use ROUTE_WAYPOINTS_MAP',
+    );
+  });
+
+  it('highlightRoute calls rebuildHighlightedMarkers', () => {
+    const defIdx = deckGLMapSrc.indexOf('public highlightRoute(');
+    assert.ok(defIdx !== -1);
+    const method = deckGLMapSrc.slice(defIdx, defIdx + 300);
+    assert.ok(
+      method.includes('rebuildHighlightedMarkers'),
+      'highlightRoute must call rebuildHighlightedMarkers',
+    );
+  });
+
+  it('setChokepointData calls rebuildHighlightedMarkers', () => {
+    const defIdx = deckGLMapSrc.indexOf('public setChokepointData(');
+    assert.ok(defIdx !== -1);
+    const method = deckGLMapSrc.slice(defIdx, defIdx + 300);
+    assert.ok(
+      method.includes('rebuildHighlightedMarkers'),
+      'setChokepointData must call rebuildHighlightedMarkers',
     );
   });
 
@@ -41,12 +62,33 @@ describe('Pulsing chokepoint markers', () => {
     assert.ok(method.includes('score > 30'), 'Must check score > 30 for elevated');
   });
 
-  it('uses tradeAnimationTime for pulse effect', () => {
+  it('uses CHOKEPOINT_PULSE_FREQ and CHOKEPOINT_PULSE_AMP constants', () => {
+    assert.ok(
+      deckGLMapSrc.includes('const CHOKEPOINT_PULSE_FREQ'),
+      'Must define CHOKEPOINT_PULSE_FREQ constant',
+    );
+    assert.ok(
+      deckGLMapSrc.includes('const CHOKEPOINT_PULSE_AMP'),
+      'Must define CHOKEPOINT_PULSE_AMP constant',
+    );
     const defIdx = deckGLMapSrc.indexOf('private createHighlightedChokepointMarkers');
     const method = deckGLMapSrc.slice(defIdx, defIdx + 2500);
     assert.ok(
-      method.includes('tradeAnimationTime'),
-      'Must use tradeAnimationTime for pulsing',
+      method.includes('CHOKEPOINT_PULSE_FREQ') && method.includes('CHOKEPOINT_PULSE_AMP'),
+      'createHighlightedChokepointMarkers must use extracted constants',
+    );
+  });
+
+  it('uses HighlightedMarker type in accessor callbacks', () => {
+    assert.ok(
+      deckGLMapSrc.includes('type HighlightedMarker'),
+      'Must define HighlightedMarker type',
+    );
+    const defIdx = deckGLMapSrc.indexOf('private createHighlightedChokepointMarkers');
+    const method = deckGLMapSrc.slice(defIdx, defIdx + 2500);
+    assert.ok(
+      method.includes('(d: HighlightedMarker)'),
+      'Accessor callbacks must use HighlightedMarker type',
     );
   });
 
@@ -61,11 +103,40 @@ describe('Pulsing chokepoint markers', () => {
   });
 });
 
-describe('Bypass arcs layer', () => {
-  it('bypassArcData field exists on DeckGLMap', () => {
+describe('Layer cache cleanup', () => {
+  it('cleans highlighted-chokepoint-markers when trade routes disabled', () => {
+    const elseIdx = deckGLMapSrc.indexOf("this.layerCache.delete('trade-chokepoints-layer')");
+    assert.ok(elseIdx !== -1);
+    const after = deckGLMapSrc.slice(elseIdx, elseIdx + 300);
     assert.ok(
-      deckGLMapSrc.includes('bypassArcData'),
-      'DeckGLMap must have bypassArcData field',
+      after.includes("this.layerCache.delete('highlighted-chokepoint-markers')"),
+      'Must delete highlighted-chokepoint-markers from layerCache',
+    );
+  });
+
+  it('cleans bypass-arcs-layer when trade routes disabled', () => {
+    const elseIdx = deckGLMapSrc.indexOf("this.layerCache.delete('trade-chokepoints-layer')");
+    assert.ok(elseIdx !== -1);
+    const after = deckGLMapSrc.slice(elseIdx, elseIdx + 300);
+    assert.ok(
+      after.includes("this.layerCache.delete('bypass-arcs-layer')"),
+      'Must delete bypass-arcs-layer from layerCache',
+    );
+  });
+});
+
+describe('Bypass arcs layer', () => {
+  it('BypassArcDatum interface is defined', () => {
+    assert.ok(
+      deckGLMapSrc.includes('interface BypassArcDatum'),
+      'Must define BypassArcDatum interface',
+    );
+  });
+
+  it('bypassArcData uses BypassArcDatum type', () => {
+    assert.ok(
+      deckGLMapSrc.includes('bypassArcData: BypassArcDatum[]'),
+      'bypassArcData field must use BypassArcDatum type',
     );
   });
 
@@ -108,6 +179,15 @@ describe('Bypass arcs layer', () => {
     assert.ok(
       method.includes('greatCircle: true'),
       'Bypass arcs must use greatCircle rendering',
+    );
+  });
+
+  it('bypass arcs use BypassArcDatum in accessors', () => {
+    const defIdx = deckGLMapSrc.indexOf('private createBypassArcsLayer');
+    const method = deckGLMapSrc.slice(defIdx, defIdx + 1000);
+    assert.ok(
+      method.includes('(d: BypassArcDatum)'),
+      'Accessor callbacks must use BypassArcDatum type',
     );
   });
 

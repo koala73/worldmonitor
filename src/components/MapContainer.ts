@@ -982,7 +982,7 @@ export class MapContainer {
     this.deckGLMap?.clearHighlightedRoute();
   }
 
-  public setBypassRoutes(corridors: Array<{name: string; fromPort: [number, number]; toPort: [number, number]; addedDays: number}>): void {
+  public setBypassRoutes(corridors: Array<{fromPort: [number, number]; toPort: [number, number]}>): void {
     this.deckGLMap?.setBypassRoutes(corridors);
   }
 
