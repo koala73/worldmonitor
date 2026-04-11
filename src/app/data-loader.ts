@@ -82,6 +82,7 @@ import {
 } from '@/services';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { fetchStockAnalysesForTargets, getStockAnalysisTargets, type StockAnalysisResult } from '@/services/stock-analysis';
+import { fetchInsiderTransactions } from '@/services/insider-transactions';
 import {
   fetchStockBacktestsForTargets,
   fetchStoredStockBacktests,
@@ -1210,6 +1211,7 @@ export class DataLoaderManager implements AppModule {
       const storedHistory = await fetchStockAnalysisHistory(targets.length);
       const cachedSnapshots = getLatestStockAnalysisSnapshots(storedHistory, targets.length);
       if (cachedSnapshots.length > 0) {
+        await this.loadInsiderDataForPanel(panel, targetSymbols);
         panel.renderAnalyses(cachedSnapshots, storedHistory, 'cached');
       }
 
@@ -1227,6 +1229,7 @@ export class DataLoaderManager implements AppModule {
         return;
       }
       const nextHistory = mergeStockAnalysisHistory(storedHistory, results);
+      await this.loadInsiderDataForPanel(panel, targetSymbols);
       // Build a combined view so a partial refetch does not shrink the panel:
       // preserve still-fresh cached snapshots for symbols we did NOT refetch,
       // and use live results for symbols we did. Watchlist order is preserved.
@@ -1255,6 +1258,16 @@ export class DataLoaderManager implements AppModule {
         return;
       }
       panel.showError('Premium stock analysis is temporarily unavailable.');
+    }
+  }
+
+  private async loadInsiderDataForPanel(panel: StockAnalysisPanel, symbols: string[]): Promise<void> {
+    const results = await Promise.allSettled(symbols.map(s => fetchInsiderTransactions(s)));
+    for (let i = 0; i < symbols.length; i++) {
+      const r = results[i];
+      if (r && r.status === 'fulfilled') {
+        panel.setInsiderData(symbols[i]!, r.value);
+      }
     }
   }
 

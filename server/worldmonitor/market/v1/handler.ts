@@ -32,6 +32,7 @@ import { listOtherTokens } from './list-other-tokens';
 import { getFearGreedIndex } from './get-fear-greed-index';
 import { listEarningsCalendar } from './list-earnings-calendar';
 import { getCotPositioning } from './get-cot-positioning';
+import { getInsiderTransactions } from './get-insider-transactions';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -53,4 +54,5 @@ export const marketHandler: MarketServiceHandler = {
   getFearGreedIndex,
   listEarningsCalendar,
   getCotPositioning,
+  getInsiderTransactions,
 };

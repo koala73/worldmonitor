@@ -612,6 +612,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/get-insider-transactions:
+        get:
+            tags:
+                - MarketService
+            summary: GetInsiderTransactions
+            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub.
+            operationId: GetInsiderTransactions
+            parameters:
+                - name: symbol
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetInsiderTransactionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1727,3 +1759,50 @@ components:
                 netPct:
                     type: number
                     format: double
+        GetInsiderTransactionsRequest:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+            required:
+                - symbol
+        GetInsiderTransactionsResponse:
+            type: object
+            properties:
+                unavailable:
+                    type: boolean
+                symbol:
+                    type: string
+                totalBuys:
+                    type: number
+                    format: double
+                totalSells:
+                    type: number
+                    format: double
+                netValue:
+                    type: number
+                    format: double
+                transactions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InsiderTransaction'
+                fetchedAt:
+                    type: string
+        InsiderTransaction:
+            type: object
+            properties:
+                name:
+                    type: string
+                shares:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                value:
+                    type: number
+                    format: double
+                transactionCode:
+                    type: string
+                transactionDate:
+                    type: string

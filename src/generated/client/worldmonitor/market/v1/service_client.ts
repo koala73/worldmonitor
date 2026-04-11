@@ -462,6 +462,28 @@ export interface CotInstrument {
   netPct: number;
 }
 
+export interface GetInsiderTransactionsRequest {
+  symbol: string;
+}
+
+export interface GetInsiderTransactionsResponse {
+  unavailable: boolean;
+  symbol: string;
+  totalBuys: number;
+  totalSells: number;
+  netValue: number;
+  transactions: InsiderTransaction[];
+  fetchedAt: string;
+}
+
+export interface InsiderTransaction {
+  name: string;
+  shares: number;
+  value: number;
+  transactionCode: string;
+  transactionDate: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -975,6 +997,31 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetCotPositioningResponse;
+  }
+
+  async getInsiderTransactions(req: GetInsiderTransactionsRequest, options?: MarketServiceCallOptions): Promise<GetInsiderTransactionsResponse> {
+    let path = "/api/market/v1/get-insider-transactions";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetInsiderTransactionsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

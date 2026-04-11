@@ -462,6 +462,28 @@ export interface CotInstrument {
   netPct: number;
 }
 
+export interface GetInsiderTransactionsRequest {
+  symbol: string;
+}
+
+export interface GetInsiderTransactionsResponse {
+  unavailable: boolean;
+  symbol: string;
+  totalBuys: number;
+  totalSells: number;
+  netValue: number;
+  transactions: InsiderTransaction[];
+  fetchedAt: string;
+}
+
+export interface InsiderTransaction {
+  name: string;
+  shares: number;
+  value: number;
+  transactionCode: string;
+  transactionDate: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -526,6 +548,7 @@ export interface MarketServiceHandler {
   getFearGreedIndex(ctx: ServerContext, req: GetFearGreedIndexRequest): Promise<GetFearGreedIndexResponse>;
   listEarningsCalendar(ctx: ServerContext, req: ListEarningsCalendarRequest): Promise<ListEarningsCalendarResponse>;
   getCotPositioning(ctx: ServerContext, req: GetCotPositioningRequest): Promise<GetCotPositioningResponse>;
+  getInsiderTransactions(ctx: ServerContext, req: GetInsiderTransactionsRequest): Promise<GetInsiderTransactionsResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -1333,6 +1356,53 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getCotPositioning(ctx, body);
           return new Response(JSON.stringify(result as GetCotPositioningResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-insider-transactions",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetInsiderTransactionsRequest = {
+            symbol: params.get("symbol") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getInsiderTransactions", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getInsiderTransactions(ctx, body);
+          return new Response(JSON.stringify(result as GetInsiderTransactionsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

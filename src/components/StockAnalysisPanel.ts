@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { StockAnalysisResult } from '@/services/stock-analysis';
 import type { AnalystConsensus, PriceTarget, UpgradeDowngrade } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { InsiderTransactionsResult } from '@/services/insider-transactions';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
@@ -28,9 +29,30 @@ function list(items: string[], cssClass: string): string {
   return `<ul class="${cssClass}" style="margin:8px 0 0;padding-left:18px;font-size:12px;line-height:1.5">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
 }
 
+function formatDollarCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `$${(value / 1e3).toFixed(0)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+function txCodeLabel(code: string): string {
+  if (code === 'P' || code === 'A') return 'Buy';
+  if (code === 'S' || code === 'D' || code === 'F') return 'Sell';
+  if (code === 'M') return 'Exercise';
+  return code;
+}
+
 export class StockAnalysisPanel extends Panel {
+  private insiderBySymbol: Record<string, InsiderTransactionsResult> = {};
+
   constructor() {
     super({ id: 'stock-analysis', title: 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip'), premium: 'locked' });
+  }
+
+  public setInsiderData(symbol: string, data: InsiderTransactionsResult): void {
+    this.insiderBySymbol[symbol] = data;
   }
 
   public renderAnalyses(items: StockAnalysisResult[], historyBySymbol: StockAnalysisHistory = {}, source: 'live' | 'cached' = 'live'): void {
@@ -180,6 +202,7 @@ export class StockAnalysisPanel extends Panel {
             `).join('')}
           </div>
         ` : ''}
+        ${this.renderInsiderSection(item.symbol)}
         ${headlines ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">${headlines}</div>` : ''}
         ${this.renderAnalystConsensus(item)}
       </section>
@@ -290,5 +313,68 @@ export class StockAnalysisPanel extends Panel {
         ${rows}
       </div>
     `;
+  }
+
+  private renderInsiderSection(symbol: string): string {
+    const data = this.insiderBySymbol[symbol];
+    if (!data || data.unavailable) {
+      return `
+        <div style="font-size:11px;color:var(--text-dim);padding:8px;border:1px solid var(--border)">
+          Insider data unavailable
+        </div>`;
+    }
+    if (data.transactions.length === 0 && data.totalBuys === 0 && data.totalSells === 0) {
+      return `
+        <div style="font-size:11px;color:var(--text-dim);padding:8px;border:1px solid var(--border)">
+          No insider transactions in the last 6 months
+        </div>`;
+    }
+
+    const buysStr = formatDollarCompact(data.totalBuys);
+    const sellsStr = formatDollarCompact(data.totalSells);
+    const netStr = `${data.netValue >= 0 ? '+' : ''}${formatDollarCompact(data.netValue)}`;
+    const netColor = data.netValue >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+
+    const summary = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;font-family:var(--font-mono)">
+        <span>Buys: <span style="color:var(--semantic-normal)">${escapeHtml(buysStr)}</span></span>
+        <span>Sells: <span style="color:var(--semantic-critical)">${escapeHtml(sellsStr)}</span></span>
+        <span>Net: <span style="color:${netColor};font-weight:600">${escapeHtml(netStr)}</span></span>
+      </div>`;
+
+    const rows = data.transactions.slice(0, 5);
+    const table = rows.length > 0 ? `
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px">
+        <thead>
+          <tr style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;text-align:left">
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border)">Type</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Shares</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Value</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border)">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(tx => {
+            const isBuy = tx.transactionCode === 'P' || tx.transactionCode === 'A';
+            const typeColor = isBuy ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+            return `
+              <tr>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:${typeColor}">${escapeHtml(txCodeLabel(tx.transactionCode))}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${Number.isFinite(tx.shares) ? tx.shares.toLocaleString() : '0'}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${formatDollarCompact(tx.value)}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:var(--text-dim)">${escapeHtml(tx.transactionDate)}</td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : '';
+
+    return `
+      <div style="display:grid;gap:6px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Insider Activity (6 months)</div>
+        ${summary}
+        ${table}
+      </div>`;
   }
 }
