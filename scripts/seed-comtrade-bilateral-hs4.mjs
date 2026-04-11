@@ -112,7 +112,7 @@ async function fetchBilateral(reporterCode, hs4Batch) {
 
   const resp = await fetch(url.toString(), {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(45_000),
   });
 
   if (resp.status === 429) {
@@ -126,7 +126,7 @@ async function fetchBilateral(reporterCode, hs4Batch) {
     if (retryKey) retryUrl.searchParams.set('subscription-key', retryKey);
     const retry = await fetch(retryUrl.toString(), {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(45_000),
     });
     if (!retry.ok) {
       console.warn(`  Retry for reporter ${reporterCode} also failed (HTTP ${retry.status})`);
@@ -136,9 +136,16 @@ async function fetchBilateral(reporterCode, hs4Batch) {
     return parseRecords(retryData);
   }
 
-  if (!resp.ok) return [];
+  if (!resp.ok) {
+    console.warn(`    HTTP ${resp.status} for reporter ${reporterCode}`);
+    return [];
+  }
   const data = await resp.json();
-  return parseRecords(data);
+  const parsed = parseRecords(data);
+  if (parsed.length === 0 && data?.count > 0) {
+    console.warn(`    Reporter ${reporterCode}: API returned count=${data.count} but parseRecords produced 0 — response shape may have changed`);
+  }
+  return parsed;
 }
 
 /**
