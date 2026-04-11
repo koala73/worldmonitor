@@ -79,7 +79,25 @@ export function emptyNarrative() {
 }
 
 /**
+ * Return the evidence subset that is actually rendered into the prompt.
+ * Callers should use this same subset when deriving the valid-evidence-ID
+ * whitelist for parseNarrativeJson — otherwise the parser could accept
+ * citations to IDs the model never saw (P2 review finding on #2960).
+ *
+ * @param {import('../../shared/regions.types.js').EvidenceItem[]} evidence
+ * @returns {import('../../shared/regions.types.js').EvidenceItem[]}
+ */
+export function selectPromptEvidence(evidence) {
+  if (!Array.isArray(evidence)) return [];
+  return evidence.slice(0, MAX_EVIDENCE_IN_PROMPT);
+}
+
+/**
  * Build the evidence-grounded prompt. Pure — no network.
+ *
+ * `evidence` is rendered as-is. Callers that want the prompt-visible
+ * cap should call `selectPromptEvidence()` first so the same subset
+ * flows into both the prompt and the parser's evidence whitelist.
  *
  * @param {{id: string, label: string, forecastLabel: string}} region
  * @param {import('../../shared/regions.types.js').RegionalSnapshot} snapshot
@@ -110,7 +128,7 @@ export function buildNarrativePrompt(region, snapshot, evidence) {
     .map((t) => t.id)
     .join(', ');
 
-  const evidenceLines = evidence.slice(0, MAX_EVIDENCE_IN_PROMPT).map((e) => {
+  const evidenceLines = (evidence ?? []).map((e) => {
     const summary = (e.summary ?? '').slice(0, 180);
     const conf = typeof e.confidence === 'number' ? e.confidence.toFixed(2) : '0.00';
     return `- ${e.id} [${e.type}, conf=${conf}]: ${summary}`;
@@ -256,12 +274,25 @@ export function parseNarrativeJson(text, validEvidenceIds) {
 
 /**
  * Real provider-chain caller. Walks DEFAULT_PROVIDERS in order, returning
- * the first success. Respects per-provider env gating and timeout.
+ * the first response that passes the optional `validate` predicate.
+ * Respects per-provider env gating and timeout.
+ *
+ * Callers should pass a `validate` that checks whether the text parses to
+ * a usable output. Without it, a single provider returning prose or
+ * truncated JSON would short-circuit the fallback chain — which was the
+ * P2 finding on #2960.
+ *
+ * The returned `model` field reflects what the API actually ran
+ * (`json.model`), falling back to the provider's declared default. Some
+ * providers resolve aliases or route to a different concrete model, and
+ * persisted metadata should report the truth.
  *
  * @param {{ systemPrompt: string, userPrompt: string }} prompt
+ * @param {{ validate?: (text: string) => boolean }} [opts]
  * @returns {Promise<{ text: string, provider: string, model: string } | null>}
  */
-async function callLlmDefault({ systemPrompt, userPrompt }) {
+async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
+  const validate = opts.validate;
   for (const provider of DEFAULT_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
@@ -294,7 +325,18 @@ async function callLlmDefault({ systemPrompt, userPrompt }) {
         continue;
       }
 
-      return { text: text.trim(), provider: provider.name, model: provider.model };
+      const trimmed = text.trim();
+      if (validate && !validate(trimmed)) {
+        console.warn(`[narrative] ${provider.name}: response failed validation, trying next provider`);
+        continue;
+      }
+
+      // Prefer the model the provider actually ran over the requested alias.
+      const actualModel = typeof json?.model === 'string' && json.model.length > 0
+        ? json.model
+        : provider.model;
+
+      return { text: trimmed, provider: provider.name, model: actualModel };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[narrative] ${provider.name}: ${msg}`);
@@ -306,10 +348,19 @@ async function callLlmDefault({ systemPrompt, userPrompt }) {
 /**
  * Main entry: generate a narrative for one region. Ship-empty on any failure.
  *
+ * Evidence is capped to `MAX_EVIDENCE_IN_PROMPT` BEFORE prompt construction,
+ * and the same cap bounds the parser's valid-evidence-ID whitelist, so
+ * citations can only reference items the model actually saw.
+ *
+ * The injected `callLlm` receives a `validate` callback that runs
+ * `parseNarrativeJson` on each provider's response; providers returning
+ * prose, truncated JSON, or all-empty objects fall through to the next
+ * provider instead of short-circuiting the whole chain.
+ *
  * @param {{ id: string, label: string, forecastLabel: string }} region
  * @param {import('../../shared/regions.types.js').RegionalSnapshot} snapshot
  * @param {import('../../shared/regions.types.js').EvidenceItem[]} evidence
- * @param {{ callLlm?: (prompt: { systemPrompt: string, userPrompt: string }) => Promise<{ text: string, provider: string, model: string } | null> }} [opts]
+ * @param {{ callLlm?: (prompt: { systemPrompt: string, userPrompt: string }, opts?: { validate?: (text: string) => boolean }) => Promise<{ text: string, provider: string, model: string } | null> }} [opts]
  * @returns {Promise<{
  *   narrative: import('../../shared/regions.types.js').RegionalNarrative,
  *   provider: string,
@@ -323,12 +374,20 @@ export async function generateRegionalNarrative(region, snapshot, evidence, opts
   }
 
   const callLlm = opts.callLlm ?? callLlmDefault;
-  const prompt = buildNarrativePrompt(region, snapshot, evidence);
-  const validEvidenceIds = evidence.map((e) => e.id);
+  // Slice evidence once so the prompt and the parser's whitelist agree on
+  // exactly which IDs are citable. See selectPromptEvidence docstring.
+  const promptEvidence = selectPromptEvidence(evidence);
+  const prompt = buildNarrativePrompt(region, snapshot, promptEvidence);
+  const validEvidenceIds = promptEvidence.map((e) => e.id);
+
+  // Validator for the default provider-chain caller: a response is
+  // acceptable iff parseNarrativeJson returns valid=true against the
+  // prompt-visible evidence set.
+  const validate = (text) => parseNarrativeJson(text, validEvidenceIds).valid;
 
   let result;
   try {
-    result = await callLlm(prompt);
+    result = await callLlm(prompt, { validate });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[narrative] ${region.id}: callLlm threw: ${msg}`);

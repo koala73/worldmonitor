@@ -10,6 +10,7 @@ import {
   buildNarrativePrompt,
   parseNarrativeJson,
   emptyNarrative,
+  selectPromptEvidence,
 } from '../scripts/regional-snapshot/narrative.mjs';
 import { REGIONS } from '../shared/geography.js';
 
@@ -374,5 +375,184 @@ describe('emptyNarrative', () => {
     const b = emptyNarrative();
     a.situation.evidence_ids.push('leaked');
     assert.deepEqual(b.situation.evidence_ids, []);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Review-fix regression tests (PR #2960 P2/P3 findings)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('selectPromptEvidence', () => {
+  it('caps evidence at the prompt-visible maximum', () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({
+      id: `ev${i}`,
+      type: 'market_signal',
+      source: 'test',
+      summary: `item ${i}`,
+      confidence: 0.5,
+      observed_at: 0,
+      theater: '',
+      corridor: '',
+    }));
+    const sliced = selectPromptEvidence(many);
+    assert.ok(sliced.length <= 15, `expected ≤15, got ${sliced.length}`);
+    // Must preserve order — the first N items are what the prompt sees.
+    assert.equal(sliced[0].id, 'ev0');
+    assert.equal(sliced[sliced.length - 1].id, `ev${sliced.length - 1}`);
+  });
+
+  it('returns an empty array for non-array input', () => {
+    assert.deepEqual(selectPromptEvidence(null), []);
+    assert.deepEqual(selectPromptEvidence(undefined), []);
+  });
+
+  it('returns the full array when under the cap', () => {
+    assert.equal(selectPromptEvidence(evidenceFixture).length, 3);
+  });
+});
+
+describe('provider fallback on malformed response (P2 fix)', () => {
+  // Simulate the provider-chain behavior of the default callLlm: the
+  // mock walks a provider list and honors the `validate` callback so the
+  // chain falls through on parse failure rather than short-circuiting.
+  function buildFallbackMock(providers) {
+    return async (_prompt, opts = {}) => {
+      const validate = opts.validate;
+      for (const p of providers) {
+        if (validate && !validate(p.text)) continue;
+        return { text: p.text, provider: p.provider, model: p.model };
+      }
+      return null;
+    };
+  }
+
+  const validPayload = JSON.stringify({
+    situation: { text: 'Iran flexes naval posture.', evidence_ids: ['ev1'] },
+    balance_assessment: { text: 'Net balance slightly positive.', evidence_ids: [] },
+    outlook_24h: { text: 'Base case dominates.', evidence_ids: [] },
+    outlook_7d: { text: 'Escalation risk rises.', evidence_ids: [] },
+    outlook_30d: { text: 'Uncertainty widens.', evidence_ids: [] },
+    watch_items: [],
+  });
+
+  it('falls through when Groq returns prose and OpenRouter returns valid JSON', async () => {
+    const callLlm = buildFallbackMock([
+      { text: 'Sure, here is a summary of the situation...', provider: 'groq', model: 'llama-3.3' },
+      { text: validPayload, provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+    ]);
+    const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
+    assert.equal(result.provider, 'openrouter');
+    assert.equal(result.model, 'google/gemini-2.5-flash');
+    assert.equal(result.narrative.situation.text, 'Iran flexes naval posture.');
+  });
+
+  it('falls through when Groq returns truncated JSON and OpenRouter succeeds', async () => {
+    const callLlm = buildFallbackMock([
+      { text: '{"situation": {"text": "Iran flexes nav', provider: 'groq', model: 'llama-3.3' },
+      { text: validPayload, provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+    ]);
+    const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
+    assert.equal(result.provider, 'openrouter');
+    assert.equal(result.narrative.situation.text, 'Iran flexes naval posture.');
+  });
+
+  it('falls through on all-empty-fields JSON from the first provider', async () => {
+    const allEmpty = JSON.stringify({
+      situation: { text: '', evidence_ids: [] },
+      balance_assessment: { text: '', evidence_ids: [] },
+      outlook_24h: { text: '', evidence_ids: [] },
+      outlook_7d: { text: '', evidence_ids: [] },
+      outlook_30d: { text: '', evidence_ids: [] },
+      watch_items: [],
+    });
+    const callLlm = buildFallbackMock([
+      { text: allEmpty, provider: 'groq', model: 'llama-3.3' },
+      { text: validPayload, provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+    ]);
+    const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
+    assert.equal(result.provider, 'openrouter');
+  });
+
+  it('returns empty narrative when every provider returns malformed output', async () => {
+    const callLlm = buildFallbackMock([
+      { text: 'prose one', provider: 'groq', model: 'llama-3.3' },
+      { text: 'prose two', provider: 'openrouter', model: 'google/gemini-2.5-flash' },
+    ]);
+    const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
+    assert.deepEqual(result.narrative, emptyNarrative());
+    assert.equal(result.provider, '');
+  });
+});
+
+describe('evidence validator scoped to prompt-visible slice (P2 fix)', () => {
+  it('rejects hallucinated citations to evidence beyond the visible window', async () => {
+    // 20 evidence items; the prompt/validator should only see the first 15.
+    // The LLM cites ev16 (beyond the window) — that citation must be stripped.
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      id: `ev${i}`,
+      type: 'market_signal',
+      source: 'test',
+      summary: `item ${i}`,
+      confidence: 0.5,
+      observed_at: 0,
+      theater: '',
+      corridor: '',
+    }));
+    const payload = JSON.stringify({
+      // ev16 is in the full list (index 16) but NOT in the first-15 slice.
+      situation: { text: 'Test citation filter.', evidence_ids: ['ev0', 'ev16', 'ev14'] },
+      balance_assessment: { text: 'B.', evidence_ids: [] },
+      outlook_24h: { text: 'O.', evidence_ids: [] },
+      outlook_7d: { text: 'O.', evidence_ids: [] },
+      outlook_30d: { text: 'O.', evidence_ids: [] },
+      watch_items: [],
+    });
+    const callLlm = async () => ({ text: payload, provider: 'groq', model: 'llama-3.3' });
+    const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), many, { callLlm });
+    // ev0 and ev14 are in the first-15 slice; ev16 is not.
+    assert.deepEqual(result.narrative.situation.evidence_ids, ['ev0', 'ev14']);
+  });
+
+  it('allows citations to any of the first 15 items', async () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      id: `ev${i}`,
+      type: 'market_signal',
+      source: 'test',
+      summary: `item ${i}`,
+      confidence: 0.5,
+      observed_at: 0,
+      theater: '',
+      corridor: '',
+    }));
+    const payload = JSON.stringify({
+      situation: { text: 'Cite the edges.', evidence_ids: ['ev0', 'ev14'] },
+      balance_assessment: { text: '', evidence_ids: [] },
+      outlook_24h: { text: '', evidence_ids: [] },
+      outlook_7d: { text: '', evidence_ids: [] },
+      outlook_30d: { text: '', evidence_ids: [] },
+      watch_items: [],
+    });
+    const callLlm = async () => ({ text: payload, provider: 'groq', model: 'llama-3.3' });
+    const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), many, { callLlm });
+    assert.deepEqual(result.narrative.situation.evidence_ids, ['ev0', 'ev14']);
+  });
+});
+
+describe('narrative_model records actual provider output (P3 fix)', () => {
+  it('passes the model value the default caller returned through to the meta', async () => {
+    // Simulate the default caller picking up json.model (which may resolve
+    // to a different concrete model than the one requested).
+    const actualModel = 'llama-3.3-70b-versatile-0325';
+    const payload = JSON.stringify({
+      situation: { text: 'Test.', evidence_ids: [] },
+      balance_assessment: { text: '', evidence_ids: [] },
+      outlook_24h: { text: '', evidence_ids: [] },
+      outlook_7d: { text: '', evidence_ids: [] },
+      outlook_30d: { text: '', evidence_ids: [] },
+      watch_items: [],
+    });
+    const callLlm = async () => ({ text: payload, provider: 'groq', model: actualModel });
+    const result = await generateRegionalNarrative(menaRegion, stubSnapshot(), evidenceFixture, { callLlm });
+    assert.equal(result.model, actualModel);
   });
 });
