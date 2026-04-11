@@ -282,8 +282,8 @@ async function fetchEffectiveTariffRateFromFred() {
     const importsUrl = fredSeriesUrl(FRED_IMPORTS_SERIES);
     if (!customsUrl || !importsUrl) { console.warn('  FRED tariff rate: FRED_API_KEY not set'); return null; }
     const [customsResp, importsResp] = await Promise.all([
-      fredFetchJson(customsUrl),
-      fredFetchJson(importsUrl),
+      fredFetchJson(customsUrl, _proxyAuth),
+      fredFetchJson(importsUrl, _proxyAuth),
     ]);
     const customs = customsResp?.observations ?? [];
     const imports = importsResp?.observations ?? [];
