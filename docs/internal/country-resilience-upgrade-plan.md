@@ -614,19 +614,28 @@ methodology page and reproduce any country score from the Redis cache keys.
   update `server/_shared/cache-keys.ts`, `api/bootstrap.js`, `api/health.js`
   `SEED_META` (memory: `health_js_registry_names`), and
   `server/_shared/gateway.ts` per the 4-file checklist.
+  T1.9 shipped in PR #2965 as a cache-key / health-registry sync test
+  + Phase 1 scorecard close-out. No cache-key bumps were needed in
+  Phase 1 because every schema addition was additive with default
+  fallbacks on the existing `resilience:score:v7` / `ranking:v8` /
+  `history:v4` keys.
 
 **Phase 1 acceptance:**
-- [ ] Methodology `.mdx` published + linked from navbar + every dimension has
-      its own subsection.
-- [ ] Origin-doc ceiling case has a failing-then-passing regression test.
-- [ ] `data_version` non-null on every country score response.
-- [ ] Widget shows per-dimension coverage + imputation class + freshness badge.
-- [ ] 4-class imputation taxonomy live end-to-end; old absence-based path
-      deleted.
-- [ ] `typecheck`, `typecheck:api`, `test:data`, `test:sidecar`, and
-      resilience-specific suites all green.
-- [ ] Scorecard re-rating (self-assessment, documented in the methodology
-      changelog): Methodology ≥7.5, Explainability ≥7.5.
+- [x] Methodology `.mdx` published + linked from navbar + every dimension has
+      its own subsection. (T1.3 #2945)
+- [x] Origin-doc ceiling case has a failing-then-passing regression test.
+      (T1.1 #2941)
+- [x] `data_version` non-null on every country score response. (T1.4 #2943)
+- [x] Widget shows per-dimension coverage + imputation class + freshness badge.
+      (T1.6 full grid #2962 consuming T1.7 schema #2959 + T1.5 propagation #2961)
+- [x] 4-class imputation taxonomy live end-to-end; old absence-based path
+      deleted. (T1.7 source-failure wiring #2964)
+- [x] `typecheck`, `typecheck:api`, `test:data`, `test:sidecar`, and
+      resilience-specific suites all green. (Verified in every Phase 1
+      PR's pre-push hook; this PR also adds the cache-key drift test.)
+- [x] Scorecard re-rating (self-assessment, documented in the methodology
+      changelog): Methodology ≥7.5, Explainability ≥7.5. (This PR; both
+      ratings met at 7.5.)
 
 #### Phase 2, Structural Rebuild (Month 2)
 

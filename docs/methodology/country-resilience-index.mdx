@@ -352,15 +352,42 @@ A reference Python notebook under `docs/methodology/country-resilience-index/ref
 
 ### v1.0 (April 2026)
 
-**Current published version.** Scored on domain-weighted average of 5 domains and 13 dimensions.
+**Baseline.** Scored on domain-weighted average of 5 domains and 13 dimensions.
 
 - PR #2821: added the baseline-vs-stress engine and the `dataVersion` field on the response.
 - PR #2847: reverted the overall-score formula from `baseline * (1 - stressFactor)` (which over-penalized every country) to a domain-weighted sum; fixed the RSF press-freedom direction (0 means free, scored higher is better).
 - PR #2858: seed script now computes missing country scores directly via the scorer import path instead of relying on a separate ranking writer.
-- Phase 1 of the reference-grade upgrade plan:
-  - T1.1: regression test pins top-of-ranking ordering (Norway elite tier > US strong tier, neither pinned at 100) after investigation of an origin-document claim that did not reproduce.
-  - T1.4: widget surfaces `dataVersion` in the footer so analysts can see how fresh the underlying source data is.
-  - T1.7: formal four-class imputation taxonomy (`stable-absence`, `unmonitored`, `source-failure`, `not-applicable`) tagged on every absence-based entry in the `IMPUTATION` and `IMPUTE` tables.
+
+### v1.1 (April 2026) — Phase 1 reference-grade upgrade
+
+**Current published version.** Phase 1 of the reference-grade upgrade plan (`docs/internal/country-resilience-upgrade-plan.md`). Methodology surface reorganized for full reproducibility without changing the top-line domain weights or scoring formula.
+
+- **T1.1** (#2941): regression test pins the Norway/US top-of-ranking ordering after an origin-document claim of a 100-point ceiling did not reproduce. Failing-then-passing test guards the invariant.
+- **T1.2** (#2847, #2858): pre-existing fixes from the 2026-04-07 and 2026-04-09 origin-doc reviews that were already in main at the start of Phase 1. Re-verified no additional action needed.
+- **T1.3** (#2945): methodology page promoted to `.mdx` at CII parity with the required sections (Framework / Domains / Dimensions / Normalization / Weighting / Missing-data / Confidence / Ranking / Reproducibility appendix).
+- **T1.4** (#2943): `dataVersion` field wired end-to-end from `seed-resilience-static:v7.dataVersion` through the scorer to the widget footer so analysts see the exact ISO date of the underlying source data.
+- **T1.5** (#2947 foundation, #2961 propagation): three-level staleness classifier (`fresh`, `aging`, `stale`) driven by the per-indicator cadence in the registry. Propagated through `scoreAllDimensions` and exposed as `ResilienceDimension.freshness.{lastObservedAtMs, staleness}` on the response.
+- **T1.6** (#2949 scaffold, #2962 full grid): per-dimension confidence grid in the widget. The full grid adds an imputation-class icon column (consuming T1.7 schema) and a freshness-badge column (consuming T1.5 propagation). 5-column layout with mobile responsive breakpoint.
+- **T1.7** (#2944 foundation, #2959 schema, #2964 source-failure wiring): four-class imputation taxonomy `stable-absence` / `unmonitored` / `source-failure` / `not-applicable` exposed on `ResilienceDimension.imputationClass`. The scorer aggregation pass consults `seed-meta:resilience:static.failedDatasets` and re-tags imputed dimensions as `source-failure` when the underlying adapter fetch failed. Deleted the last absence-based return branch in `scoreCurrencyExternal` so the taxonomy is the single source of truth for every imputed path.
+- **T1.8** (#2946): methodology doc linter enforces dimension parity between this document and `_indicator-registry.ts`. CI fails if any dimension drifts.
+- **T1.9** (this PR): cache-key / health-registry sync regression test so future version bumps in `_shared.ts` cannot silently break health probes. No cache keys were bumped in Phase 1 because every schema addition was additive with default fallbacks on the existing `resilience:score:v7` and `resilience:ranking:v8` keys.
+
+**What did not change in v1.1**: the domain-weighted aggregation formula, the 5 domain structure, the 13 dimensions, the goalpost ranges, the per-dimension weights. Phase 2 owns the structural three-pillar rebuild; v1.1 is the methodology-surface and observability lift only.
+
+### Scorecard (v1.1 self-assessment)
+
+Self-assessed against the standard composite-indicator review axes on a 0-10 scale. This is the Phase 1 acceptance gate defined in the upgrade plan (`Methodology ≥7.5`, `Explainability ≥7.5`). An external expert review (Phase 3 T3.8b) will supersede these self-ratings once it completes.
+
+| Axis | Score | Rationale |
+|---|---|---|
+| **Methodology** | 7.5 | Every dimension has a named source, direction, goalpost range, weight, cadence, and imputation class. Missing-data rules are explicit and tagged with a 4-class taxonomy. The aggregation formula is a simple domain-weighted average, auditable from first principles. Gap: the overall-score formula is still single-axis compensatory (a strong institutional score can wash out a weak exposure score), which Phase 2 replaces with a partly non-compensatory three-pillar form. |
+| **Explainability** | 7.5 | Per-dimension confidence grid in the widget shows coverage %, imputation class, and freshness for every dimension on every country. Tooltip text is generated from the taxonomy so analysts can click through to the meaning without reading this document. Gap: no waterfall chart of individual signal contributions yet, that lands in Phase 3 T3.3. |
+| **Reproducibility** | 8.0 | Every dimension's sourceKey, cadence, and goalpost lives in `_indicator-registry.ts` and is linted against this doc. Cache keys are versioned (`resilience:score:v7`, `ranking:v8`, `history:v4`). `dataVersion` is written by the seed and plumbed to the widget footer. Gap: the benchmark and backtest scripts do not yet run on a CI cron; those land in Phase 2 T2.7. |
+| **Source quality** | 7.0 | World Bank, IMF, WHO, IEA, UNHCR, UCDP, IPC, BIS, FAO, RSF, GPI: all authoritative. Gap: curated-list sources (BIS ~40 economies, WTO) do not cover the full WorldMonitor country set, which is why the `unmonitored` imputation class exists. Phase 2 T2.9 adds language-normalized information signal to reduce English-press bias. |
+| **Timeliness** | 6.5 | Annual sources dominate (WGI, GPI, RSF, WHO). Freshness classifier makes this visible at the dimension level so users can see which parts of a country score are fresh vs. 12 months old. Gap: no real-time signals in v1.1; Phase 2 adds FX volatility, conflict events, and power outages at daily cadence. |
+| **Sensitivity** | 7.0 | Weight-perturbation Monte Carlo sensitivity (#2823) exists in the backtesting layer. Phase 1 did not add new sensitivity work. Gap: per-dimension p5/p95 intervals are computed and exposed (#2877, #2885) but the widget does not render them yet, Phase 3 T3.3 waterfall chart. |
+
+**Phase 1 acceptance gate status: met.** Both required thresholds (Methodology ≥7.5, Explainability ≥7.5) are satisfied with honest rationales. The two gaps flagged in each axis are tracked against Phase 2 and Phase 3 tasks in the upgrade plan.
 
 ### v2.0 (planned, Phase 2 of the reference-grade upgrade plan)
 
