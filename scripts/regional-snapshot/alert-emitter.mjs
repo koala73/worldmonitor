@@ -221,38 +221,118 @@ async function upstashLpush(url, token, key, value) {
   return typeof json?.result === 'number';
 }
 
+async function upstashDel(url, token, key) {
+  try {
+    const resp = await fetch(
+      `${url}/del/${encodeURIComponent(key)}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Default publisher. Walks the same SET-NX-then-LPUSH path as ais-relay.cjs
- * publishNotificationEvent(). Never throws; returns false on any failure or
- * dedup hit.
+ * Redis operations needed by the publish-with-rollback path. Callers
+ * (including tests) inject these so the orchestration logic is fully
+ * testable without fetch stubs.
+ *
+ * @typedef {{
+ *   setNx: (key: string, ttlSeconds: number) => Promise<boolean>,
+ *   lpush: (key: string, value: string) => Promise<boolean>,
+ *   del: (key: string) => Promise<boolean>,
+ * }} RedisPublishOps
+ */
+
+/**
+ * Publish one event through injected Redis operations with dedup-rollback
+ * on LPUSH failure. Exported for unit tests — the default publisher below
+ * is a thin wrapper that builds real Upstash REST calls and delegates here.
+ *
+ * Flow:
+ *   1. SET NX dedup key (6h TTL). If already set → dedup hit, return false.
+ *   2. LPUSH event onto wm:events:queue.
+ *   3. If LPUSH fails → DEL the dedup key so the next cron cycle can retry.
+ *      Otherwise the alert would be silently suppressed for 6h even though
+ *      nothing was enqueued. Matches the rollback path in ais-relay.cjs
+ *      publishNotificationEvent().
+ *
+ * Never throws. Returns an outcome object so tests can assert exactly
+ * which branch fired without relying on log scraping.
+ *
+ * @param {object} event
+ * @param {RedisPublishOps} ops
+ * @returns {Promise<{ enqueued: boolean, dedupHit: boolean, rolledBack: boolean }>}
+ */
+export async function publishEventWithOps(event, ops) {
+  const outcome = { enqueued: false, dedupHit: false, rolledBack: false };
+  try {
+    const dedupKey = buildDedupKey(event);
+    const isNew = await ops.setNx(dedupKey, DEDUP_TTL_SECONDS);
+    if (!isNew) {
+      outcome.dedupHit = true;
+      const title = String(event.payload?.title ?? '');
+      console.log(`[alerts] dedup skip: ${event.eventType} — ${title.slice(0, 60)}`);
+      return outcome;
+    }
+    const msg = JSON.stringify({ ...event, publishedAt: Date.now() });
+    const ok = await ops.lpush('wm:events:queue', msg);
+    if (ok) {
+      outcome.enqueued = true;
+      const title = String(event.payload?.title ?? '');
+      console.log(`[alerts] queued ${event.severity} ${event.eventType}: ${title.slice(0, 60)}`);
+      return outcome;
+    }
+    // LPUSH failed — roll back the dedup key so the next cron cycle can
+    // retry this alert instead of suppressing it for the full 6h window.
+    console.warn(`[alerts] LPUSH failed for ${event.eventType} — rolling back dedup key`);
+    try {
+      await ops.del(dedupKey);
+    } catch {
+      // Even rollback failed — ignore; next retry will still suppress this
+      // alert for 6h, but we logged the LPUSH failure so operators can see.
+    }
+    outcome.rolledBack = true;
+    return outcome;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[alerts] publish failed for ${event?.eventType}: ${msg}`);
+    return outcome;
+  }
+}
+
+/**
+ * Default publisher. Walks the same SET-NX → LPUSH → DEL-on-failure path
+ * as ais-relay.cjs publishNotificationEvent(). Thin wrapper over
+ * publishEventWithOps that binds real Upstash REST calls.
  *
  * @param {object} event
  * @returns {Promise<boolean>} true when enqueued, false on dedup or failure
  */
 async function defaultPublishEvent(event) {
+  let url;
+  let token;
   try {
-    const { url, token } = getRedisCredentials();
-    const dedupKey = buildDedupKey(event);
-    const isNew = await upstashSetNx(url, token, dedupKey, DEDUP_TTL_SECONDS);
-    if (!isNew) {
-      const title = String(event.payload?.title ?? '');
-      console.log(`[alerts] dedup skip: ${event.eventType} — ${title.slice(0, 60)}`);
-      return false;
-    }
-    const msg = JSON.stringify({ ...event, publishedAt: Date.now() });
-    const ok = await upstashLpush(url, token, 'wm:events:queue', msg);
-    if (ok) {
-      const title = String(event.payload?.title ?? '');
-      console.log(`[alerts] queued ${event.severity} ${event.eventType}: ${title.slice(0, 60)}`);
-    } else {
-      console.warn(`[alerts] LPUSH failed for ${event.eventType}`);
-    }
-    return ok;
+    const creds = getRedisCredentials();
+    url = creds.url;
+    token = creds.token;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[alerts] publish failed for ${event?.eventType}: ${msg}`);
     return false;
   }
+  const ops = /** @type {RedisPublishOps} */ ({
+    setNx: (key, ttl) => upstashSetNx(url, token, key, ttl),
+    lpush: (key, value) => upstashLpush(url, token, key, value),
+    del: (key) => upstashDel(url, token, key),
+  });
+  const outcome = await publishEventWithOps(event, ops);
+  return outcome.enqueued;
 }
 
 // ── Public: emit alerts for one region snapshot ──────────────────────────────

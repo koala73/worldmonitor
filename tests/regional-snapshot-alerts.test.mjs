@@ -10,6 +10,7 @@ import {
   buildDedupKey,
   simpleHash,
   emitRegionalAlerts,
+  publishEventWithOps,
 } from '../scripts/regional-snapshot/alert-emitter.mjs';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -406,5 +407,124 @@ describe('emitRegionalAlerts', () => {
       assert.equal(ev.payload.region_id, 'mena');
       assert.equal(ev.payload.snapshot_id, 'snap-mena-1');
     }
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// publishEventWithOps — dedup rollback on LPUSH failure (P1 fix for PR #2966)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('publishEventWithOps — dedup rollback', () => {
+  /** Minimal in-memory Redis that tracks keys and the queue list. */
+  function memoryOps({ lpushFails = false, setNxFails = false } = {}) {
+    /** @type {Record<string, boolean>} */
+    const dedupKeys = {};
+    /** @type {string[]} */
+    const queue = [];
+    /** @type {string[]} */
+    const deletedKeys = [];
+    const ops = {
+      setNx: async (key, _ttl) => {
+        if (setNxFails) return false;
+        if (dedupKeys[key]) return false;
+        dedupKeys[key] = true;
+        return true;
+      },
+      lpush: async (_key, value) => {
+        if (lpushFails) return false;
+        queue.push(value);
+        return true;
+      },
+      del: async (key) => {
+        delete dedupKeys[key];
+        deletedKeys.push(key);
+        return true;
+      },
+    };
+    return { ops, dedupKeys, queue, deletedKeys };
+  }
+
+  const sampleEvent = {
+    eventType: 'regional_regime_shift',
+    severity: 'high',
+    payload: { title: 'MENA: regime shift test' },
+  };
+
+  it('happy path: SET NX + LPUSH both succeed, no rollback', async () => {
+    const mem = memoryOps();
+    const outcome = await publishEventWithOps(sampleEvent, mem.ops);
+    assert.deepEqual(outcome, { enqueued: true, dedupHit: false, rolledBack: false });
+    assert.equal(mem.queue.length, 1);
+    assert.equal(Object.keys(mem.dedupKeys).length, 1);
+    assert.equal(mem.deletedKeys.length, 0);
+  });
+
+  it('dedup hit: returns dedupHit=true without touching the queue', async () => {
+    const mem = memoryOps();
+    // Pre-populate the dedup key so the second call hits it.
+    mem.dedupKeys[buildDedupKey(sampleEvent)] = true;
+    const outcome = await publishEventWithOps(sampleEvent, mem.ops);
+    assert.deepEqual(outcome, { enqueued: false, dedupHit: true, rolledBack: false });
+    assert.equal(mem.queue.length, 0);
+    assert.equal(mem.deletedKeys.length, 0);
+  });
+
+  it('LPUSH failure: dedup key is rolled back via DEL', async () => {
+    const mem = memoryOps({ lpushFails: true });
+    const outcome = await publishEventWithOps(sampleEvent, mem.ops);
+    assert.deepEqual(outcome, { enqueued: false, dedupHit: false, rolledBack: true });
+    // Queue untouched...
+    assert.equal(mem.queue.length, 0);
+    // ...and dedup key was removed so next cycle can retry.
+    assert.equal(Object.keys(mem.dedupKeys).length, 0);
+    assert.equal(mem.deletedKeys.length, 1);
+    assert.equal(mem.deletedKeys[0], buildDedupKey(sampleEvent));
+  });
+
+  it('retry-after-rollback: next call enqueues normally', async () => {
+    // First call fails LPUSH and rolls back.
+    const mem = memoryOps({ lpushFails: true });
+    await publishEventWithOps(sampleEvent, mem.ops);
+    assert.equal(Object.keys(mem.dedupKeys).length, 0);
+
+    // Switch to a working LPUSH (new memory ops instance preserves dedup state).
+    const retryOps = {
+      setNx: mem.ops.setNx,
+      lpush: async (_key, value) => {
+        mem.queue.push(value);
+        return true;
+      },
+      del: mem.ops.del,
+    };
+    const outcome = await publishEventWithOps(sampleEvent, retryOps);
+    assert.equal(outcome.enqueued, true);
+    assert.equal(mem.queue.length, 1);
+  });
+
+  it('LPUSH failure + DEL failure still returns rolledBack=true (best-effort)', async () => {
+    const mem = memoryOps({ lpushFails: true });
+    const opsWithBrokenDel = {
+      setNx: mem.ops.setNx,
+      lpush: mem.ops.lpush,
+      del: async () => {
+        throw new Error('del broke');
+      },
+    };
+    const outcome = await publishEventWithOps(sampleEvent, opsWithBrokenDel);
+    // We attempted rollback; del threw; still report rolledBack=true.
+    assert.equal(outcome.rolledBack, true);
+    assert.equal(outcome.enqueued, false);
+  });
+
+  it('swallows exceptions from setNx/lpush and returns a non-enqueued outcome', async () => {
+    const brokenOps = {
+      setNx: async () => {
+        throw new Error('network blown up');
+      },
+      lpush: async () => true,
+      del: async () => true,
+    };
+    const outcome = await publishEventWithOps(sampleEvent, brokenOps);
+    assert.deepEqual(outcome, { enqueued: false, dedupHit: false, rolledBack: false });
   });
 });
