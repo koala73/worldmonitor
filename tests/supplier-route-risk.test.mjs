@@ -69,16 +69,13 @@ describe('computeAlternativeSuppliers', () => {
     { partnerCode: 840, partnerIso2: 'US', value: 2e9, share: 0.15 },
   ];
 
-  it('sorts safe exporters first when one is critical', () => {
+  it('preserves original trade-share order (no sorting by risk)', () => {
     const scores = new Map([['hormuz_strait', 80]]);
     const result = computeAlternativeSuppliers(exporters, 'IN', scores);
-    assert.ok(result.length === 3);
-    assert.notEqual(result[0].risk.riskLevel, 'critical');
-    const criticalIndex = result.findIndex(e => e.risk.riskLevel === 'critical');
-    const safeIndex = result.findIndex(e => e.risk.riskLevel === 'safe');
-    if (criticalIndex >= 0 && safeIndex >= 0) {
-      assert.ok(safeIndex < criticalIndex, 'Safe exporters should come before critical ones');
-    }
+    assert.equal(result.length, 3);
+    assert.equal(result[0].partnerIso2, 'SA', 'First exporter should remain SA (original order)');
+    assert.equal(result[1].partnerIso2, 'CA', 'Second exporter should remain CA (original order)');
+    assert.equal(result[2].partnerIso2, 'US', 'Third exporter should remain US (original order)');
   });
 
   it('generates safeAlternative for critical/at-risk exporters', () => {
@@ -137,6 +134,7 @@ describe('CSS classes and integration', () => {
     assert.ok(css.includes('.cdp-recommendation-item'), 'Missing .cdp-recommendation-item class');
     assert.ok(css.includes('.cdp-recommendation-safe'), 'Missing .cdp-recommendation-safe class');
     assert.ok(css.includes('.cdp-recommendation-warn'), 'Missing .cdp-recommendation-warn class');
+    assert.ok(css.includes('.cdp-recommendation-critical'), 'Missing .cdp-recommendation-critical class');
   });
 
   it('CountryDeepDivePanel renders Route Risk header', async () => {

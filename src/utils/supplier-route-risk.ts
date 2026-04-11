@@ -27,7 +27,12 @@ interface ClusterEntry {
   coastSide: string;
 }
 
-const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, ClusterEntry | string>;
+interface CountryPortClustersJson {
+  _comment: string;
+  [iso2: string]: ClusterEntry | string;
+}
+
+const clusters: CountryPortClustersJson = COUNTRY_PORT_CLUSTERS;
 
 const chokepointByRoute = new Map<string, string[]>();
 for (const route of TRADE_ROUTES) {
@@ -88,6 +93,7 @@ function determineRiskLevel(chokepoints: TransitChokepoint[]): SupplierRiskLevel
 }
 
 function buildRecommendation(riskLevel: SupplierRiskLevel, chokepoints: TransitChokepoint[]): string {
+  if (chokepoints.length === 0) return 'No transit chokepoints detected.';
   if (riskLevel === 'critical') {
     const worst = chokepoints.reduce((a, b) => a.disruptionScore > b.disruptionScore ? a : b);
     return `Route transits ${worst.chokepointName} (disruption: ${worst.disruptionScore}/100). Consider alternative suppliers.`;
@@ -143,11 +149,6 @@ export function computeAlternativeSuppliers(
     risk: computeSupplierRouteRisk(exp.partnerIso2, importerIso2, chokepointScores),
     safeAlternative: null,
   }));
-
-  enriched.sort((a, b) => {
-    const order: Record<SupplierRiskLevel, number> = { safe: 0, at_risk: 1, critical: 2 };
-    return order[a.risk.riskLevel] - order[b.risk.riskLevel];
-  });
 
   const safeExporters = enriched.filter(e => e.risk.riskLevel === 'safe');
   for (const exp of enriched) {

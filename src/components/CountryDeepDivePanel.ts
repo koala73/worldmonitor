@@ -1452,7 +1452,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const waterwayMap = new Map(STRATEGIC_WATERWAYS.map(w => [w.id, w.name]));
 
     const cpName = waterwayMap.get(sector.primaryChokepointId) ?? sector.primaryChokepointName;
-    const routesLabel = this.el('div', 'cdp-bypass-heading', `Routes via ${escapeHtml(cpName)}:`);
+    const routesLabel = this.el('div', 'cdp-bypass-heading', `Routes via ${cpName}:`);
     wrap.append(routesLabel);
 
     for (const route of matchingRoutes) {
@@ -1632,17 +1632,20 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const tbody = this.el('tbody');
     const recsMount = this.el('div', 'cdp-recommendations');
 
+    type ExporterRow = { partnerIso2: string; share: number; value: number; risk: EnrichedExporter['risk'] | null };
+
     const renderRows = (enriched: EnrichedExporter[] | null) => {
       tbody.replaceChildren();
       recsMount.replaceChildren();
 
-      const exporters = enriched ?? product.topExporters.map(exp => ({
-        ...exp,
-        risk: null as null,
-        safeAlternative: null as string | null,
+      const rows: ExporterRow[] = enriched ?? product.topExporters.map(exp => ({
+        partnerIso2: exp.partnerIso2,
+        share: exp.share,
+        value: exp.value,
+        risk: null,
       }));
 
-      for (const exp of exporters) {
+      for (const exp of rows) {
         const tr = this.el('tr');
         const supplierTd = this.el('td', 'cdp-product-supplier');
         const flag = exp.partnerIso2 ? CountryDeepDivePanel.toFlagEmoji(exp.partnerIso2) : '';
@@ -1671,7 +1674,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
           if (exp.risk.transitChokepoints.length > 0) {
             const cpNames = exp.risk.transitChokepoints
-              .map(cp => escapeHtml(cp.chokepointName))
+              .map(cp => cp.chokepointName)
               .join(', ');
             const cpInfo = this.el('div', 'cdp-risk-chokepoints');
             cpInfo.textContent = cpNames;
@@ -1689,16 +1692,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         if (hasCritical) {
           for (const exp of enriched) {
             if (exp.risk.riskLevel === 'safe') continue;
-            const item = this.el('div', `cdp-recommendation-item cdp-recommendation-warn`);
+            const recCls = exp.risk.riskLevel === 'critical' ? 'cdp-recommendation-critical' : 'cdp-recommendation-warn';
+            const item = this.el('div', `cdp-recommendation-item ${recCls}`);
             const expPct = Math.round(exp.share * 100);
-            let text = `\u26A0 ${escapeHtml(product.description)} imports from ${escapeHtml(exp.partnerIso2)} (${expPct}%) transit`;
+            let text = `\u26A0 ${product.description} imports from ${exp.partnerIso2} (${expPct}%) transit`;
+            if (exp.risk.transitChokepoints.length === 0) continue;
             const worstCp = exp.risk.transitChokepoints.reduce((a, b) => a.disruptionScore > b.disruptionScore ? a : b);
-            text += ` ${escapeHtml(worstCp.chokepointName)} (disruption ${worstCp.disruptionScore}/100).`;
+            text += ` ${worstCp.chokepointName} (disruption ${worstCp.disruptionScore}/100).`;
             if (exp.safeAlternative) {
               const alt = enriched.find(e => e.partnerIso2 === exp.safeAlternative);
               const altPct = alt ? Math.round(alt.share * 100) : 0;
               const altFlag = CountryDeepDivePanel.toFlagEmoji(exp.safeAlternative);
-              text += ` ${altFlag} ${escapeHtml(exp.safeAlternative)} supplies ${altPct}% via routes avoiding this chokepoint.`;
+              text += ` ${altFlag} ${exp.safeAlternative} supplies ${altPct}% via routes avoiding this chokepoint.`;
             }
             item.textContent = text;
             recsMount.append(item);
@@ -1725,7 +1730,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         }
         const enriched = computeAlternativeSuppliers(product.topExporters, importerIso2, scores);
         renderRows(enriched);
-      }).catch(() => {});
+      }).catch(() => {
+        console.warn('[deep-dive] Chokepoint status unavailable for route risk enrichment');
+      });
     }
 
     const source = this.el('div', 'cdp-card-footer', `Source: UN Comtrade HS4 bilateral \u00B7 ${product.year}`);

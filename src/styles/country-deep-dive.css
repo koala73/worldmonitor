@@ -1480,3 +1480,7 @@
 .cdp-recommendation-warn {
   color: #fb923c;
 }
+
+.cdp-recommendation-critical {
+  color: #ef4444;
+}
