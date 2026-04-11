@@ -669,13 +669,30 @@ describe('collectEvidence region scoping', () => {
     assert.deepEqual(ids.sort(), ['bosphorus', 'danish']);
   });
 
-  it('SSA evidence contains no chokepoints (SSA has only tier-3 Cape corridor)', () => {
-    // Cape of Good Hope is a tier-3 corridor with chokepointId: null, so no
-    // chokepoint_status evidence should ever surface for SSA. Before the fix
-    // this returned every Hormuz/Taiwan/etc. event in the source payload.
+  it('SSA evidence includes Bab el-Mandeb via horn-of-africa.corridorIds', () => {
+    // Bab el-Mandeb physically borders Djibouti/Eritrea (SSA) as well as
+    // Yemen (MENA). It belongs to the MENA `red-sea` theater directly, but
+    // `horn-of-africa` claims it via corridorIds so SSA also surfaces its
+    // threat events. Cape of Good Hope has chokepointId:null and does not
+    // appear in the supply_chain:chokepoints:v4 payload, so it is absent
+    // here — but babelm now correctly surfaces for SSA.
     const evidence = collectEvidence('sub-saharan-africa', mixedChokepoints());
     const ids = evidence.filter((e) => e.type === 'chokepoint_status').map((e) => e.corridor);
-    assert.deepEqual(ids, []);
+    assert.deepEqual(ids.sort(), ['babelm']);
+    assert.ok(!ids.includes('hormuz'));
+    assert.ok(!ids.includes('taiwan_strait'));
+  });
+
+  it('LatAm evidence includes Panama via caribbean.corridorIds', () => {
+    // Panama Canal's primary theater is `north-america` (NA), but the
+    // `caribbean` theater claims it via corridorIds so LatAm snapshots
+    // also see Panama events. MENA/East Asia chokepoints must still be
+    // excluded from LatAm.
+    const evidence = collectEvidence('latam', mixedChokepoints());
+    const ids = evidence.filter((e) => e.type === 'chokepoint_status').map((e) => e.corridor);
+    assert.deepEqual(ids.sort(), ['panama']);
+    assert.ok(!ids.includes('hormuz'));
+    assert.ok(!ids.includes('taiwan_strait'));
   });
 
   it('skips chokepoints with normal or empty threat levels even when in region', () => {

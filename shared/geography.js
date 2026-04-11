@@ -76,7 +76,10 @@ export const REGIONS = [
     forecastLabel: 'Europe',
     wbCode: 'ECS',
     theaters: ['eastern-europe', 'western-europe', 'baltic', 'arctic'],
-    signalAliases: ['europe', 'eu'],
+    // 'europe' is long enough to avoid substring false-positives; bare 'eu' was
+    // removed because it would match 'fuel', 'neutral zone', etc. under the
+    // substring-includes matching in isSignalInRegion.
+    signalAliases: ['europe', 'european union'],
     feedRegion: 'europe',
     mapView: 'eu',
     keyCountries: ['DE', 'FR', 'GB', 'UA', 'RU', 'PL', 'IT'],
@@ -281,10 +284,38 @@ export function getTheaterCorridors(theaterId) {
   return CORRIDORS.filter((c) => c.theaterId === theaterId);
 }
 
-/** @param {string} regionId */
+/**
+ * Corridors owned by a region. Derived from TWO sources so shared chokepoints
+ * surface for every region they actually touch geographically:
+ *
+ *   1. Direct: corridors whose primary `theaterId` lives in this region.
+ *   2. Indirect: corridors explicitly listed in any of this region's
+ *      `theaters[].corridorIds` — this is how a chokepoint that primarily
+ *      belongs to another region can still be claimed by a secondary region.
+ *
+ * Example: Bab el-Mandeb (`babelm`) has `theaterId: 'red-sea'` (MENA), but
+ * it physically borders Djibouti and Eritrea as well, so the SSA theater
+ * `horn-of-africa` declares `corridorIds: ['babelm']` and picks it up here.
+ * Same for Panama → caribbean (LatAm) alongside its primary north-america
+ * theater (NA).
+ *
+ * De-duplicated by corridor id, so a corridor owned directly + indirectly
+ * (none today, but possible if a theater lists its own primary corridors)
+ * is still returned once.
+ *
+ * @param {string} regionId
+ */
 export function getRegionCorridors(regionId) {
-  const theaterIds = new Set(getRegionTheaters(regionId).map((t) => t.id));
-  return CORRIDORS.filter((c) => theaterIds.has(c.theaterId));
+  const theaters = getRegionTheaters(regionId);
+  const theaterIds = new Set(theaters.map((t) => t.id));
+  const indirectIds = new Set(theaters.flatMap((t) => t.corridorIds ?? []));
+  const seen = new Map();
+  for (const c of CORRIDORS) {
+    if (theaterIds.has(c.theaterId) || indirectIds.has(c.id)) {
+      seen.set(c.id, c);
+    }
+  }
+  return [...seen.values()];
 }
 
 /** @param {string} iso2 */
