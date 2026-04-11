@@ -1688,8 +1688,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
 
       if (enriched) {
-        const hasCritical = enriched.some(e => e.risk.riskLevel === 'critical' || e.risk.riskLevel === 'at_risk');
-        if (hasCritical) {
+        const hasCritical = enriched.some(e => e.risk.riskLevel === 'critical');
+        const hasAtRisk = enriched.some(e => e.risk.riskLevel === 'at_risk');
+        const hasUnknown = enriched.some(e => e.risk.riskLevel === 'unknown');
+        const hasSafe = enriched.some(e => e.risk.riskLevel === 'safe');
+        if (hasCritical || hasAtRisk) {
           for (const exp of enriched) {
             if (exp.risk.riskLevel === 'safe' || exp.risk.riskLevel === 'unknown') continue;
             const recCls = exp.risk.riskLevel === 'critical' ? 'cdp-recommendation-critical' : 'cdp-recommendation-warn';
@@ -1708,6 +1711,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             item.textContent = text;
             recsMount.append(item);
           }
+        } else if (hasUnknown && !hasSafe) {
+          const item = this.el('div', 'cdp-recommendation-item');
+          item.textContent = '\u2139 No modeled maritime route data available for these suppliers. Risk cannot be assessed.';
+          recsMount.append(item);
+        } else if (hasUnknown && hasSafe) {
+          const safeCount = enriched.filter(e => e.risk.riskLevel === 'safe').length;
+          const unknownCount = enriched.filter(e => e.risk.riskLevel === 'unknown').length;
+          const item = this.el('div', 'cdp-recommendation-item cdp-recommendation-safe');
+          item.textContent = `\u2713 ${safeCount} supplier(s) verified safe. ${unknownCount} supplier(s) have no modeled route data.`;
+          recsMount.append(item);
         } else {
           const safeItem = this.el('div', 'cdp-recommendation-item cdp-recommendation-safe');
           safeItem.textContent = '\u2713 All current suppliers use routes that avoid disrupted chokepoints.';
