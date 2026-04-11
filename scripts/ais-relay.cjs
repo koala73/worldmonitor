@@ -5694,14 +5694,17 @@ function extractTickers(text, knownTickers) {
     found.add(sym);
   }
 
-  // Bare uppercase: high false-positive risk, validate against known ticker set
-  BARE_TICKER_REGEX.lastIndex = 0;
-  while ((m = BARE_TICKER_REGEX.exec(text)) !== null) {
-    const sym = normalizeTicker(m[1] || '');
-    if (!sym || sym.length < 1) continue;
-    if (TICKER_BLACKLIST.has(sym)) continue;
-    if (knownTickers.size > 0 && !knownTickers.has(sym)) continue;
-    found.add(sym);
+  // Bare uppercase: high false-positive risk, REQUIRE known ticker set
+  // When knownTickers is empty (bootstrap unavailable), skip bare matching entirely
+  if (knownTickers.size > 0) {
+    BARE_TICKER_REGEX.lastIndex = 0;
+    while ((m = BARE_TICKER_REGEX.exec(text)) !== null) {
+      const sym = normalizeTicker(m[1] || '');
+      if (!sym || sym.length < 1) continue;
+      if (TICKER_BLACKLIST.has(sym)) continue;
+      if (!knownTickers.has(sym)) continue;
+      found.add(sym);
+    }
   }
 
   return found;
