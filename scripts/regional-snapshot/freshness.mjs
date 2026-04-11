@@ -35,6 +35,13 @@ export const FRESHNESS_REGISTRY = [
   { key: 'energy:mix:v1:_all',                   maxAgeMin: 50400, feedsAxes: ['energy_vulnerability'] },
   { key: 'economic:eu-gas-storage:v1',           maxAgeMin: 2880,  feedsAxes: ['energy_vulnerability'] },
   { key: 'economic:spr:v1',                      maxAgeMin: 10080, feedsAxes: ['energy_buffer'] },
+  // Mobility v1 (Phase 2 PR2) — feed the MobilityState block via mobility.mjs.
+  // maxAgeMin matches each seeder's cron interval + safety buffer.
+  { key: 'aviation:delays:faa:v1',               maxAgeMin: 60,    feedsAxes: ['mobility'] },
+  { key: 'aviation:delays:intl:v3',              maxAgeMin: 90,    feedsAxes: ['mobility'] },
+  { key: 'aviation:notam:closures:v2',           maxAgeMin: 120,   feedsAxes: ['mobility'] },
+  { key: 'intelligence:gpsjam:v2',               maxAgeMin: 240,   feedsAxes: ['mobility', 'airspace'] },
+  { key: 'military:flights:v1',                  maxAgeMin: 30,    feedsAxes: ['mobility', 'reroute_intensity'] },
 ];
 
 export const ALL_INPUT_KEYS = FRESHNESS_REGISTRY.map((s) => s.key);

@@ -44,6 +44,7 @@ import { ALL_INPUT_KEYS } from './regional-snapshot/freshness.mjs';
 import { generateSnapshotId } from './regional-snapshot/_helpers.mjs';
 import { generateRegionalNarrative, emptyNarrative } from './regional-snapshot/narrative.mjs';
 import { emitRegionalAlerts } from './regional-snapshot/alert-emitter.mjs';
+import { buildMobilityState } from './regional-snapshot/mobility.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -89,7 +90,7 @@ async function readAllInputs() {
  *   5. triggers (BEFORE scenarios)
  *   6. scenarios (normalized)
  *   7. transmissions
- *   8. mobility (empty in Phase 0)
+ *   8. mobility (v1 adapter — airports, airspace, reroute_intensity, NOTAMs)
  *   9. evidence
  *   10. snapshot_id
  *   11. read previous + derive regime
@@ -118,14 +119,11 @@ async function computeSnapshot(regionId, sources) {
   // Step 7: transmissions (matched to active triggers)
   const transmissionPaths = resolveTransmissions(regionId, triggers);
 
-  // Step 8: mobility (empty in Phase 0 - see appendix Mobility Input Keys)
-  const mobility = {
-    airspace: [],
-    flight_corridors: [],
-    airports: [],
-    reroute_intensity: 0,
-    notam_closures: [],
-  };
+  // Step 8: mobility v1 — adapters over existing Redis inputs:
+  // aviation:delays:{faa,intl}, aviation:notam:closures:v2,
+  // intelligence:gpsjam:v2, military:flights:v1. Pure, never throws.
+  // See Phase 2 PR2 notes in scripts/regional-snapshot/mobility.mjs.
+  const mobility = buildMobilityState(regionId, sources);
 
   // Step 9: evidence chain
   const evidence = collectEvidence(regionId, sources);
