@@ -6,8 +6,15 @@ import {
   buildAnalysisResponse,
   buildTechnicalSnapshot,
   getFallbackOverlay,
+  type AnalystData,
   type DividendProfile,
 } from '../server/worldmonitor/market/v1/analyze-stock.ts';
+
+const emptyAnalystData: AnalystData = {
+  analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
+  priceTarget: { numberOfAnalysts: 0 },
+  recentUpgrades: [],
+};
 
 const originalFetch = globalThis.fetch;
 
@@ -259,6 +266,7 @@ describe('buildAnalysisResponse with dividend', () => {
       technical,
       headlines: [],
       overlay,
+      analystData: emptyAnalystData,
       includeNews: false,
       analysisAt: Date.now(),
       generatedAt: new Date().toISOString(),
@@ -288,6 +296,7 @@ describe('buildAnalysisResponse with dividend', () => {
       technical,
       headlines: [],
       overlay,
+      analystData: emptyAnalystData,
       includeNews: false,
       analysisAt: Date.now(),
       generatedAt: new Date().toISOString(),
@@ -304,6 +313,7 @@ describe('buildAnalysisResponse with dividend', () => {
       technical,
       headlines: [],
       overlay,
+      analystData: emptyAnalystData,
       includeNews: false,
       analysisAt: Date.now(),
       generatedAt: new Date().toISOString(),
