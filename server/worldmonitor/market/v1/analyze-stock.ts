@@ -203,26 +203,19 @@ function inferDividendFrequency(paymentsPerYear: number): string {
   return '';
 }
 
-function computeDividendCagr(annualTotals: Map<number, number>, dividendEntries: { date: number }[]): number {
+function computeDividendCagr(annualTotals: Map<number, number>): number {
   if (annualTotals.size < 2) return 0;
   const years = [...annualTotals.keys()].sort((a, b) => a - b);
+  const currentYear = new Date().getFullYear();
 
-  const firstYear = years[0]!;
-  const lastYear = years[years.length - 1]!;
-  const firstYearMonths = new Set(
-    dividendEntries.filter(e => new Date(e.date * 1000).getFullYear() === firstYear)
-      .map(e => new Date(e.date * 1000).getMonth()),
-  ).size;
-  const lastYearMonths = new Set(
-    dividendEntries.filter(e => new Date(e.date * 1000).getFullYear() === lastYear)
-      .map(e => new Date(e.date * 1000).getMonth()),
-  ).size;
-
-  const fullYears = years.filter(y => {
-    if (y === firstYear && firstYearMonths < 10) return false;
-    if (y === lastYear && lastYearMonths < 10) return false;
-    return true;
-  });
+  // Treat any year strictly earlier than the current calendar year as
+  // complete — all scheduled dividends for that year have been paid.
+  // Exclude the current (in-progress) year since it may be missing
+  // payments that haven't landed yet. Month-count gating (the previous
+  // approach) silently dropped the first/last year for every non-monthly
+  // payer (quarterly = 4 months, semiannual = 2, annual = 1), collapsing
+  // CAGR to 0 for most ordinary dividend stocks.
+  const fullYears = years.filter(y => y < currentYear);
 
   if (fullYears.length < 2) return 0;
   const earliest = annualTotals.get(fullYears[0]!) ?? 0;
@@ -273,7 +266,7 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
     const latestEntry = entries[entries.length - 1]!;
     const exDividendDate = (latestEntry.date ?? 0) * 1000;
 
-    const cagr = computeDividendCagr(annualTotals, entries.map(e => ({ date: e.date ?? 0 })));
+    const cagr = computeDividendCagr(annualTotals);
 
     return {
       dividendYield: round(dividendYield),

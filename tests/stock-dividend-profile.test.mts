@@ -75,6 +75,63 @@ describe('fetchDividendProfile', () => {
     assert.ok(profile.trailingAnnualDividendRate > 0, 'trailing rate should be positive');
   });
 
+  it('produces a non-zero CAGR for a quarterly payer with several full calendar years', async () => {
+    // Build quarterly dividends anchored at known, past calendar years.
+    // Month-count gating (pre-fix) discarded years with < 10 distinct
+    // months, which dropped every non-monthly payer's first/last full
+    // year and collapsed CAGR to 0.
+    const currentYear = new Date().getFullYear();
+    const divs: Record<string, { amount: number; date: number }> = {};
+    // Four fully completed prior calendar years, growing 0.50 -> 0.65.
+    const startYear = currentYear - 4;
+    for (let yearIndex = 0; yearIndex < 4; yearIndex++) {
+      const year = startYear + yearIndex;
+      const amount = 0.50 + yearIndex * 0.05;
+      for (let q = 0; q < 4; q++) {
+        const month = q * 3;
+        const ts = Math.floor(Date.UTC(year, month, 15) / 1000);
+        divs[String(ts)] = { amount, date: ts };
+      }
+    }
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify(makeDividendChartPayload(divs)), { status: 200 });
+    }) as typeof fetch;
+    const profile = await fetchDividendProfile('KO', 100);
+    assert.equal(profile.dividendFrequency, 'Quarterly');
+    assert.ok(
+      profile.dividendCagr > 0,
+      `quarterly payer should have non-zero CAGR; got ${profile.dividendCagr}`,
+    );
+    // (0.65 / 0.50) ^ (1/3) - 1 ~= 9.14% — round to 1dp.
+    assert.ok(
+      profile.dividendCagr > 8 && profile.dividendCagr < 10,
+      `CAGR should be roughly 9%; got ${profile.dividendCagr}`,
+    );
+  });
+
+  it('produces a non-zero CAGR for an annual payer with several full calendar years', async () => {
+    // Annual payer = 1 distinct month per year. The pre-fix CAGR gate
+    // required 10 distinct months per year, so annual payers always
+    // collapsed to 0. Post-fix we only care about calendar position.
+    const currentYear = new Date().getFullYear();
+    const divs: Record<string, { amount: number; date: number }> = {};
+    for (let yearIndex = 0; yearIndex < 5; yearIndex++) {
+      const year = currentYear - 5 + yearIndex;
+      const amount = 2.0 + yearIndex * 0.25;
+      const ts = Math.floor(Date.UTC(year, 5, 15) / 1000);
+      divs[String(ts)] = { amount, date: ts };
+    }
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify(makeDividendChartPayload(divs)), { status: 200 });
+    }) as typeof fetch;
+    const profile = await fetchDividendProfile('EU', 50);
+    assert.equal(profile.dividendFrequency, 'Annual');
+    assert.ok(
+      profile.dividendCagr > 0,
+      `annual payer should have non-zero CAGR; got ${profile.dividendCagr}`,
+    );
+  });
+
   it('identifies monthly frequency', async () => {
     const now = Math.floor(Date.now() / 1000);
     const divs: Record<string, { amount: number; date: number }> = {};
