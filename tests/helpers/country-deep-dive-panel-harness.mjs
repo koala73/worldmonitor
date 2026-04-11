@@ -74,11 +74,26 @@ async function loadCountryDeepDivePanel() {
         return 0;
       }
     `],
-    ['sanitize-stub', `export function sanitizeUrl(value) { return value ?? ''; }`],
+    ['sanitize-stub', `
+      export function sanitizeUrl(value) { return value ?? ''; }
+      export function escapeHtml(value) { return value ?? ''; }
+    `],
     ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
-    ['utils-stub', `export function getCSSColor() { return '#44ff88'; }`],
+    ['utils-stub', `
+      export function getCSSColor() { return '#44ff88'; }
+      export function createCircuitBreaker() { return { execute: (fn) => fn() }; }
+      export function loadFromStorage() { return null; }
+      export function saveToStorage() {}
+    `],
     ['country-flag-stub', `export function toFlagEmoji(code, fallback = '🌍') { return code ? ':' + code + ':' : fallback; }`],
     ['ports-stub', `export const PORTS = [];`],
+    ['trade-routes-stub', `export function getChokepointRoutes() { return []; }`],
+    ['geo-stub', `export const STRATEGIC_WATERWAYS = [];`],
+    ['analytics-stub', `export function trackGateHit() {}`],
+    ['supply-chain-stub', `
+      export function fetchBypassOptions() { return Promise.resolve({ corridors: [] }); }
+      export function getCountryChokepointIndex() { return null; }
+    `],
     ['runtime-stub', `
       export function toApiUrl(path) { return path; }
       export function isDesktopRuntime() { return false; }
@@ -126,6 +141,10 @@ async function loadCountryDeepDivePanel() {
     ['@/utils', 'utils-stub'],
     ['@/utils/country-flag', 'country-flag-stub'],
     ['@/config/ports', 'ports-stub'],
+    ['@/config/trade-routes', 'trade-routes-stub'],
+    ['@/config/geo', 'geo-stub'],
+    ['@/services/analytics', 'analytics-stub'],
+    ['@/services/supply-chain', 'supply-chain-stub'],
     ['./ResilienceWidget', 'resilience-widget-stub'],
     ['@/services/runtime', 'runtime-stub'],
     ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
