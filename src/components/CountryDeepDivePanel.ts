@@ -1721,8 +1721,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     mount.append(table, recsMount);
 
     const importerIso2 = this.currentCode;
+    const capturedCode = this.getCode();
     if (importerIso2) {
       fetchChokepointStatus().then(resp => {
+        if (this.getCode() !== capturedCode) return;
         if (!resp.chokepoints.length) return;
         const scores: ChokepointScoreMap = new Map();
         for (const cp of resp.chokepoints) {
