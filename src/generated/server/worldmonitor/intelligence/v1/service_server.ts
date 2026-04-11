@@ -818,6 +818,24 @@ export interface NarrativeSection {
   evidenceIds: string[];
 }
 
+export interface GetRegimeHistoryRequest {
+  regionId: string;
+  limit: number;
+}
+
+export interface GetRegimeHistoryResponse {
+  transitions: RegimeTransition[];
+}
+
+export interface RegimeTransition {
+  regionId: string;
+  label: string;
+  previousLabel: string;
+  transitionedAt: number;
+  transitionDriver: string;
+  snapshotId: string;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -900,6 +918,7 @@ export interface IntelligenceServiceHandler {
   computeEnergyShockScenario(ctx: ServerContext, req: ComputeEnergyShockScenarioRequest): Promise<ComputeEnergyShockScenarioResponse>;
   getCountryPortActivity(ctx: ServerContext, req: GetCountryPortActivityRequest): Promise<CountryPortActivityResponse>;
   getRegionalSnapshot(ctx: ServerContext, req: GetRegionalSnapshotRequest): Promise<GetRegionalSnapshotResponse>;
+  getRegimeHistory(ctx: ServerContext, req: GetRegimeHistoryRequest): Promise<GetRegimeHistoryResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -1948,6 +1967,54 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.getRegionalSnapshot(ctx, body);
           return new Response(JSON.stringify(result as GetRegionalSnapshotResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-regime-history",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetRegimeHistoryRequest = {
+            regionId: params.get("region_id") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getRegimeHistory", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getRegimeHistory(ctx, body);
+          return new Response(JSON.stringify(result as GetRegimeHistoryResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

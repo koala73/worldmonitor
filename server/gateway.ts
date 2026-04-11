@@ -226,6 +226,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // tests/route-cache-tier.test.mjs (every generated GET route needs a tier)
   // and documents the intended tier if the endpoint ever becomes non-premium.
   '/api/intelligence/v1/get-regional-snapshot': 'slow',
+  // get-regime-history is premium-gated same as get-regional-snapshot; this
+  // entry is required by tests/route-cache-tier.test.mjs even though the
+  // gateway short-circuits premium paths to slow-browser.
+  '/api/intelligence/v1/get-regime-history': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
 };

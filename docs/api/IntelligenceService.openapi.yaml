@@ -829,6 +829,55 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-regime-history:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetRegimeHistory
+            description: |-
+                GetRegimeHistory returns the region's regime transition log newest-first.
+                 Entries are append-only from the seed writer, recorded only when
+                 diffRegionalSnapshot reports regime_changed. Premium-gated.
+            operationId: GetRegimeHistory
+            parameters:
+                - name: region_id
+                  in: query
+                  description: |-
+                    Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                     Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                     trailing or consecutive hyphens.
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: |-
+                    Optional cap on how many entries to return. Defaults to 50 server-side
+                     when omitted or <= 0. Hard cap enforced by the handler at 100 (= the
+                     writer-side LTRIM cap in regime-history.mjs).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRegimeHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -2940,3 +2989,75 @@ components:
                     items:
                         type: string
             description: NarrativeSection is one block of narrative text plus its supporting evidence.
+        GetRegimeHistoryRequest:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                    pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                    description: |-
+                        Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                         Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                         trailing or consecutive hyphens.
+                limit:
+                    type: integer
+                    maximum: 100
+                    minimum: 0
+                    format: int32
+                    description: |-
+                        Optional cap on how many entries to return. Defaults to 50 server-side
+                         when omitted or <= 0. Hard cap enforced by the handler at 100 (= the
+                         writer-side LTRIM cap in regime-history.mjs).
+            required:
+                - regionId
+            description: |-
+                GetRegimeHistoryRequest asks for the recent regime transition log for a
+                 region. Returns newest-first. Phase 3 PR1 — see
+                 scripts/regional-snapshot/regime-history.mjs for the writer that
+                 populates the underlying Redis list on every regime change.
+        GetRegimeHistoryResponse:
+            type: object
+            properties:
+                transitions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RegimeTransition'
+            description: |-
+                GetRegimeHistoryResponse returns the region's regime transition log
+                 newest-first. The list is append-only from the seed writer's perspective:
+                 only diffs with regime_changed set produce an entry, so this is a pure
+                 transition stream (no steady-state noise).
+        RegimeTransition:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                label:
+                    type: string
+                    description: Current regime label (the label the region just moved INTO).
+                previousLabel:
+                    type: string
+                    description: |-
+                        Previous regime label (the label the region was in before). Empty for
+                         the first-ever recorded transition for a region.
+                transitionedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Unix ms when the transition was recorded. Mirrors
+                         snapshot.regime.transitioned_at when available.. Warning: Values > 2^53 may lose precision in JavaScript
+                transitionDriver:
+                    type: string
+                    description: |-
+                        Free-text driver string from the seed writer (e.g. "cross_source_surge").
+                         May be empty.
+                snapshotId:
+                    type: string
+                    description: |-
+                        Snapshot id that materialized this transition. Points back to the
+                         full snapshot via intelligence:snapshot-by-id:v1:{snapshot_id}.
+            description: |-
+                RegimeTransition is a single recorded regime change moment. One of these
+                 lands in the log each time diffRegionalSnapshot() reports regime_changed.

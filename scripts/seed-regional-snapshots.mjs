@@ -45,6 +45,7 @@ import { generateSnapshotId } from './regional-snapshot/_helpers.mjs';
 import { generateRegionalNarrative, emptyNarrative } from './regional-snapshot/narrative.mjs';
 import { emitRegionalAlerts } from './regional-snapshot/alert-emitter.mjs';
 import { buildMobilityState } from './regional-snapshot/mobility.mjs';
+import { recordRegimeTransition } from './regional-snapshot/regime-history.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -247,6 +248,19 @@ async function main() {
         } catch (alertErr) {
           const alertMsg = /** @type {any} */ (alertErr)?.message ?? alertErr;
           console.warn(`[${region.id}] alert emitter threw: ${alertMsg}`);
+        }
+
+        // Record a regime drift history entry iff this snapshot actually
+        // changed the regime label. Steady-state snapshots produce no entry.
+        // Best-effort — never blocks persist. See regime-history.mjs.
+        try {
+          const historyResult = await recordRegimeTransition(region, snapshot, diff);
+          if (historyResult.recorded) {
+            console.log(`[${region.id}] regime drift recorded: ${historyResult.entry?.previous_label || 'none'} → ${historyResult.entry?.label}`);
+          }
+        } catch (histErr) {
+          const histMsg = /** @type {any} */ (histErr)?.message ?? histErr;
+          console.warn(`[${region.id}] regime-history threw: ${histMsg}`);
         }
       } else {
         skipped += 1;

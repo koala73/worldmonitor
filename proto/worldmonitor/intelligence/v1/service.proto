@@ -25,6 +25,7 @@ import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
 import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
 import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
 import "worldmonitor/intelligence/v1/get_regional_snapshot.proto";
+import "worldmonitor/intelligence/v1/get_regime_history.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
@@ -178,5 +179,12 @@ service IntelligenceService {
   // this handler only reads canonical state. Premium-gated.
   rpc GetRegionalSnapshot(GetRegionalSnapshotRequest) returns (GetRegionalSnapshotResponse) {
     option (sebuf.http.config) = {path: "/get-regional-snapshot", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegimeHistory returns the region's regime transition log newest-first.
+  // Entries are append-only from the seed writer, recorded only when
+  // diffRegionalSnapshot reports regime_changed. Premium-gated.
+  rpc GetRegimeHistory(GetRegimeHistoryRequest) returns (GetRegimeHistoryResponse) {
+    option (sebuf.http.config) = {path: "/get-regime-history", method: HTTP_METHOD_GET};
   }
 }

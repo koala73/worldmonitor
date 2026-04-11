@@ -818,6 +818,24 @@ export interface NarrativeSection {
   evidenceIds: string[];
 }
 
+export interface GetRegimeHistoryRequest {
+  regionId: string;
+  limit: number;
+}
+
+export interface GetRegimeHistoryResponse {
+  transitions: RegimeTransition[];
+}
+
+export interface RegimeTransition {
+  regionId: string;
+  label: string;
+  previousLabel: string;
+  transitionedAt: number;
+  transitionDriver: string;
+  snapshotId: string;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -1461,6 +1479,32 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as GetRegionalSnapshotResponse;
+  }
+
+  async getRegimeHistory(req: GetRegimeHistoryRequest, options?: IntelligenceServiceCallOptions): Promise<GetRegimeHistoryResponse> {
+    let path = "/api/intelligence/v1/get-regime-history";
+    const params = new URLSearchParams();
+    if (req.regionId != null && req.regionId !== "") params.set("region_id", String(req.regionId));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetRegimeHistoryResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
