@@ -265,30 +265,28 @@ async function wtoFetch(path, params) {
   return resp.json();
 }
 
+// Budget Lab main page is a Next.js SPA; data is in a GitHub-hosted embedded report
+const BUDGET_LAB_EMBED_URL = 'https://raw.githubusercontent.com/Budget-Lab-Yale/tariff-impact-tracker/main/website/html/tariff_impacts_report_drupal.html';
+
 async function fetchBudgetLabEffectiveTariffRate() {
-  try {
-    const resp = await fetch(BUDGET_LAB_TARIFFS_URL, {
-      headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      console.warn(`  Budget Lab tariffs: HTTP ${resp.status}`);
-      return null;
-    }
-    const html = await resp.text();
-    const parsed = parseBudgetLabEffectiveTariffHtml(html);
-    if (!parsed) {
-      const hasBody = html.length > 5000 && /<body/i.test(html);
-      const reason = hasBody ? 'page structure changed' : 'JS-rendered SPA (no static content)';
-      console.log(`  Budget Lab tariffs: skipped (${reason})`);
-      return null;
-    }
-    console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);
-    return parsed;
-  } catch (e) {
-    console.warn(`  Budget Lab tariffs: ${e.message}`);
-    return null;
+  // Try the GitHub-hosted embedded report first (reliable, static HTML)
+  for (const url of [BUDGET_LAB_EMBED_URL, BUDGET_LAB_TARIFFS_URL]) {
+    try {
+      const resp = await fetch(url, {
+        headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) continue;
+      const html = await resp.text();
+      const parsed = parseBudgetLabEffectiveTariffHtml(html);
+      if (parsed) {
+        console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);
+        return parsed;
+      }
+    } catch { /* try next */ }
   }
+  console.warn('  Budget Lab tariffs: all sources failed');
+  return null;
 }
 
 // ─── Trade Flows (WTO) — pre-seed major reporters vs World + key bilateral pairs ───
