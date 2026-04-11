@@ -5,7 +5,7 @@ description: "Real-time resilience scoring for 222 countries across 5 domains an
 
 The WorldMonitor Country Resilience Index (CRI) scores every country in the world on a 0-100 scale, combining long-run structural capacity with current operational stress to produce an actionable resilience metric. Rather than relying on static country risk ratings, the CRI updates every 6 hours from official and authoritative sources and exposes full provenance, coverage, and imputation context so analysts can see exactly *why* a score moved and how much of it is real data versus imputed.
 
-This document is the v1.0 reference for the live product. A planned v2.0 upgrade (see the [reference-grade upgrade plan](../internal/country-resilience-upgrade-plan.md)) will rebuild the top-level shape into three pillars (structural readiness, live shock exposure, recovery capacity) with a partly non-compensatory aggregation, and ship an annual Reference Edition at citation quality. That work is tracked separately; everything documented below describes the **current shipping behavior**.
+This document is the v1.0 reference for the live product. A planned v2.0 upgrade will rebuild the top-level shape into three pillars (structural readiness, live shock exposure, recovery capacity) with a partly non-compensatory aggregation, and ship an annual Reference Edition at citation quality. That work is tracked in a separate reference-grade upgrade plan and is not yet shipped; everything documented below describes the **current shipping behavior**.
 
 ## Overview
 
@@ -87,6 +87,8 @@ Sanctions use piecewise normalization: 0 entities = score 100, 1-10 = 90-75, 11-
 | electricityAccess | Access to electricity, % of population (World Bank EG.ELC.ACCS.ZS) | Higher is better | 40 - 100 | 0.40 | World Bank | Annual |
 | roadsPavedInfra | Paved roads as % of total road network (World Bank IS.ROD.PAVE.ZS) | Higher is better | 0 - 100 | 0.35 | World Bank | Annual |
 | infraOutages | Internet outage penalty (shared source with Cyber & Digital) | Lower is better | 20 - 0 | 0.25 | Outage monitoring | Realtime |
+
+**Note on the paved-roads indicator.** The same World Bank series (`IS.ROD.PAVE.ZS`) feeds two dimensions inside the Infrastructure domain: `roadsPavedLogistics` under Logistics & Supply (weight 0.50 within the dimension) and `roadsPavedInfra` here under Infrastructure (weight 0.35 within the dimension). This is deliberate source reuse, not accidental double counting: Logistics & Supply uses paved-road coverage as a proxy for transit viability, while Infrastructure uses it as a proxy for baseline public capital stock. The two dimensions legitimately care about the same signal for different reasons, and each dimension's contribution to the domain is further mediated by the dimension weight in `coverage-weighted mean` aggregation (see the Scoring Formula section). The v2.0 reference-grade upgrade plan is expected to consolidate shared upstream signals into a single indicator registry so this kind of reuse is documented at the source level rather than per-dimension; for v1.0 the two separate metric rows are preserved for backward compatibility.
 
 ### Energy Domain (weight 0.15)
 
