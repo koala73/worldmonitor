@@ -1224,6 +1224,14 @@ components:
                     format: double
                 engineVersion:
                     type: string
+                analystConsensus:
+                    $ref: '#/components/schemas/AnalystConsensus'
+                priceTarget:
+                    $ref: '#/components/schemas/PriceTarget'
+                recentUpgrades:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UpgradeDowngrade'
         StockAnalysisHeadline:
             type: object
             properties:
@@ -1234,6 +1242,65 @@ components:
                 link:
                     type: string
                 publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        AnalystConsensus:
+            type: object
+            properties:
+                strongBuy:
+                    type: integer
+                    format: int32
+                buy:
+                    type: integer
+                    format: int32
+                hold:
+                    type: integer
+                    format: int32
+                sell:
+                    type: integer
+                    format: int32
+                strongSell:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+                period:
+                    type: string
+        PriceTarget:
+            type: object
+            properties:
+                high:
+                    type: number
+                    format: double
+                low:
+                    type: number
+                    format: double
+                mean:
+                    type: number
+                    format: double
+                median:
+                    type: number
+                    format: double
+                current:
+                    type: number
+                    format: double
+                numberOfAnalysts:
+                    type: integer
+                    format: int32
+        UpgradeDowngrade:
+            type: object
+            properties:
+                firm:
+                    type: string
+                toGrade:
+                    type: string
+                fromGrade:
+                    type: string
+                action:
+                    type: string
+                epochGradeDate:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
