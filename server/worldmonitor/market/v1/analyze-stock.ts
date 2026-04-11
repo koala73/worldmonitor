@@ -307,9 +307,14 @@ function safeRaw(field: { raw?: number } | undefined): number {
   return typeof field?.raw === 'number' && Number.isFinite(field.raw) ? field.raw : 0;
 }
 
+function optionalPositive(field: { raw?: number } | undefined): number | undefined {
+  const raw = field?.raw;
+  return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : undefined;
+}
+
 const EMPTY_ANALYST_DATA: AnalystData = {
   analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
-  priceTarget: { high: 0, low: 0, mean: 0, median: 0, current: 0, numberOfAnalysts: 0 },
+  priceTarget: { numberOfAnalysts: 0 },
   recentUpgrades: [],
 };
 
@@ -345,11 +350,11 @@ export async function fetchYahooAnalystData(symbol: string): Promise<AnalystData
 
     const fd = result.financialData;
     const priceTarget: PriceTarget = fd ? {
-      high: safeRaw(fd.targetHighPrice),
-      low: safeRaw(fd.targetLowPrice),
-      mean: safeRaw(fd.targetMeanPrice),
-      median: safeRaw(fd.targetMedianPrice),
-      current: safeRaw(fd.currentPrice),
+      high: optionalPositive(fd.targetHighPrice),
+      low: optionalPositive(fd.targetLowPrice),
+      mean: optionalPositive(fd.targetMeanPrice),
+      median: optionalPositive(fd.targetMedianPrice),
+      current: optionalPositive(fd.currentPrice),
       numberOfAnalysts: safeRaw(fd.numberOfAnalystOpinions),
     } : EMPTY_ANALYST_DATA.priceTarget;
 

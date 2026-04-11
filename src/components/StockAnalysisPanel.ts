@@ -141,7 +141,8 @@ export class StockAnalysisPanel extends Panel {
     const pt = item.priceTarget;
     const upgrades = item.recentUpgrades;
     const hasConsensus = consensus && consensus.total > 0;
-    const hasPriceTarget = pt && pt.numberOfAnalysts > 0 && pt.mean > 0;
+    const hasMean = typeof pt?.mean === 'number' && pt.mean > 0;
+    const hasPriceTarget = !!pt && pt.numberOfAnalysts > 0 && hasMean;
     const hasUpgrades = upgrades && upgrades.length > 0;
 
     if (!hasConsensus && !hasPriceTarget && !hasUpgrades) return '';
@@ -187,19 +188,34 @@ export class StockAnalysisPanel extends Panel {
     const currSymbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : (currency || '$');
     const isSymbolPrefix = currSymbol.length === 1;
     const fmt = (v: number) => isSymbolPrefix ? `${currSymbol}${v.toFixed(2)}` : `${v.toFixed(2)} ${currSymbol}`;
-    const displayMedian = pt.median > 0 ? pt.median : pt.mean;
-    const upsidePct = currentPrice > 0 ? ((displayMedian - currentPrice) / currentPrice * 100) : 0;
-    const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
-    const upsideStr = `${upsidePct >= 0 ? '+' : ''}${upsidePct.toFixed(1)}%`;
 
-    return `
-      <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;margin-bottom:8px">
-        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Low</div><div style="margin-top:2px">${escapeHtml(fmt(pt.low))}</div></div>
-        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Median</div><div style="margin-top:2px">${escapeHtml(fmt(displayMedian))}</div></div>
-        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">High</div><div style="margin-top:2px">${escapeHtml(fmt(pt.high))}</div></div>
-        <div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">vs Current</div><div style="margin-top:2px;color:${upsideColor}">${escapeHtml(upsideStr)}</div></div>
-      </div>
-    `;
+    const hasVal = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
+    const low = hasVal(pt.low) ? pt.low : undefined;
+    const high = hasVal(pt.high) ? pt.high : undefined;
+    const mean = hasVal(pt.mean) ? pt.mean : undefined;
+    const median = hasVal(pt.median) ? pt.median : undefined;
+    const displayMedian = median ?? mean;
+
+    if (!displayMedian) return '';
+
+    const cells: string[] = [];
+    if (low !== undefined) {
+      cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Low</div><div style="margin-top:2px">${escapeHtml(fmt(low))}</div></div>`);
+    }
+    cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Median</div><div style="margin-top:2px">${escapeHtml(fmt(displayMedian))}</div></div>`);
+    if (high !== undefined) {
+      cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">High</div><div style="margin-top:2px">${escapeHtml(fmt(high))}</div></div>`);
+    }
+    cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Analysts</div><div style="margin-top:2px">${escapeHtml(String(pt.numberOfAnalysts))}</div></div>`);
+
+    if (currentPrice > 0) {
+      const upsidePct = ((displayMedian - currentPrice) / currentPrice) * 100;
+      const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+      const upsideStr = `${upsidePct >= 0 ? '+' : ''}${upsidePct.toFixed(1)}%`;
+      cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">vs Current</div><div style="margin-top:2px;color:${upsideColor}">${escapeHtml(upsideStr)}</div></div>`);
+    }
+
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;margin-bottom:8px">${cells.join('')}</div>`;
   }
 
   private renderRecentUpgrades(upgrades: UpgradeDowngrade[]): string {

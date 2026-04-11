@@ -95,11 +95,11 @@ message AnalystConsensus {
 }
 
 message PriceTarget {
-  double high = 1;
-  double low = 2;
-  double mean = 3;
-  double median = 4;
-  double current = 5;
+  optional double high = 1;
+  optional double low = 2;
+  optional double mean = 3;
+  optional double median = 4;
+  optional double current = 5;
   int32 number_of_analysts = 6;
 }
 

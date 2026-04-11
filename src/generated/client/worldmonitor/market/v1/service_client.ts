@@ -243,11 +243,11 @@ export interface AnalystConsensus {
 }
 
 export interface PriceTarget {
-  high: number;
-  low: number;
-  mean: number;
-  median: number;
-  current: number;
+  high?: number;
+  low?: number;
+  mean?: number;
+  median?: number;
+  current?: number;
   numberOfAnalysts: number;
 }
 

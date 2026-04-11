@@ -63,6 +63,27 @@ export function getLatestStockAnalysisSnapshots(history: StockAnalysisHistory, l
     .slice(0, limit);
 }
 
+// Snapshots written before the analyst-revisions rollout have neither
+// analystConsensus nor priceTarget fields. Treat those as stale even if
+// the generatedAt timestamp is still within the freshness window so the
+// loader forces a live refetch to populate the new section.
+function hasAnalystSchemaFields(snapshot: StockAnalysisSnapshot | undefined): boolean {
+  if (!snapshot) return false;
+  return snapshot.analystConsensus !== undefined || snapshot.priceTarget !== undefined;
+}
+
+function isFreshSnapshot(
+  snapshot: StockAnalysisSnapshot | undefined,
+  now: number,
+  maxAgeMs: number,
+): boolean {
+  if (!snapshot?.available) return false;
+  const ts = Date.parse(snapshot.generatedAt || '');
+  if (!Number.isFinite(ts) || (now - ts) > maxAgeMs) return false;
+  if (!hasAnalystSchemaFields(snapshot)) return false;
+  return true;
+}
+
 export function hasFreshStockAnalysisHistory(
   history: StockAnalysisHistory,
   symbols: string[],
@@ -70,11 +91,7 @@ export function hasFreshStockAnalysisHistory(
 ): boolean {
   if (symbols.length === 0) return false;
   const now = Date.now();
-  return symbols.every((symbol) => {
-    const latest = history[symbol]?.[0];
-    const ts = Date.parse(latest?.generatedAt || '');
-    return !!latest?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs;
-  });
+  return symbols.every((symbol) => isFreshSnapshot(history[symbol]?.[0], now, maxAgeMs));
 }
 
 export function getMissingOrStaleStockAnalysisSymbols(
@@ -83,11 +100,7 @@ export function getMissingOrStaleStockAnalysisSymbols(
   maxAgeMs = STOCK_ANALYSIS_FRESH_MS,
 ): string[] {
   const now = Date.now();
-  return symbols.filter((symbol) => {
-    const latest = history[symbol]?.[0];
-    const ts = Date.parse(latest?.generatedAt || '');
-    return !(latest?.available && Number.isFinite(ts) && (now - ts) <= maxAgeMs);
-  });
+  return symbols.filter((symbol) => !isFreshSnapshot(history[symbol]?.[0], now, maxAgeMs));
 }
 
 export async function fetchStockAnalysisHistory(

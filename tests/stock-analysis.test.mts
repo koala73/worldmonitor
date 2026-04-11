@@ -217,7 +217,7 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(data.recentUpgrades.length, 0);
   });
 
-  it('uses typeof guards for upstream numeric fields', async () => {
+  it('uses typeof guards for upstream numeric fields and omits invalid targets', async () => {
     globalThis.fetch = (async () => {
       return new Response(JSON.stringify({
         quoteSummary: {
@@ -242,9 +242,34 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(data.analystConsensus.sell, 0);
     assert.equal(data.analystConsensus.strongSell, 0);
     assert.equal(data.analystConsensus.total, 3);
-    assert.equal(data.priceTarget.high, 0);
-    assert.equal(data.priceTarget.low, 0);
+    assert.equal(data.priceTarget.high, undefined);
+    assert.equal(data.priceTarget.low, undefined);
+    assert.equal(data.priceTarget.mean, undefined);
+    assert.equal(data.priceTarget.median, undefined);
+    assert.equal(data.priceTarget.current, undefined);
     assert.equal(data.priceTarget.numberOfAnalysts, 10);
+  });
+
+  it('returns undefined price target fields when financialData is entirely absent', async () => {
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify({
+        quoteSummary: {
+          result: [{
+            recommendationTrend: {
+              trend: [{ period: '0m', strongBuy: 5, buy: 3, hold: 2, sell: 0, strongSell: 0 }],
+            },
+          }],
+        },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const data = await fetchYahooAnalystData('AAPL');
+    assert.equal(data.analystConsensus.total, 10);
+    assert.equal(data.priceTarget.high, undefined);
+    assert.equal(data.priceTarget.low, undefined);
+    assert.equal(data.priceTarget.mean, undefined);
+    assert.equal(data.priceTarget.median, undefined);
+    assert.equal(data.priceTarget.numberOfAnalysts, 0);
   });
 });
 
