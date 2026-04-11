@@ -9,11 +9,13 @@ import "sebuf/http/annotations.proto";
 // for a given region. See shared/geography.ts for the canonical region ids.
 message GetRegionalSnapshotRequest {
   // Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+  // Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+  // trailing or consecutive hyphens.
   string region_id = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32,
-    (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]*$",
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
     (sebuf.http.query) = {name: "region_id"}
   ];
 }

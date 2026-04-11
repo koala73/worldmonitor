@@ -220,6 +220,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-country-energy-profile': 'slow',
   '/api/intelligence/v1/compute-energy-shock': 'fast',
   '/api/intelligence/v1/get-country-port-activity': 'slow',
+  // NOTE: get-regional-snapshot is premium-gated via PREMIUM_RPC_PATHS; the
+  // gateway short-circuits to 'slow-browser' before consulting this map. The
+  // entry below exists to satisfy the parity contract enforced by
+  // tests/route-cache-tier.test.mjs (every generated GET route needs a tier)
+  // and documents the intended tier if the endpoint ever becomes non-premium.
   '/api/intelligence/v1/get-regional-snapshot': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',

@@ -803,7 +803,10 @@ paths:
             parameters:
                 - name: region_id
                   in: query
-                  description: Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                  description: |-
+                    Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                     Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                     trailing or consecutive hyphens.
                   required: false
                   schema:
                     type: string
@@ -2457,8 +2460,11 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
-                    pattern: ^[a-z][a-z0-9-]*$
-                    description: Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                    pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                    description: |-
+                        Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                         Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                         trailing or consecutive hyphens.
             required:
                 - regionId
             description: |-

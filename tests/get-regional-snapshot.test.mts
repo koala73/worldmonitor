@@ -435,7 +435,12 @@ describe('security wiring', () => {
     assert.match(premiumPathsSrc, /'\/api\/intelligence\/v1\/get-regional-snapshot'/);
   });
 
-  it('adds the endpoint to RPC_CACHE_TIER with slow tier', () => {
+  it('has a RPC_CACHE_TIER entry for route-parity (even though premium paths bypass it)', () => {
+    // At runtime the gateway checks PREMIUM_RPC_PATHS first and short-circuits
+    // to 'slow-browser' regardless of RPC_CACHE_TIER. The entry exists to satisfy
+    // tests/route-cache-tier.test.mjs which enforces that every generated GET
+    // route has an explicit tier, and documents the intended tier if the endpoint
+    // ever becomes non-premium.
     assert.match(gatewaySrc, /'\/api\/intelligence\/v1\/get-regional-snapshot':\s*'slow'/);
   });
 });
@@ -449,8 +454,15 @@ describe('proto definition', () => {
     assert.match(serviceProtoSrc, /rpc GetRegionalSnapshot\(GetRegionalSnapshotRequest\) returns \(GetRegionalSnapshotResponse\)/);
   });
 
-  it('validates region_id as lowercase kebab pattern', () => {
-    assert.match(protoSrc, /buf\.validate\.field\)\.string\.pattern = "\^\[a-z\]\[a-z0-9-\]\*\$"/);
+  it('validates region_id as strict lowercase kebab pattern (no trailing or consecutive hyphens)', () => {
+    // Pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+    // - Starts with a lowercase letter
+    // - Each hyphen must be followed by at least one alphanumeric character
+    // - Rejects "mena-", "east-asia-", "foo--bar"
+    assert.match(
+      protoSrc,
+      /buf\.validate\.field\)\.string\.pattern = "\^\[a-z\]\[a-z0-9\]\*\(-\[a-z0-9\]\+\)\*\$"/,
+    );
   });
 
   it('defines RegionalSnapshot with all 13 top-level fields', () => {
