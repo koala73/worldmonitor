@@ -178,13 +178,32 @@ function inferDividendFrequency(paymentsPerYear: number): string {
   return '';
 }
 
-function computeDividendCagr(annualTotals: Map<number, number>): number {
+function computeDividendCagr(annualTotals: Map<number, number>, dividendEntries: { date: number }[]): number {
   if (annualTotals.size < 2) return 0;
   const years = [...annualTotals.keys()].sort((a, b) => a - b);
-  const earliest = annualTotals.get(years[0]!) ?? 0;
-  const latest = annualTotals.get(years[years.length - 1]!) ?? 0;
+
+  const firstYear = years[0]!;
+  const lastYear = years[years.length - 1]!;
+  const firstYearMonths = new Set(
+    dividendEntries.filter(e => new Date(e.date * 1000).getFullYear() === firstYear)
+      .map(e => new Date(e.date * 1000).getMonth()),
+  ).size;
+  const lastYearMonths = new Set(
+    dividendEntries.filter(e => new Date(e.date * 1000).getFullYear() === lastYear)
+      .map(e => new Date(e.date * 1000).getMonth()),
+  ).size;
+
+  const fullYears = years.filter(y => {
+    if (y === firstYear && firstYearMonths < 10) return false;
+    if (y === lastYear && lastYearMonths < 10) return false;
+    return true;
+  });
+
+  if (fullYears.length < 2) return 0;
+  const earliest = annualTotals.get(fullYears[0]!) ?? 0;
+  const latest = annualTotals.get(fullYears[fullYears.length - 1]!) ?? 0;
   if (earliest <= 0 || latest <= 0) return 0;
-  const span = years[years.length - 1]! - years[0]!;
+  const span = fullYears[fullYears.length - 1]! - fullYears[0]!;
   if (span < 1) return 0;
   return (Math.pow(latest / earliest, 1 / span) - 1) * 100;
 }
@@ -226,21 +245,14 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
     const latestEntry = entries[entries.length - 1]!;
     const exDividendDate = (latestEntry.date ?? 0) * 1000;
 
-    const allYieldValues = [...annualTotals.entries()]
-      .map(([, total]) => currentPrice > 0 ? (total / currentPrice) * 100 : 0)
-      .filter((v) => v > 0);
-    const fiveYearAvg = allYieldValues.length > 0
-      ? allYieldValues.reduce((s, v) => s + v, 0) / allYieldValues.length
-      : 0;
-
-    const cagr = computeDividendCagr(annualTotals);
+    const cagr = computeDividendCagr(annualTotals, entries.map(e => ({ date: e.date ?? 0 })));
 
     return {
       dividendYield: round(dividendYield),
       trailingAnnualDividendRate: round(trailingAnnual),
       exDividendDate,
       payoutRatio: 0,
-      fiveYearAvgDividendYield: round(fiveYearAvg),
+      fiveYearAvgDividendYield: 0,
       dividendFrequency: inferDividendFrequency(paymentsPerYear),
       dividendCagr: round(cagr),
     };
@@ -994,7 +1006,7 @@ export function buildAnalysisResponse(params: {
     trailingAnnualDividendRate: dividend?.trailingAnnualDividendRate ?? 0,
     exDividendDate: dividend?.exDividendDate ?? 0,
     payoutRatio: dividend?.payoutRatio ?? 0,
-    fiveYearAvgDividendYield: dividend?.fiveYearAvgDividendYield ?? 0,
+    fiveYearAvgDividendYield: 0,
     dividendFrequency: dividend?.dividendFrequency ?? '',
     dividendCagr: dividend?.dividendCagr ?? 0,
   };

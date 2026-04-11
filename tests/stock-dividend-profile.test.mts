@@ -155,7 +155,7 @@ describe('buildAnalysisResponse with dividend', () => {
     assert.equal(resp.trailingAnnualDividendRate, 1.92);
     assert.equal(resp.exDividendDate, 1_700_000_000_000);
     assert.equal(resp.payoutRatio, 35);
-    assert.equal(resp.fiveYearAvgDividendYield, 2.1);
+    assert.equal(resp.fiveYearAvgDividendYield, 0);
     assert.equal(resp.dividendFrequency, 'Quarterly');
     assert.equal(resp.dividendCagr, 8.2);
   });
