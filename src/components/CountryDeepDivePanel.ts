@@ -1718,8 +1718,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         } else if (hasUnknown && hasSafe) {
           const safeCount = enriched.filter(e => e.risk.riskLevel === 'safe').length;
           const unknownCount = enriched.filter(e => e.risk.riskLevel === 'unknown').length;
-          const item = this.el('div', 'cdp-recommendation-item cdp-recommendation-safe');
-          item.textContent = `\u2713 ${safeCount} supplier(s) verified safe. ${unknownCount} supplier(s) have no modeled route data.`;
+          const item = this.el('div', 'cdp-recommendation-item');
+          item.textContent = `\u2139 ${safeCount} supplier(s) verified safe. ${unknownCount} supplier(s) have no modeled route data.`;
           recsMount.append(item);
         } else {
           const safeItem = this.el('div', 'cdp-recommendation-item cdp-recommendation-safe');
