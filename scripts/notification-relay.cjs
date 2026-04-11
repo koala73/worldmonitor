@@ -596,8 +596,17 @@ async function shadowLogScore(event) {
 async function generateEventImpact(event, rule) {
   if (!AI_IMPACT_ENABLED) return null;
 
-  const prefs = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
-  if (!prefs) return null;
+  // fetchUserPreferences returns { data, error } — must destructure `data`.
+  // Without this the wrapper object was passed to extractUserContext, which
+  // read no keys, so ctx was always empty and the gate below returned null
+  // for every user, silently disabling AI impact analysis entirely.
+  const { data: prefs, error: prefsFetchError } = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
+  if (!prefs) {
+    if (prefsFetchError) {
+      console.warn(`[relay] Prefs fetch failed for ${rule.userId} — skipping AI impact`);
+    }
+    return null;
+  }
 
   const ctx = extractUserContext(prefs);
   if (ctx.tickers.length === 0 && ctx.airports.length === 0 && !ctx.frameworkName) return null;
