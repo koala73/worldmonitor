@@ -357,7 +357,8 @@ export class StockAnalysisPanel extends Panel {
         <tbody>
           ${rows.map(tx => {
             const isBuy = tx.transactionCode === 'P' || tx.transactionCode === 'A';
-            const typeColor = isBuy ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+            const isSell = tx.transactionCode === 'S' || tx.transactionCode === 'D' || tx.transactionCode === 'F';
+            const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical)' : 'var(--text-dim)';
             return `
               <tr>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--border);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>

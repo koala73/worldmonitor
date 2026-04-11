@@ -121,6 +121,44 @@ describe('getInsiderTransactions handler', () => {
     assert.equal(resp.transactions[1]!.name, 'Middle');
     assert.equal(resp.transactions[2]!.name, 'Older');
   });
+
+  it('surfaces exercise-only (code M) activity so panels do not show empty', async () => {
+    process.env.FINNHUB_API_KEY = 'test-key';
+    globalThis.fetch = (async () => {
+      return mockFinnhubResponse([
+        { name: 'CFO Exercise', share: 5000, change: 5000, transactionPrice: 10, transactionCode: 'M', transactionDate: recentDate(15), filingDate: recentDate(13) },
+        { name: 'CTO Exercise', share: 3000, change: 3000, transactionPrice: 8, transactionCode: 'M', transactionDate: recentDate(25), filingDate: recentDate(23) },
+      ]);
+    }) as typeof fetch;
+
+    const resp = await getInsiderTransactions({} as never, { symbol: 'AAPL' });
+    assert.equal(resp.unavailable, false);
+    assert.equal(resp.transactions.length, 2, 'exercise-only activity must reach the client so panels render the table');
+    assert.equal(resp.transactions[0]!.transactionCode, 'M');
+    // Exercise activity does not contribute to buys/sells dollar totals because
+    // transactionPrice is the option strike, not a market purchase/sale price.
+    assert.equal(resp.totalBuys, 0);
+    assert.equal(resp.totalSells, 0);
+    assert.equal(resp.netValue, 0);
+  });
+
+  it('blends exercise codes with buys and sells', async () => {
+    process.env.FINNHUB_API_KEY = 'test-key';
+    globalThis.fetch = (async () => {
+      return mockFinnhubResponse([
+        { name: 'Buyer', share: 1000, change: 1000, transactionPrice: 100, transactionCode: 'P', transactionDate: recentDate(5), filingDate: recentDate(3) },
+        { name: 'Exerciser', share: 500, change: 500, transactionPrice: 10, transactionCode: 'M', transactionDate: recentDate(10), filingDate: recentDate(8) },
+        { name: 'Seller', share: 2000, change: -2000, transactionPrice: 105, transactionCode: 'S', transactionDate: recentDate(15), filingDate: recentDate(13) },
+      ]);
+    }) as typeof fetch;
+
+    const resp = await getInsiderTransactions({} as never, { symbol: 'AAPL' });
+    assert.equal(resp.transactions.length, 3);
+    assert.equal(resp.totalBuys, 100000);
+    assert.equal(resp.totalSells, 210000);
+    const codes = resp.transactions.map(t => t.transactionCode).sort();
+    assert.deepEqual(codes, ['M', 'P', 'S']);
+  });
 });
 
 describe('MarketServiceClient getInsiderTransactions', () => {

@@ -13,6 +13,12 @@ const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1_000;
 
 const PURCHASE_CODES = new Set(['P', 'A']);
 const SALE_CODES = new Set(['S', 'D', 'F']);
+// Form 4 transaction code 'M' = exercise/conversion of derivative security.
+// We surface these so symbols whose only recent activity is option exercises
+// (e.g. cashless RSU/option events) do not appear as "no transactions".
+// Exercises do not contribute to the buys/sells dollar totals because the
+// price field is the strike price, not a market transaction.
+const NEUTRAL_CODES = new Set(['M']);
 
 interface FinnhubTransaction {
   name: string;
@@ -84,7 +90,11 @@ export async function getInsiderTransactions(
       }
 
       const mapped: InsiderTransaction[] = recent
-        .filter(tx => PURCHASE_CODES.has(tx.transactionCode) || SALE_CODES.has(tx.transactionCode))
+        .filter(tx =>
+          PURCHASE_CODES.has(tx.transactionCode)
+          || SALE_CODES.has(tx.transactionCode)
+          || NEUTRAL_CODES.has(tx.transactionCode),
+        )
         .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
         .slice(0, 20)
         .map(tx => ({

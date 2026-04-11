@@ -95,6 +95,7 @@ import {
   hasFreshStockAnalysisHistory,
   getLatestStockAnalysisSnapshots,
   mergeStockAnalysisHistory,
+  type StockAnalysisHistory,
 } from '@/services/stock-analysis-history';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
 import { mlWorker } from '@/services/ml-worker';
@@ -1211,8 +1212,13 @@ export class DataLoaderManager implements AppModule {
       const storedHistory = await fetchStockAnalysisHistory(targets.length);
       const cachedSnapshots = getLatestStockAnalysisSnapshots(storedHistory, targets.length);
       if (cachedSnapshots.length > 0) {
-        await this.loadInsiderDataForPanel(panel, targetSymbols);
         panel.renderAnalyses(cachedSnapshots, storedHistory, 'cached');
+        // Insider data is a secondary, optional enrichment fetched from a
+        // separate Finnhub-backed RPC. Kick it off without blocking the
+        // primary stock-analysis render; the helper re-renders the panel
+        // when data arrives so the insider section fills in asynchronously.
+        void this.loadInsiderDataForPanel(panel, targetSymbols, cachedSnapshots, storedHistory, 'cached')
+          .catch((error) => console.error('[StockAnalysis] insider fetch failed:', error));
       }
 
       if (hasFreshStockAnalysisHistory(storedHistory, targetSymbols)) {
@@ -1229,7 +1235,6 @@ export class DataLoaderManager implements AppModule {
         return;
       }
       const nextHistory = mergeStockAnalysisHistory(storedHistory, results);
-      await this.loadInsiderDataForPanel(panel, targetSymbols);
       // Build a combined view so a partial refetch does not shrink the panel:
       // preserve still-fresh cached snapshots for symbols we did NOT refetch,
       // and use live results for symbols we did. Watchlist order is preserved.
@@ -1244,11 +1249,10 @@ export class DataLoaderManager implements AppModule {
         const cached = storedHistory[target.symbol]?.[0];
         if (cached?.available) combined.push(cached);
       }
-      if (combined.length > 0) {
-        panel.renderAnalyses(combined, nextHistory, 'live');
-      } else {
-        panel.renderAnalyses(results, nextHistory, 'live');
-      }
+      const snapshotsToRender = combined.length > 0 ? combined : results;
+      panel.renderAnalyses(snapshotsToRender, nextHistory, 'live');
+      void this.loadInsiderDataForPanel(panel, targetSymbols, snapshotsToRender, nextHistory, 'live')
+        .catch((error) => console.error('[StockAnalysis] insider fetch failed:', error));
     } catch (error) {
       console.error('[StockAnalysis] failed:', error);
       const cachedHistory = await fetchStockAnalysisHistory().catch(() => ({}));
@@ -1261,7 +1265,13 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  private async loadInsiderDataForPanel(panel: StockAnalysisPanel, symbols: string[]): Promise<void> {
+  private async loadInsiderDataForPanel(
+    panel: StockAnalysisPanel,
+    symbols: string[],
+    snapshotsToReRender: StockAnalysisResult[],
+    historyForReRender: StockAnalysisHistory,
+    source: 'live' | 'cached',
+  ): Promise<void> {
     const results = await Promise.allSettled(symbols.map(s => fetchInsiderTransactions(s)));
     for (let i = 0; i < symbols.length; i++) {
       const r = results[i];
@@ -1271,6 +1281,11 @@ export class DataLoaderManager implements AppModule {
         panel.setInsiderData(symbols[i]!, { unavailable: true, symbol: symbols[i]!, totalBuys: 0, totalSells: 0, netValue: 0, transactions: [], fetchedAt: '' });
       }
     }
+    // Re-render the panel so the insider section becomes visible now that
+    // setInsiderData has populated insiderBySymbol. The original render
+    // call already happened (without waiting on this fetch) so users saw
+    // the analyst report immediately.
+    panel.renderAnalyses(snapshotsToReRender, historyForReRender, source);
   }
 
   async loadStockBacktest(): Promise<void> {
