@@ -268,7 +268,7 @@ async function wtoFetch(path, params) {
 // B235RC1Q027SBEA = customs duties (quarterly, SAAR billions)
 // IEAMGSN = goods imports (quarterly, SAAR billions)
 const FRED_CUSTOMS_SERIES = 'B235RC1Q027SBEA';
-const FRED_IMPORTS_SERIES = 'IEAMGSN';
+const FRED_IMPORTS_SERIES = 'A255RC1Q027SBEA'; // Imports of goods, Billions, Quarterly, SAAR (matches customs units)
 
 function fredSeriesUrl(seriesId) {
   const key = process.env.FRED_API_KEY;
