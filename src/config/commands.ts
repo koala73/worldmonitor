@@ -121,7 +121,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:stock-backtest', keywords: ['backtest', 'stock backtest', 'backtesting', 'strategy'], label: 'Panel: Stock Backtesting', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:daily-market-brief', keywords: ['daily brief', 'market brief', 'morning brief'], label: 'Panel: Daily Market Brief', icon: '\u{1F4CB}', category: 'panels' },
   { id: 'panel:market-implications', keywords: ['market implications', 'trade signals', 'ai signals', 'long short hedge', 'trade thesis'], label: 'Panel: AI Market Implications', icon: '\u{1F4CA}', category: 'panels' },
-  { id: 'panel:heatmap', keywords: ['heatmap', 'sector heatmap'], label: 'Panel: Sector Heatmap', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
+  { id: 'panel:heatmap', keywords: ['heatmap', 'sector heatmap', 'sector pe', 'pe ratio', 'valuations', 'forward pe', 'trailing pe', 'sector beta'], label: 'Panel: Sector Heatmap', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
   { id: 'panel:ai', keywords: ['ai', 'ml', 'artificial intelligence'], label: 'Panel: AI/ML', icon: '\u{1F916}', category: 'panels' },
   { id: 'panel:macro-signals', keywords: ['macro', 'macro signals', 'liquidity'], label: 'Panel: Market Radar', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:fear-greed', keywords: ['fear', 'greed', 'fear and greed', 'sentiment', 'fear greed index'], label: 'Panel: Fear & Greed', icon: '\u{1F4CA}', category: 'panels' },

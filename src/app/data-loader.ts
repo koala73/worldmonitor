@@ -130,6 +130,7 @@ import { getHydratedData } from '@/services/bootstrap';
 import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { SectorValuation } from '@/components/MarketPanel';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import {
@@ -1338,7 +1339,7 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Sector heatmap: always attempt loading regardless of market rate-limit status
-      const hydratedSectors = getHydratedData('sectors') as GetSectorSummaryResponse | undefined;
+      const hydratedSectors = getHydratedData('sectors') as (GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> }) | undefined;
       const heatmapPanel = this.ctx.panels['heatmap'] as HeatmapPanel | undefined;
       const sectorNameMap = new Map(SECTORS.map((s) => [s.symbol, s.name]));
       const toHeatmapItem = (s: { symbol: string; name: string; change: number }) => ({
@@ -1353,12 +1354,18 @@ export class DataLoaderManager implements AppModule {
         const items = hydratedSectors.sectors.map(toHeatmapItem);
         const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
         heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
+        if (hydratedSectors.valuations && Object.keys(hydratedSectors.valuations).length > 0) {
+          heatmapPanel?.updateValuations(hydratedSectors.valuations);
+        }
       } else {
-        const sectorsResp = await fetchSectors();
+        const sectorsResp = await fetchSectors() as GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> };
         if (sectorsResp.sectors.length > 0) {
           const items = sectorsResp.sectors.map(toHeatmapItem);
           const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
           heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
+          if (sectorsResp.valuations && Object.keys(sectorsResp.valuations).length > 0) {
+            heatmapPanel?.updateValuations(sectorsResp.valuations);
+          }
         } else if (stocksResult.skipped) {
           this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
         }

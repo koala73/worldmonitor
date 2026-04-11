@@ -1626,6 +1626,58 @@ function fetchYahooChartDirect(symbol) {
   });
 }
 
+function fetchYahooQuoteSummary(symbol) {
+  return new Promise((resolve) => {
+    const modules = 'summaryDetail,defaultKeyStatistics';
+    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
+    const req = https.get(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      timeout: 12000,
+    }, (resp) => {
+      if (resp.statusCode !== 200) {
+        resp.resume();
+        logThrottled('warn', `yahoo-summary-${resp.statusCode}:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} HTTP ${resp.statusCode}`);
+        return resolve(null);
+      }
+      let body = '';
+      resp.on('data', (chunk) => { body += chunk; });
+      resp.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const result = data?.quoteSummary?.result?.[0];
+          if (!result) return resolve(null);
+          const sd = result.summaryDetail || {};
+          const ks = result.defaultKeyStatistics || {};
+          const raw = (obj) => typeof obj === 'object' && obj !== null ? (obj.raw ?? obj.fmt ?? null) : (typeof obj === 'number' ? obj : null);
+          resolve({
+            trailingPE: raw(sd.trailingPE),
+            forwardPE: raw(sd.forwardPE),
+            beta: raw(sd.beta) ?? raw(sd.beta3Year),
+            ytdReturn: raw(ks.ytdReturn),
+            threeYearReturn: raw(ks.threeYearAverageReturn),
+            fiveYearReturn: raw(ks.fiveYearAverageReturn),
+          });
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', (err) => { logThrottled('warn', `yahoo-summary-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} error: ${err.message}`); resolve(null); });
+    req.on('timeout', () => { req.destroy(); logThrottled('warn', `yahoo-summary-timeout:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} timeout`); resolve(null); });
+  });
+}
+
+function parseSectorValuation(raw) {
+  if (!raw) return null;
+  const num = (v) => typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const tpe = num(typeof raw.trailingPE === 'string' ? parseFloat(raw.trailingPE) : raw.trailingPE);
+  const fpe = num(typeof raw.forwardPE === 'string' ? parseFloat(raw.forwardPE) : raw.forwardPE);
+  const beta = num(typeof raw.beta === 'string' ? parseFloat(raw.beta) : raw.beta);
+  const ytd = num(typeof raw.ytdReturn === 'string' ? parseFloat(raw.ytdReturn) : raw.ytdReturn);
+  const y3 = num(typeof raw.threeYearReturn === 'string' ? parseFloat(raw.threeYearReturn) : raw.threeYearReturn);
+  const y5 = num(typeof raw.fiveYearReturn === 'string' ? parseFloat(raw.fiveYearReturn) : raw.fiveYearReturn);
+  if (tpe === null && fpe === null) return null;
+  return { trailingPE: tpe, forwardPE: fpe, beta, ytdReturn: ytd, threeYearReturn: y3, fiveYearReturn: y5 };
+}
+
 function fetchFinnhubQuoteDirect(symbol, apiKey) {
   return new Promise((resolve) => {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
@@ -1786,10 +1838,17 @@ async function seedSectorSummary() {
     return 0;
   }
 
-  const payload = { sectors };
+  const valuations = {};
+  let valCount = 0;
+  for (const s of SECTOR_SYMBOLS) {
+    const raw = await fetchYahooQuoteSummary(s);
+    const parsed = parseSectorValuation(raw);
+    if (parsed) { valuations[s] = parsed; valCount++; }
+    await sleep(150);
+  }
+
+  const payload = { sectors, valuations };
   const ok = await upstashSet('market:sectors:v1', payload, MARKET_SEED_TTL);
-  // Also write under market:quotes:v1: key — the frontend routes sectors through
-  // fetchMultipleStocks → listMarketQuotes RPC, which constructs this key pattern
   const quotesKey = `market:quotes:v1:${[...SECTOR_SYMBOLS].sort().join(',')}`;
   const sectorQuotes = sectors.map((s) => ({
     symbol: s.symbol, name: s.name, display: s.name,
@@ -1798,7 +1857,7 @@ async function seedSectorSummary() {
   const quotesPayload = { quotes: sectorQuotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
   const ok2 = await upstashSet(quotesKey, quotesPayload, MARKET_SEED_TTL);
   const ok3 = await upstashSet('seed-meta:market:sectors', { fetchedAt: Date.now(), recordCount: sectors.length }, 604800);
-  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
+  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valCount} valuations (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
 }
 
