@@ -78,6 +78,7 @@ export class WsbTickerScannerPanel extends Panel {
         }
       }
     } catch { /* fallback failed */ }
+    this.showError('No ticker data available yet', () => { void this.fetchData(); }, 60);
     return false;
   }
 
@@ -87,6 +88,9 @@ export class WsbTickerScannerPanel extends Panel {
     if (this._hasData) {
       this.setCount(this._tickers.length);
       this._render();
+    } else {
+      this.setCount(0);
+      this.showError('No trending tickers found', () => { void this.fetchData(); }, 120);
     }
   }
 
