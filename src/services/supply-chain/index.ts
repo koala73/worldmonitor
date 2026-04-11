@@ -227,6 +227,7 @@ export async function fetchSectorDependency(
 }
 
 export interface ProductExporter {
+  partnerCode: number;
   partnerIso2: string;
   value: number;
   share: number;

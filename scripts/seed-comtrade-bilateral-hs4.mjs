@@ -128,7 +128,10 @@ async function fetchBilateral(reporterCode, hs4Batch) {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       signal: AbortSignal.timeout(20_000),
     });
-    if (!retry.ok) return [];
+    if (!retry.ok) {
+      console.warn(`  Retry for reporter ${reporterCode} also failed (HTTP ${retry.status})`);
+      return [];
+    }
     const retryData = await retry.json();
     return parseRecords(retryData);
   }
@@ -252,15 +255,16 @@ export async function main() {
         requestCount++;
 
         const products = groupByProduct([...batch1, ...batch2]);
-        const payload = JSON.stringify({
-          iso2,
-          products,
-          fetchedAt: new Date().toISOString(),
-        });
-        commands.push(['SET', `${KEY_PREFIX}${iso2}:v1`, payload, 'EX', String(TTL_SECONDS)]);
-        writtenCount++;
-
-        if (products.length > 0) {
+        if (products.length === 0) {
+          console.warn(`    ${iso2}: no products after grouping, skipping write`);
+        } else {
+          const payload = JSON.stringify({
+            iso2,
+            products,
+            fetchedAt: new Date().toISOString(),
+          });
+          commands.push(['SET', `${KEY_PREFIX}${iso2}:v1`, payload, 'EX', String(TTL_SECONDS)]);
+          writtenCount++;
           console.log(`    ${iso2}: ${products.length} products, ${batch1.length + batch2.length} records`);
         }
       } catch (err) {
