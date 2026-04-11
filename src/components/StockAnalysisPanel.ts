@@ -317,7 +317,14 @@ export class StockAnalysisPanel extends Panel {
 
   private renderInsiderSection(symbol: string): string {
     const data = this.insiderBySymbol[symbol];
-    if (!data || data.unavailable) {
+    // Unknown / not yet fetched: omit the section entirely. A later
+    // re-render from loadInsiderDataForPanel fills it in, so we avoid a
+    // transient "Insider data unavailable" flash on initial render before
+    // the RPC completes.
+    if (data === undefined) {
+      return '';
+    }
+    if (data.unavailable) {
       return `
         <div style="font-size:11px;color:var(--text-dim);padding:8px;border:1px solid var(--border)">
           Insider data unavailable
@@ -359,12 +366,18 @@ export class StockAnalysisPanel extends Panel {
             const isBuy = tx.transactionCode === 'P' || tx.transactionCode === 'A';
             const isSell = tx.transactionCode === 'S' || tx.transactionCode === 'D' || tx.transactionCode === 'F';
             const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical)' : 'var(--text-dim)';
+            // Exercise rows (code M) carry value: 0 from the server because
+            // transactionPrice is the option strike, not a market execution
+            // price. Render a dash so users do not read a misleading
+            // strike-derived dollar figure that contradicts the buy/sell
+            // totals (which already exclude strike-priced exercises).
+            const valueCell = tx.transactionCode === 'M' ? '—' : formatDollarCompact(tx.value);
             return `
               <tr>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--border);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:${typeColor}">${escapeHtml(txCodeLabel(tx.transactionCode))}</td>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${Number.isFinite(tx.shares) ? tx.shares.toLocaleString() : '0'}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${formatDollarCompact(tx.value)}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${valueCell}</td>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:var(--text-dim)">${escapeHtml(tx.transactionDate)}</td>
               </tr>`;
           }).join('')}

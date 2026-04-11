@@ -142,6 +142,30 @@ describe('getInsiderTransactions handler', () => {
     assert.equal(resp.netValue, 0);
   });
 
+  it('zeros out per-row value for exercise (code M) rows so UI can render a dash placeholder', async () => {
+    process.env.FINNHUB_API_KEY = 'test-key';
+    globalThis.fetch = (async () => {
+      return mockFinnhubResponse([
+        { name: 'CFO Exercise', share: 5000, change: 5000, transactionPrice: 10, transactionCode: 'M', transactionDate: recentDate(15), filingDate: recentDate(13) },
+        { name: 'Buyer', share: 1000, change: 1000, transactionPrice: 100, transactionCode: 'P', transactionDate: recentDate(5), filingDate: recentDate(3) },
+      ]);
+    }) as typeof fetch;
+
+    const resp = await getInsiderTransactions({} as never, { symbol: 'AAPL' });
+    const mRow = resp.transactions.find(t => t.transactionCode === 'M');
+    const pRow = resp.transactions.find(t => t.transactionCode === 'P');
+    assert.ok(mRow, 'M row should be present');
+    assert.ok(pRow, 'P row should be present');
+    // Shares should still be populated for exercise rows.
+    assert.equal(mRow!.shares, 5000);
+    // But the dollar value must be zero because transactionPrice is the
+    // strike price, not a market execution price. Rendering the naive
+    // product would be misleading and contradict the buy/sell totals.
+    assert.equal(mRow!.value, 0, 'exercise row must carry value: 0');
+    // Regular buys still carry a real dollar value.
+    assert.equal(pRow!.value, 100_000);
+  });
+
   it('blends exercise codes with buys and sells', async () => {
     process.env.FINNHUB_API_KEY = 'test-key';
     globalThis.fetch = (async () => {

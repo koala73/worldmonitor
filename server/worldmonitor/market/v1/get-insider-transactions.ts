@@ -100,7 +100,14 @@ export async function getInsiderTransactions(
         .map(tx => ({
           name: String(tx.name ?? ''),
           shares: Math.abs(tx.change ?? 0),
-          value: Math.abs((tx.change ?? 0) * (tx.transactionPrice ?? 0)),
+          // For exercise/conversion (code M), transactionPrice is the option
+          // strike price, not a market execution price, so the derived
+          // dollar amount would be misleading. Zero it out and let the UI
+          // render a placeholder. The buy/sell totals above already
+          // exclude M rows.
+          value: NEUTRAL_CODES.has(tx.transactionCode)
+            ? 0
+            : Math.abs((tx.change ?? 0) * (tx.transactionPrice ?? 0)),
           transactionCode: tx.transactionCode,
           transactionDate: tx.transactionDate,
         }));
