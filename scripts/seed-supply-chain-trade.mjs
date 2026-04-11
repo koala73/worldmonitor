@@ -270,12 +270,23 @@ async function wtoFetch(path, params) {
 const FRED_CUSTOMS_SERIES = 'B235RC1Q027SBEA';
 const FRED_IMPORTS_SERIES = 'IEAMGSN';
 
+function fredSeriesUrl(seriesId) {
+  const key = process.env.FRED_API_KEY;
+  if (!key) return null;
+  return `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${key}&file_type=json&sort_order=desc&limit=20`;
+}
+
 async function fetchEffectiveTariffRateFromFred() {
   try {
-    const [customs, imports] = await Promise.all([
-      fredFetchJson(FRED_CUSTOMS_SERIES),
-      fredFetchJson(FRED_IMPORTS_SERIES),
+    const customsUrl = fredSeriesUrl(FRED_CUSTOMS_SERIES);
+    const importsUrl = fredSeriesUrl(FRED_IMPORTS_SERIES);
+    if (!customsUrl || !importsUrl) { console.warn('  FRED tariff rate: FRED_API_KEY not set'); return null; }
+    const [customsResp, importsResp] = await Promise.all([
+      fredFetchJson(customsUrl),
+      fredFetchJson(importsUrl),
     ]);
+    const customs = customsResp?.observations ?? [];
+    const imports = importsResp?.observations ?? [];
     if (!customs?.length || !imports?.length) {
       console.warn('  FRED tariff rate: no data from one or both series');
       return null;
