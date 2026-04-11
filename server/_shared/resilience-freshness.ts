@@ -64,8 +64,19 @@ export interface ClassifyStalenessArgs {
 
 export interface StalenessResult {
   staleness: StalenessLevel;
+  /**
+   * Age in milliseconds. `Number.POSITIVE_INFINITY` when `lastObservedAtMs`
+   * is null, undefined, NaN, or in the future. Always check for `Infinity`
+   * (or use `Number.isFinite`) before using this value in arithmetic or
+   * display formatting, otherwise downstream string concatenation will
+   * silently emit `Infinity` and `NaN`.
+   */
   ageMs: number;
-  /** The age expressed as a multiple of the cadence unit. Handy for debugging. */
+  /**
+   * The age expressed as a multiple of the cadence unit. Handy for
+   * debugging. Same infinity contract as `ageMs`: returns
+   * `Number.POSITIVE_INFINITY` in the defensive branches.
+   */
   ageInCadenceUnits: number;
 }
 
@@ -94,7 +105,11 @@ export function classifyStaleness(args: ClassifyStalenessArgs): StalenessResult 
     return { staleness: 'stale', ageMs: Number.POSITIVE_INFINITY, ageInCadenceUnits: Number.POSITIVE_INFINITY };
   }
 
-  const ageMs = Math.max(0, nowMs - lastObservedAtMs);
+  // The defensive branch above already rejected null, undefined, NaN,
+  // and future timestamps, so `nowMs - lastObservedAtMs` is guaranteed
+  // to be >= 0 by the time execution reaches this line. No Math.max
+  // clamp is needed. Removed in PR #2947 review.
+  const ageMs = nowMs - lastObservedAtMs;
   const ageInCadenceUnits = ageMs / unit;
 
   let staleness: StalenessLevel;

@@ -80,16 +80,26 @@ describe('resilience freshness classifier (T1.5)', () => {
   });
 
   it('stale when lastObservedAtMs is null, undefined, NaN, or in the future', () => {
+    // Raised in PR #2947 review: pin `ageMs` AND `ageInCadenceUnits` as
+    // POSITIVE_INFINITY on every defensive branch so a future regression
+    // that accidentally omits one field from the defensive return is
+    // caught immediately. The earlier version only checked `ageMs` on
+    // the null branch and staleness on the rest.
     for (const cadence of CADENCES) {
       const missingNull = classifyStaleness({ lastObservedAtMs: null, cadence, nowMs: NOW });
       assert.equal(missingNull.staleness, 'stale', `${cadence} null should be stale`);
-      assert.equal(missingNull.ageMs, Number.POSITIVE_INFINITY);
+      assert.equal(missingNull.ageMs, Number.POSITIVE_INFINITY, `${cadence} null ageMs should be Infinity`);
+      assert.equal(missingNull.ageInCadenceUnits, Number.POSITIVE_INFINITY, `${cadence} null ageInCadenceUnits should be Infinity`);
 
       const missingUndefined = classifyStaleness({ lastObservedAtMs: undefined, cadence, nowMs: NOW });
       assert.equal(missingUndefined.staleness, 'stale', `${cadence} undefined should be stale`);
+      assert.equal(missingUndefined.ageMs, Number.POSITIVE_INFINITY, `${cadence} undefined ageMs should be Infinity`);
+      assert.equal(missingUndefined.ageInCadenceUnits, Number.POSITIVE_INFINITY, `${cadence} undefined ageInCadenceUnits should be Infinity`);
 
       const nanResult = classifyStaleness({ lastObservedAtMs: Number.NaN, cadence, nowMs: NOW });
       assert.equal(nanResult.staleness, 'stale', `${cadence} NaN should be stale`);
+      assert.equal(nanResult.ageMs, Number.POSITIVE_INFINITY, `${cadence} NaN ageMs should be Infinity`);
+      assert.equal(nanResult.ageInCadenceUnits, Number.POSITIVE_INFINITY, `${cadence} NaN ageInCadenceUnits should be Infinity`);
 
       // A timestamp 10 minutes in the future is nonsensical and treated as stale.
       const futureResult = classifyStaleness({
@@ -98,6 +108,8 @@ describe('resilience freshness classifier (T1.5)', () => {
         nowMs: NOW,
       });
       assert.equal(futureResult.staleness, 'stale', `${cadence} future timestamp should be stale`);
+      assert.equal(futureResult.ageMs, Number.POSITIVE_INFINITY, `${cadence} future ageMs should be Infinity`);
+      assert.equal(futureResult.ageInCadenceUnits, Number.POSITIVE_INFINITY, `${cadence} future ageInCadenceUnits should be Infinity`);
     }
   });
 
