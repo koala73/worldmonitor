@@ -84,6 +84,30 @@ function classifyResilienceLevel(score: number): string {
   return 'low';
 }
 
+/**
+ * Defaults optional fields on a cached `GetResilienceScoreResponse` so
+ * cache hits written before the current schema shape still satisfy the
+ * generated TypeScript types. Called after every read path that returns
+ * cached JSON verbatim (`ensureResilienceScoreCached`,
+ * `getCachedResilienceScores`). Add a line here when a new optional
+ * field lands on `ResilienceDimension`; otherwise cache hits written
+ * before the field existed will silently emit `undefined`.
+ *
+ * Current defaults:
+ *   - `imputationClass` (Phase 1 T1.7, PR #2959): empty string
+ *     matching the proto3 default for the `imputation_class` field.
+ */
+export function normalizeResilienceScoreResponse(response: GetResilienceScoreResponse): GetResilienceScoreResponse {
+  for (const domain of response.domains ?? []) {
+    for (const dimension of domain.dimensions ?? []) {
+      if (dimension.imputationClass == null) {
+        dimension.imputationClass = '';
+      }
+    }
+  }
+  return response;
+}
+
 function buildDimensionList(
   scores: Record<
     ResilienceDimensionId,
@@ -262,6 +286,8 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     dataVersion: '',
   };
 
+  normalizeResilienceScoreResponse(cached);
+
   const scoreInterval = await readScoreInterval(normalizedCountryCode);
   if (scoreInterval) {
     return { ...cached, scoreInterval };
@@ -290,7 +316,8 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
     const raw = results[index]?.result;
     if (typeof raw !== 'string') continue;
     try {
-      scores.set(countryCode, JSON.parse(raw) as GetResilienceScoreResponse);
+      const parsed = JSON.parse(raw) as GetResilienceScoreResponse;
+      scores.set(countryCode, normalizeResilienceScoreResponse(parsed));
     } catch {
       // Ignore malformed cache entries and let the caller decide whether to warm them.
     }

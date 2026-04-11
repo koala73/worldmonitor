@@ -3,6 +3,8 @@ import { afterEach, describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
 import { getResilienceScore } from '../server/worldmonitor/resilience/v1/get-resilience-score.ts';
+import { normalizeResilienceScoreResponse } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import type { GetResilienceScoreResponse } from '../src/generated/server/worldmonitor/resilience/v1/service_server';
 import { scoreAllDimensions } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { buildResilienceChoroplethMap } from '../src/components/resilience-choropleth-utils.ts';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
@@ -247,6 +249,113 @@ describe('resilience release gate', () => {
         `dimension ${dimension.id} imputationClass="${dimension.imputationClass}" must be one of [${valid.join(', ')}]`,
       );
     }
+  });
+
+  // T1.7 P2 review fix (PR #2959): the score cache key (resilience:score:v7)
+  // is unchanged across this PR, so cache hits written before T1.7 lack the
+  // imputationClass field. Both read paths in _shared.ts now run a defensive
+  // normalizer that defaults missing optional fields in place. These tests
+  // pin both the default-on-missing behavior and the do-not-clobber behavior
+  // for already-present values.
+  it('T1.7 P2: normalizeResilienceScoreResponse defaults imputationClass on a stale cached payload', () => {
+    // Construct a payload that simulates what an older v7 cache entry looks
+    // like: dimensions never carried imputationClass before this PR, so the
+    // field is absent (not just empty string). The cast routes around the
+    // current TS type which now requires the field.
+    const stalePayload: GetResilienceScoreResponse = {
+      countryCode: 'US',
+      overallScore: 70,
+      baselineScore: 70,
+      stressScore: 70,
+      stressFactor: 0.3,
+      level: 'high',
+      domains: [
+        {
+          id: 'institutional',
+          score: 70,
+          weight: 0.2,
+          dimensions: [
+            {
+              id: 'governance',
+              score: 70,
+              coverage: 0.9,
+              observedWeight: 0.9,
+              imputedWeight: 0.1,
+            } as unknown as GetResilienceScoreResponse['domains'][number]['dimensions'][number],
+            {
+              id: 'rule-of-law',
+              score: 65,
+              coverage: 0.8,
+              observedWeight: 0.8,
+              imputedWeight: 0.2,
+            } as unknown as GetResilienceScoreResponse['domains'][number]['dimensions'][number],
+          ],
+        },
+      ],
+      trend: 'stable',
+      change30d: 0,
+      lowConfidence: false,
+      imputationShare: 0.1,
+      dataVersion: '2026-04-01',
+    };
+
+    const normalized = normalizeResilienceScoreResponse(stalePayload);
+
+    const allDimensions = normalized.domains.flatMap((domain) => domain.dimensions);
+    assert.equal(allDimensions.length, 2);
+    for (const dimension of allDimensions) {
+      assert.equal(
+        dimension.imputationClass,
+        '',
+        `dimension ${dimension.id} should default to empty string after normalization`,
+      );
+    }
+  });
+
+  it('T1.7 P2: normalizeResilienceScoreResponse does not overwrite a present imputationClass', () => {
+    const payload: GetResilienceScoreResponse = {
+      countryCode: 'XX',
+      overallScore: 50,
+      baselineScore: 50,
+      stressScore: 50,
+      stressFactor: 0.5,
+      level: 'medium',
+      domains: [
+        {
+          id: 'institutional',
+          score: 50,
+          weight: 0.2,
+          dimensions: [
+            {
+              id: 'governance',
+              score: 50,
+              coverage: 0.0,
+              observedWeight: 0,
+              imputedWeight: 1,
+              imputationClass: 'stable-absence',
+            },
+            {
+              id: 'rule-of-law',
+              score: 60,
+              coverage: 0.7,
+              observedWeight: 0.7,
+              imputedWeight: 0.3,
+              imputationClass: '',
+            },
+          ],
+        },
+      ],
+      trend: 'stable',
+      change30d: 0,
+      lowConfidence: true,
+      imputationShare: 0.5,
+      dataVersion: '2026-04-01',
+    };
+
+    const normalized = normalizeResilienceScoreResponse(payload);
+    const dimensions = normalized.domains[0]!.dimensions;
+    assert.equal(dimensions[0]!.imputationClass, 'stable-absence', 'present non-empty value must be preserved');
+    assert.equal(dimensions[1]!.imputationClass, '', 'present empty string must be preserved');
   });
 
   it('T1.7: fully imputed dimension serializes a non-empty imputationClass', async () => {
