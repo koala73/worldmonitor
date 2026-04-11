@@ -1354,18 +1354,14 @@ export class DataLoaderManager implements AppModule {
         const items = hydratedSectors.sectors.map(toHeatmapItem);
         const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
         heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
-        if (hydratedSectors.valuations && Object.keys(hydratedSectors.valuations).length > 0) {
-          heatmapPanel?.updateValuations(hydratedSectors.valuations);
-        }
+        heatmapPanel?.updateValuations(hydratedSectors.valuations);
       } else {
         const sectorsResp = await fetchSectors() as GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> };
         if (sectorsResp.sectors.length > 0) {
           const items = sectorsResp.sectors.map(toHeatmapItem);
           const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
           heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
-          if (sectorsResp.valuations && Object.keys(sectorsResp.valuations).length > 0) {
-            heatmapPanel?.updateValuations(sectorsResp.valuations);
-          }
+          heatmapPanel?.updateValuations(sectorsResp.valuations);
         } else if (stocksResult.skipped) {
           this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
         }

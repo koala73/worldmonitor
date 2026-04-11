@@ -168,7 +168,11 @@ export function warmCommodityCache(quotes: ListCommodityQuotesResponse): void {
   commodityBreaker.recordSuccess(quotes, cacheKey);
 }
 
-/** Pre-warm the sector circuit-breaker cache from bootstrap hydration data. */
+/**
+ * Pre-warm the sector circuit-breaker cache from bootstrap hydration data.
+ * Valuations are included in the sector summary payload; clients pick them up
+ * on the next breaker refresh (5-min TTL) without a separate cache-bust.
+ */
 export function warmSectorCache(resp: GetSectorSummaryResponse): void {
   sectorBreaker.recordSuccess(resp);
 }

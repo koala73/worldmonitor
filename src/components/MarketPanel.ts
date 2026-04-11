@@ -172,7 +172,13 @@ export class HeatmapPanel extends Panel {
     this._render();
   }
 
-  public updateValuations(valuations: Record<string, SectorValuation>): void {
+  public updateValuations(valuations: Record<string, SectorValuation> | undefined): void {
+    if (!valuations || Object.keys(valuations).length === 0) {
+      this._valuations = {};
+      if (this._tab === 'valuations') this._tab = 'performance';
+      this._render();
+      return;
+    }
     this._valuations = valuations;
     this._render();
   }
