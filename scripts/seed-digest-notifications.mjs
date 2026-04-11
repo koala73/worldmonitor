@@ -460,9 +460,17 @@ async function generateAISummary(stories, rule) {
   // ever saved userPreferences — or under a different variant. Missing prefs
   // must NOT silently disable the feature the user just enabled; degrade to
   // a non-personalized summary instead.
-  const { data: prefs } = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
+  //   error: true  = transient fetch failure (network, non-OK HTTP, env missing)
+  //   error: false = the (userId, variant) row genuinely does not exist
+  // Both cases degrade to a non-personalized summary, but log them distinctly
+  // so transient fetch failures are visible in observability.
+  const { data: prefs, error: prefsFetchError } = await fetchUserPreferences(rule.userId, rule.variant ?? 'full');
   if (!prefs) {
-    console.log(`[digest] No stored preferences for ${rule.userId} — generating non-personalized AI summary`);
+    console.log(
+      prefsFetchError
+        ? `[digest] Prefs fetch failed for ${rule.userId} — generating non-personalized AI summary`
+        : `[digest] No stored preferences for ${rule.userId} — generating non-personalized AI summary`,
+    );
   }
   const ctx = extractUserContext(prefs);
   const profile = formatUserProfile(ctx, rule.variant ?? 'full');
