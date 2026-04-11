@@ -51,7 +51,7 @@ describe('resilience ranking contracts', () => {
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
     assert.deepEqual(response, cached);
-    assert.equal(redis.has('resilience:score:v7:YE'), false, 'cache hit must not trigger score warmup');
+    assert.equal(redis.has('resilience:score:v8:YE'), false, 'cache hit must not trigger score warmup');
   });
 
   it('returns all-greyed-out cached payload without rewarming (items=[], greyedOut non-empty)', async () => {
@@ -70,13 +70,13 @@ describe('resilience ranking contracts', () => {
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
     assert.deepEqual(response, cached);
-    assert.equal(redis.has('resilience:score:v7:SS'), false, 'all-greyed-out cache hit must not trigger score warmup');
+    assert.equal(redis.has('resilience:score:v8:SS'), false, 'all-greyed-out cache hit must not trigger score warmup');
   });
 
   it('warms missing scores synchronously and returns complete ranking on first call', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const domainWithCoverage = [{ name: 'political', dimensions: [{ name: 'd1', coverage: 0.9 }] }];
-    redis.set('resilience:score:v7:NO', JSON.stringify({
+    redis.set('resilience:score:v8:NO', JSON.stringify({
       countryCode: 'NO',
       overallScore: 82,
       level: 'high',
@@ -86,7 +86,7 @@ describe('resilience ranking contracts', () => {
       lowConfidence: false,
       imputationShare: 0.05,
     }));
-    redis.set('resilience:score:v7:US', JSON.stringify({
+    redis.set('resilience:score:v8:US', JSON.stringify({
       countryCode: 'US',
       overallScore: 61,
       level: 'medium',
@@ -101,7 +101,7 @@ describe('resilience ranking contracts', () => {
 
     const totalItems = response.items.length + (response.greyedOut?.length ?? 0);
     assert.equal(totalItems, 3, `expected 3 total items across ranked + greyedOut, got ${totalItems}`);
-    assert.ok(redis.has('resilience:score:v7:YE'), 'missing country should be warmed during first call');
+    assert.ok(redis.has('resilience:score:v8:YE'), 'missing country should be warmed during first call');
     assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
     assert.ok(redis.has('resilience:ranking:v8'), 'fully scored ranking should be cached');
   });
@@ -109,12 +109,12 @@ describe('resilience ranking contracts', () => {
   it('sets rankStable=true when interval data exists and width <= 8', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
-    redis.set('resilience:score:v7:NO', JSON.stringify({
+    redis.set('resilience:score:v8:NO', JSON.stringify({
       countryCode: 'NO', overallScore: 82, level: 'high',
       domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
       lowConfidence: false, imputationShare: 0.05,
     }));
-    redis.set('resilience:score:v7:US', JSON.stringify({
+    redis.set('resilience:score:v8:US', JSON.stringify({
       countryCode: 'US', overallScore: 61, level: 'medium',
       domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
       lowConfidence: false, imputationShare: 0.1,

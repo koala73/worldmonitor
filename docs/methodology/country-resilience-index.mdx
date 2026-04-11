@@ -323,7 +323,7 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v7:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:score:v8:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
 | `resilience:ranking:v8` | JSON | 6 hours | `buildResilienceRanking`, only when all countries are scored | `getResilienceRanking` handler |
 | `resilience:history:v4:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
 | `resilience:intervals:v1:{countryCode}` | JSON | 6 hours | `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) |

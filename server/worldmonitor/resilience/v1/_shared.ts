@@ -6,6 +6,7 @@ import type {
   ScoreInterval,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
+
 export type { ScoreInterval };
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
@@ -26,7 +27,7 @@ import {
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v7:';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v8:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v4:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v8';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
@@ -82,30 +83,6 @@ function classifyResilienceLevel(score: number): string {
   if (score >= 70) return 'high';
   if (score >= 40) return 'medium';
   return 'low';
-}
-
-/**
- * Defaults optional fields on a cached `GetResilienceScoreResponse` so
- * cache hits written before the current schema shape still satisfy the
- * generated TypeScript types. Called after every read path that returns
- * cached JSON verbatim (`ensureResilienceScoreCached`,
- * `getCachedResilienceScores`). Add a line here when a new optional
- * field lands on `ResilienceDimension`; otherwise cache hits written
- * before the field existed will silently emit `undefined`.
- *
- * Current defaults:
- *   - `imputationClass` (Phase 1 T1.7, PR #2959): empty string
- *     matching the proto3 default for the `imputation_class` field.
- */
-export function normalizeResilienceScoreResponse(response: GetResilienceScoreResponse): GetResilienceScoreResponse {
-  for (const domain of response.domains ?? []) {
-    for (const dimension of domain.dimensions ?? []) {
-      if (dimension.imputationClass == null) {
-        dimension.imputationClass = '';
-      }
-    }
-  }
-  return response;
 }
 
 function buildDimensionList(
@@ -286,8 +263,6 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     dataVersion: '',
   };
 
-  normalizeResilienceScoreResponse(cached);
-
   const scoreInterval = await readScoreInterval(normalizedCountryCode);
   if (scoreInterval) {
     return { ...cached, scoreInterval };
@@ -317,7 +292,7 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
     if (typeof raw !== 'string') continue;
     try {
       const parsed = JSON.parse(raw) as GetResilienceScoreResponse;
-      scores.set(countryCode, normalizeResilienceScoreResponse(parsed));
+      scores.set(countryCode, parsed);
     } catch {
       // Ignore malformed cache entries and let the caller decide whether to warm them.
     }

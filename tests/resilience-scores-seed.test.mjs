@@ -14,8 +14,8 @@ describe('exported constants', () => {
     assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v8');
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v7)', () => {
-    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v7:');
+  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v8)', () => {
+    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v8:');
   });
 
   it('RESILIENCE_RANKING_CACHE_TTL_SECONDS is 6 hours', () => {
