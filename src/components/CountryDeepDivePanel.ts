@@ -1668,7 +1668,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         const riskTd = this.el('td', 'cdp-product-risk');
         if (exp.risk) {
           const badgeCls = `cdp-risk-badge cdp-risk-${exp.risk.riskLevel.replace('_', '-')}`;
-          const badgeLabels: Record<string, string> = { safe: 'Safe', at_risk: 'At Risk', critical: 'Critical' };
+          const badgeLabels: Record<string, string> = { safe: 'Safe', at_risk: 'At Risk', critical: 'Critical', unknown: 'Unknown' };
           const badge = this.el('span', badgeCls, badgeLabels[exp.risk.riskLevel] ?? exp.risk.riskLevel);
           riskTd.append(badge);
 
@@ -1691,7 +1691,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         const hasCritical = enriched.some(e => e.risk.riskLevel === 'critical' || e.risk.riskLevel === 'at_risk');
         if (hasCritical) {
           for (const exp of enriched) {
-            if (exp.risk.riskLevel === 'safe') continue;
+            if (exp.risk.riskLevel === 'safe' || exp.risk.riskLevel === 'unknown') continue;
             const recCls = exp.risk.riskLevel === 'critical' ? 'cdp-recommendation-critical' : 'cdp-recommendation-warn';
             const item = this.el('div', `cdp-recommendation-item ${recCls}`);
             const expPct = Math.round(exp.share * 100);

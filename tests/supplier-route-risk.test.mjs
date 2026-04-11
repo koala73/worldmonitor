@@ -34,12 +34,13 @@ describe('computeSupplierRouteRisk', () => {
     }
   });
 
-  it('returns safe when no overlapping routes exist', () => {
+  it('returns unknown when no cluster entry exists for exporter/importer', () => {
     const scores = new Map([['hormuz_strait', 90]]);
     const risk = computeSupplierRouteRisk('ZZ', 'YY', scores);
-    assert.equal(risk.riskLevel, 'safe');
+    assert.equal(risk.riskLevel, 'unknown');
     assert.equal(risk.transitChokepoints.length, 0);
     assert.equal(risk.routeIds.length, 0);
+    assert.ok(risk.recommendation.includes('No modeled maritime route'));
   });
 
   it('marks at_risk when chokepoint score is between 31 and 69', () => {
@@ -106,6 +107,19 @@ describe('computeAlternativeSuppliers', () => {
     }
   });
 
+  it('does not recommend unknown-risk exporters as safe alternatives', () => {
+    const mixedExporters = [
+      { partnerCode: 682, partnerIso2: 'SA', value: 5e9, share: 0.40 },
+      { partnerCode: 999, partnerIso2: 'ZZ', value: 3e9, share: 0.25 },
+    ];
+    const scores = new Map([['hormuz_strait', 80]]);
+    const result = computeAlternativeSuppliers(mixedExporters, 'IN', scores);
+    const sa = result.find(e => e.partnerIso2 === 'SA');
+    const zz = result.find(e => e.partnerIso2 === 'ZZ');
+    assert.equal(zz.risk.riskLevel, 'unknown');
+    assert.equal(sa.safeAlternative, null, 'Should not recommend unknown-risk ZZ as a safe alternative');
+  });
+
   it('preserves all original exporter fields', () => {
     const scores = new Map();
     const result = computeAlternativeSuppliers(exporters, 'US', scores);
@@ -130,6 +144,7 @@ describe('CSS classes and integration', () => {
     assert.ok(css.includes('.cdp-risk-safe'), 'Missing .cdp-risk-safe class');
     assert.ok(css.includes('.cdp-risk-at-risk'), 'Missing .cdp-risk-at-risk class');
     assert.ok(css.includes('.cdp-risk-critical'), 'Missing .cdp-risk-critical class');
+    assert.ok(css.includes('.cdp-risk-unknown'), 'Missing .cdp-risk-unknown class');
     assert.ok(css.includes('.cdp-recommendations'), 'Missing .cdp-recommendations class');
     assert.ok(css.includes('.cdp-recommendation-item'), 'Missing .cdp-recommendation-item class');
     assert.ok(css.includes('.cdp-recommendation-safe'), 'Missing .cdp-recommendation-safe class');

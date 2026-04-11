@@ -2,7 +2,7 @@ import COUNTRY_PORT_CLUSTERS from '../../scripts/shared/country-port-clusters.js
 import { TRADE_ROUTES } from '@/config/trade-routes';
 import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
 
-export type SupplierRiskLevel = 'safe' | 'at_risk' | 'critical';
+export type SupplierRiskLevel = 'safe' | 'at_risk' | 'critical' | 'unknown';
 
 export interface TransitChokepoint {
   chokepointId: string;
@@ -82,7 +82,8 @@ function collectTransitChokepoints(routeIds: string[], scores: ChokepointScoreMa
   return result;
 }
 
-function determineRiskLevel(chokepoints: TransitChokepoint[]): SupplierRiskLevel {
+function determineRiskLevel(chokepoints: TransitChokepoint[], hasRouteData: boolean): SupplierRiskLevel {
+  if (!hasRouteData) return 'unknown';
   for (const cp of chokepoints) {
     if (cp.disruptionScore >= 70) return 'critical';
   }
@@ -93,6 +94,7 @@ function determineRiskLevel(chokepoints: TransitChokepoint[]): SupplierRiskLevel
 }
 
 function buildRecommendation(riskLevel: SupplierRiskLevel, chokepoints: TransitChokepoint[]): string {
+  if (riskLevel === 'unknown') return 'No modeled maritime route data available for this pair.';
   if (chokepoints.length === 0) return 'No transit chokepoints detected.';
   if (riskLevel === 'critical') {
     const worst = chokepoints.reduce((a, b) => a.disruptionScore > b.disruptionScore ? a : b);
@@ -111,9 +113,12 @@ export function computeSupplierRouteRisk(
   importerIso2: string,
   chokepointScores: ChokepointScoreMap,
 ): SupplierRouteRisk {
+  const hasExporterCluster = !!getCluster(exporterIso2);
+  const hasImporterCluster = !!getCluster(importerIso2);
   const routeIds = findOverlappingRoutes(exporterIso2, importerIso2);
+  const hasRouteData = hasExporterCluster && hasImporterCluster && routeIds.length > 0;
   const transitChokepoints = collectTransitChokepoints(routeIds, chokepointScores);
-  const riskLevel = determineRiskLevel(transitChokepoints);
+  const riskLevel = determineRiskLevel(transitChokepoints, hasRouteData);
   const maxDisruptionScore = transitChokepoints.length > 0
     ? Math.max(...transitChokepoints.map(cp => cp.disruptionScore))
     : 0;
