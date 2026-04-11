@@ -275,6 +275,7 @@ export class DataLoaderManager implements AppModule {
   private boundMarketWatchlistHandler: (() => void) | null = null;
   private satellitePropagationCleanup: (() => void) | null = null;
   private dailyBriefGeneration = 0;
+  private _stockAnalysisGeneration = 0;
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
@@ -1206,22 +1207,32 @@ export class DataLoaderManager implements AppModule {
     const panel = this.ctx.panels['stock-analysis'] as StockAnalysisPanel | undefined;
     if (!panel) return;
 
+    // Bump generation so any in-flight insider fetch from a prior invocation
+    // of loadStockAnalysis no-ops instead of re-rendering stale snapshots on
+    // top of the current render.
+    const generation = ++this._stockAnalysisGeneration;
+
     try {
       const targets = getStockAnalysisTargets();
       const targetSymbols = targets.map((target) => target.symbol);
       const storedHistory = await fetchStockAnalysisHistory(targets.length);
       const cachedSnapshots = getLatestStockAnalysisSnapshots(storedHistory, targets.length);
+      const historyIsFresh = hasFreshStockAnalysisHistory(storedHistory, targetSymbols);
+
       if (cachedSnapshots.length > 0) {
         panel.renderAnalyses(cachedSnapshots, storedHistory, 'cached');
-        // Insider data is a secondary, optional enrichment fetched from a
-        // separate Finnhub-backed RPC. Kick it off without blocking the
-        // primary stock-analysis render; the helper re-renders the panel
-        // when data arrives so the insider section fills in asynchronously.
-        void this.loadInsiderDataForPanel(panel, targetSymbols, cachedSnapshots, storedHistory, 'cached')
-          .catch((error) => console.error('[StockAnalysis] insider fetch failed:', error));
       }
 
-      if (hasFreshStockAnalysisHistory(storedHistory, targetSymbols)) {
+      if (historyIsFresh) {
+        // No live fetch coming — safe to enrich the cached render with
+        // insiders now. This is the only cached-path insider fetch; when a
+        // live fetch is about to run we defer insider enrichment until after
+        // the live render so we never re-render stale cached snapshots over
+        // fresh live data.
+        if (cachedSnapshots.length > 0) {
+          void this.loadInsiderDataForPanel(panel, targetSymbols, cachedSnapshots, storedHistory, 'cached', generation)
+            .catch((error) => console.error('[StockAnalysis] insider fetch failed:', error));
+        }
         return;
       }
 
@@ -1231,7 +1242,13 @@ export class DataLoaderManager implements AppModule {
       if (results.length === 0) {
         if (cachedSnapshots.length === 0) {
           panel.showRetrying('Stock analysis is waiting for eligible watchlist symbols.');
+          return;
         }
+        // Live fetch returned nothing but we already rendered cachedSnapshots
+        // above. Enrich the displayed cached snapshots with insider data so
+        // the user still sees the insider section.
+        void this.loadInsiderDataForPanel(panel, targetSymbols, cachedSnapshots, storedHistory, 'cached', generation)
+          .catch((error) => console.error('[StockAnalysis] insider fetch failed:', error));
         return;
       }
       const nextHistory = mergeStockAnalysisHistory(storedHistory, results);
@@ -1251,7 +1268,7 @@ export class DataLoaderManager implements AppModule {
       }
       const snapshotsToRender = combined.length > 0 ? combined : results;
       panel.renderAnalyses(snapshotsToRender, nextHistory, 'live');
-      void this.loadInsiderDataForPanel(panel, targetSymbols, snapshotsToRender, nextHistory, 'live')
+      void this.loadInsiderDataForPanel(panel, targetSymbols, snapshotsToRender, nextHistory, 'live', generation)
         .catch((error) => console.error('[StockAnalysis] insider fetch failed:', error));
     } catch (error) {
       console.error('[StockAnalysis] failed:', error);
@@ -1271,8 +1288,13 @@ export class DataLoaderManager implements AppModule {
     snapshotsToReRender: StockAnalysisResult[],
     historyForReRender: StockAnalysisHistory,
     source: 'live' | 'cached',
+    generation: number,
   ): Promise<void> {
     const results = await Promise.allSettled(symbols.map(s => fetchInsiderTransactions(s)));
+    // If another loadStockAnalysis invocation has started while this fetch
+    // was in flight, drop the result entirely — both setInsiderData and the
+    // re-render would clobber the current state.
+    if (generation !== this._stockAnalysisGeneration) return;
     for (let i = 0; i < symbols.length; i++) {
       const r = results[i];
       if (r && r.status === 'fulfilled') {
@@ -1282,9 +1304,9 @@ export class DataLoaderManager implements AppModule {
       }
     }
     // Re-render the panel so the insider section becomes visible now that
-    // setInsiderData has populated insiderBySymbol. The original render
-    // call already happened (without waiting on this fetch) so users saw
-    // the analyst report immediately.
+    // setInsiderData has populated insiderBySymbol. Guard once more in case
+    // something awaited between the setInsiderData calls above.
+    if (generation !== this._stockAnalysisGeneration) return;
     panel.renderAnalyses(snapshotsToReRender, historyForReRender, source);
   }
 
