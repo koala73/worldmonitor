@@ -1,5 +1,80 @@
 import type { ResilienceScoreResponse } from '@/services/resilience';
 
+// Gated locked-preview fixture rendered when the resilience widget is
+// visible to non-entitled users. The preview is blurred and
+// non-interactive via the .resilience-widget__preview CSS class, so
+// the exact values do not need to match any real country. They just
+// need to populate the 5 domain bars AND the 13-cell per-dimension
+// confidence grid (T1.6) with realistic-looking data so the gated
+// card is not a blank gap. Raised in PR #2949 review. Lives in this
+// dependency-free utils module so tests can import it without
+// pulling in the full ResilienceWidget class (the class indirectly
+// depends on `import.meta.env.DEV` via proxy.ts, which breaks plain
+// node test runners).
+export const LOCKED_PREVIEW: ResilienceScoreResponse = {
+  countryCode: 'US',
+  overallScore: 73,
+  baselineScore: 82,
+  stressScore: 58,
+  stressFactor: 0.21,
+  level: 'high',
+  domains: [
+    {
+      id: 'economic',
+      score: 82,
+      weight: 0.22,
+      dimensions: [
+        { id: 'macroFiscal', score: 85, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05 },
+        { id: 'currencyExternal', score: 80, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12 },
+        { id: 'tradeSanctions', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1 },
+      ],
+    },
+    {
+      id: 'infrastructure',
+      score: 68,
+      weight: 0.2,
+      dimensions: [
+        { id: 'cyberDigital', score: 72, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15 },
+        { id: 'logisticsSupply', score: 70, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2 },
+        { id: 'infrastructure', score: 65, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1 },
+      ],
+    },
+    {
+      id: 'energy',
+      score: 88,
+      weight: 0.15,
+      dimensions: [
+        { id: 'energy', score: 88, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18 },
+      ],
+    },
+    {
+      id: 'social-governance',
+      score: 71,
+      weight: 0.25,
+      dimensions: [
+        { id: 'governanceInstitutional', score: 78, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05 },
+        { id: 'socialCohesion', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1 },
+        { id: 'borderSecurity', score: 68, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25 },
+        { id: 'informationCognitive', score: 66, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18 },
+      ],
+    },
+    {
+      id: 'health-food',
+      score: 54,
+      weight: 0.18,
+      dimensions: [
+        { id: 'healthPublicService', score: 58, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12 },
+        { id: 'foodWater', score: 50, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15 },
+      ],
+    },
+  ],
+  trend: 'rising',
+  change30d: 2.4,
+  lowConfidence: false,
+  imputationShare: 0,
+  dataVersion: '',
+};
+
 export type ResilienceVisualLevel = 'very_high' | 'high' | 'moderate' | 'low' | 'very_low' | 'unknown';
 
 export const RESILIENCE_VISUAL_LEVEL_COLORS: Record<ResilienceVisualLevel, string> = {

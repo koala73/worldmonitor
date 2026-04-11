@@ -8,6 +8,7 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import {
   type DimensionConfidence,
+  LOCKED_PREVIEW,
   RESILIENCE_VISUAL_LEVEL_COLORS,
   collectDimensionConfidences,
   formatBaselineStress,
@@ -20,26 +21,11 @@ import {
 } from './resilience-widget-utils';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
 
-const LOCKED_PREVIEW: ResilienceScoreResponse = {
-  countryCode: 'US',
-  overallScore: 73,
-  baselineScore: 82,
-  stressScore: 58,
-  stressFactor: 0.21,
-  level: 'high',
-  domains: [
-    { id: 'economic', score: 82, weight: 0.22, dimensions: [] },
-    { id: 'infrastructure', score: 68, weight: 0.2, dimensions: [] },
-    { id: 'energy', score: 88, weight: 0.15, dimensions: [] },
-    { id: 'social-governance', score: 71, weight: 0.25, dimensions: [] },
-    { id: 'health-food', score: 54, weight: 0.18, dimensions: [] },
-  ],
-  trend: 'rising',
-  change30d: 2.4,
-  lowConfidence: false,
-  imputationShare: 0,
-  dataVersion: '',
-};
+// LOCKED_PREVIEW lives in resilience-widget-utils.ts so tests and
+// other non-Vite consumers can import it without dragging in the
+// full ResilienceWidget class transitive graph (the class indirectly
+// depends on import.meta.env.DEV via proxy.ts, which breaks plain
+// node test runners). Moved in the PR #2949 review round.
 
 function normalizeCountryCode(countryCode: string | null | undefined): string | null {
   const normalized = String(countryCode || '').trim().toUpperCase();

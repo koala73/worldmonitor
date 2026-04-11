@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  LOCKED_PREVIEW,
   collectDimensionConfidences,
   formatBaselineStress,
   formatDimensionConfidence,
@@ -261,4 +262,31 @@ test('collectDimensionConfidences preserves scorer order across domains and dime
 test('collectDimensionConfidences returns an empty list for an empty response', () => {
   assert.deepEqual(collectDimensionConfidences([]), []);
   assert.deepEqual(collectDimensionConfidences([{ dimensions: [] }]), []);
+});
+
+// PR #2949 review followup: the gated LOCKED_PREVIEW must populate
+// the per-dimension confidence grid so locked users see a blurred
+// representative card instead of a blank gap between the domain rows
+// and the footer. If a future edit accidentally drops a dimension
+// from the preview, this regression test fails loudly.
+test('LOCKED_PREVIEW populates all 13 dimensions for the gated preview (PR #2949 review)', () => {
+  const all = collectDimensionConfidences(LOCKED_PREVIEW.domains);
+  assert.equal(all.length, 13, `locked preview should carry all 13 dimensions, got ${all.length}`);
+  // Every cell should resolve to a short label (no raw IDs leaking through).
+  for (const dim of all) {
+    assert.ok(
+      dim.label.length > 0 && dim.label !== dim.id,
+      `${dim.id} should resolve to a short display label in the preview, got "${dim.label}"`,
+    );
+  }
+  // Every dimension in the preview should have non-absent status so
+  // the blurred grid renders a meaningful visual, never a row of empty
+  // "n/a" cells.
+  for (const dim of all) {
+    assert.notEqual(
+      dim.status,
+      'absent',
+      `${dim.id} should not be absent in the locked preview (all fixture values are populated)`,
+    );
+  }
 });

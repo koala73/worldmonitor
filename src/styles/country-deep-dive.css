@@ -961,6 +961,85 @@
   text-align: right;
 }
 
+/* T1.6 Phase 1 of the country-resilience reference-grade upgrade plan:
+   per-dimension confidence grid. Renders a compact 2-column grid of the
+   13 scorer dimensions between the 5-domain bars and the footer.
+   Each cell shows a short label, a coverage bar, and a percentage.
+   Status modifiers (--observed, --partial, --imputed, --absent) tint
+   the bar fill so analysts can see provenance at a glance. */
+.resilience-widget__dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.resilience-widget__dimension-cell {
+  display: grid;
+  grid-template-columns: minmax(56px, 72px) minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.resilience-widget__dimension-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resilience-widget__dimension-bar-track {
+  height: 4px;
+  background: var(--bar-track, rgba(255, 255, 255, 0.06));
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.resilience-widget__dimension-bar-fill {
+  height: 100%;
+  background: var(--text-faint);
+  border-radius: 2px;
+  transition: width 0.25s ease-out;
+}
+
+/* Status modifiers tint the fill so the provenance class is legible
+   even when the cell label is truncated. Colors reuse the existing
+   resilience visual-level palette from resilience-widget-utils.ts so
+   the grid stays in the same chromatic family as the domain bars. */
+.resilience-widget__dimension-cell--observed .resilience-widget__dimension-bar-fill {
+  background: #84cc16;
+}
+
+.resilience-widget__dimension-cell--partial .resilience-widget__dimension-bar-fill {
+  background: #eab308;
+}
+
+.resilience-widget__dimension-cell--imputed .resilience-widget__dimension-bar-fill {
+  background: #f97316;
+}
+
+.resilience-widget__dimension-cell--absent .resilience-widget__dimension-bar-fill {
+  background: var(--text-faint);
+  opacity: 0.35;
+}
+
+.resilience-widget__dimension-cell--absent .resilience-widget__dimension-label,
+.resilience-widget__dimension-cell--absent .resilience-widget__dimension-pct {
+  opacity: 0.55;
+}
+
+.resilience-widget__dimension-pct {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .resilience-widget__footer {
   display: flex;
   align-items: center;
@@ -1016,6 +1095,11 @@
 
   .resilience-widget__domain-score {
     text-align: left;
+  }
+
+  .resilience-widget__dimension-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
 
