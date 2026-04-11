@@ -628,6 +628,196 @@ export interface PortActivityEntry {
   anomalySignal: boolean;
 }
 
+export interface GetRegionalSnapshotRequest {
+  regionId: string;
+}
+
+export interface GetRegionalSnapshotResponse {
+  snapshot?: RegionalSnapshot;
+}
+
+export interface RegionalSnapshot {
+  regionId: string;
+  generatedAt: number;
+  meta?: SnapshotMeta;
+  regime?: RegimeState;
+  balance?: BalanceVector;
+  actors: ActorState[];
+  leverageEdges: LeverageEdge[];
+  scenarioSets: ScenarioSet[];
+  transmissionPaths: TransmissionPath[];
+  triggers?: TriggerLadder;
+  mobility?: MobilityState;
+  evidence: EvidenceItem[];
+  narrative?: RegionalNarrative;
+}
+
+export interface SnapshotMeta {
+  snapshotId: string;
+  modelVersion: string;
+  scoringVersion: string;
+  geographyVersion: string;
+  snapshotConfidence: number;
+  missingInputs: string[];
+  staleInputs: string[];
+  validUntil: number;
+  triggerReason: string;
+  narrativeProvider: string;
+  narrativeModel: string;
+}
+
+export interface RegimeState {
+  label: string;
+  previousLabel: string;
+  transitionedAt: number;
+  transitionDriver: string;
+}
+
+export interface BalanceVector {
+  coercivePressure: number;
+  domesticFragility: number;
+  capitalStress: number;
+  energyVulnerability: number;
+  allianceCohesion: number;
+  maritimeAccess: number;
+  energyLeverage: number;
+  netBalance: number;
+  pressures: BalanceDriver[];
+  buffers: BalanceDriver[];
+}
+
+export interface BalanceDriver {
+  axis: string;
+  description: string;
+  magnitude: number;
+  evidenceIds: string[];
+  orientation: string;
+}
+
+export interface ActorState {
+  actorId: string;
+  name: string;
+  role: string;
+  leverageDomains: string[];
+  leverageScore: number;
+  delta: number;
+  evidenceIds: string[];
+}
+
+export interface LeverageEdge {
+  fromActorId: string;
+  toActorId: string;
+  mechanism: string;
+  strength: number;
+  evidenceIds: string[];
+}
+
+export interface ScenarioSet {
+  horizon: string;
+  lanes: ScenarioLane[];
+}
+
+export interface ScenarioLane {
+  name: string;
+  probability: number;
+  triggerIds: string[];
+  consequences: string[];
+  transmissions: TransmissionPath[];
+}
+
+export interface TransmissionPath {
+  start: string;
+  mechanism: string;
+  end: string;
+  severity: string;
+  corridorId: string;
+  confidence: number;
+  latencyHours: number;
+  impactedAssetClass: string;
+  impactedRegions: string[];
+  magnitudeLow: number;
+  magnitudeHigh: number;
+  magnitudeUnit: string;
+  templateId: string;
+  templateVersion: string;
+}
+
+export interface TriggerLadder {
+  active: Trigger[];
+  watching: Trigger[];
+  dormant: Trigger[];
+}
+
+export interface Trigger {
+  id: string;
+  description: string;
+  threshold?: TriggerThreshold;
+  activated: boolean;
+  activatedAt: number;
+  scenarioLane: string;
+  evidenceIds: string[];
+}
+
+export interface TriggerThreshold {
+  metric: string;
+  operator: string;
+  value: number;
+  windowMinutes: number;
+  baseline: string;
+}
+
+export interface MobilityState {
+  airspace: AirspaceStatus[];
+  flightCorridors: FlightCorridorStress[];
+  airports: AirportNodeStatus[];
+  rerouteIntensity: number;
+  notamClosures: string[];
+}
+
+export interface AirspaceStatus {
+  airspaceId: string;
+  status: string;
+  reason: string;
+}
+
+export interface FlightCorridorStress {
+  corridor: string;
+  stressLevel: number;
+  reroutedFlights24h: number;
+}
+
+export interface AirportNodeStatus {
+  icao: string;
+  name: string;
+  status: string;
+  disruptionReason: string;
+}
+
+export interface EvidenceItem {
+  id: string;
+  type: string;
+  source: string;
+  summary: string;
+  confidence: number;
+  observedAt: number;
+  theater: string;
+  corridor: string;
+}
+
+export interface RegionalNarrative {
+  situation?: NarrativeSection;
+  balanceAssessment?: NarrativeSection;
+  outlook24h?: NarrativeSection;
+  outlook7d?: NarrativeSection;
+  outlook30d?: NarrativeSection;
+  watchItems: NarrativeSection[];
+}
+
+export interface NarrativeSection {
+  text: string;
+  evidenceIds: string[];
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -709,6 +899,7 @@ export interface IntelligenceServiceHandler {
   getCountryEnergyProfile(ctx: ServerContext, req: GetCountryEnergyProfileRequest): Promise<GetCountryEnergyProfileResponse>;
   computeEnergyShockScenario(ctx: ServerContext, req: ComputeEnergyShockScenarioRequest): Promise<ComputeEnergyShockScenarioResponse>;
   getCountryPortActivity(ctx: ServerContext, req: GetCountryPortActivityRequest): Promise<CountryPortActivityResponse>;
+  getRegionalSnapshot(ctx: ServerContext, req: GetRegionalSnapshotRequest): Promise<GetRegionalSnapshotResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -1710,6 +1901,53 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.getCountryPortActivity(ctx, body);
           return new Response(JSON.stringify(result as CountryPortActivityResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-regional-snapshot",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetRegionalSnapshotRequest = {
+            regionId: params.get("region_id") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getRegionalSnapshot", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getRegionalSnapshot(ctx, body);
+          return new Response(JSON.stringify(result as GetRegionalSnapshotResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
