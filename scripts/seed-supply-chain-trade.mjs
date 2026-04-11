@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
-import { BUDGET_LAB_TARIFFS_URL, htmlToPlainText, toIsoDate, parseBudgetLabEffectiveTariffHtml } from './_trade-parse-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -265,28 +264,42 @@ async function wtoFetch(path, params) {
   return resp.json();
 }
 
-// Budget Lab main page is a Next.js SPA; data is in a GitHub-hosted embedded report
-const BUDGET_LAB_EMBED_URL = 'https://raw.githubusercontent.com/Budget-Lab-Yale/tariff-impact-tracker/main/website/html/tariff_impacts_report_drupal.html';
+// US effective tariff rate from FRED: customs duties / goods imports × 100
+// B235RC1Q027SBEA = customs duties (quarterly, SAAR billions)
+// IEAMGSN = goods imports (quarterly, SAAR billions)
+const FRED_CUSTOMS_SERIES = 'B235RC1Q027SBEA';
+const FRED_IMPORTS_SERIES = 'IEAMGSN';
 
-async function fetchBudgetLabEffectiveTariffRate() {
-  // Try the GitHub-hosted embedded report first (reliable, static HTML)
-  for (const url of [BUDGET_LAB_EMBED_URL, BUDGET_LAB_TARIFFS_URL]) {
-    try {
-      const resp = await fetch(url, {
-        headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!resp.ok) continue;
-      const html = await resp.text();
-      const parsed = parseBudgetLabEffectiveTariffHtml(html);
-      if (parsed) {
-        console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);
-        return parsed;
-      }
-    } catch { /* try next */ }
+async function fetchEffectiveTariffRateFromFred() {
+  try {
+    const [customs, imports] = await Promise.all([
+      fredFetchJson(FRED_CUSTOMS_SERIES),
+      fredFetchJson(FRED_IMPORTS_SERIES),
+    ]);
+    if (!customs?.length || !imports?.length) {
+      console.warn('  FRED tariff rate: no data from one or both series');
+      return null;
+    }
+    // Both series are quarterly; match by date
+    const importsMap = new Map(imports.map(o => [o.date, parseFloat(o.value)]));
+    const latest = customs
+      .map(o => ({ date: o.date, customs: parseFloat(o.value), imports: importsMap.get(o.date) }))
+      .filter(o => Number.isFinite(o.customs) && Number.isFinite(o.imports) && o.imports > 0)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!latest) { console.warn('  FRED tariff rate: no matching quarters'); return null; }
+    const rate = (latest.customs / latest.imports) * 100;
+    console.log(`  FRED effective tariff: ${rate.toFixed(1)}% (${latest.date})`);
+    return {
+      sourceName: 'FRED (BEA)',
+      sourceUrl: `https://fred.stlouisfed.org/series/${FRED_CUSTOMS_SERIES}`,
+      observationPeriod: latest.date,
+      updatedAt: latest.date,
+      tariffRate: Math.round(rate * 100) / 100,
+    };
+  } catch (e) {
+    console.warn(`  FRED tariff rate: ${e.message}`);
+    return null;
   }
-  console.warn('  Budget Lab tariffs: all sources failed');
-  return null;
 }
 
 // ─── Trade Flows (WTO) — pre-seed major reporters vs World + key bilateral pairs ───
@@ -501,7 +514,7 @@ async function fetchTradeRestrictions() {
 async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
-  const usEffectiveTariffRate = await fetchBudgetLabEffectiveTariffRate();
+  const usEffectiveTariffRate = await fetchEffectiveTariffRateFromFred();
 
   // Batch WTO requests in groups of 30 to avoid URL length limits
   const BATCH_SIZE = 30;
