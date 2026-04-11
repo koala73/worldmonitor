@@ -154,8 +154,7 @@ export type DividendProfile = {
   dividendYield: number;
   trailingAnnualDividendRate: number;
   exDividendDate: number;
-  payoutRatio: number;
-  fiveYearAvgDividendYield: number;
+  payoutRatio?: number;
   dividendFrequency: string;
   dividendCagr: number;
 };
@@ -164,11 +163,37 @@ const EMPTY_DIVIDEND_PROFILE: DividendProfile = {
   dividendYield: 0,
   trailingAnnualDividendRate: 0,
   exDividendDate: 0,
-  payoutRatio: 0,
-  fiveYearAvgDividendYield: 0,
   dividendFrequency: '',
   dividendCagr: 0,
 };
+
+type YahooSummaryDetailResponse = {
+  quoteSummary?: {
+    result?: Array<{
+      summaryDetail?: {
+        payoutRatio?: { raw?: number };
+      };
+    }>;
+  };
+};
+
+async function fetchPayoutRatio(symbol: string): Promise<number | undefined> {
+  try {
+    await yahooGate();
+    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=summaryDetail`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!response.ok) return undefined;
+    const data = await response.json() as YahooSummaryDetailResponse;
+    const raw = data.quoteSummary?.result?.[0]?.summaryDetail?.payoutRatio?.raw;
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return undefined;
+    return raw;
+  } catch {
+    return undefined;
+  }
+}
 
 function inferDividendFrequency(paymentsPerYear: number): string {
   if (paymentsPerYear >= 10) return 'Monthly';
@@ -212,13 +237,16 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
   try {
     await yahooGate();
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=1mo&includePrePost=false&events=div`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    if (!response.ok) return EMPTY_DIVIDEND_PROFILE;
+    const [chartResponse, payoutRatio] = await Promise.all([
+      fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      }),
+      fetchPayoutRatio(symbol),
+    ]);
+    if (!chartResponse.ok) return EMPTY_DIVIDEND_PROFILE;
 
-    const data = await response.json() as YahooChartResponse;
+    const data = await chartResponse.json() as YahooChartResponse;
     const result = data.chart?.result?.[0];
     const dividendEvents = result?.events?.dividends;
     if (!dividendEvents || Object.keys(dividendEvents).length === 0) return EMPTY_DIVIDEND_PROFILE;
@@ -251,8 +279,7 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
       dividendYield: round(dividendYield),
       trailingAnnualDividendRate: round(trailingAnnual),
       exDividendDate,
-      payoutRatio: 0,
-      fiveYearAvgDividendYield: 0,
+      payoutRatio,
       dividendFrequency: inferDividendFrequency(paymentsPerYear),
       dividendCagr: round(cagr),
     };
@@ -1005,8 +1032,7 @@ export function buildAnalysisResponse(params: {
     dividendYield: dividend?.dividendYield ?? 0,
     trailingAnnualDividendRate: dividend?.trailingAnnualDividendRate ?? 0,
     exDividendDate: dividend?.exDividendDate ?? 0,
-    payoutRatio: dividend?.payoutRatio ?? 0,
-    fiveYearAvgDividendYield: 0,
+    payoutRatio: dividend?.payoutRatio,
     dividendFrequency: dividend?.dividendFrequency ?? '',
     dividendCagr: dividend?.dividendCagr ?? 0,
   };
@@ -1066,8 +1092,6 @@ function buildEmptyAnalysisResponse(symbol: string, name: string, includeNews: b
     dividendYield: 0,
     trailingAnnualDividendRate: 0,
     exDividendDate: 0,
-    payoutRatio: 0,
-    fiveYearAvgDividendYield: 0,
     dividendFrequency: '',
     dividendCagr: 0,
   };
@@ -1085,7 +1109,7 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  const cacheKey = `market:analyze-stock:v2:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  const cacheKey = `market:analyze-stock:v3:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const cached = await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
     const [history, analystData] = await Promise.all([

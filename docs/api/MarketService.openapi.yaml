@@ -1245,9 +1245,6 @@ components:
                 payoutRatio:
                     type: number
                     format: double
-                fiveYearAvgDividendYield:
-                    type: number
-                    format: double
                 dividendFrequency:
                     type: string
                 dividendCagr:

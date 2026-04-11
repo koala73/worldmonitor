@@ -86,8 +86,9 @@ message AnalyzeStockResponse {
   double dividend_yield = 50;
   double trailing_annual_dividend_rate = 51;
   int64 ex_dividend_date = 52 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  double payout_ratio = 53;
-  double five_year_avg_dividend_yield = 54;
+  optional double payout_ratio = 53;
+  reserved 54;
+  reserved "five_year_avg_dividend_yield";
   string dividend_frequency = 55;
   double dividend_cagr = 56;
 }

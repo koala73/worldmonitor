@@ -226,8 +226,7 @@ export interface AnalyzeStockResponse {
   dividendYield: number;
   trailingAnnualDividendRate: number;
   exDividendDate: number;
-  payoutRatio: number;
-  fiveYearAvgDividendYield: number;
+  payoutRatio?: number;
   dividendFrequency: string;
   dividendCagr: number;
 }

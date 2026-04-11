@@ -54,12 +54,24 @@ export class StockAnalysisPanel extends Panel {
     this.setContent(html);
   }
 
+  private formatDividendRate(rate: number, currency: string): string {
+    const trimmed = (currency || '').trim().toUpperCase();
+    if (trimmed && trimmed !== 'USD') {
+      try {
+        return `${new Intl.NumberFormat('en-US', { style: 'currency', currency: trimmed }).format(rate)}/share`;
+      } catch {
+        return `${trimmed} ${rate.toFixed(2)}/share`;
+      }
+    }
+    return `$${rate.toFixed(2)}/share`;
+  }
+
   private renderDividendProfile(item: StockAnalysisResult): string {
     if (!item.dividendYield || item.dividendYield <= 0) return '';
 
     const yieldStr = `${item.dividendYield.toFixed(1)}%`;
     const rateStr = item.trailingAnnualDividendRate > 0
-      ? ` ($${item.trailingAnnualDividendRate.toFixed(2)}/share)`
+      ? ` (${this.formatDividendRate(item.trailingAnnualDividendRate, item.currency)})`
       : '';
     const cagrStr = item.dividendCagr !== 0
       ? `${item.dividendCagr > 0 ? '+' : ''}${item.dividendCagr.toFixed(1)}%`
@@ -67,10 +79,15 @@ export class StockAnalysisPanel extends Panel {
     const freqBadge = item.dividendFrequency
       ? `<span class="badge-neutral" style="font-size:10px;padding:2px 6px;border-radius:3px">${escapeHtml(item.dividendFrequency)}</span>`
       : '';
-    const payoutStr = item.payoutRatio > 0 ? `${item.payoutRatio.toFixed(0)}%` : 'N/A';
     const exDateStr = item.exDividendDate > 0
       ? new Date(item.exDividendDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : 'N/A';
+
+    const hasPayoutRatio = typeof item.payoutRatio === 'number' && item.payoutRatio > 0;
+    const payoutPctStr = hasPayoutRatio ? `${(item.payoutRatio! * 100).toFixed(1)}%` : '';
+    const payoutCell = hasPayoutRatio
+      ? `<div><div style="color:var(--text-dim)">Payout Ratio</div><div style="margin-top:3px">${escapeHtml(payoutPctStr)}</div></div>`
+      : '';
 
     return `
       <div style="border:1px solid var(--border);padding:10px 12px">
@@ -79,7 +96,7 @@ export class StockAnalysisPanel extends Panel {
           <div><div style="color:var(--text-dim)">Yield</div><div style="margin-top:3px">${escapeHtml(yieldStr)}${escapeHtml(rateStr)}</div></div>
           <div><div style="color:var(--text-dim)">5Y CAGR</div><div style="margin-top:3px">${escapeHtml(cagrStr)}</div></div>
           <div><div style="color:var(--text-dim)">Frequency</div><div style="margin-top:3px">${freqBadge || 'N/A'}</div></div>
-          <div><div style="color:var(--text-dim)">Payout Ratio</div><div style="margin-top:3px">${escapeHtml(payoutStr)}</div></div>
+          ${payoutCell}
           <div><div style="color:var(--text-dim)">Ex-Dividend</div><div style="margin-top:3px">${escapeHtml(exDateStr)}</div></div>
         </div>
       </div>

@@ -115,6 +115,63 @@ describe('fetchDividendProfile', () => {
     const profile = await fetchDividendProfile('ZERO', 100);
     assert.equal(profile.dividendYield, 0);
   });
+
+  it('populates payoutRatio from the quoteSummary summaryDetail module', async () => {
+    const divs = makeQuarterlyDividends();
+    const chartPayload = makeDividendChartPayload(divs);
+    const summaryPayload = {
+      quoteSummary: {
+        result: [
+          { summaryDetail: { payoutRatio: { raw: 0.42 } } },
+        ],
+      },
+    };
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/v10/finance/quoteSummary/')) {
+        return new Response(JSON.stringify(summaryPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(chartPayload), { status: 200 });
+    }) as typeof fetch;
+    const profile = await fetchDividendProfile('JNJ', 160);
+    assert.equal(profile.payoutRatio, 0.42);
+  });
+
+  it('leaves payoutRatio undefined when summaryDetail fetch fails', async () => {
+    const divs = makeQuarterlyDividends();
+    const chartPayload = makeDividendChartPayload(divs);
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/v10/finance/quoteSummary/')) {
+        return new Response('', { status: 500 });
+      }
+      return new Response(JSON.stringify(chartPayload), { status: 200 });
+    }) as typeof fetch;
+    const profile = await fetchDividendProfile('JNJ', 160);
+    assert.equal(profile.payoutRatio, undefined);
+    assert.ok(profile.dividendYield > 0, 'dividend yield should still be computed even if payoutRatio fetch failed');
+  });
+
+  it('treats non-positive raw payoutRatio as missing', async () => {
+    const divs = makeQuarterlyDividends();
+    const chartPayload = makeDividendChartPayload(divs);
+    const summaryPayload = {
+      quoteSummary: {
+        result: [
+          { summaryDetail: { payoutRatio: { raw: 0 } } },
+        ],
+      },
+    };
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/v10/finance/quoteSummary/')) {
+        return new Response(JSON.stringify(summaryPayload), { status: 200 });
+      }
+      return new Response(JSON.stringify(chartPayload), { status: 200 });
+    }) as typeof fetch;
+    const profile = await fetchDividendProfile('JNJ', 160);
+    assert.equal(profile.payoutRatio, undefined);
+  });
 });
 
 describe('buildAnalysisResponse with dividend', () => {
@@ -134,8 +191,7 @@ describe('buildAnalysisResponse with dividend', () => {
       dividendYield: 2.3,
       trailingAnnualDividendRate: 1.92,
       exDividendDate: 1_700_000_000_000,
-      payoutRatio: 35,
-      fiveYearAvgDividendYield: 2.1,
+      payoutRatio: 0.35,
       dividendFrequency: 'Quarterly',
       dividendCagr: 8.2,
     };
@@ -154,10 +210,33 @@ describe('buildAnalysisResponse with dividend', () => {
     assert.equal(resp.dividendYield, 2.3);
     assert.equal(resp.trailingAnnualDividendRate, 1.92);
     assert.equal(resp.exDividendDate, 1_700_000_000_000);
-    assert.equal(resp.payoutRatio, 35);
-    assert.equal(resp.fiveYearAvgDividendYield, 0);
+    assert.equal(resp.payoutRatio, 0.35);
     assert.equal(resp.dividendFrequency, 'Quarterly');
     assert.equal(resp.dividendCagr, 8.2);
+    assert.ok(!('fiveYearAvgDividendYield' in resp), 'fiveYearAvgDividendYield should be removed from the response shape');
+  });
+
+  it('omits payoutRatio entirely when the dividend profile lacks it', () => {
+    const dividend: DividendProfile = {
+      dividendYield: 1.4,
+      trailingAnnualDividendRate: 0.96,
+      exDividendDate: 1_700_000_000_000,
+      dividendFrequency: 'Quarterly',
+      dividendCagr: 5.0,
+    };
+    const resp = buildAnalysisResponse({
+      symbol: 'NVDA',
+      name: 'NVIDIA',
+      currency: 'USD',
+      technical,
+      headlines: [],
+      overlay,
+      includeNews: false,
+      analysisAt: Date.now(),
+      generatedAt: new Date().toISOString(),
+      dividend,
+    });
+    assert.equal(resp.payoutRatio, undefined);
   });
 
   it('defaults dividend fields to zero when no profile', () => {
@@ -176,5 +255,6 @@ describe('buildAnalysisResponse with dividend', () => {
     assert.equal(resp.trailingAnnualDividendRate, 0);
     assert.equal(resp.dividendFrequency, '');
     assert.equal(resp.dividendCagr, 0);
+    assert.equal(resp.payoutRatio, undefined);
   });
 });
