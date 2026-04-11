@@ -4,7 +4,9 @@
 // balance drivers, narrative sections, and triggers.
 
 import { num } from './_helpers.mjs';
-import { REGIONS } from '../../shared/geography.js';
+// Use scripts/shared mirror (not repo-root shared/): Railway service has
+// rootDirectory=scripts so ../../shared/ escapes the deploy root.
+import { REGIONS } from '../shared/geography.js';
 
 const MAX_EVIDENCE_PER_SNAPSHOT = 30;
 

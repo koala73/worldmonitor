@@ -21,7 +21,11 @@
 import { pathToFileURL } from 'node:url';
 
 import { loadEnvFile, getRedisCredentials, writeExtraKeyWithMeta } from './_seed-utils.mjs';
-import { REGIONS, GEOGRAPHY_VERSION } from '../shared/geography.js';
+// Use scripts/shared mirror rather than the repo-root shared/ folder: the
+// Railway bundle service sets rootDirectory=scripts, so `../shared/` resolves
+// to filesystem / on deploy and the import fails with ERR_MODULE_NOT_FOUND.
+// scripts/shared/* is kept in sync with shared/* via tests.
+import { REGIONS, GEOGRAPHY_VERSION } from './shared/geography.js';
 
 import { computeBalanceVector, SCORING_VERSION } from './regional-snapshot/balance-vector.mjs';
 import { buildRegimeState } from './regional-snapshot/regime-derivation.mjs';

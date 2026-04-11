@@ -4,8 +4,10 @@
 // docs/internal/pro-regional-intelligence-appendix-scoring.md.
 
 import { clip, num, weightedAverage, percentile } from './_helpers.mjs';
-import { getRegionCountries, getRegionCorridors, countryCriticality, REGIONS } from '../../shared/geography.js';
-import iso3ToIso2Raw from '../../shared/iso3-to-iso2.json' with { type: 'json' };
+// Use scripts/shared mirror (not repo-root shared/): Railway service has
+// rootDirectory=scripts so ../../shared/ escapes the deploy root.
+import { getRegionCountries, getRegionCorridors, countryCriticality, REGIONS } from '../shared/geography.js';
+import iso3ToIso2Raw from '../shared/iso3-to-iso2.json' with { type: 'json' };
 
 /** @type {Record<string, string>} */
 const ISO3_TO_ISO2 = iso3ToIso2Raw;

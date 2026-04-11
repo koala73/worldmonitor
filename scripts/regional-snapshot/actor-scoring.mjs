@@ -3,7 +3,9 @@
 // Phase 0: lightweight extraction. Phase 1+ adds dedicated actor tracking.
 
 import { clip, num } from './_helpers.mjs';
-import { REGIONS } from '../../shared/geography.js';
+// Use scripts/shared mirror (not repo-root shared/): Railway service has
+// rootDirectory=scripts so ../../shared/ escapes the deploy root.
+import { REGIONS } from '../shared/geography.js';
 
 const ALIASES = {
   iran: 'Iran', irgc: 'IRGC', tehran: 'Iran',

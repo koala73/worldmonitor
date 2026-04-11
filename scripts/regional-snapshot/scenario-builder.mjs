@@ -4,7 +4,9 @@
 // "Scenario Set Normalization".
 
 import { num } from './_helpers.mjs';
-import { REGIONS } from '../../shared/geography.js';
+// Use scripts/shared mirror (not repo-root shared/): Railway service has
+// rootDirectory=scripts so ../../shared/ escapes the deploy root.
+import { REGIONS } from '../shared/geography.js';
 
 /** @type {import('../../shared/regions.types.js').ScenarioHorizon[]} */
 const HORIZONS = ['24h', '7d', '30d'];
