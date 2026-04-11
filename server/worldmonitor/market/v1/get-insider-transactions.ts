@@ -11,14 +11,19 @@ import { UPSTREAM_TIMEOUT_MS, sanitizeSymbol } from './_shared';
 const CACHE_TTL_SECONDS = 86_400;
 const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1_000;
 
-const PURCHASE_CODES = new Set(['P', 'A']);
-const SALE_CODES = new Set(['S', 'D', 'F']);
-// Form 4 transaction code 'M' = exercise/conversion of derivative security.
-// We surface these so symbols whose only recent activity is option exercises
-// (e.g. cashless RSU/option events) do not appear as "no transactions".
-// Exercises do not contribute to the buys/sells dollar totals because the
-// price field is the strike price, not a market transaction.
-const NEUTRAL_CODES = new Set(['M']);
+// Only genuine open-market Form 4 codes count toward buy/sell conviction:
+//   P = open-market or private purchase
+//   S = open-market or private sale
+const PURCHASE_CODES = new Set(['P']);
+const SALE_CODES = new Set(['S']);
+// Non-market Form 4 codes we still surface in the transactions list so the
+// panel does not look empty, but which do NOT contribute to buy/sell totals
+// because their transactionPrice is not a market execution price:
+//   M = exercise/conversion of derivative (price = strike)
+//   A = grant/award (compensation, not a purchase)
+//   D = disposition to issuer (e.g. buyback redemption)
+//   F = payment of exercise price or tax withholding (mechanical)
+const NEUTRAL_CODES = new Set(['M', 'A', 'D', 'F']);
 
 interface FinnhubTransaction {
   name: string;

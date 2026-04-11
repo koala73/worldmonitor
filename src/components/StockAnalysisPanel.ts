@@ -38,9 +38,12 @@ function formatDollarCompact(value: number): string {
 }
 
 function txCodeLabel(code: string): string {
-  if (code === 'P' || code === 'A') return 'Buy';
-  if (code === 'S' || code === 'D' || code === 'F') return 'Sell';
+  if (code === 'P') return 'Buy';
+  if (code === 'S') return 'Sell';
   if (code === 'M') return 'Exercise';
+  if (code === 'A') return 'Award';
+  if (code === 'D') return 'Disposition';
+  if (code === 'F') return 'Tax/Fee';
   return code;
 }
 
@@ -363,15 +366,15 @@ export class StockAnalysisPanel extends Panel {
         </thead>
         <tbody>
           ${rows.map(tx => {
-            const isBuy = tx.transactionCode === 'P' || tx.transactionCode === 'A';
-            const isSell = tx.transactionCode === 'S' || tx.transactionCode === 'D' || tx.transactionCode === 'F';
+            const isBuy = tx.transactionCode === 'P';
+            const isSell = tx.transactionCode === 'S';
             const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical)' : 'var(--text-dim)';
-            // Exercise rows (code M) carry value: 0 from the server because
-            // transactionPrice is the option strike, not a market execution
-            // price. Render a dash so users do not read a misleading
-            // strike-derived dollar figure that contradicts the buy/sell
-            // totals (which already exclude strike-priced exercises).
-            const valueCell = tx.transactionCode === 'M' ? '—' : formatDollarCompact(tx.value);
+            // Non-market rows (M/A/D/F) carry value: 0 from the server because
+            // their transactionPrice is not a market execution price (strike,
+            // grant price, buyback redemption, or tax withholding). Render a
+            // dash so users do not read a misleading dollar figure that
+            // contradicts the buy/sell totals (which only count P and S).
+            const valueCell = tx.value === 0 ? '—' : formatDollarCompact(tx.value);
             return `
               <tr>
                 <td style="padding:4px 6px;border-bottom:1px solid var(--border);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>

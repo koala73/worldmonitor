@@ -166,6 +166,39 @@ describe('getInsiderTransactions handler', () => {
     assert.equal(pRow!.value, 100_000);
   });
 
+  it('excludes non-market Form 4 codes (A/D/F) from buy/sell totals', async () => {
+    process.env.FINNHUB_API_KEY = 'test-key';
+    globalThis.fetch = (async () => {
+      return mockFinnhubResponse([
+        // Grant/award — compensation, not a market purchase.
+        { name: 'Awardee', share: 10000, change: 10000, transactionPrice: 150, transactionCode: 'A', transactionDate: recentDate(5), filingDate: recentDate(3) },
+        // Disposition to issuer — e.g. buyback redemption.
+        { name: 'Dispositioner', share: 5000, change: -5000, transactionPrice: 160, transactionCode: 'D', transactionDate: recentDate(10), filingDate: recentDate(8) },
+        // Payment of exercise price / tax withholding — mechanical, not discretionary.
+        { name: 'TaxPayer', share: 2000, change: -2000, transactionPrice: 155, transactionCode: 'F', transactionDate: recentDate(15), filingDate: recentDate(13) },
+        // One real buy so we can assert only P counts toward totalBuys.
+        { name: 'Buyer', share: 1000, change: 1000, transactionPrice: 100, transactionCode: 'P', transactionDate: recentDate(20), filingDate: recentDate(18) },
+      ]);
+    }) as typeof fetch;
+
+    const resp = await getInsiderTransactions({} as never, { symbol: 'AAPL' });
+    assert.equal(resp.unavailable, false);
+    // Only the P row contributes to totalBuys; A/D/F contribute nothing.
+    assert.equal(resp.totalBuys, 100_000);
+    assert.equal(resp.totalSells, 0);
+    assert.equal(resp.netValue, 100_000);
+    // A/D/F rows still reach the client so the panel does not look empty,
+    // but their per-row dollar value is zeroed out (rendered as a dash).
+    assert.equal(resp.transactions.length, 4);
+    const aRow = resp.transactions.find(t => t.transactionCode === 'A');
+    const dRow = resp.transactions.find(t => t.transactionCode === 'D');
+    const fRow = resp.transactions.find(t => t.transactionCode === 'F');
+    assert.ok(aRow && dRow && fRow, 'A/D/F rows should be surfaced');
+    assert.equal(aRow!.value, 0);
+    assert.equal(dRow!.value, 0);
+    assert.equal(fRow!.value, 0);
+  });
+
   it('blends exercise codes with buys and sells', async () => {
     process.env.FINNHUB_API_KEY = 'test-key';
     globalThis.fetch = (async () => {
