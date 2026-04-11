@@ -11,6 +11,11 @@
  * @property {string} key      - Redis key (literal, no template variables)
  * @property {number} maxAgeMin - Maximum acceptable age in minutes
  * @property {string[]} feedsAxes - Which balance axes / sections this input drives
+ * @property {string=} metaKey - Optional companion seed-meta key carrying
+ *   {fetchedAt, recordCount}. Used when the primary payload has no
+ *   top-level timestamp field. classifyInputs() will prefer the meta key's
+ *   timestamp when both are available so a stalled seeder can be detected
+ *   even if the data payload is still served from a previous write.
  */
 
 /**
@@ -37,21 +42,45 @@ export const FRESHNESS_REGISTRY = [
   { key: 'economic:spr:v1',                      maxAgeMin: 10080, feedsAxes: ['energy_buffer'] },
   // Mobility v1 (Phase 2 PR2) — feed the MobilityState block via mobility.mjs.
   // maxAgeMin matches each seeder's cron interval + safety buffer.
-  { key: 'aviation:delays:faa:v1',               maxAgeMin: 60,    feedsAxes: ['mobility'] },
-  { key: 'aviation:delays:intl:v3',              maxAgeMin: 90,    feedsAxes: ['mobility'] },
-  { key: 'aviation:notam:closures:v2',           maxAgeMin: 120,   feedsAxes: ['mobility'] },
-  { key: 'intelligence:gpsjam:v2',               maxAgeMin: 240,   feedsAxes: ['mobility', 'airspace'] },
+  // The aviation/gpsjam payloads have no top-level timestamp field, so they
+  // rely on companion seed-meta:* keys (written by the seeders via
+  // writeFreshnessMetadata / upstashSet) for stale detection. Without these
+  // metaKey hints, classifyInputs would fall back to "undated = fresh" and
+  // miss stalled seeders entirely.
+  { key: 'aviation:delays:faa:v1',               maxAgeMin: 60,    feedsAxes: ['mobility'], metaKey: 'seed-meta:aviation:faa' },
+  { key: 'aviation:delays:intl:v3',              maxAgeMin: 90,    feedsAxes: ['mobility'], metaKey: 'seed-meta:aviation:intl' },
+  { key: 'aviation:notam:closures:v2',           maxAgeMin: 120,   feedsAxes: ['mobility'], metaKey: 'seed-meta:aviation:notam' },
+  { key: 'intelligence:gpsjam:v2',               maxAgeMin: 240,   feedsAxes: ['mobility', 'airspace'], metaKey: 'seed-meta:intelligence:gpsjam' },
+  // military:flights:v1 already carries top-level fetchedAt, no metaKey needed.
   { key: 'military:flights:v1',                  maxAgeMin: 30,    feedsAxes: ['mobility', 'reroute_intensity'] },
 ];
+
+/** Every metaKey referenced by FRESHNESS_REGISTRY, for pre-fetching. */
+export const ALL_META_KEYS = FRESHNESS_REGISTRY
+  .map((s) => s.metaKey)
+  .filter((k) => typeof k === 'string' && k.length > 0);
 
 export const ALL_INPUT_KEYS = FRESHNESS_REGISTRY.map((s) => s.key);
 
 /**
  * Classify each input as fresh, stale, or missing.
+ *
+ * Timestamp resolution order per input:
+ *   1. If the spec has a `metaKey`, use metaPayloads[metaKey].fetchedAt.
+ *      This is the canonical signal for sources whose data payload lacks
+ *      a top-level timestamp (FAA alerts, AviationStack, NOTAM, GPS jam).
+ *   2. Otherwise, pull a timestamp from the primary payload via
+ *      extractTimestamp (fetchedAt, generatedAt, timestamp, updatedAt,
+ *      lastUpdate).
+ *   3. If neither yields a timestamp, fall back to "fresh" (cannot prove
+ *      staleness). This fallback remains so we don't regress existing
+ *      keys that have never needed a meta key.
+ *
  * @param {Record<string, unknown>} payloads - Map of key -> raw value (or null)
+ * @param {Record<string, unknown>} [metaPayloads] - Map of metaKey -> raw value (or null)
  * @returns {{ fresh: string[]; stale: string[]; missing: string[] }}
  */
-export function classifyInputs(payloads) {
+export function classifyInputs(payloads, metaPayloads = {}) {
   const fresh = [];
   const stale = [];
   const missing = [];
@@ -63,10 +92,19 @@ export function classifyInputs(payloads) {
       missing.push(spec.key);
       continue;
     }
-    // Try to extract a timestamp from common shapes.
-    const ts = extractTimestamp(payload);
+
+    // Prefer the companion seed-meta:*.fetchedAt when the spec declares one.
+    // This is the only way to detect a stalled seeder for payloads that
+    // don't carry a top-level timestamp of their own.
+    let ts = null;
+    if (spec.metaKey) {
+      const meta = metaPayloads[spec.metaKey];
+      ts = extractTimestamp(meta);
+    }
+    if (ts === null) ts = extractTimestamp(payload);
+
     if (ts === null) {
-      // Present but undated -- treat as fresh (we cannot prove staleness).
+      // Present but undated — treat as fresh (we cannot prove staleness).
       fresh.push(spec.key);
       continue;
     }

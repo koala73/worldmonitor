@@ -107,6 +107,16 @@ export function gpsjamRegionToSnapshotRegion(gpsjamRegion) {
  * coverage matching the fetch-gpsjam.mjs region bboxes. Returns null for
  * oceans and unmapped airspace.
  *
+ * North America's southern edge is set at lat 16.0°N — that captures
+ * every major Mexican city and state capital (southernmost is Tuxtla
+ * Gutiérrez at 16.75°N) while still routing Guatemala City (14.6°N),
+ * Belize City (17.5°N is on the line but Belize is routed via its
+ * country name in the airport mapper), and El Salvador to latam.
+ * Before this fix, NA started at lat 20 which left Mexico City (19.4°N)
+ * and most of Mexican airspace in latam, disagreeing with
+ * airportToSnapshotRegion()'s country-based MX→NA routing and
+ * understating NA's reroute_intensity from military tracks.
+ *
  * @param {number} lat
  * @param {number} lon
  * @returns {string | null}
@@ -123,10 +133,12 @@ export function latLonToSnapshotRegion(lat, lon) {
   if (lat >= 5 && lat <= 38 && lon >= 60 && lon <= 97) return 'south-asia';
   // East Asia / Southeast Asia / Oceania
   if (lat >= -45 && lat <= 55 && lon >= 90 && lon <= 180) return 'east-asia';
-  // North America
-  if (lat >= 20 && lat <= 75 && lon >= -170 && lon <= -50) return 'north-america';
-  // Latin America
-  if (lat >= -56 && lat <= 32 && lon >= -120 && lon <= -34) return 'latam';
+  // North America — includes all major Mexican cities/states. Checked
+  // before latam so the bbox overlap resolves to NA.
+  if (lat >= 16 && lat <= 75 && lon >= -170 && lon <= -50) return 'north-america';
+  // Latin America — capped at 16°N so Guatemala/Belize/El Salvador and
+  // southward fall here, while mainland Mexico goes to NA above.
+  if (lat >= -56 && lat < 16 && lon >= -120 && lon <= -34) return 'latam';
   return null;
 }
 

@@ -11,6 +11,11 @@ export const MODEL_VERSION = '0.1.0';
 
 /**
  * @param {Record<string, any>} sources
+ * @param {string} scoringVersion
+ * @param {string} geographyVersion
+ * @param {Record<string, any>} [metaSources] - Companion seed-meta:* payloads
+ *   used by classifyInputs to detect stalled seeders whose data payloads
+ *   lack top-level timestamps. See freshness.mjs.
  * @returns {{
  *   pre: {
  *     model_version: string;
@@ -25,8 +30,8 @@ export const MODEL_VERSION = '0.1.0';
  *   classification: { fresh: string[]; stale: string[]; missing: string[] };
  * }}
  */
-export function buildPreMeta(sources, scoringVersion, geographyVersion) {
-  const classification = classifyInputs(sources);
+export function buildPreMeta(sources, scoringVersion, geographyVersion, metaSources = {}) {
+  const classification = classifyInputs(sources, metaSources);
   const totalInputs = classification.fresh.length + classification.stale.length + classification.missing.length;
   const cCompleteness = totalInputs > 0
     ? (totalInputs - classification.missing.length) / totalInputs

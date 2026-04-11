@@ -40,7 +40,7 @@ import { collectEvidence } from './regional-snapshot/evidence-collector.mjs';
 import { buildPreMeta, buildFinalMeta } from './regional-snapshot/snapshot-meta.mjs';
 import { diffRegionalSnapshot, inferTriggerReason } from './regional-snapshot/diff-snapshot.mjs';
 import { persistSnapshot, readLatestSnapshot } from './regional-snapshot/persist-snapshot.mjs';
-import { ALL_INPUT_KEYS } from './regional-snapshot/freshness.mjs';
+import { ALL_INPUT_KEYS, ALL_META_KEYS } from './regional-snapshot/freshness.mjs';
 import { generateSnapshotId } from './regional-snapshot/_helpers.mjs';
 import { generateRegionalNarrative, emptyNarrative } from './regional-snapshot/narrative.mjs';
 import { emitRegionalAlerts } from './regional-snapshot/alert-emitter.mjs';
@@ -50,10 +50,17 @@ loadEnvFile(import.meta.url);
 
 const SEED_META_KEY = 'intelligence:regional-snapshots';
 
-/** @returns {Promise<Record<string, any>>} */
+/**
+ * Read every input key + every metaKey companion in a single pipeline.
+ * metaKeys carry {fetchedAt, recordCount} for inputs whose data payload
+ * has no top-level timestamp (mobility sources). See freshness.mjs.
+ *
+ * @returns {Promise<{ sources: Record<string, any>, metaSources: Record<string, any> }>}
+ */
 async function readAllInputs() {
   const { url, token } = getRedisCredentials();
-  const pipeline = ALL_INPUT_KEYS.map((k) => ['GET', k]);
+  const keys = [...ALL_INPUT_KEYS, ...ALL_META_KEYS];
+  const pipeline = keys.map((k) => ['GET', k]);
   const resp = await fetch(`${url}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -62,22 +69,26 @@ async function readAllInputs() {
   });
   if (!resp.ok) throw new Error(`Redis pipeline read: HTTP ${resp.status}`);
   const results = await resp.json();
+
   /** @type {Record<string, any>} */
-  const data = {};
-  for (let i = 0; i < ALL_INPUT_KEYS.length; i++) {
-    const key = ALL_INPUT_KEYS[i];
+  const sources = {};
+  /** @type {Record<string, any>} */
+  const metaSources = {};
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+    const target = i < ALL_INPUT_KEYS.length ? sources : metaSources;
     const raw = results[i]?.result;
     if (raw === null || raw === undefined) {
-      data[key] = null;
+      target[key] = null;
       continue;
     }
     try {
-      data[key] = JSON.parse(raw);
+      target[key] = JSON.parse(raw);
     } catch {
-      data[key] = null;
+      target[key] = null;
     }
   }
-  return data;
+  return { sources, metaSources };
 }
 
 /**
@@ -100,9 +111,10 @@ async function readAllInputs() {
  *   15. diff → trigger_reason
  *   16. final_meta with narrative_provider/narrative_model
  */
-async function computeSnapshot(regionId, sources) {
-  // Step 2: pre-meta
-  const { pre } = buildPreMeta(sources, SCORING_VERSION, GEOGRAPHY_VERSION);
+async function computeSnapshot(regionId, sources, metaSources = {}) {
+  // Step 2: pre-meta (metaSources carries seed-meta:*.fetchedAt for inputs
+  // whose data payloads have no top-level timestamp — see freshness.mjs).
+  const { pre } = buildPreMeta(sources, SCORING_VERSION, GEOGRAPHY_VERSION, metaSources);
 
   // Step 3: balance vector
   const { vector: balance } = computeBalanceVector(regionId, sources);
@@ -196,10 +208,12 @@ async function main() {
   const t0 = Date.now();
   console.log(`[regional-snapshots] Starting compute for ${REGIONS.length} regions`);
 
-  // Step 1: read all inputs once (shared across regions)
-  const sources = await readAllInputs();
+  // Step 1: read all inputs once (shared across regions), plus seed-meta
+  // companions for inputs whose payloads lack top-level timestamps.
+  const { sources, metaSources } = await readAllInputs();
   const presentKeys = Object.entries(sources).filter(([, v]) => v !== null).length;
-  console.log(`[regional-snapshots] Read inputs: ${presentKeys}/${ALL_INPUT_KEYS.length} keys present`);
+  const presentMetaKeys = Object.entries(metaSources).filter(([, v]) => v !== null).length;
+  console.log(`[regional-snapshots] Read inputs: ${presentKeys}/${ALL_INPUT_KEYS.length} keys present, ${presentMetaKeys}/${ALL_META_KEYS.length} meta keys present`);
 
   let persisted = 0;
   let skipped = 0;
@@ -209,7 +223,7 @@ async function main() {
 
   for (const region of REGIONS) {
     try {
-      const { snapshot, diff } = await computeSnapshot(region.id, sources);
+      const { snapshot, diff } = await computeSnapshot(region.id, sources, metaSources);
       const result = await persistSnapshot(snapshot);
       if (result.persisted) {
         persisted += 1;

@@ -15,6 +15,11 @@ import {
   buildNotamClosures,
   buildMobilityState,
 } from '../scripts/regional-snapshot/mobility.mjs';
+import {
+  classifyInputs,
+  FRESHNESS_REGISTRY,
+  ALL_META_KEYS,
+} from '../scripts/regional-snapshot/freshness.mjs';
 
 // ────────────────────────────────────────────────────────────────────────────
 // airportToSnapshotRegion
@@ -471,5 +476,155 @@ describe('buildMobilityState', () => {
     assert.equal(na.airspace.length, 0);
     assert.ok(na.reroute_intensity > 0);
     assert.ok(mena.reroute_intensity > 0);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// PR #2976 review-fix regression: Mexico lat/lon consistency (P2 #1)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Before the fix, latLonToSnapshotRegion()'s NA bbox started at lat 20, so
+// Mexican flights (Mexico City 19.4°N, Guadalajara 20.5°N, Chiapas ~16°N)
+// fell into latam. Meanwhile airportToSnapshotRegion routed MX airports to
+// NA by country, so NA's reroute_intensity understated actual military
+// pressure and the two classifiers disagreed on the same country.
+
+describe('Mexico classifier parity (PR #2976 P2 #1)', () => {
+  // Every major Mexican city sits at lat ≥ 16°N (Tuxtla Gutiérrez, the
+  // southernmost state capital, is at 16.75°N). A handful of tiny
+  // southern-Chiapas airports at lat ≈14.9°N route to latam under this
+  // classifier — acceptable limitation; those airports aren't in the
+  // monitored set and don't carry meaningful military traffic.
+  const mexicanCities = [
+    { name: 'Mexico City',     lat: 19.43, lon: -99.13 },
+    { name: 'Guadalajara',     lat: 20.67, lon: -103.35 },
+    { name: 'Monterrey',       lat: 25.68, lon: -100.32 },
+    { name: 'Tijuana',         lat: 32.52, lon: -117.03 },
+    { name: 'Cancun',          lat: 21.16, lon: -86.85 },
+    { name: 'Tuxtla Gutierrez', lat: 16.75, lon: -93.11 },
+  ];
+
+  for (const city of mexicanCities) {
+    it(`routes ${city.name} to north-america`, () => {
+      assert.equal(latLonToSnapshotRegion(city.lat, city.lon), 'north-america');
+    });
+  }
+
+  it('airport-by-country AND lat/lon classifier agree for every major Mexican city', () => {
+    for (const city of mexicanCities) {
+      const byCountry = airportToSnapshotRegion({ region: 'AIRPORT_REGION_AMERICAS', country: 'Mexico' });
+      const byLatLon = latLonToSnapshotRegion(city.lat, city.lon);
+      assert.equal(byCountry, byLatLon, `${city.name}: country-based=${byCountry} vs lat/lon=${byLatLon}`);
+    }
+  });
+
+  it('Guatemala / Belize / El Salvador go to latam (south of the 16°N break)', () => {
+    assert.equal(latLonToSnapshotRegion(14.60, -90.52), 'latam'); // Guatemala City
+    assert.equal(latLonToSnapshotRegion(13.69, -89.19), 'latam'); // San Salvador
+    assert.equal(latLonToSnapshotRegion(15.50, -88.03), 'latam'); // northern Honduras
+  });
+
+  it('US and Canada still land in north-america', () => {
+    assert.equal(latLonToSnapshotRegion(40.64, -73.78), 'north-america'); // JFK
+    assert.equal(latLonToSnapshotRegion(49.19, -123.18), 'north-america'); // YVR
+  });
+
+  it('South American cities stay in latam', () => {
+    assert.equal(latLonToSnapshotRegion(-23.44, -46.47), 'latam'); // São Paulo
+    assert.equal(latLonToSnapshotRegion(-33.39, -70.79), 'latam'); // Santiago
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// PR #2976 review-fix regression: seed-meta freshness path (P2 #2)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// classifyInputs() used to treat undated payloads as fresh, which meant
+// stalled FAA/NOTAM/AviationStack/GPS-jam seeders would never bump
+// snapshot_confidence down. The fix threads a metaKey through each
+// freshness spec so the companion seed-meta:*.fetchedAt is the canonical
+// staleness signal.
+
+describe('classifyInputs metaKey fallback (PR #2976 P2 #2)', () => {
+  it('declares metaKey for every undated mobility input', () => {
+    const mobilityKeys = new Set([
+      'aviation:delays:faa:v1',
+      'aviation:delays:intl:v3',
+      'aviation:notam:closures:v2',
+      'intelligence:gpsjam:v2',
+    ]);
+    for (const spec of FRESHNESS_REGISTRY) {
+      if (mobilityKeys.has(spec.key)) {
+        assert.ok(typeof spec.metaKey === 'string' && spec.metaKey.length > 0,
+          `${spec.key} must declare a metaKey — its payload has no top-level fetchedAt`);
+      }
+    }
+  });
+
+  it('military:flights:v1 does NOT need a metaKey (payload has top-level fetchedAt)', () => {
+    const spec = FRESHNESS_REGISTRY.find((s) => s.key === 'military:flights:v1');
+    assert.ok(spec);
+    assert.equal(spec.metaKey, undefined);
+  });
+
+  it('ALL_META_KEYS collects every declared metaKey', () => {
+    assert.ok(ALL_META_KEYS.includes('seed-meta:aviation:faa'));
+    assert.ok(ALL_META_KEYS.includes('seed-meta:aviation:intl'));
+    assert.ok(ALL_META_KEYS.includes('seed-meta:aviation:notam'));
+    assert.ok(ALL_META_KEYS.includes('seed-meta:intelligence:gpsjam'));
+  });
+
+  it('undated payload + fresh meta → classified as fresh', () => {
+    const freshMeta = { fetchedAt: Date.now() - 5 * 60_000 }; // 5 min old
+    const result = classifyInputs(
+      { 'aviation:delays:faa:v1': { alerts: [] } }, // payload present, no timestamp
+      { 'seed-meta:aviation:faa': freshMeta },
+    );
+    assert.ok(result.fresh.includes('aviation:delays:faa:v1'));
+    assert.ok(!result.stale.includes('aviation:delays:faa:v1'));
+  });
+
+  it('undated payload + STALE meta → classified as stale (the key bug fix)', () => {
+    const staleMeta = { fetchedAt: Date.now() - 6 * 60 * 60_000 }; // 6 hours old, > 60min cap
+    const result = classifyInputs(
+      { 'aviation:delays:faa:v1': { alerts: [] } },
+      { 'seed-meta:aviation:faa': staleMeta },
+    );
+    assert.ok(result.stale.includes('aviation:delays:faa:v1'));
+    assert.ok(!result.fresh.includes('aviation:delays:faa:v1'));
+  });
+
+  it('undated payload + missing meta → falls back to fresh (cannot prove staleness)', () => {
+    const result = classifyInputs(
+      { 'aviation:delays:faa:v1': { alerts: [] } },
+      {}, // no meta at all
+    );
+    assert.ok(result.fresh.includes('aviation:delays:faa:v1'));
+  });
+
+  it('missing payload → classified as missing regardless of meta', () => {
+    const result = classifyInputs(
+      { 'aviation:delays:faa:v1': null },
+      { 'seed-meta:aviation:faa': { fetchedAt: Date.now() } },
+    );
+    assert.ok(result.missing.includes('aviation:delays:faa:v1'));
+    assert.ok(!result.fresh.includes('aviation:delays:faa:v1'));
+    assert.ok(!result.stale.includes('aviation:delays:faa:v1'));
+  });
+
+  it('existing registry entries without metaKey still work via top-level timestamp', () => {
+    // Sanity: military:flights:v1 has top-level fetchedAt and no metaKey.
+    const staleFlights = { flights: [], fetchedAt: Date.now() - 60 * 60_000 }; // 60 min, > 30min cap
+    const result = classifyInputs({ 'military:flights:v1': staleFlights }, {});
+    assert.ok(result.stale.includes('military:flights:v1'));
+  });
+
+  it('meta payload with no fetchedAt field falls through to payload timestamp', () => {
+    const staleFlights = { flights: [], fetchedAt: Date.now() - 60 * 60_000 };
+    const result = classifyInputs(
+      { 'military:flights:v1': staleFlights },
+      { 'seed-meta:military:flights': { recordCount: 100 } }, // meta has no fetchedAt
+    );
+    assert.ok(result.stale.includes('military:flights:v1'));
   });
 });
