@@ -185,7 +185,7 @@ function getTheaterGeoGroup(marketRegion) {
 const MARKET_INPUT_KEYS = {
   stocks: 'market:stocks-bootstrap:v1',
   commodities: 'market:commodities-bootstrap:v1',
-  sectors: 'market:sectors:v1',
+  sectors: 'market:sectors:v2',
   gulfQuotes: 'market:gulf-quotes:v1',
   etfFlows: 'market:etf-flows:v1',
   crypto: 'market:crypto:v1',

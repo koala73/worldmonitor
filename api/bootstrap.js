@@ -14,7 +14,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   trafficAnomalies: 'cf:radar:traffic-anomalies:v1',
   marketQuotes:     'market:stocks-bootstrap:v1',
   commodityQuotes:  'market:commodities-bootstrap:v1',
-  sectors:          'market:sectors:v1',
+  sectors:          'market:sectors:v2',
   etfFlows:         'market:etf-flows:v1',
   macroSignals:     'economic:macro-signals:v1',
   bisPolicy:        'economic:bis:policy:v1',

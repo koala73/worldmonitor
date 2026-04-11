@@ -173,7 +173,11 @@ export class HeatmapPanel extends Panel {
   }
 
   public updateValuations(valuations: Record<string, SectorValuation> | undefined): void {
-    if (!valuations || Object.keys(valuations).length === 0) {
+    // undefined = caller has no valuations to push (e.g. fresh fetch returned
+    // a payload without the field). Leave prior state intact so returning
+    // users don't see the Valuations tab vanish mid-session.
+    if (valuations === undefined) return;
+    if (Object.keys(valuations).length === 0) {
       this._valuations = {};
       if (this._tab === 'valuations') this._tab = 'performance';
       this._render();

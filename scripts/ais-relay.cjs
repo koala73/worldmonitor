@@ -1848,7 +1848,7 @@ async function seedSectorSummary() {
   }
 
   const payload = { sectors, valuations };
-  const ok = await upstashSet('market:sectors:v1', payload, MARKET_SEED_TTL);
+  const ok = await upstashSet('market:sectors:v2', payload, MARKET_SEED_TTL);
   const quotesKey = `market:quotes:v1:${[...SECTOR_SYMBOLS].sort().join(',')}`;
   const sectorQuotes = sectors.map((s) => ({
     symbol: s.symbol, name: s.name, display: s.name,

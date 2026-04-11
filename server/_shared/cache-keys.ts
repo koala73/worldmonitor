@@ -101,7 +101,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   serviceStatuses:  'infra:service-statuses:v1',
   ddosAttacks:      'cf:radar:ddos:v1',
   trafficAnomalies: 'cf:radar:traffic-anomalies:v1',
-  sectors:          'market:sectors:v1',
+  sectors:          'market:sectors:v2',
   etfFlows:         'market:etf-flows:v1',
   macroSignals:     'economic:macro-signals:v1',
   bisPolicy:        'economic:bis:policy:v1',

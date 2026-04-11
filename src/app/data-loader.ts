@@ -1349,19 +1349,37 @@ export class DataLoaderManager implements AppModule {
       });
       const toSectorBar = (s: { symbol?: string; name: string; change: number | null }) =>
         s.symbol && Number.isFinite(s.change) ? { symbol: s.symbol, name: s.name, change1d: s.change as number } : null;
-      if (hydratedSectors?.sectors?.length) {
+      // Defensive: a pre-PR bootstrap payload may have `sectors` but lack the
+      // new `valuations` field entirely. Treat that shape as a cache miss and
+      // fall through to a live fetch so the valuations tab can populate.
+      const hydratedHasValuationsField = hydratedSectors
+        ? Object.prototype.hasOwnProperty.call(hydratedSectors, 'valuations')
+        : false;
+      if (hydratedSectors?.sectors?.length && hydratedHasValuationsField) {
         warmSectorCache(hydratedSectors);
         const items = hydratedSectors.sectors.map(toHeatmapItem);
         const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
         heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
         heatmapPanel?.updateValuations(hydratedSectors.valuations);
       } else {
+        // If hydrated had sectors but no valuations field, render performance
+        // tiles immediately so users see heatmap data while the live fetch runs.
+        if (hydratedSectors?.sectors?.length) {
+          const items = hydratedSectors.sectors.map(toHeatmapItem);
+          const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
+          heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
+        }
         const sectorsResp = await fetchSectors() as GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> };
         if (sectorsResp.sectors.length > 0) {
           const items = sectorsResp.sectors.map(toHeatmapItem);
           const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
           heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
-          heatmapPanel?.updateValuations(sectorsResp.valuations);
+          // Only push valuations when the response actually has the field — a
+          // payload without `valuations` must NOT clear prior valuations that
+          // may already be rendered from a previous (successful) fetch.
+          if (Object.prototype.hasOwnProperty.call(sectorsResp, 'valuations')) {
+            heatmapPanel?.updateValuations(sectorsResp.valuations);
+          }
         } else if (stocksResult.skipped) {
           this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
         }

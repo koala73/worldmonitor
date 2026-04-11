@@ -82,7 +82,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
       'market:crypto:v1',
-      'market:sectors:v1',
+      'market:sectors:v2',
       'market:etf-flows:v1',
       'market:gulf-quotes:v1',
       'market:fear-greed:v1',

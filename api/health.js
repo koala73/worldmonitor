@@ -7,7 +7,7 @@ export const config = { runtime: 'edge' };
 const BOOTSTRAP_KEYS = {
   earthquakes:       'seismology:earthquakes:v1',
   outages:           'infra:outages:v1',
-  sectors:           'market:sectors:v1',
+  sectors:           'market:sectors:v2',
   etfFlows:          'market:etf-flows:v1',
   climateAnomalies:  'climate:anomalies:v2',
   climateDisasters:  'climate:disasters:v1',
