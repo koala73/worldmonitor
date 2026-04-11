@@ -54,6 +54,38 @@ export class StockAnalysisPanel extends Panel {
     this.setContent(html);
   }
 
+  private renderDividendProfile(item: StockAnalysisResult): string {
+    if (!item.dividendYield || item.dividendYield <= 0) return '';
+
+    const yieldStr = `${item.dividendYield.toFixed(1)}%`;
+    const rateStr = item.trailingAnnualDividendRate > 0
+      ? ` ($${item.trailingAnnualDividendRate.toFixed(2)}/share)`
+      : '';
+    const cagrStr = item.dividendCagr !== 0
+      ? `${item.dividendCagr > 0 ? '+' : ''}${item.dividendCagr.toFixed(1)}%`
+      : 'N/A';
+    const freqBadge = item.dividendFrequency
+      ? `<span class="badge-neutral" style="font-size:10px;padding:2px 6px;border-radius:3px">${escapeHtml(item.dividendFrequency)}</span>`
+      : '';
+    const payoutStr = item.payoutRatio > 0 ? `${item.payoutRatio.toFixed(0)}%` : 'N/A';
+    const exDateStr = item.exDividendDate > 0
+      ? new Date(item.exDividendDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'N/A';
+
+    return `
+      <div style="border:1px solid var(--border);padding:10px 12px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">Dividend Profile</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:11px">
+          <div><div style="color:var(--text-dim)">Yield</div><div style="margin-top:3px">${escapeHtml(yieldStr)}${escapeHtml(rateStr)}</div></div>
+          <div><div style="color:var(--text-dim)">5Y CAGR</div><div style="margin-top:3px">${escapeHtml(cagrStr)}</div></div>
+          <div><div style="color:var(--text-dim)">Frequency</div><div style="margin-top:3px">${freqBadge || 'N/A'}</div></div>
+          <div><div style="color:var(--text-dim)">Payout Ratio</div><div style="margin-top:3px">${escapeHtml(payoutStr)}</div></div>
+          <div><div style="color:var(--text-dim)">Ex-Dividend</div><div style="margin-top:3px">${escapeHtml(exDateStr)}</div></div>
+        </div>
+      </div>
+    `;
+  }
+
   private renderCard(item: StockAnalysisResult, history: StockAnalysisResult[]): string {
     const tone = stockSignalClass(item.signal);
     const priorRuns = history.filter((entry) => entry.generatedAt !== item.generatedAt).slice(0, 3);
@@ -95,6 +127,7 @@ export class StockAnalysisPanel extends Panel {
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">RSI 12</div><div style="margin-top:4px">${escapeHtml(item.rsi12.toFixed(1))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Volume</div><div style="margin-top:4px">${escapeHtml(item.volumeStatus)}</div></div>
         </div>
+        ${this.renderDividendProfile(item)}
         <div style="font-size:12px;line-height:1.55;color:var(--text)"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Action</strong><div style="margin-top:4px">${escapeHtml(item.action)}</div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
           <div>

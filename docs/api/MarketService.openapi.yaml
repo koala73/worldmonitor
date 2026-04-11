@@ -1232,6 +1232,27 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/UpgradeDowngrade'
+                dividendYield:
+                    type: number
+                    format: double
+                trailingAnnualDividendRate:
+                    type: number
+                    format: double
+                exDividendDate:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                payoutRatio:
+                    type: number
+                    format: double
+                fiveYearAvgDividendYield:
+                    type: number
+                    format: double
+                dividendFrequency:
+                    type: string
+                dividendCagr:
+                    type: number
+                    format: double
         StockAnalysisHeadline:
             type: object
             properties:

@@ -223,6 +223,13 @@ export interface AnalyzeStockResponse {
   analystConsensus?: AnalystConsensus;
   priceTarget?: PriceTarget;
   recentUpgrades: UpgradeDowngrade[];
+  dividendYield: number;
+  trailingAnnualDividendRate: number;
+  exDividendDate: number;
+  payoutRatio: number;
+  fiveYearAvgDividendYield: number;
+  dividendFrequency: string;
+  dividendCagr: number;
 }
 
 export interface StockAnalysisHeadline {
