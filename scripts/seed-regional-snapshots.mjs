@@ -43,6 +43,7 @@ import { persistSnapshot, readLatestSnapshot } from './regional-snapshot/persist
 import { ALL_INPUT_KEYS } from './regional-snapshot/freshness.mjs';
 import { generateSnapshotId } from './regional-snapshot/_helpers.mjs';
 import { generateRegionalNarrative, emptyNarrative } from './regional-snapshot/narrative.mjs';
+import { emitRegionalAlerts } from './regional-snapshot/alert-emitter.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -210,7 +211,7 @@ async function main() {
 
   for (const region of REGIONS) {
     try {
-      const { snapshot } = await computeSnapshot(region.id, sources);
+      const { snapshot, diff } = await computeSnapshot(region.id, sources);
       const result = await persistSnapshot(snapshot);
       if (result.persisted) {
         persisted += 1;
@@ -222,6 +223,19 @@ async function main() {
           trigger_reason: snapshot.meta.trigger_reason,
         });
         console.log(`[${region.id}] persisted regime=${snapshot.regime.label} confidence=${snapshot.meta.snapshot_confidence} triggers=${snapshot.triggers.active.length} reason=${snapshot.meta.trigger_reason}`);
+
+        // Emit state-change alerts for this diff. Best-effort — never blocks
+        // or throws out of the main loop. Alerts are deduped on a 6h window
+        // by wm:notif:scan-dedup:{eventType}:{hash}, matching the cron cadence.
+        try {
+          const alertResult = await emitRegionalAlerts(region, snapshot, diff);
+          if (alertResult.events.length > 0) {
+            console.log(`[${region.id}] alerts: ${alertResult.enqueued}/${alertResult.events.length} enqueued`);
+          }
+        } catch (alertErr) {
+          const alertMsg = /** @type {any} */ (alertErr)?.message ?? alertErr;
+          console.warn(`[${region.id}] alert emitter threw: ${alertMsg}`);
+        }
       } else {
         skipped += 1;
         console.log(`[${region.id}] skipped: ${result.reason}`);
