@@ -158,6 +158,7 @@ import {
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
   WsbTickerScannerPanel,
+  AAIISentimentPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
@@ -3227,6 +3228,16 @@ export class DataLoaderManager implements AppModule {
     } catch (error) {
       console.error('[App] Thermal escalation fetch failed:', error);
       this.callPanel('thermal-escalation', 'showError');
+    }
+  }
+
+  async loadAaiiSentiment(): Promise<void> {
+    const panel = this.ctx.panels['aaii-sentiment'] as AAIISentimentPanel | undefined;
+    if (!panel) return;
+    try {
+      await panel.fetchData();
+    } catch (e) {
+      console.error('[App] AAII sentiment load failed:', e);
     }
   }
 

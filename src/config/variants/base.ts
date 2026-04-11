@@ -61,6 +61,7 @@ export const REFRESH_INTERVALS = {
   earningsCalendar: 60 * 60 * 1000,
   economicCalendar: 60 * 60 * 1000,
   cotPositioning: 60 * 60 * 1000,
+  aaiiSentiment: 60 * 60 * 1000, // weekly data; hourly refresh is sufficient
 };
 
 // Monitor colors - shared

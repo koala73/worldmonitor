@@ -329,6 +329,9 @@ export class App {
       const panel = this.state.panels['cot-positioning'] as CotPositioningPanel | undefined;
       if (panel) primeTask('cot-positioning', () => panel.fetchData());
     }
+    if (shouldPrime('aaii-sentiment')) {
+      primeTask('aaiiSentiment', () => this.dataLoader.loadAaiiSentiment());
+    }
     if (shouldPrimeAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex'])) {
       primeTask('markets', () => this.dataLoader.loadMarkets());
     }
@@ -1393,6 +1396,12 @@ export class App {
       () => (this.state.panels['cot-positioning'] as CotPositioningPanel).fetchData(),
       REFRESH_INTERVALS.cotPositioning,
       () => this.isPanelNearViewport('cot-positioning')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'aaii-sentiment',
+      () => this.dataLoader.loadAaiiSentiment(),
+      REFRESH_INTERVALS.aaiiSentiment,
+      () => this.isPanelNearViewport('aaii-sentiment')
     );
 
     // Refresh intelligence signals for CII (geopolitical variant only)

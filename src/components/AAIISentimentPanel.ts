@@ -13,6 +13,7 @@ interface WeekData {
 
 interface AAIIData {
   seededAt: string;
+  fallback?: boolean;
   source: string;
   latest: WeekData;
   previous: WeekData | null;
@@ -182,7 +183,10 @@ export class AAIISentimentPanel extends Panel {
           52w extremes: ${extremes.spreadBelow20} contrarian signals, ${extremes.bearishAbove50} extreme bear, ${extremes.bullishAbove50} extreme bull
         </div>` : '';
 
-    const dateStr = latest.date ? `<div style="font-size:9px;color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${d.source !== 'xls' ? ` (${escapeHtml(d.source)})` : ''}</div>` : '';
+    const fallbackBadge = d.fallback
+      ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:rgba(230,126,34,0.15);color:#e67e22;font-size:9px;margin-left:4px">(fallback data)</span>'
+      : '';
+    const dateStr = latest.date ? `<div style="font-size:9px;color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${d.source !== 'xls' ? ` (${escapeHtml(d.source)})` : ''}${fallbackBadge}</div>` : '';
 
     const html = `
       <div style="padding:12px 14px">

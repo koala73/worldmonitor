@@ -330,7 +330,8 @@ async function fetchAaiiSentiment() {
   }
 
   // Strategy 3: Use fallback data
-  if (data.length === 0) {
+  const isFallback = data.length === 0;
+  if (isFallback) {
     console.log('  Using fallback data');
     data = FALLBACK_DATA;
     source = 'fallback';
@@ -356,7 +357,8 @@ async function fetchAaiiSentiment() {
   const bearishExtremes = weeks.filter(w => w.bearish >= 50).length;
 
   return {
-    seededAt: new Date().toISOString(),
+    seededAt: isFallback ? new Date(latest.date + 'T12:00:00Z').toISOString() : new Date().toISOString(),
+    fallback: isFallback,
     source,
     latest,
     previous: prev,
