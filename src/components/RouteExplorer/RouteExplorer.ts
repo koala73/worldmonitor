@@ -103,6 +103,7 @@ export class RouteExplorer {
 
   public close(): void {
     if (!this.isOpen || !this.root) return;
+    this.generationId++;
     if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
     document.removeEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.helpOverlay?.element.remove();
@@ -151,9 +152,21 @@ export class RouteExplorer {
     }, FETCH_DEBOUNCE_MS);
   }
 
+  private resetLaneState(): void {
+    this.laneData = null;
+    this.clearMapState();
+    this.leftRail?.updateLane(null);
+    this.leftRail?.updateResilience(null);
+    this.currentTab?.update(null);
+    this.alternativesTab?.update(null);
+    this.landTab?.update(null);
+  }
+
   private async fetchLane(): Promise<void> {
     if (!this.isQueryComplete()) return;
     if (!hasPremiumAccess(getAuthState())) {
+      this.generationId++;
+      this.resetLaneState();
       this.renderFreeGate();
       return;
     }
@@ -170,25 +183,32 @@ export class RouteExplorer {
         cargoType: this.getEffectiveCargo(),
       });
       if (gen !== this.generationId) return;
+      if (data.noModeledLane) {
+        this.resetLaneState();
+        this.currentTab.update(data);
+        this.showActiveTab();
+        return;
+      }
       this.laneData = data;
       this.applyData(data);
       this.applyMapState(data);
-      void this.fetchResilience(data.toIso2);
+      void this.fetchResilience(data.toIso2, gen);
     } catch {
       if (gen !== this.generationId) return;
-      this.laneData = null;
+      this.resetLaneState();
       this.showError();
     } finally {
       if (gen === this.generationId) this.isLoading = false;
     }
   }
 
-  private async fetchResilience(iso2: string): Promise<void> {
+  private async fetchResilience(iso2: string, gen: number): Promise<void> {
     try {
       const res = await getResilienceScore(iso2);
-      if (!this.isOpen) return;
+      if (gen !== this.generationId || !this.isOpen) return;
       this.leftRail.updateResilience(res.overallScore ?? null);
     } catch {
+      if (gen !== this.generationId || !this.isOpen) return;
       this.leftRail.updateResilience(null);
     }
   }
