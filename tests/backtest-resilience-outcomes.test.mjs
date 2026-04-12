@@ -111,10 +111,10 @@ describe('event detectors', () => {
       assert.equal(labels.size, 0);
     });
 
-    it('handles array format with yoyChange', () => {
+    it('handles array format with yoyChange in percentage points', () => {
       const data = [
-        { country: 'TR', yoyChange: -0.20 },
-        { country: 'JP', yoyChange: -0.05 },
+        { country: 'TR', yoyChange: -20 },
+        { country: 'JP', yoyChange: -5 },
       ];
       const labels = detectFxStress(data, ['TR', 'JP']);
       assert.equal(labels.get('TR'), true);

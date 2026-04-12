@@ -220,7 +220,7 @@ function detectFxStress(data, _allCountries) {
       if (!cc || cc.length !== 2) continue;
       const change = entry.yoyChange ?? entry.change ?? entry.depreciation;
       if (typeof change === 'number' && Number.isFinite(change)) {
-        labels.set(cc, change <= -0.15 || change >= 15);
+        labels.set(cc, change <= -15);
       }
     }
     return labels;
@@ -233,7 +233,7 @@ function detectFxStress(data, _allCountries) {
       if (!cc || cc.length !== 2) continue;
       const change = entry.yoyChange ?? entry.change ?? entry.depreciation;
       if (typeof change === 'number' && Number.isFinite(change)) {
-        labels.set(cc, change <= -0.15 || change >= 15);
+        labels.set(cc, change <= -15);
       }
     }
     return labels;
@@ -597,7 +597,7 @@ const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('backtest-resilienc
 if (isMain) {
   runBacktest().catch((err) => {
     console.error(`FATAL: ${err.message || err}`);
-    process.exitCode = 0;
+    process.exitCode = 1;
   });
 }
 
