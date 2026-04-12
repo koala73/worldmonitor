@@ -651,16 +651,25 @@ export class RouteExplorer {
 
   // ─── Help / Share ─────────────────────────────────────────────────────
 
+  private helpPriorFocus: HTMLElement | null = null;
+
   private openHelp(): void {
     if (!this.root || this.helpOverlay) return;
+    this.helpPriorFocus = (document.activeElement as HTMLElement) ?? null;
     this.helpOverlay = new KeyboardHelp({ onClose: () => this.closeHelp() });
     this.root.append(this.helpOverlay.element);
+    const closeBtn = this.helpOverlay.element.querySelector<HTMLButtonElement>('.re-help__close');
+    closeBtn?.focus();
   }
 
   private closeHelp(): void {
     if (!this.helpOverlay) return;
     this.helpOverlay.element.remove();
     this.helpOverlay = null;
+    if (this.helpPriorFocus && document.body.contains(this.helpPriorFocus)) {
+      this.helpPriorFocus.focus();
+    }
+    this.helpPriorFocus = null;
   }
 
   private copyShareUrl(): void {
