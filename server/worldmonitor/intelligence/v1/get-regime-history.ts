@@ -84,6 +84,11 @@ async function redisLrange(key: string, start: number, stop: number): Promise<st
  * Empty list → empty response (200 with transitions: []), so the client
  * can distinguish "region has never changed regime" from an error.
  *
+ * Redis/network failure → response includes `upstreamUnavailable: true`.
+ * The gateway detects this flag in the response body and sets
+ * `Cache-Control: no-store` so a transient Upstash outage is not pinned
+ * as a false-empty history until the cache TTL expires (PR #2981 review).
+ *
  * Premium-gated at the gateway layer via PREMIUM_RPC_PATHS and cached at
  * the 'slow' tier in RPC_CACHE_TIER, matching get-regional-snapshot.
  */
@@ -106,7 +111,11 @@ export const getRegimeHistory: IntelligenceServiceHandler['getRegimeHistory'] = 
   const key = `${KEY_PREFIX}${regionId}`;
   const raw = await redisLrange(key, 0, limit - 1);
   if (!raw) {
-    return { transitions: [] };
+    // Redis failure or missing credentials — signal to the gateway that this
+    // is a transient upstream issue, not a genuine "no history" result. The
+    // gateway checks for `"upstreamUnavailable":true` in the body and sets
+    // Cache-Control: no-store so the failure isn't cached for the full TTL.
+    return { transitions: [], upstreamUnavailable: true } as GetRegimeHistoryResponse & { upstreamUnavailable: boolean };
   }
 
   const transitions: RegimeTransition[] = [];

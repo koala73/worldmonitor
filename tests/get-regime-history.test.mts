@@ -122,6 +122,10 @@ describe('get-regime-history handler structural checks', () => {
   it('filters malformed JSON entries from the LRANGE result', () => {
     assert.match(handlerSrc, /dropped malformed entry/);
   });
+
+  it('signals upstreamUnavailable on Redis failure so the gateway skips caching', () => {
+    assert.match(handlerSrc, /upstreamUnavailable:\s*true/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────

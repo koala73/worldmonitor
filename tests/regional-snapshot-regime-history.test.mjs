@@ -322,6 +322,50 @@ describe('recordRegimeTransition', () => {
 // Constants sanity
 // ────────────────────────────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────────────────
+// transition_driver backfill (PR #2981 review fix)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('transition_driver from snapshot.regime (PR #2981 P2 #1)', () => {
+  it('carries a populated driver when the snapshot regime has one', () => {
+    // After the fix, seed-regional-snapshots.mjs patches
+    // regime.transition_driver = triggerReason after the diff step.
+    // This test verifies the recorder reads it through correctly.
+    const snap = snapshotFixture({
+      regime: {
+        label: 'escalation_ladder',
+        previous_label: 'coercive_stalemate',
+        transitioned_at: 1_700_000_000_000,
+        transition_driver: 'regime_shift',
+      },
+    });
+    const diff = emptyDiff({ regime_changed: { from: 'coercive_stalemate', to: 'escalation_ladder' } });
+    const entry = buildTransitionEntry(menaRegion, snap, diff);
+    assert.ok(entry);
+    assert.equal(entry.transition_driver, 'regime_shift');
+  });
+
+  it('falls back to empty driver when the seed path is pre-fix (back-compat)', () => {
+    // Pre-fix snapshots carry transition_driver='' from
+    // buildRegimeState(balance, previousLabel, ''). The entry should
+    // still record cleanly — just with empty driver.
+    const snap = snapshotFixture({
+      regime: {
+        label: 'coercive_stalemate',
+        previous_label: 'calm',
+        transitioned_at: 1_700_000_000_000,
+        transition_driver: '',
+      },
+    });
+    const diff = emptyDiff({ regime_changed: { from: 'calm', to: 'coercive_stalemate' } });
+    const entry = buildTransitionEntry(menaRegion, snap, diff);
+    assert.ok(entry);
+    assert.equal(entry.transition_driver, '');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+
 describe('module constants', () => {
   it('REGIME_HISTORY_KEY_PREFIX matches the handler read prefix', () => {
     assert.equal(REGIME_HISTORY_KEY_PREFIX, 'intelligence:regime-history:v1:');

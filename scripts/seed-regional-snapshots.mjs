@@ -189,6 +189,15 @@ async function computeSnapshot(regionId, sources, metaSources = {}) {
   const diff = diffRegionalSnapshot(previous, tentativeSnapshot);
   const triggerReason = inferTriggerReason(diff);
 
+  // Backfill the regime's transition_driver now that we have the diff-derived
+  // trigger_reason. Step 11 built the regime object before the diff existed
+  // so the driver was empty; patching here ensures both the persisted snapshot
+  // AND the regime-history entry carry the real driver (PR #2981 review fix).
+  if (diff.regime_changed && triggerReason !== 'scheduled_6h') {
+    regime.transition_driver = triggerReason;
+    tentativeSnapshot.regime = regime;
+  }
+
   // Step 16: final_meta with diff-derived trigger_reason and narrative metadata
   const finalMeta = buildFinalMeta(pre, {
     snapshot_id: snapshotId,
