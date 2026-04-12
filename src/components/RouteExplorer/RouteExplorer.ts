@@ -232,7 +232,9 @@ export class RouteExplorer {
       this.impactData = data;
       this.impactTab.update(data);
       this.leftRail.updateDependencyFlags(data.dependencyFlags);
-      this.leftRail.updateResilience(data.resilienceScore || null);
+      if (data.resilienceScore > 0) {
+        this.leftRail.updateResilience(data.resilienceScore);
+      }
       if (this.state.tab === 4) this.showActiveTab();
     } catch {
       if (gen !== this.generationId) return;

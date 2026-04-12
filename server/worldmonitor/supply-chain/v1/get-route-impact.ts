@@ -153,8 +153,8 @@ async function computeImpact(req: GetRouteImpactRequest): Promise<GetRouteImpact
   const payload = rawPayload as BilateralHs4Payload;
   if (!payload.products?.length) return emptyResponse(req, 'empty');
 
-  const hs2Padded = hs2.padStart(2, '0');
-  const matchingHs4s = payload.products.filter((p) => hs4ToHs2(p.hs4) === hs2 || p.hs4.startsWith(hs2Padded));
+  const normalizedHs2 = String(Number.parseInt(hs2, 10));
+  const matchingHs4s = payload.products.filter((p) => hs4ToHs2(p.hs4) === normalizedHs2);
   const hs2InSeededUniverse = matchingHs4s.length > 0;
 
   let laneValueUsd = 0;
