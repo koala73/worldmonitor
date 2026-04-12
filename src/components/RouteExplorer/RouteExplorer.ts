@@ -194,7 +194,7 @@ export class RouteExplorer {
       this.laneData = data;
       this.applyData(data);
       this.applyMapState(data);
-      void this.fetchResilience(data.toIso2, gen);
+      void this.fetchResilience(data.toIso2);
     } catch {
       if (gen !== this.generationId) return;
       this.resetLaneState();
@@ -204,13 +204,14 @@ export class RouteExplorer {
     }
   }
 
-  private async fetchResilience(iso2: string, gen: number): Promise<void> {
+  private async fetchResilience(iso2: string): Promise<void> {
+    const gen = this.generationId;
     try {
       const res = await getResilienceScore(iso2);
-      if (gen !== this.generationId || !this.isOpen) return;
+      if (!this.isOpen || gen !== this.generationId) return;
       this.leftRail.updateResilience(res.overallScore ?? null);
     } catch {
-      if (gen !== this.generationId || !this.isOpen) return;
+      if (gen !== this.generationId) return;
       this.leftRail.updateResilience(null);
     }
   }

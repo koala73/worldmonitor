@@ -25,7 +25,7 @@ export function renderRouteCard(opts: RouteCardOptions): HTMLDivElement {
   const { option: o, index, isActive, onSelect } = opts;
   const card = document.createElement('div');
   const statusCls = corridorStatusClass(o.status);
-  const isDisabled = o.status === 'CORRIDOR_STATUS_UNAVAILABLE';
+  const isDisabled = o.status === 'CORRIDOR_STATUS_UNAVAILABLE' || o.status === 'CORRIDOR_STATUS_PROPOSED';
   card.className = `re-route-card ${statusCls} ${isActive ? 're-route-card--active' : ''}`;
   card.setAttribute('role', 'option');
   card.setAttribute('aria-selected', isActive ? 'true' : 'false');

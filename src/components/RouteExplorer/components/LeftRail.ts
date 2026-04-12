@@ -30,6 +30,7 @@ export class LeftRail {
   }
 
   public updateLane(data: GetRouteExplorerLaneResponse | null): void {
+    this.resilienceScore = null;
     if (!data || data.noModeledLane) {
       this.renderNoLane();
       return;

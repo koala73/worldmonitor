@@ -30,7 +30,7 @@ export function formatCostDelta(addedTransitDays: number, addedCostMultiplier: n
 }
 
 export function formatExposurePct(pct: number): string {
-  return `${pct}%`;
+  return `${Math.round(pct)}%`;
 }
 
 const WAR_RISK_LABELS: Record<string, string> = {

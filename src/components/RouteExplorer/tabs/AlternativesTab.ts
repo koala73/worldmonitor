@@ -88,12 +88,16 @@ export class AlternativesTab {
     if (this.seaOptions.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      this.activeIndex = Math.min(this.activeIndex + 1, this.seaOptions.length - 1);
+      const next = Math.min(this.activeIndex + 1, this.seaOptions.length - 1);
+      if (next === this.activeIndex) return;
+      this.activeIndex = next;
       this.renderList();
       this.focusActive();
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      this.activeIndex = Math.max(this.activeIndex - 1, 0);
+      const next = Math.max(this.activeIndex - 1, 0);
+      if (next === this.activeIndex) return;
+      this.activeIndex = next;
       this.renderList();
       this.focusActive();
     } else if (e.key === 'Enter' && this.activeIndex >= 0) {
