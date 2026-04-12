@@ -14,10 +14,12 @@ export function computeFuelStockDays(members) {
     if (!m.iso2 || m.netExporter) continue;
     const days = m.daysOfCover;
     if (days === null || days === undefined) continue;
+    // Derive both flags from `days` consistently to avoid contradiction
+    // when the source carries a stale belowObligation value.
     countries[m.iso2] = {
       fuelStockDays: days,
       meetsObligation: days >= 90,
-      belowObligation: m.belowObligation ?? days < 90,
+      belowObligation: days < 90,
     };
   }
   return countries;

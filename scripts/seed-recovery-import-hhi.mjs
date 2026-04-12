@@ -64,7 +64,10 @@ async function fetchImportsForReporter(reporterCode) {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       signal: AbortSignal.timeout(45_000),
     });
-    if (!retry.ok) return [];
+    if (!retry.ok) {
+      console.warn(`  Retry for reporter ${reporterCode} also failed (HTTP ${retry.status})`);
+      return [];
+    }
     return parseRecords(await retry.json());
   }
 
