@@ -12,17 +12,14 @@ const EXPECTED_SECTIONS = [
   {
     label: 'External-Benchmark',
     script: 'benchmark-resilience-external.mjs',
-    seedMetaKey: 'resilience:benchmark:external',
   },
   {
     label: 'Outcome-Backtest',
     script: 'backtest-resilience-outcomes.mjs',
-    seedMetaKey: 'resilience:backtest:outcomes',
   },
   {
     label: 'Sensitivity-Suite',
     script: 'validate-resilience-sensitivity.mjs',
-    seedMetaKey: 'resilience:sensitivity',
   },
 ];
 
@@ -36,14 +33,14 @@ describe('seed-bundle-resilience-validation', () => {
     assert.ok(src.includes("runBundle('resilience-validation'"), 'must call runBundle with correct label');
   });
 
-  it('has exactly 3 sections with correct labels and seedMetaKeys', async () => {
+  it('has exactly 3 sections with correct labels (no seedMetaKey — validation scripts are not data seeders)', async () => {
     if (!src) src = await readFile(join(scriptsDir, 'seed-bundle-resilience-validation.mjs'), 'utf8');
 
     for (const section of EXPECTED_SECTIONS) {
       assert.ok(src.includes(`label: '${section.label}'`), `missing label: ${section.label}`);
-      assert.ok(src.includes(`seedMetaKey: '${section.seedMetaKey}'`), `missing seedMetaKey: ${section.seedMetaKey}`);
       assert.ok(src.includes(`script: '${section.script}'`), `missing script ref: ${section.script}`);
     }
+    assert.ok(!src.includes('seedMetaKey'), 'validation bundle must NOT have seedMetaKey (no seed-meta heartbeats)');
   });
 
   it('all intervals use 7 * 24 * HOUR (weekly)', async () => {

@@ -299,9 +299,6 @@ const SEED_META = {
   chokepointFlows:      { key: 'seed-meta:energy:chokepoint-flows',     maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
   chokepointExposure:   { key: 'seed-meta:supply_chain:chokepoint-exposure', maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
-  resilienceBenchmark:    { key: 'seed-meta:resilience:benchmark:external', maxStaleMin: 14400 }, // weekly cron (Sun 03:00); 14400min = 10d = weekly + 3d grace
-  resilienceBacktest:     { key: 'seed-meta:resilience:backtest:outcomes',  maxStaleMin: 14400 }, // weekly cron (Sun 03:00); 14400min = 10d = weekly + 3d grace
-  resilienceSensitivity:  { key: 'seed-meta:resilience:sensitivity',        maxStaleMin: 14400 }, // weekly cron (Sun 03:00); 14400min = 10d = weekly + 3d grace
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

@@ -78,9 +78,6 @@ const SEED_DOMAINS = {
   'energy:ember': { key: 'seed-meta:energy:ember', intervalMin: 1440 }, // daily cron (0 8 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
   'energy:spr-policies': { key: 'seed-meta:energy:spr-policies', intervalMin: 288000 }, // annual static registry; intervalMin = health.js maxStaleMin / 2 (576000 / 2)
   'market:aaii-sentiment': { key: 'seed-meta:market:aaii-sentiment', intervalMin: 10080 }, // weekly cron; intervalMin = maxStaleMin / 2 (20160 / 2)
-  'resilience:benchmark:external': { key: 'seed-meta:resilience:benchmark:external', intervalMin: 10080 }, // weekly cron (Sun 03:00); intervalMin = maxStaleMin / ~1.4 (14400 / 1.4)
-  'resilience:backtest:outcomes':  { key: 'seed-meta:resilience:backtest:outcomes',  intervalMin: 10080 }, // weekly cron (Sun 03:00); intervalMin = maxStaleMin / ~1.4
-  'resilience:sensitivity':        { key: 'seed-meta:resilience:sensitivity',        intervalMin: 10080 }, // weekly cron (Sun 03:00); intervalMin = maxStaleMin / ~1.4
 };
 
 async function getMetaBatch(keys) {
