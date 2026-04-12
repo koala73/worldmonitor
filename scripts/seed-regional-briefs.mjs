@@ -185,7 +185,7 @@ async function main() {
   // coverage loss from /api/health (which treats any positive recordCount
   // as healthy). PR #2989 review P2.
   const expectedRegions = REGIONS.filter((r) => r.id !== 'global').length;
-  const coverageOk = generated >= Math.ceil(expectedRegions / 2); // at least half
+  const coverageOk = generated >= expectedRegions - 1; // at most 1 region can fail silently
 
   // Always write seed-meta when failed===0 so health confirms the seeder
   // ran. But set recordCount to 0 when coverage is below threshold — that
