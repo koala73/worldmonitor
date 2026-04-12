@@ -478,6 +478,7 @@ async function generateAISummary(stories, rule) {
   const variant = rule.variant ?? 'full';
   const tz = rule.digestTimezone ?? 'UTC';
   const localHour = toLocalHour(Date.now(), tz);
+  if (localHour === -1) console.warn(`[digest] Bad timezone "${tz}" for ${rule.userId} — defaulting to evening greeting`);
   const greeting = localHour >= 5 && localHour < 12 ? 'Good morning'
     : localHour >= 12 && localHour < 17 ? 'Good afternoon'
     : 'Good evening';
