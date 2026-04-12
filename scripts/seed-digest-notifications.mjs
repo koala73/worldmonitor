@@ -476,11 +476,16 @@ async function generateAISummary(stories, rule) {
   const profile = formatUserProfile(ctx, rule.variant ?? 'full');
 
   const variant = rule.variant ?? 'full';
+  const tz = rule.digestTimezone ?? 'UTC';
+  const localHour = toLocalHour(Date.now(), tz);
+  const greeting = localHour >= 5 && localHour < 12 ? 'Good morning'
+    : localHour >= 12 && localHour < 17 ? 'Good afternoon'
+    : 'Good evening';
   const storiesHash = hashShort(stories.map(s =>
     `${s.titleHash ?? s.title}:${s.severity ?? ''}:${s.phase ?? ''}:${(s.sources ?? []).slice(0, 3).join(',')}`
   ).sort().join('|'));
   const ctxHash = hashShort(JSON.stringify(ctx));
-  const cacheKey = `digest:ai-summary:v1:${variant}:${storiesHash}:${ctxHash}`;
+  const cacheKey = `digest:ai-summary:v1:${variant}:${greeting}:${storiesHash}:${ctxHash}`;
 
   try {
     const cached = await upstashRest('GET', cacheKey);
@@ -491,11 +496,6 @@ async function generateAISummary(stories, rule) {
   } catch { /* miss */ }
 
   const dateStr = new Date().toISOString().split('T')[0];
-  const tz = rule.digestTimezone ?? 'UTC';
-  const localHour = toLocalHour(Date.now(), tz);
-  const greeting = localHour >= 5 && localHour < 12 ? 'Good morning'
-    : localHour >= 12 && localHour < 17 ? 'Good afternoon'
-    : 'Good evening';
   const storyList = stories.slice(0, 20).map((s, i) => {
     const phase = s.phase ? ` [${s.phase}]` : '';
     const src = s.sources?.length > 0 ? ` (${s.sources.slice(0, 2).join(', ')})` : '';
