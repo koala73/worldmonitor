@@ -567,7 +567,10 @@ function sanitizeTelegramHtml(html) {
 }
 
 function truncateTelegramHtml(html, limit = TELEGRAM_MAX_LEN) {
-  if (html.length <= limit) return sanitizeTelegramHtml(html);
+  if (html.length <= limit) {
+    const sanitized = sanitizeTelegramHtml(html);
+    return sanitized.length <= limit ? sanitized : truncateTelegramHtml(sanitized, limit);
+  }
   const truncated = html.slice(0, limit - 30);
   const lastNewline = truncated.lastIndexOf('\n');
   const cutPoint = lastNewline > limit * 0.6 ? lastNewline : truncated.length;
