@@ -9,7 +9,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadEnvFile, getRedisCredentials, CHROME_UA } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -19,7 +19,6 @@ const VALIDATION_DIR = join(__dirname, '..', 'docs', 'methodology', 'country-res
 const REFERENCE_DIR = join(VALIDATION_DIR, 'reference-data');
 const REDIS_KEY = 'resilience:benchmark:external:v1';
 const REDIS_TTL = 7 * 24 * 60 * 60;
-const SCORE_PREFIX = 'resilience:score:v8:';
 
 const INFORM_CSV_URL = 'https://drmkc.jrc.ec.europa.eu/inform-index/Portals/0/InfoRM/INFORM_Composite_2024.csv';
 const NDGAIN_CSV_URL = 'https://gain.nd.edu/assets/522870/nd_gain_countryindex_2023data.csv';
@@ -131,21 +130,13 @@ export async function fetchInformGlobal() {
   if (!text) return { scores: new Map(), source };
   const rows = parseCSV(text);
   const scores = new Map();
-  const isoCol = findColumn(Object.keys(rows[0] || {}), 'iso3', 'iso', 'country_iso');
-  const scoreCol = findColumn(Object.keys(rows[0] || {}), 'inform_risk', 'inform', 'risk_score', 'composite');
-  if (!isoCol && !scoreCol) {
-    for (const row of rows) {
-      const keys = Object.keys(row);
-      const code = toIso2(row[keys[0]]);
-      const val = parseFloat(row[keys[keys.length - 1]]);
-      if (code && !Number.isNaN(val)) scores.set(code, val);
-    }
-  } else {
-    for (const row of rows) {
-      const code = toIso2(row[isoCol]);
-      const val = parseFloat(row[scoreCol]);
-      if (code && !Number.isNaN(val)) scores.set(code, val);
-    }
+  let isoCol = findColumn(Object.keys(rows[0] || {}), 'iso3', 'iso', 'country_iso');
+  let scoreCol = findColumn(Object.keys(rows[0] || {}), 'inform_risk', 'inform', 'risk_score', 'composite');
+  for (const row of rows) {
+    const keys = Object.keys(row);
+    const code = toIso2(row[isoCol || keys[0]]);
+    const val = parseFloat(row[scoreCol || keys[keys.length - 1]]);
+    if (code && !Number.isNaN(val)) scores.set(code, val);
   }
   return { scores, source };
 }
@@ -417,12 +408,13 @@ export async function runBenchmark(opts = {}) {
     try {
       const { url, token } = getRedisCredentials();
       const payload = JSON.stringify(result);
-      await fetch(url, {
+      const resp = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(['SET', REDIS_KEY, payload, 'EX', REDIS_TTL]),
         signal: AbortSignal.timeout(10_000),
       });
+      if (!resp.ok) console.warn('[benchmark] Redis write failed:', resp.status);
       console.log(`[benchmark] Wrote to Redis key ${REDIS_KEY} (TTL ${REDIS_TTL}s)`);
     } catch (err) {
       console.warn(`[benchmark] Redis write failed: ${err.message}`);
@@ -432,7 +424,7 @@ export async function runBenchmark(opts = {}) {
   return result;
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url).endsWith(process.argv[1].replace(/.*[\\/]/, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   runBenchmark()
     .then(result => {
