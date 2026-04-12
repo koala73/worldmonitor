@@ -159,6 +159,11 @@ const STANDALONE_KEYS = {
   sprPolicies:              'energy:spr-policies:v1',
   regionalSnapshots:        'intelligence:regional-snapshots:summary:v1',
   regionalBriefs:           'intelligence:regional-briefs:summary:v1',
+  recoveryFiscalSpace:      'resilience:recovery:fiscal-space:v1',
+  recoveryReserveAdequacy:  'resilience:recovery:reserve-adequacy:v1',
+  recoveryExternalDebt:     'resilience:recovery:external-debt:v1',
+  recoveryImportHhi:        'resilience:recovery:import-hhi:v1',
+  recoveryFuelStocks:       'resilience:recovery:fuel-stocks:v1',
 };
 
 const SEED_META = {
@@ -301,6 +306,11 @@ const SEED_META = {
   chokepointFlows:      { key: 'seed-meta:energy:chokepoint-flows',     maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
   chokepointExposure:   { key: 'seed-meta:supply_chain:chokepoint-exposure', maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
+  recoveryFiscalSpace:     { key: 'seed-meta:resilience:recovery:fiscal-space',     maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoveryReserveAdequacy: { key: 'seed-meta:resilience:recovery:reserve-adequacy', maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoveryExternalDebt:    { key: 'seed-meta:resilience:recovery:external-debt',    maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoveryFuelStocks:      { key: 'seed-meta:resilience:recovery:fuel-stocks',      maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -319,6 +329,8 @@ const ON_DEMAND_KEYS = new Set([
   'simulationOutcomeLatest', // written by writeSimulationOutcome after simulation runs; only present after first successful simulation
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
+  'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
+  'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar: stub seeders not yet deployed, keys may be absent
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
@@ -329,6 +341,8 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
+  'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
+  'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar seeds: stub seeders write empty payloads until real sources are wired
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.

@@ -78,29 +78,32 @@ describe('resilience source-failure module', () => {
   });
 
   describe('failedDimensionsFromDatasets', () => {
-    it('maps wgi to governanceInstitutional and macroFiscal', () => {
+    it('maps wgi to governanceInstitutional, macroFiscal, and stateContinuity', () => {
       const affected = failedDimensionsFromDatasets(['wgi']);
       assert.equal(affected.has('governanceInstitutional'), true);
       assert.equal(affected.has('macroFiscal'), true);
-      assert.equal(affected.size, 2);
+      assert.equal(affected.has('stateContinuity'), true);
+      assert.equal(affected.size, 3);
     });
 
     it('deduplicates dimensions across multiple failed adapters', () => {
       // wgi → {governanceInstitutional, macroFiscal}, gpi → {socialCohesion}.
-      // Union has 3 entries, no duplication because the adapters touch
-      // disjoint dimensions.
+      // Union has 4 entries, no duplication because the adapters touch
+      // disjoint dimensions (wgi -> 3 dims + gpi -> 1 dim).
       const affected = failedDimensionsFromDatasets(['wgi', 'gpi']);
-      assert.equal(affected.size, 3);
+      assert.equal(affected.size, 4);
       assert.equal(affected.has('governanceInstitutional'), true);
       assert.equal(affected.has('macroFiscal'), true);
+      assert.equal(affected.has('stateContinuity'), true);
       assert.equal(affected.has('socialCohesion'), true);
     });
 
     it('ignores unknown adapter keys without throwing', () => {
       const affected = failedDimensionsFromDatasets(['not-a-real-adapter', 'wgi']);
-      assert.equal(affected.size, 2);
+      assert.equal(affected.size, 3);
       assert.equal(affected.has('governanceInstitutional'), true);
       assert.equal(affected.has('macroFiscal'), true);
+      assert.equal(affected.has('stateContinuity'), true);
     });
 
     it('returns an empty set for an empty input', () => {
@@ -137,6 +140,12 @@ describe('resilience source-failure module', () => {
         'informationCognitive',
         'healthPublicService',
         'foodWater',
+        'fiscalSpace',
+        'reserveAdequacy',
+        'externalDebtCoverage',
+        'importConcentration',
+        'stateContinuity',
+        'fuelStockDays',
       ]);
       for (const [adapter, dims] of Object.entries(DATASET_TO_DIMENSIONS)) {
         for (const dim of dims) {

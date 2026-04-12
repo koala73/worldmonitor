@@ -76,6 +76,19 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
         { id: 'foodWater', score: 50, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_STALE_AT_MS, staleness: 'stale' } },
       ],
     },
+    {
+      id: 'recovery',
+      score: 65,
+      weight: 1.0,
+      dimensions: [
+        { id: 'fiscalSpace', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'reserveAdequacy', score: 55, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'externalDebtCoverage', score: 60, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'importConcentration', score: 70, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
+        { id: 'stateContinuity', score: 80, coverage: 0.92, observedWeight: 0.92, imputedWeight: 0.08, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'fuelStockDays', score: 50, coverage: 0.3, observedWeight: 0, imputedWeight: 1, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_STALE_AT_MS, staleness: 'stale' } },
+      ],
+    },
   ],
   trend: 'rising',
   change30d: 2.4,
@@ -200,6 +213,12 @@ const DIMENSION_LABELS: Record<string, string> = {
   informationCognitive: 'Info',
   healthPublicService: 'Health',
   foodWater: 'Food',
+  fiscalSpace: 'Fiscal',
+  reserveAdequacy: 'Reserves',
+  externalDebtCoverage: 'Ext Debt',
+  importConcentration: 'Imports',
+  stateContinuity: 'Continuity',
+  fuelStockDays: 'Fuel',
 };
 
 export function getResilienceDimensionLabel(dimensionId: string): string {

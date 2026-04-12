@@ -48,11 +48,11 @@ function installRedisFixtures() {
 }
 
 describe('resilience release gate', () => {
-  it('keeps all 13 dimension scorers non-placeholder for the required countries', async () => {
+  it('keeps all 19 dimension scorers non-placeholder for the required countries', async () => {
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
       const entries = Object.entries(scores);
-      assert.equal(entries.length, 13, `${countryCode} should have all resilience dimensions`);
+      assert.equal(entries.length, 19, `${countryCode} should have all resilience dimensions`);
       for (const [dimensionId, score] of entries) {
         assert.ok(Number.isFinite(score.score), `${countryCode} ${dimensionId} should produce a numeric score`);
         assert.ok(score.coverage > 0, `${countryCode} ${dimensionId} should not fall back to zero-coverage placeholder scoring`);
@@ -234,7 +234,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 13, 'US response should carry all 13 dimensions');
+    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
     for (const dimension of allDimensions) {
       assert.equal(
         typeof dimension.imputationClass,
@@ -262,7 +262,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 13, 'US response should carry all 13 dimensions');
+    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
     const validLevels = ['', 'fresh', 'aging', 'stale'];
     for (const dimension of allDimensions) {
       assert.ok(dimension.freshness != null, `dimension ${dimension.id} must carry a freshness payload`);

@@ -381,6 +381,45 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fetchedAt: 1712102400000,
     recordCount: 196,
   },
+  'resilience:recovery:fiscal-space:v1': {
+    countries: {
+      NO: { govRevenuePct: 42, fiscalBalancePct: 10, debtToGdpPct: 40, year: 2025 },
+      US: { govRevenuePct: 30, fiscalBalancePct: -6, debtToGdpPct: 122, year: 2025 },
+      YE: { govRevenuePct: 8, fiscalBalancePct: -10, debtToGdpPct: 80, year: 2024 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'resilience:recovery:reserve-adequacy:v1': {
+    countries: {
+      NO: { reserveMonths: 14, year: 2024 },
+      US: { reserveMonths: 3, year: 2024 },
+      YE: { reserveMonths: 0.5, year: 2023 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'resilience:recovery:external-debt:v1': {
+    countries: {
+      NO: { debtToReservesRatio: 0.2, year: 2024 },
+      US: { debtToReservesRatio: 1.5, year: 2024 },
+      YE: { debtToReservesRatio: 4.0, year: 2023 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'resilience:recovery:import-hhi:v1': {
+    countries: {
+      NO: { hhi: 300, year: 2024 },
+      US: { hhi: 600, year: 2024 },
+      YE: { hhi: 3500, year: 2023 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'resilience:recovery:fuel-stocks:v1': {
+    countries: {
+      NO: { stockDays: 90, year: 2025 },
+      US: { stockDays: 60, year: 2025 },
+    },
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
 };
 
 export function fixtureReader(key: string): Promise<unknown | null> {

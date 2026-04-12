@@ -1,0 +1,80 @@
+#!/usr/bin/env node
+
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+
+loadEnvFile(import.meta.url);
+
+const WB_BASE = 'https://api.worldbank.org/v2';
+const CANONICAL_KEY = 'resilience:recovery:external-debt:v1';
+const CACHE_TTL = 35 * 24 * 3600;
+
+const DEBT_INDICATOR = 'DT.DOD.DSTC.CD';
+const RESERVES_INDICATOR = 'FI.RES.TOTL.CD';
+
+async function fetchWbIndicator(indicator) {
+  const out = {};
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&per_page=500&page=${page}&mrnev=1`;
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) throw new Error(`World Bank ${indicator}: HTTP ${resp.status}`);
+    const json = await resp.json();
+    const meta = json[0];
+    const records = json[1] ?? [];
+    totalPages = meta?.pages ?? 1;
+    for (const record of records) {
+      const code = record?.countryiso3code || record?.country?.id;
+      if (!code || code.length !== 2) continue;
+      const value = Number(record?.value);
+      if (!Number.isFinite(value)) continue;
+      out[code] = { value, year: Number(record?.date) || null };
+    }
+    page++;
+  }
+  return out;
+}
+
+async function fetchExternalDebt() {
+  const [debtMap, reservesMap] = await Promise.all([
+    fetchWbIndicator(DEBT_INDICATOR),
+    fetchWbIndicator(RESERVES_INDICATOR),
+  ]);
+
+  const countries = {};
+  const allCodes = new Set([...Object.keys(debtMap), ...Object.keys(reservesMap)]);
+
+  for (const code of allCodes) {
+    const debt = debtMap[code];
+    const reserves = reservesMap[code];
+    if (!debt || !reserves || reserves.value <= 0) continue;
+
+    countries[code] = {
+      debtToReservesRatio: Math.round((debt.value / reserves.value) * 1000) / 1000,
+      year: debt.year ?? reserves.year ?? null,
+    };
+  }
+
+  return { countries, seededAt: new Date().toISOString() };
+}
+
+function validate(data) {
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 80;
+}
+
+if (process.argv[1]?.endsWith('seed-recovery-external-debt.mjs')) {
+  runSeed('resilience', 'recovery:external-debt', CANONICAL_KEY, fetchExternalDebt, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: `wb-debt-reserves-${new Date().getFullYear()}`,
+    recordCount: (data) => Object.keys(data?.countries ?? {}).length,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

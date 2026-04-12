@@ -60,7 +60,11 @@ describe('resilience scorer contracts', () => {
     //     source-failure when the adapter is in seed-meta failedDatasets. This is the
     //     single source of truth for "no currency data"; null-imputationClass paths
     //     on non-real-data return branches are no longer permitted.
-    const coverageZeroExempt = new Set(['currencyExternal']);
+    const coverageZeroExempt = new Set([
+      'currencyExternal',
+      'fiscalSpace', 'reserveAdequacy', 'externalDebtCoverage',
+      'importConcentration', 'stateContinuity', 'fuelStockDays',
+    ]);
     for (const [dimensionId, scorer] of Object.entries(RESILIENCE_DIMENSION_SCORERS)) {
       const result = await scorer('US');
       assert.ok(result.score >= 0 && result.score <= 100, `${dimensionId} fallback score out of bounds: ${result.score}`);
@@ -94,6 +98,7 @@ describe('resilience scorer contracts', () => {
       energy: 80,
       'social-governance': 61.75,
       'health-food': 60.5,
+      recovery: 54.83,
     });
 
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
@@ -121,9 +126,9 @@ describe('resilience scorer contracts', () => {
     const stressScore = round(coverageWeightedMean(stressDims));
     const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
 
-    assert.equal(baselineScore, 67.85);
-    assert.equal(stressScore, 67.85);
-    assert.equal(stressFactor, 0.3215);
+    assert.equal(baselineScore, 62.23);
+    assert.equal(stressScore, 65.84);
+    assert.equal(stressFactor, 0.3416);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {

@@ -18,8 +18,14 @@ import {
   scoreInformationCognitive,
   scoreInfrastructure,
   scoreLogisticsSupply,
+  scoreExternalDebtCoverage,
+  scoreFiscalSpace,
+  scoreFuelStockDays,
+  scoreImportConcentration,
   scoreMacroFiscal,
+  scoreReserveAdequacy,
   scoreSocialCohesion,
+  scoreStateContinuity,
   scoreTradeSanctions,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
@@ -79,7 +85,7 @@ describe('resilience dimension scorers', () => {
     assertOrdered('foodWater', foodWater.no.score, foodWater.us.score, foodWater.ye.score);
   });
 
-  it('returns all 13 dimensions with bounded scores and coverage', async () => {
+  it('returns all 19 dimensions with bounded scores and coverage', async () => {
     const dimensions = await scoreAllDimensions('US', fixtureReader);
 
     assert.deepEqual(Object.keys(dimensions).sort(), [...RESILIENCE_DIMENSION_ORDER].sort());
@@ -1083,5 +1089,77 @@ describe('resilience source-failure aggregation (T1.7)', () => {
     // Must NOT become source-failure.
     assert.equal(dims.currencyExternal.imputationClass, 'unmonitored',
       `currencyExternal must keep unmonitored on healthy seed, got ${dims.currencyExternal.imputationClass}`);
+  });
+
+  it('produce plausible country ordering for the recovery-capacity dimensions', async () => {
+    const fiscal = await scoreTriple(scoreFiscalSpace);
+    const reserves = await scoreTriple(scoreReserveAdequacy);
+    const extDebt = await scoreTriple(scoreExternalDebtCoverage);
+    const importHhi = await scoreTriple(scoreImportConcentration);
+    const continuity = await scoreTriple(scoreStateContinuity);
+
+    assertOrdered('fiscalSpace', fiscal.no.score, fiscal.us.score, fiscal.ye.score);
+    assertOrdered('reserveAdequacy', reserves.no.score, reserves.us.score, reserves.ye.score);
+    assertOrdered('externalDebtCoverage', extDebt.no.score, extDebt.us.score, extDebt.ye.score);
+    assertOrdered('importConcentration', importHhi.no.score, importHhi.us.score, importHhi.ye.score);
+    assertOrdered('stateContinuity', continuity.no.score, continuity.us.score, continuity.ye.score);
+  });
+
+  it('scoreFiscalSpace: country with strong fiscal position scores high', async () => {
+    const no = await scoreFiscalSpace('NO', fixtureReader);
+    assert.ok(no.score > 70, `NO should score >70 with strong fiscal space, got ${no.score}`);
+    assert.ok(no.coverage > 0.8, `NO should have high coverage with all 3 metrics, got ${no.coverage}`);
+    assert.equal(no.imputationClass, null, 'real data must not carry imputation class');
+  });
+
+  it('scoreFiscalSpace: missing data returns unmonitored imputation', async () => {
+    const emptyReader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreFiscalSpace('XX', emptyReader);
+    assert.equal(score.imputationClass, 'unmonitored');
+    assert.equal(score.observedWeight, 0);
+    assert.equal(score.imputedWeight, 1);
+  });
+
+  it('scoreReserveAdequacy: high reserves score well', async () => {
+    const no = await scoreReserveAdequacy('NO', fixtureReader);
+    assert.ok(no.score > 70, `NO with 14 months reserves should score >70, got ${no.score}`);
+  });
+
+  it('scoreExternalDebtCoverage: low debt-to-reserves ratio scores well', async () => {
+    const no = await scoreExternalDebtCoverage('NO', fixtureReader);
+    assert.ok(no.score > 90, `NO with ratio 0.2 should score >90, got ${no.score}`);
+  });
+
+  it('scoreImportConcentration: low HHI scores well', async () => {
+    const us = await scoreImportConcentration('US', fixtureReader);
+    assert.ok(us.score > 85, `US with HHI 400 should score >85, got ${us.score}`);
+  });
+
+  it('scoreStateContinuity: derives from existing WGI + UCDP + displacement', async () => {
+    const no = await scoreStateContinuity('NO', fixtureReader);
+    assert.ok(no.score > 70, `NO should score >70 on state continuity, got ${no.score}`);
+    assert.ok(no.observedWeight > 0, 'state continuity must have observed weight from WGI');
+    assert.equal(no.imputationClass, null, 'NO has real data, no imputation class');
+  });
+
+  it('scoreFuelStockDays: country with stock data scores based on coverage', async () => {
+    const no = await scoreFuelStockDays('NO', fixtureReader);
+    assert.ok(no.score > 60, `NO with 90 stock days should score >60, got ${no.score}`);
+  });
+
+  it('scoreFuelStockDays: country without fuel stock data returns unmonitored', async () => {
+    const ye = await scoreFuelStockDays('YE', fixtureReader);
+    assert.equal(ye.imputationClass, 'unmonitored');
+    assert.equal(ye.observedWeight, 0);
+  });
+
+  it('recovery domain is present in scoreAllDimensions output', async () => {
+    const dims = await scoreAllDimensions('US', fixtureReader);
+    assert.ok('fiscalSpace' in dims, 'fiscalSpace must be in scoreAllDimensions output');
+    assert.ok('reserveAdequacy' in dims, 'reserveAdequacy must be in scoreAllDimensions output');
+    assert.ok('externalDebtCoverage' in dims, 'externalDebtCoverage must be in scoreAllDimensions output');
+    assert.ok('importConcentration' in dims, 'importConcentration must be in scoreAllDimensions output');
+    assert.ok('stateContinuity' in dims, 'stateContinuity must be in scoreAllDimensions output');
+    assert.ok('fuelStockDays' in dims, 'fuelStockDays must be in scoreAllDimensions output');
   });
 });

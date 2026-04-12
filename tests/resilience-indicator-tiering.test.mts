@@ -48,6 +48,8 @@ describe('signal tiering registry (Phase 2 T2.2a)', () => {
       // UCDP global conflict events: research-only license, kept Core per
       // parent plan section "Signal tiering". Tracked in Phase 2 A9.
       'ucdpConflict',
+      // UCDP reused in recovery-capacity stateContinuity dimension.
+      'recoveryConflictPressure',
     ]);
     const unexcused = offending.filter((s) => {
       const id = s.split(' ')[0];

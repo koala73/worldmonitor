@@ -39,8 +39,8 @@ describe('resilience handlers', () => {
     });
 
     assert.equal(response.countryCode, 'US');
-    assert.equal(response.domains.length, 5);
-    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 13);
+    assert.equal(response.domains.length, 6);
+    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 19);
     assert.ok(response.overallScore > 0 && response.overallScore <= 100);
     assert.equal(response.level, response.overallScore >= 70 ? 'high' : response.overallScore >= 40 ? 'medium' : 'low');
     assert.equal(response.trend, 'rising');

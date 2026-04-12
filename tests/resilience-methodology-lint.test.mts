@@ -46,6 +46,12 @@ const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   'Information & Cognitive': 'informationCognitive',
   'Health & Public Service': 'healthPublicService',
   'Food & Water': 'foodWater',
+  'Fiscal Space': 'fiscalSpace',
+  'Reserve Adequacy': 'reserveAdequacy',
+  'External Debt Coverage': 'externalDebtCoverage',
+  'Import Concentration': 'importConcentration',
+  'State Continuity': 'stateContinuity',
+  'Fuel Stock Days': 'fuelStockDays',
 };
 
 function findMethodologyFile(): string {

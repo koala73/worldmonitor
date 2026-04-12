@@ -139,7 +139,7 @@ test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
 // scorer dimension must have a stable display label and a consistent
 // status classification.
 
-test('getResilienceDimensionLabel returns short stable labels for all 13 dimensions', () => {
+test('getResilienceDimensionLabel returns short stable labels for all 19 dimensions', () => {
   assert.equal(getResilienceDimensionLabel('macroFiscal'), 'Macro');
   assert.equal(getResilienceDimensionLabel('currencyExternal'), 'Currency');
   assert.equal(getResilienceDimensionLabel('tradeSanctions'), 'Trade');
@@ -153,6 +153,12 @@ test('getResilienceDimensionLabel returns short stable labels for all 13 dimensi
   assert.equal(getResilienceDimensionLabel('informationCognitive'), 'Info');
   assert.equal(getResilienceDimensionLabel('healthPublicService'), 'Health');
   assert.equal(getResilienceDimensionLabel('foodWater'), 'Food');
+  assert.equal(getResilienceDimensionLabel('fiscalSpace'), 'Fiscal');
+  assert.equal(getResilienceDimensionLabel('reserveAdequacy'), 'Reserves');
+  assert.equal(getResilienceDimensionLabel('externalDebtCoverage'), 'Ext Debt');
+  assert.equal(getResilienceDimensionLabel('importConcentration'), 'Imports');
+  assert.equal(getResilienceDimensionLabel('stateContinuity'), 'Continuity');
+  assert.equal(getResilienceDimensionLabel('fuelStockDays'), 'Fuel');
   // Unknown dimension IDs fall through to the raw ID so the render
   // never silently drops a row.
   assert.equal(getResilienceDimensionLabel('unknownDim'), 'unknownDim');
@@ -272,9 +278,9 @@ test('collectDimensionConfidences returns an empty list for an empty response', 
 // representative card instead of a blank gap between the domain rows
 // and the footer. If a future edit accidentally drops a dimension
 // from the preview, this regression test fails loudly.
-test('LOCKED_PREVIEW populates all 13 dimensions for the gated preview (PR #2949 review)', () => {
+test('LOCKED_PREVIEW populates all 19 dimensions for the gated preview (PR #2949 review)', () => {
   const all = collectDimensionConfidences(LOCKED_PREVIEW.domains);
-  assert.equal(all.length, 13, `locked preview should carry all 13 dimensions, got ${all.length}`);
+  assert.equal(all.length, 19, `locked preview should carry all 19 dimensions, got ${all.length}`);
   // Every cell should resolve to a short label (no raw IDs leaking through).
   for (const dim of all) {
     assert.ok(

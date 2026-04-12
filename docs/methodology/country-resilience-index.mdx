@@ -161,6 +161,54 @@ All six WGI indicators are equally weighted.
 | aquastatWaterStress | FAO AQUASTAT water stress/withdrawal/dependency (%) | Lower is better | 100 - 0 | 0.25 | FAO AQUASTAT | Annual |
 | aquastatWaterAvailability | FAO AQUASTAT water availability (m3/capita) | Higher is better | 0 - 5000 | 0.15 | FAO AQUASTAT | Annual |
 
+### Recovery Domain (weight 1.0)
+
+This domain forms the recovery-capacity pillar. It measures a country's ability to bounce back from an acute shock along fiscal, monetary, trade, institutional, and energy dimensions.
+
+#### Fiscal Space
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoveryGovRevenue | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.40 | IMF | Annual |
+| recoveryFiscalBalance | General government net lending/borrowing as % of GDP (IMF GGXCNL_G01_GDP_PT) | Higher is better | -15 - 5 | 0.30 | IMF | Annual |
+| recoveryDebtToGdp | General government gross debt as % of GDP (IMF GGXWDG_NGDP_PT) | Lower is better | 150 - 0 | 0.30 | IMF | Annual |
+
+#### Reserve Adequacy
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoveryReserveMonths | Total reserves in months of imports (World Bank FI.RES.TOTL.MO) | Higher is better | 1 - 18 | 1.00 | World Bank | Annual |
+
+#### External Debt Coverage
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoveryDebtToReserves | Short-term external debt to reserves ratio (World Bank DT.DOD.DSTC.CD / FI.RES.TOTL.CD) | Lower is better | 5 - 0 | 1.00 | World Bank | Annual |
+
+#### Import Concentration
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoveryImportHhi | Herfindahl-Hirschman Index of import partner concentration (UN Comtrade HS2 bilateral) | Lower is better | 5000 - 0 | 1.00 | UN Comtrade | Annual |
+
+#### State Continuity
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoveryWgiContinuity | Mean WGI score as institutional durability proxy | Higher is better | -2.5 - 2.5 | 0.50 | World Bank | Annual |
+| recoveryConflictPressure | UCDP conflict metric inverted to state continuity | Lower is better | 30 - 0 | 0.30 | UCDP | Realtime |
+| recoveryDisplacementVelocity | UNHCR displacement as state continuity signal | Lower is better | 7 - 0 | 0.20 | UNHCR | Annual |
+
+State continuity is a derived dimension: it reads from existing WGI, UCDP, and displacement keys rather than a dedicated seeder.
+
+#### Fuel Stock Days
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoveryFuelStockDays | Days of fuel stock cover (IEA Oil Stocks / EIA Weekly Petroleum Status) | Higher is better | 0 - 120 | 1.00 | IEA/EIA | Monthly |
+
+Fuel stock days is an Enrichment-tier signal (coverage ~45 countries, IEA/OECD members). Countries without fuel stock data are imputed with the `unmonitored` class.
+
 ## Normalization
 
 All indicators are normalized to a 0-100 scale using **goalpost scaling** (also called min-max normalization with domain-specific anchors).

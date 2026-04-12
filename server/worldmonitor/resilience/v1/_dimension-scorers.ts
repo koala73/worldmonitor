@@ -18,14 +18,21 @@ export type ResilienceDimensionId =
   | 'borderSecurity'
   | 'informationCognitive'
   | 'healthPublicService'
-  | 'foodWater';
+  | 'foodWater'
+  | 'fiscalSpace'
+  | 'reserveAdequacy'
+  | 'externalDebtCoverage'
+  | 'importConcentration'
+  | 'stateContinuity'
+  | 'fuelStockDays';
 
 export type ResilienceDomainId =
   | 'economic'
   | 'infrastructure'
   | 'energy'
   | 'social-governance'
-  | 'health-food';
+  | 'health-food'
+  | 'recovery';
 
 export interface ResilienceDimensionScore {
   score: number;
@@ -125,6 +132,12 @@ export const IMPUTE = {
   bisEer:            IMPUTATION.curated_list_absent,
   bisCredit:         IMPUTATION.curated_list_absent,
   unhcrDisplacement: { score: 85, certaintyCoverage: 0.6, imputationClass: 'stable-absence' },  // crisis_monitoring_absent, displacement-specific
+  recoveryFiscalSpace:     { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  recoveryReserveAdequacy: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  recoveryExternalDebt:    { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  recoveryImportHhi:       { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  recoveryStateContinuity: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  recoveryFuelStocks:      { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
 } as const satisfies Record<string, ImputationEntry>;
 
 interface StaticIndicatorValue {
@@ -238,6 +251,12 @@ const RESILIENCE_NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
 const RESILIENCE_ENERGY_PRICES_KEY = 'economic:energy:v1:all';
 const RESILIENCE_ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 
+const RESILIENCE_RECOVERY_FISCAL_SPACE_KEY = 'resilience:recovery:fiscal-space:v1';
+const RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
+const RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY = 'resilience:recovery:external-debt:v1';
+const RESILIENCE_RECOVERY_IMPORT_HHI_KEY = 'resilience:recovery:import-hhi:v1';
+const RESILIENCE_RECOVERY_FUEL_STOCKS_KEY = 'resilience:recovery:fuel-stocks:v1';
+
 const COUNTRY_NAME_ALIASES = new Map<string, Set<string>>();
 for (const [name, iso2] of Object.entries(countryNames as Record<string, string>)) {
   const code = String(iso2 || '').toUpperCase();
@@ -255,6 +274,7 @@ const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
   energy: 0.15,
   'social-governance': 0.25,
   'health-food': 0.18,
+  recovery: 0,
 };
 
 export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, ResilienceDomainId> = {
@@ -271,6 +291,12 @@ export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, Resilie
   informationCognitive: 'social-governance',
   healthPublicService: 'health-food',
   foodWater: 'health-food',
+  fiscalSpace: 'recovery',
+  reserveAdequacy: 'recovery',
+  externalDebtCoverage: 'recovery',
+  importConcentration: 'recovery',
+  stateContinuity: 'recovery',
+  fuelStockDays: 'recovery',
 };
 
 export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
@@ -287,6 +313,12 @@ export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
   'informationCognitive',
   'healthPublicService',
   'foodWater',
+  'fiscalSpace',
+  'reserveAdequacy',
+  'externalDebtCoverage',
+  'importConcentration',
+  'stateContinuity',
+  'fuelStockDays',
 ];
 
 export const RESILIENCE_DOMAIN_ORDER: ResilienceDomainId[] = [
@@ -295,6 +327,7 @@ export const RESILIENCE_DOMAIN_ORDER: ResilienceDomainId[] = [
   'energy',
   'social-governance',
   'health-food',
+  'recovery',
 ];
 
 export type ResilienceDimensionType = 'baseline' | 'stress' | 'mixed';
@@ -313,6 +346,12 @@ export const RESILIENCE_DIMENSION_TYPES: Record<ResilienceDimensionId, Resilienc
   informationCognitive: 'stress',
   healthPublicService: 'baseline',
   foodWater: 'mixed',
+  fiscalSpace: 'baseline',
+  reserveAdequacy: 'baseline',
+  externalDebtCoverage: 'baseline',
+  importConcentration: 'baseline',
+  stateContinuity: 'baseline',
+  fuelStockDays: 'mixed',
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -1142,6 +1181,189 @@ export async function scoreFoodWater(
   ]);
 }
 
+interface RecoveryFiscalSpaceCountry {
+  govRevenuePct?: number | null;
+  fiscalBalancePct?: number | null;
+  debtToGdpPct?: number | null;
+  year?: number | null;
+}
+
+interface RecoveryReserveAdequacyCountry {
+  reserveMonths?: number | null;
+  year?: number | null;
+}
+
+interface RecoveryExternalDebtCountry {
+  debtToReservesRatio?: number | null;
+  year?: number | null;
+}
+
+interface RecoveryImportHhiCountry {
+  hhi?: number | null;
+  year?: number | null;
+}
+
+interface RecoveryFuelStocksCountry {
+  stockDays?: number | null;
+  year?: number | null;
+}
+
+function getRecoveryCountryEntry<T>(raw: unknown, countryCode: string): T | null {
+  const countries = (raw as { countries?: Record<string, T> } | null)?.countries;
+  if (!countries || typeof countries !== 'object') return null;
+  return (countries[countryCode.toUpperCase()] as T | undefined) ?? null;
+}
+
+export async function scoreFiscalSpace(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const raw = await reader(RESILIENCE_RECOVERY_FISCAL_SPACE_KEY);
+  const entry = getRecoveryCountryEntry<RecoveryFiscalSpaceCountry>(raw, countryCode);
+  if (!entry) {
+    return {
+      score: IMPUTE.recoveryFiscalSpace.score,
+      coverage: IMPUTE.recoveryFiscalSpace.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.recoveryFiscalSpace.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+
+  return weightedBlend([
+    { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.4 },
+    { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.3 },
+    { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.3 },
+  ]);
+}
+
+export async function scoreReserveAdequacy(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const raw = await reader(RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY);
+  const entry = getRecoveryCountryEntry<RecoveryReserveAdequacyCountry>(raw, countryCode);
+  if (!entry || entry.reserveMonths == null) {
+    return {
+      score: IMPUTE.recoveryReserveAdequacy.score,
+      coverage: IMPUTE.recoveryReserveAdequacy.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.recoveryReserveAdequacy.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+  return weightedBlend([
+    { score: normalizeHigherBetter(Math.min(entry.reserveMonths, 18), 1, 18), weight: 1.0 },
+  ]);
+}
+
+export async function scoreExternalDebtCoverage(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const raw = await reader(RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY);
+  const entry = getRecoveryCountryEntry<RecoveryExternalDebtCountry>(raw, countryCode);
+  if (!entry || entry.debtToReservesRatio == null) {
+    return {
+      score: IMPUTE.recoveryExternalDebt.score,
+      coverage: IMPUTE.recoveryExternalDebt.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.recoveryExternalDebt.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+  return weightedBlend([
+    { score: normalizeLowerBetter(entry.debtToReservesRatio, 0, 5), weight: 1.0 },
+  ]);
+}
+
+export async function scoreImportConcentration(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const raw = await reader(RESILIENCE_RECOVERY_IMPORT_HHI_KEY);
+  const entry = getRecoveryCountryEntry<RecoveryImportHhiCountry>(raw, countryCode);
+  if (!entry || entry.hhi == null) {
+    return {
+      score: IMPUTE.recoveryImportHhi.score,
+      coverage: IMPUTE.recoveryImportHhi.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.recoveryImportHhi.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+  return weightedBlend([
+    { score: normalizeLowerBetter(entry.hhi, 0, 5000), weight: 1.0 },
+  ]);
+}
+
+export async function scoreStateContinuity(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const [staticRecord, ucdpRaw, displacementRaw] = await Promise.all([
+    readStaticCountry(countryCode, reader),
+    reader(RESILIENCE_UCDP_KEY),
+    reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
+  ]);
+
+  const wgiValues = getStaticWgiValues(staticRecord);
+  const wgiMean = mean(wgiValues);
+
+  const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
+  const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + Math.sqrt(ucdpSummary.deaths);
+
+  const displacement = getCountryDisplacement(displacementRaw, countryCode);
+  const totalDisplaced = safeNum(displacement?.totalDisplaced);
+
+  if (wgiMean == null && ucdpSummary.eventCount === 0 && totalDisplaced == null) {
+    return {
+      score: IMPUTE.recoveryStateContinuity.score,
+      coverage: IMPUTE.recoveryStateContinuity.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.recoveryStateContinuity.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+
+  return weightedBlend([
+    { score: wgiMean == null ? null : normalizeHigherBetter(wgiMean, -2.5, 2.5), weight: 0.5 },
+    { score: normalizeLowerBetter(ucdpRawScore, 0, 30), weight: 0.3 },
+    {
+      score: totalDisplaced == null
+        ? null
+        : normalizeLowerBetter(Math.log10(Math.max(1, totalDisplaced)), 0, 7),
+      weight: 0.2,
+    },
+  ]);
+}
+
+export async function scoreFuelStockDays(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const raw = await reader(RESILIENCE_RECOVERY_FUEL_STOCKS_KEY);
+  const entry = getRecoveryCountryEntry<RecoveryFuelStocksCountry>(raw, countryCode);
+  if (!entry || entry.stockDays == null) {
+    return {
+      score: IMPUTE.recoveryFuelStocks.score,
+      coverage: IMPUTE.recoveryFuelStocks.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.recoveryFuelStocks.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+  return weightedBlend([
+    { score: normalizeHigherBetter(Math.min(entry.stockDays, 120), 0, 120), weight: 1.0 },
+  ]);
+}
+
 export const RESILIENCE_DIMENSION_SCORERS: Record<
 ResilienceDimensionId,
 (countryCode: string, reader?: ResilienceSeedReader) => Promise<ResilienceDimensionScore>
@@ -1159,6 +1381,12 @@ ResilienceDimensionId,
   informationCognitive: scoreInformationCognitive,
   healthPublicService: scoreHealthPublicService,
   foodWater: scoreFoodWater,
+  fiscalSpace: scoreFiscalSpace,
+  reserveAdequacy: scoreReserveAdequacy,
+  externalDebtCoverage: scoreExternalDebtCoverage,
+  importConcentration: scoreImportConcentration,
+  stateContinuity: scoreStateContinuity,
+  fuelStockDays: scoreFuelStockDays,
 };
 
 export async function scoreAllDimensions(
@@ -1174,7 +1402,7 @@ export async function scoreAllDimensions(
       ] as const),
     ),
     // T1.5 propagation pass: aggregate freshness at the caller level so
-    // the 13 dimension scorers stay mechanical. We share the memoized
+    // the dimension scorers stay mechanical. We share the memoized
     // reader so each `seed-meta:<key>` read lands in the same cache as
     // the scorers' source reads (though seed-meta keys don't overlap
     // with the scorer keys in practice, the shared reader is cheap).

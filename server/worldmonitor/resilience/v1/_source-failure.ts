@@ -4,7 +4,7 @@
 // instead of the table default (stable-absence / unmonitored).
 //
 // This is the ONLY place in the resilience pipeline that distinguishes
-// "country not in curated source" from "seed upstream is down". The 13
+// "country not in curated source" from "seed upstream is down". The
 // dimension scorers stay oblivious.
 
 import type { ResilienceDimensionId, ResilienceSeedReader } from './_dimension-scorers';
@@ -28,7 +28,7 @@ export const DATASET_TO_DIMENSIONS: Readonly<Record<string, ReadonlyArray<Resili
   // WGI (Worldwide Governance Indicators) drives the governance signal
   // in governanceInstitutional (primary) and indirectly macroFiscal
   // (fiscal institutional quality weight).
-  wgi: ['governanceInstitutional', 'macroFiscal'],
+  wgi: ['governanceInstitutional', 'macroFiscal', 'stateContinuity'],
   // World Bank infrastructure indicators feed both the infrastructure
   // dimension (primary) and logisticsSupply (paved roads sub-signal).
   infrastructure: ['infrastructure', 'logisticsSupply'],
