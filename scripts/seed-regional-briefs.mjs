@@ -112,7 +112,10 @@ async function writeBrief(url, token, regionId, brief) {
   const key = `${BRIEF_KEY_PREFIX}${regionId}`;
   const payload = JSON.stringify(brief);
   try {
-    const resp = await fetch(`${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(payload)}?EX=${BRIEF_TTL}`, {
+    // TTL via path segment, NOT query string. Upstash REST ignores query
+    // params for SET options — ?EX=N would silently produce keys that
+    // never expire. Greptile P1 on PR #2989.
+    const resp = await fetch(`${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(payload)}/EX/${BRIEF_TTL}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
@@ -177,10 +180,13 @@ async function main() {
   }
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  if (failed === 0 && generated > 0) {
+  // Write seed-meta even when generated===0 so health tooling can confirm
+  // the seeder ran. Carrying regionsSkipped lets operators distinguish
+  // "ran but nothing to generate" from "never ran". Greptile P2 on #2989.
+  if (failed === 0) {
     await writeExtraKeyWithMeta(
       `intelligence:regional-briefs:summary:v1`,
-      { generatedAt: Date.now(), regionsGenerated: generated },
+      { generatedAt: Date.now(), regionsGenerated: generated, regionsSkipped: skipped },
       BRIEF_TTL,
       generated,
       `seed-meta:${SEED_META_KEY}`,
