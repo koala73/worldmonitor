@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Railway: rootDirectory="" + NIXPACKS builder + NODE_OPTIONS --import tsx/esm
 import { runBundle, WEEK } from './_bundle-runner.mjs';
 
 await runBundle('resilience-validation', [
