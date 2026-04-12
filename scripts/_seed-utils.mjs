@@ -409,20 +409,24 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
   const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
   const agency = agencyMap[database] || 'IMF.RES';
   const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=dsd&measures=all`;
-  const r = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!r.ok) throw new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
-  const json = await r.json();
+
+  const json = await withRetry(async () => {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!r.ok) throw new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+    return r.json();
+  }, 2, 2000);
 
   const struct = json?.data?.structures?.[0];
   const ds = json?.data?.dataSets?.[0];
   if (!struct || !ds?.series) return {};
 
   const countryDim = struct.dimensions.series.find(d => d.id === 'COUNTRY');
+  const countryDimPos = struct.dimensions.series.findIndex(d => d.id === 'COUNTRY');
   const timeDim = struct.dimensions.observation.find(d => d.id === 'TIME_PERIOD');
-  if (!countryDim || !timeDim) return {};
+  if (!countryDim || countryDimPos === -1 || !timeDim) return {};
 
   const countryValues = countryDim.values.map(v => v.id);
   const timeValues = timeDim.values.map(v => v.value || v.id);
@@ -430,7 +434,8 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
 
   const result = {};
   for (const [seriesKey, seriesData] of Object.entries(ds.series)) {
-    const countryIdx = parseInt(seriesKey.split(':')[0], 10);
+    const keyParts = seriesKey.split(':');
+    const countryIdx = parseInt(keyParts[countryDimPos], 10);
     const iso3 = countryValues[countryIdx];
     if (!iso3) continue;
 

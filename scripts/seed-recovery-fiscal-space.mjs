@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, loadSharedConfig, sleep, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -35,12 +35,11 @@ function latestValue(byYear) {
 
 async function fetchFiscalSpace() {
   const years = weoYears();
-  // WEO equivalents: GGR_G01_GDP_PT→GGR_NGDP, GGXCNL_G01_GDP_PT→GGXCNL_NGDP, GGXWDG_NGDP_PT→GGXWDG_NGDP
-  const revenueData = await imfSdmxFetchIndicator('GGR_NGDP', { years });
-  await sleep(1500);
-  const balanceData = await imfSdmxFetchIndicator('GGXCNL_NGDP', { years });
-  await sleep(1500);
-  const debtData = await imfSdmxFetchIndicator('GGXWDG_NGDP', { years });
+  const [revenueData, balanceData, debtData] = await Promise.all([
+    imfSdmxFetchIndicator('GGR_NGDP', { years }),
+    imfSdmxFetchIndicator('GGXCNL_NGDP', { years }),
+    imfSdmxFetchIndicator('GGXWDG_NGDP', { years }),
+  ]);
 
   const countries = {};
   const allIso3 = new Set([
