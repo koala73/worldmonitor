@@ -46,8 +46,11 @@ export function computeGulfShare(flows: ComtradeFlowLike[]): { share: number; ha
  * Upper bound on shock scenario output days. Beyond this, the model is no longer meaningful;
  * a reader should understand the country as "indefinitely bridgeable" at the given deficit rate.
  * See #2971: raw output like 19,200 days (52 years) destroyed trust in the panel.
+ *
+ * Set to 730 (2 years) so legitimate ~365-day computations stay numeric and informative;
+ * the cap only triggers for clearly-absurd outputs.
  */
-export const EFFECTIVE_COVER_DAYS_CAP = 365;
+export const EFFECTIVE_COVER_DAYS_CAP = 730;
 
 export function computeEffectiveCoverDays(
   daysOfCover: number,

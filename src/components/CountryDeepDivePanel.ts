@@ -1047,10 +1047,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         breakdown.style.cssText = 'font-size:11px;color:#aaa;margin-top:4px';
         const parts: string[] = [];
         const fossilR = Math.round(data.emberFossilShare);
-        const coalR = Math.round(data.emberCoalShare);
-        const gasR = Math.round(data.emberGasShare);
+        let coalR = Math.round(data.emberCoalShare);
+        let gasR = Math.round(data.emberGasShare);
         // Fossil may include oil-burn and other minor categories not surfaced as separate shares;
         // allocate the residual to "Other" so the breakdown sums to the Fossil legend value (see #2971).
+        // If independent rounding pushes coal+gas above fossilR, trim the larger of the two so
+        // the breakdown never sums above the Fossil legend.
+        let overshoot = (coalR + gasR) - fossilR;
+        if (overshoot > 0) {
+          if (coalR >= gasR) coalR -= overshoot;
+          else gasR -= overshoot;
+        }
         const otherR = fossilR - coalR - gasR;
         if (coalR > 0) parts.push(`Coal ${coalR}%`);
         if (gasR > 0) parts.push(`Gas ${gasR}%`);

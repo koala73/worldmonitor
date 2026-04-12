@@ -180,10 +180,23 @@ describe('energy shock scenario computation', () => {
       assert.equal(result, EFFECTIVE_COVER_DAYS_CAP);
     });
 
-    it('renders indefinitely-bridgeable prose above the cap', () => {
+    it('does NOT cap legitimate ~365-day scenarios', () => {
+      // 90 days cover, 24.66% deficit (49.32 kbd loss of 200 kbd imports) -> raw 365
+      const result = computeEffectiveCoverDays(90, false, 49.32, 200);
+      assert.equal(result, 365);
+      assert.ok(result < EFFECTIVE_COVER_DAYS_CAP, 'natural 365 should not equal the cap');
+    });
+
+    it('renders indefinitely-bridgeable prose only at or above the cap', () => {
       const msg = buildAssessment('FR', 'hormuz_strait', true, 0.5, EFFECTIVE_COVER_DAYS_CAP, 96, 25, []);
       assert.ok(msg.includes('indefinitely bridgeable'));
       assert.ok(!msg.match(/~\d{4,}\s+days/), 'should never print raw 4-digit day counts');
+    });
+
+    it('renders numeric prose for naturally-365-day scenarios (no cap regression)', () => {
+      const msg = buildAssessment('FR', 'hormuz_strait', true, 0.5, 365, 90, 25, []);
+      assert.ok(msg.includes('~365 days'));
+      assert.ok(!msg.includes('indefinitely bridgeable'));
     });
   });
 
