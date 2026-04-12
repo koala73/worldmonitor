@@ -39,7 +39,7 @@ import type {
   MultiSectorShockResponse,
   MultiSectorShock,
 } from '@/services/supply-chain';
-import { fetchMultiSectorCostShock } from '@/services/supply-chain';
+import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 
@@ -700,7 +700,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     let total = 0;
     for (const s of sorted) {
       const tr = this.el('tr', 'cdp-cost-shock-calc-row');
-      const labelCell = this.el('td', 'cdp-cost-shock-calc-sector', s.hs2Label || `HS${s.hs2}`);
+      const labelCell = this.el('td', 'cdp-cost-shock-calc-sector', s.hs2Label || HS2_SHORT_LABELS[s.hs2] || `HS${s.hs2}`);
       const costCell = this.el('td', 'cdp-cost-shock-calc-cost', this.formatMoney(s.totalCostShock));
       if (s.totalCostShock === 0) costCell.classList.add('cdp-cost-shock-calc-cost--zero');
       tr.append(labelCell, costCell);
@@ -1744,18 +1744,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       tbody.replaceChildren();
       recsMount.replaceChildren();
 
-      const rows: ExporterRow[] = enriched ?? product.topExporters.map(exp => ({
+      const importerCode = this.currentCode;
+      const rawRows: ExporterRow[] = enriched ?? product.topExporters.map(exp => ({
         partnerIso2: exp.partnerIso2,
         share: exp.share,
         value: exp.value,
         risk: null,
       }));
+      // Drop self-imports (receiver = supplier) and rows with unresolved partner ISO2 codes;
+      // the seeder emits partnerIso2='' when a UN code can't be mapped, which surfaced as "N/A" rows.
+      const rows = rawRows.filter(r => r.partnerIso2 && r.partnerIso2 !== importerCode);
 
       for (const exp of rows) {
         const tr = this.el('tr');
         const supplierTd = this.el('td', 'cdp-product-supplier');
         const flag = exp.partnerIso2 ? CountryDeepDivePanel.toFlagEmoji(exp.partnerIso2) : '';
-        supplierTd.textContent = `${flag} ${exp.partnerIso2 || 'N/A'}`;
+        supplierTd.textContent = `${flag} ${exp.partnerIso2}`;
         tr.append(supplierTd);
 
         const shareTd = this.el('td', 'cdp-product-share');

@@ -2,6 +2,31 @@ export const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364']);
 
 export const VALID_CHOKEPOINTS = new Set(['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']);
 
+const CHOKEPOINT_DISPLAY_NAMES: Record<string, string> = {
+  hormuz_strait: 'Strait of Hormuz',
+  malacca_strait: 'Strait of Malacca',
+  suez: 'Suez Canal',
+  bab_el_mandeb: 'Bab el-Mandeb',
+};
+
+function chokepointLabel(id: string): string {
+  return CHOKEPOINT_DISPLAY_NAMES[id] ?? id.replace(/_/g, ' ');
+}
+
+// Intl.DisplayNames is available in Node 20+ and Vercel edge runtime; fall back to the raw ISO2
+// if instantiation fails (unexpected locales, etc.) so assessment text never crashes.
+let regionNames: { of(code: string): string | undefined } | null = null;
+try {
+  regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+} catch {
+  regionNames = null;
+}
+
+function countryLabel(iso2: string): string {
+  const resolved = regionNames?.of(iso2);
+  return resolved && resolved !== iso2 ? resolved : iso2;
+}
+
 export const CHOKEPOINT_EXPOSURE: Record<string, number> = {
   hormuz_strait: 1.0,
   bab_el_mandeb: 1.0,
@@ -89,19 +114,21 @@ export function buildAssessment(
   ieaStocksCoverage?: boolean,
   comtradeCoverage?: boolean,
 ): string {
+  const country = countryLabel(code);
+  const cp = chokepointLabel(chokepointId);
   if (coverageLevel === 'unsupported' || !dataAvailable) {
-    return `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
+    return `Insufficient import data for ${country} to model ${cp} exposure.`;
   }
   if (effectiveCoverDays === -1) {
-    return `${code} is a net oil exporter; ${chokepointId} disruption affects export revenue, not domestic supply.`;
+    return `${country} is a net oil exporter; ${cp} disruption affects export revenue, not domestic supply.`;
   }
   if (gulfCrudeShare < 0.1 && comtradeCoverage !== false) {
-    return `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
+    return `${country} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${cp} disruption has limited direct impact.`;
   }
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
   const ieaCoverText = ieaStocksCoverage === false ? 'unknown' : `${daysOfCover} days`;
   if (effectiveCoverDays > 90) {
-    return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
+    return `With ${daysOfCover} days IEA cover, ${country} can bridge a ${disruptionPct}% ${cp} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
   }
   const worst = products.reduce<{ product: string; deficitPct: number }>(
     (best, p) => (p.deficitPct > best.deficitPct ? p : best),
@@ -110,7 +137,7 @@ export function buildAssessment(
   const worstDeficit = worst.deficitPct;
   const worstProduct = worst.product.toLowerCase();
   const proxyNote = comtradeCoverage === false ? '. Gulf share proxied at 40%' : '';
-  return `${code} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${ieaCoverText}${proxyNote}${degradedNote}.`;
+  return `${country} faces ${worstDeficit.toFixed(1)}% ${worstProduct} deficit under ${disruptionPct}% ${cp} disruption; IEA cover: ${ieaCoverText}${proxyNote}${degradedNote}.`;
 }
 
 export const CHOKEPOINT_LNG_EXPOSURE: Record<string, number> = {

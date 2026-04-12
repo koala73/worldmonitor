@@ -73,7 +73,8 @@ describe('buildAssessment — unsupported country', () => {
   it('returns structured insufficient data message for unsupported country', () => {
     const msg = buildAssessment('ZZ', 'hormuz', false, 0, 0, 0, 50, [], 'unsupported', false);
     assert.ok(msg.includes('Insufficient import data'));
-    assert.ok(msg.includes('ZZ'));
+    // ZZ resolves to "Unknown Region" via Intl.DisplayNames; hormuz falls back to "hormuz" (no underscore)
+    assert.ok(msg.includes('Unknown Region') || msg.includes('ZZ'));
     assert.ok(msg.includes('hormuz'));
   });
 

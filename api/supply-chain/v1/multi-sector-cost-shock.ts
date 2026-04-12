@@ -7,6 +7,7 @@ import {
   aggregateAnnualImportsByHs2,
   clampClosureDays,
   computeMultiSectorShocks,
+  MULTI_SECTOR_HS2_LABELS,
   SEEDED_HS2_CODES,
   type MultiSectorCostShock,
   type SeededProduct,
@@ -111,7 +112,7 @@ export default async function handler(req: Request): Promise<Response> {
         // Still emit the empty sector skeleton so the UI can render rows at 0.
         sectors: SEEDED_HS2_CODES.map(hs2 => ({
           hs2,
-          hs2Label: hs2,
+          hs2Label: MULTI_SECTOR_HS2_LABELS[hs2] ?? `HS ${hs2}`,
           importValueAnnual: 0,
           freightAddedPctPerTon: 0,
           warRiskPremiumBps: 0,

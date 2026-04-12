@@ -104,6 +104,7 @@ async function loadCountryDeepDivePanel() {
       export function getCountryChokepointIndex() { return null; }
       export function fetchChokepointStatus() { return Promise.resolve({ chokepoints: [], fetchedAt: '', upstreamUnavailable: false }); }
       export function fetchMultiSectorCostShock() { return Promise.resolve({ iso2: '', chokepointId: '', closureDays: 30, warRiskTier: 'WAR_RISK_TIER_UNSPECIFIED', sectors: [], totalAddedCost: 0, fetchedAt: '', unavailableReason: '' }); }
+      export const HS2_SHORT_LABELS = { '27': 'Energy', '84': 'Machinery', '85': 'Electronics', '87': 'Vehicles', '30': 'Pharma', '72': 'Iron & Steel', '39': 'Plastics', '29': 'Chemicals', '10': 'Cereals', '62': 'Apparel' };
     `],
     ['runtime-stub', `
       export function toApiUrl(path) { return path; }

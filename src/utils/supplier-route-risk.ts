@@ -46,6 +46,16 @@ for (const cp of CHOKEPOINT_REGISTRY) {
   chokepointNameMap.set(cp.id, cp.displayName);
 }
 
+// Chokepoints plausibly traversed for intra-regional trade within a coastSide.
+// When both exporter and importer share the same coastSide, drop waypoints outside this set
+// so routes like gulf-europe-oil don't attribute Hormuz/Bab el-Mandeb to GR→TR refined petroleum.
+const INTRA_REGIONAL_CHOKEPOINTS: Record<string, Set<string>> = {
+  med: new Set(['bosphorus', 'gibraltar', 'suez']),
+  atlantic: new Set(['panama', 'gibraltar', 'dover_strait', 'cape_of_good_hope']),
+  pacific: new Set(['panama', 'malacca_strait', 'taiwan_strait', 'korea_strait', 'lombok_strait']),
+  indian: new Set(['malacca_strait', 'bab_el_mandeb', 'hormuz_strait', 'cape_of_good_hope', 'lombok_strait']),
+};
+
 function getCluster(iso2: string): ClusterEntry | undefined {
   const entry = clusters[iso2];
   if (!entry || typeof entry === 'string') return undefined;
@@ -113,11 +123,21 @@ export function computeSupplierRouteRisk(
   importerIso2: string,
   chokepointScores: ChokepointScoreMap,
 ): SupplierRouteRisk {
-  const hasExporterCluster = !!getCluster(exporterIso2);
-  const hasImporterCluster = !!getCluster(importerIso2);
+  const exporterCluster = getCluster(exporterIso2);
+  const importerCluster = getCluster(importerIso2);
+  const hasExporterCluster = !!exporterCluster;
+  const hasImporterCluster = !!importerCluster;
   const routeIds = findOverlappingRoutes(exporterIso2, importerIso2);
   const hasRouteData = hasExporterCluster && hasImporterCluster && routeIds.length > 0;
-  const transitChokepoints = collectTransitChokepoints(routeIds, chokepointScores);
+  let transitChokepoints = collectTransitChokepoints(routeIds, chokepointScores);
+  // For intra-regional pairs (same coastSide), overlapping "pass-through" routes like
+  // gulf-europe-oil falsely attribute distant waypoints. Restrict transit to chokepoints
+  // that plausibly sit on an intra-regional path.
+  const sharedCoast = exporterCluster?.coastSide === importerCluster?.coastSide ? exporterCluster?.coastSide : null;
+  if (sharedCoast && INTRA_REGIONAL_CHOKEPOINTS[sharedCoast]) {
+    const allowed = INTRA_REGIONAL_CHOKEPOINTS[sharedCoast]!;
+    transitChokepoints = transitChokepoints.filter(cp => allowed.has(cp.chokepointId));
+  }
   const riskLevel = determineRiskLevel(transitChokepoints, hasRouteData);
   const maxDisruptionScore = transitChokepoints.length > 0
     ? Math.max(...transitChokepoints.map(cp => cp.disruptionScore))

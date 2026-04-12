@@ -179,7 +179,8 @@ describe('energy shock scenario computation', () => {
       const assessment = buildAssessment('XZ', 'suez', false, 0, 0, 0, 50, []);
       assert.ok(assessment.includes('Insufficient import data'));
       assert.ok(assessment.includes('XZ'));
-      assert.ok(assessment.includes('suez'));
+      // chokepoint id is resolved to its display name ("Suez Canal")
+      assert.ok(assessment.includes('Suez'));
     });
 
     it('uses net-exporter branch when effectiveCoverDays === -1', () => {
