@@ -25,6 +25,9 @@ import {
   type ResilienceSeedReader,
 } from './_dimension-scorers';
 
+export const RESILIENCE_SCHEMA_V2_ENABLED =
+  (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v8:';

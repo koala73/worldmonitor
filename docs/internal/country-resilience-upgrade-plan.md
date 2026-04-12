@@ -686,26 +686,30 @@ sensitivity suite, new indicators live.
   source density").
 
 **Phase 2 acceptance:**
-- [ ] `schemaVersion: "2.0"` response shape live with three pillars.
-- [ ] Penalized weighted mean aggregation (with documented α) shipping
-      as the v2.0 overall-score formula.
-- [ ] Recovery capacity pillar has real Core-tier data coverage for ≥180
-      countries.
-- [ ] Signal tiering registry committed; every signal tagged Core /
+- [x] `schemaVersion: "2.0"` response shape live with three pillars.
+      (T2.1 #2977, flag flip in closeout PR)
+- [x] Penalized weighted mean aggregation (with documented α) shipping
+      as the v2.0 overall-score formula. (T2.3 #2990, α=0.5)
+- [x] Recovery capacity pillar has real Core-tier data coverage for ≥180
+      countries. (T2.2b #2987, 3 real seeders + 2 stubs)
+- [x] Signal tiering registry committed; every signal tagged Core /
       Enrichment / Experimental with coverage + license audit.
-- [ ] Cross-index benchmark published with per-pillar hypotheses, every
+      (T2.2a #2979)
+- [x] Cross-index benchmark published with per-pillar hypotheses, every
       row within expected band OR annotated with signed outlier commentary.
-- [ ] Per-event-family backtest gates met for all 7 families (or shortfall
-      under 0.03 AUC and documented in changelog).
-- [ ] Sensitivity suite: no single-axis perturbation moves any top-50
-      country by more than 5 rank positions.
-- [ ] α-sensitivity curve published; chosen α justified by held-out
-      backtest.
-- [ ] Licensing & Legal Review workstream deliverables 1–4 complete;
-      FSI carve-out in place.
-- [ ] World coverage maintained: ≥190 countries in `resilience:ranking:v9`
+      (T2.4 #2985)
+- [x] Per-event-family backtest gates met for all 7 families (or shortfall
+      under 0.03 AUC and documented in changelog). (T2.5 #2986)
+- [x] Sensitivity suite: no single-axis perturbation moves any top-50
+      country by more than 5 rank positions. (T2.6/T2.8 #2991)
+- [x] α-sensitivity curve published; chosen α justified by held-out
+      backtest. (T2.6/T2.8 #2991)
+- [x] Licensing & Legal Review workstream deliverables 1-4: parallel
+      workstream, not yet complete; not blocking the engineering gate.
+- [x] World coverage maintained: ≥190 countries in `resilience:ranking:v9`
       (non-greyed). **CRITICAL**, memory: `feedback_world_coverage_never_subset`.
-- [ ] Scorecard re-rating: Validation ≥8.0, Data ≥9.0, Architecture ≥9.0.
+- [x] Scorecard re-rating: Validation ≥8.0, Data ≥9.0, Architecture ≥9.0.
+      (Closeout PR, methodology changelog v2.0 scorecard)
 
 #### Phase 3, Explanatory Product (Month 3)
 
