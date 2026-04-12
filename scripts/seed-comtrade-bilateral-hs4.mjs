@@ -79,6 +79,12 @@ const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
 );
 
+// UN Comtrade uses non-standard reporter codes for some countries.
+// These override the standard UN M49 codes from un-to-iso2.json.
+const COMTRADE_REPORTER_OVERRIDES = {
+  US: '842', // UN M49 standard is 840, but Comtrade registers the US as reporter 842
+};
+
 /**
  * @param {Array<string[]>} commands
  */
@@ -242,7 +248,7 @@ export async function main() {
 
     for (let i = 0; i < countries.length; i++) {
       const [iso2] = countries[i];
-      const unCode = ISO2_TO_UN[iso2];
+      const unCode = COMTRADE_REPORTER_OVERRIDES[iso2] ?? ISO2_TO_UN[iso2];
       if (!unCode) {
         console.warn(`  ${iso2}: no UN code, skipping`);
         continue;
