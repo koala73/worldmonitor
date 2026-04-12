@@ -49,7 +49,8 @@ async function fetchImportsForReporter(reporterCode) {
   // Omit partnerCode to get ALL bilateral partners (matching the pattern
   // in seed-comtrade-bilateral-hs4.mjs). Setting partnerCode=0 returns
   // only the world-aggregate row which computeHhi() then discards.
-  url.searchParams.set('period', String(new Date().getFullYear() - 1));
+  // Comtrade annual data lags ~6-12 months; request both years so the API returns whichever has data.
+  url.searchParams.set('period', `${new Date().getFullYear() - 1},${new Date().getFullYear() - 2}`);
   url.searchParams.set('subscription-key', nextKey());
 
   const resp = await fetch(url.toString(), {
