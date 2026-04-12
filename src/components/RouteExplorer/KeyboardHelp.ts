@@ -7,8 +7,8 @@ export interface KeyboardHelpOptions {
 }
 
 const BINDINGS: ReadonlyArray<readonly [string, string]> = [
-  ['Esc', 'Close picker, then close modal'],
-  ['Tab / Shift+Tab', 'Cycle focusable zones'],
+  ['Esc', 'Close picker, then close panel'],
+  ['Tab / Shift+Tab', 'Move between panel and map'],
   ['F', 'Jump to From picker'],
   ['T', 'Jump to To picker'],
   ['P', 'Jump to Product picker'],
