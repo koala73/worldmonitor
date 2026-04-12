@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig, resolveProxyForConnect } from './_seed-utils.mjs';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const { httpsProxyFetchRaw } = require('./_proxy-utils.cjs');
+import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 

@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect } from './_seed-utils.mjs';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const { httpsProxyFetchRaw } = require('./_proxy-utils.cjs');
+import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
