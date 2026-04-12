@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig, resolveProxyForConnect } from './_seed-utils.mjs';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { httpsProxyFetchRaw } = require('./_proxy-utils.cjs');
 
 loadEnvFile(import.meta.url);
 
 const IMF_BASE = 'https://www.imf.org/external/datamapper/api/v1';
+const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'resilience:recovery:fiscal-space:v1';
 const CACHE_TTL = 35 * 24 * 3600;
 
@@ -28,13 +32,25 @@ function weoYears() {
 
 async function fetchImfIndicator(indicator) {
   const url = `${IMF_BASE}/${indicator}?periods=${weoYears().join(',')}`;
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!resp.ok) throw new Error(`IMF ${indicator}: HTTP ${resp.status}`);
-  const data = await resp.json();
-  return data?.values?.[indicator] ?? {};
+  // Try direct first, fall back to proxy (IMF blocks Railway container IPs)
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) throw new Error(`IMF ${indicator}: HTTP ${resp.status}`);
+    const data = await resp.json();
+    return data?.values?.[indicator] ?? {};
+  } catch (directErr) {
+    if (!_proxyAuth) throw directErr;
+    console.warn(`  IMF ${indicator}: direct failed (${directErr.message}), retrying via proxy`);
+    const { buffer } = await httpsProxyFetchRaw(url, _proxyAuth, {
+      accept: 'application/json',
+      timeoutMs: 30_000,
+    });
+    const data = JSON.parse(buffer.toString('utf8'));
+    return data?.values?.[indicator] ?? {};
+  }
 }
 
 function latestValue(byYear) {

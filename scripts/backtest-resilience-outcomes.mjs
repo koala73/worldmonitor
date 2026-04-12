@@ -10,7 +10,7 @@ loadEnvFile(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VALIDATION_DIR = join(__dirname, '..', 'docs', 'methodology', 'country-resilience-index', 'validation');
 
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v8:';
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v9:';
 const BACKTEST_RESULT_KEY = 'resilience:backtest:outcomes:v1';
 const BACKTEST_TTL_SECONDS = 7 * 24 * 60 * 60;
 

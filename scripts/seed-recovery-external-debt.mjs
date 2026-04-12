@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect } from './_seed-utils.mjs';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { httpsProxyFetchRaw } = require('./_proxy-utils.cjs');
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
 const WB_BASE = 'https://api.worldbank.org/v2';
+const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'resilience:recovery:external-debt:v1';
 const CACHE_TTL = 35 * 24 * 3600;
 
@@ -19,12 +23,20 @@ async function fetchWbIndicator(indicator) {
 
   while (page <= totalPages) {
     const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&per_page=500&page=${page}&mrnev=1`;
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!resp.ok) throw new Error(`World Bank ${indicator}: HTTP ${resp.status}`);
-    const json = await resp.json();
+    let json;
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      json = await resp.json();
+    } catch (directErr) {
+      if (!_proxyAuth) throw new Error(`World Bank ${indicator}: ${directErr.message}`);
+      console.warn(`  WB ${indicator} p${page}: direct failed (${directErr.message}), retrying via proxy`);
+      const { buffer } = await httpsProxyFetchRaw(url, _proxyAuth, { accept: 'application/json', timeoutMs: 30_000 });
+      json = JSON.parse(buffer.toString('utf8'));
+    }
     const meta = json[0];
     const records = json[1] ?? [];
     totalPages = meta?.pages ?? 1;

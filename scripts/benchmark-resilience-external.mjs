@@ -290,13 +290,19 @@ function median(arr) {
 
 async function readWmScoresFromRedis() {
   const { url, token } = getRedisCredentials();
-  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v8')}`, {
+  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v9')}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!rankingResp.ok) throw new Error(`Failed to read ranking: HTTP ${rankingResp.status}`);
+  if (!rankingResp.ok) {
+    console.warn(`[benchmark] Failed to read ranking: HTTP ${rankingResp.status} — skipping (scores may not be populated yet after cache key bump)`);
+    return new Map();
+  }
   const rankingData = await rankingResp.json();
-  if (!rankingData.result) throw new Error('No ranking data in Redis');
+  if (!rankingData.result) {
+    console.warn('[benchmark] No ranking data in Redis — skipping (cold start after cache key bump)');
+    return new Map();
+  }
   const ranking = JSON.parse(rankingData.result);
   const scores = new Map();
   for (const item of ranking) {
@@ -331,6 +337,11 @@ function evaluateHypothesis(hypothesis, sp) {
 
 export async function runBenchmark(opts = {}) {
   const wmScores = opts.wmScores || await readWmScoresFromRedis();
+
+  if (wmScores.size === 0) {
+    console.warn('[benchmark] No WM resilience scores available — skipping benchmark run (cold start after cache key bump)');
+    return { skipped: true, reason: 'no-wm-scores', generatedAt: Date.now() };
+  }
 
   const fetchers = [
     { name: 'INFORM', fn: opts.fetchInform || fetchInformGlobal },
