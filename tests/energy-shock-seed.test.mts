@@ -178,7 +178,9 @@ describe('energy shock scenario computation', () => {
     it('uses insufficient data message when dataAvailable is false', () => {
       const assessment = buildAssessment('XZ', 'suez', false, 0, 0, 0, 50, []);
       assert.ok(assessment.includes('Insufficient import data'));
-      assert.ok(assessment.includes('XZ'));
+      // CLDR behaviour for unrecognised codes varies across ICU versions;
+      // most return the raw code, but some may resolve to "Unknown Region".
+      assert.ok(assessment.includes('XZ') || assessment.includes('Unknown Region'));
       // chokepoint id is resolved to its display name ("Suez Canal")
       assert.ok(assessment.includes('Suez'));
     });
