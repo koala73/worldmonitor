@@ -192,10 +192,14 @@ export function parseBriefJson(text) {
     : [];
   const risk_outlook = typeof p.risk_outlook === 'string' ? p.risk_outlook.trim() : '';
 
-  const hasContent = situation_recap.length > 0 || key_developments.length > 0;
+  // Require situation_recap to be non-empty — this aligns with the seeder's
+  // gate (which checks brief.situation_recap before writing). Without this,
+  // a brief with only key_developments would pass parseBriefJson but be
+  // silently dropped by the seeder, creating a mismatch. PR #2989 review.
+  const valid = situation_recap.length > 0;
   return {
     brief: { situation_recap, regime_trajectory, key_developments, risk_outlook },
-    valid: hasContent,
+    valid,
   };
 }
 

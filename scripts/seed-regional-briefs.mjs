@@ -71,10 +71,15 @@ async function readLatestSnapshot(url, token, regionId) {
 
 /**
  * Read the regime history for a region (last 7 days).
+ * Returns null on Redis/network failure so the caller can distinguish a
+ * genuinely quiet week (empty array) from a broken upstream (null).
+ * PR #2989 review: collapsing failure to [] would fabricate a false
+ * "no transitions" history for the LLM prompt.
+ *
  * @param {string} url
  * @param {string} token
  * @param {string} regionId
- * @returns {Promise<object[]>}
+ * @returns {Promise<object[] | null>} null = upstream failure, [] = genuinely no transitions
  */
 async function readRecentTransitions(url, token, regionId) {
   try {
@@ -83,15 +88,15 @@ async function readRecentTransitions(url, token, regionId) {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     });
-    if (!resp.ok) return [];
+    if (!resp.ok) return null;
     const data = await resp.json();
-    if (!Array.isArray(data?.result)) return [];
+    if (!Array.isArray(data?.result)) return null;
     const cutoff = Date.now() - SEVEN_DAYS_MS;
     return data.result
       .map((raw) => { try { return JSON.parse(raw); } catch { return null; } })
       .filter((t) => t && typeof t === 'object' && (t.transitioned_at ?? 0) >= cutoff);
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -143,6 +148,11 @@ async function main() {
       }
 
       const transitions = await readRecentTransitions(url, token, region.id);
+      if (transitions === null) {
+        skipped += 1;
+        console.log(`[${region.id}] skipped (regime-history Redis unavailable — cannot produce reliable brief)`);
+        continue;
+      }
       const brief = await generateWeeklyBrief(region, snapshot, transitions);
 
       if (!brief.situation_recap) {
