@@ -19,7 +19,7 @@ async function fetchWbIndicator(indicator) {
   let totalPages = 1;
 
   while (page <= totalPages) {
-    const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&per_page=500&page=${page}&mrnev=1`;
+    const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&per_page=500&page=${page}&mrv=1`;
     let json;
     try {
       const resp = await fetch(url, {

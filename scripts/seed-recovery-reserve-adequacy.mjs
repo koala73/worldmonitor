@@ -16,7 +16,7 @@ async function fetchReserveAdequacy() {
   let totalPages = 1;
 
   while (page <= totalPages) {
-    const url = `${WB_BASE}/country/all/indicator/${INDICATOR}?format=json&per_page=500&page=${page}&mrnev=1`;
+    const url = `${WB_BASE}/country/all/indicator/${INDICATOR}?format=json&per_page=500&page=${page}&mrv=1`;
     const resp = await fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(30_000),
