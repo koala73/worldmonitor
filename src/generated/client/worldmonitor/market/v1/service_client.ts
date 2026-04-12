@@ -523,6 +523,7 @@ export interface GetGoldIntelligenceResponse {
   returns?: GoldReturns;
   range52w?: GoldRange52w;
   drivers: GoldDriver[];
+  etfFlows?: GoldEtfFlows;
 }
 
 export interface GoldCrossCurrencyPrice {
@@ -572,6 +573,20 @@ export interface GoldDriver {
   value: number;
   changePct: number;
   correlation30d: number;
+}
+
+export interface GoldEtfFlows {
+  asOfDate: string;
+  tonnes: number;
+  aumUsd: number;
+  nav: number;
+  changeW1Tonnes: number;
+  changeM1Tonnes: number;
+  changeY1Tonnes: number;
+  changeW1Pct: number;
+  changeM1Pct: number;
+  changeY1Pct: number;
+  sparkline90d: number[];
 }
 
 export interface FieldViolation {

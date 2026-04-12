@@ -9,12 +9,14 @@ import type {
   GoldReturns,
   GoldRange52w,
   GoldDriver,
+  GoldEtfFlows,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
 
 const COMMODITY_KEY = 'market:commodities-bootstrap:v1';
 const COT_KEY = 'market:cot:v1';
 const GOLD_EXTENDED_KEY = 'market:gold-extended:v1';
+const GOLD_ETF_FLOWS_KEY = 'market:gold-etf-flows:v1';
 
 interface RawQuote {
   symbol: string;
@@ -71,6 +73,21 @@ interface GoldExtendedPayload {
   gold?: GoldExtendedMetal | null;
   silver?: GoldExtendedMetal | null;
   drivers?: GoldExtendedDriver[];
+}
+
+interface GoldEtfFlowsPayload {
+  updatedAt: string;
+  asOfDate: string;
+  tonnes: number;
+  aumUsd: number;
+  nav: number;
+  changeW1Tonnes: number;
+  changeM1Tonnes: number;
+  changeY1Tonnes: number;
+  changeW1Pct: number;
+  changeM1Pct: number;
+  changeY1Pct: number;
+  sparkline90d: number[];
 }
 
 const XAU_FX = [
@@ -154,10 +171,11 @@ export async function getGoldIntelligence(
   _req: GetGoldIntelligenceRequest,
 ): Promise<GetGoldIntelligenceResponse> {
   try {
-    const [rawPayload, rawCot, rawExtended] = await Promise.all([
+    const [rawPayload, rawCot, rawExtended, rawEtfFlows] = await Promise.all([
       getCachedJson(COMMODITY_KEY, true) as Promise<{ quotes?: RawQuote[] } | null>,
       getCachedJson(COT_KEY, true) as Promise<{ instruments?: RawCotInstrument[]; reportDate?: string } | null>,
       getCachedJson(GOLD_EXTENDED_KEY, true) as Promise<GoldExtendedPayload | null>,
+      getCachedJson(GOLD_ETF_FLOWS_KEY, true) as Promise<GoldEtfFlowsPayload | null>,
     ]);
 
     const rawQuotes = rawPayload?.quotes;
@@ -208,6 +226,22 @@ export async function getGoldIntelligence(
       correlation30d: d.correlation30d,
     }));
 
+    const etfFlows: GoldEtfFlows | undefined = rawEtfFlows && Number.isFinite(rawEtfFlows.tonnes) && rawEtfFlows.tonnes > 0
+      ? {
+        asOfDate: rawEtfFlows.asOfDate,
+        tonnes: rawEtfFlows.tonnes,
+        aumUsd: rawEtfFlows.aumUsd,
+        nav: rawEtfFlows.nav,
+        changeW1Tonnes: rawEtfFlows.changeW1Tonnes,
+        changeM1Tonnes: rawEtfFlows.changeM1Tonnes,
+        changeY1Tonnes: rawEtfFlows.changeY1Tonnes,
+        changeW1Pct: rawEtfFlows.changeW1Pct,
+        changeM1Pct: rawEtfFlows.changeM1Pct,
+        changeY1Pct: rawEtfFlows.changeY1Pct,
+        sparkline90d: rawEtfFlows.sparkline90d ?? [],
+      }
+      : undefined;
+
     return {
       goldPrice,
       goldChangePct: gold?.change ?? 0,
@@ -223,6 +257,7 @@ export async function getGoldIntelligence(
       returns,
       range52w,
       drivers,
+      etfFlows,
       // updatedAt reflects the *enrichment* layer's freshness. If the extended
       // key is missing we deliberately emit empty so the panel renders "Updated —"
       // rather than a misleading "just now" stamp while session/returns/drivers

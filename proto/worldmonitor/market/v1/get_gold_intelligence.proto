@@ -53,6 +53,20 @@ message GoldDriver {
   double correlation_30d = 5;
 }
 
+message GoldEtfFlows {
+  string as_of_date = 1;
+  double tonnes = 2;
+  double aum_usd = 3;
+  double nav = 4;
+  double change_w1_tonnes = 5;
+  double change_m1_tonnes = 6;
+  double change_y1_tonnes = 7;
+  double change_w1_pct = 8;
+  double change_m1_pct = 9;
+  double change_y1_pct = 10;
+  repeated double sparkline_90d = 11;
+}
+
 message GetGoldIntelligenceRequest {}
 
 message GetGoldIntelligenceResponse {
@@ -72,4 +86,5 @@ message GetGoldIntelligenceResponse {
   GoldReturns returns = 14;
   GoldRange52w range_52w = 15;
   repeated GoldDriver drivers = 16;
+  GoldEtfFlows etf_flows = 17;
 }

@@ -1949,6 +1949,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/GoldDriver'
+                etfFlows:
+                    $ref: '#/components/schemas/GoldEtfFlows'
         GoldCrossCurrencyPrice:
             type: object
             properties:
@@ -2046,3 +2048,40 @@ components:
                 correlation30d:
                     type: number
                     format: double
+        GoldEtfFlows:
+            type: object
+            properties:
+                asOfDate:
+                    type: string
+                tonnes:
+                    type: number
+                    format: double
+                aumUsd:
+                    type: number
+                    format: double
+                nav:
+                    type: number
+                    format: double
+                changeW1Tonnes:
+                    type: number
+                    format: double
+                changeM1Tonnes:
+                    type: number
+                    format: double
+                changeY1Tonnes:
+                    type: number
+                    format: double
+                changeW1Pct:
+                    type: number
+                    format: double
+                changeM1Pct:
+                    type: number
+                    format: double
+                changeY1Pct:
+                    type: number
+                    format: double
+                sparkline90d:
+                    type: array
+                    items:
+                        type: number
+                        format: double

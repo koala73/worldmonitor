@@ -17,6 +17,19 @@ interface SessionRange { dayHigh: number; dayLow: number; prevClose: number }
 interface Returns { w1: number; m1: number; ytd: number; y1: number }
 interface Range52w { hi: number; lo: number; positionPct: number }
 interface Driver { symbol: string; label: string; value: number; changePct: number; correlation30d: number }
+interface EtfFlows {
+  asOfDate: string;
+  tonnes: number;
+  aumUsd: number;
+  nav: number;
+  changeW1Tonnes: number;
+  changeM1Tonnes: number;
+  changeY1Tonnes: number;
+  changeW1Pct: number;
+  changeM1Pct: number;
+  changeY1Pct: number;
+  sparkline90d: number[];
+}
 
 interface GoldIntelligenceData {
   goldPrice: number;
@@ -33,6 +46,7 @@ interface GoldIntelligenceData {
   returns?: Returns;
   range52w?: Range52w;
   drivers: Driver[];
+  etfFlows?: EtfFlows;
   updatedAt: string;
   unavailable?: boolean;
 }
@@ -285,6 +299,42 @@ export class GoldIntelligencePanel extends Panel {
     </div>`;
   }
 
+  private renderEtfFlows(d: GoldIntelligenceData): string {
+    const f = d.etfFlows;
+    if (!f || !Number.isFinite(f.tonnes) || f.tonnes <= 0) return '';
+
+    const chip = (label: string, deltaT: number, deltaPct: number) => {
+      const color = deltaT >= 0 ? '#2ecc71' : '#e74c3c';
+      const tSign = deltaT >= 0 ? '+' : '';
+      const pSign = deltaPct >= 0 ? '+' : '';
+      return `<div style="flex:1;text-align:center;padding:4px;background:rgba(255,255,255,0.03);border-radius:4px">
+        <div style="font-size:9px;color:var(--text-dim)">${escapeHtml(label)}</div>
+        <div style="font-size:11px;font-weight:600;color:${color}">${tSign}${deltaT.toFixed(1)}t</div>
+        <div style="font-size:9px;color:${color}">${pSign}${deltaPct.toFixed(2)}%</div>
+      </div>`;
+    };
+
+    const aumStr = f.aumUsd >= 1e9 ? `$${(f.aumUsd / 1e9).toFixed(1)}B` : f.aumUsd > 0 ? `$${(f.aumUsd / 1e6).toFixed(0)}M` : '--';
+    const spark = f.sparkline90d.length > 1 ? miniSparkline(f.sparkline90d, f.changeM1Pct, 80, 20) : '';
+
+    return `<div class="energy-tape-section" style="margin-top:10px">
+      <div class="energy-section-title">Physical Flows (GLD)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+        <div>
+          <span style="font-size:14px;font-weight:700">${escapeHtml(f.tonnes.toFixed(1))} <span style="font-size:10px;color:var(--text-dim);font-weight:500">tonnes</span></span>
+          <span style="font-size:10px;color:var(--text-dim);margin-left:6px">AUM ${escapeHtml(aumStr)}${f.nav > 0 ? ` • NAV $${f.nav.toFixed(2)}` : ''}</span>
+        </div>
+        ${spark}
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        ${chip('1W', f.changeW1Tonnes, f.changeW1Pct)}
+        ${chip('1M', f.changeM1Tonnes, f.changeM1Pct)}
+        ${chip('1Y', f.changeY1Tonnes, f.changeY1Pct)}
+      </div>
+      <div style="font-size:9px;color:var(--text-dim);margin-top:4px;text-align:right">SPDR GLD • as of ${escapeHtml(f.asOfDate)}</div>
+    </div>`;
+  }
+
   private renderDrivers(d: GoldIntelligenceData): string {
     if (!d.drivers?.length) return '';
     const rows = d.drivers.map(dr => {
@@ -312,6 +362,7 @@ export class GoldIntelligencePanel extends Panel {
       this.renderMetals(d),
       this.renderFx(d),
       this.renderPositioning(d),
+      this.renderEtfFlows(d),
       this.renderDrivers(d),
     ].join('');
     this.setContent(`<div style="padding:10px 14px">${html}</div>`);

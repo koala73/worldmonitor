@@ -7,4 +7,6 @@ await runBundle('market-backup', [
   { label: 'ETF-Flows', script: 'seed-etf-flows.mjs', seedMetaKey: 'market:etf-flows', intervalMs: 15 * MIN, timeoutMs: 120_000 },
   { label: 'Gulf-Quotes', script: 'seed-gulf-quotes.mjs', seedMetaKey: 'market:gulf-quotes', intervalMs: 10 * MIN, timeoutMs: 120_000 },
   { label: 'Token-Panels', script: 'seed-token-panels.mjs', seedMetaKey: 'market:token-panels', intervalMs: 30 * MIN, timeoutMs: 120_000 },
+  // SPDR GLD publishes holdings once daily (~16:30 ET). 2h cadence = retries on Cloudflare blocks + catches late publish.
+  { label: 'Gold-ETF-Flows', script: 'seed-gold-etf-flows.mjs', seedMetaKey: 'market:gold-etf-flows', intervalMs: 120 * MIN, timeoutMs: 60_000 },
 ]);
