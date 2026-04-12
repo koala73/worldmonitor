@@ -296,10 +296,18 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
     );
   });
 
-  it('defines COMTRADE_REPORTER_OVERRIDES with US mapped to 842 (not standard UN M49 840)', () => {
+  it('defines COMTRADE_REPORTER_OVERRIDES for all countries with non-standard Comtrade codes', () => {
     assert.ok(
       src.includes('COMTRADE_REPORTER_OVERRIDES'),
       'seeder: must define COMTRADE_REPORTER_OVERRIDES to handle non-standard Comtrade reporter codes',
+    );
+    assert.ok(
+      src.includes("FR: '251'"),
+      "seeder: COMTRADE_REPORTER_OVERRIDES must map FR to '251' (Comtrade reporter code, not UN M49 250)",
+    );
+    assert.ok(
+      src.includes("IT: '381'"),
+      "seeder: COMTRADE_REPORTER_OVERRIDES must map IT to '381' (Comtrade reporter code, not UN M49 380)",
     );
     assert.ok(
       src.includes("US: '842'"),

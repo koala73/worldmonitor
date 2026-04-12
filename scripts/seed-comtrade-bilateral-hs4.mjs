@@ -82,6 +82,8 @@ const ISO2_TO_UN = Object.fromEntries(
 // UN Comtrade uses non-standard reporter codes for some countries.
 // These override the standard UN M49 codes from un-to-iso2.json.
 const COMTRADE_REPORTER_OVERRIDES = {
+  FR: '251', // UN M49 standard is 250, but Comtrade registers France as reporter 251
+  IT: '381', // UN M49 standard is 380, but Comtrade registers Italy as reporter 381
   US: '842', // UN M49 standard is 840, but Comtrade registers the US as reporter 842
 };
 
