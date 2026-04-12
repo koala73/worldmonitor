@@ -203,7 +203,7 @@ async function main() {
   }
 
   console.log(`[regional-briefs] Done in ${elapsed}s: generated=${generated} skipped=${skipped} failed=${failed}`);
-  if (failed > 0) process.exit(1);
+  if (failed > 0) throw new Error(`regional-briefs: ${failed} region(s) failed`);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;

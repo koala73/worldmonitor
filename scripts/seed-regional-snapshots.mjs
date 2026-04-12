@@ -320,7 +320,10 @@ async function main() {
     console.error(`  [${f.region}] ${f.error}`);
   }
   console.error('[regional-snapshots] Skipping seed-meta write due to partial failure. /api/health will reflect degradation after 12h.');
-  process.exit(1);
+  // Throw instead of process.exit(1) so callers (e.g. seed-bundle-regional.mjs)
+  // can catch and continue with other seeders. The isDirectRun guard below still
+  // calls process.exit(1) for standalone invocations.
+  throw new Error(`regional-snapshots: ${failed} region(s) failed`);
 }
 
 const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
