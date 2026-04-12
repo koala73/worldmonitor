@@ -158,6 +158,7 @@ const STANDALONE_KEYS = {
   resilienceIntervals:      'resilience:intervals:v1:US',
   sprPolicies:              'energy:spr-policies:v1',
   regionalSnapshots:        'intelligence:regional-snapshots:summary:v1',
+  regionalBriefs:           'intelligence:regional-briefs:summary:v1',
 };
 
 const SEED_META = {
@@ -227,6 +228,7 @@ const SEED_META = {
   sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 },
   crossSourceSignals:  { key: 'seed-meta:intelligence:cross-source-signals',  maxStaleMin: 30 }, // 15min cron; 30min = 2x interval
   regionalSnapshots:   { key: 'seed-meta:intelligence:regional-snapshots',    maxStaleMin: 720 }, // 6h cron via seed-bundle-derived-signals; 720min = 12h = 2x interval
+  regionalBriefs:      { key: 'seed-meta:intelligence:regional-briefs',      maxStaleMin: 20160 }, // weekly cron; 20160min = 14 days = 2x interval
   sanctionsEntities:   { key: 'seed-meta:sanctions:entities',                 maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   radiationWatch:      { key: 'seed-meta:radiation:observations',             maxStaleMin: 30 },
   groceryBasket:       { key: 'seed-meta:economic:grocery-basket',            maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
