@@ -140,7 +140,7 @@ describe('resilience scorer contracts', () => {
         return round(cwMean) * getResilienceDomainWeight(domainId);
       }).reduce((sum, v) => sum + v, 0),
     );
-    assert.equal(overallScore, 68.72);
+    assert.equal(overallScore, 65.23);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -211,7 +211,7 @@ describe('resilience scorer contracts', () => {
     );
 
     assert.ok(expected > 0, 'overall should be positive');
-    assert.equal(expected, 68.72, 'overallScore should match sum(domainScore * domainWeight)');
+    assert.equal(expected, 65.23, 'overallScore should match sum(domainScore * domainWeight)');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

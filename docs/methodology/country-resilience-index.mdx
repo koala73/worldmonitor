@@ -371,8 +371,8 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v8:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v8` | JSON | 6 hours | `buildResilienceRanking`, only when all countries are scored | `getResilienceRanking` handler |
+| `resilience:score:v9:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v9` | JSON | 6 hours | `buildResilienceRanking`, only when all countries are scored | `getResilienceRanking` handler |
 | `resilience:history:v4:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
 | `resilience:intervals:v1:{countryCode}` | JSON | 6 hours | `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) |
 | `seed-meta:resilience:static` | JSON | 2 hours | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
@@ -418,7 +418,7 @@ A reference Python notebook under `docs/methodology/country-resilience-index/ref
 - **T1.6** (#2949 scaffold, #2962 full grid): per-dimension confidence grid in the widget. The full grid adds an imputation-class icon column (consuming T1.7 schema) and a freshness-badge column (consuming T1.5 propagation). 5-column layout with mobile responsive breakpoint.
 - **T1.7** (#2944 foundation, #2959 schema, #2964 source-failure wiring): four-class imputation taxonomy `stable-absence` / `unmonitored` / `source-failure` / `not-applicable` exposed on `ResilienceDimension.imputationClass`. The scorer aggregation pass consults `seed-meta:resilience:static.failedDatasets` and re-tags imputed dimensions as `source-failure` when the underlying adapter fetch failed. Deleted the last absence-based return branch in `scoreCurrencyExternal` so the taxonomy is the single source of truth for every imputed path.
 - **T1.8** (#2946): methodology doc linter enforces dimension parity between this document and `_indicator-registry.ts`. CI fails if any dimension drifts.
-- **T1.9** (this PR): cache-key / health-registry sync regression test so future version bumps in `_shared.ts` cannot silently break health probes. No cache keys were bumped in Phase 1 because every schema addition was additive with default fallbacks on the existing `resilience:score:v7` and `resilience:ranking:v8` keys.
+- **T1.9** (this PR): cache-key / health-registry sync regression test so future version bumps in `_shared.ts` cannot silently break health probes. No cache keys were bumped in Phase 1 because every schema addition was additive with default fallbacks on the existing `resilience:score:v7` and `resilience:ranking:v9` keys.
 
 **What did not change in v1.1**: the domain-weighted aggregation formula, the 5 domain structure, the 13 dimensions, the goalpost ranges, the per-dimension weights. Phase 2 owns the structural three-pillar rebuild; v1.1 is the methodology-surface and observability lift only.
 

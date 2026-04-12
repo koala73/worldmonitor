@@ -41,9 +41,9 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v8:';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v9:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v4:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v8';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v9';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -134,6 +134,16 @@ function coverageWeightedMean(dimensions: ResilienceDimension[]): number {
   const totalCoverage = dimensions.reduce((sum, d) => sum + d.coverage, 0);
   if (!totalCoverage) return 0;
   return dimensions.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCoverage;
+}
+
+export const PENALTY_ALPHA = 0.50;
+
+export function penalizedPillarScore(pillars: { score: number; weight: number }[]): number {
+  if (pillars.length === 0) return 0;
+  const weighted = pillars.reduce((sum, p) => sum + p.score * p.weight, 0);
+  const minScore = Math.min(...pillars.map((p) => p.score));
+  const penalty = 1 - PENALTY_ALPHA * (1 - minScore / 100);
+  return Math.round(weighted * penalty * 100) / 100;
 }
 
 function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] {

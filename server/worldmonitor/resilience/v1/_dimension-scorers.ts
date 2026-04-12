@@ -269,12 +269,12 @@ for (const [name, iso2] of Object.entries(countryNames as Record<string, string>
 const ISO2_TO_ISO3: Record<string, string> = iso2ToIso3Json;
 
 const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
-  economic: 0.22,
-  infrastructure: 0.20,
-  energy: 0.15,
-  'social-governance': 0.25,
-  'health-food': 0.18,
-  recovery: 0,
+  economic: 0.17,
+  infrastructure: 0.15,
+  energy: 0.11,
+  'social-governance': 0.19,
+  'health-food': 0.13,
+  recovery: 0.25,
 };
 
 export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, ResilienceDomainId> = {
