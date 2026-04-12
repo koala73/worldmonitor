@@ -120,7 +120,13 @@ function groupByProduct(records: ParsedRecord[]): CountryProduct[] {
   return products;
 }
 
-async function fetchComtradeBilateral(reporterCode: string): Promise<CountryProduct[] | null> {
+interface ComtradeResult {
+  products: CountryProduct[];
+  rateLimited: boolean;
+  serverError: boolean;
+}
+
+async function fetchComtradeBilateral(reporterCode: string): Promise<ComtradeResult> {
   const url = new URL(COMTRADE_BASE);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('cmdCode', HS4_CODES.join(','));
@@ -131,12 +137,12 @@ async function fetchComtradeBilateral(reporterCode: string): Promise<CountryProd
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (resp.status === 429) return null;
-  if (!resp.ok) return null;
+  if (resp.status === 429) return { products: [], rateLimited: true, serverError: false };
+  if (!resp.ok) return { products: [], rateLimited: false, serverError: resp.status >= 500 };
 
   const data = await resp.json();
   const records = parseRecords(data);
-  return groupByProduct(records);
+  return { products: groupByProduct(records), rateLimited: false, serverError: false };
 }
 
 export interface LazyFetchResult {
@@ -167,27 +173,33 @@ export async function lazyFetchBilateralHs4(iso2: string): Promise<LazyFetchResu
   const unCode = ISO2_TO_UN[iso2];
   if (!unCode) {
     fetchInFlight = false;
-    await setCachedJson(sentinelKey, { empty: true }, EMPTY_TTL);
+    await setCachedJson(sentinelKey, { empty: true }, EMPTY_TTL, true);
     return { products: [], comtradeSource: 'empty' };
   }
 
   try {
-    const products = await fetchComtradeBilateral(unCode);
+    const result = await fetchComtradeBilateral(unCode);
 
-    if (products === null) {
-      await setCachedJson(sentinelKey, { rateLimited: true }, EMPTY_TTL);
+    if (result.rateLimited) {
+      await setCachedJson(sentinelKey, { rateLimited: true }, EMPTY_TTL, true);
       return { products: [], comtradeSource: 'empty', rateLimited: true };
     }
 
-    if (products.length === 0) {
-      await setCachedJson(sentinelKey, { empty: true }, EMPTY_TTL);
+    // Transient server error (500/503): don't write a 24h sentinel, just return
+    // empty so the next request retries instead of being suppressed for a day
+    if (result.serverError) {
+      return { products: [], comtradeSource: 'lazy' };
+    }
+
+    if (result.products.length === 0) {
+      await setCachedJson(sentinelKey, { empty: true }, EMPTY_TTL, true);
       return { products: [], comtradeSource: 'empty' };
     }
 
     const cacheKey = `${KEY_PREFIX}${iso2}:v1`;
-    const payload = { iso2, products, fetchedAt: new Date().toISOString() };
-    await setCachedJson(cacheKey, payload, SUCCESS_TTL);
-    return { products, comtradeSource: 'bilateral-hs4' };
+    const payload = { iso2, products: result.products, fetchedAt: new Date().toISOString() };
+    await setCachedJson(cacheKey, payload, SUCCESS_TTL, true);
+    return { products: result.products, comtradeSource: 'bilateral-hs4' };
   } catch {
     return { products: [], comtradeSource: 'lazy' };
   } finally {
