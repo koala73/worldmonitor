@@ -7,7 +7,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
 
-const COMMODITY_KEY = 'market:commodity-quotes:v1';
+const COMMODITY_KEY = 'market:commodities-bootstrap:v1';
 const COT_KEY = 'market:cot:v1';
 
 interface RawQuote {
@@ -44,12 +44,13 @@ export async function getGoldIntelligence(
   _req: GetGoldIntelligenceRequest,
 ): Promise<GetGoldIntelligenceResponse> {
   try {
-    const [rawQuotes, rawCot] = await Promise.all([
-      getCachedJson(COMMODITY_KEY, true) as Promise<RawQuote[] | null>,
+    const [rawPayload, rawCot] = await Promise.all([
+      getCachedJson(COMMODITY_KEY, true) as Promise<{ quotes?: RawQuote[] } | null>,
       getCachedJson(COT_KEY, true) as Promise<{ instruments?: RawCotInstrument[]; reportDate?: string } | null>,
     ]);
 
-    if (!rawQuotes || !Array.isArray(rawQuotes)) {
+    const rawQuotes = rawPayload?.quotes;
+    if (!rawQuotes || !Array.isArray(rawQuotes) || rawQuotes.length === 0) {
       return { goldPrice: 0, goldChangePct: 0, goldSparkline: [], silverPrice: 0, platinumPrice: 0, palladiumPrice: 0, crossCurrencyPrices: [], updatedAt: '', unavailable: true };
     }
 
