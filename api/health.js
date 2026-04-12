@@ -157,6 +157,7 @@ const STANDALONE_KEYS = {
   emberElectricity:         'energy:ember:v1:_all',
   resilienceIntervals:      'resilience:intervals:v1:US',
   sprPolicies:              'energy:spr-policies:v1',
+  energyCrisisPolicies:     'energy:crisis-policies:v1',
   regionalSnapshots:        'intelligence:regional-snapshots:summary:v1',
   regionalBriefs:           'intelligence:regional-briefs:summary:v1',
   recoveryFiscalSpace:      'resilience:recovery:fiscal-space:v1',
