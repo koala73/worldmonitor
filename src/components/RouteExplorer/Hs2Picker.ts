@@ -36,6 +36,7 @@ export class Hs2Picker {
     this.list.className = 're-picker__list';
     this.list.setAttribute('role', 'listbox');
 
+    this.list.style.display = 'none';
     this.element.append(this.input, this.list);
 
     if (opts.initialHs2) {
@@ -43,11 +44,15 @@ export class Hs2Picker {
       if (initial) this.input.value = `${initial.label} (HS ${initial.hs2})`;
     }
 
-    this.refreshResults('');
-    this.input.addEventListener('input', () => this.refreshResults(this.input.value));
+    this.input.addEventListener('input', () => { this.showList(); this.refreshResults(this.input.value); });
+    this.input.addEventListener('focus', () => { this.refreshResults(this.input.value); this.showList(); });
+    this.input.addEventListener('blur', () => { setTimeout(() => this.hideList(), 150); });
     this.input.addEventListener('keydown', this.handleKeydown);
     this.list.addEventListener('click', this.handleClick);
   }
+
+  private showList(): void { this.list.style.display = ''; }
+  private hideList(): void { this.list.style.display = 'none'; }
 
   public focusInput(): void {
     this.input.focus();
@@ -101,6 +106,8 @@ export class Hs2Picker {
     const entry = this.results[idx];
     if (!entry) return;
     this.input.value = `${entry.label} (HS ${entry.hs2})`;
+    this.hideList();
+    this.input.blur();
     this.opts.onCommit(entry.hs2);
   }
 

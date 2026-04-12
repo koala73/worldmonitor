@@ -39,6 +39,7 @@ export class CountryPicker {
     this.list.className = 're-picker__list';
     this.list.setAttribute('role', 'listbox');
 
+    this.list.style.display = 'none';
     this.element.append(this.input, this.list);
 
     if (opts.initialIso2) {
@@ -46,11 +47,15 @@ export class CountryPicker {
       if (initial) this.input.value = initial.name;
     }
 
-    this.refreshResults('');
-    this.input.addEventListener('input', () => this.refreshResults(this.input.value));
+    this.input.addEventListener('input', () => { this.showList(); this.refreshResults(this.input.value); });
+    this.input.addEventListener('focus', () => { this.refreshResults(this.input.value); this.showList(); });
+    this.input.addEventListener('blur', () => { setTimeout(() => this.hideList(), 150); });
     this.input.addEventListener('keydown', this.handleKeydown);
     this.list.addEventListener('click', this.handleClick);
   }
+
+  private showList(): void { this.list.style.display = ''; }
+  private hideList(): void { this.list.style.display = 'none'; }
 
   public focusInput(): void {
     this.input.focus();
@@ -104,6 +109,8 @@ export class CountryPicker {
     const entry = this.results[idx];
     if (!entry) return;
     this.input.value = entry.name;
+    this.hideList();
+    this.input.blur();
     this.opts.onCommit(entry.iso2);
   }
 

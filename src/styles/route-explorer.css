@@ -5,14 +5,14 @@
   inset: 0;
   z-index: 9000;
   display: flex;
-  align-items: stretch;
-  justify-content: stretch;
+  pointer-events: none;
 }
 
 .re-modal__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
 }
 
 .re-modal__surface {
@@ -20,11 +20,15 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  width: 100%;
+  width: 520px;
+  max-width: 45vw;
   height: 100%;
   background: var(--bg-primary, #0d1117);
   color: var(--text-primary, #c9d1d9);
   overflow: hidden;
+  pointer-events: auto;
+  border-right: 1px solid var(--border-dim, #21262d);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
 }
 
 /* ─── Query bar ─────────────────────────────────────────────────────── */
@@ -62,7 +66,7 @@
 }
 
 .re-picker__input {
-  width: 180px;
+  width: 140px;
   padding: 6px 10px;
   font-size: 13px;
   background: var(--bg-secondary, #161b22);
@@ -193,18 +197,19 @@
 
 .re-body {
   display: flex;
+  flex-direction: column;
   flex: 1;
   overflow: hidden;
 }
 
-/* ─── Left rail ─────────────────────────────────────────────────────── */
+/* ─── Left rail (now stacks above content in the panel) ─────────────── */
 
 .re-leftrail {
-  width: 320px;
   flex-shrink: 0;
   overflow-y: auto;
-  padding: 16px;
-  border-right: 1px solid var(--border-dim, #21262d);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-dim, #21262d);
+  max-height: 200px;
 }
 
 .re-leftrail__card {
