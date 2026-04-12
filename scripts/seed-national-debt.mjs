@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, imfSdmxFetchIndicator } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const IMF_BASE = 'https://www.imf.org/external/datamapper/api/v1';
 const TREASURY_URL = 'https://api.fiscaldata.treasury.gov/services/api/v1/accounting/od/debt_to_penny?fields=record_date,tot_pub_debt_out_amt&sort=-record_date&page[size]=1';
 
 const CANONICAL_KEY = 'economic:national-debt:v1';
@@ -22,17 +21,6 @@ const TERRITORY_CODES = new Set(['ABW', 'PRI', 'WBG']);
 function isAggregate(code) {
   if (!code || code.length !== 3) return true;
   return AGGREGATE_CODES.has(code) || TERRITORY_CODES.has(code) || code.endsWith('Q');
-}
-
-async function fetchImfIndicator(indicator, periods, timeoutMs) {
-  const url = `${IMF_BASE}/${indicator}?periods=${periods}`;
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!resp.ok) throw new Error(`IMF ${indicator}: HTTP ${resp.status}`);
-  const data = await resp.json();
-  return data?.values?.[indicator] ?? {};
 }
 
 async function fetchTreasury() {
@@ -117,9 +105,9 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
 
 async function fetchNationalDebt() {
   const [debtPctData, gdpData, deficitData, treasury] = await Promise.all([
-    fetchImfIndicator('GGXWDG_NGDP', '2023,2024', 30_000),
-    fetchImfIndicator('NGDPD', '2024', 30_000),
-    fetchImfIndicator('GGXCNL_NGDP', '2024', 30_000),
+    imfSdmxFetchIndicator('GGXWDG_NGDP', { years: ['2023', '2024'] }),
+    imfSdmxFetchIndicator('NGDPD', { years: ['2024'] }),
+    imfSdmxFetchIndicator('GGXCNL_NGDP', { years: ['2024'] }),
     fetchTreasury().catch(() => null),
   ]);
 
@@ -140,7 +128,7 @@ if (process.argv[1]?.endsWith('seed-national-debt.mjs')) {
   runSeed('economic', 'national-debt', CANONICAL_KEY, fetchNationalDebt, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: 'imf-weo-2024',
+    sourceVersion: 'imf-sdmx-weo-2024',
     recordCount: (data) => data?.entries?.length ?? 0,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';

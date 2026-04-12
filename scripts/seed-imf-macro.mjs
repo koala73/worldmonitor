@@ -1,20 +1,15 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, loadSharedConfig, resolveProxyForConnect, imfFetchJson } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const IMF_BASE = 'https://www.imf.org/external/datamapper/api/v1';
-const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'economic:imf:macro:v2';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days — monthly IMF WEO release
 
-// Invert iso2→iso3 map to convert IMF's ISO3 codes to our ISO2 keys.
-// loadSharedConfig tries ../shared/ (local dev) then ./shared/ (Railway rootDirectory=scripts).
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
 const ISO3_TO_ISO2 = Object.fromEntries(Object.entries(ISO2_TO_ISO3).map(([k, v]) => [v, k]));
 
-// IMF WEO regional aggregate and non-sovereign codes
 const AGGREGATE_CODES = new Set([
   'ADVEC', 'EMEDE', 'EURO', 'MECA', 'OEMDC', 'WEOWORLD', 'EU',
   'AS5', 'DA', 'EDE', 'MAE', 'OAE', 'SSA', 'WE', 'EMDE', 'G20',
@@ -25,20 +20,11 @@ function isAggregate(code) {
   return AGGREGATE_CODES.has(code) || code.endsWith('Q');
 }
 
-// Request the three most-recent years at call time so the monthly cron always picks up the
-// latest WEO vintage without requiring a code edit (e.g. 2025,2024,2023 once 2025 publishes).
 function weoYears() {
   const y = new Date().getFullYear();
   return [`${y}`, `${y - 1}`, `${y - 2}`];
 }
 
-async function fetchImfIndicator(indicator) {
-  const url = `${IMF_BASE}/${indicator}?periods=${weoYears().join(',')}`;
-  const data = await imfFetchJson(url, _proxyAuth);
-  return data?.values?.[indicator] ?? {};
-}
-
-// Pick the most recent year with a finite value, searching newest-first.
 function latestValue(byYear) {
   for (const year of weoYears()) {
     const v = Number(byYear?.[year]);
@@ -48,10 +34,11 @@ function latestValue(byYear) {
 }
 
 async function fetchImfMacro() {
+  const years = weoYears();
   const [inflationData, currentAccountData, govRevenueData] = await Promise.all([
-    fetchImfIndicator('PCPIPCH'),        // CPI inflation, annual % change
-    fetchImfIndicator('BCA_NGDPD'),      // Current account balance, % of GDP
-    fetchImfIndicator('GGR_G01_GDP_PT'), // General government revenue, % of GDP (Fiscal Monitor)
+    imfSdmxFetchIndicator('PCPIPCH', { years }),
+    imfSdmxFetchIndicator('BCA_NGDPD', { years }),
+    imfSdmxFetchIndicator('GGR_NGDP', { years }),
   ]);
 
   const countries = {};
@@ -91,7 +78,7 @@ if (process.argv[1]?.endsWith('seed-imf-macro.mjs')) {
   runSeed('economic', 'imf-macro', CANONICAL_KEY, fetchImfMacro, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: `imf-weo-${new Date().getFullYear()}`,
+    sourceVersion: `imf-sdmx-weo-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';

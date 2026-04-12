@@ -401,6 +401,52 @@ export async function imfFetchJson(url, proxyAuth) {
 }
 
 // ---------------------------------------------------------------------------
+// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API
+// ---------------------------------------------------------------------------
+const IMF_SDMX_BASE = 'https://api.imf.org/external/sdmx/3.0';
+
+export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years } = {}) {
+  const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
+  const agency = agencyMap[database] || 'IMF.RES';
+  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=dsd&measures=all`;
+  const r = await fetch(url, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!r.ok) throw new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+  const json = await r.json();
+
+  const struct = json?.data?.structures?.[0];
+  const ds = json?.data?.dataSets?.[0];
+  if (!struct || !ds?.series) return {};
+
+  const countryDim = struct.dimensions.series.find(d => d.id === 'COUNTRY');
+  const timeDim = struct.dimensions.observation.find(d => d.id === 'TIME_PERIOD');
+  if (!countryDim || !timeDim) return {};
+
+  const countryValues = countryDim.values.map(v => v.id);
+  const timeValues = timeDim.values.map(v => v.value || v.id);
+  const yearSet = years ? new Set(years.map(String)) : null;
+
+  const result = {};
+  for (const [seriesKey, seriesData] of Object.entries(ds.series)) {
+    const countryIdx = parseInt(seriesKey.split(':')[0], 10);
+    const iso3 = countryValues[countryIdx];
+    if (!iso3) continue;
+
+    const byYear = {};
+    for (const [obsKey, obsVal] of Object.entries(seriesData.observations || {})) {
+      const year = timeValues[parseInt(obsKey, 10)];
+      if (!year || (yearSet && !yearSet.has(year))) continue;
+      const v = obsVal?.[0];
+      if (v != null) byYear[year] = parseFloat(v);
+    }
+    if (Object.keys(byYear).length > 0) result[iso3] = byYear;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Learned Routes — persist successful scrape URLs across seed runs
 // ---------------------------------------------------------------------------
 
