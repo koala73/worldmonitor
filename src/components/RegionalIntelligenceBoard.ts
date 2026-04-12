@@ -113,12 +113,14 @@ export class RegionalIntelligenceBoard extends Panel {
         return;
       }
 
-      const transitions: RegimeTransition[] = historyResp.status === 'fulfilled'
+      // Distinguish RPC success (render block, even if empty) from RPC failure
+      // (omit block entirely). null = RPC failed, array/object = RPC succeeded.
+      const transitions: RegimeTransition[] | null = historyResp.status === 'fulfilled'
         ? (historyResp.value.transitions ?? [])
-        : [];
-      const brief: RegionalBrief | undefined = briefResp.status === 'fulfilled'
-        ? briefResp.value.brief
-        : undefined;
+        : null;
+      const brief: RegionalBrief | undefined | null = briefResp.status === 'fulfilled'
+        ? (briefResp.value.brief ?? null)
+        : null;
 
       this.renderBoard(snapshot, transitions, brief);
     } catch (err) {
@@ -142,15 +144,21 @@ export class RegionalIntelligenceBoard extends Panel {
     this.body.innerHTML = `<div class="rib-status rib-status-error" style="padding:16px;color:var(--danger);font-size:12px">Failed to load snapshot: ${escapeHtml(message)}</div>`;
   }
 
-  /** Render the full board HTML from a hydrated snapshot + optional Phase 3 data. */
-  public renderBoard(snapshot: RegionalSnapshot, transitions?: RegimeTransition[], brief?: RegionalBrief): void {
+  /** Render the full board HTML from a hydrated snapshot + optional Phase 3 data.
+   *  null = RPC failed (omit block entirely), array/object = RPC succeeded (render, even if empty). */
+  public renderBoard(snapshot: RegionalSnapshot, transitions?: RegimeTransition[] | null, brief?: RegionalBrief | null): void {
     let html = buildBoardHtml(snapshot);
-    // Phase 3 blocks render AFTER the snapshot blocks:
-    // regime drift timeline, then weekly brief.
-    if (transitions && transitions.length > 0) {
+    // Phase 3 blocks: only render when the RPC succeeded (non-null).
+    // null means the RPC failed — omit the block so we don't show a
+    // misleading "no data yet" message for a transient outage.
+    // An empty array/undefined-brief from a successful RPC correctly
+    // shows the "no transitions" / "no brief" empty state.
+    if (transitions !== null && transitions !== undefined) {
       html += buildRegimeHistoryBlock(transitions);
     }
-    html += buildWeeklyBriefBlock(brief);
+    if (brief !== null && brief !== undefined) {
+      html += buildWeeklyBriefBlock(brief);
+    }
     this.body.innerHTML = html;
   }
 }
