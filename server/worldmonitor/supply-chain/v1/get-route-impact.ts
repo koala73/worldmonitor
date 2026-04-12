@@ -20,6 +20,7 @@ import type {
 
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { lazyFetchBilateralHs4 } from './_bilateral-hs4-lazy';
 import { ROUTE_IMPACT_KEY } from '../../../_shared/cache-keys';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../_shared/bypass-corridors';
@@ -147,8 +148,18 @@ async function computeImpact(req: GetRouteImpactRequest): Promise<GetRouteImpact
   }
 
   const bilateralKey = `comtrade:bilateral-hs4:${toIso2}:v1`;
-  const rawPayload = await getCachedJson(bilateralKey, true).catch(() => null);
-  if (!rawPayload) return emptyResponse(req, 'missing');
+  let rawPayload = await getCachedJson(bilateralKey, true).catch(() => null);
+
+  if (!rawPayload) {
+    const lazyResult = await lazyFetchBilateralHs4(toIso2);
+    if (!lazyResult || lazyResult.products.length === 0) {
+      const source = lazyResult?.comtradeSource ?? 'lazy';
+      const resp = emptyResponse(req, source);
+      if (lazyResult?.rateLimited) (resp as unknown as Record<string, unknown>).meta = { rateLimited: true };
+      return resp;
+    }
+    rawPayload = { iso2: toIso2, products: lazyResult.products, fetchedAt: new Date().toISOString() };
+  }
 
   const payload = rawPayload as BilateralHs4Payload;
   if (!payload.products?.length) return emptyResponse(req, 'empty');
