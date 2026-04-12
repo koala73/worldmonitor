@@ -22,7 +22,7 @@ import { generateWeeklyBrief } from './regional-snapshot/weekly-brief.mjs';
 loadEnvFile(import.meta.url);
 
 const BRIEF_KEY_PREFIX = 'intelligence:regional-briefs:v1:weekly:';
-const BRIEF_TTL = 8 * 24 * 60 * 60; // 8 days — survives one missed weekly run
+const BRIEF_TTL = 15 * 24 * 60 * 60; // 15 days — survives one full missed weekly cycle within the 14-day health budget
 const SEED_META_KEY = 'intelligence:regional-briefs';
 const REGIME_HISTORY_KEY_PREFIX = 'intelligence:regime-history:v1:';
 const SNAPSHOT_LATEST_KEY_PREFIX = 'intelligence:snapshot:v1:';
