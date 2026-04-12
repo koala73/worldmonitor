@@ -1,10 +1,10 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
-import type { RegionalSnapshot } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
-import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml, isLatestSequence } from './regional-intelligence-board-utils';
+import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml, buildRegimeHistoryBlock, buildWeeklyBriefBlock, isLatestSequence } from './regional-intelligence-board-utils';
 
 const client = new IntelligenceServiceClient(getRpcBaseUrl(), {
   fetch: (...args) => globalThis.fetch(...args),
@@ -97,14 +97,30 @@ export class RegionalIntelligenceBoard extends Panel {
     this.renderLoading();
 
     try {
-      const resp = await client.getRegionalSnapshot({ regionId: myRegion });
+      // Fire all 3 RPCs in parallel — snapshot is required, history + brief
+      // are best-effort enhancements. If either fails, the board still renders
+      // with just the snapshot data.
+      const [snapshotResp, historyResp, briefResp] = await Promise.allSettled([
+        client.getRegionalSnapshot({ regionId: myRegion }),
+        client.getRegimeHistory({ regionId: myRegion, limit: 20 }),
+        client.getRegionalBrief({ regionId: myRegion }),
+      ]);
       if (!isLatestSequence(mySequence, this.latestSequence)) return;
-      const snapshot = resp.snapshot;
+
+      const snapshot = snapshotResp.status === 'fulfilled' ? snapshotResp.value.snapshot : undefined;
       if (!snapshot?.regionId) {
         this.renderEmpty();
         return;
       }
-      this.renderBoard(snapshot);
+
+      const transitions: RegimeTransition[] = historyResp.status === 'fulfilled'
+        ? (historyResp.value.transitions ?? [])
+        : [];
+      const brief: RegionalBrief | undefined = briefResp.status === 'fulfilled'
+        ? briefResp.value.brief
+        : undefined;
+
+      this.renderBoard(snapshot, transitions, brief);
     } catch (err) {
       if (!isLatestSequence(mySequence, this.latestSequence)) return;
       console.error('[RegionalIntelligenceBoard] load failed', err);
@@ -126,8 +142,15 @@ export class RegionalIntelligenceBoard extends Panel {
     this.body.innerHTML = `<div class="rib-status rib-status-error" style="padding:16px;color:var(--danger);font-size:12px">Failed to load snapshot: ${escapeHtml(message)}</div>`;
   }
 
-  /** Render the full board HTML from a hydrated snapshot. Public for tests. */
-  public renderBoard(snapshot: RegionalSnapshot): void {
-    this.body.innerHTML = buildBoardHtml(snapshot);
+  /** Render the full board HTML from a hydrated snapshot + optional Phase 3 data. */
+  public renderBoard(snapshot: RegionalSnapshot, transitions?: RegimeTransition[], brief?: RegionalBrief): void {
+    let html = buildBoardHtml(snapshot);
+    // Phase 3 blocks render AFTER the snapshot blocks:
+    // regime drift timeline, then weekly brief.
+    if (transitions && transitions.length > 0) {
+      html += buildRegimeHistoryBlock(transitions);
+    }
+    html += buildWeeklyBriefBlock(brief);
+    this.body.innerHTML = html;
   }
 }

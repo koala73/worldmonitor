@@ -15,6 +15,8 @@ import type {
   Trigger,
   NarrativeSection,
   RegionalNarrative,
+  RegimeTransition,
+  RegionalBrief,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
 /** Non-global regions available in the dropdown. Matches shared/geography.js REGIONS. */
@@ -372,4 +374,75 @@ export function buildMetaFooter(snapshot: RegionalSnapshot): string {
       <span>narrative: ${narrativeSrc}</span>
     </div>
   `;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Regime drift timeline (Phase 3 PR3)
+// ────────────────────────────────────────────────────────────────────────────
+
+function formatDate(ms: number): string {
+  if (!ms) return '—';
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 16) + 'Z';
+}
+
+export function buildRegimeHistoryBlock(transitions: RegimeTransition[]): string {
+  if (!transitions || transitions.length === 0) {
+    return section('Regime History', '<div style="font-size:11px;color:var(--text-dim)">No regime transitions recorded yet</div>');
+  }
+  const rows = transitions.slice(0, 20).map((t) => {
+    const from = t.previousLabel ? escapeHtml(t.previousLabel.replace(/_/g, ' ')) : 'none';
+    const to = escapeHtml((t.label ?? '').replace(/_/g, ' '));
+    const driver = t.transitionDriver ? ` · ${escapeHtml(t.transitionDriver)}` : '';
+    const date = formatDate(t.transitionedAt);
+    return `
+      <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
+        <div style="font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums">${escapeHtml(date)}</div>
+        <div style="font-size:11px"><span style="color:var(--text-dim)">${from}</span> → <span style="font-weight:500;text-transform:capitalize">${to}</span>${driver}</div>
+      </div>
+    `;
+  }).join('');
+  return section('Regime History', rows);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Weekly brief (Phase 3 PR3)
+// ────────────────────────────────────────────────────────────────────────────
+
+export function buildWeeklyBriefBlock(brief: RegionalBrief | undefined): string {
+  if (!brief || !brief.situationRecap) {
+    return section('Weekly Brief', '<div style="font-size:11px;color:var(--text-dim)">No weekly brief available yet</div>');
+  }
+
+  const periodStart = brief.periodStart ? (new Date(brief.periodStart).toISOString().split('T')[0] ?? '?') : '?';
+  const periodEnd = brief.periodEnd ? (new Date(brief.periodEnd).toISOString().split('T')[0] ?? '?') : '?';
+  const provider = brief.provider ? `${escapeHtml(brief.provider)}/${escapeHtml(brief.model || '?')}` : '';
+
+  const developmentItems = (brief.keyDevelopments ?? [])
+    .filter((d) => d.length > 0)
+    .map((d) => `<div style="padding:2px 0;font-size:11px"><span style="color:var(--text-dim)">▸</span> ${escapeHtml(d)}</div>`)
+    .join('');
+
+  const body = `
+    <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">${escapeHtml(periodStart)} — ${escapeHtml(periodEnd)}${provider ? ` · ${provider}` : ''}</div>
+    ${brief.situationRecap ? `<div style="font-size:12px;line-height:1.5;margin-bottom:8px">${escapeHtml(brief.situationRecap)}</div>` : ''}
+    ${brief.regimeTrajectory ? `
+      <div style="margin-bottom:6px">
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Regime Trajectory</div>
+        <div style="font-size:11px;line-height:1.4">${escapeHtml(brief.regimeTrajectory)}</div>
+      </div>
+    ` : ''}
+    ${developmentItems ? `
+      <div style="margin-bottom:6px">
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Key Developments</div>
+        ${developmentItems}
+      </div>
+    ` : ''}
+    ${brief.riskOutlook ? `
+      <div>
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Risk Outlook</div>
+        <div style="font-size:11px;line-height:1.4">${escapeHtml(brief.riskOutlook)}</div>
+      </div>
+    ` : ''}
+  `;
+  return section('Weekly Brief', body);
 }

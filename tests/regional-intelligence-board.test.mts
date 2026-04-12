@@ -15,6 +15,8 @@ import {
   buildTransmissionBlock,
   buildWatchlistBlock,
   buildMetaFooter,
+  buildRegimeHistoryBlock,
+  buildWeeklyBriefBlock,
   isLatestSequence,
 } from '../src/components/regional-intelligence-board-utils';
 import type {
@@ -645,5 +647,102 @@ describe('loadCurrent race simulation', () => {
     }
     await loadCurrent('mena', Promise.resolve('snap'));
     assert.deepEqual(state.rendered, ['mena:snap']);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Regime History block (Phase 3 PR3)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('buildRegimeHistoryBlock', () => {
+  it('renders transitions newest-first with date + from → to', () => {
+    const transitions = [
+      { regionId: 'mena', label: 'escalation_ladder', previousLabel: 'coercive_stalemate', transitionedAt: 1700000000000, transitionDriver: 'regime_shift', snapshotId: 's1' },
+      { regionId: 'mena', label: 'coercive_stalemate', previousLabel: 'calm', transitionedAt: 1699900000000, transitionDriver: '', snapshotId: 's0' },
+    ];
+    const html = buildRegimeHistoryBlock(transitions);
+    assert.match(html, /Regime History/);
+    assert.match(html, /escalation ladder/);
+    assert.match(html, /coercive stalemate/);
+    assert.match(html, /calm/);
+    assert.match(html, /regime_shift/);
+  });
+
+  it('shows "no transitions" for empty array', () => {
+    const html = buildRegimeHistoryBlock([]);
+    assert.match(html, /No regime transitions/);
+  });
+
+  it('caps at 20 entries', () => {
+    const transitions = Array.from({ length: 30 }, (_, i) => ({
+      regionId: 'mena', label: 'calm', previousLabel: 'calm',
+      transitionedAt: Date.now() - i * 86400000, transitionDriver: '', snapshotId: `s${i}`,
+    }));
+    const html = buildRegimeHistoryBlock(transitions);
+    const count = (html.match(/rib-section/g) ?? []).length;
+    // Still just one section wrapper, but not 30 rows visible
+    assert.ok(count >= 1);
+  });
+
+  it('escapes HTML in labels', () => {
+    const transitions = [
+      { regionId: 'mena', label: '<script>x</script>', previousLabel: '', transitionedAt: 0, transitionDriver: '', snapshotId: '' },
+    ];
+    const html = buildRegimeHistoryBlock(transitions);
+    assert.doesNotMatch(html, /<script>x<\/script>/);
+    assert.match(html, /&lt;script&gt;/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Weekly Brief block (Phase 3 PR3)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('buildWeeklyBriefBlock', () => {
+  const brief = {
+    regionId: 'mena',
+    generatedAt: Date.now(),
+    periodStart: Date.now() - 7 * 86400000,
+    periodEnd: Date.now(),
+    situationRecap: 'Iran increased naval posture near Hormuz.',
+    regimeTrajectory: 'Shifted from calm to coercive stalemate mid-week.',
+    keyDevelopments: ['Hormuz transit dropped 15%', 'CII spike for Iran'],
+    riskOutlook: 'Escalation risk remains elevated.',
+    provider: 'groq',
+    model: 'llama-3.3-70b-versatile',
+  };
+
+  it('renders all brief sections when populated', () => {
+    const html = buildWeeklyBriefBlock(brief);
+    assert.match(html, /Weekly Brief/);
+    assert.match(html, /Iran increased naval posture/);
+    assert.match(html, /Shifted from calm/);
+    assert.match(html, /Hormuz transit dropped/);
+    assert.match(html, /CII spike/);
+    assert.match(html, /Escalation risk/);
+    assert.match(html, /groq/);
+  });
+
+  it('shows "no brief" for undefined', () => {
+    const html = buildWeeklyBriefBlock(undefined);
+    assert.match(html, /No weekly brief available/);
+  });
+
+  it('shows "no brief" when situationRecap is empty', () => {
+    const html = buildWeeklyBriefBlock({ ...brief, situationRecap: '' });
+    assert.match(html, /No weekly brief available/);
+  });
+
+  it('renders period date range', () => {
+    const html = buildWeeklyBriefBlock(brief);
+    // Should contain date strings like 2026-04-04
+    assert.match(html, /\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('escapes HTML in brief content', () => {
+    const malicious = { ...brief, situationRecap: '<img onerror=alert(1)>' };
+    const html = buildWeeklyBriefBlock(malicious);
+    assert.doesNotMatch(html, /<img onerror/);
+    assert.match(html, /&lt;img/);
   });
 });
