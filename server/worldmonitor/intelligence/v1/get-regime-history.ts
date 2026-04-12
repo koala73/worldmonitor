@@ -126,7 +126,7 @@ export const getRegimeHistory: IntelligenceServiceHandler['getRegimeHistory'] = 
         transitions.push(adaptTransition(parsed));
       }
     } catch {
-      // Skip malformed entries — log once per region.
+      // Skip malformed entries — log per dropped entry.
       console.warn(`[regime-history] dropped malformed entry for ${regionId}`);
     }
   }
