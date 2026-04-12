@@ -206,6 +206,12 @@ export async function readFreshnessMap(
       try {
         const meta = await reader(metaKey);
         if (meta && typeof meta === 'object' && 'fetchedAt' in meta) {
+          // P2 fix: a failed seed run writes fetchedAt: Date.now() but
+          // status: 'error' while preserving the prior snapshot via
+          // extendExistingTtl. Treat non-ok meta as missing so the
+          // dimension classifies as stale, matching api/health.js behavior.
+          const status = (meta as { status?: string }).status;
+          if (status && status !== 'ok') return;
           const fetchedAt = Number((meta as { fetchedAt: unknown }).fetchedAt);
           if (Number.isFinite(fetchedAt) && fetchedAt > 0) {
             metaKeyFetchedAt.set(metaKey, fetchedAt);

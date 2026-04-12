@@ -221,7 +221,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     };
   }
 
-  const cached = await cachedFetchJson<GetResilienceScoreResponse>(
+  let cached = await cachedFetchJson<GetResilienceScoreResponse>(
     scoreCacheKey(normalizedCountryCode),
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
     async () => {
@@ -233,9 +233,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
       const dimensions = buildDimensionList(scoreMap);
       const domains = buildDomainList(dimensions);
-      // Phase 2 T2.1: empty array when the v2 flag is off, three
-      // shaped-but-empty pillars when on. Real aggregation in PR 4.
-      const pillars = buildPillarList(domains, RESILIENCE_SCHEMA_V2_ENABLED);
+      const pillars = buildPillarList(domains, true);
 
       const baselineDims: ResilienceDimension[] = [];
       const stressDims: ResilienceDimension[] = [];
@@ -275,10 +273,8 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         lowConfidence: computeLowConfidence(dimensions, imputationShare),
         imputationShare,
         dataVersion,
-        // Phase 2 T2.1: pillars empty until v2 flag flips; schemaVersion
-        // matches so downstream consumers can branch on a single field.
         pillars,
-        schemaVersion: RESILIENCE_SCHEMA_V2_ENABLED ? '2.0' : '1.0',
+        schemaVersion: '2.0',
       };
     },
     300,
@@ -303,8 +299,17 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
 
   const scoreInterval = await readScoreInterval(normalizedCountryCode);
   if (scoreInterval) {
-    return { ...cached, scoreInterval };
+    cached = { ...cached, scoreInterval };
   }
+
+  // P1 fix: the cache always stores the v2 superset (pillars + schemaVersion='2.0').
+  // When the flag is off, strip pillars and downgrade schemaVersion so consumers
+  // see the v1 shape. Flag flips take effect immediately, no 6h TTL wait.
+  if (!RESILIENCE_SCHEMA_V2_ENABLED) {
+    cached.pillars = [];
+    cached.schemaVersion = '1.0';
+  }
+
   return cached;
 }
 
@@ -330,6 +335,11 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
     if (typeof raw !== 'string') continue;
     try {
       const parsed = JSON.parse(raw) as GetResilienceScoreResponse;
+      // P1 fix: cached payload is always v2 superset. Gate on serve.
+      if (!RESILIENCE_SCHEMA_V2_ENABLED) {
+        parsed.pillars = [];
+        parsed.schemaVersion = '1.0';
+      }
       scores.set(countryCode, parsed);
     } catch {
       // Ignore malformed cache entries and let the caller decide whether to warm them.

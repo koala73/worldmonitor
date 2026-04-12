@@ -241,6 +241,49 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     }
   });
 
+  it('skips seed-meta entries where status !== ok (P2: error-status guard)', async () => {
+    const sourceKey = 'economic:imf:macro:v2';
+    const metaKey = resolveSeedMetaKey(sourceKey);
+
+    // status: 'error' with a recent fetchedAt should be treated as missing.
+    const errorReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: Date.now(), status: 'error', failedDatasets: ['wgi'] };
+      return null;
+    };
+    const errorMap = await readFreshnessMap(errorReader);
+    assert.ok(
+      !errorMap.has(sourceKey),
+      'seed-meta with status: "error" must be excluded from the freshness map',
+    );
+
+    // status: 'ok' with the same fetchedAt should be included.
+    const okReader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW, status: 'ok' };
+      return null;
+    };
+    const okMap = await readFreshnessMap(okReader);
+    assert.equal(
+      okMap.get(sourceKey),
+      NOW,
+      'seed-meta with status: "ok" must be included in the freshness map',
+    );
+  });
+
+  it('includes seed-meta entries with no status field (backward compat)', async () => {
+    const sourceKey = 'economic:imf:macro:v2';
+    const metaKey = resolveSeedMetaKey(sourceKey);
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === metaKey) return { fetchedAt: NOW };
+      return null;
+    };
+    const map = await readFreshnessMap(reader);
+    assert.equal(
+      map.get(sourceKey),
+      NOW,
+      'seed-meta without a status field must be included (backward compat)',
+    );
+  });
+
   it('healthPublicService classifies fresh when seed-meta:resilience:static is recent', async () => {
     // End-to-end integration for the P1 fix. healthPublicService has
     // three indicators, all sharing resilience:static:{ISO2} as their
