@@ -265,18 +265,6 @@
   text-align: center;
 }
 
-.re-content__gate h3 { margin: 0 0 12px; color: var(--text-primary, #c9d1d9); }
-.re-content__gate ul { text-align: left; margin: 0 0 16px; padding-left: 20px; }
-
-.re-content__upgrade {
-  padding: 8px 20px;
-  background: var(--accent, #58a6ff);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-}
 
 /* ─── Tab panels ────────────────────────────────────────────────────── */
 

@@ -104,7 +104,7 @@ export class RouteExplorer {
     this.mapRef = map;
   }
 
-  public open(): void {
+  public open(source: 'cmdk' | 'url' | 'icon' = 'cmdk'): void {
     if (this.isOpen) {
       this.fromPicker?.focusInput();
       return;
@@ -122,7 +122,7 @@ export class RouteExplorer {
       trackGateHit('route-explorer');
       this.gateHitTracked = true;
     }
-    this.trackEvent('route-explorer:opened', { source: 'cmdk' });
+    this.trackEvent('route-explorer:opened', { source });
     document.addEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.focusInitial();
     if (this.isQueryComplete()) this.scheduleFetch();
@@ -314,6 +314,7 @@ export class RouteExplorer {
 
   private applyData(data: GetRouteExplorerLaneResponse): void {
     this.leftRail.element.classList.remove('re-leftrail--blurred');
+    this.leftRail.element.removeAttribute('aria-hidden');
     this.leftRail.updateLane(data);
     this.currentTab.update(data);
     this.alternativesTab.update(data);
@@ -335,6 +336,7 @@ export class RouteExplorer {
 
   private renderFreeGate(): void {
     this.leftRail?.element.classList.add('re-leftrail--blurred');
+    this.leftRail?.element.setAttribute('aria-hidden', 'true');
     if (this.contentEl) {
       this.contentEl.innerHTML =
         '<div class="re-content__gate">' +
@@ -344,7 +346,6 @@ export class RouteExplorer {
         '</div>';
       const btn = this.contentEl.querySelector<HTMLButtonElement>('.re-content__upgrade');
       btn?.addEventListener('click', () => {
-        trackGateHit('route-explorer');
         this.trackEvent('route-explorer:free-cta-click', {
           from: this.state.fromIso2 ?? '',
           to: this.state.toIso2 ?? '',
