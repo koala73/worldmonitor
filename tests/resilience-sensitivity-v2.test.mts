@@ -248,6 +248,104 @@ describe('sensitivity v2: computePillarScoresFromDomains', () => {
   });
 });
 
+describe('sensitivity v2: per-dimension goalpost perturbation', () => {
+  it('produces different maxSwing values for different dimensions', () => {
+    const dimA = { id: 'dimA', score: 50, coverage: 1 };
+    const dimB = { id: 'dimB', score: 50, coverage: 1 };
+    const dimensionDomains = { dimA: 'economic', dimB: 'infra' } as Record<string, string>;
+    const pillarDomains = { p1: ['economic', 'infra'] } as Record<string, string[]>;
+    const domainWeights = { economic: 0.5, infra: 0.5 };
+    const pillarWeights = { p1: 1.0 };
+    const alpha = 0.5;
+
+    const indicatorRegistry = [
+      { id: 'indA', dimension: 'dimA', goalposts: { worst: 0, best: 100 }, direction: 'higherBetter', weight: 1 },
+      { id: 'indB', dimension: 'dimB', goalposts: { worst: 0, best: 1 }, direction: 'higherBetter', weight: 1 },
+    ];
+
+    const countries = [
+      { countryCode: 'US', dimensions: [{ ...dimA, score: 80 }, { ...dimB, score: 50 }] },
+      { countryCode: 'DE', dimensions: [{ ...dimA, score: 70 }, { ...dimB, score: 60 }] },
+      { countryCode: 'JP', dimensions: [{ ...dimA, score: 60 }, { ...dimB, score: 55 }] },
+      { countryCode: 'BR', dimensions: [{ ...dimA, score: 50 }, { ...dimB, score: 45 }] },
+    ];
+
+    const baseScores: Record<string, number> = {};
+    for (const cd of countries) {
+      const ps = computePillarScoresFromDomains(cd.dimensions, dimensionDomains, pillarDomains, domainWeights);
+      baseScores[cd.countryCode] = computePenalizedPillarScore(ps, pillarWeights, alpha);
+    }
+    const baseRanks: Record<string, number> = {};
+    const sorted = Object.entries(baseScores).sort(([, a], [, b]) => b - a);
+    sorted.forEach(([cc], i) => { baseRanks[cc] = i + 1; });
+
+    const topN = Object.keys(baseRanks);
+    const perDimSwings: Record<string, number[]> = { dimA: [], dimB: [] };
+
+    for (const dimId of ['dimA', 'dimB']) {
+      const dimInds = indicatorRegistry.filter(ind => ind.dimension === dimId);
+      const perturbedCountries = countries.map(cd => {
+        const newDims = cd.dimensions.map(dim => {
+          if (dim.id !== dimId) return { ...dim };
+          let tw = 0, ws = 0;
+          for (const ind of dimInds) {
+            const pg = perturbGoalposts(ind.goalposts, 0.1);
+            const raw = normalizeToGoalposts(
+              dim.score, pg, ind.direction as 'higherBetter' | 'lowerBetter'
+            );
+            ws += raw * ind.weight;
+            tw += ind.weight;
+          }
+          return { ...dim, score: Math.max(0, Math.min(100, tw > 0 ? ws / tw : dim.score)) };
+        });
+        return { countryCode: cd.countryCode, dimensions: newDims };
+      });
+      const scores: Record<string, number> = {};
+      for (const cd of perturbedCountries) {
+        const ps = computePillarScoresFromDomains(cd.dimensions, dimensionDomains, pillarDomains, domainWeights);
+        scores[cd.countryCode] = computePenalizedPillarScore(ps, pillarWeights, alpha);
+      }
+      const ranks: Record<string, number> = {};
+      const s2 = Object.entries(scores).sort(([, a], [, b]) => b - a);
+      s2.forEach(([cc], i) => { ranks[cc] = i + 1; });
+      const maxSwing = Math.max(...topN.map(cc => Math.abs((ranks[cc] || 0) - (baseRanks[cc] || 0))), 0);
+      perDimSwings[dimId].push(maxSwing);
+    }
+
+    assert.ok(
+      perDimSwings.dimA.length > 0 && perDimSwings.dimB.length > 0,
+      'both dimensions have swing values'
+    );
+  });
+
+  it('value near edge of narrow goalposts produces higher swing than midpoint of wide goalposts', () => {
+    const wideGoalposts = { worst: 0, best: 100 };
+    const narrowGoalposts = { worst: 48, best: 52 };
+
+    let wideTotal = 0;
+    let narrowTotal = 0;
+    const trials = 500;
+
+    for (let t = 0; t < trials; t++) {
+      const widePg = perturbGoalposts(wideGoalposts, 0.1);
+      const wideScore = normalizeToGoalposts(50, widePg, 'higherBetter');
+      wideTotal += Math.abs(wideScore - 50);
+
+      const narrowPg = perturbGoalposts(narrowGoalposts, 0.1);
+      const narrowScore = normalizeToGoalposts(51.5, narrowPg, 'higherBetter');
+      narrowTotal += Math.abs(narrowScore - normalizeToGoalposts(51.5, narrowGoalposts, 'higherBetter'));
+    }
+
+    const wideAvg = wideTotal / trials;
+    const narrowAvg = narrowTotal / trials;
+
+    assert.ok(
+      narrowAvg > wideAvg,
+      `narrow goalposts near edge (avg shift=${narrowAvg.toFixed(2)}) should produce higher swing than wide at midpoint (avg shift=${wideAvg.toFixed(2)})`
+    );
+  });
+});
+
 describe('sensitivity v2: percentile', () => {
   it('p50 of [1,2,3,4,5] is 3', () => {
     assert.strictEqual(percentile([1, 2, 3, 4, 5], 50), 3);

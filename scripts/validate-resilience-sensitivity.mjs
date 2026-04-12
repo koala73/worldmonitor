@@ -352,14 +352,42 @@ async function run() {
     for (const cc of topNCountries) {
       goalpostSwings[cc].push(swings[cc] || 0);
     }
+  }
 
-    for (const dimId of RESILIENCE_DIMENSION_ORDER) {
-      const dimRankSwings = [];
-      for (const cc of topNCountries.slice(0, 10)) {
-        dimRankSwings.push(swings[cc] || 0);
-      }
-      perDimensionSwings[dimId].push(Math.max(...dimRankSwings, 0));
+  for (const dimId of RESILIENCE_DIMENSION_ORDER) {
+    const dimIndicators = INDICATOR_REGISTRY.filter((ind) => ind.dimension === dimId);
+    if (dimIndicators.length === 0) continue;
+    const perturbedDims = countryData.map((cd) => {
+      const newDims = cd.dimensions.map((dim) => {
+        if (dim.id !== dimId) return { ...dim };
+        let totalWeight = 0;
+        let weightedScore = 0;
+        for (const ind of dimIndicators) {
+          const pg = perturbGoalposts(ind.goalposts, GOALPOST_PERTURBATION);
+          const rawScore = normalizeToGoalposts(
+            inverseNormalize(dim.score, ind.goalposts, ind.direction),
+            pg,
+            ind.direction
+          );
+          weightedScore += rawScore * ind.weight;
+          totalWeight += ind.weight;
+        }
+        const newScore = totalWeight > 0 ? weightedScore / totalWeight : dim.score;
+        return { ...dim, score: Math.max(0, Math.min(100, newScore)) };
+      });
+      return { countryCode: cd.countryCode, dimensions: newDims };
+    });
+    const dimScores = {};
+    for (const cd of perturbedDims) {
+      const ps = computePillarScoresFromDomains(
+        cd.dimensions, RESILIENCE_DIMENSION_DOMAINS, PILLAR_DOMAINS, domainWeights
+      );
+      dimScores[cd.countryCode] = computePenalizedPillarScore(ps, PILLAR_WEIGHTS, PENALTY_ALPHA);
     }
+    const dimRanks = rankCountries(dimScores);
+    const dimSwings = computeMaxSwings(dimRanks, baselineRanks, topNCountries);
+    const maxDimSwing = Math.max(...topNCountries.slice(0, 10).map((cc) => dimSwings[cc] || 0), 0);
+    perDimensionSwings[dimId].push(maxDimSwing);
   }
 
   const goalpostMaxSwing = Math.max(
@@ -479,7 +507,7 @@ if (isMain) {
     process.exit(0);
   }).catch((err) => {
     console.error('Sensitivity analysis failed:', err);
-    process.exit(0);
+    process.exit(1);
   });
 }
 
