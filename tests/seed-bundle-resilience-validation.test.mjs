@@ -43,19 +43,19 @@ describe('seed-bundle-resilience-validation', () => {
     assert.ok(!src.includes('seedMetaKey'), 'validation bundle must NOT have seedMetaKey (no seed-meta heartbeats)');
   });
 
-  it('all intervals use 7 * 24 * HOUR (weekly)', async () => {
+  it('all intervals use WEEK constant (weekly)', async () => {
     if (!src) src = await readFile(join(scriptsDir, 'seed-bundle-resilience-validation.mjs'), 'utf8');
 
     const intervalMatches = src.match(/intervalMs:\s*(.+),/g);
     assert.equal(intervalMatches.length, 3, 'must have exactly 3 intervalMs entries');
     for (const m of intervalMatches) {
-      assert.ok(m.includes('7 * 24 * HOUR'), `intervalMs must be 7 * 24 * HOUR, got: ${m}`);
+      assert.ok(m.includes('WEEK'), `intervalMs must use WEEK, got: ${m}`);
     }
   });
 
-  it('imports HOUR from _bundle-runner.mjs', async () => {
+  it('imports WEEK from _bundle-runner.mjs', async () => {
     if (!src) src = await readFile(join(scriptsDir, 'seed-bundle-resilience-validation.mjs'), 'utf8');
-    assert.ok(src.includes("HOUR") && src.includes("_bundle-runner.mjs"), 'must import HOUR from _bundle-runner');
+    assert.ok(src.includes("WEEK") && src.includes("_bundle-runner.mjs"), 'must import WEEK from _bundle-runner');
   });
 
   it('validate-resilience-sensitivity.mjs exists on disk', () => {
