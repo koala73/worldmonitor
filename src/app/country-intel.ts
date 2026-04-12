@@ -408,6 +408,7 @@ export class CountryIntelManager implements AppModule {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         if (sectors.length === 0) {
           this.ctx.countryBriefPage.updateTradeExposure?.(null);
+          if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
           return;
         }
         // Build a synthetic compat response from sector data (no extra fetch needed)
@@ -436,14 +437,14 @@ export class CountryIntelManager implements AppModule {
           }).catch(() => {
             if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
           });
-        } else {
+        } else if (hasPremiumAccess(getAuthState())) {
           this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
         }
       })
       .catch(() => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         this.ctx.countryBriefPage.updateTradeExposure?.(null);
-        this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+        if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
       });
 
     if (hasPremiumAccess(getAuthState())) {
