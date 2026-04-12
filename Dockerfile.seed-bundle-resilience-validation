@@ -1,0 +1,36 @@
+# =============================================================================
+# Seed Bundle: Resilience Validation (weekly cron)
+# =============================================================================
+# Runs scripts/seed-bundle-resilience-validation.mjs which spawns:
+#   - benchmark-resilience-external.mjs
+#   - backtest-resilience-outcomes.mjs
+#   - validate-resilience-sensitivity.mjs (imports from ../server/ via tsx)
+#
+# Needs both scripts/ and server/ in the container + tsx resolvable from /app/.
+# =============================================================================
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Root dependencies (includes tsx in devDependencies — install all for build-time
+# access, then prune won't help because tsx is needed at runtime). Install with
+# NODE_ENV unset so devDependencies land in /app/node_modules.
+COPY package.json package-lock.json ./
+RUN NODE_ENV=development npm ci --ignore-scripts --no-audit --no-fund
+
+# Scripts/ dependencies (telegram, fast-xml-parser, resend, etc. — most are
+# not needed by validation, but keep parity with nixpacks behavior)
+COPY scripts/package.json scripts/package-lock.json ./scripts/
+RUN npm ci --prefix scripts --omit=dev --no-audit --no-fund
+
+# Copy scripts + server + shared + data (everything the validation bundle touches)
+COPY scripts/ ./scripts/
+COPY server/ ./server/
+COPY shared/ ./shared/
+COPY data/ ./data/
+COPY tsconfig.json tsconfig.api.json ./
+
+ENV NODE_OPTIONS="--max-old-space-size=8192 --dns-result-order=ipv4first --import tsx/esm"
+
+CMD ["node", "scripts/seed-bundle-resilience-validation.mjs"]
