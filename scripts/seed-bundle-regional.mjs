@@ -8,7 +8,7 @@
  *   2. seed-regional-briefs.mjs     — WEEKLY (LLM weekly brief, skipped
  *      if the last brief seed-meta is younger than 6.5 days)
  *
- * Railway cron: every 6 hours (0 */6 * * *)
+ * Railway cron: every 6 hours — schedule: 0 star-slash-6 star star star
  * startCommand: node scripts/seed-bundle-regional.mjs
  * rootDirectory: scripts
  * watchPaths: scripts/seed-bundle-regional.mjs, scripts/seed-regional-*.mjs,
@@ -63,28 +63,47 @@ async function main() {
   const t0 = Date.now();
   console.log('[bundle] Regional Intelligence seed bundle starting');
 
+  let snapshotFailed = false;
+
   // 1. Always run snapshots (6h cadence)
   console.log('[bundle] ── Running regional snapshots ──');
   try {
     await runSnapshots();
   } catch (err) {
+    snapshotFailed = true;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[bundle] snapshots failed: ${msg}`);
-    // Continue to briefs check even if snapshots failed — they're independent.
+    // Continue to briefs check — but skip briefs if snapshots failed
+    // so we don't generate a weekly brief from stale data.
   }
 
-  // 2. Conditionally run briefs (weekly)
-  if (await shouldRunBriefs()) {
+  // 2. Conditionally run briefs (weekly). SKIP if snapshots failed this
+  // cycle — the brief reads the :latest snapshot from Redis with no
+  // freshness check, so running after a snapshot failure would produce a
+  // brief summarizing stale state and write fresh seed-meta that hides
+  // the staleness. PR #3001 review M2.
+  if (!snapshotFailed && await shouldRunBriefs()) {
     console.log('[bundle] ── Running weekly briefs ──');
     try {
       await runBriefs();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[bundle] briefs failed: ${msg}`);
+      // Don't exit yet — report failure below.
+      snapshotFailed = true; // reuse flag for exit code
     }
+  } else if (snapshotFailed) {
+    console.log('[bundle] ── Skipping weekly briefs (snapshots failed this cycle) ──');
   }
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+  // Exit non-zero when any seeder failed so Railway cron monitoring can
+  // detect broken runs. PR #3001 review H1.
+  if (snapshotFailed) {
+    console.error(`[bundle] Done in ${elapsed}s with ERRORS`);
+    process.exit(1);
+  }
   console.log(`[bundle] Done in ${elapsed}s`);
 }
 
