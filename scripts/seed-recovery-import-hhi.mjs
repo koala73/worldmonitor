@@ -34,13 +34,23 @@ function parseRecords(data) {
   if (!Array.isArray(records)) return [];
   const valid = records.filter(r => r && Number(r.primaryValue ?? 0) > 0);
   if (valid.length === 0) return [];
-  const maxPeriod = Math.max(...valid.map(r => Number(r.period ?? r.refPeriodId ?? 0)));
-  return valid
-    .filter(r => Number(r.period ?? r.refPeriodId ?? 0) === maxPeriod)
-    .map(r => ({
-      partnerCode: String(r.partnerCode ?? r.partner2Code ?? '000'),
-      primaryValue: Number(r.primaryValue ?? 0),
-    }));
+  // Group by period, pick the year with the MOST partners (most complete dataset).
+  // If Y-1 is sparse (few rows) while Y-2 is complete, use Y-2.
+  const byPeriod = new Map();
+  for (const r of valid) {
+    const p = String(r.period ?? r.refPeriodId ?? '0');
+    if (!byPeriod.has(p)) byPeriod.set(p, []);
+    byPeriod.get(p).push(r);
+  }
+  let bestPeriod = '';
+  let bestCount = 0;
+  for (const [p, rows] of byPeriod) {
+    if (rows.length > bestCount) { bestCount = rows.length; bestPeriod = p; }
+  }
+  return byPeriod.get(bestPeriod).map(r => ({
+    partnerCode: String(r.partnerCode ?? r.partner2Code ?? '000'),
+    primaryValue: Number(r.primaryValue ?? 0),
+  }));
 }
 
 async function fetchImportsForReporter(reporterCode) {
