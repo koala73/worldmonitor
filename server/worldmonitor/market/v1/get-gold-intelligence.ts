@@ -4,11 +4,17 @@ import type {
   GetGoldIntelligenceResponse,
   GoldCrossCurrencyPrice,
   GoldCotPositioning,
+  GoldCotCategory,
+  GoldSessionRange,
+  GoldReturns,
+  GoldRange52w,
+  GoldDriver,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
 
 const COMMODITY_KEY = 'market:commodities-bootstrap:v1';
 const COT_KEY = 'market:cot:v1';
+const GOLD_EXTENDED_KEY = 'market:gold-extended:v1';
 
 interface RawQuote {
   symbol: string;
@@ -19,15 +25,52 @@ interface RawQuote {
   sparkline?: number[];
 }
 
+interface RawCotCategory {
+  longPositions: number;
+  shortPositions: number;
+  netPct: number;
+  oiSharePct: number;
+  wowNetDelta: number;
+}
+
 interface RawCotInstrument {
   name: string;
   code: string;
   reportDate: string;
-  assetManagerLong: number;
-  assetManagerShort: number;
-  dealerLong: number;
-  dealerShort: number;
-  netPct: number;
+  nextReleaseDate?: string;
+  openInterest?: number;
+  managedMoney?: RawCotCategory;
+  producerSwap?: RawCotCategory;
+  // legacy
+  assetManagerLong?: number;
+  assetManagerShort?: number;
+  dealerLong?: number;
+  dealerShort?: number;
+  netPct?: number;
+}
+
+interface GoldExtendedMetal {
+  price: number;
+  dayHigh: number;
+  dayLow: number;
+  prevClose: number;
+  returns: { w1: number; m1: number; ytd: number; y1: number };
+  range52w: { hi: number; lo: number; positionPct: number };
+}
+
+interface GoldExtendedDriver {
+  symbol: string;
+  label: string;
+  value: number;
+  changePct: number;
+  correlation30d: number;
+}
+
+interface GoldExtendedPayload {
+  updatedAt: string;
+  gold?: GoldExtendedMetal | null;
+  silver?: GoldExtendedMetal | null;
+  drivers?: GoldExtendedDriver[];
 }
 
 const XAU_FX = [
@@ -39,27 +82,80 @@ const XAU_FX = [
   { symbol: 'USDCHF=X', label: 'CHF', flag: '\u{1F1E8}\u{1F1ED}', multiply: false },
 ];
 
+function emptyResponse(): GetGoldIntelligenceResponse {
+  return {
+    goldPrice: 0,
+    goldChangePct: 0,
+    goldSparkline: [],
+    silverPrice: 0,
+    platinumPrice: 0,
+    palladiumPrice: 0,
+    crossCurrencyPrices: [],
+    drivers: [],
+    updatedAt: '',
+    unavailable: true,
+  };
+}
+
+function mapCategory(c: RawCotCategory | undefined): GoldCotCategory | undefined {
+  if (!c) return undefined;
+  return {
+    longPositions: String(Math.round(c.longPositions ?? 0)),
+    shortPositions: String(Math.round(c.shortPositions ?? 0)),
+    netPct: Number(c.netPct ?? 0),
+    oiSharePct: Number(c.oiSharePct ?? 0),
+    wowNetDelta: String(Math.round(c.wowNetDelta ?? 0)),
+  };
+}
+
+function mapCot(raw: RawCotInstrument | undefined): GoldCotPositioning | undefined {
+  if (!raw) return undefined;
+  // Legacy fallback: build categories from flat fields if v2 fields absent.
+  const managedMoney = raw.managedMoney
+    ? mapCategory(raw.managedMoney)
+    : mapCategory({
+      longPositions: raw.assetManagerLong ?? 0,
+      shortPositions: raw.assetManagerShort ?? 0,
+      netPct: raw.netPct ?? 0,
+      oiSharePct: 0,
+      wowNetDelta: 0,
+    });
+  const producerSwap = raw.producerSwap
+    ? mapCategory(raw.producerSwap)
+    : mapCategory({
+      longPositions: raw.dealerLong ?? 0,
+      shortPositions: raw.dealerShort ?? 0,
+      netPct: 0,
+      oiSharePct: 0,
+      wowNetDelta: 0,
+    });
+  return {
+    reportDate: String(raw.reportDate ?? ''),
+    nextReleaseDate: String(raw.nextReleaseDate ?? ''),
+    openInterest: String(Math.round(raw.openInterest ?? 0)),
+    managedMoney,
+    producerSwap,
+  };
+}
+
 export async function getGoldIntelligence(
   _ctx: ServerContext,
   _req: GetGoldIntelligenceRequest,
 ): Promise<GetGoldIntelligenceResponse> {
   try {
-    const [rawPayload, rawCot] = await Promise.all([
+    const [rawPayload, rawCot, rawExtended] = await Promise.all([
       getCachedJson(COMMODITY_KEY, true) as Promise<{ quotes?: RawQuote[] } | null>,
       getCachedJson(COT_KEY, true) as Promise<{ instruments?: RawCotInstrument[]; reportDate?: string } | null>,
+      getCachedJson(GOLD_EXTENDED_KEY, true) as Promise<GoldExtendedPayload | null>,
     ]);
 
     const rawQuotes = rawPayload?.quotes;
-    if (!rawQuotes || !Array.isArray(rawQuotes) || rawQuotes.length === 0) {
-      return { goldPrice: 0, goldChangePct: 0, goldSparkline: [], silverPrice: 0, platinumPrice: 0, palladiumPrice: 0, crossCurrencyPrices: [], updatedAt: '', unavailable: true };
-    }
+    if (!rawQuotes || !Array.isArray(rawQuotes) || rawQuotes.length === 0) return emptyResponse();
 
     const quoteMap = new Map(rawQuotes.map(q => [q.symbol, q]));
-
     const gold = quoteMap.get('GC=F');
-    if (!gold) {
-      return { goldPrice: 0, goldChangePct: 0, goldSparkline: [], silverPrice: 0, platinumPrice: 0, palladiumPrice: 0, crossCurrencyPrices: [], updatedAt: '', unavailable: true };
-    }
+    if (!gold) return emptyResponse();
+
     const silver = quoteMap.get('SI=F');
     const platinum = quoteMap.get('PL=F');
     const palladium = quoteMap.get('PA=F');
@@ -70,7 +166,9 @@ export async function getGoldIntelligence(
     const palladiumPrice = palladium?.price ?? 0;
 
     const goldSilverRatio = (goldPrice > 0 && silverPrice > 0) ? goldPrice / silverPrice : undefined;
-    const goldPlatinumPremiumPct = (goldPrice > 0 && platinumPrice > 0) ? ((goldPrice - platinumPrice) / platinumPrice) * 100 : undefined;
+    const goldPlatinumPremiumPct = (goldPrice > 0 && platinumPrice > 0)
+      ? ((goldPrice - platinumPrice) / platinumPrice) * 100
+      : undefined;
 
     const crossCurrencyPrices: GoldCrossCurrencyPrice[] = [];
     if (goldPrice > 0) {
@@ -83,20 +181,21 @@ export async function getGoldIntelligence(
       }
     }
 
-    let cot: GoldCotPositioning | undefined;
-    if (rawCot?.instruments) {
-      const gc = rawCot.instruments.find(i => i.code === 'GC');
-      if (gc) {
-        cot = {
-          reportDate: String(gc.reportDate ?? rawCot.reportDate ?? ''),
-          managedMoneyLong: Number(gc.assetManagerLong ?? 0),
-          managedMoneyShort: Number(gc.assetManagerShort ?? 0),
-          netPct: Number(gc.netPct ?? 0),
-          dealerLong: Number(gc.dealerLong ?? 0),
-          dealerShort: Number(gc.dealerShort ?? 0),
-        };
-      }
-    }
+    const cot = mapCot(rawCot?.instruments?.find(i => i.code === 'GC'));
+
+    const goldExt = rawExtended?.gold;
+    const session: GoldSessionRange | undefined = goldExt
+      ? { dayHigh: goldExt.dayHigh, dayLow: goldExt.dayLow, prevClose: goldExt.prevClose }
+      : undefined;
+    const returns: GoldReturns | undefined = goldExt ? { ...goldExt.returns } : undefined;
+    const range52w: GoldRange52w | undefined = goldExt ? { ...goldExt.range52w } : undefined;
+    const drivers: GoldDriver[] = (rawExtended?.drivers ?? []).map(d => ({
+      symbol: d.symbol,
+      label: d.label,
+      value: d.value,
+      changePct: d.changePct,
+      correlation30d: d.correlation30d,
+    }));
 
     return {
       goldPrice,
@@ -109,10 +208,14 @@ export async function getGoldIntelligence(
       goldPlatinumPremiumPct,
       crossCurrencyPrices,
       cot,
-      updatedAt: new Date().toISOString(),
+      session,
+      returns,
+      range52w,
+      drivers,
+      updatedAt: rawExtended?.updatedAt || new Date().toISOString(),
       unavailable: false,
     };
   } catch {
-    return { goldPrice: 0, goldChangePct: 0, goldSparkline: [], silverPrice: 0, platinumPrice: 0, palladiumPrice: 0, crossCurrencyPrices: [], updatedAt: '', unavailable: true };
+    return emptyResponse();
   }
 }

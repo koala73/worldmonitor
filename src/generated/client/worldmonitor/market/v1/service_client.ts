@@ -519,6 +519,10 @@ export interface GetGoldIntelligenceResponse {
   cot?: GoldCotPositioning;
   updatedAt: string;
   unavailable: boolean;
+  session?: GoldSessionRange;
+  returns?: GoldReturns;
+  range52w?: GoldRange52w;
+  drivers: GoldDriver[];
 }
 
 export interface GoldCrossCurrencyPrice {
@@ -529,11 +533,45 @@ export interface GoldCrossCurrencyPrice {
 
 export interface GoldCotPositioning {
   reportDate: string;
-  managedMoneyLong: number;
-  managedMoneyShort: number;
+  nextReleaseDate: string;
+  openInterest: string;
+  managedMoney?: GoldCotCategory;
+  producerSwap?: GoldCotCategory;
+}
+
+export interface GoldCotCategory {
+  longPositions: string;
+  shortPositions: string;
   netPct: number;
-  dealerLong: number;
-  dealerShort: number;
+  oiSharePct: number;
+  wowNetDelta: string;
+}
+
+export interface GoldSessionRange {
+  dayHigh: number;
+  dayLow: number;
+  prevClose: number;
+}
+
+export interface GoldReturns {
+  w1: number;
+  m1: number;
+  ytd: number;
+  y1: number;
+}
+
+export interface GoldRange52w {
+  hi: number;
+  lo: number;
+  positionPct: number;
+}
+
+export interface GoldDriver {
+  symbol: string;
+  label: string;
+  value: number;
+  changePct: number;
+  correlation30d: number;
 }
 
 export interface FieldViolation {

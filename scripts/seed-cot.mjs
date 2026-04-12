@@ -6,8 +6,6 @@ loadEnvFile(import.meta.url);
 const COT_KEY = 'market:cot:v1';
 const COT_TTL = 604800;
 
-// Financial futures: TFF Combined report (Socrata yw9f-hn96)
-// Fields: dealer_positions_long_all, asset_mgr_positions_long, lev_money_positions_long
 const FINANCIAL_INSTRUMENTS = [
   { name: 'S&P 500 E-Mini',    code: 'ES', pattern: /E-MINI S&P 500 - CHICAGO/i },
   { name: 'Nasdaq 100 E-Mini', code: 'NQ', pattern: /^NASDAQ MINI - CHICAGO/i },
@@ -17,12 +15,9 @@ const FINANCIAL_INSTRUMENTS = [
   { name: 'USD/JPY',           code: 'JY', pattern: /JAPANESE YEN - CHICAGO/i },
 ];
 
-// Physical commodities: Disaggregated Combined report (Socrata rxbv-e226)
-// Fields: swap_positions_long_all, m_money_positions_long_all (no lev_money equivalent)
-// cftc_contract_market_code used for precise filtering — avoids fragile name matching
 const COMMODITY_INSTRUMENTS = [
   { name: 'Gold',            code: 'GC', contractCode: '088691' },
-  { name: 'Crude Oil (WTI)', code: 'CL', contractCode: '067651' }, // WTI-PHYSICAL NYMEX
+  { name: 'Crude Oil (WTI)', code: 'CL', contractCode: '067651' },
 ];
 
 function parseDate(raw) {
@@ -39,6 +34,19 @@ function parseDate(raw) {
   return s.slice(0, 10);
 }
 
+// CFTC releases COT every Friday ~3:30pm ET for Tuesday data. Given a reportDate
+// (Tuesday), the NEXT release is the Friday of the same week (reportDate + 3 days).
+// If today is already past that Friday, the next Tuesday's data releases the
+// following Friday — but we only call this with the *latest* stored row, so the
+// next release is always reportDate + 3 days.
+export function computeNextCotRelease(reportDate) {
+  if (!reportDate) return '';
+  const d = new Date(`${reportDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setUTCDate(d.getUTCDate() + 3);
+  return d.toISOString().slice(0, 10);
+}
+
 async function fetchSocrata(datasetId, extraParams = '') {
   const url =
     `https://publicreporting.cftc.gov/resource/${datasetId}.json` +
@@ -51,30 +59,86 @@ async function fetchSocrata(datasetId, extraParams = '') {
   return resp.json();
 }
 
-async function fetchCotData() {
+export function buildInstrument(target, currentRow, priorRow, kind) {
   const toNum = v => {
     const n = parseInt(String(v ?? '').replace(/,/g, '').trim(), 10);
-    return isNaN(n) ? 0 : n;
+    return Number.isNaN(n) ? 0 : n;
   };
 
-  let financialRows, commodityRows;
+  const reportDate = parseDate(currentRow.report_date_as_yyyy_mm_dd ?? '');
+  const openInterest = toNum(currentRow.open_interest_all);
+
+  let mmLong, mmShort, psLong, psShort, priorMmNet, priorPsNet;
+
+  if (kind === 'financial') {
+    mmLong = toNum(currentRow.asset_mgr_positions_long);
+    mmShort = toNum(currentRow.asset_mgr_positions_short);
+    psLong = toNum(currentRow.dealer_positions_long_all);
+    psShort = toNum(currentRow.dealer_positions_short_all);
+    if (priorRow) {
+      priorMmNet = toNum(priorRow.asset_mgr_positions_long) - toNum(priorRow.asset_mgr_positions_short);
+      priorPsNet = toNum(priorRow.dealer_positions_long_all) - toNum(priorRow.dealer_positions_short_all);
+    }
+  } else {
+    mmLong = toNum(currentRow.m_money_positions_long_all);
+    mmShort = toNum(currentRow.m_money_positions_short_all);
+    psLong = toNum(currentRow.swap_positions_long_all);
+    psShort = toNum(currentRow.swap__positions_short_all);
+    if (priorRow) {
+      priorMmNet = toNum(priorRow.m_money_positions_long_all) - toNum(priorRow.m_money_positions_short_all);
+      priorPsNet = toNum(priorRow.swap_positions_long_all) - toNum(priorRow.swap__positions_short_all);
+    }
+  }
+
+  const mkCategory = (long, short, priorNet) => {
+    const gross = Math.max(long + short, 1);
+    const netPct = ((long - short) / gross) * 100;
+    const oiSharePct = openInterest > 0 ? ((long + short) / openInterest) * 100 : 0;
+    const wowNetDelta = priorNet != null ? (long - short) - priorNet : 0;
+    return {
+      longPositions: long,
+      shortPositions: short,
+      netPct: parseFloat(netPct.toFixed(2)),
+      oiSharePct: parseFloat(oiSharePct.toFixed(2)),
+      wowNetDelta,
+    };
+  };
+
+  const managedMoney = mkCategory(mmLong, mmShort, priorMmNet);
+  const producerSwap = mkCategory(psLong, psShort, priorPsNet);
+
+  return {
+    name: target.name,
+    code: target.code,
+    reportDate,
+    nextReleaseDate: computeNextCotRelease(reportDate),
+    openInterest,
+    managedMoney,
+    producerSwap,
+    // legacy flat fields kept for any lingering consumer; remove post-migration
+    assetManagerLong: mmLong,
+    assetManagerShort: mmShort,
+    dealerLong: psLong,
+    dealerShort: psShort,
+    netPct: managedMoney.netPct,
+  };
+}
+
+async function fetchCotData() {
+  let financialRows = [];
+  let commodityRows = [];
+
   try {
-    // yw9f-hn96: TFF Combined — financial futures (ES, NQ, ZN, ZT, EC, JY)
-    // Fields: dealer_positions_long_all, asset_mgr_positions_long, lev_money_positions_long
     financialRows = await fetchSocrata('yw9f-hn96');
   } catch (e) {
     console.warn(`  CFTC TFF fetch failed: ${e.message}`);
-    financialRows = [];
   }
+
   try {
-    // rxbv-e226: Disaggregated All Combined — physical commodities (GC, CL)
-    // Fields: swap_positions_long_all, m_money_positions_long_all
-    // Filter by contract code — more reliable than name pattern matching
     const codeList = COMMODITY_INSTRUMENTS.map(i => `%27${i.contractCode}%27`).join('%2C');
     commodityRows = await fetchSocrata('rxbv-e226', `%20AND%20cftc_contract_market_code%20IN%28${codeList}%29`);
   } catch (e) {
     console.warn(`  CFTC Disaggregated fetch failed: ${e.message}`);
-    commodityRows = [];
   }
 
   if (!financialRows.length && !commodityRows.length) {
@@ -85,45 +149,34 @@ async function fetchCotData() {
   const instruments = [];
   let latestReportDate = '';
 
-  const pushInstrument = (target, row, amLong, amShort, levLong, levShort, dealerLong, dealerShort) => {
-    const reportDate = parseDate(row.report_date_as_yyyy_mm_dd ?? '');
-    if (reportDate && !latestReportDate) latestReportDate = reportDate;
-    const netPct = ((amLong - amShort) / Math.max(amLong + amShort, 1)) * 100;
-    instruments.push({
-      name: target.name, code: target.code, reportDate,
-      assetManagerLong: amLong, assetManagerShort: amShort,
-      leveragedFundsLong: levLong, leveragedFundsShort: levShort,
-      dealerLong, dealerShort,
-      netPct: parseFloat(netPct.toFixed(2)),
-    });
-    console.log(`  ${target.code}: AM net ${netPct.toFixed(1)}% (${amLong}L / ${amShort}S), date=${reportDate}`);
+  const findPair = (rows, predicate) => {
+    const matches = rows.filter(predicate);
+    // Sorted DESC already; index 0 = current, index 1 = prior week
+    return [matches[0], matches[1]];
   };
 
   for (const target of FINANCIAL_INSTRUMENTS) {
-    const row = financialRows.find(r => target.pattern.test(r.market_and_exchange_names ?? ''));
-    if (!row) { console.warn(`  CFTC: no row for ${target.name}`); continue; }
-    pushInstrument(target, row,
-      toNum(row.asset_mgr_positions_long),  toNum(row.asset_mgr_positions_short),
-      toNum(row.lev_money_positions_long),   toNum(row.lev_money_positions_short),
-      toNum(row.dealer_positions_long_all),  toNum(row.dealer_positions_short_all),
-    );
+    const [current, prior] = findPair(financialRows, r => target.pattern.test(r.market_and_exchange_names ?? ''));
+    if (!current) { console.warn(`  CFTC: no row for ${target.name}`); continue; }
+    const inst = buildInstrument(target, current, prior, 'financial');
+    if (inst.reportDate && !latestReportDate) latestReportDate = inst.reportDate;
+    instruments.push(inst);
+    console.log(`  ${inst.code}: MM net ${inst.managedMoney.netPct}% Δ${inst.managedMoney.wowNetDelta}, OI ${inst.openInterest}, date=${inst.reportDate}`);
   }
 
   for (const target of COMMODITY_INSTRUMENTS) {
-    const row = commodityRows.find(r => r.cftc_contract_market_code === target.contractCode);
-    if (!row) { console.warn(`  CFTC: no row for ${target.name}`); continue; }
-    // Physical commodity disaggregated: managed money → assetManager, swap dealers → dealer
-    pushInstrument(target, row,
-      toNum(row.m_money_positions_long_all),  toNum(row.m_money_positions_short_all),
-      0, 0,
-      toNum(row.swap_positions_long_all),     toNum(row.swap__positions_short_all),
-    );
+    const [current, prior] = findPair(commodityRows, r => r.cftc_contract_market_code === target.contractCode);
+    if (!current) { console.warn(`  CFTC: no row for ${target.name}`); continue; }
+    const inst = buildInstrument(target, current, prior, 'commodity');
+    if (inst.reportDate && !latestReportDate) latestReportDate = inst.reportDate;
+    instruments.push(inst);
+    console.log(`  ${inst.code}: MM net ${inst.managedMoney.netPct}% Δ${inst.managedMoney.wowNetDelta}, OI ${inst.openInterest}, date=${inst.reportDate}`);
   }
 
   return { instruments, reportDate: latestReportDate };
 }
 
-if (process.argv[1] && process.argv[1].endsWith('seed-cot.mjs')) {
+if (process.argv[1]?.endsWith('seed-cot.mjs')) {
   runSeed('market', 'cot', COT_KEY, fetchCotData, {
     ttlSeconds: COT_TTL,
     validateFn: data => Array.isArray(data?.instruments) && data.instruments.length > 0,

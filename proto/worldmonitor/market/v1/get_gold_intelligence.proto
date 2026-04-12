@@ -10,13 +10,47 @@ message GoldCrossCurrencyPrice {
   double price = 3;
 }
 
+message GoldSessionRange {
+  double day_high = 1;
+  double day_low = 2;
+  double prev_close = 3;
+}
+
+message GoldReturns {
+  double w1 = 1;
+  double m1 = 2;
+  double ytd = 3;
+  double y1 = 4;
+}
+
+message GoldRange52w {
+  double hi = 1;
+  double lo = 2;
+  double position_pct = 3;
+}
+
+message GoldCotCategory {
+  int64 long_positions = 1;
+  int64 short_positions = 2;
+  double net_pct = 3;
+  double oi_share_pct = 4;
+  int64 wow_net_delta = 5;
+}
+
 message GoldCotPositioning {
   string report_date = 1;
-  double managed_money_long = 2;
-  double managed_money_short = 3;
-  double net_pct = 4;
-  double dealer_long = 5;
-  double dealer_short = 6;
+  string next_release_date = 2;
+  int64 open_interest = 3;
+  GoldCotCategory managed_money = 4;
+  GoldCotCategory producer_swap = 5;
+}
+
+message GoldDriver {
+  string symbol = 1;
+  string label = 2;
+  double value = 3;
+  double change_pct = 4;
+  double correlation_30d = 5;
 }
 
 message GetGoldIntelligenceRequest {}
@@ -34,4 +68,8 @@ message GetGoldIntelligenceResponse {
   GoldCotPositioning cot = 10;
   string updated_at = 11;
   bool unavailable = 12;
+  GoldSessionRange session = 13;
+  GoldReturns returns = 14;
+  GoldRange52w range_52w = 15;
+  repeated GoldDriver drivers = 16;
 }

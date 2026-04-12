@@ -1939,6 +1939,16 @@ components:
                     type: string
                 unavailable:
                     type: boolean
+                session:
+                    $ref: '#/components/schemas/GoldSessionRange'
+                returns:
+                    $ref: '#/components/schemas/GoldReturns'
+                range52w:
+                    $ref: '#/components/schemas/GoldRange52w'
+                drivers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldDriver'
         GoldCrossCurrencyPrice:
             type: object
             properties:
@@ -1954,18 +1964,85 @@ components:
             properties:
                 reportDate:
                     type: string
-                managedMoneyLong:
-                    type: number
-                    format: double
-                managedMoneyShort:
-                    type: number
-                    format: double
+                nextReleaseDate:
+                    type: string
+                openInterest:
+                    type: string
+                    format: int64
+                managedMoney:
+                    $ref: '#/components/schemas/GoldCotCategory'
+                producerSwap:
+                    $ref: '#/components/schemas/GoldCotCategory'
+        GoldCotCategory:
+            type: object
+            properties:
+                longPositions:
+                    type: string
+                    format: int64
+                shortPositions:
+                    type: string
+                    format: int64
                 netPct:
                     type: number
                     format: double
-                dealerLong:
+                oiSharePct:
                     type: number
                     format: double
-                dealerShort:
+                wowNetDelta:
+                    type: string
+                    format: int64
+        GoldSessionRange:
+            type: object
+            properties:
+                dayHigh:
+                    type: number
+                    format: double
+                dayLow:
+                    type: number
+                    format: double
+                prevClose:
+                    type: number
+                    format: double
+        GoldReturns:
+            type: object
+            properties:
+                w1:
+                    type: number
+                    format: double
+                m1:
+                    type: number
+                    format: double
+                ytd:
+                    type: number
+                    format: double
+                y1:
+                    type: number
+                    format: double
+        GoldRange52w:
+            type: object
+            properties:
+                hi:
+                    type: number
+                    format: double
+                lo:
+                    type: number
+                    format: double
+                positionPct:
+                    type: number
+                    format: double
+        GoldDriver:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                label:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                changePct:
+                    type: number
+                    format: double
+                correlation30d:
                     type: number
                     format: double
