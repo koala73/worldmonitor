@@ -147,13 +147,19 @@ export interface LazyFetchResult {
 
 /**
  * Attempt a lazy fetch for a destination country's bilateral HS4 data.
- * Returns null if the fetch is already in-flight (concurrency cap) or
- * if a negative-cache sentinel exists (recent 429 or known-empty).
+ * Returns null only for truly transient states (concurrent fetch in-flight).
+ * When a sentinel exists, returns the sentinel's encoded reason so callers
+ * can distinguish permanent empties from transient rate-limits.
  */
 export async function lazyFetchBilateralHs4(iso2: string): Promise<LazyFetchResult | null> {
   const sentinelKey = `${LAZY_SENTINEL_PREFIX}${iso2}:v1`;
-  const sentinel = await getCachedJson(sentinelKey, true).catch(() => null);
-  if (sentinel) return null;
+  const sentinel = await getCachedJson(sentinelKey, true).catch(() => null) as { empty?: boolean; rateLimited?: boolean } | null;
+  if (sentinel) {
+    if (sentinel.rateLimited) {
+      return { products: [], comtradeSource: 'lazy', rateLimited: true };
+    }
+    return { products: [], comtradeSource: 'empty' };
+  }
 
   if (fetchInFlight) return null;
   fetchInFlight = true;
