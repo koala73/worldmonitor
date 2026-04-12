@@ -107,7 +107,12 @@ export class RegionalIntelligenceBoard extends Panel {
       ]);
       if (!isLatestSequence(mySequence, this.latestSequence)) return;
 
-      const snapshot = snapshotResp.status === 'fulfilled' ? snapshotResp.value.snapshot : undefined;
+      if (snapshotResp.status === 'rejected') {
+        const err = snapshotResp.reason;
+        this.renderError(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      const snapshot = snapshotResp.value.snapshot;
       if (!snapshot?.regionId) {
         this.renderEmpty();
         return;
