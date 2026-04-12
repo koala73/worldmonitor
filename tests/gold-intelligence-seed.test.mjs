@@ -86,6 +86,38 @@ describe('seed-cot: buildInstrument (commodity kind)', () => {
     assert.equal(inst.managedMoney.netPct, 50); // (1.5M-0.5M)/2M
   });
 
+  it('preserves leveragedFunds fields for financial TFF consumers', () => {
+    const target = { name: '10-Year T-Note', code: 'ZN' };
+    const current = {
+      report_date_as_yyyy_mm_dd: '2026-04-07',
+      open_interest_all: '5000000',
+      asset_mgr_positions_long: '1500000',
+      asset_mgr_positions_short: '500000',
+      lev_money_positions_long: '750000',
+      lev_money_positions_short: '250000',
+      dealer_positions_long_all: '400000',
+      dealer_positions_short_all: '1600000',
+    };
+    const inst = buildInstrument(target, current, null, 'financial');
+    // Regression guard: CotPositioningPanel reads these for the Leveraged Funds bar.
+    assert.equal(inst.leveragedFundsLong, 750000);
+    assert.equal(inst.leveragedFundsShort, 250000);
+  });
+
+  it('commodity instruments emit leveragedFunds as 0 (no equivalent field in disaggregated report)', () => {
+    const current = {
+      report_date_as_yyyy_mm_dd: '2026-04-07',
+      open_interest_all: '100000',
+      m_money_positions_long_all: '10000',
+      m_money_positions_short_all: '5000',
+      swap_positions_long_all: '2000',
+      swap__positions_short_all: '8000',
+    };
+    const inst = buildInstrument(gcTarget, current, null, 'commodity');
+    assert.equal(inst.leveragedFundsLong, 0);
+    assert.equal(inst.leveragedFundsShort, 0);
+  });
+
   it('preserves legacy flat fields for backward compat', () => {
     const current = {
       report_date_as_yyyy_mm_dd: '2026-04-07',

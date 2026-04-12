@@ -69,12 +69,17 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
   const openInterest = toNum(currentRow.open_interest_all);
 
   let mmLong, mmShort, psLong, psShort, priorMmNet, priorPsNet;
+  let leveragedFundsLong = 0;
+  let leveragedFundsShort = 0;
 
   if (kind === 'financial') {
     mmLong = toNum(currentRow.asset_mgr_positions_long);
     mmShort = toNum(currentRow.asset_mgr_positions_short);
     psLong = toNum(currentRow.dealer_positions_long_all);
     psShort = toNum(currentRow.dealer_positions_short_all);
+    // TFF report also exposes leveraged-funds positions — consumed by CotPositioningPanel.
+    leveragedFundsLong = toNum(currentRow.lev_money_positions_long);
+    leveragedFundsShort = toNum(currentRow.lev_money_positions_short);
     if (priorRow) {
       priorMmNet = toNum(priorRow.asset_mgr_positions_long) - toNum(priorRow.asset_mgr_positions_short);
       priorPsNet = toNum(priorRow.dealer_positions_long_all) - toNum(priorRow.dealer_positions_short_all);
@@ -115,9 +120,11 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
     openInterest,
     managedMoney,
     producerSwap,
-    // legacy flat fields kept for any lingering consumer; remove post-migration
+    // legacy flat fields consumed by get-cot-positioning.ts / CotPositioningPanel
     assetManagerLong: mmLong,
     assetManagerShort: mmShort,
+    leveragedFundsLong,
+    leveragedFundsShort,
     dealerLong: psLong,
     dealerShort: psShort,
     netPct: managedMoney.netPct,

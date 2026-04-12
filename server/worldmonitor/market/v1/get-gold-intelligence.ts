@@ -110,22 +110,33 @@ function mapCategory(c: RawCotCategory | undefined): GoldCotCategory | undefined
 
 function mapCot(raw: RawCotInstrument | undefined): GoldCotPositioning | undefined {
   if (!raw) return undefined;
-  // Legacy fallback: build categories from flat fields if v2 fields absent.
+  // Legacy fallback: derive v2 category fields from flat long/short so a
+  // pre-migration seed payload still renders the new panel correctly. OI share
+  // stays 0 because old payloads don't carry open_interest; WoW delta stays 0
+  // because the prior-week row wasn't captured before this migration.
+  const netPctFrom = (long: number, short: number) => {
+    const gross = Math.max(long + short, 1);
+    return ((long - short) / gross) * 100;
+  };
+  const mmLong = raw.assetManagerLong ?? 0;
+  const mmShort = raw.assetManagerShort ?? 0;
+  const psLong = raw.dealerLong ?? 0;
+  const psShort = raw.dealerShort ?? 0;
   const managedMoney = raw.managedMoney
     ? mapCategory(raw.managedMoney)
     : mapCategory({
-      longPositions: raw.assetManagerLong ?? 0,
-      shortPositions: raw.assetManagerShort ?? 0,
-      netPct: raw.netPct ?? 0,
+      longPositions: mmLong,
+      shortPositions: mmShort,
+      netPct: raw.netPct ?? netPctFrom(mmLong, mmShort),
       oiSharePct: 0,
       wowNetDelta: 0,
     });
   const producerSwap = raw.producerSwap
     ? mapCategory(raw.producerSwap)
     : mapCategory({
-      longPositions: raw.dealerLong ?? 0,
-      shortPositions: raw.dealerShort ?? 0,
-      netPct: 0,
+      longPositions: psLong,
+      shortPositions: psShort,
+      netPct: netPctFrom(psLong, psShort),
       oiSharePct: 0,
       wowNetDelta: 0,
     });
