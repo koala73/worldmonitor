@@ -31,8 +31,19 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
 import { trackGateHit, track, type UmamiEvent } from '@/services/analytics';
 
+import { TRADE_ROUTES } from '@/config/trade-routes';
+
 const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
 const FETCH_DEBOUNCE_MS = 250;
+
+const CARGO_TO_ROUTE_CATEGORY: Record<string, string> = {
+  container: 'container',
+  tanker: 'energy',
+  bulk: 'bulk',
+  roro: 'container',
+};
+
+const ROUTE_CATEGORY_MAP = new Map(TRADE_ROUTES.map((r) => [r.id, r.category]));
 
 interface MapRef {
   highlightRoute(routeIds: string[]): void;
@@ -352,7 +363,14 @@ export class RouteExplorer {
     const fromRoutes = new Set(clusters[this.state.fromIso2]?.nearestRouteIds ?? []);
     const toRoutes = new Set(clusters[this.state.toIso2]?.nearestRouteIds ?? []);
     const shared = [...fromRoutes].filter((r) => toRoutes.has(r));
-    const routeId = shared[0] ?? clusters[this.state.fromIso2]?.nearestRouteIds[0] ?? '';
+    if (shared.length === 0) return;
+    const cargoCategory = CARGO_TO_ROUTE_CATEGORY[this.getEffectiveCargo()] ?? 'container';
+    const ranked = [...shared].sort((a, b) => {
+      const catA = ROUTE_CATEGORY_MAP.get(a) ?? '';
+      const catB = ROUTE_CATEGORY_MAP.get(b) ?? '';
+      return (catA === cargoCategory ? 0 : 1) - (catB === cargoCategory ? 0 : 1);
+    });
+    const routeId = ranked[0] ?? '';
     if (routeId) {
       this.mapRef.highlightRoute([routeId]);
       this.mapRef.zoomToRoutes([routeId]);
