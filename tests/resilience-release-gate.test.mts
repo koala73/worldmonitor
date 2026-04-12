@@ -335,7 +335,7 @@ describe('resilience release gate', () => {
     assert.equal(typeof response.stressFactor, 'number');
     assert.equal(typeof response.level, 'string');
     assert.ok(Array.isArray(response.domains));
-    assert.equal(response.domains.length, 5, 'v1 shape keeps all 5 domains under the top-level domains[] field');
+    assert.equal(response.domains.length, 6, 'v1 shape keeps all 6 domains under the top-level domains[] field');
     assert.equal(typeof response.imputationShare, 'number');
     assert.equal(typeof response.lowConfidence, 'boolean');
     assert.equal(typeof response.dataVersion, 'string');
