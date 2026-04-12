@@ -2,51 +2,49 @@ import type {
   ServerContext,
   GetCountryChokepointIndexRequest,
   GetCountryChokepointIndexResponse,
-  ChokepointExposureEntry,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { CHOKEPOINT_EXPOSURE_KEY } from '../../../_shared/cache-keys';
-import { CHOKEPOINT_REGISTRY } from '../../../../src/config/chokepoint-registry';
-import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
+import { lazyFetchBilateralHs4 } from './_bilateral-hs4-lazy';
+import {
+  computeFlowWeightedExposures,
+  computeFallbackExposures,
+  vulnerabilityIndex,
+  getRouteIdsForCountry,
+  getCoastSide,
+  type CountryProduct,
+} from './chokepoint-exposure-utils';
 
 const CACHE_TTL = 86400; // 24 hours
 
-interface PortClusterEntry {
-  nearestRouteIds: string[];
-  coastSide: string;
+interface BilateralHs4Payload {
+  iso2: string;
+  products: CountryProduct[];
+  fetchedAt: string;
 }
 
-function computeExposures(
-  nearestRouteIds: string[],
-  hs2: string,
-): ChokepointExposureEntry[] {
-  const isEnergy = hs2 === '27';
-  const routeSet = new Set(nearestRouteIds);
+async function loadBilateralProducts(iso2: string): Promise<CountryProduct[] | null> {
+  const bilateralKey = `comtrade:bilateral-hs4:${iso2}:v1`;
+  const rawPayload = await getCachedJson(bilateralKey, true).catch(() => null) as BilateralHs4Payload | null;
+  if (rawPayload?.products?.length) return rawPayload.products;
 
-  const entries: ChokepointExposureEntry[] = CHOKEPOINT_REGISTRY.map(cp => {
-    const overlap = cp.routeIds.filter(r => routeSet.has(r)).length;
-    const maxRoutes = Math.max(cp.routeIds.length, 1);
-    let score = (overlap / maxRoutes) * 100;
-    // Energy sector: boost shock-model chokepoints by 50% (oil + LNG dependency)
-    if (isEnergy && cp.shockModelSupported) score = Math.min(score * 1.5, 100);
-    return {
-      chokepointId: cp.id,
-      chokepointName: cp.displayName,
-      exposureScore: Math.round(score * 10) / 10,
-      coastSide: '',
-      shockSupported: cp.shockModelSupported,
-    };
-  });
+  const lazyResult = await lazyFetchBilateralHs4(iso2);
+  if (lazyResult && lazyResult.products.length > 0) return lazyResult.products;
 
-  return entries.sort((a, b) => b.exposureScore - a.exposureScore);
+  return null;
 }
 
-function vulnerabilityIndex(sorted: ChokepointExposureEntry[]): number {
-  const weights = [0.5, 0.3, 0.2];
-  const total = sorted.slice(0, 3).reduce((sum, e, i) => sum + e.exposureScore * weights[i]!, 0);
-  return Math.round(total * 10) / 10;
+function emptyResponse(iso2: string, hs2: string): GetCountryChokepointIndexResponse {
+  return {
+    iso2,
+    hs2,
+    exposures: [],
+    primaryChokepointId: '',
+    vulnerabilityIndex: 0,
+    fetchedAt: new Date().toISOString(),
+  };
 }
 
 export async function getCountryChokepointIndex(
@@ -54,22 +52,13 @@ export async function getCountryChokepointIndex(
   req: GetCountryChokepointIndexRequest,
 ): Promise<GetCountryChokepointIndexResponse> {
   const isPro = await isCallerPremium(ctx.request);
-  if (!isPro) {
-    return {
-      iso2: req.iso2,
-      hs2: req.hs2 || '27',
-      exposures: [],
-      primaryChokepointId: '',
-      vulnerabilityIndex: 0,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
+  if (!isPro) return emptyResponse(req.iso2, req.hs2 || '27');
 
   const iso2 = req.iso2.trim().toUpperCase();
   const hs2 = (req.hs2?.trim() || '27').replace(/\D/g, '') || '27';
 
   if (!/^[A-Z]{2}$/.test(iso2) || !/^\d{1,2}$/.test(hs2)) {
-    return { iso2: req.iso2, hs2: req.hs2 || '27', exposures: [], primaryChokepointId: '', vulnerabilityIndex: 0, fetchedAt: new Date().toISOString() };
+    return emptyResponse(req.iso2, req.hs2 || '27');
   }
 
   const cacheKey = CHOKEPOINT_EXPOSURE_KEY(iso2, hs2);
@@ -79,13 +68,20 @@ export async function getCountryChokepointIndex(
       cacheKey,
       CACHE_TTL,
       async () => {
-        const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, PortClusterEntry>;
-        const cluster = clusters[iso2];
-        const nearestRouteIds = cluster?.nearestRouteIds ?? [];
-        const coastSide = cluster?.coastSide ?? 'unknown';
+        const products = await loadBilateralProducts(iso2);
 
-        const exposures = computeExposures(nearestRouteIds, hs2);
-        // Attach coastSide only to the top entry
+        let exposures;
+        if (products) {
+          exposures = computeFlowWeightedExposures(iso2, hs2, products);
+        } else {
+          exposures = computeFallbackExposures(getRouteIdsForCountry(iso2), hs2);
+        }
+
+        if (exposures.length === 0) {
+          exposures = computeFallbackExposures(getRouteIdsForCountry(iso2), hs2);
+        }
+
+        const coastSide = getCoastSide(iso2);
         if (exposures[0]) exposures[0] = { ...exposures[0], coastSide };
 
         const primaryId = exposures[0]?.chokepointId ?? '';
@@ -102,22 +98,8 @@ export async function getCountryChokepointIndex(
       },
     );
 
-    return result ?? {
-      iso2,
-      hs2,
-      exposures: [],
-      primaryChokepointId: '',
-      vulnerabilityIndex: 0,
-      fetchedAt: new Date().toISOString(),
-    };
+    return result ?? emptyResponse(iso2, hs2);
   } catch {
-    return {
-      iso2,
-      hs2,
-      exposures: [],
-      primaryChokepointId: '',
-      vulnerabilityIndex: 0,
-      fetchedAt: new Date().toISOString(),
-    };
+    return emptyResponse(iso2, hs2);
   }
 }
