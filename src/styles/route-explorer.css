@@ -444,6 +444,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 9100;
+  pointer-events: auto;
   width: 360px;
   padding: 20px;
   background: var(--bg-secondary, #161b22);
