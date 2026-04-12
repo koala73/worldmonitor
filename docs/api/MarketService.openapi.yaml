@@ -1951,6 +1951,8 @@ components:
                         $ref: '#/components/schemas/GoldDriver'
                 etfFlows:
                     $ref: '#/components/schemas/GoldEtfFlows'
+                cbReserves:
+                    $ref: '#/components/schemas/GoldCbReserves'
         GoldCrossCurrencyPrice:
             type: object
             properties:
@@ -2085,3 +2087,46 @@ components:
                     items:
                         type: number
                         format: double
+        GoldCbReserves:
+            type: object
+            properties:
+                asOfMonth:
+                    type: string
+                totalTonnes:
+                    type: number
+                    format: double
+                topHolders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbHolder'
+                topBuyers12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbMover'
+                topSellers12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbMover'
+        GoldCbHolder:
+            type: object
+            properties:
+                iso3:
+                    type: string
+                name:
+                    type: string
+                tonnes:
+                    type: number
+                    format: double
+                pctOfReserves:
+                    type: number
+                    format: double
+        GoldCbMover:
+            type: object
+            properties:
+                iso3:
+                    type: string
+                name:
+                    type: string
+                deltaTonnes12m:
+                    type: number
+                    format: double

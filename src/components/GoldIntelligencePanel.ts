@@ -17,6 +17,16 @@ interface SessionRange { dayHigh: number; dayLow: number; prevClose: number }
 interface Returns { w1: number; m1: number; ytd: number; y1: number }
 interface Range52w { hi: number; lo: number; positionPct: number }
 interface Driver { symbol: string; label: string; value: number; changePct: number; correlation30d: number }
+interface CbHolder { iso3: string; name: string; tonnes: number; pctOfReserves: number }
+interface CbMover { iso3: string; name: string; deltaTonnes12m: number }
+interface CbReserves {
+  asOfMonth: string;
+  totalTonnes: number;
+  topHolders: CbHolder[];
+  topBuyers12m: CbMover[];
+  topSellers12m: CbMover[];
+}
+
 interface EtfFlows {
   asOfDate: string;
   tonnes: number;
@@ -47,6 +57,7 @@ interface GoldIntelligenceData {
   range52w?: Range52w;
   drivers: Driver[];
   etfFlows?: EtfFlows;
+  cbReserves?: CbReserves;
   updatedAt: string;
   unavailable?: boolean;
 }
@@ -299,6 +310,49 @@ export class GoldIntelligencePanel extends Panel {
     </div>`;
   }
 
+  private renderCbReserves(d: GoldIntelligenceData): string {
+    const cb = d.cbReserves;
+    if (!cb || !cb.topHolders.length) return '';
+
+    const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:10px;padding:1px 0">
+      <span style="color:var(--text-dim)">${rank}. ${escapeHtml(h.name)}</span>
+      <span style="font-weight:600">${h.tonnes > 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
+    </div>`;
+    const moverRow = (m: CbMover) => {
+      const color = m.deltaTonnes12m >= 0 ? '#2ecc71' : '#e74c3c';
+      const sign = m.deltaTonnes12m >= 0 ? '+' : '';
+      return `<div style="display:flex;justify-content:space-between;font-size:10px;padding:1px 0">
+        <span style="color:var(--text-dim)">${escapeHtml(m.name)}</span>
+        <span style="color:${color};font-weight:600">${sign}${m.deltaTonnes12m.toFixed(1)}t</span>
+      </div>`;
+    };
+
+    const holders = cb.topHolders.slice(0, 10).map((h, i) => holderRow(h, i + 1)).join('');
+    const buyers = cb.topBuyers12m.slice(0, 5).map(moverRow).join('');
+    const sellers = cb.topSellers12m.slice(0, 5).map(moverRow).join('');
+
+    const moversHtml = (buyers || sellers)
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Buyers 12M</div>
+            ${buyers || '<div style="font-size:9px;color:var(--text-dim)">—</div>'}
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Sellers 12M</div>
+            ${sellers || '<div style="font-size:9px;color:var(--text-dim)">—</div>'}
+          </div>
+        </div>`
+      : '';
+
+    return `<div class="energy-tape-section" style="margin-top:10px">
+      <div class="energy-section-title">Central-Bank Reserves</div>
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px">Top holders (tonnes)</div>
+      ${holders}
+      ${moversHtml}
+      <div style="font-size:9px;color:var(--text-dim);margin-top:6px;text-align:right">IMF IFS • as of ${escapeHtml(cb.asOfMonth)}</div>
+    </div>`;
+  }
+
   private renderEtfFlows(d: GoldIntelligenceData): string {
     const f = d.etfFlows;
     if (!f || !Number.isFinite(f.tonnes) || f.tonnes <= 0) return '';
@@ -363,6 +417,7 @@ export class GoldIntelligencePanel extends Panel {
       this.renderFx(d),
       this.renderPositioning(d),
       this.renderEtfFlows(d),
+      this.renderCbReserves(d),
       this.renderDrivers(d),
     ].join('');
     this.setContent(`<div style="padding:10px 14px">${html}</div>`);

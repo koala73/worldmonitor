@@ -524,6 +524,7 @@ export interface GetGoldIntelligenceResponse {
   range52w?: GoldRange52w;
   drivers: GoldDriver[];
   etfFlows?: GoldEtfFlows;
+  cbReserves?: GoldCbReserves;
 }
 
 export interface GoldCrossCurrencyPrice {
@@ -587,6 +588,27 @@ export interface GoldEtfFlows {
   changeM1Pct: number;
   changeY1Pct: number;
   sparkline90d: number[];
+}
+
+export interface GoldCbReserves {
+  asOfMonth: string;
+  totalTonnes: number;
+  topHolders: GoldCbHolder[];
+  topBuyers12m: GoldCbMover[];
+  topSellers12m: GoldCbMover[];
+}
+
+export interface GoldCbHolder {
+  iso3: string;
+  name: string;
+  tonnes: number;
+  pctOfReserves: number;
+}
+
+export interface GoldCbMover {
+  iso3: string;
+  name: string;
+  deltaTonnes12m: number;
 }
 
 export interface FieldViolation {

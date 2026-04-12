@@ -53,6 +53,27 @@ message GoldDriver {
   double correlation_30d = 5;
 }
 
+message GoldCbHolder {
+  string iso3 = 1;
+  string name = 2;
+  double tonnes = 3;
+  double pct_of_reserves = 4;
+}
+
+message GoldCbMover {
+  string iso3 = 1;
+  string name = 2;
+  double delta_tonnes_12m = 3;
+}
+
+message GoldCbReserves {
+  string as_of_month = 1;
+  double total_tonnes = 2;
+  repeated GoldCbHolder top_holders = 3;
+  repeated GoldCbMover top_buyers_12m = 4;
+  repeated GoldCbMover top_sellers_12m = 5;
+}
+
 message GoldEtfFlows {
   string as_of_date = 1;
   double tonnes = 2;
@@ -87,4 +108,5 @@ message GetGoldIntelligenceResponse {
   GoldRange52w range_52w = 15;
   repeated GoldDriver drivers = 16;
   GoldEtfFlows etf_flows = 17;
+  GoldCbReserves cb_reserves = 18;
 }
