@@ -292,12 +292,12 @@ describe('resilience release gate', () => {
 
   // Phase 2 T2.1 of the country-resilience reference-grade upgrade plan.
   // The new three-pillar schema (`pillars` + `schemaVersion`) ships
-  // additively behind RESILIENCE_SCHEMA_V2_ENABLED. The default-off
-  // path must preserve the v1 shape exactly: pillars=[] and
-  // schemaVersion="1.0". The flag-on path is exercised through the
+  // additively behind RESILIENCE_SCHEMA_V2_ENABLED. The default is now
+  // ON (true), so the default path emits the v2 shape: schemaVersion="2.0"
+  // with populated pillars[]. The flag-off path is exercised through the
   // pure buildPillarList helper in tests/resilience-pillar-schema.test.mts
   // because the env flag is read at module load time.
-  it('T2.1: default response shape preserves v1 (pillars=[], schemaVersion="1.0")', async () => {
+  it('T2.1: default response shape is v2 (pillars populated, schemaVersion="2.0")', async () => {
     installRedisFixtures();
 
     const response = await getResilienceScore(
@@ -307,13 +307,12 @@ describe('resilience release gate', () => {
 
     assert.equal(
       response.schemaVersion,
-      '1.0',
-      'with RESILIENCE_SCHEMA_V2_ENABLED unset (default), response must report schemaVersion="1.0"',
+      '2.0',
+      'with RESILIENCE_SCHEMA_V2_ENABLED unset (default=true), response must report schemaVersion="2.0"',
     );
-    assert.deepEqual(
-      response.pillars,
-      [],
-      'with the v2 flag off, pillars must be the empty array (preserves v1 wire shape under proto3 defaults)',
+    assert.ok(
+      Array.isArray(response.pillars) && response.pillars.length > 0,
+      'with the v2 flag on (default), pillars must be populated',
     );
   });
 
