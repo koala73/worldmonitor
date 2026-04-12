@@ -36,6 +36,7 @@ import { CHOKEPOINT_STATUS_KEY } from '../../../_shared/cache-keys';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../_shared/bypass-corridors';
 import type { BypassCorridor, CargoType } from '../../../_shared/bypass-corridors';
+import { TIER_RANK } from './_insurance-tier';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 import { TRADE_ROUTES } from '../../../../src/config/trade-routes';
 import { PORTS } from '../../../../src/config/ports';
@@ -66,6 +67,28 @@ interface ChokepointStatusResponse {
 }
 
 const CARGO_TYPES = new Set(['container', 'tanker', 'bulk', 'roro']);
+
+const CARGO_TO_ROUTE_CATEGORY: Record<string, string> = {
+  container: 'container',
+  tanker: 'energy',
+  bulk: 'bulk',
+  roro: 'container',
+};
+
+function rankSharedRoutesByCargo(
+  sharedRoutes: string[],
+  cargoType: string,
+): string[] {
+  const preferredCategory = CARGO_TO_ROUTE_CATEGORY[cargoType] ?? 'container';
+  const routeMap = new Map(TRADE_ROUTES.map((r) => [r.id, r]));
+  return [...sharedRoutes].sort((a, b) => {
+    const catA = routeMap.get(a)?.category ?? '';
+    const catB = routeMap.get(b)?.category ?? '';
+    const matchA = catA === preferredCategory ? 0 : 1;
+    const matchB = catB === preferredCategory ? 0 : 1;
+    return matchA - matchB;
+  });
+}
 
 function emptyResponse(
   req: GetRouteExplorerLaneRequest,
@@ -147,20 +170,30 @@ function deriveCorridorStatus(corridor: BypassCorridor): CorridorStatus {
   return 'CORRIDOR_STATUS_ACTIVE';
 }
 
+function deriveBypassWarRiskTier(
+  corridor: BypassCorridor,
+  statusMap: Map<string, ChokepointStatus>,
+): string {
+  if (corridor.waypointChokepointIds.length === 0) return 'WAR_RISK_TIER_UNSPECIFIED';
+  return corridor.waypointChokepointIds.reduce<string>((best, id) => {
+    const t = statusMap.get(id)?.warRiskTier ?? 'WAR_RISK_TIER_UNSPECIFIED';
+    return (TIER_RANK[t] ?? 0) > (TIER_RANK[best] ?? 0) ? t : best;
+  }, 'WAR_RISK_TIER_UNSPECIFIED');
+}
+
 function buildBypassOption(
   corridor: BypassCorridor,
   primaryChokepointId: string,
   statusMap: Map<string, ChokepointStatus>,
 ): BypassCorridorOption {
   const geom = getCorridorGeometryOrFallback(corridor.id, primaryChokepointId);
-  const cpStatus = statusMap.get(primaryChokepointId);
   return {
     id: corridor.id,
     name: corridor.name,
     type: corridor.type,
     addedTransitDays: corridor.addedTransitDays,
     addedCostMultiplier: corridor.addedCostMultiplier,
-    warRiskTier: cpStatus?.warRiskTier ?? 'WAR_RISK_TIER_NORMAL',
+    warRiskTier: deriveBypassWarRiskTier(corridor, statusMap),
     status: deriveCorridorStatus(corridor),
     fromPort: geoPoint(geom.fromPort[0], geom.fromPort[1]),
     toPort: geoPoint(geom.toPort[0], geom.toPort[1]),
@@ -194,10 +227,9 @@ export async function computeLane(
   const fromRoutes = new Set(fromCluster?.nearestRouteIds ?? []);
   const toRoutes = new Set(toCluster?.nearestRouteIds ?? []);
   const sharedRoutes = [...fromRoutes].filter((r) => toRoutes.has(r));
-  // noModeledLane: true when we have to fall back to the origin's first route
-  // because origin and destination clusters share none.
   const noModeledLane = sharedRoutes.length === 0;
-  const primaryRouteId = sharedRoutes[0] ?? fromCluster?.nearestRouteIds[0] ?? '';
+  const rankedRoutes = rankSharedRoutesByCargo(sharedRoutes, cargoType);
+  const primaryRouteId = rankedRoutes[0] ?? fromCluster?.nearestRouteIds[0] ?? '';
 
   let statusMap: Map<string, ChokepointStatus>;
   if (injectedStatusMap) {
@@ -235,11 +267,11 @@ export async function computeLane(
 
   const bypassOptions: BypassCorridorOption[] = primaryChokepoint
     ? (BYPASS_CORRIDORS_BY_CHOKEPOINT[primaryChokepoint.chokepointId] ?? [])
-        .filter(
-          (c) =>
-            c.suitableCargoTypes.length === 0 ||
-            c.suitableCargoTypes.includes(cargoType as CargoType),
-        )
+        .filter((c) => {
+          if (c.addedTransitDays === 0) return false;
+          if (c.suitableCargoTypes.length > 0 && !c.suitableCargoTypes.includes(cargoType as CargoType)) return false;
+          return true;
+        })
         .slice(0, 5)
         .map((c) => buildBypassOption(c, primaryChokepoint.chokepointId, statusMap))
     : [];

@@ -198,4 +198,51 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
     // Always passes; informational only.
     assert.ok(true);
   });
+
+  it('cargo-aware route selection: CN->JP tanker picks energy route over container', async () => {
+    const res = await computeLane(
+      { fromIso2: 'CN', toIso2: 'JP', hs2: '27', cargoType: 'tanker' },
+      new Map(),
+    );
+    if (!res.noModeledLane && res.primaryRouteId) {
+      const { TRADE_ROUTES } = await import('../src/config/trade-routes.ts');
+      const route = TRADE_ROUTES.find((r: { id: string }) => r.id === res.primaryRouteId);
+      assert.ok(route, `primaryRouteId ${res.primaryRouteId} not in TRADE_ROUTES`);
+      assert.equal(
+        route.category,
+        'energy',
+        `tanker request should prefer an energy route, got ${route.category} (${res.primaryRouteId})`,
+      );
+    }
+  });
+
+  it('bypass warRiskTier derives from waypoint chokepoints, not primary', async () => {
+    const fakeStatus = new Map<string, { id: string; warRiskTier: string }>([
+      ['suez', { id: 'suez', warRiskTier: 'WAR_RISK_TIER_CRITICAL' }],
+      ['cape_of_good_hope', { id: 'cape_of_good_hope', warRiskTier: 'WAR_RISK_TIER_NORMAL' }],
+    ]);
+    const res = await computeLane(
+      { fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' },
+      fakeStatus as Map<string, any>,
+    );
+    const capeBypass = res.bypassOptions.find((b) => b.id === 'suez_cape_of_good_hope');
+    if (capeBypass) {
+      assert.equal(
+        capeBypass.warRiskTier,
+        'WAR_RISK_TIER_NORMAL',
+        'Cape bypass should reflect its own waypoint risk (NORMAL), not the primary chokepoint (CRITICAL)',
+      );
+    }
+  });
+
+  it('placeholder corridors with addedTransitDays=0 are excluded', async () => {
+    const res = await computeLane(
+      { fromIso2: 'ES', toIso2: 'EG', hs2: '85', cargoType: 'container' },
+      new Map(),
+    );
+    const placeholder = res.bypassOptions.find((b) =>
+      b.id === 'gibraltar_no_bypass' || b.id === 'cape_of_good_hope_is_bypass',
+    );
+    assert.equal(placeholder, undefined, 'zero-transit-day placeholder corridors should be filtered out');
+  });
 });
