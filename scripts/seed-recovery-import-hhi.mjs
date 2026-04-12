@@ -46,7 +46,9 @@ async function fetchImportsForReporter(reporterCode) {
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('flowCode', 'M');
   url.searchParams.set('cmdCode', 'TOTAL');
-  url.searchParams.set('partnerCode', '0');
+  // Omit partnerCode to get ALL bilateral partners (matching the pattern
+  // in seed-comtrade-bilateral-hs4.mjs). Setting partnerCode=0 returns
+  // only the world-aggregate row which computeHhi() then discards.
   url.searchParams.set('period', String(new Date().getFullYear() - 1));
   url.searchParams.set('subscription-key', nextKey());
 
