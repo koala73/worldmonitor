@@ -95,6 +95,8 @@ export class RouteExplorer {
   public close(): void {
     if (!this.isOpen || !this.root) return;
     document.removeEventListener('keydown', this.handleGlobalKeydown, { capture: true });
+    this.helpOverlay?.element.remove();
+    this.helpOverlay = null;
     this.root.remove();
     this.root = null;
     this.isOpen = false;
@@ -156,6 +158,7 @@ export class RouteExplorer {
       placeholder: 'From country',
       initialIso2: this.state.fromIso2,
       onCommit: (iso2) => this.handleFromCommit(iso2),
+      onCancel: () => this.blurActiveInput(),
     });
 
     const arrow = document.createElement('span');
@@ -167,12 +170,14 @@ export class RouteExplorer {
       placeholder: 'To country',
       initialIso2: this.state.toIso2,
       onCommit: (iso2) => this.handleToCommit(iso2),
+      onCancel: () => this.blurActiveInput(),
     });
 
     this.hs2Picker = new Hs2Picker({
       placeholder: 'Pick a product',
       initialHs2: this.state.hs2,
       onCommit: (hs2) => this.handleHs2Commit(hs2),
+      onCancel: () => this.blurActiveInput(),
     });
 
     const initialCargo = this.state.cargo ?? inferCargoFromHs2(this.state.hs2);
@@ -301,13 +306,18 @@ export class RouteExplorer {
 
   // ─── Keyboard ──────────────────────────────────────────────────────────
 
-  private isTextInputFocused(): boolean {
+  private isFormControlFocused(): boolean {
     const el = document.activeElement;
     if (!el) return false;
     const tag = el.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
     if ((el as HTMLElement).isContentEditable) return true;
     return false;
+  }
+
+  private blurActiveInput(): void {
+    const el = document.activeElement as HTMLElement | null;
+    el?.blur();
   }
 
   private handleGlobalKeydown = (e: KeyboardEvent): void => {
@@ -322,7 +332,7 @@ export class RouteExplorer {
         return;
       }
       // If a picker input is focused, let the picker handle Esc first.
-      if (this.isTextInputFocused()) return;
+      if (this.isFormControlFocused()) return;
       e.preventDefault();
       e.stopPropagation();
       this.close();
@@ -343,7 +353,7 @@ export class RouteExplorer {
     }
 
     // Single-letter shortcuts only when no text input is focused
-    if (this.isTextInputFocused()) return;
+    if (this.isFormControlFocused()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch (e.key) {
