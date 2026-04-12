@@ -490,10 +490,19 @@ async function runBacktest() {
     }
 
     if (family.id === 'sovereign-stress') {
+      let skippedCount = 0;
       for (const cc of SOVEREIGN_STRESS_COUNTRIES_2024_2025) {
         if (!aligned.find((a) => a.cc === cc)) {
-          aligned.push({ cc, score: scores.get(cc) ?? 30, label: true });
+          const score = scores.get(cc);
+          if (score == null) {
+            skippedCount++;
+            continue;
+          }
+          aligned.push({ cc, score, label: true });
         }
+      }
+      if (skippedCount > 0) {
+        console.warn(`[${family.id}] Skipped ${skippedCount} sovereign-stress countries absent from cache`);
       }
     }
 
