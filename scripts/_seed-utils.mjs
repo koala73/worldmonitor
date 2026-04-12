@@ -256,10 +256,9 @@ export async function writeExtraKey(key, data, ttl) {
   console.log(`  Extra key ${key}: written`);
 }
 
-export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
-  await writeExtraKey(key, data, ttl);
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds) {
   const { url, token } = getRedisCredentials();
-  const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
+  const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
   const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
@@ -269,6 +268,11 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
     signal: AbortSignal.timeout(5_000),
   });
   if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
+}
+
+export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
+  await writeExtraKey(key, data, ttl);
+  await writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
 }
 
 export async function extendExistingTtl(keys, ttlSeconds = 600) {

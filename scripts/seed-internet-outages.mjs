@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, writeSeedMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -227,9 +227,13 @@ async function fetchAll() {
 
   if (ddos && (ddos.protocol.length > 0 || ddos.vector.length > 0)) {
     await writeExtraKeyWithMeta(DDOS_KEY, ddos, DDOS_TTL, ddos.protocol.length + ddos.vector.length);
+  } else if (ddos) {
+    await writeSeedMeta(DDOS_KEY, 0);
   }
   if (anomalies && anomalies.anomalies.length > 0) {
     await writeExtraKeyWithMeta(TRAFFIC_ANOMALIES_KEY, anomalies, ANOMALIES_TTL, anomalies.totalCount);
+  } else if (anomalies) {
+    await writeSeedMeta(TRAFFIC_ANOMALIES_KEY, 0);
   }
 
   return outagesResult.value;
