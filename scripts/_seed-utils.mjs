@@ -317,8 +317,9 @@ export function resolveProxyForConnect() {
 }
 
 // curl-based fetch; throws on non-2xx. Returns response body as string.
-// NOTE: requires curl binary — only available in Dockerfile.relay (apk add curl).
-// Do NOT call from standalone seed scripts; use fredFetchJson or httpsProxyFetchJson instead.
+// NOTE: requires curl binary — available in Dockerfile.relay (apk add curl) and Railway.
+// Prefer httpsProxyFetchJson (pure Node.js) when possible; use curlFetch when curl-specific
+// features are needed (e.g. --compressed, -L redirect following with proxy).
 export function curlFetch(url, proxyAuth, headers = {}) {
   const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
   if (proxyAuth) {
@@ -376,6 +377,23 @@ export async function fredFetchJson(url, proxyAuth) {
   const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
   if (r.ok) return r.json();
   throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+}
+
+// Fetch JSON from an IMF DataMapper URL, direct-first with proxy fallback.
+// Direct timeout is short (10s) since IMF blocks Railway IPs with 403 quickly.
+export async function imfFetchJson(url, proxyAuth) {
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (directErr) {
+    if (!proxyAuth) throw directErr;
+    console.warn(`  [IMF] Direct fetch failed (${directErr.message}); retrying via proxy`);
+    return httpsProxyFetchJson(url, proxyAuth);
+  }
 }
 
 // ---------------------------------------------------------------------------

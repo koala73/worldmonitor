@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig, resolveProxyForConnect, curlFetch } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, loadSharedConfig, resolveProxyForConnect, imfFetchJson } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -34,21 +34,8 @@ function weoYears() {
 
 async function fetchImfIndicator(indicator) {
   const url = `${IMF_BASE}/${indicator}?periods=${weoYears().join(',')}`;
-  try {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!resp.ok) throw new Error(`IMF ${indicator}: HTTP ${resp.status}`);
-    const data = await resp.json();
-    return data?.values?.[indicator] ?? {};
-  } catch (directErr) {
-    if (!_proxyAuth) throw directErr;
-    console.warn(`  [IMF] Direct fetch failed for ${indicator}: ${directErr.message}; retrying via proxy`);
-    const raw = curlFetch(url, _proxyAuth, { 'User-Agent': CHROME_UA, Accept: 'application/json' });
-    const data = JSON.parse(raw);
-    return data?.values?.[indicator] ?? {};
-  }
+  const data = await imfFetchJson(url, _proxyAuth);
+  return data?.values?.[indicator] ?? {};
 }
 
 // Pick the most recent year with a finite value, searching newest-first.
