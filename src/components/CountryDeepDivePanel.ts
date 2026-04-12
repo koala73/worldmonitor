@@ -42,6 +42,7 @@ import type {
 import { fetchMultiSectorCostShock } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
+import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -308,24 +309,25 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.newsBody) return;
     this.newsBody.replaceChildren();
 
-    const items = [...headlines]
+    const sorted = [...headlines]
       .sort((a, b) => {
         const sa = SEVERITY_ORDER[this.toThreatLevel(a.threat?.level)];
         const sb = SEVERITY_ORDER[this.toThreatLevel(b.threat?.level)];
         if (sb !== sa) return sb - sa;
         return this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate);
-      })
-      .slice(0, 10);
+      });
 
-    this.currentHeadlineCount = items.length;
+    const deduped = dedupeHeadlines(sorted).slice(0, 10);
 
-    if (items.length === 0) {
+    this.currentHeadlineCount = deduped.length;
+
+    if (deduped.length === 0) {
       this.newsBody.append(this.makeEmpty(t('countryBrief.noNews')));
       return;
     }
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]!;
+    for (let i = 0; i < deduped.length; i++) {
+      const { item, extraSources } = deduped[i]!;
       const row = this.el('a', 'cdp-news-item');
       row.id = `cdp-news-${i + 1}`;
       const href = sanitizeUrl(item.link);
@@ -339,12 +341,17 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const top = this.el('div', 'cdp-news-top');
       const tier = item.tier ?? getSourceTier(item.source);
-      top.append(this.badge(`Tier ${tier}`, `cdp-tier-badge tier-${Math.max(1, Math.min(4, tier))}`));
+      const clampedTier = Math.max(1, Math.min(4, tier));
+      const tierBadge = this.badge(`T${clampedTier} SRC`, `cdp-tier-badge tier-${clampedTier}`);
+      tierBadge.setAttribute('title', `Source tier ${clampedTier}: reflects publication credibility (1 = top wire services, 4 = specialty/low-reach). Independent of article severity.`);
+      top.append(tierBadge);
 
       const severity = this.toThreatLevel(item.threat?.level);
       const levelKey = severity === 'info' ? 'low' : severity === 'medium' ? 'moderate' : severity;
       const severityLabel = t(`countryBrief.levels.${levelKey}`);
-      top.append(this.badge(severityLabel.toUpperCase(), `cdp-severity-badge sev-${severity}`));
+      const sevBadge = this.badge(severityLabel.toUpperCase(), `cdp-severity-badge sev-${severity}`);
+      sevBadge.setAttribute('title', 'Article severity: how serious the event is. Independent of source tier.');
+      top.append(sevBadge);
 
       const risk = getSourcePropagandaRisk(item.source);
       if (risk.stateAffiliated) {
@@ -352,7 +359,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
 
       const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));
-      const meta = this.el('div', 'cdp-news-meta', `${item.source} • ${this.formatRelativeTime(item.pubDate)}`);
+      const metaText = extraSources.length > 0
+        ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
+        : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
+      const meta = this.el('div', 'cdp-news-meta', metaText);
+      if (extraSources.length > 0) {
+        meta.setAttribute('title', `Also reported by: ${extraSources.join(', ')}`);
+      }
       row.append(top, title, meta);
 
       if (i >= 5) {
@@ -364,6 +377,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
     }
   }
+
 
   public updateMilitaryActivity(summary: CountryDeepDiveMilitarySummary): void {
     if (!this.militaryBody) return;
