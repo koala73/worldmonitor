@@ -491,12 +491,13 @@ export class RouteExplorer {
   }
 
   private handleDrillSideways(hs2: string): void {
-    this.state = { ...this.state, hs2, tab: 1 };
+    this.state = { ...this.state, hs2 };
     this.writeStateToUrl();
     this.hs2Picker.setValue(hs2);
     if (!this.cargoManual) {
       this.cargoDropdown.setAutoInferred(inferCargoFromHs2(hs2));
     }
+    this.setTab(1);
     this.scheduleFetch();
   }
 

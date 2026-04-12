@@ -74,19 +74,35 @@ function computePrimaryChokepointId(toIso2: string, hs2: string): string {
   return bestId;
 }
 
+function computeRealExposureScore(toIso2: string, hs2: string): { primaryChokepointId: string; primaryExposure: number } {
+  const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, PortClusterEntry>;
+  const cluster = clusters[toIso2];
+  if (!cluster?.nearestRouteIds?.length) return { primaryChokepointId: '', primaryExposure: 0 };
+  const isEnergy = hs2 === '27';
+  const routeSet = new Set(cluster.nearestRouteIds);
+  let bestId = '';
+  let bestScore = 0;
+  for (const cp of CHOKEPOINT_REGISTRY) {
+    const overlap = cp.routeIds.filter((r) => routeSet.has(r)).length;
+    let score = (overlap / Math.max(cp.routeIds.length, 1)) * 100;
+    if (isEnergy && cp.shockModelSupported) score = Math.min(score * 1.5, 100);
+    if (score > bestScore) { bestScore = score; bestId = cp.id; }
+  }
+  return { primaryChokepointId: bestId, primaryExposure: Math.round(bestScore) };
+}
+
 function computeDependencyFlags(
-  _toIso2: string,
-  _hs2: string,
+  toIso2: string,
+  hs2: string,
   primaryExporterShare: number,
-  primaryChokepointId: string,
 ): DependencyFlag[] {
+  const { primaryChokepointId, primaryExposure } = computeRealExposureScore(toIso2, hs2);
   const flags: DependencyFlag[] = [];
   const singleSource = primaryExporterShare > 0.8;
-  const primaryExposure = primaryChokepointId ? 80 : 0;
   const hasViableBypass = primaryChokepointId
     ? (BYPASS_CORRIDORS_BY_CHOKEPOINT[primaryChokepointId] ?? []).length > 0
     : false;
-  const singleCorridor = primaryExposure >= 80 && !hasViableBypass;
+  const singleCorridor = primaryExposure > 80 && !hasViableBypass;
 
   if (singleSource && singleCorridor) flags.push('DEPENDENCY_FLAG_COMPOUND_RISK');
   else if (singleSource) flags.push('DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL');
@@ -171,10 +187,7 @@ async function computeImpact(req: GetRouteImpactRequest): Promise<GetRouteImpact
 
   const resilienceScore = await readResilienceScore(toIso2);
 
-  const primaryCpId = hs2InSeededUniverse
-    ? computePrimaryChokepointId(toIso2, hs2)
-    : (topStrategicProducts[0]?.primaryChokepointId ?? '');
-  const dependencyFlags = computeDependencyFlags(toIso2, hs2, primaryExporterShare, primaryCpId);
+  const dependencyFlags = computeDependencyFlags(toIso2, hs2, primaryExporterShare);
 
   return {
     laneValueUsd,
