@@ -51,6 +51,7 @@ export class CountryImpactTab {
     if (!data) { this.renderPlaceholder(); return; }
     if (data.comtradeSource === 'missing') { this.renderMissing(); return; }
     if (data.comtradeSource === 'empty') { this.renderEmpty(); return; }
+    if (data.comtradeSource === 'lazy') { this.renderLazy(); return; }
     this.renderData(data);
   }
 
@@ -72,6 +73,15 @@ export class CountryImpactTab {
       '<div class="re-tab__empty">' +
       '<h3>No strategic products found</h3>' +
       '<p>The bilateral trade store returned empty data for this destination.</p>' +
+      '</div>';
+  }
+
+  private renderLazy(): void {
+    this.element.innerHTML =
+      '<div class="re-tab__empty">' +
+      '<h3>Loading trade data</h3>' +
+      '<p>WorldMonitor is fetching trade data for this destination for the first time. ' +
+      'Try again in a few seconds.</p>' +
       '</div>';
   }
 

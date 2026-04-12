@@ -138,7 +138,7 @@ async function readResilienceScore(iso2: string): Promise<number> {
   }
 }
 
-async function computeImpact(req: GetRouteImpactRequest): Promise<GetRouteImpactResponse> {
+async function computeImpact(req: GetRouteImpactRequest): Promise<GetRouteImpactResponse | null> {
   const fromIso2 = req.fromIso2.trim().toUpperCase();
   const toIso2 = req.toIso2.trim().toUpperCase();
   const hs2 = req.hs2.trim().replace(/\D/g, '') || '27';
@@ -153,10 +153,11 @@ async function computeImpact(req: GetRouteImpactRequest): Promise<GetRouteImpact
   if (!rawPayload) {
     const lazyResult = await lazyFetchBilateralHs4(toIso2);
     if (!lazyResult || lazyResult.products.length === 0) {
-      const source = lazyResult?.comtradeSource ?? 'lazy';
-      const resp = emptyResponse(req, source);
-      if (lazyResult?.rateLimited) (resp as unknown as Record<string, unknown>).meta = { rateLimited: true };
-      return resp;
+      // Transient failure (concurrency miss, timeout, 429). Return null so
+      // cachedFetchJson uses its short negative-TTL (120s) instead of the
+      // 24h success TTL. This prevents one temporary miss from poisoning
+      // the cache for a full day.
+      return null;
     }
     rawPayload = { iso2: toIso2, products: lazyResult.products, fetchedAt: new Date().toISOString() };
   }
@@ -234,5 +235,5 @@ export async function getRouteImpact(
     CACHE_TTL_SECONDS,
     async () => computeImpact({ fromIso2, toIso2, hs2 }),
   );
-  return result ?? emptyResponse(req, 'missing');
+  return result ?? emptyResponse(req, 'lazy');
 }
