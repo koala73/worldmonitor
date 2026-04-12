@@ -58,6 +58,39 @@ describe('computeEntries formula', () => {
   });
 });
 
+describe('source label derives year from SDMX response', () => {
+  it('uses max year present when 2025 is returned', () => {
+    const debtPct = { GBR: { '2024': '100', '2025': '102' } };
+    const gdp = { GBR: { '2024': '3100' } };
+
+    const entries = computeEntries(debtPct, gdp, {}, null);
+    assert.equal(entries[0].source, 'IMF WEO 2025');
+  });
+
+  it('falls back to 2024 when only 2024 is present', () => {
+    const debtPct = { FRA: { '2024': '110' } };
+    const gdp = { FRA: { '2024': '2900' } };
+
+    const entries = computeEntries(debtPct, gdp, {}, null);
+    assert.equal(entries[0].source, 'IMF WEO 2024');
+  });
+
+  it('combines WEO year with Treasury label for USA override', () => {
+    const debtPct = { USA: { '2024': '120', '2025': '124' } };
+    const gdp = { USA: { '2024': '28000' } };
+    const entries = computeEntries(debtPct, gdp, {}, { debtUsd: 36e12, date: '2025-01-01' });
+    assert.equal(entries[0].source, 'IMF WEO 2025 + US Treasury FiscalData');
+  });
+
+  it('tracks future WEO vintages (2026) when SDMX returns them', () => {
+    const debtPct = { DEU: { '2024': '66', '2026': '68' } };
+    const gdp = { DEU: { '2024': '4500' } };
+    const entries = computeEntries(debtPct, gdp, {}, null);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].source, 'IMF WEO 2026');
+  });
+});
+
 describe('aggregate filtering', () => {
   it('excludes regional aggregate codes', () => {
     const debtPct = {

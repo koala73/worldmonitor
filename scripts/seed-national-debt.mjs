@@ -38,9 +38,25 @@ async function fetchTreasury() {
   };
 }
 
+function deriveWeoYear(debtPctByCountry) {
+  let maxYear = 0;
+  for (const byYear of Object.values(debtPctByCountry || {})) {
+    for (const [yearStr, value] of Object.entries(byYear || {})) {
+      const y = Number(yearStr);
+      const v = Number(value);
+      if (Number.isFinite(y) && y > maxYear && Number.isFinite(v) && v > 0) {
+        maxYear = y;
+      }
+    }
+  }
+  return maxYear > 0 ? maxYear : null;
+}
+
 export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCountry, treasuryOverride) {
   const BASELINE_TS = Date.UTC(2024, 0, 1); // 2024-01-01T00:00:00Z
   const SECONDS_PER_YEAR = 365.25 * 86400;
+  const weoYear = deriveWeoYear(debtPctByCountry);
+  const weoLabel = weoYear ? `IMF WEO ${weoYear}` : 'IMF WEO';
 
   const entries = [];
 
@@ -95,7 +111,7 @@ export function computeEntries(debtPctByCountry, gdpByCountry, deficitPctByCount
       perSecondRate,
       perDayRate,
       baselineTs: BASELINE_TS,
-      source: iso3 === 'USA' && treasuryOverride ? 'IMF WEO + US Treasury FiscalData' : 'IMF WEO 2024',
+      source: iso3 === 'USA' && treasuryOverride ? `${weoLabel} + US Treasury FiscalData` : weoLabel,
     });
   }
 
