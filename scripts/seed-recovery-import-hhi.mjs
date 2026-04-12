@@ -11,9 +11,14 @@ const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
 const CANONICAL_KEY = 'resilience:recovery:import-hhi:v1';
 const CACHE_TTL = 90 * 24 * 3600;
 
-const COMTRADE_API_KEY = process.env.COMTRADE_API_KEY || '';
-if (!COMTRADE_API_KEY) {
-  console.error('[seed] import-hhi: COMTRADE_API_KEY is required. The public preview API does not support partnerCode=0 (all partners) and returns empty results. Set the env var and retry.');
+// Matches the key-rotation pattern in seed-comtrade-bilateral-hs4.mjs:
+// COMTRADE_API_KEYS is a comma-separated list of subscription keys.
+const COMTRADE_KEYS = (process.env.COMTRADE_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+let keyIndex = 0;
+function nextKey() { return COMTRADE_KEYS[keyIndex++ % COMTRADE_KEYS.length]; }
+
+if (COMTRADE_KEYS.length === 0) {
+  console.error('[seed] import-hhi: COMTRADE_API_KEYS is required. Set the env var (comma-separated keys) and retry.');
 }
 const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
 const INTER_REQUEST_DELAY_MS = 600;
@@ -36,14 +41,14 @@ function parseRecords(data) {
 }
 
 async function fetchImportsForReporter(reporterCode) {
-  if (!COMTRADE_API_KEY) return [];
+  if (COMTRADE_KEYS.length === 0) return [];
   const url = new URL(COMTRADE_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('flowCode', 'M');
   url.searchParams.set('cmdCode', 'TOTAL');
   url.searchParams.set('partnerCode', '0');
   url.searchParams.set('period', String(new Date().getFullYear() - 1));
-  url.searchParams.set('subscription-key', COMTRADE_API_KEY);
+  url.searchParams.set('subscription-key', nextKey());
 
   const resp = await fetch(url.toString(), {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -93,7 +98,7 @@ async function fetchImportHhi() {
   let fetched = 0;
   let skipped = 0;
 
-  console.log(`[seed] import-hhi: fetching HS2-level import data for ${ALL_REPORTERS.length} reporters (mode: ${COMTRADE_API_KEY ? 'authenticated' : 'public'})`);
+  console.log(`[seed] import-hhi: fetching HS2-level import data for ${ALL_REPORTERS.length} reporters (${COMTRADE_KEYS.length} key(s), ${INTER_REQUEST_DELAY_MS}ms delay)`);
 
   for (let i = 0; i < ALL_REPORTERS.length; i++) {
     const iso2 = ALL_REPORTERS[i];
