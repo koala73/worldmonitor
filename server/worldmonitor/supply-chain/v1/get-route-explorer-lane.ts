@@ -83,8 +83,6 @@ function emptyResponse(
     bypassOptions: [],
     warRiskTier: 'WAR_RISK_TIER_NORMAL',
     disruptionScore: 0,
-    estTransitDaysRange: rangeOf(TRANSIT_DAYS_FALLBACK),
-    estFreightUsdPerTeuRange: rangeOf(FREIGHT_USD_FALLBACK),
     noModeledLane: true,
     fetchedAt: new Date().toISOString(),
   };
@@ -152,18 +150,17 @@ function deriveCorridorStatus(corridor: BypassCorridor): CorridorStatus {
 function buildBypassOption(
   corridor: BypassCorridor,
   primaryChokepointId: string,
+  statusMap: Map<string, ChokepointStatus>,
 ): BypassCorridorOption {
   const geom = getCorridorGeometryOrFallback(corridor.id, primaryChokepointId);
+  const cpStatus = statusMap.get(primaryChokepointId);
   return {
     id: corridor.id,
     name: corridor.name,
     type: corridor.type,
     addedTransitDays: corridor.addedTransitDays,
     addedCostMultiplier: corridor.addedCostMultiplier,
-    // The source type uses WarRiskTier from the proto enum set; for the
-    // wrapper we stringify into the same enum space the client already
-    // handles.
-    warRiskTier: 'WAR_RISK_TIER_NORMAL',
+    warRiskTier: cpStatus?.warRiskTier ?? 'WAR_RISK_TIER_NORMAL',
     status: deriveCorridorStatus(corridor),
     fromPort: geoPoint(geom.fromPort[0], geom.fromPort[1]),
     toPort: geoPoint(geom.toPort[0], geom.toPort[1]),
@@ -244,7 +241,7 @@ export async function computeLane(
             c.suitableCargoTypes.includes(cargoType as CargoType),
         )
         .slice(0, 5)
-        .map((c) => buildBypassOption(c, primaryChokepoint.chokepointId))
+        .map((c) => buildBypassOption(c, primaryChokepoint.chokepointId, statusMap))
     : [];
 
   const transitTuple = TRANSIT_DAYS_BY_ROUTE_ID[primaryRouteId] ?? TRANSIT_DAYS_FALLBACK;
@@ -255,14 +252,14 @@ export async function computeLane(
     toIso2,
     hs2,
     cargoType,
-    primaryRouteId,
-    primaryRouteGeometry: buildRouteGeometry(primaryRouteId),
-    chokepointExposures,
-    bypassOptions,
-    warRiskTier,
-    disruptionScore,
-    estTransitDaysRange: rangeOf(transitTuple),
-    estFreightUsdPerTeuRange: rangeOf(freightTuple),
+    primaryRouteId: noModeledLane ? '' : primaryRouteId,
+    primaryRouteGeometry: noModeledLane ? [] : buildRouteGeometry(primaryRouteId),
+    chokepointExposures: noModeledLane ? [] : chokepointExposures,
+    bypassOptions: noModeledLane ? [] : bypassOptions,
+    warRiskTier: noModeledLane ? 'WAR_RISK_TIER_NORMAL' : warRiskTier,
+    disruptionScore: noModeledLane ? 0 : disruptionScore,
+    estTransitDaysRange: noModeledLane ? undefined : rangeOf(transitTuple),
+    estFreightUsdPerTeuRange: noModeledLane ? undefined : rangeOf(freightTuple),
     noModeledLane,
     fetchedAt: new Date().toISOString(),
   };

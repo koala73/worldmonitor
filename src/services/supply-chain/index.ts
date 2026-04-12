@@ -236,8 +236,6 @@ const emptyRouteExplorerLane: GetRouteExplorerLaneResponse = {
   bypassOptions: [],
   warRiskTier: 'WAR_RISK_TIER_NORMAL',
   disruptionScore: 0,
-  estTransitDaysRange: { min: 14, max: 28 },
-  estFreightUsdPerTeuRange: { min: 1800, max: 3200 },
   noModeledLane: true,
   fetchedAt: '',
 };

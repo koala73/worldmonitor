@@ -139,13 +139,21 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
         assert.equal(typeof res.disruptionScore, 'number');
         assert.ok(res.disruptionScore >= 0 && res.disruptionScore <= 100);
 
-        // transit + freight ranges are finite [min, max] tuples with min <= max
-        assert.ok(res.estTransitDaysRange);
-        assert.ok(res.estFreightUsdPerTeuRange);
-        assert.ok(Number.isFinite(res.estTransitDaysRange.min));
-        assert.ok(Number.isFinite(res.estTransitDaysRange.max));
-        assert.ok(res.estTransitDaysRange.min <= res.estTransitDaysRange.max);
-        assert.ok(res.estFreightUsdPerTeuRange.min <= res.estFreightUsdPerTeuRange.max);
+        // transit + freight ranges: present and well-formed when lane is modeled;
+        // omitted when noModeledLane is true (no synthetic estimates)
+        if (!res.noModeledLane) {
+          assert.ok(res.estTransitDaysRange, 'modeled lane must include transit range');
+          assert.ok(res.estFreightUsdPerTeuRange, 'modeled lane must include freight range');
+          assert.ok(Number.isFinite(res.estTransitDaysRange.min));
+          assert.ok(Number.isFinite(res.estTransitDaysRange.max));
+          assert.ok(res.estTransitDaysRange.min <= res.estTransitDaysRange.max);
+          assert.ok(res.estFreightUsdPerTeuRange.min <= res.estFreightUsdPerTeuRange.max);
+        } else {
+          assert.equal(res.primaryRouteId, '', 'noModeledLane must have empty primaryRouteId');
+          assert.equal(res.primaryRouteGeometry.length, 0, 'noModeledLane must have empty geometry');
+          assert.equal(res.chokepointExposures.length, 0, 'noModeledLane must have empty exposures');
+          assert.equal(res.bypassOptions.length, 0, 'noModeledLane must have empty bypasses');
+        }
 
         // fetchedAt is an ISO string
         assert.equal(typeof res.fetchedAt, 'string');
