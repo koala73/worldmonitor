@@ -491,6 +491,11 @@ async function generateAISummary(stories, rule) {
   } catch { /* miss */ }
 
   const dateStr = new Date().toISOString().split('T')[0];
+  const tz = rule.digestTimezone ?? 'UTC';
+  const localHour = toLocalHour(Date.now(), tz);
+  const greeting = localHour >= 5 && localHour < 12 ? 'Good morning'
+    : localHour >= 12 && localHour < 17 ? 'Good afternoon'
+    : 'Good evening';
   const storyList = stories.slice(0, 20).map((s, i) => {
     const phase = s.phase ? ` [${s.phase}]` : '';
     const src = s.sources?.length > 0 ? ` (${s.sources.slice(0, 2).join(', ')})` : '';
@@ -499,11 +504,13 @@ async function generateAISummary(stories, rule) {
 
   const systemPrompt = `You are WorldMonitor's intelligence analyst. Today is ${dateStr} UTC.
 Write a personalized daily brief for a user focused on ${rule.variant ?? 'full'} intelligence.
+The user's local time greeting is "${greeting}" — use this exact greeting to open the brief.
 
 User profile:
 ${profile}
 
 Rules:
+- Open with "${greeting}." followed by the brief
 - Lead with the single most impactful development for this user
 - Connect events to watched assets/regions where relevant
 - 3-5 bullet points, 1-2 sentences each
