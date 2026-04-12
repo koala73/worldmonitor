@@ -96,45 +96,56 @@ export class RegionalIntelligenceBoard extends Panel {
     const myRegion = this.currentRegion;
     this.renderLoading();
 
+    // Phase 1: render the snapshot immediately — never blocked by Phase 3
+    // enrichments. History + brief fire in parallel but don't gate the
+    // board's core render path. PR #2995 review: the old Promise.allSettled
+    // approach blocked the entire panel on slow enrichment RPCs.
+    let snapshot: RegionalSnapshot | undefined;
     try {
-      // Fire all 3 RPCs in parallel — snapshot is required, history + brief
-      // are best-effort enhancements. If either fails, the board still renders
-      // with just the snapshot data.
-      const [snapshotResp, historyResp, briefResp] = await Promise.allSettled([
-        client.getRegionalSnapshot({ regionId: myRegion }),
-        client.getRegimeHistory({ regionId: myRegion, limit: 20 }),
-        client.getRegionalBrief({ regionId: myRegion }),
-      ]);
+      const resp = await client.getRegionalSnapshot({ regionId: myRegion });
       if (!isLatestSequence(mySequence, this.latestSequence)) return;
-
-      if (snapshotResp.status === 'rejected') {
-        const err = snapshotResp.reason;
-        this.renderError(err instanceof Error ? err.message : String(err));
-        return;
-      }
-      const snapshot = snapshotResp.value.snapshot;
-      if (!snapshot?.regionId) {
-        this.renderEmpty();
-        return;
-      }
-
-      // Distinguish RPC success (render block, even if empty) from RPC failure
-      // (omit block entirely). null = RPC failed, array/object = RPC succeeded.
-      const transitions: RegimeTransition[] | null = historyResp.status === 'fulfilled'
-        ? (historyResp.value.transitions ?? [])
-        : null;
-      // Distinguish: RPC failed (null) vs RPC succeeded with no brief (undefined).
-      // null → omit block. undefined → show "no brief yet" empty state.
-      const brief: RegionalBrief | undefined | null = briefResp.status === 'fulfilled'
-        ? briefResp.value.brief  // undefined when server returns {} (no brief exists yet)
-        : null;                  // null when RPC itself failed
-
-      this.renderBoard(snapshot, transitions, brief);
+      snapshot = resp.snapshot;
     } catch (err) {
       if (!isLatestSequence(mySequence, this.latestSequence)) return;
-      console.error('[RegionalIntelligenceBoard] load failed', err);
       this.renderError(err instanceof Error ? err.message : String(err));
+      return;
     }
+
+    if (!snapshot?.regionId) {
+      this.renderEmpty();
+      return;
+    }
+
+    // Render the snapshot blocks immediately — the user sees content now.
+    this.renderBoard(snapshot);
+
+    // Phase 2: fire history + brief RPCs in background. When they resolve,
+    // re-render with the enrichments appended — but only if this sequence
+    // is still current (user hasn't switched regions in the meantime).
+    const historyPromise = client.getRegimeHistory({ regionId: myRegion, limit: 20 }).catch(() => null);
+    const briefPromise = client.getRegionalBrief({ regionId: myRegion }).catch(() => null);
+
+    Promise.allSettled([historyPromise, briefPromise]).then(([hResult, bResult]) => {
+      if (!isLatestSequence(mySequence, this.latestSequence)) return;
+
+      // Distinguish: RPC failed or upstreamUnavailable (null → omit block)
+      // vs RPC succeeded with real data (render block, even if empty).
+      // The server returns upstreamUnavailable:true in the body on Redis
+      // failure, which still resolves as a fulfilled promise. Check for it.
+      const hValue = hResult.status === 'fulfilled' ? hResult.value : null;
+      const transitions: RegimeTransition[] | null =
+        hValue && !(hValue as unknown as { upstreamUnavailable?: boolean }).upstreamUnavailable
+          ? (hValue.transitions ?? [])
+          : null;
+
+      const bValue = bResult.status === 'fulfilled' ? bResult.value : null;
+      const brief: RegionalBrief | undefined | null =
+        bValue && !(bValue as unknown as { upstreamUnavailable?: boolean }).upstreamUnavailable
+          ? bValue.brief   // undefined = no brief yet, RegionalBrief = render
+          : null;          // null = RPC or upstream failed → omit block
+
+      this.renderBoard(snapshot!, transitions, brief);
+    });
   }
 
   private renderLoading(): void {
