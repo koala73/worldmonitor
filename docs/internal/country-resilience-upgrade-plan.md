@@ -704,8 +704,8 @@ sensitivity suite, new indicators live.
       country by more than 5 rank positions. (T2.6/T2.8 #2991)
 - [x] α-sensitivity curve published; chosen α justified by held-out
       backtest. (T2.6/T2.8 #2991)
-- [x] Licensing & Legal Review workstream deliverables 1-4: parallel
-      workstream, not yet complete; not blocking the engineering gate.
+- [ ] Licensing & Legal Review workstream deliverables 1-4 (parallel
+      workstream, not yet complete; not blocking the engineering gate).
 - [x] World coverage maintained: ≥190 countries in `resilience:ranking:v9`
       (non-greyed). **CRITICAL**, memory: `feedback_world_coverage_never_subset`.
 - [x] Scorecard re-rating: Validation ≥8.0, Data ≥9.0, Architecture ≥9.0.
