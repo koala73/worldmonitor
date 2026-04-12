@@ -180,15 +180,23 @@ async function main() {
   }
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  // Write seed-meta even when generated===0 so health tooling can confirm
-  // the seeder ran. Carrying regionsSkipped lets operators distinguish
-  // "ran but nothing to generate" from "never ran". Greptile P2 on #2989.
+  // Total non-global regions expected to generate. If generated is well
+  // below this, writing seed-meta with a positive count would hide broad
+  // coverage loss from /api/health (which treats any positive recordCount
+  // as healthy). PR #2989 review P2.
+  const expectedRegions = REGIONS.filter((r) => r.id !== 'global').length;
+  const coverageOk = generated >= Math.ceil(expectedRegions / 2); // at least half
+
+  // Always write seed-meta when failed===0 so health confirms the seeder
+  // ran. But set recordCount to 0 when coverage is below threshold — that
+  // makes /api/health report EMPTY_DATA instead of hiding partial failure.
   if (failed === 0) {
+    const recordCount = coverageOk ? generated : 0;
     await writeExtraKeyWithMeta(
       `intelligence:regional-briefs:summary:v1`,
-      { generatedAt: Date.now(), regionsGenerated: generated, regionsSkipped: skipped },
+      { generatedAt: Date.now(), regionsGenerated: generated, regionsSkipped: skipped, coverageOk },
       BRIEF_TTL,
-      generated,
+      recordCount,
       `seed-meta:${SEED_META_KEY}`,
       BRIEF_TTL,
     );

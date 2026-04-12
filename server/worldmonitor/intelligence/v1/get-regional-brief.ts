@@ -5,7 +5,7 @@ import type {
   GetRegionalBriefResponse,
   RegionalBrief,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { getCachedJson } from '../../../_shared/redis';
+import { getRawJson } from '../../../_shared/redis';
 
 const KEY_PREFIX = 'intelligence:regional-briefs:v1:weekly:';
 
@@ -47,9 +47,26 @@ export const getRegionalBrief: IntelligenceServiceHandler['getRegionalBrief'] = 
   }
 
   const key = `${KEY_PREFIX}${regionId}`;
-  const raw = await getCachedJson(key, true) as PersistedBrief | null;
-  if (!raw || typeof raw !== 'object') {
+
+  // Use getRawJson (throws on Redis error) instead of getCachedJson (returns
+  // null for both missing key AND Redis failure). This lets us distinguish:
+  //   - null return = key genuinely missing (no brief yet) → clean empty 200
+  //   - thrown error = Redis/network failure → upstreamUnavailable so gateway
+  //     skips caching the failure response
+  // PR #2989 review: getCachedJson collapsed both cases into null, which
+  // falsely advertised an outage before the first weekly seed ran.
+  let raw: PersistedBrief | null;
+  try {
+    raw = await getRawJson(key) as PersistedBrief | null;
+  } catch {
     return { upstreamUnavailable: true } as GetRegionalBriefResponse & { upstreamUnavailable: boolean };
+  }
+
+  if (!raw || typeof raw !== 'object') {
+    // Key genuinely missing — no brief written yet for this region.
+    // Return a clean empty response (no upstreamUnavailable) so the
+    // gateway can cache this as a valid "no brief" result.
+    return {};
   }
 
   const brief = adaptBrief(raw);
