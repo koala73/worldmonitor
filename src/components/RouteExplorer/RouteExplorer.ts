@@ -76,6 +76,7 @@ export class RouteExplorer {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private laneData: GetRouteExplorerLaneResponse | null = null;
   public isLoading = false;
+  private displayMode: 'idle' | 'loading' | 'data' | 'error' | 'gate' = 'idle';
 
   constructor() {
     this.state = { ...DEFAULT_EXPLORER_STATE };
@@ -93,6 +94,7 @@ export class RouteExplorer {
     }
     this.state = this.readInitialState();
     this.laneData = null;
+    this.displayMode = 'idle';
     this.previousFocus = (document.activeElement as HTMLElement) ?? null;
     this.root = this.buildRoot();
     document.body.append(this.root);
@@ -168,12 +170,15 @@ export class RouteExplorer {
     if (!hasPremiumAccess(getAuthState())) {
       this.generationId++;
       this.resetLaneState();
+      this.displayMode = 'gate';
       this.renderFreeGate();
       return;
     }
 
     const gen = ++this.generationId;
+    this.resetLaneState();
     this.isLoading = true;
+    this.displayMode = 'loading';
     this.showLoading();
 
     try {
@@ -184,20 +189,16 @@ export class RouteExplorer {
         cargoType: this.getEffectiveCargo(),
       });
       if (gen !== this.generationId) return;
-      if (data.noModeledLane) {
-        this.resetLaneState();
-        this.currentTab.update(data);
-        this.showActiveTab();
-        return;
-      }
-      this.resetLaneState();
       this.laneData = data;
+      this.displayMode = 'data';
       this.applyData(data);
-      this.applyMapState(data);
+      if (!data.noModeledLane) {
+        this.applyMapState(data);
+      }
       void this.fetchResilience(data.toIso2);
     } catch {
       if (gen !== this.generationId) return;
-      this.resetLaneState();
+      this.displayMode = 'error';
       this.showError();
     } finally {
       if (gen === this.generationId) this.isLoading = false;
@@ -290,6 +291,9 @@ export class RouteExplorer {
 
   private showActiveTab(): void {
     if (!this.contentEl) return;
+    if (this.displayMode === 'loading' || this.displayMode === 'error' || this.displayMode === 'gate') {
+      return;
+    }
     this.contentEl.innerHTML = '';
     switch (this.state.tab) {
       case 1: this.contentEl.append(this.currentTab.element); break;
