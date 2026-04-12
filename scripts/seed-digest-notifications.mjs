@@ -557,13 +557,12 @@ function isPrivateIP(ip) {
 const TELEGRAM_MAX_LEN = 4096;
 
 function sanitizeTelegramHtml(html) {
-  let out = html;
+  let out = html.replace(/<[^>]*$/, '');
   for (const tag of ['b', 'i', 'u', 's', 'code', 'pre']) {
     const opens = (out.match(new RegExp(`<${tag}>`, 'g')) || []).length;
     const closes = (out.match(new RegExp(`</${tag}>`, 'g')) || []).length;
     for (let i = closes; i < opens; i++) out += `</${tag}>`;
   }
-  out = out.replace(/<[^>]*$/, '');
   return out;
 }
 
