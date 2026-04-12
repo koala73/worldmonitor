@@ -66,7 +66,7 @@ describe('sensitivity v2: computePenalizedPillarScore', () => {
   });
 
   it('applies penalty based on min pillar score', () => {
-    const scores = [80, 60, 70];
+    const scores = [{ id: 'a', score: 80 }, { id: 'b', score: 60 }, { id: 'c', score: 70 }];
     const weights = { a: 0.4, b: 0.35, c: 0.25 };
     const alpha = 0.5;
     const weighted = 80 * 0.4 + 60 * 0.35 + 70 * 0.25;
@@ -77,14 +77,14 @@ describe('sensitivity v2: computePenalizedPillarScore', () => {
   });
 
   it('no penalty when all pillar scores are 100', () => {
-    const scores = [100, 100, 100];
+    const scores = [{ id: 'a', score: 100 }, { id: 'b', score: 100 }, { id: 'c', score: 100 }];
     const weights = { a: 0.4, b: 0.35, c: 0.25 };
     const result = computePenalizedPillarScore(scores, weights, 0.5);
     assert.strictEqual(result, 100);
   });
 
   it('alpha=0 means no penalty', () => {
-    const scores = [80, 20, 50];
+    const scores = [{ id: 'a', score: 80 }, { id: 'b', score: 20 }, { id: 'c', score: 50 }];
     const weights = { a: 0.4, b: 0.35, c: 0.25 };
     const result0 = computePenalizedPillarScore(scores, weights, 0);
     const weighted = 80 * 0.4 + 20 * 0.35 + 50 * 0.25;
@@ -242,9 +242,12 @@ describe('sensitivity v2: computePillarScoresFromDomains', () => {
     );
     assert.strictEqual(pillarScores.length, 3);
     for (const ps of pillarScores) {
-      assert.ok(typeof ps === 'number');
-      assert.ok(ps >= 0 && ps <= 100, `pillar score ${ps} out of range`);
+      assert.ok(typeof ps.id === 'string', `pillar entry should have string id`);
+      assert.ok(typeof ps.score === 'number', `pillar entry should have numeric score`);
+      assert.ok(ps.score >= 0 && ps.score <= 100, `pillar score ${ps.score} out of range`);
     }
+    const ids = pillarScores.map((p) => p.id);
+    assert.deepStrictEqual(ids, ['structural-readiness', 'live-shock-exposure', 'recovery-capacity']);
   });
 });
 

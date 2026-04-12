@@ -94,11 +94,10 @@ function computeOverallFromDomains(dimensions, dimensionDomains, domainWeights) 
 
 export function computePenalizedPillarScore(pillarScores, pillarWeights, alpha) {
   if (pillarScores.length === 0) return 0;
-  const weighted = pillarScores.reduce((s, p, i) => {
-    const ids = Object.keys(pillarWeights);
-    return s + p * pillarWeights[ids[i]];
+  const weighted = pillarScores.reduce((s, entry) => {
+    return s + entry.score * (pillarWeights[entry.id] || 0);
   }, 0);
-  const minScore = Math.min(...pillarScores);
+  const minScore = Math.min(...pillarScores.map((e) => e.score));
   const penalty = 1 - alpha * (1 - minScore / 100);
   return weighted * penalty;
 }
@@ -118,21 +117,21 @@ export function computePillarScoresFromDomains(dimensions, dimensionDomains, pil
   }
 
   const pillarScores = [];
-  for (const [, domainIds] of Object.entries(pillarDomains)) {
+  for (const [pillarId, domainIds] of Object.entries(pillarDomains)) {
     const scores = domainIds.map((d) => domainScores[d] || 0);
     const weights = domainIds.map((d) => domainWeights[d] || 0);
     const totalW = weights.reduce((s, w) => s + w, 0);
     const pillarScore = totalW > 0
       ? scores.reduce((s, sc, i) => s + sc * weights[i], 0) / totalW
       : 0;
-    pillarScores.push(pillarScore);
+    pillarScores.push({ id: pillarId, score: pillarScore });
   }
   return pillarScores;
 }
 
 function rankCountries(scores) {
   const sorted = Object.entries(scores)
-    .sort(([, a], [, b]) => b - a || 0);
+    .sort(([a, scoreA], [b, scoreB]) => scoreB - scoreA || a.localeCompare(b));
   const ranks = {};
   for (let i = 0; i < sorted.length; i++) {
     ranks[sorted[i][0]] = i + 1;
