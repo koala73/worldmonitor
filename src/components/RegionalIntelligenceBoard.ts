@@ -123,9 +123,11 @@ export class RegionalIntelligenceBoard extends Panel {
       const transitions: RegimeTransition[] | null = historyResp.status === 'fulfilled'
         ? (historyResp.value.transitions ?? [])
         : null;
+      // Distinguish: RPC failed (null) vs RPC succeeded with no brief (undefined).
+      // null → omit block. undefined → show "no brief yet" empty state.
       const brief: RegionalBrief | undefined | null = briefResp.status === 'fulfilled'
-        ? (briefResp.value.brief ?? null)
-        : null;
+        ? briefResp.value.brief  // undefined when server returns {} (no brief exists yet)
+        : null;                  // null when RPC itself failed
 
       this.renderBoard(snapshot, transitions, brief);
     } catch (err) {
@@ -161,7 +163,9 @@ export class RegionalIntelligenceBoard extends Panel {
     if (transitions !== null && transitions !== undefined) {
       html += buildRegimeHistoryBlock(transitions);
     }
-    if (brief !== null && brief !== undefined) {
+    // brief: null = RPC failed (omit), undefined = no brief yet (show empty state),
+    // RegionalBrief = render content. Only null omits the block.
+    if (brief !== null) {
       html += buildWeeklyBriefBlock(brief);
     }
     this.body.innerHTML = html;
