@@ -1046,8 +1046,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         const breakdown = this.el('div', '');
         breakdown.style.cssText = 'font-size:11px;color:#aaa;margin-top:4px';
         const parts: string[] = [];
-        if (data.emberCoalShare > 0) parts.push(`Coal ${Math.round(data.emberCoalShare)}%`);
-        if (data.emberGasShare > 0) parts.push(`Gas ${Math.round(data.emberGasShare)}%`);
+        const fossilR = Math.round(data.emberFossilShare);
+        const coalR = Math.round(data.emberCoalShare);
+        const gasR = Math.round(data.emberGasShare);
+        // Fossil may include oil-burn and other minor categories not surfaced as separate shares;
+        // allocate the residual to "Other" so the breakdown sums to the Fossil legend value (see #2971).
+        const otherR = fossilR - coalR - gasR;
+        if (coalR > 0) parts.push(`Coal ${coalR}%`);
+        if (gasR > 0) parts.push(`Gas ${gasR}%`);
+        if (otherR > 0) parts.push(`Other ${otherR}%`);
         breakdown.textContent = `Fossil breakdown: ${parts.join(', ')}`;
         section.append(breakdown);
       }
@@ -1226,12 +1233,20 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
 
     if (result.products.length > 0) {
+      // Live flow ratio is a chokepoint-level figure, not a per-product one. Surface it once
+      // as a note instead of repeating the same value across every row (see #2971).
+      if (result.portwatchCoverage && result.liveFlowRatio != null) {
+        const note = this.el('div', '');
+        note.style.cssText = 'font-size:10px;color:#aaa;margin-bottom:4px';
+        note.textContent = `Current transit flow vs baseline: ${Math.round(result.liveFlowRatio * 100)}%`;
+        container.append(note);
+      }
+
       const table = this.el('table', '');
       table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse;margin-bottom:6px';
       const thead = this.el('thead', '');
       const hr = this.el('tr', '');
       const headers = ['Product', 'Demand', 'Loss', 'Deficit'];
-      if (result.portwatchCoverage && result.liveFlowRatio != null) headers.push('Flow');
       for (const h of headers) {
         const th = this.el('th', '');
         th.textContent = h;
@@ -1251,9 +1266,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           `${p.outputLossKbd} kbd`,
           `${p.deficitPct.toFixed(1)}%`,
         ];
-        if (result.portwatchCoverage && result.liveFlowRatio != null) {
-          cells.push(`${Math.round(result.liveFlowRatio * 100)}%`);
-        }
         cells.forEach((val, i) => {
           const td = this.el('td', '');
           td.textContent = val;

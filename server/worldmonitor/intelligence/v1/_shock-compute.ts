@@ -42,6 +42,13 @@ export function computeGulfShare(flows: ComtradeFlowLike[]): { share: number; ha
   return { share: gulfImports / totalImports, hasData: true };
 }
 
+/**
+ * Upper bound on shock scenario output days. Beyond this, the model is no longer meaningful;
+ * a reader should understand the country as "indefinitely bridgeable" at the given deficit rate.
+ * See #2971: raw output like 19,200 days (52 years) destroyed trust in the panel.
+ */
+export const EFFECTIVE_COVER_DAYS_CAP = 365;
+
 export function computeEffectiveCoverDays(
   daysOfCover: number,
   netExporter: boolean,
@@ -50,9 +57,12 @@ export function computeEffectiveCoverDays(
 ): number {
   if (netExporter) return -1;
   if (daysOfCover > 0 && crudeLossKbd > 0 && crudeImportsKbd > 0) {
-    return Math.round(daysOfCover / (crudeLossKbd / crudeImportsKbd));
+    const raw = Math.round(daysOfCover / (crudeLossKbd / crudeImportsKbd));
+    // Cap runaway outputs (small-deficit denominator blow-up). Consumers check against the cap
+    // to render "indefinitely bridgeable" prose.
+    return Math.min(raw, EFFECTIVE_COVER_DAYS_CAP);
   }
-  return daysOfCover;
+  return Math.min(daysOfCover, EFFECTIVE_COVER_DAYS_CAP);
 }
 
 export function deriveCoverageLevel(
@@ -100,6 +110,9 @@ export function buildAssessment(
   }
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
   const ieaCoverText = ieaStocksCoverage === false ? 'unknown' : `${daysOfCover} days`;
+  if (effectiveCoverDays >= EFFECTIVE_COVER_DAYS_CAP) {
+    return `With ${daysOfCover} days IEA cover, ${code} is indefinitely bridgeable against a ${disruptionPct}% ${chokepointId} disruption at this deficit rate${degradedNote}.`;
+  }
   if (effectiveCoverDays > 90) {
     return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
   }

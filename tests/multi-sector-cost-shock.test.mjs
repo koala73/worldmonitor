@@ -210,6 +210,25 @@ describe('computeMultiSectorShocks', () => {
     const last = results[results.length - 1];
     assert.equal(last.totalCostShockPerDay, 0);
   });
+
+  // #2971 acceptance criterion: 30-day cost shock stays within one order of magnitude of
+  // the rough "annual_imports * 0.05 * (30/365)" heuristic. This catches structural math
+  // errors (wrong divisor, missing closure-duration scaling, percent vs fraction slips).
+  it('30-day cost shock is within an order of magnitude of a simple 5%/year heuristic', () => {
+    const imports = {
+      '27': 20_000_000_000, // $20B annual energy imports
+      '87': 10_000_000_000, // $10B vehicles
+      '84': 5_000_000_000, // $5B machinery
+    };
+    const results = computeMultiSectorShocks(imports, 'bosphorus', 'WAR_RISK_TIER_NORMAL', 30);
+    const total = results.reduce((sum, s) => sum + s.totalCostShock, 0);
+    const annualImports = Object.values(imports).reduce((a, b) => a + b, 0);
+    const heuristic = annualImports * 0.05 * (30 / 365);
+    // Within 10x in either direction. Current expected is ~0.6% of imports x 30 days,
+    // heuristic is ~0.4% x 30 days — well inside the order-of-magnitude band.
+    assert.ok(total > heuristic / 10, `cost ${total} too low vs heuristic ${heuristic}`);
+    assert.ok(total < heuristic * 10, `cost ${total} too high vs heuristic ${heuristic}`);
+  });
 });
 
 // ========================================================================
