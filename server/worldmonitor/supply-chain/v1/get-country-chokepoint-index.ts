@@ -39,8 +39,11 @@ async function loadBilateralProducts(iso2: string): Promise<BilateralResult> {
   const lazyResult = await lazyFetchBilateralHs4(iso2);
   if (lazyResult && lazyResult.products.length > 0) return { products: lazyResult.products, transient: false };
 
-  // null from lazyFetch = in-flight concurrent fetch; rateLimited = transient 429
-  const isTransient = lazyResult === null || lazyResult.rateLimited === true;
+  // Transient states: null = in-flight concurrent fetch, rateLimited = 429,
+  // comtradeSource 'lazy' with no products = upstream server error / timeout
+  const isTransient = lazyResult === null
+    || lazyResult.rateLimited === true
+    || (lazyResult.comtradeSource === 'lazy' && lazyResult.products.length === 0);
   return { products: null, transient: isTransient };
 }
 
