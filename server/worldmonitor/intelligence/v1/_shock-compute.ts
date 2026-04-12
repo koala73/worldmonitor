@@ -101,7 +101,7 @@ export function buildAssessment(
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
   const ieaCoverText = ieaStocksCoverage === false ? 'unknown' : `${daysOfCover} days`;
   if (effectiveCoverDays > 365) {
-    return `${code} can indefinitely bridge a ${disruptionPct}% ${chokepointId} disruption with ${daysOfCover} days IEA strategic stock cover${degradedNote}.`;
+    return `${code} can indefinitely bridge a ${disruptionPct}% ${chokepointId} disruption with ${ieaCoverText} IEA strategic stock cover${degradedNote}.`;
   }
   if (effectiveCoverDays > 90) {
     return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
