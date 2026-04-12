@@ -20,6 +20,7 @@
     "predictionMarkets": "Thị trường Dự đoán",
     "loadingMarkets": "Đang tải thị trường dự đoán...",
     "infrastructure": "Mức độ phơi bày Hạ tầng",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "Bản tin AI không khả dụng — cấu hình GROQ_API_KEY trong Cài đặt.",
     "cached": "Đã lưu cache",
     "fresh": "Mới cập nhật",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
     "copyCoordinates": "Sao chép tọa độ"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

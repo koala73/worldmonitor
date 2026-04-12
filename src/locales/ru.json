@@ -20,6 +20,7 @@
     "predictionMarkets": "Рынки прогнозов",
     "loadingMarkets": "Загрузка рынков прогнозов...",
     "infrastructure": "Инфраструктурная уязвимость",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "ИИ-сводка недоступна — настройте GROQ_API_KEY в Настройках.",
     "cached": "Кэш",
     "fresh": "Свежие",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Открыть обзор страны",
     "copyCoordinates": "Скопировать координаты"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

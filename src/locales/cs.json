@@ -20,6 +20,7 @@
     "predictionMarkets": "Predikční trhy",
     "loadingMarkets": "Načítám predikční trhy...",
     "infrastructure": "Ohrožení infrastruktury",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "AI svodka není k dispozici — nastavte GROQ_API_KEY v Nastavení.",
     "cached": "Z mezipaměti",
     "fresh": "Aktuální",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",
     "copyCoordinates": "Kopírovat souřadnice"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

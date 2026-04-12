@@ -20,6 +20,7 @@
     "predictionMarkets": "Piețe de predicții",
     "loadingMarkets": "Se încarcă piețele de predicții...",
     "infrastructure": "Expunerea infrastructurii",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "Brief AI indisponibil — configurați GROQ_API_KEY în Setări.",
     "cached": "În cache",
     "fresh": "Proaspăt",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",
     "copyCoordinates": "Copiază coordonatele"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

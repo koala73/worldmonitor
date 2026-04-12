@@ -20,6 +20,7 @@
     "predictionMarkets": "Пазари на предвиждане",
     "loadingMarkets": "Зареждане на пазарите на предвиждане...",
     "infrastructure": "Експозиция на инфраструктура",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "AI преглед недостъпен — конфигурирайте GROQ_API_KEY в Settings.",
     "cached": "Кеширан",
     "fresh": "Свеж",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Отвори обзор на страната",
     "copyCoordinates": "Копирай координати"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

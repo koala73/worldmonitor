@@ -20,6 +20,7 @@
     "predictionMarkets": "Tahmin Piyasalari",
     "loadingMarkets": "Tahmin piyasalari yukleniyor...",
     "infrastructure": "Altyapi Maruziyeti",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan GROQ_API_KEY yapilandiriniz.",
     "cached": "Onbellekten",
     "fresh": "Guncel",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",
     "copyCoordinates": "Koordinatları kopyala"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

@@ -2366,6 +2366,7 @@
     "predictionMarkets": "Voorspellingsmarkten",
     "loadingMarkets": "Voorspellingsmarkten laden...",
     "infrastructure": "Blootstelling aan infrastructuur",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "AI-overzicht niet beschikbaar — configureer GROQ_API_KEY in Instellingen.",
     "cached": "In cache",
     "fresh": "Vers",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",
     "copyCoordinates": "Coördinaten kopiëren"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

@@ -20,6 +20,7 @@
     "predictionMarkets": "予測市場",
     "loadingMarkets": "予測市場を読み込み中...",
     "infrastructure": "インフラ露出度",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "AIブリーフ利用不可 — 設定でGROQ_API_KEYを構成してください。",
     "cached": "キャッシュ済",
     "fresh": "最新",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
     "copyCoordinates": "座標をコピー"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

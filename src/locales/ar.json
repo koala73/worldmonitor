@@ -20,6 +20,7 @@
     "predictionMarkets": "أسواق التنبؤ",
     "loadingMarkets": "جارٍ تحميل أسواق التنبؤ...",
     "infrastructure": "التعرض البنيوي",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "الموجز الذكي غير متاح — قم بتهيئة GROQ_API_KEY في الإعدادات.",
     "cached": "مخزّن مؤقتاً",
     "fresh": "محدّث",
@@ -2503,5 +2504,6 @@
   "contextMenu": {
     "openCountryBrief": "فتح ملخص البلد",
     "copyCoordinates": "نسخ الإحداثيات"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

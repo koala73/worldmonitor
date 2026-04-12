@@ -20,6 +20,7 @@
     "predictionMarkets": "预测市场",
     "loadingMarkets": "正在加载预测市场...",
     "infrastructure": "基础设施暴露",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "AI简报不可用 — 请在设置中配置GROQ_API_KEY。",
     "cached": "已缓存",
     "fresh": "最新",
@@ -2503,5 +2504,6 @@
   "contextMenu": {
     "openCountryBrief": "打开国家简报",
     "copyCoordinates": "复制坐标"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

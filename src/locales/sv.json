@@ -2366,6 +2366,7 @@
     "predictionMarkets": "Förutsägelsemarknader",
     "loadingMarkets": "Laddar förutsägelsemarknader...",
     "infrastructure": "Infrastrukturexponering",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "AI-sammanfattning ej tillgänglig — konfigurera GROQ_API_KEY i Inställningar.",
     "cached": "Cachelagrad",
     "fresh": "Aktuell",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Öppna landsöversikt",
     "copyCoordinates": "Kopiera koordinater"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

@@ -253,6 +253,12 @@ export class CountryIntelManager implements AppModule {
       const otherPos = CountryIntelManager.firstMentionPosition(t, otherCountryTerms);
       return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
     });
+    // Sort by severity then recency BEFORE deduplication so the highest-quality item wins dedup
+    filteredNews.sort((a, b) => {
+      const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
+      if (severityDelta !== 0) return severityDelta;
+      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+    });
     const seen = new Set<string>();
     const deduped: typeof filteredNews = [];
     for (const n of filteredNews) {
@@ -262,11 +268,6 @@ export class CountryIntelManager implements AppModule {
         deduped.push(n);
       }
     }
-    deduped.sort((a, b) => {
-      const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
-      if (severityDelta !== 0) return severityDelta;
-      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
-    });
     this.ctx.countryBriefPage.updateNews(deduped.slice(0, 10));
 
     this.ctx.countryBriefPage.updateInfrastructure(code);

@@ -20,6 +20,7 @@
     "predictionMarkets": "Mercados de predicción",
     "loadingMarkets": "Cargando mercados de predicción...",
     "infrastructure": "Exposición de infraestructura",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "Resumen de IA no disponible: configure GROQ_API_KEY en Configuración.",
     "cached": "En caché",
     "fresh": "Actual",
@@ -2503,5 +2504,6 @@
   "contextMenu": {
     "openCountryBrief": "Abrir resumen del país",
     "copyCoordinates": "Copiar coordenadas"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

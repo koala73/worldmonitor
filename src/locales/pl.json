@@ -20,6 +20,7 @@
     "predictionMarkets": "Rynki prognostyczne",
     "loadingMarkets": "Ładowanie rynków prognostycznych...",
     "infrastructure": "Ekspozycja infrastruktury",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "Raport AI niedostępny — skonfiguruj GROQ_API_KEY w Ustawieniach.",
     "cached": "Z pamięci podręcznej",
     "fresh": "Aktualne",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Otwórz przegląd kraju",
     "copyCoordinates": "Kopiuj współrzędne"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }

@@ -20,6 +20,7 @@
     "predictionMarkets": "Αγορές Προβλέψεων",
     "loadingMarkets": "Φόρτωση αγορών προβλέψεων...",
     "infrastructure": "Έκθεση Υποδομών",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "Ενημέρωση AI μη διαθέσιμη — ρυθμίστε το GROQ_API_KEY στις Ρυθμίσεις.",
     "cached": "Αποθηκευμένο",
     "fresh": "Πρόσφατο",
@@ -2502,5 +2503,6 @@
   "contextMenu": {
     "openCountryBrief": "Άνοιγμα επισκόπησης χώρας",
     "copyCoordinates": "Αντιγραφή συντεταγμένων"
-  }
+  },
+  "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources"
 }
