@@ -10,11 +10,11 @@ import {
 } from '../scripts/seed-resilience-scores.mjs';
 
 describe('exported constants', () => {
-  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v8)', () => {
+  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v9)', () => {
     assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v9');
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v8)', () => {
+  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v9)', () => {
     assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v9:');
   });
 

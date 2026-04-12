@@ -61,11 +61,11 @@ describe('PILLAR_DOMAINS membership', () => {
     }
   });
 
-  it('keeps recovery-capacity empty until PR 3 / T2.2b adds the new dimensions', () => {
-    assert.equal(
-      PILLAR_DOMAINS['recovery-capacity'].length,
-      0,
-      'recovery-capacity must ship empty in T2.1; PR 3 (T2.2b) wires the new recovery-capacity dimensions',
+  it('recovery-capacity contains the recovery domain (wired by T2.2b)', () => {
+    assert.deepEqual(
+      [...PILLAR_DOMAINS['recovery-capacity']],
+      ['recovery'],
+      'recovery-capacity must contain the recovery domain wired by PR 3 (T2.2b)',
     );
   });
 
@@ -144,7 +144,7 @@ describe('buildPillarList', () => {
     assert.ok(structural, 'structural-readiness pillar must be present');
     assert.deepEqual(
       structural!.domains.map((domain) => domain.id),
-      ['economic', 'infrastructure', 'social-governance'],
+      ['economic', 'social-governance'],
       'structural-readiness must contain the long-run capacity domains in input order',
     );
 
@@ -152,16 +152,16 @@ describe('buildPillarList', () => {
     assert.ok(liveShock, 'live-shock-exposure pillar must be present');
     assert.deepEqual(
       liveShock!.domains.map((domain) => domain.id),
-      ['energy', 'health-food'],
+      ['infrastructure', 'energy', 'health-food'],
       'live-shock-exposure must contain the shock-pressure domains in input order',
     );
 
     const recovery = result.find((pillar) => pillar.id === 'recovery-capacity');
     assert.ok(recovery, 'recovery-capacity pillar must be present');
     assert.deepEqual(
-      recovery!.domains,
-      [],
-      'recovery-capacity ships empty in T2.1; PR 3 (T2.2b) seeds the new dimensions',
+      recovery!.domains.map((d) => d.id),
+      ['recovery'],
+      'recovery-capacity contains the recovery domain from PR 3 (T2.2b)',
     );
   });
 
@@ -172,12 +172,13 @@ describe('buildPillarList', () => {
       makeDomain('economic'),
       makeDomain('energy'),
       makeDomain('social-governance'),
+      makeDomain('recovery'),
     ];
     const result = buildPillarList(shuffled, true);
     const structural = result.find((pillar) => pillar.id === 'structural-readiness')!;
     assert.deepEqual(
       structural.domains.map((domain) => domain.id),
-      ['infrastructure', 'economic', 'social-governance'],
+      ['economic', 'social-governance'],
       'pillar.domains must preserve the order of the source domains array, not PILLAR_DOMAINS membership order',
     );
   });
