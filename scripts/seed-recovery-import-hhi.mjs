@@ -32,8 +32,11 @@ const ALL_REPORTERS = Object.values(UN_TO_ISO2).filter(c => c.length === 2);
 function parseRecords(data) {
   const records = data?.data ?? [];
   if (!Array.isArray(records)) return [];
-  return records
-    .filter(r => r && Number(r.primaryValue ?? 0) > 0)
+  const valid = records.filter(r => r && Number(r.primaryValue ?? 0) > 0);
+  if (valid.length === 0) return [];
+  const maxPeriod = Math.max(...valid.map(r => Number(r.period ?? r.refPeriodId ?? 0)));
+  return valid
+    .filter(r => Number(r.period ?? r.refPeriodId ?? 0) === maxPeriod)
     .map(r => ({
       partnerCode: String(r.partnerCode ?? r.partner2Code ?? '000'),
       primaryValue: Number(r.primaryValue ?? 0),

@@ -321,7 +321,10 @@ export function resolveProxyForConnect() {
 // Do NOT call from standalone seed scripts; use fredFetchJson or httpsProxyFetchJson instead.
 export function curlFetch(url, proxyAuth, headers = {}) {
   const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
-  if (proxyAuth) args.push('-x', `http://${proxyAuth}`);
+  if (proxyAuth) {
+    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
+    args.push('-x', proxyUrl);
+  }
   for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
   args.push('-w', '\n%{http_code}');
   args.push(url);
