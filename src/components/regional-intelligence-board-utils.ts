@@ -419,6 +419,7 @@ export function buildWeeklyBriefBlock(brief: RegionalBrief | undefined): string 
 
   const developmentItems = (brief.keyDevelopments ?? [])
     .filter((d) => d.length > 0)
+    .slice(0, 5)
     .map((d) => `<div style="padding:2px 0;font-size:11px"><span style="color:var(--text-dim)">▸</span> ${escapeHtml(d)}</div>`)
     .join('');
 
