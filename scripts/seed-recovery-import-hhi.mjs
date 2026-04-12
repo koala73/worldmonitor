@@ -9,7 +9,11 @@ const require = createRequire(import.meta.url);
 const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
 
 const CANONICAL_KEY = 'resilience:recovery:import-hhi:v1';
+// Separate checkpoint key so partial writes cannot overwrite the canonical
+// key out of order. runSeed publishes the final authoritative snapshot at end.
+const CHECKPOINT_KEY = 'resilience:recovery:import-hhi:checkpoint:v1';
 const CACHE_TTL = 90 * 24 * 3600;
+const CHECKPOINT_TTL = 7 * 24 * 3600;
 // Resume TTL: skip reporters fetched within last 14 days. Seeder runs monthly,
 // so two consecutive runs can fully cover the world even if each only finishes
 // ~half the reporters before the bundle timeout.
@@ -17,6 +21,9 @@ const RESUME_TTL_MS = 14 * 24 * 3600 * 1000;
 // Checkpoint cadence: write partial progress every N successful fetches so a
 // timeout or crash does not discard an entire run.
 const CHECKPOINT_EVERY = 25;
+// Lock TTL must cover the longest expected runtime. Bundle allows 30min; use
+// the same so two overlapping cron invocations cannot both grab the lock.
+const LOCK_TTL_MS = 30 * 60 * 1000;
 
 // COMTRADE_API_KEYS is comma-separated; we rotate per request and also run
 // one fetch per key in parallel (bounded concurrency = key count).
@@ -109,6 +116,24 @@ export function computeHhi(records) {
   return { hhi: Math.round(hhi * 10000) / 10000, partnerCount: byPartner.size };
 }
 
+// Serialize checkpoint writes across workers. Without this, two concurrent
+// writeExtraKey() calls can land in Redis in the opposite order they were
+// issued, rolling the snapshot backward and losing recovered countries.
+let checkpointInFlight = false;
+async function checkpoint(countries, progressRef) {
+  if (checkpointInFlight) return;
+  checkpointInFlight = true;
+  try {
+    await writeExtraKey(
+      CHECKPOINT_KEY,
+      { countries: { ...countries }, seededAt: new Date().toISOString() },
+      CHECKPOINT_TTL,
+    );
+  } catch { /* non-fatal: next checkpoint or final publish will cover it */ }
+  finally { checkpointInFlight = false; }
+  console.log(`  [checkpoint ${progressRef.fetched}/${ALL_REPORTERS.length}] ${Object.keys(countries).length} countries in checkpoint`);
+}
+
 // Bounded-concurrency worker: each worker owns one API key, loops pulling
 // reporters off a shared queue until empty. Concurrency == key count so we
 // never have two in-flight requests competing for the same key's rate limit.
@@ -137,10 +162,10 @@ async function runWorker(apiKey, queue, countries, progressRef) {
           };
           progressRef.fetched++;
 
-          // Checkpoint to Redis every N successes so a crash does not lose work.
+          // Checkpoint every N successes. Serialized via checkpointInFlight so
+          // a slow earlier write cannot overwrite a newer one.
           if (progressRef.fetched % CHECKPOINT_EVERY === 0) {
-            await writeExtraKey(CANONICAL_KEY, { countries, seededAt: new Date().toISOString() }, CACHE_TTL).catch(() => null);
-            console.log(`  [checkpoint ${progressRef.fetched}/${ALL_REPORTERS.length}] ${iso2}: HHI=${result.hhi} (${result.partnerCount} partners)`);
+            await checkpoint(countries, progressRef);
           }
         }
       }
@@ -158,15 +183,23 @@ async function runWorker(apiKey, queue, countries, progressRef) {
 async function fetchImportHhi() {
   if (COMTRADE_KEYS.length === 0) return { countries: {}, seededAt: new Date().toISOString() };
 
-  // Resume: reuse fresh entries from the last run so we only refetch what's
-  // missing or stale. Comtrade annual data changes slowly; 14 days is safe.
-  const existing = await readSeedSnapshot(CANONICAL_KEY);
+  // Resume: prefer the checkpoint key (freshest partial state), then fall back
+  // to the canonical snapshot. Legacy snapshots lack per-country fetchedAt —
+  // migrate by treating the top-level seededAt as the effective fetchedAt.
+  const [checkpoint, canonical] = await Promise.all([
+    readSeedSnapshot(CHECKPOINT_KEY),
+    readSeedSnapshot(CANONICAL_KEY),
+  ]);
   const cutoffMs = Date.now() - RESUME_TTL_MS;
   const countries = {};
   let resumed = 0;
-  if (existing?.countries) {
-    for (const [iso2, entry] of Object.entries(existing.countries)) {
-      const ts = entry?.fetchedAt ? Date.parse(entry.fetchedAt) : NaN;
+  for (const source of [checkpoint, canonical]) {
+    if (!source?.countries) continue;
+    const fallbackTs = source.seededAt ? Date.parse(source.seededAt) : NaN;
+    for (const [iso2, entry] of Object.entries(source.countries)) {
+      if (countries[iso2]) continue; // checkpoint wins over canonical
+      const perEntry = entry?.fetchedAt ? Date.parse(entry.fetchedAt) : NaN;
+      const ts = Number.isFinite(perEntry) ? perEntry : fallbackTs;
       if (Number.isFinite(ts) && ts >= cutoffMs) {
         countries[iso2] = entry;
         resumed++;
@@ -198,6 +231,7 @@ if (process.argv[1]?.endsWith('seed-recovery-import-hhi.mjs')) {
   runSeed('resilience', 'recovery:import-hhi', CANONICAL_KEY, fetchImportHhi, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
+    lockTtlMs: LOCK_TTL_MS,
     sourceVersion: `comtrade-hhi-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
   }).catch((err) => {
