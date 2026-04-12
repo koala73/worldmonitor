@@ -24,6 +24,7 @@ import { computeEnergyShockScenario } from './compute-energy-shock';
 import { getCountryPortActivity } from './get-country-port-activity';
 import { getRegionalSnapshot } from './get-regional-snapshot';
 import { getRegimeHistory } from './get-regime-history';
+import { getRegionalBrief } from './get-regional-brief';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
   getRiskScores,
@@ -50,4 +51,5 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   getCountryPortActivity,
   getRegionalSnapshot,
   getRegimeHistory,
+  getRegionalBrief,
 };

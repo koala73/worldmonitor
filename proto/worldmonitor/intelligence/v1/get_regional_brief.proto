@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message GetRegionalBriefRequest {
+  string region_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32,
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+    (sebuf.http.query) = {name: "region_id"}
+  ];
+}
+
+message GetRegionalBriefResponse {
+  RegionalBrief brief = 1;
+}
+
+// RegionalBrief is a weekly LLM-synthesized intelligence summary for one
+// region. Written by scripts/seed-regional-briefs.mjs on a weekly cron.
+message RegionalBrief {
+  string region_id = 1;
+  int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 period_start = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 period_end = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string situation_recap = 5;
+  string regime_trajectory = 6;
+  repeated string key_developments = 7;
+  string risk_outlook = 8;
+  string provider = 9;
+  string model = 10;
+}

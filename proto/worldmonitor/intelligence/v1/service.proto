@@ -26,6 +26,7 @@ import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
 import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
 import "worldmonitor/intelligence/v1/get_regional_snapshot.proto";
 import "worldmonitor/intelligence/v1/get_regime_history.proto";
+import "worldmonitor/intelligence/v1/get_regional_brief.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
@@ -186,5 +187,11 @@ service IntelligenceService {
   // diffRegionalSnapshot reports regime_changed. Premium-gated.
   rpc GetRegimeHistory(GetRegimeHistoryRequest) returns (GetRegimeHistoryResponse) {
     option (sebuf.http.config) = {path: "/get-regime-history", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegionalBrief returns the latest weekly intelligence brief for a region.
+  // Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
+  rpc GetRegionalBrief(GetRegionalBriefRequest) returns (GetRegionalBriefResponse) {
+    option (sebuf.http.config) = {path: "/get-regional-brief", method: HTTP_METHOD_GET};
   }
 }

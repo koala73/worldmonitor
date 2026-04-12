@@ -230,6 +230,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // entry is required by tests/route-cache-tier.test.mjs even though the
   // gateway short-circuits premium paths to slow-browser.
   '/api/intelligence/v1/get-regime-history': 'slow',
+  // get-regional-brief is premium-gated; slow-browser in practice, slow entry for route-parity.
+  '/api/intelligence/v1/get-regional-brief': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
 };

@@ -878,6 +878,40 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-regional-brief:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetRegionalBrief
+            description: |-
+                GetRegionalBrief returns the latest weekly intelligence brief for a region.
+                 Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
+            operationId: GetRegionalBrief
+            parameters:
+                - name: region_id
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRegionalBriefResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -3061,3 +3095,52 @@ components:
             description: |-
                 RegimeTransition is a single recorded regime change moment. One of these
                  lands in the log each time diffRegionalSnapshot() reports regime_changed.
+        GetRegionalBriefRequest:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                    pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+            required:
+                - regionId
+        GetRegionalBriefResponse:
+            type: object
+            properties:
+                brief:
+                    $ref: '#/components/schemas/RegionalBrief'
+        RegionalBrief:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                periodStart:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                periodEnd:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                situationRecap:
+                    type: string
+                regimeTrajectory:
+                    type: string
+                keyDevelopments:
+                    type: array
+                    items:
+                        type: string
+                riskOutlook:
+                    type: string
+                provider:
+                    type: string
+                model:
+                    type: string
+            description: |-
+                RegionalBrief is a weekly LLM-synthesized intelligence summary for one
+                 region. Written by scripts/seed-regional-briefs.mjs on a weekly cron.
