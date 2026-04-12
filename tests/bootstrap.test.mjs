@@ -236,7 +236,7 @@ describe('Bootstrap key hydration coverage', () => {
   it('every bootstrap key has a getHydratedData consumer in src/', () => {
     const bootstrapSrc = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
     const block = bootstrapSrc.match(/BOOTSTRAP_CACHE_KEYS\s*=\s*\{([^}]+)\}/);
-    const keyRe = /(\w+):\s+'[a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+'/g;
+    const keyRe = /(\w+):\s+'[a-z0-9_-]+(?::[a-z0-9_-]+)+'/g;
     const keys = [];
     let m;
     while ((m = keyRe.exec(block[1])) !== null) keys.push(m[1]);
@@ -253,7 +253,7 @@ describe('Bootstrap key hydration coverage', () => {
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
     // Keys with planned but not-yet-wired consumers
-    const PENDING_CONSUMERS = new Set(['correlationCards', 'euGasStorage', 'chokepointBaselines', 'imfMacro', 'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies', 'wsbTickers']);
+    const PENDING_CONSUMERS = new Set(['correlationCards', 'euGasStorage', 'chokepointBaselines', 'imfMacro', 'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies', 'wsbTickers', 'electricityPrices', 'jodiOil']);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       assert.ok(

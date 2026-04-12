@@ -92,8 +92,6 @@ const BOOTSTRAP_KEYS = {
   cryptoSectors:       'market:crypto-sectors:v1',
   ddosAttacks:         'cf:radar:ddos:v1',
   economicStress:      'economic:stress-index:v1',
-  insights:            'news:insights:v1',
-  predictions:         'prediction:markets-bootstrap:v1',
   trafficAnomalies:    'cf:radar:traffic-anomalies:v1',
 };
 
