@@ -7,6 +7,10 @@ import {
   getLanguageCoverageFactor,
   type LanguageCoverageTier,
 } from '../server/worldmonitor/resilience/v1/_language-coverage.ts';
+import {
+  scoreInformationCognitive,
+  type ResilienceSeedReader,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 
 describe('language coverage normalization (Phase 2 T2.9)', () => {
   it('primary tier countries return 1.0', () => {
@@ -26,6 +30,13 @@ describe('language coverage normalization (Phase 2 T2.9)', () => {
     assert.equal(getLanguageCoverageFactor('JP'), 0.4);
     assert.equal(getLanguageCoverageFactor('RU'), 0.4);
     assert.equal(getLanguageCoverageFactor('BR'), 0.4);
+  });
+
+  it('lowercase ISO2 codes are case-normalized', () => {
+    assert.equal(getLanguageCoverageFactor('us'), 1.0);
+    assert.equal(getLanguageCoverageFactor('gb'), 1.0);
+    assert.equal(getLanguageCoverageFactor('cn'), 0.4);
+    assert.equal(getLanguageCoverageFactor('in'), 0.7);
   });
 
   it('unknown country codes default to minimal (0.2)', () => {
@@ -92,9 +103,23 @@ describe('language coverage normalization (Phase 2 T2.9)', () => {
       assert.equal(adjusted, 50);
     });
 
-    it('RSF press freedom score is NOT language-adjusted (passes through as-is)', () => {
-      const rsfScore = 75;
-      assert.equal(rsfScore, 75);
+    it('velocity cap matches real scorer cap of 1000', () => {
+      const rawScore = 500;
+      const langFactor = 0.2;
+      const adjusted = Math.min(rawScore / Math.max(langFactor, 0.1), 1000);
+      assert.equal(adjusted, 1000);
+    });
+
+    it('RSF press freedom score is NOT language-adjusted (exercises scorer)', async () => {
+      const rsfValue = 75;
+      const mockReader = (key: string): Promise<unknown> => {
+        if (key === 'resilience:static:US') return Promise.resolve({ rsf: { score: rsfValue } });
+        if (key === 'resilience:static:CN') return Promise.resolve({ rsf: { score: rsfValue } });
+        return Promise.resolve(null);
+      };
+      const usResult = await scoreInformationCognitive('US', mockReader as ResilienceSeedReader);
+      const cnResult = await scoreInformationCognitive('CN', mockReader as ResilienceSeedReader);
+      assert.equal(usResult.score, cnResult.score, 'RSF component should be equal regardless of language tier');
     });
   });
 });

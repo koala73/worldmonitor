@@ -47,6 +47,6 @@ export const COUNTRY_LANGUAGE_TIER: Record<string, LanguageCoverageTier> = {
 };
 
 export function getLanguageCoverageFactor(iso2: string): number {
-  const tier = COUNTRY_LANGUAGE_TIER[iso2] ?? 'minimal';
+  const tier = COUNTRY_LANGUAGE_TIER[iso2.toUpperCase()] ?? 'minimal';
   return LANGUAGE_TIERS[tier];
 }
