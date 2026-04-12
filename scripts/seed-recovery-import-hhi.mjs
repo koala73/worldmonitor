@@ -12,10 +12,11 @@ const CANONICAL_KEY = 'resilience:recovery:import-hhi:v1';
 const CACHE_TTL = 90 * 24 * 3600;
 
 const COMTRADE_API_KEY = process.env.COMTRADE_API_KEY || '';
-const COMTRADE_URL = COMTRADE_API_KEY
-  ? 'https://comtradeapi.un.org/data/v1/get/C/A/HS'
-  : 'https://comtradeapi.un.org/public/v1/preview/C/A/HS';
-const INTER_REQUEST_DELAY_MS = COMTRADE_API_KEY ? 600 : 3500;
+if (!COMTRADE_API_KEY) {
+  console.error('[seed] import-hhi: COMTRADE_API_KEY is required. The public preview API does not support partnerCode=0 (all partners) and returns empty results. Set the env var and retry.');
+}
+const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
+const INTER_REQUEST_DELAY_MS = 600;
 
 const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
@@ -35,12 +36,14 @@ function parseRecords(data) {
 }
 
 async function fetchImportsForReporter(reporterCode) {
+  if (!COMTRADE_API_KEY) return [];
   const url = new URL(COMTRADE_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('flowCode', 'M');
   url.searchParams.set('cmdCode', 'TOTAL');
-  url.searchParams.set('partnerCode', '');
-  if (COMTRADE_API_KEY) url.searchParams.set('subscription-key', COMTRADE_API_KEY);
+  url.searchParams.set('partnerCode', '0');
+  url.searchParams.set('period', String(new Date().getFullYear() - 1));
+  url.searchParams.set('subscription-key', COMTRADE_API_KEY);
 
   const resp = await fetch(url.toString(), {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -65,16 +68,24 @@ async function fetchImportsForReporter(reporterCode) {
   return parseRecords(await resp.json());
 }
 
+// Aggregate import values by partner (Comtrade may return multiple rows
+// per partner across commodity codes or sub-periods). Then compute HHI
+// from the per-partner totals so each partner is counted exactly once.
 export function computeHhi(records) {
   const validRecords = records.filter(r => r.partnerCode !== '0' && r.partnerCode !== '000');
-  const totalValue = validRecords.reduce((s, r) => s + r.primaryValue, 0);
+  // Aggregate by partner: sum all rows for the same partnerCode
+  const byPartner = new Map();
+  for (const r of validRecords) {
+    byPartner.set(r.partnerCode, (byPartner.get(r.partnerCode) ?? 0) + r.primaryValue);
+  }
+  const totalValue = [...byPartner.values()].reduce((s, v) => s + v, 0);
   if (totalValue <= 0) return null;
   let hhi = 0;
-  for (const r of validRecords) {
-    const share = r.primaryValue / totalValue;
+  for (const partnerValue of byPartner.values()) {
+    const share = partnerValue / totalValue;
     hhi += share * share;
   }
-  return Math.round(hhi * 10000) / 10000;
+  return { hhi: Math.round(hhi * 10000) / 10000, partnerCount: byPartner.size };
 }
 
 async function fetchImportHhi() {
@@ -95,18 +106,18 @@ async function fetchImportHhi() {
       const records = await fetchImportsForReporter(unCode);
       if (records.length === 0) { skipped++; continue; }
 
-      const hhi = computeHhi(records);
-      if (hhi === null) { skipped++; continue; }
+      const result = computeHhi(records);
+      if (result === null) { skipped++; continue; }
 
       countries[iso2] = {
-        hhi,
-        concentrated: hhi > 0.25,
-        partnerCount: records.filter(r => r.partnerCode !== '0' && r.partnerCode !== '000').length,
+        hhi: result.hhi,
+        concentrated: result.hhi > 0.25,
+        partnerCount: result.partnerCount,
       };
       fetched++;
 
       if (fetched % 20 === 0) {
-        console.log(`  [${fetched}/${ALL_REPORTERS.length}] ${iso2}: HHI=${hhi}`);
+        console.log(`  [${fetched}/${ALL_REPORTERS.length}] ${iso2}: HHI=${result.hhi} (${result.partnerCount} partners)`);
       }
     } catch (err) {
       console.warn(`  ${iso2}: fetch failed: ${err.message}`);
