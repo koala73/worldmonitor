@@ -351,7 +351,7 @@ export async function computeEnergyShockScenario(
     gulfCrudeShare: Math.round(gulfCrudeShare * 1000) / 1000,
     crudeLossKbd: Math.round(crudeLossKbd * 10) / 10,
     products,
-    effectiveCoverDays,
+    effectiveCoverDays: Math.min(effectiveCoverDays, 365),
     assessment,
     dataAvailable,
     jodiOilCoverage,

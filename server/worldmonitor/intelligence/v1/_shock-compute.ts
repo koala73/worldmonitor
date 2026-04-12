@@ -100,13 +100,11 @@ export function buildAssessment(
   }
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';
   const ieaCoverText = ieaStocksCoverage === false ? 'unknown' : `${daysOfCover} days`;
-  // Cap at 365 to avoid absurdly large day counts (e.g. 19,200 for Turkey on 0.5% deficit)
-  const cappedDays = Math.min(effectiveCoverDays, 365);
   if (effectiveCoverDays > 365) {
     return `${code} can indefinitely bridge a ${disruptionPct}% ${chokepointId} disruption with ${daysOfCover} days IEA strategic stock cover${degradedNote}.`;
   }
-  if (cappedDays > 90) {
-    return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${cappedDays} days${degradedNote}.`;
+  if (effectiveCoverDays > 90) {
+    return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days${degradedNote}.`;
   }
   const worst = products.reduce<{ product: string; deficitPct: number }>(
     (best, p) => (p.deficitPct > best.deficitPct ? p : best),
@@ -184,6 +182,9 @@ export function buildGasAssessment(
   }
   if (lngShareOfImports < 0.1) {
     return `${code} has low LNG dependence (${Math.round(lngShareOfImports * 100)}% of gas imports via LNG); ${chokepointId} disruption has limited gas impact.`;
+  }
+  if (hasStorage && bufferDays > 365) {
+    return `${code} can indefinitely bridge a ${disruptionPct}% ${chokepointId} LNG disruption with current EU gas storage.`;
   }
   if (hasStorage && bufferDays > 90) {
     return `${code} has ${bufferDays} days of gas storage buffer under ${disruptionPct}% ${chokepointId} LNG disruption.`;
