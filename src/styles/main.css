@@ -1,5 +1,6 @@
 @import './rtl-overrides.css';
 @import './panels.css';
+@import './route-explorer.css';
 
 /* ============================================================
    Theme Colors — overridden by [data-theme="light"] below

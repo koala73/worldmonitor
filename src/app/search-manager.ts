@@ -541,7 +541,9 @@ export class SearchManager implements AppModule {
           }
         } else if (action === 'route-explorer') {
           void import('@/components/RouteExplorer/RouteExplorer').then((m) => {
-            m.getRouteExplorer().open();
+            const explorer = m.getRouteExplorer();
+            explorer.setMap(this.ctx.map);
+            explorer.open();
           });
         }
         break;

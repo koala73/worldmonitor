@@ -1,32 +1,20 @@
 /**
- * RouteExplorer — full-screen modal for the worldwide Route Explorer feature.
+ * RouteExplorer — full-screen modal for the worldwide Route Explorer.
  *
- * Sprint 2 ships the SHELL only: query bar + tab strip + URL state + keyboard
- * focus trap. No API calls yet — tab panels render placeholder text. Sprint 3
- * wires CurrentRouteTab / AlternativesTab / LandTab to the
- * `get-route-explorer-lane` RPC, and Sprint 4 adds the Impact tab.
- *
- * Keyboard model:
- *   - Esc: close picker, then close modal
- *   - Tab / Shift+Tab: cycle focusable zones (focus-trapped inside modal)
- *   - F / T / P: jump to From / To / Product picker
- *   - S: swap From ↔ To
- *   - 1–4: switch tabs
- *   - ?: show keyboard help overlay
- *   - Cmd+,: copy shareable URL
- *
- * Single-letter bindings are scoped to "modal focused AND no text input
- * focused" so they don't collide with typing into the picker text fields.
+ * Sprint 3 wires the Current / Alternatives / Land tabs to the
+ * `get-route-explorer-lane` RPC, renders results in the left rail and tab
+ * panels, and drives map overlays via `MapContainer` primitives.
  */
 
 import { CountryPicker } from './CountryPicker';
 import { Hs2Picker } from './Hs2Picker';
 import { CargoTypeDropdown } from './CargoTypeDropdown';
 import { KeyboardHelp } from './KeyboardHelp';
-import {
-  inferCargoFromHs2,
-  type ExplorerCargo,
-} from './RouteExplorer.utils';
+import { LeftRail } from './components/LeftRail';
+import { CurrentRouteTab } from './tabs/CurrentRouteTab';
+import { AlternativesTab } from './tabs/AlternativesTab';
+import { LandTab } from './tabs/LandTab';
+import { inferCargoFromHs2, type ExplorerCargo } from './RouteExplorer.utils';
 import {
   parseExplorerUrl,
   serializeExplorerUrl,
@@ -35,13 +23,22 @@ import {
   type ExplorerUrlState,
   type ExplorerTab,
 } from './url-state';
+import type { GetRouteExplorerLaneResponse, BypassCorridorOption } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
+import { fetchRouteExplorerLane } from '@/services/supply-chain';
+import { getResilienceScore } from '@/services/resilience';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { getAuthState } from '@/services/auth-state';
 
-const TAB_LABELS: Record<ExplorerTab, string> = {
-  1: 'Current',
-  2: 'Alternatives',
-  3: 'Land',
-  4: 'Impact',
-};
+const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
+const FETCH_DEBOUNCE_MS = 250;
+
+interface MapRef {
+  highlightRoute(routeIds: string[]): void;
+  clearHighlightedRoute(): void;
+  setBypassRoutes(corridors: Array<{ fromPort: [number, number]; toPort: [number, number] }>): void;
+  clearBypassRoutes(): void;
+  zoomToRoutes(routeIds: string[]): void;
+}
 
 interface TestHook {
   lastHighlightedRouteIds?: string[];
@@ -65,18 +62,28 @@ export class RouteExplorer {
   private cargoDropdown!: CargoTypeDropdown;
   private tabStrip!: HTMLDivElement;
   private contentEl!: HTMLDivElement;
-  private leftRailEl!: HTMLElement;
+  private leftRail!: LeftRail;
+  private currentTab!: CurrentRouteTab;
+  private alternativesTab!: AlternativesTab;
+  private landTab!: LandTab;
   private cargoManual = false;
   private isOpen = false;
   private previousFocus: HTMLElement | null = null;
   private helpOverlay: KeyboardHelp | null = null;
+  private mapRef: MapRef | null = null;
+  private generationId = 0;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private laneData: GetRouteExplorerLaneResponse | null = null;
+  public isLoading = false;
 
   constructor() {
     this.state = { ...DEFAULT_EXPLORER_STATE };
     this.installTestHook();
   }
 
-  // ─── Public API ────────────────────────────────────────────────────────
+  public setMap(map: MapRef | null): void {
+    this.mapRef = map;
+  }
 
   public open(): void {
     if (this.isOpen) {
@@ -84,22 +91,27 @@ export class RouteExplorer {
       return;
     }
     this.state = this.readInitialState();
+    this.laneData = null;
     this.previousFocus = (document.activeElement as HTMLElement) ?? null;
     this.root = this.buildRoot();
     document.body.append(this.root);
     this.isOpen = true;
     document.addEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.focusInitial();
+    if (this.isQueryComplete()) this.scheduleFetch();
   }
 
   public close(): void {
     if (!this.isOpen || !this.root) return;
+    if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
     document.removeEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.helpOverlay?.element.remove();
     this.helpOverlay = null;
+    this.clearMapState();
     this.root.remove();
     this.root = null;
     this.isOpen = false;
+    this.laneData = null;
     if (this.previousFocus && document.body.contains(this.previousFocus)) {
       this.previousFocus.focus();
     }
@@ -110,7 +122,7 @@ export class RouteExplorer {
     return this.isOpen;
   }
 
-  // ─── Initial state from URL ─────────────────────────────────────────────
+  // ─── State helpers ──────────────────────────────────────────────────────
 
   private readInitialState(): ExplorerUrlState {
     if (typeof window === 'undefined') return { ...DEFAULT_EXPLORER_STATE };
@@ -121,6 +133,144 @@ export class RouteExplorer {
     writeExplorerUrl(this.state);
   }
 
+  private isQueryComplete(): boolean {
+    return Boolean(this.state.fromIso2 && this.state.toIso2 && this.state.hs2);
+  }
+
+  private getEffectiveCargo(): string {
+    return this.state.cargo ?? inferCargoFromHs2(this.state.hs2);
+  }
+
+  // ─── Data fetching ────────────────────────────────────────────────────
+
+  private scheduleFetch(): void {
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      void this.fetchLane();
+    }, FETCH_DEBOUNCE_MS);
+  }
+
+  private async fetchLane(): Promise<void> {
+    if (!this.isQueryComplete()) return;
+    if (!hasPremiumAccess(getAuthState())) {
+      this.renderFreeGate();
+      return;
+    }
+
+    const gen = ++this.generationId;
+    this.isLoading = true;
+    this.showLoading();
+
+    try {
+      const data = await fetchRouteExplorerLane({
+        fromIso2: this.state.fromIso2!,
+        toIso2: this.state.toIso2!,
+        hs2: this.state.hs2!,
+        cargoType: this.getEffectiveCargo(),
+      });
+      if (gen !== this.generationId) return;
+      this.laneData = data;
+      this.applyData(data);
+      this.applyMapState(data);
+      void this.fetchResilience(data.toIso2);
+    } catch {
+      if (gen !== this.generationId) return;
+      this.laneData = null;
+      this.showError();
+    } finally {
+      if (gen === this.generationId) this.isLoading = false;
+    }
+  }
+
+  private async fetchResilience(iso2: string): Promise<void> {
+    try {
+      const res = await getResilienceScore(iso2);
+      if (!this.isOpen) return;
+      this.leftRail.updateResilience(res.overallScore ?? null);
+    } catch {
+      this.leftRail.updateResilience(null);
+    }
+  }
+
+  // ─── Map integration ──────────────────────────────────────────────────
+
+  private applyMapState(data: GetRouteExplorerLaneResponse): void {
+    if (!this.mapRef || data.noModeledLane || !data.primaryRouteId) return;
+    this.mapRef.zoomToRoutes([data.primaryRouteId]);
+    this.mapRef.highlightRoute([data.primaryRouteId]);
+    if (typeof window !== 'undefined' && window.__routeExplorerTestHook) {
+      window.__routeExplorerTestHook.lastHighlightedRouteIds = [data.primaryRouteId];
+    }
+  }
+
+  private handleBypassSelect(option: BypassCorridorOption): void {
+    if (!this.mapRef || !option.fromPort || !option.toPort) return;
+    const corridors = [{ fromPort: [option.fromPort.lon, option.fromPort.lat] as [number, number], toPort: [option.toPort.lon, option.toPort.lat] as [number, number] }];
+    this.mapRef.setBypassRoutes(corridors);
+    if (typeof window !== 'undefined' && window.__routeExplorerTestHook) {
+      window.__routeExplorerTestHook.lastBypassRoutes = corridors;
+    }
+  }
+
+  private clearMapState(): void {
+    if (!this.mapRef) return;
+    this.mapRef.clearHighlightedRoute();
+    this.mapRef.clearBypassRoutes();
+    if (typeof window !== 'undefined' && window.__routeExplorerTestHook) {
+      window.__routeExplorerTestHook.lastClearHighlight = Date.now();
+      window.__routeExplorerTestHook.lastClearBypass = Date.now();
+    }
+  }
+
+  // ─── Rendering ────────────────────────────────────────────────────────
+
+  private applyData(data: GetRouteExplorerLaneResponse): void {
+    this.leftRail.updateLane(data);
+    this.currentTab.update(data);
+    this.alternativesTab.update(data);
+    this.landTab.update(data);
+    this.showActiveTab();
+  }
+
+  private showLoading(): void {
+    if (this.contentEl) {
+      this.contentEl.innerHTML = '<div class="re-content__loading">Loading lane data\u2026</div>';
+    }
+  }
+
+  private showError(): void {
+    this.leftRail.updateLane(null);
+    if (this.contentEl) {
+      this.contentEl.innerHTML = '<div class="re-content__error">Failed to load lane data. Try again.</div>';
+    }
+  }
+
+  private renderFreeGate(): void {
+    this.leftRail.updateLane(null);
+    if (this.contentEl) {
+      this.contentEl.innerHTML =
+        '<div class="re-content__gate">' +
+        '<h3>Unlock route intelligence</h3>' +
+        '<ul><li>Current route with chokepoint risk</li><li>Ranked bypass alternatives</li><li>Overland corridor options</li></ul>' +
+        '<button class="re-content__upgrade" type="button">Upgrade to PRO</button>' +
+        '</div>';
+    }
+  }
+
+  private showActiveTab(): void {
+    if (!this.contentEl) return;
+    this.contentEl.innerHTML = '';
+    switch (this.state.tab) {
+      case 1: this.contentEl.append(this.currentTab.element); break;
+      case 2: this.contentEl.append(this.alternativesTab.element); break;
+      case 3: this.contentEl.append(this.landTab.element); break;
+      case 4:
+        this.contentEl.innerHTML = '<div class="re-content__placeholder"><h2>Impact</h2><p>Available in Sprint 4.</p></div>';
+        break;
+    }
+  }
+
   // ─── DOM construction ──────────────────────────────────────────────────
 
   private buildRoot(): HTMLDivElement {
@@ -128,7 +278,7 @@ export class RouteExplorer {
     root.className = 're-modal';
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
-    root.setAttribute('aria-label', 'Route Explorer — plan a shipment');
+    root.setAttribute('aria-label', 'Route Explorer \u2014 plan a shipment');
 
     const backdrop = document.createElement('div');
     backdrop.className = 're-modal__backdrop';
@@ -136,7 +286,6 @@ export class RouteExplorer {
 
     const surface = document.createElement('div');
     surface.className = 're-modal__surface';
-
     surface.append(this.buildQueryBar(), this.buildTabStrip(), this.buildBody());
 
     root.append(backdrop, surface);
@@ -150,7 +299,7 @@ export class RouteExplorer {
     const back = document.createElement('button');
     back.type = 'button';
     back.className = 're-querybar__back';
-    back.textContent = '← Back';
+    back.textContent = '\u2190 Back';
     back.setAttribute('aria-label', 'Close Route Explorer');
     back.addEventListener('click', () => this.close());
 
@@ -163,7 +312,7 @@ export class RouteExplorer {
 
     const arrow = document.createElement('span');
     arrow.className = 're-querybar__arrow';
-    arrow.textContent = '→';
+    arrow.textContent = '\u2192';
     arrow.setAttribute('aria-hidden', 'true');
 
     this.toPicker = new CountryPicker({
@@ -188,14 +337,7 @@ export class RouteExplorer {
       onChange: (cargo, manual) => this.handleCargoChange(cargo, manual),
     });
 
-    bar.append(
-      back,
-      this.fromPicker.element,
-      arrow,
-      this.toPicker.element,
-      this.hs2Picker.element,
-      this.cargoDropdown.element,
-    );
+    bar.append(back, this.fromPicker.element, arrow, this.toPicker.element, this.hs2Picker.element, this.cargoDropdown.element);
     return bar;
   }
 
@@ -222,27 +364,21 @@ export class RouteExplorer {
     const body = document.createElement('div');
     body.className = 're-body';
 
-    this.leftRailEl = document.createElement('aside');
-    this.leftRailEl.className = 're-leftrail';
-    this.leftRailEl.setAttribute('aria-label', 'Lane summary');
-    this.leftRailEl.innerHTML =
-      '<div class="re-leftrail__placeholder">Pick a country pair and product to see the lane summary.</div>';
+    this.leftRail = new LeftRail();
+    this.currentTab = new CurrentRouteTab();
+    this.alternativesTab = new AlternativesTab({
+      onSelectBypass: (o) => this.handleBypassSelect(o),
+    });
+    this.landTab = new LandTab({
+      onSelectBypass: (o) => this.handleBypassSelect(o),
+    });
 
     this.contentEl = document.createElement('div');
     this.contentEl.className = 're-content';
-    this.renderActiveTab();
+    this.showActiveTab();
 
-    body.append(this.leftRailEl, this.contentEl);
+    body.append(this.leftRail.element, this.contentEl);
     return body;
-  }
-
-  // ─── Tab rendering (Sprint 2 placeholders) ──────────────────────────────
-
-  private renderActiveTab(): void {
-    if (!this.contentEl) return;
-    const tab = this.state.tab;
-    const label = TAB_LABELS[tab];
-    this.contentEl.innerHTML = `<div class="re-content__placeholder" data-tab="${tab}"><h2>${label}</h2><p>Sprint 3 wires this tab to the route-explorer-lane RPC. Pick a country pair and product to see the data.</p></div>`;
   }
 
   // ─── Event handlers ────────────────────────────────────────────────────
@@ -251,9 +387,9 @@ export class RouteExplorer {
     this.state = { ...this.state, fromIso2: iso2 };
     this.writeStateToUrl();
     this.fromPicker.setValue(iso2);
-    // Move focus to the next empty slot for keyboard flow.
     if (!this.state.toIso2) this.toPicker.focusInput();
     else if (!this.state.hs2) this.hs2Picker.focusInput();
+    else this.scheduleFetch();
   }
 
   private handleToCommit(iso2: string): void {
@@ -262,6 +398,7 @@ export class RouteExplorer {
     this.toPicker.setValue(iso2);
     if (!this.state.fromIso2) this.fromPicker.focusInput();
     else if (!this.state.hs2) this.hs2Picker.focusInput();
+    else this.scheduleFetch();
   }
 
   private handleHs2Commit(hs2: string): void {
@@ -272,12 +409,14 @@ export class RouteExplorer {
       const inferred = inferCargoFromHs2(hs2);
       this.cargoDropdown.setAutoInferred(inferred);
     }
+    if (this.isQueryComplete()) this.scheduleFetch();
   }
 
   private handleCargoChange(cargo: ExplorerCargo, manual: boolean): void {
     this.cargoManual = manual;
     this.state = { ...this.state, cargo };
     this.writeStateToUrl();
+    if (this.isQueryComplete()) this.scheduleFetch();
   }
 
   private setTab(n: ExplorerTab): void {
@@ -292,7 +431,7 @@ export class RouteExplorer {
         b.setAttribute('aria-selected', isActive ? 'true' : 'false');
       });
     }
-    this.renderActiveTab();
+    this.showActiveTab();
   }
 
   private swapFromTo(): void {
@@ -302,6 +441,7 @@ export class RouteExplorer {
     this.writeStateToUrl();
     this.fromPicker.setValue(newFrom);
     this.toPicker.setValue(newTo);
+    if (this.isQueryComplete()) this.scheduleFetch();
   }
 
   // ─── Keyboard ──────────────────────────────────────────────────────────
@@ -316,81 +456,56 @@ export class RouteExplorer {
   }
 
   private blurActiveInput(): void {
-    const el = document.activeElement as HTMLElement | null;
-    el?.blur();
+    (document.activeElement as HTMLElement | null)?.blur();
   }
 
   private handleGlobalKeydown = (e: KeyboardEvent): void => {
     if (!this.isOpen || !this.root) return;
 
-    // Esc: close help if open, else close picker (let pickers handle), else close modal.
     if (e.key === 'Escape') {
       if (this.helpOverlay) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         this.closeHelp();
         return;
       }
-      // If a picker input is focused, let the picker handle Esc first.
       if (this.isFormControlFocused()) return;
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       this.close();
       return;
     }
 
-    // Cmd+, / Ctrl+, : copy URL
     if ((e.metaKey || e.ctrlKey) && e.key === ',') {
       e.preventDefault();
       this.copyShareUrl();
       return;
     }
 
-    // Tab focus trap
     if (e.key === 'Tab') {
       this.handleTabKey(e);
       return;
     }
 
-    // Single-letter shortcuts only when no text input is focused
     if (this.isFormControlFocused()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch (e.key) {
-      case '1':
-      case '2':
-      case '3':
-      case '4': {
+      case '1': case '2': case '3': case '4':
         e.preventDefault();
         this.setTab(Number.parseInt(e.key, 10) as ExplorerTab);
         return;
-      }
-      case 'F':
-      case 'f':
+      case 'F': case 'f': e.preventDefault(); this.fromPicker.focusInput(); return;
+      case 'T': case 't': e.preventDefault(); this.toPicker.focusInput(); return;
+      case 'P': case 'p': e.preventDefault(); this.hs2Picker.focusInput(); return;
+      case 'S': case 's': e.preventDefault(); this.swapFromTo(); return;
+      case ' ':
         e.preventDefault();
-        this.fromPicker.focusInput();
+        if (this.laneData?.primaryRouteId && this.mapRef) {
+          this.mapRef.clearHighlightedRoute();
+          this.mapRef.highlightRoute([this.laneData.primaryRouteId]);
+        }
         return;
-      case 'T':
-      case 't':
-        e.preventDefault();
-        this.toPicker.focusInput();
-        return;
-      case 'P':
-      case 'p':
-        e.preventDefault();
-        this.hs2Picker.focusInput();
-        return;
-      case 'S':
-      case 's':
-        e.preventDefault();
-        this.swapFromTo();
-        return;
-      case '?':
-        e.preventDefault();
-        this.openHelp();
-        return;
-      default:
-        return;
+      case '?': e.preventDefault(); this.openHelp(); return;
+      default: return;
     }
   };
 
@@ -421,18 +536,13 @@ export class RouteExplorer {
   }
 
   private focusInitial(): void {
-    if (!this.state.fromIso2) {
-      this.fromPicker.focusInput();
-    } else if (!this.state.toIso2) {
-      this.toPicker.focusInput();
-    } else if (!this.state.hs2) {
-      this.hs2Picker.focusInput();
-    } else {
-      this.fromPicker.focusInput();
-    }
+    if (!this.state.fromIso2) this.fromPicker.focusInput();
+    else if (!this.state.toIso2) this.toPicker.focusInput();
+    else if (!this.state.hs2) this.hs2Picker.focusInput();
+    else this.fromPicker.focusInput();
   }
 
-  // ─── Help overlay ──────────────────────────────────────────────────────
+  // ─── Help / Share ─────────────────────────────────────────────────────
 
   private openHelp(): void {
     if (!this.root || this.helpOverlay) return;
@@ -446,8 +556,6 @@ export class RouteExplorer {
     this.helpOverlay = null;
   }
 
-  // ─── Share URL ────────────────────────────────────────────────────────
-
   private copyShareUrl(): void {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -458,26 +566,18 @@ export class RouteExplorer {
     }
   }
 
-  // ─── Test hook (DEV builds only) ──────────────────────────────────────
+  // ─── Test hook ────────────────────────────────────────────────────────
 
   private installTestHook(): void {
     if (typeof window === 'undefined') return;
-    // Only install in dev / test builds; production strips this on init.
     const isDev = (() => {
-      try {
-        return Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
-      } catch {
-        return false;
-      }
+      try { return Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV); } catch { return false; }
     })();
     if (!isDev) return;
-    if (!window.__routeExplorerTestHook) {
-      window.__routeExplorerTestHook = {};
-    }
+    if (!window.__routeExplorerTestHook) window.__routeExplorerTestHook = {};
   }
 }
 
-/** Singleton instance used by the command palette dispatch. */
 let singleton: RouteExplorer | null = null;
 export function getRouteExplorer(): RouteExplorer {
   if (!singleton) singleton = new RouteExplorer();
