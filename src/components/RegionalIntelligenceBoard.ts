@@ -117,7 +117,12 @@ export class RegionalIntelligenceBoard extends Panel {
     }
 
     // Render the snapshot blocks immediately — the user sees content now.
-    this.renderBoard(snapshot);
+    // Pass null for both Phase 3 blocks so they're omitted entirely during
+    // the initial paint. They'll be appended (or shown as empty-state) once
+    // the background enrichment RPCs resolve. Without null here, the default
+    // undefined would render a false "No weekly brief available yet" while
+    // the fetch is still in flight. PR #2995 review.
+    this.renderBoard(snapshot, null, null);
 
     // Phase 2: fire history + brief RPCs in background. When they resolve,
     // re-render with the enrichments appended — but only if this sequence
