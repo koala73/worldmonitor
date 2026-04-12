@@ -22,7 +22,7 @@
   height: 100%;
   background: var(--bg-primary, #0d1117);
   color: var(--text-primary, #c9d1d9);
-  overflow: hidden;
+  overflow: visible;
   pointer-events: auto;
   border-right: 1px solid var(--border-dim, #21262d);
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
@@ -196,7 +196,8 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* ─── Left rail (now stacks above content in the panel) ─────────────── */

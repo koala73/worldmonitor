@@ -397,19 +397,14 @@ export class RouteExplorer {
   private buildRoot(): HTMLDivElement {
     const root = document.createElement('div');
     root.className = 're-modal';
-    root.setAttribute('role', 'dialog');
-    root.setAttribute('aria-modal', 'true');
+    root.setAttribute('role', 'complementary');
     root.setAttribute('aria-label', 'Route Explorer \u2014 plan a shipment');
-
-    const backdrop = document.createElement('div');
-    backdrop.className = 're-modal__backdrop';
-    backdrop.addEventListener('click', () => this.close());
 
     const surface = document.createElement('div');
     surface.className = 're-modal__surface';
     surface.append(this.buildQueryBar(), this.buildTabStrip(), this.buildBody());
 
-    root.append(backdrop, surface);
+    root.append(surface);
     return root;
   }
 
@@ -616,10 +611,8 @@ export class RouteExplorer {
       return;
     }
 
-    if (e.key === 'Tab') {
-      this.handleTabKey(e);
-      return;
-    }
+    // No focus trap — side-sheet pattern lets Tab reach the map.
+    if (e.key === 'Tab') return;
 
     if (this.isFormControlFocused()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -645,31 +638,6 @@ export class RouteExplorer {
     }
   };
 
-  private handleTabKey(e: KeyboardEvent): void {
-    if (!this.root) return;
-    const focusable = this.collectFocusable();
-    if (focusable.length === 0) return;
-    const current = document.activeElement as HTMLElement | null;
-    const idx = current ? focusable.indexOf(current) : -1;
-    let nextIdx: number;
-    if (e.shiftKey) {
-      nextIdx = idx <= 0 ? focusable.length - 1 : idx - 1;
-    } else {
-      nextIdx = idx === -1 || idx >= focusable.length - 1 ? 0 : idx + 1;
-    }
-    const next = focusable[nextIdx];
-    if (!next) return;
-    e.preventDefault();
-    next.focus();
-  }
-
-  private collectFocusable(): HTMLElement[] {
-    if (!this.root) return [];
-    const sel = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-    return Array.from(this.root.querySelectorAll<HTMLElement>(sel)).filter(
-      (el) => !el.hasAttribute('disabled') && el.offsetParent !== null,
-    );
-  }
 
   private focusInitial(): void {
     if (!this.state.fromIso2) this.fromPicker.focusInput();
