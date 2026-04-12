@@ -353,6 +353,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
   'recoveryFiscalSpace',
   'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar seeds: stub seeders write empty payloads until real sources are wired
+  'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
