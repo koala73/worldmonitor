@@ -34,8 +34,8 @@ function parseRecords(data) {
   if (!Array.isArray(records)) return [];
   const valid = records.filter(r => r && Number(r.primaryValue ?? 0) > 0);
   if (valid.length === 0) return [];
-  // Group by period, pick the year with the MOST partners (most complete dataset).
-  // If Y-1 is sparse (few rows) while Y-2 is complete, use Y-2.
+  // Group by period, pick the year with the most USABLE partners (excluding
+  // aggregate codes 0/000 that computeHhi discards). Ties break toward newest.
   const byPeriod = new Map();
   for (const r of valid) {
     const p = String(r.period ?? r.refPeriodId ?? '0');
@@ -45,7 +45,14 @@ function parseRecords(data) {
   let bestPeriod = '';
   let bestCount = 0;
   for (const [p, rows] of byPeriod) {
-    if (rows.length > bestCount) { bestCount = rows.length; bestPeriod = p; }
+    const usable = rows.filter(r => {
+      const pc = String(r.partnerCode ?? r.partner2Code ?? '000');
+      return pc !== '0' && pc !== '000';
+    }).length;
+    if (usable > bestCount || (usable === bestCount && p > bestPeriod)) {
+      bestCount = usable;
+      bestPeriod = p;
+    }
   }
   return byPeriod.get(bestPeriod).map(r => ({
     partnerCode: String(r.partnerCode ?? r.partner2Code ?? '000'),
