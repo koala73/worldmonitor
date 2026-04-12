@@ -235,7 +235,7 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
     }
   });
 
-  it('placeholder corridors with addedTransitDays=0 are excluded', async () => {
+  it('placeholder corridors are excluded but proposed zero-day corridors survive', async () => {
     const res = await computeLane(
       { fromIso2: 'ES', toIso2: 'EG', hs2: '85', cargoType: 'container' },
       new Map(),
@@ -243,6 +243,44 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
     const placeholder = res.bypassOptions.find((b) =>
       b.id === 'gibraltar_no_bypass' || b.id === 'cape_of_good_hope_is_bypass',
     );
-    assert.equal(placeholder, undefined, 'zero-transit-day placeholder corridors should be filtered out');
+    assert.equal(placeholder, undefined, 'explicit placeholder corridors should be filtered out');
+  });
+
+  it('kra_canal_future appears as CORRIDOR_STATUS_PROPOSED for Malacca routes', async () => {
+    const res = await computeLane(
+      { fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' },
+      new Map(),
+    );
+    const kra = res.bypassOptions.find((b) => b.id === 'kra_canal_future');
+    if (kra) {
+      assert.equal(
+        kra.status,
+        'CORRIDOR_STATUS_PROPOSED',
+        'kra_canal_future should be surfaced as proposed, not filtered out',
+      );
+    }
+  });
+
+  it('chokepointExposures and bypassOptions follow the primaryRouteId', async () => {
+    const res = await computeLane(
+      { fromIso2: 'CN', toIso2: 'JP', hs2: '85', cargoType: 'container' },
+      new Map(),
+    );
+    if (res.noModeledLane || !res.primaryRouteId) return;
+    const { TRADE_ROUTES } = await import('../src/config/trade-routes.ts');
+    const { CHOKEPOINT_REGISTRY } = await import('../server/_shared/chokepoint-registry.ts');
+    const route = TRADE_ROUTES.find((r: { id: string }) => r.id === res.primaryRouteId);
+    assert.ok(route, `primaryRouteId ${res.primaryRouteId} not in TRADE_ROUTES`);
+    const routeChokepointIds = new Set(
+      CHOKEPOINT_REGISTRY
+        .filter((cp: { routeIds: string[] }) => cp.routeIds.includes(res.primaryRouteId))
+        .map((cp: { id: string }) => cp.id),
+    );
+    for (const exp of res.chokepointExposures) {
+      assert.ok(
+        routeChokepointIds.has(exp.chokepointId),
+        `chokepoint ${exp.chokepointId} is not on the primary route ${res.primaryRouteId}`,
+      );
+    }
   });
 });

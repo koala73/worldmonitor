@@ -243,13 +243,11 @@ export async function computeLane(
     );
   }
 
-  const relevantRouteSet = new Set(
-    sharedRoutes.length ? sharedRoutes : (fromCluster?.nearestRouteIds ?? []),
-  );
+  const primaryRouteSet = new Set(primaryRouteId ? [primaryRouteId] : []);
   const chokepointExposures: ChokepointExposureSummary[] = CHOKEPOINT_REGISTRY
-    .filter((cp) => cp.routeIds.some((r) => relevantRouteSet.has(r)))
+    .filter((cp) => cp.routeIds.some((r) => primaryRouteSet.has(r)))
     .map((cp) => {
-      const overlap = cp.routeIds.filter((r) => relevantRouteSet.has(r)).length;
+      const overlap = cp.routeIds.filter((r) => primaryRouteSet.has(r)).length;
       const exposurePct = Math.round((overlap / Math.max(cp.routeIds.length, 1)) * 100);
       return {
         chokepointId: cp.id,
@@ -265,10 +263,11 @@ export async function computeLane(
   const disruptionScore = primaryCpStatus?.disruptionScore ?? 0;
   const warRiskTier = primaryCpStatus?.warRiskTier ?? 'WAR_RISK_TIER_NORMAL';
 
+  const PLACEHOLDER_CORRIDOR_IDS = new Set(['gibraltar_no_bypass', 'cape_of_good_hope_is_bypass']);
   const bypassOptions: BypassCorridorOption[] = primaryChokepoint
     ? (BYPASS_CORRIDORS_BY_CHOKEPOINT[primaryChokepoint.chokepointId] ?? [])
         .filter((c) => {
-          if (c.addedTransitDays === 0) return false;
+          if (PLACEHOLDER_CORRIDOR_IDS.has(c.id)) return false;
           if (c.suitableCargoTypes.length > 0 && !c.suitableCargoTypes.includes(cargoType as CargoType)) return false;
           return true;
         })
