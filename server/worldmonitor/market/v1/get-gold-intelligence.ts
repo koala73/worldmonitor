@@ -223,7 +223,11 @@ export async function getGoldIntelligence(
       returns,
       range52w,
       drivers,
-      updatedAt: rawExtended?.updatedAt || new Date().toISOString(),
+      // updatedAt reflects the *enrichment* layer's freshness. If the extended
+      // key is missing we deliberately emit empty so the panel renders "Updated —"
+      // rather than a misleading "just now" stamp while session/returns/drivers
+      // are all absent.
+      updatedAt: rawExtended?.updatedAt ?? '',
       unavailable: false,
     };
   } catch {

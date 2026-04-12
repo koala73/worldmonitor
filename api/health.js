@@ -169,6 +169,7 @@ const STANDALONE_KEYS = {
   recoveryExternalDebt:     'resilience:recovery:external-debt:v1',
   recoveryImportHhi:        'resilience:recovery:import-hhi:v1',
   recoveryFuelStocks:       'resilience:recovery:fuel-stocks:v1',
+  goldExtended:             'market:gold-extended:v1',
 };
 
 const SEED_META = {
@@ -195,6 +196,7 @@ const SEED_META = {
   newsInsights:     { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
   commodityQuotes:  { key: 'seed-meta:market:commodities',    maxStaleMin: 30 },
+  goldExtended:     { key: 'seed-meta:market:gold-extended',  maxStaleMin: 30 },
   // RPC/warm-ping keys — seed-meta written by relay loops or handlers
   // serviceStatuses: moved to ON_DEMAND — RPC-populated, no dedicated seed, goes stale when no users visit
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives

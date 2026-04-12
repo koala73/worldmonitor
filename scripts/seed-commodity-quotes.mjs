@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey, CHROME_UA } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey, writeExtraKeyWithMeta, CHROME_UA } from './_seed-utils.mjs';
 import { AV_PHYSICAL_MAP, fetchAvPhysicalCommodity, fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const commodityConfig = loadSharedConfig('commodities.json');
@@ -265,14 +265,21 @@ runSeed('market', 'commodities', CANONICAL_KEY, fetchAndStash, {
 
   try {
     const extended = await fetchGoldExtended();
-    if (extended.gold || extended.silver || extended.drivers.length) {
-      await writeExtraKey(GOLD_EXTENDED_KEY, extended, CACHE_TTL);
+    // Require gold (the core metal) AND at least one driver or silver. Writing a
+    // partial payload would overwrite a healthy prior key with degraded data and
+    // stamp seed-meta as fresh, masking a broken Yahoo fetch in health checks.
+    const hasCore = extended.gold != null;
+    const hasContext = extended.silver != null || extended.drivers.length > 0;
+    if (hasCore && hasContext) {
+      const recordCount = (extended.gold ? 1 : 0) + (extended.silver ? 1 : 0) + extended.drivers.length;
+      await writeExtraKeyWithMeta(GOLD_EXTENDED_KEY, extended, CACHE_TTL, recordCount, 'seed-meta:market:gold-extended');
       console.log(`  [Gold] extended: gold=${!!extended.gold} silver=${!!extended.silver} drivers=${extended.drivers.length}`);
     } else {
-      console.warn('  [Gold] extended: all sources empty — skipping write');
+      // Preserve prior key (if any) and do NOT bump seed-meta — health will flag stale.
+      console.warn(`  [Gold] extended: incomplete (gold=${!!extended.gold} silver=${!!extended.silver} drivers=${extended.drivers.length}) — skipping write, letting seed-meta go stale`);
     }
   } catch (e) {
-    console.warn(`  [Gold] extended fetch error: ${e?.message || e}`);
+    console.warn(`  [Gold] extended fetch error: ${e?.message || e} — skipping write, letting seed-meta go stale`);
   }
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);

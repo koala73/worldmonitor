@@ -30,6 +30,7 @@ const SEED_DOMAINS = {
   // Aligned with health.js SEED_META (intervalMin = maxStaleMin / 2)
   'market:stocks':            { key: 'seed-meta:market:stocks',            intervalMin: 15 },
   'market:commodities':       { key: 'seed-meta:market:commodities',       intervalMin: 15 },
+  'market:gold-extended':     { key: 'seed-meta:market:gold-extended',     intervalMin: 15 },
   'market:sectors':           { key: 'seed-meta:market:sectors',           intervalMin: 15 },
   'aviation:faa':             { key: 'seed-meta:aviation:faa',             intervalMin: 45 },
   'news:insights':            { key: 'seed-meta:news:insights',            intervalMin: 15 },
