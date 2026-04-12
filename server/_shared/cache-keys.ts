@@ -202,6 +202,10 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   energyCrisisPolicies: 'energy:crisis-policies:v1',
   aaiiSentiment:        'market:aaii-sentiment:v1',
   breadthHistory:       'market:breadth-history:v1',
+  consumerPricesOverview:   'consumer-prices:overview:ae',
+  consumerPricesCategories: 'consumer-prices:categories:ae:30d',
+  consumerPricesMovers:     'consumer-prices:movers:ae:30d',
+  consumerPricesSpread:     'consumer-prices:retailer-spread:ae:essentials-ae',
 };
 
 export const PORTWATCH_PORT_ACTIVITY_KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';

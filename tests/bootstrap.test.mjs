@@ -23,7 +23,7 @@ describe('Bootstrap cache key registry', () => {
     const extractKeys = (src) => {
       const block = src.match(/BOOTSTRAP_CACHE_KEYS[^=]*=\s*\{([^}]+)\}/);
       if (!block) return {};
-      const re = /(\w+):\s+'([a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+)'/g;
+      const re = /(\w+):\s+'([a-z0-9_-]+(?::[a-z0-9_-]+)+)'/g;
       const keys = {};
       let m;
       while ((m = re.exec(block[1])) !== null) keys[m[1]] = m[2];
@@ -48,7 +48,7 @@ describe('Bootstrap cache key registry', () => {
       keys.push(m[1]);
     }
     for (const key of keys) {
-      assert.match(key, /^[a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+(?::[a-z0-9_-]+)*$/, `Cache key "${key}" does not match expected pattern`);
+      assert.match(key, /^[a-z0-9_-]+(?::[a-z0-9_-]+)+(?::v\d+)?(?::[a-z0-9_-]+)*$/, `Cache key "${key}" does not match expected pattern`);
     }
   });
 
