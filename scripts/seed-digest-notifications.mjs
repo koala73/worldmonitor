@@ -512,7 +512,7 @@ Rules:
 - End with "Signals to watch:" (1-2 items)
 - Under 250 words`;
 
-  const summary = await callLLM(systemPrompt, storyList, { maxTokens: 600, temperature: 0.3, timeoutMs: 15_000 });
+  const summary = await callLLM(systemPrompt, storyList, { maxTokens: 600, temperature: 0.3, timeoutMs: 15_000, skipProviders: ['groq'] });
   if (!summary) {
     console.warn(`[digest] AI summary generation failed for ${rule.userId}`);
     return null;
@@ -554,11 +554,33 @@ function isPrivateIP(ip) {
 
 // ── Send functions ────────────────────────────────────────────────────────────
 
+const TELEGRAM_MAX_LEN = 4096;
+
+function sanitizeTelegramHtml(html) {
+  let out = html;
+  for (const tag of ['b', 'i', 'u', 's', 'code', 'pre']) {
+    const opens = (out.match(new RegExp(`<${tag}>`, 'g')) || []).length;
+    const closes = (out.match(new RegExp(`</${tag}>`, 'g')) || []).length;
+    for (let i = closes; i < opens; i++) out += `</${tag}>`;
+  }
+  out = out.replace(/<[^>]*$/, '');
+  return out;
+}
+
+function truncateTelegramHtml(html, limit = TELEGRAM_MAX_LEN) {
+  if (html.length <= limit) return sanitizeTelegramHtml(html);
+  const truncated = html.slice(0, limit - 30);
+  const lastNewline = truncated.lastIndexOf('\n');
+  const cutPoint = lastNewline > limit * 0.6 ? lastNewline : truncated.length;
+  return sanitizeTelegramHtml(truncated.slice(0, cutPoint) + '\n\n[truncated]');
+}
+
 async function sendTelegram(userId, chatId, text) {
   if (!TELEGRAM_BOT_TOKEN) {
     console.warn('[digest] Telegram: TELEGRAM_BOT_TOKEN not set, skipping');
     return false;
   }
+  const safeText = truncateTelegramHtml(text);
   try {
     const res = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -567,7 +589,7 @@ async function sendTelegram(userId, chatId, text) {
         headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
         body: JSON.stringify({
           chat_id: chatId,
-          text,
+          text: safeText,
           parse_mode: 'HTML',
           disable_web_page_preview: true,
         }),
@@ -579,7 +601,8 @@ async function sendTelegram(userId, chatId, text) {
       await deactivateChannel(userId, 'telegram');
       return false;
     } else if (!res.ok) {
-      console.warn(`[digest] Telegram send failed ${res.status} for ${userId}`);
+      const body = await res.text().catch(() => '');
+      console.warn(`[digest] Telegram send failed ${res.status} for ${userId}: ${body.slice(0, 300)}`);
       return false;
     }
     console.log(`[digest] Telegram delivered to ${userId}`);
