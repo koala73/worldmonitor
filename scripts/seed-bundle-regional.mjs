@@ -8,11 +8,17 @@
  *   2. seed-regional-briefs.mjs     — WEEKLY (LLM weekly brief, skipped
  *      if the last brief seed-meta is younger than 6.5 days)
  *
- * Railway cron: every 6 hours — schedule: 0 star-slash-6 star star star
- * startCommand: node scripts/seed-bundle-regional.mjs
+ * Railway cron: every 6 hours (cron: 0 [star]/6 [star] [star] [star])
  * rootDirectory: scripts
+ * startCommand: node seed-bundle-regional.mjs
+ *   (Railway executes from rootDirectory, so NO scripts/ prefix)
  * watchPaths: scripts/seed-bundle-regional.mjs, scripts/seed-regional-*.mjs,
  *             scripts/regional-snapshot/**, scripts/shared/**
+ *
+ * NOTE: both sub-seeders are imported in-process (not child_process.execFile)
+ * because they were explicitly refactored to throw on failure instead of
+ * calling process.exit(1). If either script re-introduces process.exit()
+ * inside main(), the bundle will die before the second seeder runs.
  *
  * Env vars needed (same as the individual scripts):
  *   UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
