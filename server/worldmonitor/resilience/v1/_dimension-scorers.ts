@@ -3,6 +3,7 @@ import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap } from './_dimension-freshness';
+import { getLanguageCoverageFactor } from './_language-coverage';
 import { failedDimensionsFromDatasets, readFailedDatasets } from './_source-failure';
 
 export type ResilienceDimensionId =
@@ -1118,10 +1119,14 @@ export async function scoreInformationCognitive(
   const velocity = summarizeSocialVelocity(socialVelocityRaw, countryCode);
   const threatScore = getThreatSummaryScore(threatSummaryRaw, countryCode);
 
+  const langFactor = getLanguageCoverageFactor(countryCode);
+  const adjustedVelocity = velocity > 0 ? Math.min(velocity / Math.max(langFactor, 0.1), 1000) : 0;
+  const adjustedThreat = threatScore != null ? Math.min(threatScore / Math.max(langFactor, 0.1), 100) : null;
+
   return weightedBlend([
     { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55 },
-    { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 },
-    { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.3 },
+    { score: adjustedVelocity > 0 ? normalizeLowerBetter(Math.log10(adjustedVelocity + 1), 0, 3) : null, weight: 0.15 },
+    { score: adjustedThreat == null ? null : normalizeLowerBetter(adjustedThreat, 0, 20), weight: 0.3 },
   ]);
 }
 

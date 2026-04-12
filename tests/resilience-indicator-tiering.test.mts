@@ -62,14 +62,14 @@ describe('signal tiering registry (Phase 2 T2.2a)', () => {
     );
   });
 
-  it('informationCognitive dimension indicators are Enrichment (plan mandate, demoted until T2.9)', () => {
+  it('informationCognitive dimension indicators are Core (promoted in T2.9 after language normalization)', () => {
     const infoCogIndicators = INDICATOR_REGISTRY.filter((e) => e.dimension === 'informationCognitive');
     assert.ok(infoCogIndicators.length > 0, 'expected informationCognitive indicators in registry');
     for (const e of infoCogIndicators) {
       assert.equal(
         e.tier,
-        'enrichment',
-        `${e.id}: informationCognitive indicators must be 'enrichment' until PR 9 / T2.9 lands the language normalization. See parent plan, "Signal tiering" section.`,
+        'core',
+        `${e.id}: informationCognitive indicators must be 'core' now that T2.9 language normalization has landed.`,
       );
     }
   });

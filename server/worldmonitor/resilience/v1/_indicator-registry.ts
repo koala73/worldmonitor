@@ -597,12 +597,10 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   },
 
   // ── informationCognitive (3 sub-metrics) ──────────────────────────────────
-  // The whole informationCognitive dimension is demoted to Enrichment until
-  // Phase 2 T2.9 ships the language / source-density normalization. See the
-  // parent plan, "Signal tiering" section: "Existing 13 dimensions default
-  // to Core, with one exception: informationCognitive is demoted to
-  // Enrichment until the language / source-density normalization lands in
-  // T2.9, at which point it re-enters Core."
+  // Promoted back to Core in T2.9 after language / source-density
+  // normalization landed (getLanguageCoverageFactor in _language-coverage.ts).
+  // Social velocity and news threat scores are now adjusted by the
+  // English-language coverage factor before normalization.
   {
     id: 'rsfPressFreedom',
     dimension: 'informationCognitive',
@@ -613,35 +611,35 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
-    tier: 'enrichment',
+    tier: 'core',
     coverage: 180,
     license: 'open-attribution',
   },
   {
     id: 'socialVelocity',
     dimension: 'informationCognitive',
-    description: 'Reddit social velocity score (log10(velocity+1)); viral narrative stress',
+    description: 'Reddit social velocity score (log10(velocity+1)); language-normalized viral narrative stress',
     direction: 'lowerBetter',
     goalposts: { worst: 3, best: 0 },
     weight: 0.15,
     sourceKey: 'intelligence:social:reddit:v1',
     scope: 'global',
     cadence: 'realtime',
-    tier: 'enrichment',
+    tier: 'core',
     coverage: 195,
     license: 'open-attribution',
   },
   {
     id: 'newsThreatScore',
     dimension: 'informationCognitive',
-    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x)',
+    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); language-normalized',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
     weight: 0.3,
     sourceKey: 'news:threat:summary:v1',
     scope: 'global',
     cadence: 'daily',
-    tier: 'enrichment',
+    tier: 'core',
     coverage: 195,
     license: 'open-attribution',
   },
