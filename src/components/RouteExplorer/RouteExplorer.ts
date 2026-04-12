@@ -28,6 +28,7 @@ import { fetchRouteExplorerLane } from '@/services/supply-chain';
 import { getResilienceScore } from '@/services/resilience';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
+import { trackGateHit } from '@/services/analytics';
 
 const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
 const FETCH_DEBOUNCE_MS = 250;
@@ -189,6 +190,7 @@ export class RouteExplorer {
         this.showActiveTab();
         return;
       }
+      this.resetLaneState();
       this.laneData = data;
       this.applyData(data);
       this.applyMapState(data);
@@ -275,6 +277,13 @@ export class RouteExplorer {
         '<ul><li>Current route with chokepoint risk</li><li>Ranked bypass alternatives</li><li>Overland corridor options</li></ul>' +
         '<button class="re-content__upgrade" type="button">Upgrade to PRO</button>' +
         '</div>';
+      const btn = this.contentEl.querySelector<HTMLButtonElement>('.re-content__upgrade');
+      btn?.addEventListener('click', () => {
+        trackGateHit('route-explorer');
+        void import('@/services/checkout')
+          .then((m) => m.startCheckout('pro_monthly'))
+          .catch(() => window.open('https://worldmonitor.app/pro', '_blank'));
+      }, { once: true });
     }
   }
 
