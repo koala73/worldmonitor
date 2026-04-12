@@ -17,8 +17,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  width: 520px;
-  max-width: 45vw;
+  width: clamp(320px, 45vw, 520px);
   height: 100%;
   background: var(--bg-primary, #0d1117);
   color: var(--text-primary, #c9d1d9);
