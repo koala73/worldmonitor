@@ -303,7 +303,10 @@ async function readWmScoresFromRedis() {
     console.warn('[benchmark] No ranking data in Redis — skipping (cold start after cache key bump)');
     return new Map();
   }
-  const ranking = JSON.parse(rankingData.result);
+  const parsed = JSON.parse(rankingData.result);
+  // The ranking cache stores a GetResilienceRankingResponse object
+  // with { items, greyedOut }, not a bare array.
+  const ranking = Array.isArray(parsed) ? parsed : (parsed?.items ?? []);
   const scores = new Map();
   for (const item of ranking) {
     if (item.countryCode && typeof item.overallScore === 'number' && item.overallScore > 0) {
@@ -439,17 +442,21 @@ const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv
 if (isMain) {
   runBenchmark()
     .then(result => {
+      if (result.skipped) {
+        console.log(`\n[benchmark] Skipped: ${result.reason}`);
+        return;
+      }
       console.log('\n=== Benchmark Results ===');
-      console.log(`Hypotheses: ${result.hypotheses.filter(h => h.pass).length}/${result.hypotheses.length} passed`);
-      for (const h of result.hypotheses) {
+      console.log(`Hypotheses: ${(result.hypotheses ?? []).filter(h => h.pass).length}/${(result.hypotheses ?? []).length} passed`);
+      for (const h of (result.hypotheses ?? [])) {
         console.log(`  ${h.pass ? 'PASS' : 'FAIL'} ${h.index} (${h.pillar}): expected ${h.direction} >= ${h.expected}, got ${h.actual}`);
       }
       console.log(`\nCorrelations:`);
-      for (const [name, c] of Object.entries(result.correlations)) {
+      for (const [name, c] of Object.entries(result.correlations ?? {})) {
         console.log(`  ${name}: spearman=${c.spearman}, pearson=${c.pearson}, n=${c.n}`);
       }
-      console.log(`\nOutliers: ${result.outliers.length}`);
-      for (const o of result.outliers.slice(0, 10)) {
+      console.log(`\nOutliers: ${(result.outliers ?? []).length}`);
+      for (const o of (result.outliers ?? []).slice(0, 10)) {
         console.log(`  ${o.countryCode} (${o.index}): residual=${o.residual} - ${o.commentary}`);
       }
     })
