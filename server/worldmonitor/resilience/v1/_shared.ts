@@ -37,9 +37,6 @@ import { buildPillarList } from './_pillar-membership';
 // preserve backward compat for widget + map layer + Country Brief
 // consumers per the plan ("Schema changes (OpenAPI + proto)" section).
 export const RESILIENCE_SCHEMA_V2_ENABLED =
-  (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'false').toLowerCase() === 'true';
-
-export const RESILIENCE_SCHEMA_V2_ENABLED =
   (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
