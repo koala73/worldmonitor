@@ -13,11 +13,15 @@ const CANONICAL_KEY = 'resilience:recovery:import-hhi:v1';
 // key out of order. runSeed publishes the final authoritative snapshot at end.
 const CHECKPOINT_KEY = 'resilience:recovery:import-hhi:checkpoint:v1';
 const CACHE_TTL = 90 * 24 * 3600;
-const CHECKPOINT_TTL = 7 * 24 * 3600;
-// Resume TTL: skip reporters fetched within last 14 days. Seeder runs monthly,
-// so two consecutive runs can fully cover the world even if each only finishes
-// ~half the reporters before the bundle timeout.
-const RESUME_TTL_MS = 14 * 24 * 3600 * 1000;
+const CHECKPOINT_TTL = 45 * 24 * 3600;
+// Resume TTL must outlive the bundle-runner freshness gate (intervalMs * 0.8
+// ≈ 24 days for a 30-day interval), otherwise consecutive partial runs cannot
+// accumulate coverage: a run that passes validate() with >=80 countries
+// refreshes seed-meta, suppressing the next bundle run for ~24 days, by which
+// point a shorter resume window would have already expired. 45 days gives a
+// safe buffer across two bundle cycles. Comtrade annual data changes on a
+// yearly cadence, so 45-day-old HHI values are still representative.
+const RESUME_TTL_MS = 45 * 24 * 3600 * 1000;
 // Checkpoint cadence: write partial progress every N successful fetches so a
 // timeout or crash does not discard an entire run.
 const CHECKPOINT_EVERY = 25;
