@@ -85,11 +85,6 @@ const SOURCE_KEY_META_OVERRIDES: Readonly<Record<string, string>> = {
   'news:threat:summary': 'news:threat-summary',
   // ais-relay.cjs writes seed-meta:intelligence:social-reddit (single dash).
   'intelligence:social:reddit': 'intelligence:social-reddit',
-  'resilience:recovery:fiscal-space': 'resilience:recovery:fiscal-space',
-  'resilience:recovery:reserve-adequacy': 'resilience:recovery:reserve-adequacy',
-  'resilience:recovery:external-debt': 'resilience:recovery:external-debt',
-  'resilience:recovery:import-hhi': 'resilience:recovery:import-hhi',
-  'resilience:recovery:fuel-stocks': 'resilience:recovery:fuel-stocks',
 };
 
 /**
