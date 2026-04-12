@@ -51,7 +51,7 @@ export class Hs2Picker {
     this.list.addEventListener('click', this.handleClick);
   }
 
-  private showList(): void { this.list.style.display = ''; }
+  private showList(): void { this.list.style.display = 'block'; }
   private hideList(): void { this.list.style.display = 'none'; }
 
   public focusInput(): void {
