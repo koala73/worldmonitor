@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
@@ -28,11 +29,12 @@ async function fetchWbIndicator(indicator) {
     const records = json[1] ?? [];
     totalPages = meta?.pages ?? 1;
     for (const record of records) {
-      const code = record?.countryiso3code || record?.country?.id;
-      if (!code || code.length !== 2) continue;
+      const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
+      const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
+      if (!iso2) continue;
       const value = Number(record?.value);
       if (!Number.isFinite(value)) continue;
-      out[code] = { value, year: Number(record?.date) || null };
+      out[iso2] = { value, year: Number(record?.date) || null };
     }
     page++;
   }

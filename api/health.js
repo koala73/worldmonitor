@@ -341,7 +341,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
-  'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
+  'recoveryFiscalSpace',
   'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar seeds: stub seeders write empty payloads until real sources are wired
 ]);
 

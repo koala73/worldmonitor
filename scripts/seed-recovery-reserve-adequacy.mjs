@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig } from './_seed-utils.mjs';
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
@@ -31,14 +32,14 @@ async function fetchReserveAdequacy() {
 
   const countries = {};
   for (const record of pages) {
-    const iso2 = record?.countryiso3code ? null : record?.country?.id;
-    const code = record?.countryiso3code || iso2;
-    if (!code || code.length !== 2) continue;
+    const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
+    const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
+    if (!iso2) continue;
     const value = Number(record?.value);
     if (!Number.isFinite(value)) continue;
     const year = Number(record?.date);
 
-    countries[code] = {
+    countries[iso2] = {
       reserveMonths: value,
       year: Number.isFinite(year) ? year : null,
     };
