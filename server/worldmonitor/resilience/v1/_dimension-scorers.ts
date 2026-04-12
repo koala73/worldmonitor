@@ -1209,8 +1209,9 @@ interface RecoveryImportHhiCountry {
 }
 
 interface RecoveryFuelStocksCountry {
-  stockDays?: number | null;
-  year?: number | null;
+  fuelStockDays?: number | null;
+  meetsObligation?: boolean | null;
+  belowObligation?: boolean | null;
 }
 
 function getRecoveryCountryEntry<T>(raw: unknown, countryCode: string): T | null {
@@ -1302,7 +1303,10 @@ export async function scoreImportConcentration(
     };
   }
   return weightedBlend([
-    { score: normalizeLowerBetter(entry.hhi, 0, 5000), weight: 1.0 },
+    // HHI is on a 0..1 scale (0 = perfectly diversified, 1 = single partner).
+    // Multiply by 10000 to convert to the traditional 0..10000 HHI scale,
+    // then normalize against the 0..5000 goalpost range (where 5000+ = max concentration).
+    { score: normalizeLowerBetter(entry.hhi * 10000, 0, 5000), weight: 1.0 },
   ]);
 }
 
@@ -1354,7 +1358,8 @@ export async function scoreFuelStockDays(
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_FUEL_STOCKS_KEY);
   const entry = getRecoveryCountryEntry<RecoveryFuelStocksCountry>(raw, countryCode);
-  if (!entry || entry.stockDays == null) {
+  // The seeder writes `fuelStockDays`, not `stockDays`.
+  if (!entry || entry.fuelStockDays == null) {
     return {
       score: IMPUTE.recoveryFuelStocks.score,
       coverage: IMPUTE.recoveryFuelStocks.certaintyCoverage,
@@ -1365,7 +1370,7 @@ export async function scoreFuelStockDays(
     };
   }
   return weightedBlend([
-    { score: normalizeHigherBetter(Math.min(entry.stockDays, 120), 0, 120), weight: 1.0 },
+    { score: normalizeHigherBetter(Math.min(entry.fuelStockDays, 120), 0, 120), weight: 1.0 },
   ]);
 }
 

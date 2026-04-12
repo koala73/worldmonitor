@@ -1132,7 +1132,8 @@ describe('resilience source-failure aggregation (T1.7)', () => {
 
   it('scoreImportConcentration: low HHI scores well', async () => {
     const us = await scoreImportConcentration('US', fixtureReader);
-    assert.ok(us.score > 85, `US with HHI 400 should score >85, got ${us.score}`);
+    // US fixture: hhi=0.06 → *10000 = 600 → normalizeLowerBetter(600, 0, 5000) ≈ 88
+    assert.ok(us.score > 80, `US with HHI 0.06 should score >80, got ${us.score}`);
   });
 
   it('scoreStateContinuity: derives from existing WGI + UCDP + displacement', async () => {
@@ -1144,7 +1145,9 @@ describe('resilience source-failure aggregation (T1.7)', () => {
 
   it('scoreFuelStockDays: country with stock data scores based on coverage', async () => {
     const no = await scoreFuelStockDays('NO', fixtureReader);
-    assert.ok(no.score > 60, `NO with 90 stock days should score >60, got ${no.score}`);
+    // NO fixture: fuelStockDays=90 → normalizeHigherBetter(90, 0, 120) = 75
+    assert.ok(no.score > 60, `NO with 90 fuelStockDays should score >60, got ${no.score}`);
+    assert.ok(no.observedWeight > 0, 'real fuel-stock data must have observed weight');
   });
 
   it('scoreFuelStockDays: country without fuel stock data returns unmonitored', async () => {

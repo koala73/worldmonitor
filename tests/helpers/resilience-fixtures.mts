@@ -405,18 +405,21 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     },
     seededAt: '2026-04-04T00:00:00.000Z',
   },
+  // HHI on 0..1 scale (seeder output). Scorer multiplies by 10000 for normalization.
+  // NO: 0.03 = very diversified, US: 0.06 = diversified, YE: 0.35 = concentrated
   'resilience:recovery:import-hhi:v1': {
     countries: {
-      NO: { hhi: 300, year: 2024 },
-      US: { hhi: 600, year: 2024 },
-      YE: { hhi: 3500, year: 2023 },
+      NO: { hhi: 0.03, concentrated: false, partnerCount: 120 },
+      US: { hhi: 0.06, concentrated: false, partnerCount: 180 },
+      YE: { hhi: 0.35, concentrated: true, partnerCount: 15 },
     },
     seededAt: '2026-04-04T00:00:00.000Z',
   },
+  // Fuel-stocks: fuelStockDays (not stockDays), matching seeder output shape
   'resilience:recovery:fuel-stocks:v1': {
     countries: {
-      NO: { stockDays: 90, year: 2025 },
-      US: { stockDays: 60, year: 2025 },
+      NO: { fuelStockDays: 90, meetsObligation: true, belowObligation: false },
+      US: { fuelStockDays: 60, meetsObligation: false, belowObligation: true },
     },
     seededAt: '2026-04-04T00:00:00.000Z',
   },
