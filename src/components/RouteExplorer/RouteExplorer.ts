@@ -114,7 +114,12 @@ export class RouteExplorer {
     this.displayMode = 'idle';
     this.previousFocus = (document.activeElement as HTMLElement) ?? null;
     this.root = this.buildRoot();
-    document.body.append(this.root);
+    const mapSection = document.getElementById('mapSection');
+    if (mapSection) {
+      mapSection.insertAdjacentElement('beforebegin', this.root);
+    } else {
+      document.body.append(this.root);
+    }
     this.isOpen = true;
     this.openedAt = Date.now();
     this.queryCount = 0;
@@ -611,8 +616,6 @@ export class RouteExplorer {
       return;
     }
 
-    // No focus trap — side-sheet pattern lets Tab reach the map.
-    if (e.key === 'Tab') return;
 
     if (this.isFormControlFocused()) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
