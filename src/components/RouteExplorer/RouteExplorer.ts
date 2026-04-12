@@ -155,10 +155,10 @@ export class RouteExplorer {
     }, FETCH_DEBOUNCE_MS);
   }
 
-  private resetLaneState(): void {
+  private resetLaneState(mode?: 'loading' | 'error' | 'gate'): void {
     this.laneData = null;
     this.clearMapState();
-    this.leftRail?.updateLane(null);
+    this.leftRail?.updateLane(null, mode);
     this.leftRail?.updateResilience(null);
     this.currentTab?.update(null);
     this.alternativesTab?.update(null);
@@ -169,16 +169,16 @@ export class RouteExplorer {
     if (!this.isQueryComplete()) return;
     if (!hasPremiumAccess(getAuthState())) {
       this.generationId++;
-      this.resetLaneState();
       this.displayMode = 'gate';
+      this.resetLaneState('gate');
       this.renderFreeGate();
       return;
     }
 
     const gen = ++this.generationId;
-    this.resetLaneState();
-    this.isLoading = true;
     this.displayMode = 'loading';
+    this.resetLaneState('loading');
+    this.isLoading = true;
     this.showLoading();
 
     try {
@@ -199,6 +199,7 @@ export class RouteExplorer {
     } catch {
       if (gen !== this.generationId) return;
       this.displayMode = 'error';
+      this.resetLaneState('error');
       this.showError();
     } finally {
       if (gen === this.generationId) this.isLoading = false;
@@ -264,14 +265,12 @@ export class RouteExplorer {
   }
 
   private showError(): void {
-    this.leftRail.updateLane(null);
     if (this.contentEl) {
       this.contentEl.innerHTML = '<div class="re-content__error">Failed to load lane data. Try again.</div>';
     }
   }
 
   private renderFreeGate(): void {
-    this.leftRail.updateLane(null);
     if (this.contentEl) {
       this.contentEl.innerHTML =
         '<div class="re-content__gate">' +

@@ -29,12 +29,12 @@ export class LeftRail {
     this.renderPlaceholder();
   }
 
-  public updateLane(data: GetRouteExplorerLaneResponse | null): void {
+  public updateLane(data: GetRouteExplorerLaneResponse | null, mode?: 'loading' | 'error' | 'gate'): void {
     this.resilienceScore = null;
-    if (!data || data.noModeledLane) {
-      this.renderNoLane();
-      return;
-    }
+    if (mode === 'loading') { this.renderLoading(); return; }
+    if (mode === 'error') { this.renderError(); return; }
+    if (mode === 'gate') { this.renderGate(); return; }
+    if (!data || data.noModeledLane) { this.renderNoLane(); return; }
     this.renderSummary(data);
   }
 
@@ -54,6 +54,21 @@ export class LeftRail {
   private renderNoLane(): void {
     this.element.innerHTML =
       '<div class="re-leftrail__empty">No modeled lane for this pair.</div>';
+  }
+
+  private renderLoading(): void {
+    this.element.innerHTML =
+      '<div class="re-leftrail__placeholder">Loading lane data\u2026</div>';
+  }
+
+  private renderError(): void {
+    this.element.innerHTML =
+      '<div class="re-leftrail__empty">Failed to load lane data.</div>';
+  }
+
+  private renderGate(): void {
+    this.element.innerHTML =
+      '<div class="re-leftrail__empty">Upgrade to PRO for route intelligence.</div>';
   }
 
   private renderSummary(data: GetRouteExplorerLaneResponse): void {
