@@ -48,6 +48,15 @@ const EVENTS = {
   'mcp-connect-attempt': true,
   'mcp-connect-success': true,
   'mcp-panel-add': true,
+  // Route Explorer
+  'route-explorer:opened': true,
+  'route-explorer:query': true,
+  'route-explorer:tab-switch': true,
+  'route-explorer:alternative-selected': true,
+  'route-explorer:impact-viewed': true,
+  'route-explorer:share-copied': true,
+  'route-explorer:free-cta-click': true,
+  'route-explorer:closed': true,
   // Auth (wired in PR #1812 — do not remove)
   'sign-in': true,
   'sign-up': true,

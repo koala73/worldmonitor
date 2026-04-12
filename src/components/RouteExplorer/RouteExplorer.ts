@@ -16,6 +16,7 @@ import { AlternativesTab } from './tabs/AlternativesTab';
 import { LandTab } from './tabs/LandTab';
 import { CountryImpactTab } from './tabs/CountryImpactTab';
 import { inferCargoFromHs2, type ExplorerCargo } from './RouteExplorer.utils';
+import COUNTRY_PORT_CLUSTERS from '../../../scripts/shared/country-port-clusters.json';
 import {
   parseExplorerUrl,
   serializeExplorerUrl,
@@ -28,7 +29,7 @@ import type { GetRouteExplorerLaneResponse, GetRouteImpactResponse, BypassCorrid
 import { fetchRouteExplorerLane, fetchRouteImpact } from '@/services/supply-chain';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
-import { trackGateHit } from '@/services/analytics';
+import { trackGateHit, track, type UmamiEvent } from '@/services/analytics';
 
 const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
 const FETCH_DEBOUNCE_MS = 250;
@@ -79,6 +80,9 @@ export class RouteExplorer {
   private laneData: GetRouteExplorerLaneResponse | null = null;
   public isLoading = false;
   private displayMode: 'idle' | 'loading' | 'data' | 'error' | 'gate' = 'idle';
+  private openedAt = 0;
+  private queryCount = 0;
+  private gateHitTracked = false;
 
   constructor() {
     this.state = { ...DEFAULT_EXPLORER_STATE };
@@ -101,6 +105,13 @@ export class RouteExplorer {
     this.root = this.buildRoot();
     document.body.append(this.root);
     this.isOpen = true;
+    this.openedAt = Date.now();
+    this.queryCount = 0;
+    if (!this.gateHitTracked && this.tier === 'free') {
+      trackGateHit('route-explorer');
+      this.gateHitTracked = true;
+    }
+    this.trackEvent('route-explorer:opened', { source: 'cmdk' });
     document.addEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.focusInitial();
     if (this.isQueryComplete()) this.scheduleFetch();
@@ -113,6 +124,10 @@ export class RouteExplorer {
     document.removeEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.helpOverlay?.element.remove();
     this.helpOverlay = null;
+    this.trackEvent('route-explorer:closed', {
+      durationSec: Math.round((Date.now() - this.openedAt) / 1000),
+      queryCount: this.queryCount,
+    });
     this.clearMapState();
     this.root.remove();
     this.root = null;
@@ -153,6 +168,13 @@ export class RouteExplorer {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
+      this.queryCount++;
+      this.trackEvent('route-explorer:query', {
+        from: this.state.fromIso2 ?? '',
+        to: this.state.toIso2 ?? '',
+        hs2: this.state.hs2 ?? '',
+        cargo: this.getEffectiveCargo(),
+      });
       void this.fetchLane();
     }, FETCH_DEBOUNCE_MS);
   }
@@ -176,6 +198,7 @@ export class RouteExplorer {
       this.displayMode = 'gate';
       this.resetLaneState('gate');
       this.renderFreeGate();
+      this.applyPublicRouteHighlight();
       return;
     }
 
@@ -232,6 +255,9 @@ export class RouteExplorer {
       this.impactData = data;
       this.impactTab.update(data);
       this.leftRail.updateDependencyFlags(data.dependencyFlags);
+      if (data.comtradeSource === 'bilateral-hs4') {
+        this.trackEvent('route-explorer:impact-viewed', { toIso2, hs2 });
+      }
       if (data.resilienceScore > 0) {
         this.leftRail.updateResilience(data.resilienceScore);
       }
@@ -255,6 +281,7 @@ export class RouteExplorer {
 
   private handleBypassSelect(option: BypassCorridorOption): void {
     if (!this.mapRef || !option.fromPort || !option.toPort) return;
+    this.trackEvent('route-explorer:alternative-selected', { corridorId: option.id });
     const corridors = [{ fromPort: [option.fromPort.lon, option.fromPort.lat] as [number, number], toPort: [option.toPort.lon, option.toPort.lat] as [number, number] }];
     this.mapRef.setBypassRoutes(corridors);
     if (typeof window !== 'undefined' && window.__routeExplorerTestHook) {
@@ -275,6 +302,7 @@ export class RouteExplorer {
   // ─── Rendering ────────────────────────────────────────────────────────
 
   private applyData(data: GetRouteExplorerLaneResponse): void {
+    this.leftRail.element.classList.remove('re-leftrail--blurred');
     this.leftRail.updateLane(data);
     this.currentTab.update(data);
     this.alternativesTab.update(data);
@@ -295,6 +323,7 @@ export class RouteExplorer {
   }
 
   private renderFreeGate(): void {
+    this.leftRail?.element.classList.add('re-leftrail--blurred');
     if (this.contentEl) {
       this.contentEl.innerHTML =
         '<div class="re-content__gate">' +
@@ -305,10 +334,28 @@ export class RouteExplorer {
       const btn = this.contentEl.querySelector<HTMLButtonElement>('.re-content__upgrade');
       btn?.addEventListener('click', () => {
         trackGateHit('route-explorer');
+        this.trackEvent('route-explorer:free-cta-click', {
+          from: this.state.fromIso2 ?? '',
+          to: this.state.toIso2 ?? '',
+          hs2: this.state.hs2 ?? '',
+        });
         void import('@/services/checkout')
           .then((m) => m.startCheckout('pro_monthly'))
           .catch(() => window.open('https://worldmonitor.app/pro', '_blank'));
       }, { once: true });
+    }
+  }
+
+  private applyPublicRouteHighlight(): void {
+    if (!this.mapRef || !this.state.fromIso2 || !this.state.toIso2) return;
+    const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, { nearestRouteIds: string[] }>;
+    const fromRoutes = new Set(clusters[this.state.fromIso2]?.nearestRouteIds ?? []);
+    const toRoutes = new Set(clusters[this.state.toIso2]?.nearestRouteIds ?? []);
+    const shared = [...fromRoutes].filter((r) => toRoutes.has(r));
+    const routeId = shared[0] ?? clusters[this.state.fromIso2]?.nearestRouteIds[0] ?? '';
+    if (routeId) {
+      this.mapRef.highlightRoute([routeId]);
+      this.mapRef.zoomToRoutes([routeId]);
     }
   }
 
@@ -481,6 +528,7 @@ export class RouteExplorer {
     if (n === this.state.tab) return;
     this.state = { ...this.state, tab: n };
     this.writeStateToUrl();
+    this.trackEvent('route-explorer:tab-switch', { tab: n });
     if (this.tabStrip) {
       const buttons = this.tabStrip.querySelectorAll<HTMLButtonElement>('.re-tabstrip__tab');
       buttons.forEach((b) => {
@@ -632,7 +680,18 @@ export class RouteExplorer {
     if (serialized) url.searchParams.set('explorer', serialized);
     if (navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(url.toString());
+      this.trackEvent('route-explorer:share-copied');
     }
+  }
+
+  // ─── Analytics ─────────────────────────────────────────────────────────
+
+  private get tier(): 'pro' | 'free' {
+    return hasPremiumAccess(getAuthState()) ? 'pro' : 'free';
+  }
+
+  private trackEvent(event: UmamiEvent, props?: Record<string, unknown>): void {
+    track(event, { tier: this.tier, ...props });
   }
 
   // ─── Test hook ────────────────────────────────────────────────────────

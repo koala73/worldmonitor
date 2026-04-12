@@ -609,3 +609,43 @@
 .re-leftrail__flag--single_source_critical { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
 .re-leftrail__flag--single_corridor_critical { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
 .re-leftrail__flag--diversifiable { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+
+/* ─── Free-tier blur ────────────────────────────────────────────────── */
+
+.re-leftrail--blurred {
+  filter: blur(6px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.re-content__gate {
+  position: relative;
+  z-index: 2;
+}
+
+.re-content__gate h3 {
+  margin: 0 0 12px;
+  color: var(--text-primary, #c9d1d9);
+  font-size: 18px;
+}
+
+.re-content__gate ul {
+  text-align: left;
+  margin: 0 0 16px;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--text-dim, #8b949e);
+}
+
+.re-content__upgrade {
+  padding: 10px 24px;
+  background: var(--accent, #58a6ff);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.re-content__upgrade:hover { background: #4090ef; }
