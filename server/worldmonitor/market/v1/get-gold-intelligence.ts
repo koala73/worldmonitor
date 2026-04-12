@@ -57,6 +57,9 @@ export async function getGoldIntelligence(
     const quoteMap = new Map(rawQuotes.map(q => [q.symbol, q]));
 
     const gold = quoteMap.get('GC=F');
+    if (!gold) {
+      return { goldPrice: 0, goldChangePct: 0, goldSparkline: [], silverPrice: 0, platinumPrice: 0, palladiumPrice: 0, crossCurrencyPrices: [], updatedAt: '', unavailable: true };
+    }
     const silver = quoteMap.get('SI=F');
     const platinum = quoteMap.get('PL=F');
     const palladium = quoteMap.get('PA=F');

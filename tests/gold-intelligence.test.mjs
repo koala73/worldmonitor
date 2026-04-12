@@ -97,6 +97,26 @@ describe('Gold Intelligence', () => {
     assert.ok(Math.abs(premium - ((3200 - 950) / 950) * 100) < 0.01);
   });
 
+  it('returns unavailable when GC=F is missing from commodity snapshot', () => {
+    const quotes = [
+      { symbol: 'SI=F', price: 35 },
+      { symbol: 'PL=F', price: 950 },
+      { symbol: 'PA=F', price: 1020 },
+      { symbol: 'EURUSD=X', price: 1.08 },
+    ];
+    const quoteMap = new Map(quotes.map(q => [q.symbol, q]));
+    const gold = quoteMap.get('GC=F');
+    assert.strictEqual(gold, undefined);
+
+    const goldPrice = gold?.price ?? 0;
+    assert.strictEqual(goldPrice, 0);
+
+    const ratio = computeGoldSilverRatio(goldPrice, 35);
+    assert.strictEqual(ratio, null);
+    const cross = computeCrossCurrency(goldPrice, quotes);
+    assert.strictEqual(cross.length, 0);
+  });
+
   it('partial availability: price works when cot is null, and vice versa', () => {
     const goldPrice = 3200;
     const silverPrice = 35;
