@@ -195,6 +195,13 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
         console.log(`    ${r.pair} HS${r.hs2} -> ${r.primaryRouteId || '(none)'}`);
       }
     }
+    // eslint-disable-next-line no-console
+    console.log(
+      '\n[design gap] bypassOptions are only computed for the primary chokepoint (highest exposurePct).' +
+        '\nMulti-chokepoint routes (e.g. CN->DE via Malacca + Suez) show exposure data for both but' +
+        '\nbypass guidance only for the primary one. Sprint 3 should decide: expand to top-N chokepoints,' +
+        '\nor show a "see also" hint in the UI.',
+    );
     // Always passes; informational only.
     assert.ok(true);
   });
@@ -257,6 +264,38 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
         kra.status,
         'CORRIDOR_STATUS_PROPOSED',
         'kra_canal_future should be surfaced as proposed, not filtered out',
+      );
+    }
+  });
+
+  it('disruptionScore and warRiskTier reflect injected status map', async () => {
+    const fakeStatus = new Map<string, { id: string; disruptionScore?: number; warRiskTier?: string }>([
+      ['suez', { id: 'suez', disruptionScore: 75, warRiskTier: 'WAR_RISK_TIER_HIGH' }],
+      ['malacca_strait', { id: 'malacca_strait', disruptionScore: 30, warRiskTier: 'WAR_RISK_TIER_ELEVATED' }],
+    ]);
+    const res = await computeLane(
+      { fromIso2: 'CN', toIso2: 'DE', hs2: '85', cargoType: 'container' },
+      fakeStatus as Map<string, any>,
+    );
+    if (res.noModeledLane) return;
+    assert.ok(res.disruptionScore > 0, 'disruptionScore should reflect injected data, not default to 0');
+    assert.notEqual(res.warRiskTier, 'WAR_RISK_TIER_NORMAL', 'warRiskTier should reflect injected data');
+  });
+
+  it('unavailable corridor without waypoints gets WAR_RISK_TIER_WAR_ZONE', async () => {
+    const fakeStatus = new Map<string, { id: string; warRiskTier?: string }>([
+      ['kerch_strait', { id: 'kerch_strait', warRiskTier: 'WAR_RISK_TIER_WAR_ZONE' }],
+    ]);
+    const res = await computeLane(
+      { fromIso2: 'RU', toIso2: 'TR', hs2: '27', cargoType: 'tanker' },
+      fakeStatus as Map<string, any>,
+    );
+    const unavailable = res.bypassOptions.find((b) => b.status === 'CORRIDOR_STATUS_UNAVAILABLE');
+    if (unavailable) {
+      assert.equal(
+        unavailable.warRiskTier,
+        'WAR_RISK_TIER_WAR_ZONE',
+        'unavailable corridors without waypoints should derive WAR_ZONE from status',
       );
     }
   });

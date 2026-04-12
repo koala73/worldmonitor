@@ -174,11 +174,15 @@ function deriveBypassWarRiskTier(
   corridor: BypassCorridor,
   statusMap: Map<string, ChokepointStatus>,
 ): string {
-  if (corridor.waypointChokepointIds.length === 0) return 'WAR_RISK_TIER_UNSPECIFIED';
-  return corridor.waypointChokepointIds.reduce<string>((best, id) => {
-    const t = statusMap.get(id)?.warRiskTier ?? 'WAR_RISK_TIER_UNSPECIFIED';
-    return (TIER_RANK[t] ?? 0) > (TIER_RANK[best] ?? 0) ? t : best;
-  }, 'WAR_RISK_TIER_UNSPECIFIED');
+  if (corridor.waypointChokepointIds.length > 0) {
+    return corridor.waypointChokepointIds.reduce<string>((best, id) => {
+      const t = statusMap.get(id)?.warRiskTier ?? 'WAR_RISK_TIER_UNSPECIFIED';
+      return (TIER_RANK[t] ?? 0) > (TIER_RANK[best] ?? 0) ? t : best;
+    }, 'WAR_RISK_TIER_UNSPECIFIED');
+  }
+  const status = deriveCorridorStatus(corridor);
+  if (status === 'CORRIDOR_STATUS_UNAVAILABLE') return 'WAR_RISK_TIER_WAR_ZONE';
+  return 'WAR_RISK_TIER_UNSPECIFIED';
 }
 
 function buildBypassOption(
