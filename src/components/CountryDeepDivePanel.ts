@@ -582,7 +582,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.comtradeBody) return;
     this.comtradeBody.replaceChildren();
     if (!flows || flows.length === 0) {
-      this.comtradeBody.append(this.makeEmpty('No trade flow data available'));
+      this.comtradeBody.append(this.makeEmpty('No data available'));
       return;
     }
     const table = this.el('table', 'cdp-pro-flow-table');
@@ -635,7 +635,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.costShockCalcBody.replaceChildren();
 
     if (!data || (!data.sectors.length && !data.unavailableReason)) {
-      this.costShockCalcBody.append(this.makeEmpty('No multi-sector cost shock data'));
+      // Remove the card entirely to avoid showing an empty "Cost Shock" widget
+      // alongside the Trade Exposure sector table (issue #2973 bug 1).
+      this.costShockCalcBody.closest('.cdp-section-card')?.remove();
+      this.costShockCalcBody = null;
       return;
     }
 
@@ -787,7 +790,30 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (usd >= 1e12) return `$${(usd / 1e12).toFixed(1)}T`;
     if (usd >= 1e9) return `$${(usd / 1e9).toFixed(1)}B`;
     if (usd >= 1e6) return `$${(usd / 1e6).toFixed(1)}M`;
+    if (usd >= 1e3) return `$${(usd / 1e3).toFixed(1)}K`;
     return `$${Math.round(usd).toLocaleString()}`;
+  }
+
+  /**
+   * Format a USD value using the same scale as a reference value so row totals
+   * and supplier rows share a unit suffix (issue #2973 bug 5).
+   */
+  private formatMoneyAtScale(usd: number, referenceUsd: number): string {
+    if (referenceUsd >= 1e12) return `$${(usd / 1e12).toFixed(2)}T`;
+    if (referenceUsd >= 1e9) return `$${(usd / 1e9).toFixed(2)}B`;
+    if (referenceUsd >= 1e6) return `$${(usd / 1e6).toFixed(2)}M`;
+    if (referenceUsd >= 1e3) return `$${(usd / 1e3).toFixed(2)}K`;
+    return `$${Math.round(usd).toLocaleString()}`;
+  }
+
+  /**
+   * Shared exposure-score color scale used by vuln header and row scores
+   * (issue #2973 bug 4).
+   */
+  private static exposureScoreColor(score: number): string {
+    if (score >= 70) return 'var(--danger, #ef4444)';
+    if (score > 30) return 'var(--warning, #f59e0b)';
+    return 'var(--text-muted, #64748b)';
   }
 
   private formatPctTrend(pct: number): string {
@@ -1469,7 +1495,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     this.tradeExposureBody.replaceChildren();
 
-    const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${Math.round(data.vulnerabilityIndex)}/100`);
+    const vulnScore = Math.round(data.vulnerabilityIndex);
+    const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${vulnScore}/100`);
+    vulnDiv.style.color = CountryDeepDivePanel.exposureScoreColor(vulnScore);
     this.tradeExposureBody.append(vulnDiv);
 
     if (sectors && sectors.length > 0) {
@@ -1501,9 +1529,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         const cpCell = this.el('td', 'cdp-chokepoint-name');
         cpCell.textContent = s.primaryChokepointName;
         const scoreCell = this.el('td', 'cdp-exposure-score');
-        const scoreColor = s.exposureScore >= 70 ? 'var(--danger, #ef4444)' : s.exposureScore > 30 ? 'var(--warning, #f59e0b)' : 'var(--text-muted, #64748b)';
         scoreCell.textContent = `${s.exposureScore.toFixed(0)}`;
-        scoreCell.style.color = scoreColor;
+        scoreCell.style.color = CountryDeepDivePanel.exposureScoreColor(s.exposureScore);
         tr.append(sectorCell, cpCell, scoreCell);
         tbody.append(tr);
 
@@ -1539,6 +1566,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         bar.style.width = `${Math.min(entry.exposureScore, 100)}%`;
         barWrap.append(bar);
         const pctCell = this.el('td', 'cdp-exposure-pct', `${entry.exposureScore.toFixed(1)}`);
+        pctCell.style.color = CountryDeepDivePanel.exposureScoreColor(entry.exposureScore);
         tr.append(nameCell, barWrap, pctCell);
         tbody.append(tr);
       }
@@ -1690,7 +1718,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.productImportsBody) return;
     this.productImportsBody.replaceChildren();
     if (!data || data.products.length === 0) {
-      this.productImportsBody.append(this.makeEmpty('No product import data available'));
+      this.productImportsBody.append(this.makeEmpty('No data available'));
       return;
     }
     this.renderProductSelector(data.products);
@@ -1818,7 +1846,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         shareTd.append(barWrap);
         tr.append(shareTd);
 
-        tr.append(this.el('td', 'cdp-product-val', this.formatMoney(exp.value)));
+        tr.append(this.el('td', 'cdp-product-val', this.formatMoneyAtScale(exp.value, product.totalValue)));
 
         const riskTd = this.el('td', 'cdp-product-risk');
         if (exp.risk) {
