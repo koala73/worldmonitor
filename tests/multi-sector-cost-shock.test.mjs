@@ -374,7 +374,7 @@ describe('country-intel.ts: multi-sector cost shock fetch', () => {
   });
 
   it('calls fetchMultiSectorCostShock with default 30-day window', () => {
-    assert.match(src, /fetchMultiSectorCostShock\(code, resp\.primaryChokepointId, 30\)/);
+    assert.match(src, /fetchMultiSectorCostShock\(code, top\.primaryChokepointId, 30\)/);
   });
 
   it('clears the card on catch paths', () => {

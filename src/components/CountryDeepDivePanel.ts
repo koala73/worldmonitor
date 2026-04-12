@@ -116,8 +116,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private sanctionsBody: HTMLElement | null = null;
   private comtradeBody: HTMLElement | null = null;
   private tariffBody: HTMLElement | null = null;
-  private chokepointBody: HTMLElement | null = null;
-  private costShockBody: HTMLElement | null = null;
   // ── Phase 5: Multi-sector Cost Shock Calculator ─────────────────────────
   private costShockCalcBody: HTMLElement | null = null;
   private costShockCalcTable: HTMLElement | null = null;
@@ -611,32 +609,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.tariffBody.append(grid);
   }
 
-  public updateChokepointExposure(data: { vulnerabilityIndex: number; exposures: Array<{ chokepointName: string; exposureScore: number }> } | null): void {
-    if (!this.chokepointBody) return;
-    this.chokepointBody.replaceChildren();
-    if (!data) {
-      this.chokepointBody.append(this.makeEmpty('No chokepoint exposure data'));
-      return;
-    }
-    const vulnClass = data.vulnerabilityIndex >= 75 ? 'cdp-pro-badge-critical'
-      : data.vulnerabilityIndex >= 50 ? 'cdp-pro-badge-high'
-      : data.vulnerabilityIndex >= 25 ? 'cdp-pro-badge-elevated'
-      : 'cdp-pro-badge-normal';
-    const badge = this.el('span', `cdp-pro-badge ${vulnClass}`, `Vulnerability: ${data.vulnerabilityIndex.toFixed(0)}`);
-    this.chokepointBody.append(badge);
-    for (const exp of data.exposures.slice(0, 3)) {
-      const row = this.el('div', 'cdp-pro-exposure-item');
-      row.append(this.el('span', 'cdp-pro-exposure-name', exp.chokepointName));
-      const scoreEl = this.el('span', 'cdp-pro-exposure-score');
-      scoreEl.textContent = exp.exposureScore.toFixed(1);
-      scoreEl.style.background = exp.exposureScore >= 60
-        ? 'color-mix(in srgb, var(--semantic-critical) 20%, transparent)'
-        : 'color-mix(in srgb, var(--semantic-normal) 20%, transparent)';
-      row.append(scoreEl);
-      this.chokepointBody.append(row);
-    }
-  }
-
   /**
    * Mount the Cost Shock Calculator with its initial data and slider.
    * Called once per country load with the first (default 30-day) response.
@@ -774,30 +746,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     } catch {
       // Ignore — either aborted or transient network; leave prior values visible.
     }
-  }
-
-  public updateCostShock(data: { supplyDeficitPct: number; coverageDays: number; warRiskTier: string } | null): void {
-    if (!this.costShockBody) return;
-    this.costShockBody.replaceChildren();
-    if (!data) {
-      this.costShockBody.append(this.makeEmpty('No cost shock data'));
-      return;
-    }
-    const grid = this.el('div', 'cdp-pro-metric-grid');
-    grid.append(
-      this.proMetricBox('Supply Deficit', `${data.supplyDeficitPct.toFixed(1)}%`),
-      this.proMetricBox('Coverage Days', String(Math.round(data.coverageDays))),
-    );
-    this.costShockBody.append(grid);
-    const tierLabel = data.warRiskTier.replace('WAR_RISK_TIER_', '').replace(/_/g, ' ');
-    const tierClass = tierLabel === 'CRITICAL' || tierLabel === 'WAR ZONE' ? 'cdp-pro-badge-critical'
-      : tierLabel === 'HIGH' ? 'cdp-pro-badge-high'
-      : tierLabel === 'ELEVATED' ? 'cdp-pro-badge-elevated'
-      : 'cdp-pro-badge-normal';
-    const tierBadge = this.el('span', `cdp-pro-badge ${tierClass}`, `War Risk: ${tierLabel}`);
-    tierBadge.style.marginTop = '8px';
-    tierBadge.style.display = 'inline-block';
-    this.costShockBody.append(tierBadge);
   }
 
   private makeProLocked(text: string): HTMLElement {
@@ -1582,6 +1530,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.selectedSectorHs2 = hs2;
     this.renderTradeExposureContent();
 
+    this.costShockCalcBody?.closest('.cdp-section-card')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
     const sector = this.cachedSectors.find(s => s.hs2 === hs2);
     if (!sector) return;
 
@@ -2187,13 +2137,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.tariffBody = tariffBody;
     tariffBody.append(isPro ? this.makeLoading('Loading tariff data\u2026') : this.makeProLocked('Upgrade to PRO for tariff trend data'));
 
-    const [chokepointCard, chokepointBody] = this.sectionCard('Chokepoint Exposure', 'Vulnerability index and top chokepoint exposures for energy imports (HS 27).');
-    this.chokepointBody = chokepointBody;
-    chokepointBody.append(isPro ? this.makeLoading('Loading chokepoint data\u2026') : this.makeProLocked('Upgrade to PRO for chokepoint exposure'));
-
-    const [costShockCard, costShockBody] = this.sectionCard('Cost Shock', 'Supply deficit, coverage days, and war risk tier for the primary chokepoint.');
-    this.costShockBody = costShockBody;
-    costShockBody.append(isPro ? this.makeLoading('Loading cost shock data\u2026') : this.makeProLocked('Upgrade to PRO for cost shock analysis'));
 
     this.signalsBody = signalBody;
     this.timelineBody = timelineBody;
@@ -2213,7 +2156,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, chokepointCard, costShockCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -2240,8 +2183,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.sanctionsBody = null;
     this.comtradeBody = null;
     this.tariffBody = null;
-    this.chokepointBody = null;
-    this.costShockBody = null;
     this.costShockCalcAbort?.abort();
     this.costShockCalcAbort = null;
     if (this.costShockCalcDebounceTimer) {

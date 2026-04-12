@@ -29,7 +29,6 @@ import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { TradeServiceClient } from '@/generated/client/worldmonitor/trade/v1/service_client';
-import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
@@ -428,10 +427,23 @@ export class CountryIntelManager implements AppModule {
           fetchedAt: new Date().toISOString(),
         };
         this.ctx.countryBriefPage.updateTradeExposure?.(syntheticResponse, sectors);
+
+        // Trigger multi-sector cost shock calculator from the same primary chokepoint.
+        if (hasPremiumAccess(getAuthState()) && top.primaryChokepointId) {
+          fetchMultiSectorCostShock(code, top.primaryChokepointId, 30).then(multi => {
+            if (this.ctx.countryBriefPage?.getCode() !== code) return;
+            this.ctx.countryBriefPage.updateMultiSectorCostShock?.(multi);
+          }).catch(() => {
+            if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+          });
+        } else {
+          this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+        }
       })
       .catch(() => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         this.ctx.countryBriefPage.updateTradeExposure?.(null);
+        this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
       });
 
     if (hasPremiumAccess(getAuthState())) {
@@ -559,8 +571,6 @@ export class CountryIntelManager implements AppModule {
     const economicClient = new EconomicServiceClient(rpcBase, { fetch: fetchFn });
     const intelClientPro = new IntelligenceServiceClient(rpcBase, { fetch: fetchFn });
     const tradeClient = new TradeServiceClient(rpcBase, { fetch: fetchFn });
-    const supplyChainClient = new SupplyChainServiceClient(rpcBase, { fetch: fetchFn });
-
     const iso3 = iso2ToIso3(code);
 
     economicClient.getNationalDebt({}).then(resp => {
@@ -615,45 +625,6 @@ export class CountryIntelManager implements AppModule {
       this.ctx.countryBriefPage?.updateComtradeFlows?.(null);
       this.ctx.countryBriefPage?.updateTariffTrends?.(null);
     }
-
-    supplyChainClient.getCountryChokepointIndex({ iso2: code, hs2: '27' }).then(resp => {
-      if (this.ctx.countryBriefPage?.getCode() !== code) return;
-      const exps = resp.exposures || [];
-      this.ctx.countryBriefPage.updateChokepointExposure?.(exps.length > 0 ? {
-        vulnerabilityIndex: resp.vulnerabilityIndex,
-        exposures: exps.slice(0, 3).map(e => ({ chokepointName: e.chokepointName, exposureScore: e.exposureScore })),
-      } : null);
-
-      if (resp.primaryChokepointId) {
-        supplyChainClient.getCountryCostShock({ iso2: code, chokepointId: resp.primaryChokepointId, hs2: '27' }).then(shock => {
-          if (this.ctx.countryBriefPage?.getCode() !== code) return;
-          this.ctx.countryBriefPage.updateCostShock?.((shock.supplyDeficitPct > 0 || shock.coverageDays > 0) ? {
-            supplyDeficitPct: shock.supplyDeficitPct,
-            coverageDays: shock.coverageDays,
-            warRiskTier: shock.warRiskTier,
-          } : null);
-        }).catch(() => {
-          if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateCostShock?.(null);
-        });
-
-        // Multi-sector cost shock calculator (Phase 5) — default 30-day closure.
-        fetchMultiSectorCostShock(code, resp.primaryChokepointId, 30).then(multi => {
-          if (this.ctx.countryBriefPage?.getCode() !== code) return;
-          this.ctx.countryBriefPage.updateMultiSectorCostShock?.(multi);
-        }).catch(() => {
-          if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
-        });
-      } else {
-        this.ctx.countryBriefPage.updateCostShock?.(null);
-        this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
-      }
-    }).catch(() => {
-      if (this.ctx.countryBriefPage?.getCode() === code) {
-        this.ctx.countryBriefPage.updateChokepointExposure?.(null);
-        this.ctx.countryBriefPage.updateCostShock?.(null);
-        this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
-      }
-    });
 
     fetchCountryProducts(code).then(resp => {
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
