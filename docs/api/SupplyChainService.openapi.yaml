@@ -323,6 +323,47 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-route-impact:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetRouteImpact
+            operationId: GetRouteImpact
+            parameters:
+                - name: fromIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: toIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRouteImpactResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1065,3 +1106,70 @@ components:
                     type: integer
                     format: int32
             description: Inclusive integer range for transit days / freight USD estimates.
+        GetRouteImpactRequest:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                toIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                hs2:
+                    type: string
+            required:
+                - fromIso2
+                - toIso2
+                - hs2
+        GetRouteImpactResponse:
+            type: object
+            properties:
+                laneValueUsd:
+                    type: number
+                    format: double
+                primaryExporterIso2:
+                    type: string
+                primaryExporterShare:
+                    type: number
+                    format: double
+                topStrategicProducts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StrategicProduct'
+                resilienceScore:
+                    type: number
+                    format: double
+                dependencyFlags:
+                    type: array
+                    items:
+                        type: string
+                        enum:
+                            - DEPENDENCY_FLAG_UNSPECIFIED
+                            - DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL
+                            - DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL
+                            - DEPENDENCY_FLAG_COMPOUND_RISK
+                            - DEPENDENCY_FLAG_DIVERSIFIABLE
+                        description: DependencyFlag classifies how a country+sector dependency can fail.
+                hs2InSeededUniverse:
+                    type: boolean
+                comtradeSource:
+                    type: string
+                fetchedAt:
+                    type: string
+        StrategicProduct:
+            type: object
+            properties:
+                hs4:
+                    type: string
+                label:
+                    type: string
+                totalValueUsd:
+                    type: number
+                    format: double
+                topExporterIso2:
+                    type: string
+                topExporterShare:
+                    type: number
+                    format: double
+                primaryChokepointId:
+                    type: string

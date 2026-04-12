@@ -215,6 +215,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-country-cost-shock': 'slow-browser',
   '/api/supply-chain/v1/get-sector-dependency': 'slow-browser',
   '/api/supply-chain/v1/get-route-explorer-lane': 'slow-browser',
+  '/api/supply-chain/v1/get-route-impact': 'slow-browser',
   '/api/health/v1/list-disease-outbreaks': 'slow',
   '/api/health/v1/list-air-quality-alerts': 'fast',
   '/api/intelligence/v1/get-social-velocity': 'fast',

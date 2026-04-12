@@ -490,3 +490,122 @@
   font-size: 12px;
 }
 .re-help__label { color: var(--text-dim, #8b949e); }
+
+/* ─── Impact tab ────────────────────────────────────────────────────── */
+
+.re-impact__banner {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text-dim, #8b949e);
+  background: var(--bg-secondary, #161b22);
+  border: 1px solid var(--border-dim, #21262d);
+  border-radius: 6px;
+  border-left: 3px solid #f59e0b;
+}
+
+.re-impact__lane {
+  margin-bottom: 16px;
+  padding: 14px;
+  background: var(--bg-secondary, #161b22);
+  border: 1px solid var(--border-dim, #21262d);
+  border-radius: 8px;
+}
+
+.re-impact__lane-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent, #58a6ff);
+}
+
+.re-impact__lane-label {
+  font-size: 12px;
+  color: var(--text-dim, #8b949e);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+.re-impact__lane-exporter {
+  font-size: 13px;
+  color: var(--text-dim, #8b949e);
+  margin-top: 6px;
+}
+
+.re-impact__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.re-impact__flag {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.re-impact__flag--compound_risk { background: rgba(220, 38, 38, 0.15); color: #ef4444; }
+.re-impact__flag--single_source_critical { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.re-impact__flag--single_corridor_critical { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.re-impact__flag--diversifiable { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+
+.re-impact__resilience {
+  font-size: 14px;
+  margin-bottom: 16px;
+  color: var(--text-dim, #8b949e);
+}
+
+.re-impact__products-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.re-impact__products {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.re-impact__products th {
+  text-align: left;
+  padding: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim, #8b949e);
+  border-bottom: 1px solid var(--border-dim, #21262d);
+}
+
+.re-impact__product-row { cursor: pointer; }
+.re-impact__product-row td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border-dim, #21262d);
+}
+.re-impact__product-row:hover td { background: var(--bg-hover, #1f2937); }
+.re-impact__product-row:focus-visible {
+  outline: 2px solid var(--accent, #58a6ff);
+  outline-offset: -2px;
+}
+
+/* ─── Left-rail flags ───────────────────────────────────────────────── */
+
+.re-leftrail__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.re-leftrail__flag {
+  padding: 2px 6px;
+  font-size: 10px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.re-leftrail__flag--compound_risk { background: rgba(220, 38, 38, 0.15); color: #ef4444; }
+.re-leftrail__flag--single_source_critical { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.re-leftrail__flag--single_corridor_critical { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.re-leftrail__flag--diversifiable { background: rgba(34, 197, 94, 0.15); color: #22c55e; }

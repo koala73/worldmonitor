@@ -288,6 +288,33 @@ export interface NumberRange {
   max: number;
 }
 
+export interface GetRouteImpactRequest {
+  fromIso2: string;
+  toIso2: string;
+  hs2: string;
+}
+
+export interface GetRouteImpactResponse {
+  laneValueUsd: number;
+  primaryExporterIso2: string;
+  primaryExporterShare: number;
+  topStrategicProducts: StrategicProduct[];
+  resilienceScore: number;
+  dependencyFlags: DependencyFlag[];
+  hs2InSeededUniverse: boolean;
+  comtradeSource: string;
+  fetchedAt: string;
+}
+
+export interface StrategicProduct {
+  hs4: string;
+  label: string;
+  totalValueUsd: number;
+  topExporterIso2: string;
+  topExporterShare: number;
+  primaryChokepointId: string;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -566,6 +593,33 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetRouteExplorerLaneResponse;
+  }
+
+  async getRouteImpact(req: GetRouteImpactRequest, options?: SupplyChainServiceCallOptions): Promise<GetRouteImpactResponse> {
+    let path = "/api/supply-chain/v1/get-route-impact";
+    const params = new URLSearchParams();
+    if (req.fromIso2 != null && req.fromIso2 !== "") params.set("fromIso2", String(req.fromIso2));
+    if (req.toIso2 != null && req.toIso2 !== "") params.set("toIso2", String(req.toIso2));
+    if (req.hs2 != null && req.hs2 !== "") params.set("hs2", String(req.hs2));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetRouteImpactResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

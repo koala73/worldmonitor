@@ -7,7 +7,7 @@
  * Sprint 4 will add dependency flags from get-route-impact.
  */
 
-import type { GetRouteExplorerLaneResponse } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
+import type { GetRouteExplorerLaneResponse, DependencyFlag } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import {
   formatTransitRange,
   formatFreightRange,
@@ -69,6 +69,26 @@ export class LeftRail {
   private renderGate(): void {
     this.element.innerHTML =
       '<div class="re-leftrail__empty">Upgrade to PRO for route intelligence.</div>';
+  }
+
+  private static readonly FLAG_LABELS: Record<string, string> = {
+    DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL: 'Single Source Critical',
+    DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL: 'Single Corridor Critical',
+    DEPENDENCY_FLAG_COMPOUND_RISK: 'Compound Risk',
+    DEPENDENCY_FLAG_DIVERSIFIABLE: 'Diversifiable',
+  };
+
+  public updateDependencyFlags(flags: DependencyFlag[]): void {
+    const el = this.element.querySelector('.re-leftrail__card--flags');
+    if (!el) return;
+    if (flags.length === 0) {
+      el.innerHTML = '<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__placeholder-text">No critical dependencies identified</div>';
+      return;
+    }
+    const flagHtml = flags.map((f) =>
+      `<span class="re-leftrail__flag re-leftrail__flag--${f.toLowerCase().replace(/^dependency_flag_/, '')}">${escapeHtml(LeftRail.FLAG_LABELS[f] ?? f)}</span>`,
+    ).join('');
+    el.innerHTML = `<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__flags">${flagHtml}</div>`;
   }
 
   private renderSummary(data: GetRouteExplorerLaneResponse): void {

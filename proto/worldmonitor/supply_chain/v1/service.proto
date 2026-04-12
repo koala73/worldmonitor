@@ -12,6 +12,7 @@ import "worldmonitor/supply_chain/v1/get_bypass_options.proto";
 import "worldmonitor/supply_chain/v1/get_country_cost_shock.proto";
 import "worldmonitor/supply_chain/v1/get_sector_dependency.proto";
 import "worldmonitor/supply_chain/v1/get_route_explorer_lane.proto";
+import "worldmonitor/supply_chain/v1/get_route_impact.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -60,5 +61,9 @@ service SupplyChainService {
   // Route Explorer UI.
   rpc GetRouteExplorerLane(GetRouteExplorerLaneRequest) returns (GetRouteExplorerLaneResponse) {
     option (sebuf.http.config) = {path: "/get-route-explorer-lane", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetRouteImpact(GetRouteImpactRequest) returns (GetRouteImpactResponse) {
+    option (sebuf.http.config) = {path: "/get-route-impact", method: HTTP_METHOD_GET};
   }
 }

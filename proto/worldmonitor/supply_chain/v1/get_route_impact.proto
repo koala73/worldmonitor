@@ -1,0 +1,46 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/supply_chain/v1/get_sector_dependency.proto";
+
+message StrategicProduct {
+  string hs4 = 1;
+  string label = 2;
+  double total_value_usd = 3;
+  string top_exporter_iso2 = 4;
+  double top_exporter_share = 5;
+  string primary_chokepoint_id = 6;
+}
+
+message GetRouteImpactRequest {
+  string from_iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "fromIso2"}
+  ];
+  string to_iso2 = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "toIso2"}
+  ];
+  string hs2 = 3 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "hs2"}
+  ];
+}
+
+message GetRouteImpactResponse {
+  double lane_value_usd = 1;
+  string primary_exporter_iso2 = 2;
+  double primary_exporter_share = 3;
+  repeated StrategicProduct top_strategic_products = 4;
+  double resilience_score = 5;
+  repeated DependencyFlag dependency_flags = 6;
+  bool hs2_in_seeded_universe = 7;
+  string comtrade_source = 8;
+  string fetched_at = 9;
+}

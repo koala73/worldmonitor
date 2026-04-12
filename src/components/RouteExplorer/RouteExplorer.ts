@@ -14,6 +14,7 @@ import { LeftRail } from './components/LeftRail';
 import { CurrentRouteTab } from './tabs/CurrentRouteTab';
 import { AlternativesTab } from './tabs/AlternativesTab';
 import { LandTab } from './tabs/LandTab';
+import { CountryImpactTab } from './tabs/CountryImpactTab';
 import { inferCargoFromHs2, type ExplorerCargo } from './RouteExplorer.utils';
 import {
   parseExplorerUrl,
@@ -23,9 +24,8 @@ import {
   type ExplorerUrlState,
   type ExplorerTab,
 } from './url-state';
-import type { GetRouteExplorerLaneResponse, BypassCorridorOption } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
-import { fetchRouteExplorerLane } from '@/services/supply-chain';
-import { getResilienceScore } from '@/services/resilience';
+import type { GetRouteExplorerLaneResponse, GetRouteImpactResponse, BypassCorridorOption } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
+import { fetchRouteExplorerLane, fetchRouteImpact } from '@/services/supply-chain';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
 import { trackGateHit } from '@/services/analytics';
@@ -67,6 +67,8 @@ export class RouteExplorer {
   private currentTab!: CurrentRouteTab;
   private alternativesTab!: AlternativesTab;
   private landTab!: LandTab;
+  private impactTab!: CountryImpactTab;
+  public impactData: GetRouteImpactResponse | null = null;
   private cargoManual = false;
   private isOpen = false;
   private previousFocus: HTMLElement | null = null;
@@ -157,12 +159,14 @@ export class RouteExplorer {
 
   private resetLaneState(mode?: 'loading' | 'error' | 'gate'): void {
     this.laneData = null;
+    this.impactData = null;
     this.clearMapState();
     this.leftRail?.updateLane(null, mode);
     this.leftRail?.updateResilience(null);
     this.currentTab?.update(null);
     this.alternativesTab?.update(null);
     this.landTab?.update(null);
+    this.impactTab?.update(null);
   }
 
   private async fetchLane(): Promise<void> {
@@ -196,6 +200,7 @@ export class RouteExplorer {
         this.applyMapState(data);
       }
       void this.fetchResilience(data.toIso2);
+      void this.fetchImpact(data.fromIso2, data.toIso2, data.hs2);
     } catch {
       if (gen !== this.generationId) return;
       this.displayMode = 'error';
@@ -209,12 +214,29 @@ export class RouteExplorer {
   private async fetchResilience(iso2: string): Promise<void> {
     const gen = this.generationId;
     try {
+      const { getResilienceScore } = await import('@/services/resilience');
       const res = await getResilienceScore(iso2);
       if (!this.isOpen || gen !== this.generationId) return;
       this.leftRail.updateResilience(res.overallScore ?? null);
     } catch {
       if (gen !== this.generationId) return;
       this.leftRail.updateResilience(null);
+    }
+  }
+
+  private async fetchImpact(fromIso2: string, toIso2: string, hs2: string): Promise<void> {
+    const gen = this.generationId;
+    try {
+      const data = await fetchRouteImpact({ fromIso2, toIso2, hs2 });
+      if (!this.isOpen || gen !== this.generationId) return;
+      this.impactData = data;
+      this.impactTab.update(data);
+      this.leftRail.updateDependencyFlags(data.dependencyFlags);
+      this.leftRail.updateResilience(data.resilienceScore || null);
+      if (this.state.tab === 4) this.showActiveTab();
+    } catch {
+      if (gen !== this.generationId) return;
+      this.impactTab.update(null);
     }
   }
 
@@ -298,9 +320,7 @@ export class RouteExplorer {
       case 1: this.contentEl.append(this.currentTab.element); break;
       case 2: this.contentEl.append(this.alternativesTab.element); break;
       case 3: this.contentEl.append(this.landTab.element); break;
-      case 4:
-        this.contentEl.innerHTML = '<div class="re-content__placeholder"><h2>Impact</h2><p>Available in Sprint 4.</p></div>';
-        break;
+      case 4: this.contentEl.append(this.impactTab.element); break;
     }
   }
 
@@ -405,6 +425,9 @@ export class RouteExplorer {
     this.landTab = new LandTab({
       onSelectBypass: (o) => this.handleBypassSelect(o),
     });
+    this.impactTab = new CountryImpactTab({
+      onDrillSideways: (hs2) => this.handleDrillSideways(hs2),
+    });
 
     this.contentEl = document.createElement('div');
     this.contentEl.className = 're-content';
@@ -465,6 +488,16 @@ export class RouteExplorer {
       });
     }
     this.showActiveTab();
+  }
+
+  private handleDrillSideways(hs2: string): void {
+    this.state = { ...this.state, hs2, tab: 1 };
+    this.writeStateToUrl();
+    this.hs2Picker.setValue(hs2);
+    if (!this.cargoManual) {
+      this.cargoDropdown.setAutoInferred(inferCargoFromHs2(hs2));
+    }
+    this.scheduleFetch();
   }
 
   private swapFromTo(): void {

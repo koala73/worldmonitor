@@ -11,6 +11,7 @@ import {
   type GetCountryCostShockResponse,
   type GetSectorDependencyResponse,
   type GetRouteExplorerLaneResponse,
+  type GetRouteImpactResponse,
   type ShippingIndex,
   type ChokepointInfo,
   type CriticalMineral,
@@ -32,6 +33,7 @@ export type {
   GetCountryCostShockResponse,
   GetSectorDependencyResponse,
   GetRouteExplorerLaneResponse,
+  GetRouteImpactResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
@@ -254,6 +256,34 @@ export async function fetchRouteExplorerLane(
     return await client.getRouteExplorerLane(args);
   } catch {
     return { ...emptyRouteExplorerLane, ...args };
+  }
+}
+
+const emptyRouteImpact: GetRouteImpactResponse = {
+  laneValueUsd: 0,
+  primaryExporterIso2: '',
+  primaryExporterShare: 0,
+  topStrategicProducts: [],
+  resilienceScore: 0,
+  dependencyFlags: [],
+  hs2InSeededUniverse: false,
+  comtradeSource: 'missing',
+  fetchedAt: '',
+};
+
+export interface FetchRouteImpactArgs {
+  fromIso2: string;
+  toIso2: string;
+  hs2: string;
+}
+
+export async function fetchRouteImpact(
+  args: FetchRouteImpactArgs,
+): Promise<GetRouteImpactResponse> {
+  try {
+    return await client.getRouteImpact(args);
+  } catch {
+    return { ...emptyRouteImpact };
   }
 }
 
