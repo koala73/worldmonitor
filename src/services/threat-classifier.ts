@@ -327,6 +327,10 @@ function shouldEscalateToCritical(lower: string, matchCat: EventCategory): boole
 }
 
 export function classifyByKeyword(title: string, variant = 'full'): ThreatClassification {
+  if (variant === 'sports') {
+    return { level: 'info', category: 'general', confidence: 0.15, source: 'keyword' };
+  }
+
   const lower = title.toLowerCase();
 
   if (EXCLUSIONS.some(ex => lower.includes(ex))) {
@@ -536,6 +540,9 @@ export function classifyWithAI(
   title: string,
   variant: string,
 ): Promise<ThreatClassification | null> {
+  if (variant === 'sports') {
+    return Promise.resolve(null);
+  }
   const cacheKey = title.trim().toLowerCase().replace(/\s+/g, ' ');
   return classifyBreaker.execute(
     () => classifyWithAIUncached(title, variant),

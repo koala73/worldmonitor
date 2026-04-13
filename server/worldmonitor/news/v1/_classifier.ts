@@ -213,6 +213,10 @@ function matchKeywords(
 }
 
 export function classifyByKeyword(title: string, variant?: string): ClassificationResult {
+  if (variant === 'sports') {
+    return { level: 'info', category: 'general', confidence: 0.15, source: 'keyword' };
+  }
+
   const lower = title.toLowerCase();
 
   if (EXCLUSIONS.some(ex => lower.includes(ex))) {

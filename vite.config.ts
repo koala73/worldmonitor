@@ -6,6 +6,7 @@ import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
+import { createSportsDataProviders, isSportsProvider } from './api/_sports-data-config.js';
 
 // Env-dependent constants moved inside defineConfig function
 
@@ -510,6 +511,94 @@ function rssProxyPlugin(): Plugin {
   };
 }
 
+function sportsDataProxyPlugin(): Plugin {
+  const PROVIDERS = createSportsDataProviders();
+
+  return {
+    name: 'sports-data-proxy',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/sports-data')) {
+          return next();
+        }
+
+        const url = new URL(req.url, 'http://localhost');
+        const providerKey = url.searchParams.get('provider') || 'thesportsdb';
+        const rawPath = url.searchParams.get('path');
+        if (!rawPath) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Missing path parameter' }));
+          return;
+        }
+
+        if (!isSportsProvider(providerKey)) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Invalid sports provider' }));
+          return;
+        }
+
+        const provider = PROVIDERS[providerKey];
+
+        let parsedPath: URL;
+        try {
+          parsedPath = new URL(rawPath, 'https://worldmonitor.app');
+        } catch {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Invalid sports path' }));
+          return;
+        }
+
+        if (!provider.endpoints.has(parsedPath.pathname)) {
+          res.statusCode = 403;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Sports endpoint not allowed' }));
+          return;
+        }
+
+        const allowedParams = provider.allowedParams[parsedPath.pathname as keyof typeof provider.allowedParams];
+        for (const key of parsedPath.searchParams.keys()) {
+          if (!allowedParams?.has(key)) {
+            res.statusCode = 403;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Sports parameter not allowed' }));
+            return;
+          }
+        }
+
+        const upstreamUrl = `${provider.baseUrl}${parsedPath.pathname}${parsedPath.search}`;
+
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 12000);
+          const response = await fetch(upstreamUrl, {
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'WorldMonitor-Sports-Proxy/1.0',
+            },
+          });
+          clearTimeout(timer);
+
+          const data = await response.text();
+          res.statusCode = response.status;
+          res.setHeader('Content-Type', response.headers.get('content-type') || 'application/json');
+          res.setHeader('Cache-Control', 'public, max-age=120');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.end(data);
+        } catch (error: any) {
+          console.error('[sports-data]', upstreamUrl, error.message);
+          res.statusCode = error.name === 'AbortError' ? 504 : 502;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.name === 'AbortError' ? 'Sports feed timeout' : 'Failed to fetch sports data' }));
+        }
+      });
+    },
+  };
+}
+
 function youtubeLivePlugin(): Plugin {
   return {
     name: 'youtube-live',
@@ -621,6 +710,7 @@ export default defineConfig(({ mode }) => {
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
       polymarketPlugin(),
       rssProxyPlugin(),
+      sportsDataProxyPlugin(),
       youtubeLivePlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),

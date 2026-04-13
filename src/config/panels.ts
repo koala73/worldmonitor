@@ -149,6 +149,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (disabled in full variant)
   stockExchanges: false,
   financialCenters: false,
@@ -212,6 +213,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (disabled in full variant)
   stockExchanges: false,
   financialCenters: false,
@@ -318,6 +320,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: true,
   techEvents: true,
+  sportsFixtures: false,
   // Finance layers (disabled in tech variant)
   stockExchanges: false,
   financialCenters: false,
@@ -380,6 +383,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: true,
+  sportsFixtures: false,
   // Finance layers (disabled in tech variant)
   stockExchanges: false,
   financialCenters: false,
@@ -504,6 +508,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (enabled in finance variant)
   stockExchanges: true,
   financialCenters: true,
@@ -566,6 +571,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (limited on mobile)
   stockExchanges: true,
   financialCenters: false,
@@ -644,6 +650,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (disabled)
   stockExchanges: false,
   financialCenters: false,
@@ -706,6 +713,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (disabled)
   stockExchanges: false,
   financialCenters: false,
@@ -729,6 +737,95 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   commodityPorts: false,
   webcams: false,
   diseaseOutbreaks: false,
+};
+
+// ============================================
+// SPORTS VARIANT (Multi-Sport News + Fixtures)
+// ============================================
+const SPORTS_PANELS: Record<string, PanelConfig> = {
+  map: { name: 'Sports Map', enabled: true, priority: 1 },
+  sports: { name: 'Sports Headlines', enabled: true, priority: 1 },
+  'sports-nba-analysis': { name: 'NBA AI Analysis', enabled: true, priority: 1 },
+  'sports-football-analysis': { name: 'European Football AI', enabled: true, priority: 1 },
+  'sports-motorsport-analysis': { name: 'Motorsport AI', enabled: true, priority: 1 },
+  'sports-tournaments': { name: 'Major Tournaments', enabled: true, priority: 1 },
+  'sports-tables': { name: 'League Table', enabled: true, priority: 1 },
+  'sports-nba': { name: 'NBA Standings', enabled: true, priority: 1 },
+  'sports-motorsport-standings': { name: 'Motorsport Scores', enabled: true, priority: 1 },
+  'sports-stats': { name: 'Match Stats', enabled: true, priority: 1 },
+  'sports-live-tracker': { name: 'Live Fixture Tracker', enabled: true, priority: 1 },
+  'sports-transfers': { name: 'Transfer News', enabled: true, priority: 1 },
+  'sports-player-search': { name: 'Player Search', enabled: true, priority: 1 },
+  soccer: { name: 'Football', enabled: true, priority: 1 },
+  basketball: { name: 'Basketball', enabled: true, priority: 1 },
+  baseball: { name: 'Baseball', enabled: true, priority: 2 },
+  motorsport: { name: 'Motorsport', enabled: true, priority: 2 },
+  tennis: { name: 'Tennis', enabled: true, priority: 2 },
+  combat: { name: 'Combat Sports', enabled: true, priority: 2 },
+  'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
+  monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+};
+
+const SPORTS_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
+  satellites: false,
+
+
+  conflicts: false,
+  bases: false,
+  cables: false,
+  pipelines: false,
+  hotspots: false,
+  ais: false,
+  nuclear: false,
+  irradiators: false,
+  sanctions: false,
+  weather: false,
+  economic: false,
+  waterways: false,
+  outages: false,
+  cyberThreats: false,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: false,
+  spaceports: false,
+  minerals: false,
+  fires: false,
+  ucdpEvents: false,
+  displacement: false,
+  climate: false,
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  sportsFixtures: true,
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
+  positiveEvents: false,
+  kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
+  tradeRoutes: false,
+  iranAttacks: false,
+  ciiChoropleth: false,
+  resilienceScore: false,
+  dayNight: true,
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
+  webcams: false,
+  diseaseOutbreaks: false,
+};
+
+const SPORTS_MOBILE_MAP_LAYERS: MapLayers = {
+  ...SPORTS_MAP_LAYERS,
 };
 
 // ============================================
@@ -803,6 +900,7 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (enabled for commodity hubs)
   stockExchanges: false,
   financialCenters: false,
@@ -865,6 +963,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (limited on mobile)
   stockExchanges: false,
   financialCenters: false,
@@ -897,6 +996,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 /** All panels from all variants — union with FULL taking precedence for duplicate keys. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,
+  ...SPORTS_PANELS,
   ...COMMODITY_PANELS,
   ...TECH_PANELS,
   ...FINANCE_PANELS,
@@ -909,6 +1009,7 @@ export const VARIANT_DEFAULTS: Record<string, string[]> = {
   tech:      Object.keys(TECH_PANELS),
   finance:   Object.keys(FINANCE_PANELS),
   commodity: Object.keys(COMMODITY_PANELS),
+  sports:    Object.keys(SPORTS_PANELS),
   happy:     Object.keys(HAPPY_PANELS),
 };
 
@@ -931,6 +1032,20 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
     map:         { name: 'Commodity Map' },
     'live-news': { name: 'Commodity Headlines' },
     insights:    { name: 'AI Commodity Insights' },
+  },
+  sports: {
+    map:         { name: 'Sports Map' },
+    sports:      { name: 'Sports Headlines' },
+    'sports-nba-analysis': { name: 'NBA AI Analysis' },
+    'sports-football-analysis': { name: 'European Football AI' },
+    'sports-motorsport-analysis': { name: 'Motorsport AI' },
+    'sports-tournaments': { name: 'Major Tournaments' },
+    'sports-tables': { name: 'League Table' },
+    'sports-nba': { name: 'NBA Standings' },
+    'sports-motorsport-standings': { name: 'Motorsport Scores' },
+    'sports-live-tracker': { name: 'Live Fixture Tracker' },
+    'sports-transfers': { name: 'Transfer News' },
+    'sports-player-search': { name: 'Player Search' },
   },
   happy: {
     map:         { name: 'World Map' },
@@ -986,6 +1101,8 @@ export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
       ? FINANCE_MAP_LAYERS 
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MAP_LAYERS
+        : SITE_VARIANT === 'sports'
+          ? SPORTS_MAP_LAYERS
         : FULL_MAP_LAYERS;
 
 export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
@@ -996,6 +1113,8 @@ export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
       ? FINANCE_MOBILE_MAP_LAYERS 
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MOBILE_MAP_LAYERS
+        : SITE_VARIANT === 'sports'
+          ? SPORTS_MOBILE_MAP_LAYERS
         : FULL_MOBILE_MAP_LAYERS;
 
 /** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
@@ -1114,6 +1233,18 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     labelKey: 'header.panelCatCommodityEcon',
     panelKeys: ['trade-policy', 'sanctions-pressure', 'economic', 'gulf-economies', 'gcc-investments', 'consumer-prices', 'finance', 'polymarket', 'airline-intel', 'world-clock', 'monitors'],
     variants: ['commodity'],
+  },
+
+  // Sports variant
+  sportsNews: {
+    labelKey: 'header.panelCatSportsNews',
+    panelKeys: ['sports', 'soccer', 'basketball', 'baseball', 'motorsport', 'tennis', 'combat', 'sports-transfers'],
+    variants: ['sports'],
+  },
+  sportsData: {
+    labelKey: 'header.panelCatSportsData',
+    panelKeys: ['sports-nba-analysis', 'sports-football-analysis', 'sports-motorsport-analysis', 'sports-tournaments', 'sports-tables', 'sports-nba', 'sports-motorsport-standings', 'sports-stats', 'sports-live-tracker', 'sports-player-search', 'world-clock', 'monitors'],
+    variants: ['sports'],
   },
 
   // Happy variant

@@ -62,13 +62,15 @@ export class SearchManager implements AppModule {
       ? { placeholder: t('modals.search.placeholderTech') }
       : SITE_VARIANT === 'happy'
         ? { placeholder: 'Search or type a command...' }
+        : SITE_VARIANT === 'sports'
+          ? { placeholder: 'Search teams, leagues, or panels...' }
         : SITE_VARIANT === 'finance'
           ? { placeholder: t('modals.search.placeholderFinance') }
           : { placeholder: t('modals.search.placeholder') };
     this.ctx.searchModal = new SearchModal(this.ctx.container, searchOptions);
 
-    if (SITE_VARIANT === 'happy') {
-      // Happy variant: no geopolitical/military/infrastructure sources
+    if (SITE_VARIANT === 'happy' || SITE_VARIANT === 'sports') {
+      // Happy and sports variants: no geopolitical/military/infrastructure sources
     } else if (SITE_VARIANT === 'tech') {
       this.ctx.searchModal.registerSource('techcompany', TECH_COMPANIES.map(c => ({
         id: c.id,

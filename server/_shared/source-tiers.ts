@@ -17,6 +17,8 @@ export const SOURCE_TIERS: Record<string, number> = {
   'AP News': 1,
   'AFP': 1,
   'Bloomberg': 1,
+  'Reuters Sports': 1,
+  'AP Sports': 1,
 
   // Tier 1 - Official Government & International Orgs
   'White House': 1,
@@ -63,6 +65,13 @@ export const SOURCE_TIERS: Record<string, number> = {
   'The National': 2,
   'Yonhap News': 2,
   'Chosun Ilbo': 2,
+  'BBC Sport': 2,
+  'ESPN': 2,
+  'Sky Sports': 2,
+  'Formula1.com': 2,
+  'NBA.com': 2,
+  'MLB.com': 2,
+  'NHL.com': 2,
 
   // Tier 2 - Spanish
   'El País': 2,
@@ -221,6 +230,12 @@ export const SOURCE_TIERS: Record<string, number> = {
   'Layoffs.fyi': 3,
   'OpenAI News': 3,
   'The Hill': 3,
+  'ATP Tour': 3,
+  'WTA': 3,
+  'Tennis.com': 3,
+  'UFC': 3,
+  'MMA Fighting': 3,
+  'Motorsport.com': 3,
 
   // Tier 3 - Think tanks
   'Brookings Tech': 3,

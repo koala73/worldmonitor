@@ -52,6 +52,13 @@ import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { RadiationObservation } from '@/services/radiation';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
+import {
+  getSportsFixtureDisplayLabel,
+  getSportsFixtureSubLabel,
+  getSportsFixtureVisualMeta,
+  isSportsFixtureHubMarker,
+  type SportsFixtureMapMarker,
+} from '@/services/sports';
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
@@ -204,6 +211,9 @@ interface TechMarker extends BaseMarker {
   title: string;
   country: string;
   daysUntil: number;
+}
+interface SportsMarker extends BaseMarker, SportsFixtureMapMarker {
+  _kind: 'sports';
 }
 interface ConflictZoneMarker extends BaseMarker {
   _kind: 'conflictZone';
@@ -416,6 +426,7 @@ type GlobeMarker =
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker | TrafficAnomalyMarker | DdosHitMarker
   | CyberMarker | FireMarker | ProtestMarker
   | UcdpMarker | DisplacementMarker | ClimateMarker | GpsJamMarker | TechMarker
+  | SportsMarker
   | ConflictZoneMarker | MilBaseMarker | NuclearSiteMarker | IrradiatorSiteMarker | SpaceportSiteMarker
   | EarthquakeMarker | RadiationMarker | EconomicMarker | DatacenterMarker | WaterwayMarker | MineralMarker
   | FlightDelayMarker | NotamRingMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
@@ -489,6 +500,7 @@ export class GlobeMap {
   private climateMarkers: ClimateMarker[] = [];
   private gpsJamMarkers: GpsJamMarker[] = [];
   private techMarkers: TechMarker[] = [];
+  private sportsMarkers: SportsMarker[] = [];
   private conflictZoneMarkers: ConflictZoneMarker[] = [];
   private milBaseMarkers: MilBaseMarker[] = [];
   private nuclearSiteMarkers: NuclearSiteMarker[] = [];
@@ -1092,6 +1104,21 @@ export class GlobeMap {
     } else if (d._kind === 'tech') {
       el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:10px;color:#44aaff;text-shadow:0 0 4px #44aaff88;">💻</div>`);
       el.title = d.title;
+    } else if (d._kind === 'sports') {
+      const visuals = getSportsFixtureVisualMeta(d.sport);
+      const label = getSportsFixtureDisplayLabel(d, true);
+      const subLabel = getSportsFixtureSubLabel(d);
+      const countBadge = isSportsFixtureHubMarker(d)
+        ? `<span style="position:absolute;top:-5px;right:-7px;min-width:14px;height:14px;padding:0 4px;border-radius:999px;background:${visuals.colorHex};color:#081018;font-size:9px;font-weight:800;line-height:14px;text-align:center;">${d.fixtureCount}</span>`
+        : '';
+      el.innerHTML = GlobeMap.wrapHit(`
+        <div style="position:relative;display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;background:rgba(7,10,16,0.88);border:1px solid ${visuals.colorHex};box-shadow:0 0 0 3px ${visuals.colorHex}22,0 0 9px ${visuals.colorHex}55;color:${visuals.colorHex};">
+          <span style="font-size:11px;line-height:1;">${visuals.icon}</span>
+          ${isSportsFixtureHubMarker(d) ? `<span style="font-size:10px;font-weight:700;line-height:1;color:#f8fafc;">${d.fixtureCount}</span>` : ''}
+          ${countBadge}
+        </div>
+      `);
+      el.title = `${label}${subLabel ? ` • ${subLabel}` : ''}`;
     } else if (d._kind === 'conflictZone') {
       const intColor = d.intensity === 'high' ? '#ff2020' : d.intensity === 'medium' ? '#ff8800' : '#ffcc00';
       el.innerHTML = `
@@ -1312,6 +1339,16 @@ export class GlobeMap {
       });
       return;
     }
+    if (d._kind === 'sports' && this.popup) {
+      const aRect = anchor.getBoundingClientRect();
+      const cRect = this.container.getBoundingClientRect();
+      const x = aRect.left - cRect.left + aRect.width / 2;
+      const y = aRect.top - cRect.top;
+      this.hideTooltip();
+      this.popup.show({ type: 'sportsFixture', data: d, x, y });
+      void this.popup.loadSportsFixtureContext(d);
+      return;
+    }
     this.showMarkerTooltip(d, anchor);
   }
 
@@ -1456,6 +1493,11 @@ export class GlobeMap {
       html = `<span style="color:#44aaff;font-weight:bold;">💻 ${esc(d.title.slice(0, 50))}</span>` +
              `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
              (d.daysUntil >= 0 ? `<br><span style="opacity:.5;">In ${d.daysUntil} days</span>` : '');
+    } else if (d._kind === 'sports') {
+      const visuals = getSportsFixtureVisualMeta(d.sport);
+      html = `<span style="color:${visuals.colorHex};font-weight:bold;">${visuals.icon} ${esc(getSportsFixtureDisplayLabel(d, true))}</span>` +
+             `<br><span style="opacity:.7;">${esc(getSportsFixtureSubLabel(d) || d.venue)}</span>` +
+             (d.fixtureCount && d.fixtureCount > 1 ? `<br><span style="opacity:.65;">${d.fixtureCount} fixtures</span>` : '');
     } else if (d._kind === 'conflictZone') {
       const ic = d.intensity === 'high' ? '#ff3030' : d.intensity === 'medium' ? '#ff8800' : '#ffcc00';
       html = `<span style="color:${ic};font-weight:bold;">⚔ ${esc(d.name)}</span>` +
@@ -1982,6 +2024,7 @@ export class GlobeMap {
       markers.push(...this.imagerySceneMarkers);
     }
     if (this.layers.techEvents) markers.push(...this.techMarkers);
+    if (this.layers.sportsFixtures) markers.push(...this.sportsMarkers);
     if (this.layers.cables) {
       markers.push(...this.cableAdvisoryMarkers);
       markers.push(...this.repairShipMarkers);
@@ -3288,6 +3331,15 @@ export class GlobeMap {
       title: e.title ?? '',
       country: e.country ?? '',
       daysUntil: e.daysUntil ?? 0,
+    }));
+    this.flushMarkers();
+  }
+  public setSportsFixtures(fixtures: SportsFixtureMapMarker[]): void {
+    this.sportsMarkers = (fixtures ?? []).filter((fixture) => fixture.lat != null && fixture.lng != null).map((fixture) => ({
+      _kind: 'sports' as const,
+      _lat: fixture.lat,
+      _lng: fixture.lng,
+      ...fixture,
     }));
     this.flushMarkers();
   }

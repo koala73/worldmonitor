@@ -19,6 +19,7 @@ const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
   finance: WS_API_URL,
   world: WS_API_URL,
   happy: WS_API_URL,
+  sports: WS_API_URL,
 };
 
 const DEFAULT_LOCAL_API_PORT = 46123;
@@ -213,6 +214,7 @@ const APP_HOSTS = new Set([
   'worldmonitor.app',
   'www.worldmonitor.app',
   'tech.worldmonitor.app',
+  'sports.worldmonitor.app',
   'api.worldmonitor.app',
   'localhost',
   '127.0.0.1',

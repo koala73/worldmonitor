@@ -121,6 +121,7 @@ import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
+import { fetchSportsFixtureMapMarkers } from '@/services/sports';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
@@ -198,6 +199,7 @@ import { fetchSocialVelocity } from '@/services/social-velocity';
 import { fetchShippingStress } from '@/services/supply-chain';
 import { getTopActiveGeoHubs } from '@/services/geo-activity';
 import { getTopActiveHubs } from '@/services/tech-activity';
+import { filterSportsHeadlineNoise } from '@/services/sports-headline-filter';
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 
@@ -420,6 +422,8 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadAllData(forceAll = false): Promise<void> {
+    const isSportsVariant = SITE_VARIANT === 'sports';
+
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
@@ -439,8 +443,8 @@ export class DataLoaderManager implements AppModule {
       { name: 'news', task: runGuarded('news', () => this.loadNews()) },
     ];
 
-    // Happy variant only loads news data -- skip all geopolitical/financial/military data
-    if (SITE_VARIANT !== 'happy') {
+    // Sports keeps news-only bulk loading. Happy keeps its dedicated positive-data pipeline.
+    if (SITE_VARIANT !== 'happy' && !isSportsVariant) {
       if (shouldLoadAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens'])) {
         tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
       }
@@ -482,6 +486,10 @@ export class DataLoaderManager implements AppModule {
       }
     }
 
+    if (isSportsVariant && this.ctx.mapLayers.sportsFixtures) {
+      tasks.push({ name: 'sportsFixturesLayer', task: runGuarded('sportsFixturesLayer', () => this.loadSportsFixturesLayer()) });
+    }
+
     // Progress charts data (happy variant only)
     if (SITE_VARIANT === 'happy') {
       if (shouldLoad('progress')) {
@@ -518,78 +526,80 @@ export class DataLoaderManager implements AppModule {
       });
     }
 
-    if (shouldLoad('giving')) {
-      tasks.push({
-        name: 'giving',
-        task: runGuarded('giving', async () => {
-          const givingResult = await fetchGivingSummary();
-          if (!givingResult.ok) {
-            dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
-            return;
-          }
-          const data = givingResult.data;
-          this.callPanel('giving', 'setData', data);
-          if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
-        }),
-      });
-    }
-
-    if (SITE_VARIANT === 'full') {
-      try {
-        const cached = await fetchCachedRiskScores().catch(() => null);
-        if (cached && cached.cii.length > 0) {
-          (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
-          this.ctx.map?.setCIIScores(cached.cii.map(s => ({ code: s.code, score: s.score, level: s.level })));
-          this.ctx.map?.setLayerReady('ciiChoropleth', true);
-        }
-      } catch { /* non-fatal */ }
-    }
-    // Intelligence signals: run for any variant that shows these panels
-    if (shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
-      tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
-    }
-
-    if (SITE_VARIANT === 'full' && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
-      tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
-    }
-    if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
-    if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
-    if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
-    if (hasPremiumAccess() && shouldLoad('wsb-ticker-scanner')) tasks.push({ name: 'wsbTickers', task: runGuarded('wsbTickers', () => this.loadWsbTickers()) });
-    if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
-    if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
-    if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: runGuarded('satellites', () => this.loadSatellites()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: runGuarded('webcams', () => this.loadWebcams()) });
-    if (SITE_VARIANT !== 'happy' && (shouldLoad('sanctions-pressure') || this.ctx.mapLayers.sanctions)) {
-      tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctionsPressure()) });
-    }
-    if (this.ctx.mapLayers.resilienceScore) {
-      if (hasPremiumAccess()) {
-        tasks.push({ name: 'resilienceRanking', task: runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
-      } else {
-        this.ctx.map?.setResilienceRanking([]);
-        this.ctx.map?.setLayerReady('resilienceScore', false);
+    if (!isSportsVariant) {
+      if (shouldLoad('giving')) {
+        tasks.push({
+          name: 'giving',
+          task: runGuarded('giving', async () => {
+            const givingResult = await fetchGivingSummary();
+            if (!givingResult.ok) {
+              dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
+              return;
+            }
+            const data = givingResult.data;
+            this.callPanel('giving', 'setData', data);
+            if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
+          }),
+        });
       }
-    }
-    if (SITE_VARIANT !== 'happy' && (shouldLoad('radiation-watch') || this.ctx.mapLayers.radiationWatch)) {
-      tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
-    }
 
-    if (SITE_VARIANT !== 'happy') {
-      tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
-    }
-    if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
-      tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
-    }
-    if (SITE_VARIANT !== 'happy' && shouldLoad('cross-source-signals')) {
-      tasks.push({ name: 'crossSourceSignals', task: runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
+      if (SITE_VARIANT === 'full') {
+        try {
+          const cached = await fetchCachedRiskScores().catch(() => null);
+          if (cached && cached.cii.length > 0) {
+            (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
+            this.ctx.map?.setCIIScores(cached.cii.map(s => ({ code: s.code, score: s.score, level: s.level })));
+            this.ctx.map?.setLayerReady('ciiChoropleth', true);
+          }
+        } catch { /* non-fatal */ }
+      }
+      // Intelligence signals: run for any variant that shows these panels
+      if (shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
+        tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
+      }
+
+      if (SITE_VARIANT === 'full' && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
+        tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
+      }
+      if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
+      if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
+      if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
+      if (hasPremiumAccess() && shouldLoad('wsb-ticker-scanner')) tasks.push({ name: 'wsbTickers', task: runGuarded('wsbTickers', () => this.loadWsbTickers()) });
+      if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
+      if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
+      if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
+      if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
+      if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
+      if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
+      if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
+      if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
+      if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
+      if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: runGuarded('satellites', () => this.loadSatellites()) });
+      if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: runGuarded('webcams', () => this.loadWebcams()) });
+      if (SITE_VARIANT !== 'happy' && (shouldLoad('sanctions-pressure') || this.ctx.mapLayers.sanctions)) {
+        tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctionsPressure()) });
+      }
+      if (SITE_VARIANT !== 'happy' && (shouldLoad('radiation-watch') || this.ctx.mapLayers.radiationWatch)) {
+        tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
+      }
+
+      if (this.ctx.mapLayers.resilienceScore) {
+        if (hasPremiumAccess()) {
+          tasks.push({ name: 'resilienceRanking', task: runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
+        } else {
+          this.ctx.map?.setResilienceRanking([]);
+          this.ctx.map?.setLayerReady('resilienceScore', false);
+        }
+      }
+      if (SITE_VARIANT !== 'happy') {
+        tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
+      }
+      if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
+        tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
+      }
+      if (SITE_VARIANT !== 'happy' && shouldLoad('cross-source-signals')) {
+        tasks.push({ name: 'crossSourceSignals', task: runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
+      }
     }
 
     // Stagger startup: run tasks in small batches to avoid hammering upstreams
@@ -610,20 +620,22 @@ export class DataLoaderManager implements AppModule {
 
     this.updateSearchIndex();
 
-    if (hasPremiumAccess()) {
+    if (!isSportsVariant && hasPremiumAccess()) {
       await Promise.allSettled([
         this.loadDailyMarketBrief(),
         this.loadMarketImplications(),
       ]);
     }
 
-    const bootstrapTemporal = consumeServerAnomalies();
-    if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
-      signalAggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes);
-      ingestTemporalAnomaliesForCII(bootstrapTemporal.anomalies);
-      this.refreshCiiAndBrief();
-    } else {
-      this.refreshTemporalBaseline().catch(() => {});
+    if (!isSportsVariant) {
+      const bootstrapTemporal = consumeServerAnomalies();
+      if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
+        signalAggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes);
+        ingestTemporalAnomaliesForCII(bootstrapTemporal.anomalies);
+        this.refreshCiiAndBrief();
+      } else {
+        this.refreshTemporalBaseline().catch(() => {});
+      }
     }
   }
 
@@ -674,6 +686,9 @@ export class DataLoaderManager implements AppModule {
           console.log('[loadDataForLayer] Loading techEvents...');
           await this.loadTechEvents();
           console.log('[loadDataForLayer] techEvents loaded');
+          break;
+        case 'sportsFixtures':
+          await this.loadSportsFixturesLayer();
           break;
         case 'positiveEvents':
           await this.loadPositiveEvents();
@@ -855,12 +870,20 @@ export class DataLoaderManager implements AppModule {
     return labels[range];
   }
 
+  private applyCategoryQualityFilters(category: string, items: NewsItem[]): NewsItem[] {
+    if (SITE_VARIANT === 'sports' && category === 'sports') {
+      return filterSportsHeadlineNoise(items);
+    }
+    return items;
+  }
+
   renderNewsForCategory(category: string, items: NewsItem[]): void {
-    this.ctx.newsByCategory[category] = items;
+    const qualityFilteredItems = this.applyCategoryQualityFilters(category, items);
+    this.ctx.newsByCategory[category] = qualityFilteredItems;
     const panel = this.ctx.newsPanels[category];
     if (!panel) return;
-    const filteredItems = this.filterItemsByTimeRange(items);
-    if (filteredItems.length === 0 && items.length > 0) {
+    const filteredItems = this.filterItemsByTimeRange(qualityFilteredItems);
+    if (filteredItems.length === 0 && qualityFilteredItems.length > 0) {
       panel.renderFilteredEmpty(`No items in ${this.getTimeRangeLabel()}`);
       return;
     }
@@ -1902,6 +1925,22 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
+    }
+  }
+
+  async loadSportsFixturesLayer(): Promise<void> {
+    if (SITE_VARIANT !== 'sports' && !this.ctx.mapLayers.sportsFixtures) return;
+
+    try {
+      const markers = await fetchSportsFixtureMapMarkers();
+      this.ctx.map?.setSportsFixtures(markers);
+      this.ctx.map?.setLayerReady('sportsFixtures', markers.length > 0);
+      this.ctx.statusPanel?.updateFeed('Sports Fixtures', { status: 'ok', itemCount: markers.length });
+    } catch (error) {
+      console.error('[App] Failed to load sports fixtures layer:', error);
+      this.ctx.map?.setSportsFixtures([]);
+      this.ctx.map?.setLayerReady('sportsFixtures', false);
+      this.ctx.statusPanel?.updateFeed('Sports Fixtures', { status: 'error', errorMessage: String(error) });
     }
   }
 

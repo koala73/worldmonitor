@@ -90,6 +90,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (disabled in full variant)
   stockExchanges: false,
   financialCenters: false,
@@ -152,6 +153,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   accelerators: false,
   techHQs: false,
   techEvents: false,
+  sportsFixtures: false,
   // Finance layers (disabled in full variant)
   stockExchanges: false,
   financialCenters: false,

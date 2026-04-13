@@ -182,7 +182,6 @@ class SseSession {
     let buf = '';
     let eventType = '';
     const reader = this._reader;
-    const self = this;
 
     (async () => {
       try {
@@ -190,10 +189,10 @@ class SseSession {
           const { done, value } = await reader.read();
           if (done) {
             // Stream closed — if endpoint never arrived, reject so connect() throws
-            if (!self._endpointUrl) {
-              self._endpointDeferred.reject(new Error('SSE stream closed before endpoint event'));
+            if (!this._endpointUrl) {
+              this._endpointDeferred.reject(new Error('SSE stream closed before endpoint event'));
             }
-            for (const [, d] of self._pending) d.reject(new Error('SSE stream closed'));
+            for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
             break;
           }
           buf += dec.decode(value, { stream: true });
@@ -209,27 +208,27 @@ class SseSession {
                 // to prevent SSRF: a malicious server could emit an RFC1918 address.
                 let resolved;
                 try {
-                  resolved = new URL(data.startsWith('http') ? data : data, self._sseUrl);
+                  resolved = new URL(data.startsWith('http') ? data : data, this._sseUrl);
                 } catch {
-                  self._endpointDeferred.reject(new Error('SSE endpoint event contains invalid URL'));
+                  this._endpointDeferred.reject(new Error('SSE endpoint event contains invalid URL'));
                   return;
                 }
                 if (resolved.protocol !== 'https:' && resolved.protocol !== 'http:') {
-                  self._endpointDeferred.reject(new Error('SSE endpoint protocol not allowed'));
+                  this._endpointDeferred.reject(new Error('SSE endpoint protocol not allowed'));
                   return;
                 }
                 if (BLOCKED_HOST_PATTERNS.some(p => p.test(resolved.hostname))) {
-                  self._endpointDeferred.reject(new Error('SSE endpoint host is blocked'));
+                  this._endpointDeferred.reject(new Error('SSE endpoint host is blocked'));
                   return;
                 }
-                self._endpointUrl = resolved.toString();
-                self._endpointDeferred.resolve();
+                this._endpointUrl = resolved.toString();
+                this._endpointDeferred.resolve();
               } else {
                 try {
                   const msg = JSON.parse(data);
                   if (msg.id !== undefined) {
-                    const d = self._pending.get(msg.id);
-                    if (d) { self._pending.delete(msg.id); d.resolve(msg); }
+                    const d = this._pending.get(msg.id);
+                    if (d) { this._pending.delete(msg.id); d.resolve(msg); }
                   }
                 } catch { /* skip non-JSON data lines */ }
               }
@@ -238,8 +237,8 @@ class SseSession {
           }
         }
       } catch (err) {
-        self._endpointDeferred.reject(err);
-        for (const [, d] of self._pending) d.reject(new Error('SSE stream closed'));
+        this._endpointDeferred.reject(err);
+        for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
       }
     })();
   }

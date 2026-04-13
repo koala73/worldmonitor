@@ -3260,6 +3260,8 @@ const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
 const CLASSIFY_BATCH_SIZE = 50;
+// Sports intentionally excluded: the sports variant suppresses threat scoring
+// and does not participate in geopolitical threat summaries/notifications.
 const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
 const CLASSIFY_VARIANT_STAGGER_MS = 3 * 60 * 1000;
 

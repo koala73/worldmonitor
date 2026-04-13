@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#151515"/>
+  <rect x="18" y="18" width="124" height="124" rx="28" fill="none" stroke="#DC0000" stroke-width="6"/>
+  <path d="M34 40H126L104 62H56Z" fill="#DC0000"/>
+  <text x="80" y="106" text-anchor="middle" font-size="42" font-weight="800" font-family="Arial, sans-serif" fill="#FFF5D6">FER</text>
+</svg>

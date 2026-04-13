@@ -882,6 +882,47 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+const SPORTS_FEEDS: Record<string, Feed[]> = {
+  sports: [
+    { name: 'BBC Sport', url: rss('https://feeds.bbci.co.uk/sport/rss.xml?edition=uk') },
+    { name: 'ESPN', url: rss('https://www.espn.com/espn/rss/news') },
+    { name: 'Reuters Sports', url: rss('https://news.google.com/rss/search?q=site:reuters.com+sports+-politics+-election+-government+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'AP Sports', url: rss('https://news.google.com/rss/search?q=site:apnews.com+sports+-politics+-election+-government+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Sky Sports', url: rss('https://www.skysports.com/rss/12040') },
+  ],
+  soccer: [
+    { name: 'BBC Sport', url: rss('https://feeds.bbci.co.uk/sport/football/rss.xml?edition=uk') },
+    { name: 'Sky Sports', url: rss('https://www.skysports.com/rss/12040') },
+    { name: 'ESPN', url: rss('https://www.espn.com/espn/rss/soccer/news') },
+    { name: 'Guardian Football', url: rss('https://www.theguardian.com/football/rss') },
+  ],
+  basketball: [
+    { name: 'NBA.com', url: rss('https://news.google.com/rss/search?q=site:nba.com+nba+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'ESPN', url: rss('https://news.google.com/rss/search?q=site:espn.com+NBA+-college+-fantasy+-%22transfer+portal%22+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'The Athletic NBA', url: rss('https://news.google.com/rss/search?q=site:theathletic.com+NBA+-fantasy+-college+when:2d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  baseball: [
+    { name: 'MLB.com', url: rss('https://news.google.com/rss/search?q=site:mlb.com+MLB+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'ESPN', url: rss('https://news.google.com/rss/search?q=site:espn.com+MLB+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Baseball News', url: rss('https://news.google.com/rss/search?q=MLB+(standings+OR+scores+OR+recap)+-college+-fantasy+when:2d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  motorsport: [
+    { name: 'Formula1.com', url: rss('https://news.google.com/rss/search?q=site:formula1.com+Formula+1+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Motorsport.com', url: rss('https://news.google.com/rss/search?q=site:motorsport.com+Formula+1+OR+MotoGP+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Racer', url: rss('https://news.google.com/rss/search?q=site:racer.com+motorsport+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  tennis: [
+    { name: 'ATP Tour', url: rss('https://news.google.com/rss/search?q=site:atptour.com+tennis+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'WTA', url: rss('https://news.google.com/rss/search?q=site:wtatennis.com+tennis+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Tennis.com', url: rss('https://news.google.com/rss/search?q=site:tennis.com+tennis+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  combat: [
+    { name: 'UFC', url: rss('https://news.google.com/rss/search?q=site:ufc.com+UFC+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'ESPN', url: rss('https://news.google.com/rss/search?q=site:espn.com+(MMA+OR+boxing)+-basketball+-football+-%22transfer+portal%22+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'MMA Fighting', url: rss('https://news.google.com/rss/search?q=site:mmafighting.com+MMA+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+};
+
 // Variant-aware exports
 export const FEEDS = SITE_VARIANT === 'tech'
   ? TECH_FEEDS
@@ -891,6 +932,8 @@ export const FEEDS = SITE_VARIANT === 'tech'
       ? HAPPY_FEEDS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_FEEDS
+        : SITE_VARIANT === 'sports'
+          ? SPORTS_FEEDS
         : FULL_FEEDS;
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
@@ -924,6 +967,10 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
   dealsCorpFin: { labelKey: 'header.sourceRegionDeals', feedKeys: ['institutional', 'derivatives'] },
   finRegulation: { labelKey: 'header.sourceRegionFinRegulation', feedKeys: ['fin-regulation'] },
   gulfMena: { labelKey: 'header.sourceRegionGulfMena', feedKeys: ['gccNews'] },
+  sportsHeadlines: { labelKey: 'header.sourceRegionSportsHeadlines', feedKeys: ['sports', 'soccer'] },
+  fieldCourt: { labelKey: 'header.sourceRegionFieldCourt', feedKeys: ['basketball', 'baseball'] },
+  racquetRacing: { labelKey: 'header.sourceRegionRacquetRacing', feedKeys: ['tennis', 'motorsport'] },
+  combatArena: { labelKey: 'header.sourceRegionCombatArena', feedKeys: ['combat'] },
 };
 
 export const INTEL_SOURCES: Feed[] = [

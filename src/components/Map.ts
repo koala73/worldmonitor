@@ -10,6 +10,15 @@ import type { Earthquake } from '@/services/earthquakes';
 import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
+import {
+  buildSportsFixtureAggregateMarker,
+  getSportsFixtureDisplayLabel,
+  getSportsFixtureRenderPriority,
+  getSportsFixtureSubLabel,
+  getSportsFixtureVisualMeta,
+  isSportsFixtureHubMarker,
+  type SportsFixtureMapMarker,
+} from '@/services/sports';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
@@ -91,6 +100,34 @@ interface TechEventMarker {
   daysUntil: number;
 }
 
+function countFixtureItems(marker: Pick<SportsFixtureMapMarker, 'fixtureCount' | 'fixtures'>): number {
+  return Math.max(marker.fixtureCount ?? 0, marker.fixtures?.length ?? 0, 1);
+}
+
+function uniqueFixtureStrings(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => !!value)));
+}
+
+function describeSportsClusterLocation(fixtures: SportsFixtureMapMarker[]): { venue: string; venueCity?: string; venueCountry?: string } {
+  const cities = uniqueFixtureStrings(fixtures.map((fixture) => fixture.venueCity));
+  const countries = uniqueFixtureStrings(fixtures.map((fixture) => fixture.venueCountry));
+
+  if (cities.length === 1) {
+    return {
+      venue: `${cities[0]} fixture hub`,
+      venueCity: cities[0],
+      venueCountry: countries[0],
+    };
+  }
+  if (countries.length === 1) {
+    return {
+      venue: `${countries[0]} fixture hub`,
+      venueCountry: countries[0],
+    };
+  }
+  return { venue: 'Regional fixture hub' };
+}
+
 interface WorldTopology extends Topology {
   objects: {
     countries: GeometryCollection;
@@ -143,6 +180,7 @@ export class MapComponent {
   private naturalEvents: NaturalEvent[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
+  private sportsFixtures: SportsFixtureMapMarker[] = [];
   private techActivities: TechHubActivity[] = [];
   private geoActivities: GeoHubActivity[] = [];
   private iranEvents: IranEvent[] = [];
@@ -406,7 +444,18 @@ export class MapComponent {
     const happyLayers: (keyof MapLayers)[] = [
       'positiveEvents', 'kindness', 'happiness', 'speciesRecovery', 'renewableInstallations',
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers : SITE_VARIANT === 'finance' ? financeLayers : SITE_VARIANT === 'happy' ? happyLayers : fullLayers;
+    const sportsLayers: (keyof MapLayers)[] = [
+      'dayNight',
+    ];
+    const layers = SITE_VARIANT === 'tech'
+      ? techLayers
+      : SITE_VARIANT === 'finance'
+        ? financeLayers
+        : SITE_VARIANT === 'happy'
+          ? happyLayers
+          : SITE_VARIANT === 'sports'
+            ? sportsLayers
+            : fullLayers;
     const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {
       hotspots: 'components.deckgl.layers.intelHotspots',
       conflicts: 'components.deckgl.layers.conflictZones',
@@ -429,6 +478,7 @@ export class MapComponent {
       accelerators: 'components.deckgl.layers.accelerators',
       techHQs: 'components.deckgl.layers.techHQs',
       techEvents: 'components.deckgl.layers.techEvents',
+      sportsFixtures: 'components.deckgl.layers.sportsFixtures',
       stockExchanges: 'components.deckgl.layers.stockExchanges',
       financialCenters: 'components.deckgl.layers.financialCenters',
       centralBanks: 'components.deckgl.layers.centralBanks',
@@ -437,6 +487,7 @@ export class MapComponent {
       iranAttacks: 'components.deckgl.layers.iranAttacks',
       gpsJamming: 'components.deckgl.layers.gpsJamming',
       ciiChoropleth: 'components.deckgl.layers.ciiChoropleth',
+      dayNight: 'components.deckgl.layers.dayNight',
     };
     const getLayerLabel = (layer: keyof MapLayers): string => {
       if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
@@ -618,10 +669,23 @@ export class MapComponent {
       </div>
     `;
 
+    const sportsHelpContent = `
+      ${helpHeader}
+      <div class="layer-help-content">
+        <div class="layer-help-section">
+          <div class="layer-help-title">Sports Context</div>
+          <div class="layer-help-item"><span>${label('sportsFixtures')}</span> Daily football, basketball, motorsport, tennis, and cricket fixtures are grouped into one dot per league, with selectable matchup analysis in the popup.</div>
+          <div class="layer-help-item"><span>${label('dayNight')}</span> Day/night shading helps track local kick-off, tip-off, and race windows across regions.</div>
+        </div>
+      </div>
+    `;
+
     popup.innerHTML = SITE_VARIANT === 'tech'
       ? techHelpContent
       : SITE_VARIANT === 'finance'
         ? financeHelpContent
+        : SITE_VARIANT === 'sports'
+          ? sportsHelpContent
         : fullHelpContent;
 
     popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
@@ -672,6 +736,11 @@ export class MapComponent {
       // Happy variant legend — natural events only
       legend.innerHTML = `
         <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>${escapeHtml(t('components.deckgl.layers.naturalEvents').toUpperCase())}</div>
+      `;
+    } else if (SITE_VARIANT === 'sports') {
+      legend.innerHTML = `
+        <div class="map-legend-item"><span class="map-legend-icon" style="color:#22c55e">⚽</span>${escapeHtml(t('components.deckgl.layers.sportsFixtures').toUpperCase())}</div>
+        <div class="map-legend-item"><span class="map-legend-icon" style="color:#60a5fa">◐</span>${escapeHtml(t('components.deckgl.layers.dayNight').toUpperCase())}</div>
       `;
     } else {
       // Geopolitical variant legend
@@ -2139,6 +2208,70 @@ export class MapComponent {
       });
     }
 
+    // Sports fixtures layer
+    if (this.state.layers.sportsFixtures && this.sportsFixtures.length > 0) {
+      const clusterRadius = this.state.zoom >= 5 ? 14 : this.state.zoom >= 4 ? 20 : this.state.zoom >= 3 ? 28 : 40;
+      const fixtureClusters = this.clusterMarkers(
+        this.sportsFixtures
+          .slice()
+          .sort((a, b) => getSportsFixtureRenderPriority(b) - getSportsFixtureRenderPriority(a))
+          .map((fixture) => ({ ...fixture, lon: fixture.lng })),
+        projection,
+        clusterRadius,
+        (fixture) => fixture.venueCountry || fixture.sport,
+      );
+
+      fixtureClusters.forEach((cluster) => {
+        const fixture = cluster.items.length === 1
+          ? cluster.items[0]!
+          : buildSportsFixtureAggregateMarker(cluster.items, {
+            ...describeSportsClusterLocation(cluster.items),
+            lat: cluster.center[1],
+            lng: cluster.center[0],
+          });
+        const visuals = getSportsFixtureVisualMeta(fixture.sport);
+        const isHub = isSportsFixtureHubMarker(fixture);
+        const priority = getSportsFixtureRenderPriority(fixture);
+        const showLabel = isHub || this.state.zoom >= 4 || (this.state.zoom >= 3 && priority >= 16);
+        const labelText = getSportsFixtureDisplayLabel(fixture, this.state.zoom < 4);
+        const subLabel = this.state.zoom >= 4.25 ? getSportsFixtureSubLabel(fixture) : '';
+        const countBadge = (fixture.fixtureCount || 1) > 1
+          ? `<span style="position:absolute;top:-6px;right:-6px;min-width:14px;height:14px;padding:0 4px;border-radius:999px;background:${visuals.colorHex};color:#081018;font-size:9px;font-weight:800;line-height:14px;text-align:center;box-shadow:0 0 8px ${visuals.colorHex}66;">${countFixtureItems(fixture)}</span>`
+          : '';
+        const div = document.createElement('div');
+        div.className = 'map-marker sports-fixture-marker';
+        div.style.left = `${cluster.pos[0]}px`;
+        div.style.top = `${cluster.pos[1]}px`;
+        div.style.zIndex = String(48 + Math.min(priority, 24));
+        div.innerHTML = `
+          <span style="display:inline-flex;align-items:center;gap:${showLabel ? '8px' : '0'};">
+            <span style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:${isHub ? '24px' : '20px'};height:${isHub ? '24px' : '20px'};border-radius:999px;background:rgba(8,12,18,0.92);border:1px solid ${visuals.colorHex};box-shadow:0 0 0 4px ${visuals.colorHex}24,0 0 12px ${visuals.colorHex}55;color:${visuals.colorHex};font-size:12px;">${visuals.icon}${countBadge}</span>
+            ${showLabel ? `
+              <span style="display:grid;gap:2px;max-width:${this.state.zoom >= 4 ? '172px' : '140px'};padding:6px 9px;border-radius:999px;background:rgba(8,12,18,0.90);border:1px solid rgba(255,255,255,0.08);box-shadow:0 10px 26px rgba(5,8,12,0.28);">
+                <span style="font-size:11px;font-weight:700;line-height:1.1;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(labelText)}</span>
+                ${subLabel ? `<span style="font-size:10px;line-height:1.1;color:rgba(226,232,240,0.70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(subLabel)}</span>` : ''}
+              </span>
+            ` : ''}
+          </span>
+        `;
+        div.title = `${labelText}${subLabel ? ` • ${subLabel}` : ''}`;
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'sportsFixture',
+            data: fixture,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+          void this.popup.loadSportsFixtureContext(fixture);
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
     // Tech Events / Conferences (📅 icons) - with clustering
     if (this.state.layers.techEvents && this.techEvents.length > 0) {
       const mapWidth = this.container.clientWidth;
@@ -3357,7 +3490,7 @@ export class MapComponent {
   }
 
   private static readonly ASYNC_DATA_LAYERS: Set<keyof MapLayers> = new Set([
-    'natural', 'weather', 'outages', 'ais', 'protests', 'flights', 'military', 'techEvents',
+    'natural', 'weather', 'outages', 'ais', 'protests', 'flights', 'military', 'techEvents', 'sportsFixtures',
   ]);
 
   public toggleLayer(layer: keyof MapLayers, source: 'user' | 'programmatic' = 'user'): void {
@@ -3979,6 +4112,11 @@ export class MapComponent {
 
   public setTechEvents(events: TechEventMarker[]): void {
     this.techEvents = events;
+    this.render();
+  }
+
+  public setSportsFixtures(fixtures: SportsFixtureMapMarker[]): void {
+    this.sportsFixtures = fixtures;
     this.render();
   }
 

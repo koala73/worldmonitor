@@ -93,6 +93,7 @@ describe('Legacy api/*.js endpoint allowlist', () => {
     'rss-proxy.js',
     'satellites.js',
     'seed-health.js',
+    'sports-data.js',
     'story.js',
     'telegram-feed.js',
     'sanctions-entity-search.js',

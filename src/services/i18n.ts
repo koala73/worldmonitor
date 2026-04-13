@@ -10,12 +10,25 @@ type TranslationDictionary = Record<string, unknown>;
 
 const SUPPORTED_LANGUAGE_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
 const loadedLanguages = new Set<SupportedLanguage>();
+const ENV = (() => {
+  try {
+    return import.meta.env ?? {};
+  } catch {
+    return {} as Record<string, boolean | string | undefined>;
+  }
+})();
 
 // Lazy-load only the locale that's actually needed — all others stay out of the bundle.
-const localeModules = import.meta.glob<TranslationDictionary>(
-  ['../locales/*.json', '!../locales/en.json'],
-  { import: 'default' },
-);
+const localeModules = (() => {
+  try {
+    return import.meta.glob<TranslationDictionary>(
+      ['../locales/*.json', '!../locales/en.json'],
+      { import: 'default' },
+    );
+  } catch {
+    return {} as Record<string, () => Promise<TranslationDictionary>>;
+  }
+})();
 
 const RTL_LANGUAGES = new Set(['ar']);
 
@@ -81,7 +94,7 @@ export async function initI18n(): Promise<void> {
       supportedLngs: [...SUPPORTED_LANGUAGES],
       nonExplicitSupportedLngs: true,
       fallbackLng: 'en',
-      debug: import.meta.env.DEV,
+      debug: ENV.DEV === true,
       interpolation: {
         escapeValue: false, // not needed for these simple strings
       },

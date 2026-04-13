@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#0E1618"/>
+  <circle cx="80" cy="80" r="54" fill="none" stroke="#27F4D2" stroke-width="8"/>
+  <path d="M80 36L98 96L80 82L62 96Z" fill="#27F4D2"/>
+  <text x="80" y="128" text-anchor="middle" font-size="28" font-weight="800" font-family="Arial, sans-serif" fill="#27F4D2">MER</text>
+</svg>

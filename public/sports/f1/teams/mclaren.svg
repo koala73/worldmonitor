@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#111316"/>
+  <path d="M24 116L136 44" stroke="#FF8000" stroke-width="18" stroke-linecap="round"/>
+  <rect x="18" y="18" width="124" height="124" rx="28" fill="none" stroke="#FF8000" stroke-width="6"/>
+  <text x="80" y="100" text-anchor="middle" font-size="42" font-weight="800" font-family="Arial, sans-serif" fill="#FF8000">MCL</text>
+</svg>

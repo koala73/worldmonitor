@@ -54,6 +54,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 
 export type { ScenarioVisualState, ScenarioResult };
+import type { SportsFixtureMapMarker } from '@/services/sports';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -128,6 +129,7 @@ export class MapContainer {
   private cachedNaturalEvents: NaturalEvent[] | null = null;
   private cachedFires: FireMarker[] | null = null;
   private cachedTechEvents: TechEventMarker[] | null = null;
+  private cachedSportsFixtures: SportsFixtureMapMarker[] | null = null;
   private cachedUcdpEvents: UcdpGeoEvent[] | null = null;
   private cachedDisplacementFlows: DisplacementFlow[] | null = null;
   private cachedClimateAnomalies: ClimateAnomaly[] | null = null;
@@ -299,6 +301,7 @@ export class MapContainer {
     if (this.cachedNaturalEvents) this.setNaturalEvents(this.cachedNaturalEvents);
     if (this.cachedFires) this.setFires(this.cachedFires);
     if (this.cachedTechEvents) this.setTechEvents(this.cachedTechEvents);
+    if (this.cachedSportsFixtures) this.setSportsFixtures(this.cachedSportsFixtures);
     if (this.cachedUcdpEvents) this.setUcdpEvents(this.cachedUcdpEvents);
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
@@ -561,6 +564,16 @@ export class MapContainer {
       this.deckGLMap?.setTechEvents(events);
     } else {
       this.svgMap?.setTechEvents(events);
+    }
+  }
+
+  public setSportsFixtures(fixtures: SportsFixtureMapMarker[]): void {
+    this.cachedSportsFixtures = fixtures;
+    if (this.useGlobe) { this.globeMap?.setSportsFixtures(fixtures); return; }
+    if (this.useDeckGL) {
+      this.deckGLMap?.setSportsFixtures(fixtures);
+    } else {
+      this.svgMap?.setSportsFixtures(fixtures);
     }
   }
 
@@ -1076,6 +1089,7 @@ export class MapContainer {
     this.cachedNaturalEvents = null;
     this.cachedFires = null;
     this.cachedTechEvents = null;
+    this.cachedSportsFixtures = null;
     this.cachedUcdpEvents = null;
     this.cachedDisplacementFlows = null;
     this.cachedClimateAnomalies = null;

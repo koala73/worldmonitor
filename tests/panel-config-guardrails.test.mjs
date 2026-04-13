@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const panelLayoutSrc = readFileSync(resolve(__dirname, '../src/app/panel-layout.ts'), 'utf-8');
 
-const VARIANT_FILES = ['full', 'tech', 'finance', 'commodity', 'happy'];
+const VARIANT_FILES = ['full', 'tech', 'finance', 'commodity', 'happy', 'sports'];
+const ALLOWED_SIMILAR_KEYS = new Set([
+  'ai-regulation::fin-regulation',
+  'baseball::basketball',
+]);
 
 function parsePanelKeys(variant) {
   const src = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
@@ -97,16 +101,14 @@ describe('panel-config guardrails', () => {
     }
 
     const keys = [...allKeys.keys()];
-    const allowedPairs = new Set([
-      'ai-regulation|fin-regulation',
-      'fin-regulation|ai-regulation',
-    ]);
     const typos = [];
     for (let i = 0; i < keys.length; i++) {
       for (let j = i + 1; j < keys.length; j++) {
         const minLen = Math.min(keys[i].length, keys[j].length);
         if (minLen < 5) continue;
-        if (levenshtein(keys[i], keys[j]) <= 2 && keys[i] !== keys[j] && !allowedPairs.has(`${keys[i]}|${keys[j]}`)) {
+        const pair = [keys[i], keys[j]].sort().join('::');
+        if (ALLOWED_SIMILAR_KEYS.has(pair)) continue;
+        if (levenshtein(keys[i], keys[j]) <= 2 && keys[i] !== keys[j]) {
           typos.push(`"${keys[i]}" ↔ "${keys[j]}"`);
         }
       }

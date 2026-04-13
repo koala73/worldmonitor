@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#0A1F4D"/>
+  <rect x="18" y="18" width="124" height="124" rx="28" fill="none" stroke="#3671C6" stroke-width="6"/>
+  <circle cx="58" cy="64" r="12" fill="#FFCC00"/>
+  <circle cx="102" cy="64" r="12" fill="#FFCC00"/>
+  <path d="M44 82H116" stroke="#E10600" stroke-width="10" stroke-linecap="round"/>
+  <text x="80" y="118" text-anchor="middle" font-size="36" font-weight="800" font-family="Arial, sans-serif" fill="#FFFFFF">RBR</text>
+</svg>

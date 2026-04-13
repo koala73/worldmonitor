@@ -388,6 +388,47 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
   },
 
+  sports: {
+    sports: [
+      { name: 'BBC Sport', url: 'https://feeds.bbci.co.uk/sport/rss.xml?edition=uk' },
+      { name: 'ESPN', url: 'https://www.espn.com/espn/rss/news' },
+      { name: 'Reuters Sports', url: gn('site:reuters.com sports when:2d') },
+      { name: 'AP Sports', url: gn('site:apnews.com sports when:2d') },
+      { name: 'Sky Sports', url: 'https://www.skysports.com/rss/12040' },
+    ],
+    soccer: [
+      { name: 'BBC Sport', url: 'https://feeds.bbci.co.uk/sport/football/rss.xml?edition=uk' },
+      { name: 'Sky Sports', url: 'https://www.skysports.com/rss/12040' },
+      { name: 'ESPN', url: 'https://www.espn.com/espn/rss/soccer/news' },
+      { name: 'Guardian Football', url: gn('site:theguardian.com football when:2d') },
+    ],
+    basketball: [
+      { name: 'NBA.com', url: gn('site:nba.com nba when:2d') },
+      { name: 'ESPN', url: gn('site:espn.com NBA when:2d') },
+      { name: 'The Athletic NBA', url: gn('(NBA OR basketball) analysis when:2d') },
+    ],
+    baseball: [
+      { name: 'MLB.com', url: gn('site:mlb.com MLB when:2d') },
+      { name: 'ESPN', url: gn('site:espn.com MLB when:2d') },
+      { name: 'Baseball News', url: gn('(MLB OR baseball) trade OR playoffs when:2d') },
+    ],
+    motorsport: [
+      { name: 'Formula1.com', url: gn('site:formula1.com Formula 1 when:3d') },
+      { name: 'Motorsport.com', url: gn('site:motorsport.com Formula 1 OR MotoGP when:3d') },
+      { name: 'Racer', url: gn('site:racer.com motorsport when:3d') },
+    ],
+    tennis: [
+      { name: 'ATP Tour', url: gn('site:atptour.com tennis when:3d') },
+      { name: 'WTA', url: gn('site:wtatennis.com tennis when:3d') },
+      { name: 'Tennis.com', url: gn('site:tennis.com tennis when:3d') },
+    ],
+    combat: [
+      { name: 'UFC', url: gn('site:ufc.com UFC when:3d') },
+      { name: 'ESPN', url: gn('site:espn.com MMA OR boxing when:3d') },
+      { name: 'MMA Fighting', url: gn('site:mmafighting.com MMA when:3d') },
+    ],
+  },
+
   happy: {
     positive: [
       { name: 'Good News Network', url: 'https://www.goodnewsnetwork.org/feed/' },

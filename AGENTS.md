@@ -108,6 +108,7 @@ The app ships multiple variants with different panel/layer configurations:
 - `finance`: Financial markets focus
 - `commodity`: Commodity markets focus
 - `happy`: Positive news only
+- `sports`: Sports news, fixtures, tables, and match stats
 
 Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/`.
 

@@ -127,4 +127,23 @@ export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
       'Futures market data',
     ],
   },
+  sports: {
+    title: 'Sports Monitor - Live Sports News, Fixtures, Tables & Stats',
+    description: 'Multi-sport dashboard for sports headlines, daily fixtures, league tables, and recent match stats across major competitions.',
+    keywords: 'sports dashboard, sports news, fixtures, league tables, match stats, football news, nba news, mlb news, nhl news, formula 1, tennis news, sports monitor',
+    url: 'https://sports.worldmonitor.app/',
+    siteName: 'Sports Monitor',
+    shortName: 'SportsMonitor',
+    subject: 'Multi-Sport News, Fixtures, Tables, and Match Intelligence',
+    classification: 'Sports Dashboard, Match Tracker, Sports News Aggregator',
+    categories: ['sports', 'news'],
+    features: [
+      'Live multi-sport headlines',
+      'Football, basketball, baseball, tennis, and motorsport feeds',
+      'Daily fixtures across featured leagues',
+      'Featured league tables',
+      'Recent match stat snapshots',
+      'Cross-sport competition monitoring',
+    ],
+  },
 };

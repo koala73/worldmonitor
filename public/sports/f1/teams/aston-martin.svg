@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#0E1A17"/>
+  <rect x="18" y="18" width="124" height="124" rx="28" fill="none" stroke="#229971" stroke-width="6"/>
+  <path d="M28 68H132L116 84H44Z" fill="#229971"/>
+  <path d="M48 54L80 86L112 54" fill="none" stroke="#B6F2E2" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="80" y="122" text-anchor="middle" font-size="34" font-weight="800" font-family="Arial, sans-serif" fill="#B6F2E2">AMR</text>
+</svg>

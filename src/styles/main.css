@@ -1243,6 +1243,11 @@ canvas,
   min-height: 800px !important;
 }
 
+.panel.span-5 {
+  grid-row: span 5 !important;
+  min-height: 1000px !important;
+}
+
 .panel.col-span-1 {
   grid-column: span 1 !important;
 }

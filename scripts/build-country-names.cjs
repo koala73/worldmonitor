@@ -21,7 +21,7 @@ function normalize(value) {
     .trim();
 }
 
-function add(key, iso2, source) {
+function add(key, iso2, _source) {
   const k = normalize(key);
   if (!k || !/^[A-Z]{2}$/.test(iso2)) return;
   if (result[k]) return;

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#081420"/>
+  <rect x="18" y="18" width="124" height="124" rx="28" fill="none" stroke="#0093CC" stroke-width="6"/>
+  <path d="M32 104L80 42L128 104" fill="none" stroke="#00A1E8" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M60 88H100" stroke="#FF87BC" stroke-width="10" stroke-linecap="round"/>
+  <text x="80" y="128" text-anchor="middle" font-size="30" font-weight="800" font-family="Arial, sans-serif" fill="#FFFFFF">ALP</text>
+</svg>

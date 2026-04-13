@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#17181A"/>
+  <rect x="18" y="18" width="124" height="124" rx="28" fill="none" stroke="#E10600" stroke-width="6"/>
+  <path d="M34 48H126" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <path d="M34 80H126" stroke="#B6BABD" stroke-width="14" stroke-linecap="round"/>
+  <text x="80" y="124" text-anchor="middle" font-size="34" font-weight="800" font-family="Arial, sans-serif" fill="#FFFFFF">HAA</text>
+</svg>

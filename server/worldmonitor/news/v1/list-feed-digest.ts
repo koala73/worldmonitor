@@ -28,7 +28,7 @@ import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
-const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'sports']);
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
 const ITEMS_PER_FEED = 5;
 const MAX_ITEMS_PER_CATEGORY = 20;

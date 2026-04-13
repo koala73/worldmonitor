@@ -57,6 +57,15 @@ import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import { H3HexagonLayer, TripsLayer } from '@deck.gl/geo-layers';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
+import {
+  buildSportsFixtureAggregateMarker,
+  getSportsFixtureDisplayLabel,
+  getSportsFixtureRenderPriority,
+  getSportsFixtureSubLabel,
+  getSportsFixtureVisualMeta,
+  isSportsFixtureHubMarker,
+  type SportsFixtureMapMarker,
+} from '@/services/sports';
 import { escapeHtml } from '@/utils/sanitize';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
@@ -166,6 +175,66 @@ interface TechEventMarker {
   endDate: string;
   url: string | null;
   daysUntil: number;
+}
+
+type MapSportsFixtureCluster = SportsFixtureMapMarker & {
+  lon: number;
+  count: number;
+  items: SportsFixtureMapMarker[];
+  sampled: boolean;
+  _clusterId?: number;
+};
+
+const SPORTS_CLUSTER_COUNT_FIELDS = [
+  ['Soccer', 'soccerCount'],
+  ['Basketball', 'basketballCount'],
+  ['Tennis', 'tennisCount'],
+  ['Cricket', 'cricketCount'],
+  ['Motorsport', 'motorsportCount'],
+  ['Other', 'otherCount'],
+] as const;
+
+function getSportsClusterSummary(props: Record<string, unknown>): { sport: string; sports: string[] } {
+  const sports = SPORTS_CLUSTER_COUNT_FIELDS
+    .filter(([, key]) => Number(props[key] ?? 0) > 0)
+    .map(([sport]) => sport)
+    .filter((sport) => sport !== 'Other');
+
+  if (sports.length === 0 && Number(props.otherCount ?? 0) > 0) {
+    return { sport: 'Mixed', sports: ['Mixed'] };
+  }
+  if (sports.length === 1) {
+    return { sport: sports[0] || 'Mixed', sports };
+  }
+  return { sport: 'Mixed', sports };
+}
+
+function countFixtureItems(marker: Pick<SportsFixtureMapMarker, 'fixtureCount' | 'fixtures'>): number {
+  return Math.max(marker.fixtureCount ?? 0, marker.fixtures?.length ?? 0, 1);
+}
+
+function uniqueFixtureStrings(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => !!value)));
+}
+
+function describeSportsClusterLocation(fixtures: SportsFixtureMapMarker[]): { venue: string; venueCity?: string; venueCountry?: string } {
+  const cities = uniqueFixtureStrings(fixtures.map((fixture) => fixture.venueCity));
+  const countries = uniqueFixtureStrings(fixtures.map((fixture) => fixture.venueCountry));
+
+  if (cities.length === 1) {
+    return {
+      venue: `${cities[0]} fixture hub`,
+      venueCity: cities[0],
+      venueCountry: countries[0],
+    };
+  }
+  if (countries.length === 1) {
+    return {
+      venue: `${countries[0]} fixture hub`,
+      venueCountry: countries[0],
+    };
+  }
+  return { venue: 'Regional fixture hub' };
 }
 
 // View presets with longitude, latitude, zoom
@@ -434,6 +503,7 @@ export class DeckGLMap {
   private naturalEvents: NaturalEvent[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
+  private sportsFixtures: SportsFixtureMapMarker[] = [];
   private flightDelays: AirportDelayAlert[] = [];
   private aircraftPositions: PositionSample[] = [];
   private aircraftFetchTimer: ReturnType<typeof setInterval> | null = null;
@@ -534,11 +604,13 @@ export class DeckGLMap {
   private layerCache: Map<string, Layer> = new Map();
   private lastZoomThreshold = 0;
   private protestSC: Supercluster | null = null;
+  private sportsFixtureSC: Supercluster | null = null;
   private techHQSC: Supercluster | null = null;
   private techEventSC: Supercluster | null = null;
   private datacenterSC: Supercluster | null = null;
   private datacenterSCSource: AIDataCenter[] = [];
   private protestClusters: MapProtestCluster[] = [];
+  private sportsFixtureClusters: MapSportsFixtureCluster[] = [];
   private techHQClusters: MapTechHQCluster[] = [];
   private techEventClusters: MapTechEventCluster[] = [];
   private datacenterClusters: MapDatacenterCluster[] = [];
@@ -1172,6 +1244,98 @@ export class DeckGLMap {
     this.lastSCZoom = -1;
   }
 
+  private rebuildSportsFixtureSupercluster(): void {
+    if (this.sportsFixtures.length === 0) {
+      this.sportsFixtureSC = null;
+      this.sportsFixtureClusters = [];
+      this.lastSCZoom = -1;
+      return;
+    }
+
+    const points = this.sportsFixtures.map((fixture, index) => {
+      const fixtureCount = countFixtureItems(fixture);
+      const startTimeMs = fixture.startTime ? Date.parse(fixture.startTime) : Number.NaN;
+      return {
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [fixture.lng, fixture.lat] as [number, number] },
+        properties: {
+          index,
+          eventId: fixture.eventId,
+          fixtureCount,
+          competitionCount: fixture.competitionCount ?? 1,
+          sport: fixture.sport,
+          title: fixture.title,
+          leagueName: fixture.leagueName,
+          leagueShortName: fixture.leagueShortName,
+          venue: fixture.venue,
+          venueCity: fixture.venueCity || '',
+          venueCountry: fixture.venueCountry || '',
+          startLabel: fixture.startLabel,
+          startTimeMs: Number.isFinite(startTimeMs) ? startTimeMs : Number.MAX_SAFE_INTEGER,
+        },
+      };
+    });
+
+    this.sportsFixtureSC = new Supercluster({
+      radius: 60,
+      maxZoom: 14,
+      map: (props: Record<string, unknown>) => {
+        const sport = String(props.sport ?? 'Mixed');
+        const fixtureCount = Number(props.fixtureCount ?? 1) || 1;
+        return {
+          index: Number(props.index ?? 0),
+          eventId: String(props.eventId ?? ''),
+          fixtureCount,
+          competitionCount: Number(props.competitionCount ?? 1) || 1,
+          title: String(props.title ?? ''),
+          leagueName: String(props.leagueName ?? ''),
+          leagueShortName: String(props.leagueShortName ?? ''),
+          venue: String(props.venue ?? ''),
+          venueCity: String(props.venueCity ?? ''),
+          venueCountry: String(props.venueCountry ?? ''),
+          startLabel: String(props.startLabel ?? ''),
+          startTimeMs: Number(props.startTimeMs ?? Number.MAX_SAFE_INTEGER),
+          soccerCount: sport === 'Soccer' ? fixtureCount : 0,
+          basketballCount: sport === 'Basketball' ? fixtureCount : 0,
+          tennisCount: sport === 'Tennis' ? fixtureCount : 0,
+          cricketCount: sport === 'Cricket' ? fixtureCount : 0,
+          motorsportCount: sport === 'Motorsport' ? fixtureCount : 0,
+          otherCount: ['Soccer', 'Basketball', 'Tennis', 'Cricket', 'Motorsport'].includes(sport) ? 0 : fixtureCount,
+        };
+      },
+      reduce: (acc: Record<string, unknown>, props: Record<string, unknown>) => {
+        acc.fixtureCount = Number(acc.fixtureCount ?? 0) + Number(props.fixtureCount ?? 0);
+        acc.competitionCount = Number(acc.competitionCount ?? 0) + Number(props.competitionCount ?? 0);
+        acc.soccerCount = Number(acc.soccerCount ?? 0) + Number(props.soccerCount ?? 0);
+        acc.basketballCount = Number(acc.basketballCount ?? 0) + Number(props.basketballCount ?? 0);
+        acc.tennisCount = Number(acc.tennisCount ?? 0) + Number(props.tennisCount ?? 0);
+        acc.cricketCount = Number(acc.cricketCount ?? 0) + Number(props.cricketCount ?? 0);
+        acc.motorsportCount = Number(acc.motorsportCount ?? 0) + Number(props.motorsportCount ?? 0);
+        acc.otherCount = Number(acc.otherCount ?? 0) + Number(props.otherCount ?? 0);
+
+        const nextStartTime = Number(props.startTimeMs ?? Number.MAX_SAFE_INTEGER);
+        const currentStartTime = Number(acc.startTimeMs ?? Number.MAX_SAFE_INTEGER);
+        if (nextStartTime < currentStartTime) {
+          acc.startTimeMs = nextStartTime;
+          acc.startLabel = props.startLabel;
+          acc.title = props.title;
+          acc.eventId = props.eventId;
+          acc.leagueName = props.leagueName;
+          acc.leagueShortName = props.leagueShortName;
+          acc.venue = props.venue;
+          acc.venueCity = props.venueCity;
+          acc.venueCountry = props.venueCountry;
+        }
+
+        if (!acc.venue && props.venue) acc.venue = props.venue;
+        if (!acc.venueCity && props.venueCity) acc.venueCity = props.venueCity;
+        if (!acc.venueCountry && props.venueCountry) acc.venueCountry = props.venueCountry;
+      },
+    });
+    this.sportsFixtureSC.load(points);
+    this.lastSCZoom = -1;
+  }
+
   private rebuildTechEventSupercluster(): void {
     const points = this.techEvents.map((e, i) => ({
       type: 'Feature' as const,
@@ -1257,15 +1421,17 @@ export class DeckGLMap {
     const boundsKey = `${bbox[0].toFixed(4)}:${bbox[1].toFixed(4)}:${bbox[2].toFixed(4)}:${bbox[3].toFixed(4)}`;
     const layers = this.state.layers;
     const useProtests = layers.protests && this.protestSuperclusterSource.length > 0;
+    const useSportsFixtures = layers.sportsFixtures && this.sportsFixtures.length > 0;
     const useTechHQ = SITE_VARIANT === 'tech' && layers.techHQs;
     const useTechEvents = SITE_VARIANT === 'tech' && layers.techEvents && this.techEvents.length > 0;
     const useDatacenterClusters = layers.datacenters && zoom < 5;
-    const layerMask = `${Number(useProtests)}${Number(useTechHQ)}${Number(useTechEvents)}${Number(useDatacenterClusters)}`;
+    const layerMask = `${Number(useProtests)}${Number(useSportsFixtures)}${Number(useTechHQ)}${Number(useTechEvents)}${Number(useDatacenterClusters)}`;
     if (zoom === this.lastSCZoom && boundsKey === this.lastSCBoundsKey && layerMask === this.lastSCMask) return;
     this.lastSCZoom = zoom;
     this.lastSCBoundsKey = boundsKey;
     this.lastSCMask = layerMask;
 
+    if (useSportsFixtures && !this.sportsFixtureSC) this.rebuildSportsFixtureSupercluster();
     if (useTechHQ && !this.techHQSC) this.rebuildTechHQSupercluster();
     if (useDatacenterClusters && !this.datacenterSC) this.rebuildDatacenterSupercluster();
 
@@ -1317,6 +1483,57 @@ export class DeckGLMap {
       });
     } else {
       this.protestClusters = [];
+    }
+
+    if (useSportsFixtures && this.sportsFixtureSC) {
+      this.sportsFixtureClusters = this.sportsFixtureSC.getClusters(bbox, zoom).map((feature) => {
+        const coords = feature.geometry.coordinates as [number, number];
+        if (feature.properties.cluster) {
+          const props = feature.properties as Record<string, unknown>;
+          const clusterCount = Number(feature.properties.point_count ?? 0);
+          const { sport, sports } = getSportsClusterSummary(props);
+          const startTimeMs = Number(props.startTimeMs ?? Number.MAX_SAFE_INTEGER);
+          const startTime = Number.isFinite(startTimeMs) && startTimeMs < Number.MAX_SAFE_INTEGER
+            ? new Date(startTimeMs).toISOString()
+            : undefined;
+
+          return {
+            id: `spc-${feature.properties.cluster_id}`,
+            eventId: String(props.eventId ?? `sports-cluster-${feature.properties.cluster_id}`),
+            _clusterId: feature.properties.cluster_id!,
+            lat: coords[1],
+            lng: coords[0],
+            lon: coords[0],
+            count: clusterCount,
+            items: [] as SportsFixtureMapMarker[],
+            sampled: false,
+            leagueId: undefined,
+            leagueName: sports.length === 1 ? String(props.leagueName ?? sport) : `${sports.length || 1} sports`,
+            leagueShortName: sports.length === 1 ? String(props.leagueShortName ?? sport) : 'MULTI',
+            sport,
+            title: `${Number(props.fixtureCount ?? clusterCount)} fixtures`,
+            venue: String(props.venueCity || props.venueCountry || props.venue || 'Fixture hub'),
+            venueCity: String(props.venueCity ?? '') || undefined,
+            venueCountry: String(props.venueCountry ?? '') || undefined,
+            startTime,
+            startLabel: String(props.startLabel ?? 'Today'),
+            fixtureCount: Number(props.fixtureCount ?? clusterCount) || clusterCount,
+            competitionCount: Number(props.competitionCount ?? 1) || 1,
+            sports,
+          };
+        }
+
+        const item = this.sportsFixtures[feature.properties.index]!;
+        return {
+          ...item,
+          lon: item.lng,
+          count: 1,
+          items: [item],
+          sampled: false,
+        };
+      });
+    } else {
+      this.sportsFixtureClusters = [];
     }
 
     if (useTechHQ && this.techHQSC) {
@@ -1774,6 +1991,10 @@ export class DeckGLMap {
       if (mapLayers.techEvents && this.techEvents.length > 0) {
         layers.push(...this.createTechEventClusterLayers());
       }
+    }
+
+    if (mapLayers.sportsFixtures && this.sportsFixtures.length > 0) {
+      layers.push(...this.createSportsFixturesLayers());
     }
 
     // Gulf FDI investments layer
@@ -3144,6 +3365,123 @@ export class DeckGLMap {
     return layers;
   }
 
+  private createSportsFixturesLayers(): Layer[] {
+    this.updateClusterData();
+    const layers: Layer[] = [];
+    const zoom = this.maplibreMap?.getZoom() || 2;
+    const fixtureClusters = this.sportsFixtureClusters.length > 0
+      ? this.sportsFixtureClusters
+      : this.sportsFixtures.map((fixture) => ({
+        ...fixture,
+        lon: fixture.lng,
+        count: 1,
+        items: [fixture],
+        sampled: false,
+      } satisfies MapSportsFixtureCluster));
+
+    layers.push(new ScatterplotLayer<MapSportsFixtureCluster>({
+      id: 'sports-fixtures-halo',
+      data: fixtureClusters,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 16000 + (Math.max(d.fixtureCount || 1, d.count) - 1) * 4200,
+      radiusMinPixels: zoom < 3 ? 7 : 9,
+      radiusMaxPixels: zoom < 3 ? 26 : 32,
+      getFillColor: (d) => {
+        const visuals = getSportsFixtureVisualMeta(d.sport);
+        return this.hexToRgba(visuals.colorHex, d.count > 1 || isSportsFixtureHubMarker(d) ? 74 : 46);
+      },
+      pickable: false,
+    }));
+
+    layers.push(new ScatterplotLayer<MapSportsFixtureCluster>({
+      id: 'sports-fixtures-layer',
+      data: fixtureClusters,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 12000 + (Math.max(d.fixtureCount || 1, d.count) - 1) * 3000,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 22,
+      getFillColor: (d) => {
+        const [red, green, blue] = getSportsFixtureVisualMeta(d.sport).colorRgba;
+        return [red, green, blue, d.count > 1 || isSportsFixtureHubMarker(d) ? 235 : 208] as [number, number, number, number];
+      },
+      getLineColor: (d) => this.hexToRgba(getSportsFixtureVisualMeta(d.sport).colorHex, 255),
+      getLineWidth: (d) => (d.count > 1 || isSportsFixtureHubMarker(d) ? 2 : 1),
+      lineWidthMinPixels: 1.25,
+      stroked: true,
+      pickable: true,
+    }));
+
+    layers.push(new TextLayer<MapSportsFixtureCluster>({
+      id: 'sports-fixtures-icon',
+      data: fixtureClusters,
+      getText: (d) => getSportsFixtureVisualMeta(d.sport).icon,
+      getPosition: (d) => [d.lon, d.lat],
+      getColor: [5, 8, 12, 255],
+      getSize: (d) => (d.count > 1 || isSportsFixtureHubMarker(d) ? 12 : 11),
+      getTextAnchor: 'middle',
+      getAlignmentBaseline: 'center',
+      billboard: true,
+      pickable: false,
+      fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+      fontWeight: 700,
+    }));
+
+    const multiHubs = fixtureClusters.filter((fixture) => (fixture.fixtureCount || 1) > 1);
+    if (multiHubs.length > 0) {
+      layers.push(new TextLayer<MapSportsFixtureCluster>({
+        id: 'sports-fixtures-badge',
+        data: multiHubs,
+        getText: (d) => String(d.fixtureCount || d.fixtures?.length || d.count || 1),
+        getPosition: (d) => [d.lon, d.lat],
+        background: true,
+        getBackgroundColor: [5, 8, 12, 190],
+        backgroundPadding: [4, 2, 4, 2],
+        getColor: [255, 255, 255, 255],
+        getSize: 12,
+        getPixelOffset: [0, -14],
+        pickable: false,
+        fontFamily: 'system-ui, sans-serif',
+        fontWeight: 700,
+      }));
+    }
+
+    if (zoom >= 3.1) {
+      const maxLabels = zoom >= 5 ? 28 : zoom >= 4 ? 18 : 10;
+      const labelData = fixtureClusters
+        .slice()
+        .sort((a, b) => getSportsFixtureRenderPriority(b) - getSportsFixtureRenderPriority(a))
+        .filter((fixture, index) => {
+          if (index >= maxLabels) return false;
+          if ((fixture.fixtureCount || 1) > 1) return true;
+          return zoom >= 4.1 || getSportsFixtureRenderPriority(fixture) >= 16;
+        });
+
+      if (labelData.length > 0) {
+        layers.push(new TextLayer<MapSportsFixtureCluster>({
+          id: 'sports-fixtures-label',
+          data: labelData,
+          getText: (d) => getSportsFixtureDisplayLabel(d, zoom < 4.2),
+          getPosition: (d) => [d.lon, d.lat],
+          getColor: [241, 245, 249, 232],
+          getSize: (d) => ((d.fixtureCount || 1) > 1 ? 12 : 11),
+          getPixelOffset: [0, 18],
+          getTextAnchor: 'middle',
+          getAlignmentBaseline: 'top',
+          background: true,
+          getBackgroundColor: [5, 8, 12, 196],
+          backgroundPadding: [7, 3, 7, 3],
+          billboard: true,
+          pickable: false,
+          fontFamily: 'system-ui, sans-serif',
+          fontWeight: 700,
+        }));
+      }
+    }
+
+    layers.push(this.createEmptyGhost('sports-fixtures-layer'));
+    return layers;
+  }
+
   private createDatacenterClusterLayers(): Layer[] {
     this.updateClusterData();
     const layers: Layer[] = [];
@@ -3795,6 +4133,17 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.provider)}</strong><br/>${text(obj.region)}</div>` };
       case 'tech-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
+      case 'sports-fixtures-layer': {
+        const fixture = obj as MapSportsFixtureCluster;
+        const title = getSportsFixtureDisplayLabel(fixture, fixture.count > 1);
+        const subLabel = getSportsFixtureSubLabel(fixture);
+        const countLine = (fixture.fixtureCount || 1) > 1
+          ? `<br/><span style="opacity:.75">${text(String(fixture.fixtureCount || fixture.count || 1))} fixtures</span>`
+          : '';
+        return {
+          html: `<div class="deckgl-tooltip"><strong>${text(title)}</strong><br/>${text(subLabel || fixture.venue || '')}${countLine}</div>`,
+        };
+      }
       case 'irradiators-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type || t('components.deckgl.layers.gammaIrradiators'))}</div>` };
       case 'disease-outbreaks-layer': {
@@ -3960,6 +4309,38 @@ export class DeckGLMap {
     'happiness-choropleth-layer',
     'resilience-choropleth-layer',
   ]);
+
+  private resolveSportsFixtureClusterItems(cluster: MapSportsFixtureCluster): SportsFixtureMapMarker[] {
+    if (cluster.count <= 1) return cluster.items;
+    if (cluster.items.length > 0 || cluster._clusterId == null || !this.sportsFixtureSC) return cluster.items;
+
+    try {
+      const leaves = this.sportsFixtureSC.getLeaves(cluster._clusterId, cluster.count);
+      cluster.items = leaves
+        .map((leaf) => this.sportsFixtures[leaf.properties.index])
+        .filter((fixture): fixture is SportsFixtureMapMarker => !!fixture);
+    } catch (error) {
+      console.warn('[DeckGLMap] stale sports fixture cluster', cluster._clusterId, error);
+    }
+
+    return cluster.items;
+  }
+
+  private buildSportsFixturePopupMarker(cluster: MapSportsFixtureCluster): SportsFixtureMapMarker {
+    const items = this.resolveSportsFixtureClusterItems(cluster);
+    if (items.length <= 1) return items[0] || cluster;
+
+    const location = describeSportsClusterLocation(items);
+    return buildSportsFixtureAggregateMarker(items, {
+      id: cluster.id,
+      title: `${items.reduce((sum, item) => sum + countFixtureItems(item), 0)} fixtures`,
+      venue: location.venue,
+      venueCity: location.venueCity,
+      venueCountry: location.venueCountry,
+      lat: cluster.lat,
+      lng: cluster.lon,
+    });
+  }
 
   private handleClick(info: PickingInfo): void {
     const isChoropleth = info.layer?.id ? DeckGLMap.CHOROPLETH_LAYER_IDS.has(info.layer.id) : false;
@@ -4134,6 +4515,18 @@ export class DeckGLMap {
       }
       return;
     }
+    if (layerId === 'sports-fixtures-layer') {
+      const cluster = info.object as MapSportsFixtureCluster;
+      const marker = this.buildSportsFixturePopupMarker(cluster);
+      this.popup.show({
+        type: 'sportsFixture',
+        data: marker,
+        x: info.x,
+        y: info.y,
+      });
+      void this.popup.loadSportsFixtureContext(marker);
+      return;
+    }
 
     if (layerId === 'webcam-layer' && !('count' in info.object)) {
       this.showWebcamClickPopup(info.object as WebcamEntry, info.x, info.y);
@@ -4194,6 +4587,7 @@ export class DeckGLMap {
       'accelerators-layer': 'accelerator',
       'cloud-regions-layer': 'cloudRegion',
       'tech-events-layer': 'techEvent',
+      'sports-fixtures-layer': 'sportsFixture',
       'apt-groups-layer': 'apt',
       'minerals-layer': 'mineral',
       'ais-disruptions-layer': 'ais',
@@ -4250,6 +4644,9 @@ export class DeckGLMap {
     if (popupType === 'aircraft') {
       const icao24 = (data as { icao24?: string }).icao24;
       if (icao24) this.popup.loadWingbitsLiveFlight(icao24);
+    }
+    if (popupType === 'sportsFixture') {
+      void this.popup.loadSportsFixtureContext(data as SportsFixtureMapMarker);
     }
   }
 
@@ -4615,6 +5012,17 @@ export class DeckGLMap {
       </div>
     `;
 
+    const sportsHelpContent = `
+      ${helpHeader}
+      <div class="layer-help-content">
+        <div class="layer-help-section">
+          <div class="layer-help-title">Sports Context</div>
+          <div class="layer-help-item"><span>${label('sportsFixtures')}</span> Daily football, basketball, motorsport, tennis, and cricket fixtures are grouped into one dot per league, with selectable matchup analysis in the popup.</div>
+          ${helpItem(label('dayNight'), 'dayNight')}
+        </div>
+      </div>
+    `;
+
     const fullHelpContent = `
       ${helpHeader}
       <div class="layer-help-content">
@@ -4670,6 +5078,8 @@ export class DeckGLMap {
       ? techHelpContent
       : SITE_VARIANT === 'finance'
         ? financeHelpContent
+        : SITE_VARIANT === 'sports'
+          ? sportsHelpContent
         : fullHelpContent;
 
     popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
@@ -4754,6 +5164,11 @@ export class DeckGLMap {
             { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
             ...resilienceLegendItems,
           ]
+          : SITE_VARIANT === 'sports'
+            ? [
+              { shape: shapes.circle('rgb(34, 197, 94)'), label: t('components.deckgl.layers.sportsFixtures'), layerKey: 'sportsFixtures' },
+              { shape: shapes.circle('rgb(96, 165, 250)'), label: t('components.deckgl.layers.dayNight'), layerKey: 'dayNight' },
+            ]
           : SITE_VARIANT === 'commodity'
             ? [
               { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
@@ -5630,6 +6045,12 @@ export class DeckGLMap {
   public setTechEvents(events: TechEventMarker[]): void {
     this.techEvents = events;
     this.rebuildTechEventSupercluster();
+    this.render();
+  }
+
+  public setSportsFixtures(fixtures: SportsFixtureMapMarker[]): void {
+    this.sportsFixtures = fixtures;
+    this.rebuildSportsFixtureSupercluster();
     this.render();
   }
 

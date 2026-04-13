@@ -215,6 +215,7 @@
     "sourcesEnabled": "{{enabled}}/{{total}} enabled",
     "finance": "FINANCE",
     "commodity": "COMMODITY",
+    "sports": "SPORTS",
     "toggleTheme": "Toggle dark/light mode",
     "panelDisplayCaption": "Choose which panels to show on the dashboard",
     "tabGeneral": "General",
@@ -248,6 +249,10 @@
     "sourceRegionDeals": "Deals & Corporate",
     "sourceRegionFinRegulation": "Financial Regulation",
     "sourceRegionGulfMena": "Gulf & MENA",
+    "sourceRegionSportsHeadlines": "Sports Headlines",
+    "sourceRegionFieldCourt": "Field & Court",
+    "sourceRegionRacquetRacing": "Racquet & Racing",
+    "sourceRegionCombatArena": "Combat & Arena",
     "filterPanels": "Filter panels...",
     "resetLayout": "Reset Layout",
     "resetLayoutTooltip": "Restore default panel arrangement",
@@ -274,7 +279,9 @@
     "panelCatMining": "Mining & Supply Chain",
     "panelCatCommodityEcon": "Economy & Trade",
     "panelCatHappyNews": "Good News",
-    "panelCatHappyPlanet": "Planet & Giving"
+    "panelCatHappyPlanet": "Planet & Giving",
+    "panelCatSportsNews": "Sports News",
+    "panelCatSportsData": "Fixtures & Tables"
   },
   "panels": {
     "liveNews": "Live News",
@@ -1278,6 +1285,7 @@
         "internetOutages": "Internet Disruptions",
         "cyberThreats": "Cyber Threats",
         "techEvents": "Tech Events",
+        "sportsFixtures": "Sports Fixtures",
         "naturalEvents": "Natural Events",
         "fires": "Fires",
         "intelHotspots": "Intel Hotspots",

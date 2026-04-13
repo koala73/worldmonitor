@@ -4,6 +4,7 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
+import { fetchSportsFixturePopupContext, getSportsFixtureVisualMeta, isSportsFixtureHubMarker, type SportsFixtureMapMarker } from '@/services/sports';
 import { UNDERSEA_CABLES } from '@/config';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
 import type { TechHubActivity } from '@/services/tech-activity';
@@ -82,7 +83,7 @@ function fmtDelayMin(min: number | undefined): string {
   return `<span style="color:${min > 0 ? '#f97316' : '#22c55e'};font-size:10px;margin-left:3px">${min > 0 ? '+' : ''}${min}m</span>`;
 }
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'sportsFixture';
 
 interface TechEventPopupData {
   id: string;
@@ -96,6 +97,8 @@ interface TechEventPopupData {
   url: string | null;
   daysUntil: number;
 }
+
+type SportsFixturePopupData = SportsFixtureMapMarker;
 
 interface TechHQClusterData {
   items: TechHQ[];
@@ -211,7 +214,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | SportsFixturePopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -308,6 +311,16 @@ export class MapPopup {
         const expanded = hidden.style.display !== 'none';
         hidden.style.display = expanded ? 'none' : '';
         toggle.textContent = expanded ? (toggle.dataset.more ?? '') : (toggle.dataset.less ?? '');
+      }
+      const fixtureSelect = target.closest('[data-sports-fixture-index]') as HTMLElement | null;
+      if (fixtureSelect && data.type === 'sportsFixture') {
+        const rootFixture = data.data as SportsFixturePopupData;
+        const selectedIndex = Number.parseInt(fixtureSelect.dataset.sportsFixtureIndex || '', 10);
+        if (!Number.isFinite(selectedIndex) || selectedIndex < 0) return;
+        const selectedFixture = rootFixture.fixtures?.[selectedIndex];
+        if (!selectedFixture) return;
+        this.setActiveSportsFixtureSelection(selectedFixture.eventId);
+        void this.loadSportsFixtureContext(rootFixture, selectedFixture);
       }
     });
 
@@ -656,6 +669,8 @@ export class MapPopup {
         return this.renderAcceleratorPopup(data.data as Accelerator);
       case 'techEvent':
         return this.renderTechEventPopup(data.data as TechEventPopupData);
+      case 'sportsFixture':
+        return this.renderSportsFixturePopup(data.data as SportsFixturePopupData);
       case 'techHQCluster':
         return this.renderTechHQClusterPopup(data.data as TechHQClusterData);
       case 'techEventCluster':
@@ -1144,6 +1159,89 @@ export class MapPopup {
         section.innerHTML = '';
       }
     }
+  }
+
+  public async loadSportsFixtureContext(fixture: SportsFixturePopupData, selectedFixture?: SportsFixturePopupData): Promise<void> {
+    if (!this.popup) return;
+
+    const section = this.popup.querySelector('.sports-fixture-context');
+    if (!section) return;
+
+    const fixtureForContext = selectedFixture || (isSportsFixtureHubMarker(fixture)
+      ? fixture.fixtures?.[0]
+      : fixture);
+    if (!fixtureForContext) {
+      section.innerHTML = `
+        <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">AI Matchup Brief</div>
+        <div class="popup-description" style="margin:6px 0 0;">No fixture is available for matchup analysis right now.</div>
+      `;
+      return;
+    }
+
+    this.setActiveSportsFixtureSelection(fixtureForContext.eventId);
+    const requestToken = `${fixtureForContext.eventId}:${Date.now()}`;
+    section.setAttribute('data-request-token', requestToken);
+    section.innerHTML = `
+      <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">AI Matchup Brief</div>
+      <div class="popup-description" style="margin:6px 0 0;">Loading matchup analysis...</div>
+    `;
+
+    try {
+      const context = await fetchSportsFixturePopupContext(fixtureForContext);
+      if (!this.popup || !section.isConnected) return;
+      if (section.getAttribute('data-request-token') !== requestToken) return;
+
+      const selectedTeams = fixtureForContext.homeTeam && fixtureForContext.awayTeam
+        ? `${fixtureForContext.homeTeam} vs ${fixtureForContext.awayTeam}`
+        : fixtureForContext.title;
+
+      section.innerHTML = `
+        <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">AI Matchup Brief</div>
+        <div class="popup-description" style="margin:6px 0 0 8px;">${escapeHtml(selectedTeams)} · ${escapeHtml(fixtureForContext.startLabel)}</div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Prediction</span>
+            <span class="stat-value">${escapeHtml(context.prediction)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Weather</span>
+            <span class="stat-value">${escapeHtml(context.weather)}</span>
+          </div>
+        </div>
+        ${context.stats.length > 0 ? `
+          <div class="popup-stats">
+            ${context.stats.map((stat) => `
+              <div class="popup-stat">
+                <span class="stat-label">${escapeHtml(stat.label)}</span>
+                <span class="stat-value">${escapeHtml(stat.value)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">Story Angle</div>
+        <p class="popup-description" style="margin:6px 0 0;">${escapeHtml(context.story)}</p>
+      `;
+      this.clampPopupToViewport();
+    } catch {
+      if (section.isConnected) {
+        if (section.getAttribute('data-request-token') !== requestToken) return;
+        section.innerHTML = `
+          <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">AI Matchup Brief</div>
+          <div class="popup-description" style="margin:6px 0 0;">Live matchup context is unavailable right now.</div>
+        `;
+      }
+    }
+  }
+
+  private setActiveSportsFixtureSelection(eventId: string): void {
+    if (!this.popup) return;
+    const options = this.popup.querySelectorAll<HTMLElement>('.sports-fixture-option');
+    options.forEach((option) => {
+      const active = option.dataset.sportsEventId === eventId;
+      option.setAttribute('data-selected', active ? 'true' : 'false');
+      option.style.borderColor = active ? 'rgba(34,197,94,0.7)' : 'rgba(255,255,255,0.06)';
+      option.style.background = active ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.03)';
+    });
   }
 
   private renderGdeltArticle(article: GdeltArticle): string {
@@ -2353,6 +2451,109 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           <span class="notable-list">${acc.notable.map(n => escapeHtml(n)).join(', ')}</span>
         </div>
         ` : ''}
+      </div>
+    `;
+  }
+
+  private renderSportsFixturePopup(fixture: SportsFixturePopupData): string {
+    const sportIcon = getSportsFixtureVisualMeta(fixture.sport).icon;
+    const venueParts = [fixture.venue, fixture.venueCity, fixture.venueCountry].filter(Boolean);
+    const venueLabel = venueParts.join(', ');
+
+    if (isSportsFixtureHubMarker(fixture)) {
+      const fixtures = fixture.fixtures ?? [];
+      const sportsLabel = (fixture.sports && fixture.sports.length > 0)
+        ? fixture.sports.join(' · ')
+        : fixture.sport;
+
+      return `
+        <div class="popup-header tech-event">
+          <span class="popup-title">${sportIcon} ${escapeHtml(`${fixture.fixtureCount || fixtures.length} Fixtures`)}</span>
+          <span class="popup-badge">${escapeHtml(sportsLabel)}</span>
+          <button class="popup-close" aria-label="Close">×</button>
+        </div>
+        <div class="popup-body">
+          <div class="popup-subtitle">${escapeHtml(fixture.startLabel)}</div>
+          <div class="popup-stats">
+            <div class="popup-stat">
+              <span class="stat-label">League</span>
+              <span class="stat-value">${escapeHtml(fixture.leagueName)}</span>
+            </div>
+            <div class="popup-stat">
+              <span class="stat-label">Fixtures</span>
+              <span class="stat-value">${escapeHtml(String(fixture.fixtureCount || fixtures.length))}</span>
+            </div>
+            <div class="popup-stat">
+              <span class="stat-label">Competitions</span>
+              <span class="stat-value">${escapeHtml(String(fixture.competitionCount || 1))}</span>
+            </div>
+          </div>
+          <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">League Schedule</div>
+          <div style="display:grid;gap:8px;margin-top:6px;">
+            ${fixtures.map((item, index) => {
+              const teams = item.homeTeam && item.awayTeam
+                ? `${item.homeTeam} vs ${item.awayTeam}`
+                : item.title;
+              return `
+                <button type="button" class="sports-fixture-option" data-sports-fixture-index="${index}" data-sports-event-id="${escapeHtml(item.eventId)}" data-selected="${index === 0 ? 'true' : 'false'}" style="display:grid;gap:4px;padding:8px 10px;border-radius:8px;background:${index === 0 ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.03)'};border:1px solid ${index === 0 ? 'rgba(34,197,94,0.7)' : 'rgba(255,255,255,0.06)'};text-align:left;cursor:pointer;color:inherit;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                    <strong style="font-size:12px;">${escapeHtml(teams)}</strong>
+                    <span style="font-size:11px;opacity:0.6;">${escapeHtml(item.startLabel)}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;opacity:0.75;">
+                    <span>${escapeHtml(item.leagueName)}</span>
+                    <span>${escapeHtml(item.round || item.leagueShortName || '')}</span>
+                  </div>
+                </button>
+              `;
+            }).join('')}
+          </div>
+          <div class="sports-fixture-context">
+            <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">AI Matchup Brief</div>
+            <div class="popup-description" style="margin:6px 0 0;">Select a match to load live stats and predictions.</div>
+          </div>
+        </div>
+      `;
+    }
+
+    const teams = fixture.homeTeam && fixture.awayTeam
+      ? `${fixture.homeTeam} vs ${fixture.awayTeam}`
+      : fixture.title;
+
+    return `
+      <div class="popup-header tech-event">
+        <span class="popup-title">${sportIcon} ${escapeHtml(teams)}</span>
+        <span class="popup-badge">${escapeHtml(fixture.leagueShortName)}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-subtitle">${escapeHtml(fixture.startLabel)}</div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Competition</span>
+            <span class="stat-value">${escapeHtml(fixture.leagueName)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Venue</span>
+            <span class="stat-value">${escapeHtml(venueLabel || fixture.venue)}</span>
+          </div>
+          ${fixture.round ? `
+          <div class="popup-stat">
+            <span class="stat-label">Round</span>
+            <span class="stat-value">${escapeHtml(fixture.round)}</span>
+          </div>
+          ` : ''}
+          ${fixture.venueCapacity ? `
+          <div class="popup-stat">
+            <span class="stat-label">Capacity</span>
+            <span class="stat-value">${escapeHtml(fixture.venueCapacity)}</span>
+          </div>
+          ` : ''}
+        </div>
+        <div class="sports-fixture-context">
+          <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:10px">AI Matchup Brief</div>
+          <div class="popup-description" style="margin:6px 0 0;">Loading matchup analysis...</div>
+        </div>
       </div>
     `;
   }

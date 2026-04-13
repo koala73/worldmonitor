@@ -73,9 +73,20 @@ import {
   GoldIntelligencePanel,
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
+  SportsTablesPanel,
+  SportsStatsPanel,
+  SportsLiveTrackerPanel,
+  SportsMajorTournamentsPanel,
+  SportsNbaPanel,
+  SportsMotorsportPanel,
+  SportsTransferNewsPanel,
+  SportsPlayerSearchPanel,
   WsbTickerScannerPanel,
   AAIISentimentPanel,
   EnergyCrisisPanel,
+  SportsNbaAnalysisPanel,
+  SportsEuropeanFootballAnalysisPanel,
+  SportsMotorsportAnalysisPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
@@ -360,6 +371,15 @@ export class PanelLayoutManager implements AppModule {
                title="Good News${SITE_VARIANT === 'happy' ? ` ${t('common.currentVariant')}` : ''}">
               <span class="variant-icon">☀️</span>
               <span class="variant-label">Good News</span>
+            </a>
+            <span class="variant-divider"></span>
+            <a href="${vHref('sports', 'https://sports.worldmonitor.app')}"
+               class="variant-option ${SITE_VARIANT === 'sports' ? 'active' : ''}"
+               data-variant="sports"
+               ${vTarget('sports')}
+               title="${t('header.sports')}${SITE_VARIANT === 'sports' ? ` ${t('common.currentVariant')}` : ''}">
+              <span class="variant-icon">🏟️</span>
+              <span class="variant-label">${t('header.sports')}</span>
             </a>`;
       })()}</div>
           <span class="logo">MONITOR</span><span class="logo-mobile">World Monitor</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
@@ -419,6 +439,7 @@ export class PanelLayoutManager implements AppModule {
           { key: 'finance', icon: '📈', label: t('header.finance') },
           { key: 'commodity', icon: '⛏️', label: t('header.commodity') },
           { key: 'happy', icon: '☀️', label: 'Good News' },
+          { key: 'sports', icon: '🏟️', label: t('header.sports') },
         ];
         return variants.map(v =>
           `<button class="mobile-menu-item mobile-menu-variant ${v.key === SITE_VARIANT ? 'active' : ''}" data-variant="${v.key}">
@@ -480,7 +501,7 @@ export class PanelLayoutManager implements AppModule {
         <div class="map-section" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
+              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : SITE_VARIANT === 'sports' ? 'Sports Map' : t('panels.map')}</span>
             </div>
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
@@ -1111,6 +1132,17 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('earnings-calendar', () => new EarningsCalendarPanel());
     this.createPanel('economic-calendar', () => new EconomicCalendarPanel());
     this.createPanel('cot-positioning', () => new CotPositioningPanel());
+    this.createPanel('sports-tables', () => new SportsTablesPanel());
+    this.createPanel('sports-stats', () => new SportsStatsPanel());
+    this.createPanel('sports-live-tracker', () => new SportsLiveTrackerPanel());
+    this.createPanel('sports-tournaments', () => new SportsMajorTournamentsPanel());
+    this.createPanel('sports-nba', () => new SportsNbaPanel());
+    this.createPanel('sports-motorsport-standings', () => new SportsMotorsportPanel());
+    this.createPanel('sports-nba-analysis', () => new SportsNbaAnalysisPanel());
+    this.createPanel('sports-football-analysis', () => new SportsEuropeanFootballAnalysisPanel());
+    this.createPanel('sports-motorsport-analysis', () => new SportsMotorsportAnalysisPanel());
+    this.createPanel('sports-transfers', () => new SportsTransferNewsPanel());
+    this.createPanel('sports-player-search', () => new SportsPlayerSearchPanel());
     this.createPanel('gold-intelligence', () => new GoldIntelligencePanel());
     this.createPanel('hormuz-tracker', () => new HormuzPanel());
     this.createPanel('etf-flows', () => new ETFFlowsPanel());

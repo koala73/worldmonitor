@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#0E1A11"/>
+  <rect x="18" y="18" width="124" height="124" rx="28" fill="none" stroke="#52E252" stroke-width="6"/>
+  <path d="M38 54H122L102 74H58Z" fill="#52E252"/>
+  <path d="M50 94H110" stroke="#D9FFD9" stroke-width="12" stroke-linecap="round"/>
+  <text x="80" y="126" text-anchor="middle" font-size="32" font-weight="800" font-family="Arial, sans-serif" fill="#D9FFD9">SAU</text>
+</svg>

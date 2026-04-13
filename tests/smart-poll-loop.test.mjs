@@ -537,7 +537,7 @@ describe('startSmartPollLoop', () => {
 
     it('abort errors do not trigger backoff', async () => {
       let calls = 0;
-      startSmartPollLoop((ctx) => {
+      startSmartPollLoop((_ctx) => {
         calls++;
         const err = new Error('aborted');
         err.name = 'AbortError';
@@ -556,7 +556,7 @@ describe('startSmartPollLoop', () => {
   describe('in-flight guard', () => {
     it('concurrent calls are deferred, not dropped', async () => {
       let calls = 0;
-      let resolvers = [];
+      const resolvers = [];
       const handle = startSmartPollLoop(() => {
         calls++;
         return new Promise(r => resolvers.push(r));
@@ -590,7 +590,7 @@ describe('startSmartPollLoop', () => {
       let subscribeCalls = 0;
       let unsubscribeCalls = 0;
       const fakeHub = {
-        subscribe(cb) {
+        subscribe(_cb) {
           subscribeCalls++;
           return () => { unsubscribeCalls++; };
         },

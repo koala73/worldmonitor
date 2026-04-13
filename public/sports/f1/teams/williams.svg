@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <rect width="160" height="160" rx="36" fill="#071C34"/>
+  <rect x="22" y="22" width="116" height="116" rx="26" fill="none" stroke="#64C4FF" stroke-width="8"/>
+  <path d="M42 46L58 114L80 70L102 114L118 46" fill="none" stroke="#64C4FF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="80" y="132" text-anchor="middle" font-size="26" font-weight="800" font-family="Arial, sans-serif" fill="#64C4FF">WIL</text>
+</svg>

@@ -80,7 +80,7 @@ async function fetchSECData(companyName) {
     );
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data.hits || !data.hits.hits || data.hits.hits.length === 0) return null;
+    if (!data.hits?.hits || data.hits.hits.length === 0) return null;
     return {
       totalFilings: data.hits.total?.value || 0,
       recentFilings: data.hits.hits.slice(0, 5).map((h) => ({

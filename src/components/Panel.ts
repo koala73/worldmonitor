@@ -177,6 +177,7 @@ function setColSpanClass(element: HTMLElement, span: number): void {
 }
 
 function getRowSpan(element: HTMLElement): number {
+  if (element.classList.contains('span-5')) return 5;
   if (element.classList.contains('span-4')) return 4;
   if (element.classList.contains('span-3')) return 3;
   if (element.classList.contains('span-2')) return 2;
@@ -187,11 +188,11 @@ function deltaToRowSpan(startSpan: number, deltaY: number): number {
   const spanDelta = deltaY > 0
     ? Math.floor(deltaY / ROW_RESIZE_STEP_PX)
     : Math.ceil(deltaY / ROW_RESIZE_STEP_PX);
-  return Math.max(1, Math.min(4, startSpan + spanDelta));
+  return Math.max(1, Math.min(5, startSpan + spanDelta));
 }
 
 function setSpanClass(element: HTMLElement, span: number): void {
-  element.classList.remove('span-1', 'span-2', 'span-3', 'span-4');
+  element.classList.remove('span-1', 'span-2', 'span-3', 'span-4', 'span-5');
   element.classList.add(`span-${span}`);
   element.classList.add('resized');
 }
@@ -1112,7 +1113,7 @@ export class Panel {
    * Reset panel height to default
    */
   public resetHeight(): void {
-    this.element.classList.remove('resized', 'span-1', 'span-2', 'span-3', 'span-4');
+    this.element.classList.remove('resized', 'span-1', 'span-2', 'span-3', 'span-4', 'span-5');
     const spans = loadPanelSpans();
     delete spans[this.panelId];
     localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify(spans));
