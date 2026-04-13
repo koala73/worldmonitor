@@ -562,19 +562,19 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.residential) {
       grid.append(
         this.proMetricBox('Residential (real)', `${data.residential.indexValue.toFixed(1)}`),
-        this.proMetricBox('Residential YoY', this.formatPctTrend(data.residential.yoyChange ?? 0)),
+        this.proMetricBox('Residential YoY', this.formatPctTrend(data.residential.yoyChange)),
       );
     }
     if (data.commercial) {
       grid.append(
         this.proMetricBox('Commercial (real)', `${data.commercial.indexValue.toFixed(1)}`),
-        this.proMetricBox('Commercial YoY', this.formatPctTrend(data.commercial.yoyChange ?? 0)),
+        this.proMetricBox('Commercial YoY', this.formatPctTrend(data.commercial.yoyChange)),
       );
     }
     if (data.dsr) {
       grid.append(
         this.proMetricBox('Household DSR', `${data.dsr.dsrPct.toFixed(1)}%`),
-        this.proMetricBox('DSR QoQ', this.formatPctTrend(data.dsr.change ?? 0)),
+        this.proMetricBox('DSR QoQ', this.formatPctTrend(data.dsr.change)),
       );
     }
     this.housingBody.append(grid);
@@ -857,7 +857,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return 'var(--text-muted, #64748b)';
   }
 
-  private formatPctTrend(pct: number): string {
+  private formatPctTrend(pct: number | null | undefined): string {
+    if (pct == null || !Number.isFinite(pct)) return '\u2014';
     const sign = pct >= 0 ? '+' : '';
     return `${sign}${pct.toFixed(1)}%`;
   }
