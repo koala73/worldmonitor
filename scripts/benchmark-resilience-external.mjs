@@ -35,12 +35,17 @@ const HDI_CSV_URL = 'https://hdr.undp.org/sites/default/files/2025_HDR/HDR25_Com
 // to the HDX dataset which is CDN-stable and not geo-blocked. Multi-year
 // "trend" CSV; we pick each country's latest year.
 const WRI_CSV_URL = 'https://data.humdata.org/dataset/1efb6ee7-051a-440f-a2cf-e652fecccf73/resource/3a2320fa-41b4-4dda-a847-3f397d865378/download/worldriskindex-trend.csv';
-// ND-GAIN 2026 is published ONLY inside a ZIP (resources/gain/gain.csv).
-// Node has no built-in zip reader and the validation Docker image only
-// installs tsx. Deferred until we wire an unzip step (adm-zip dep or alpine
-// apk add unzip). Notre Dame's previously-direct 2023 CSV URL now serves
-// the year's PDF report instead of CSV data.
-const NDGAIN_ZIP_URL = 'https://gain.nd.edu/assets/647440/ndgain_countryindex_2026.zip';
+// ND-GAIN 2026 is published ONLY inside a ZIP at
+//   https://gain.nd.edu/assets/647440/ndgain_countryindex_2026.zip
+// (resources/gain/gain.csv inside). Node has no built-in zip reader and the
+// validation Docker image only installs tsx. Deferred until we wire an
+// unzip step (adm-zip dep, or `apk add unzip` in
+// Dockerfile.seed-bundle-resilience-validation).
+//
+// Do NOT restore the old `/assets/522870/nd_gain_countryindex_2023data.csv`
+// URL — that endpoint now silently serves the 2023 report PDF, parses to
+// zero rows, and the fetch logs "Fetched 2.4 MB live" with no error
+// (silent-success trap). See feedback_url_200_but_wrong_content_type_silent_zero.md.
 // FSI retired — latest bulk download is 2023 XLSX (no parser in image) and
 // Fund for Peace stopped publishing 2024/2025 bulk data. Replaced in the
 // HYPOTHESES list below by UNDP HDI (fresher, authoritative, CSV).
@@ -168,6 +173,11 @@ export async function fetchInformGlobal() {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     rows = await resp.json();
+    // Type-guard before logging row count: a successful HTTP 200 with a
+    // null/object body would otherwise throw "Cannot read properties of null"
+    // and the catch below would log it as a misleading "Live fetch failed"
+    // when the real issue is a payload-shape regression.
+    if (!Array.isArray(rows)) throw new Error(`expected JSON array, got ${typeof rows}`);
     console.log(`[benchmark] Fetched ${label} live (${rows.length} rows)`);
   } catch (err) {
     console.warn(`[benchmark] Live fetch failed for ${label}: ${err.message}`);
@@ -175,7 +185,7 @@ export async function fetchInformGlobal() {
     if (existsSync(refPath)) {
       rows = JSON.parse(readFileSync(refPath, 'utf8'));
       source = 'stub';
-      console.log(`[benchmark] Loaded ${label} from reference JSON (${rows.length} rows)`);
+      console.log(`[benchmark] Loaded ${label} from reference JSON (${Array.isArray(rows) ? rows.length : 0} rows)`);
     } else {
       console.warn(`[benchmark] No reference JSON at ${refPath}, skipping ${label}`);
       return { scores: new Map(), source: 'unavailable' };
