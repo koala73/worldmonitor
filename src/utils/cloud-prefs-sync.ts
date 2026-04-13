@@ -43,6 +43,10 @@ function isEnabled(): boolean {
   return ENABLED && !isDesktopRuntime();
 }
 
+export function isCloudSyncEnabled(): boolean {
+  return isEnabled();
+}
+
 // ── State helpers ─────────────────────────────────────────────────────────────
 
 function getSyncVersion(): number {

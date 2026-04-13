@@ -11,7 +11,7 @@ const TAG_LEN = 16;
 const KEY_ENV_PREFIX = 'ENCRYPTION_KEY_V';
 
 function getLatestVersion() {
-  for (let v = 9; v >= 1; v--) {
+  for (let v = 99; v >= 1; v--) {
     if (process.env[`${KEY_ENV_PREFIX}${v}`]) return `v${v}`;
   }
   if (process.env[LEGACY_KEY_ENV]) return 'v1';
