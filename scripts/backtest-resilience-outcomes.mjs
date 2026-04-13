@@ -3,7 +3,23 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveIso2 } from './_country-resolver.mjs';
 import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
+
+// Normalize any country identifier the upstream seeders emit (ISO2, ISO3, or
+// full English name) to canonical uppercase ISO2, or null when unrecognized.
+// Each detect* function calls this instead of assuming the payload already
+// uses ISO2 — the event seeders emit mixed shapes (BIS: `countryCode` ISO2;
+// UNHCR/Cloudflare/UCDP: full country name; displacement summary: `code`
+// ISO3) and a single backtest reader has to normalize them all.
+function toIso2(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  return resolveIso2({
+    iso2: entry.iso2 ?? entry.countryCode,
+    iso3: entry.iso3 ?? entry.code,
+    name: entry.country ?? entry.countryName ?? entry.originName,
+  });
+}
 
 loadEnvFile(import.meta.url);
 
@@ -58,8 +74,11 @@ const EVENT_FAMILIES = [
   {
     id: 'refugee-surges',
     label: 'Refugee Surges',
-    description: '>= 100k new displacement in 12 months',
-    redisKey: 'displacement:summary:v1',
+    description: '>= 100k people displaced (refugees + IDPs + stateless)',
+    // seed-displacement-summary.mjs writes `displacement:summary:v1:<year>`
+    // (`${CANONICAL_KEY_PREFIX}:${currentYear}` on line 226) because the
+    // UNHCR dataset is annual. Match the suffix here, not the bare key.
+    redisKey: `displacement:summary:v1:${new Date().getUTCFullYear()}`,
     detect: detectRefugeeSurges,
     dataSource: 'live',
   },
@@ -210,47 +229,33 @@ async function fetchAllResilienceScores(url, token) {
   return scores;
 }
 
-function detectFxStress(data, _allCountries) {
+// FX Stress detector — reads the BIS real effective exchange rate payload
+// (seed-bis-data.mjs, key economic:bis:eer:v1). Shape:
+//   { rates: [{ countryCode: "IN", realEer, nominalEer, realChange, date }] }
+// `realChange` is YoY percent change (already in percent units, e.g. -1.4
+// means -1.4%). Stress is a significant depreciation; we flag countries with
+// realChange <= -15 (drop of 15% or more YoY, matching the family description
+// "Currency depreciation >= 15% in 12 months").
+//
+// DATA-COVERAGE CAVEAT: BIS publishes EER for ~12 advanced + select EM
+// economies (G10 + a handful of BRICS). Genuine currency crises like Turkey
+// 2021 or Argentina 2023 won't necessarily appear unless BIS covers them.
+// The detector is correct; the upstream source is narrow. Expanding to a
+// broader FX dataset (FRED, IMF IFS, or central-bank direct) would materially
+// improve this family's signal.
+function detectFxStress(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
-
-  if (Array.isArray(data)) {
-    for (const entry of data) {
-      const cc = (entry.country || entry.iso2 || entry.cc || '').toUpperCase();
-      if (!cc || cc.length !== 2) continue;
-      const change = entry.yoyChange ?? entry.change ?? entry.depreciation;
-      if (typeof change === 'number' && Number.isFinite(change)) {
-        labels.set(cc, change <= -15);
-      }
-    }
-    return labels;
-  }
-
-  const nested = data.countries || data.data;
-  if (Array.isArray(nested)) {
-    for (const entry of nested) {
-      const cc = (entry.country || entry.iso2 || entry.cc || '').toUpperCase();
-      if (!cc || cc.length !== 2) continue;
-      const change = entry.yoyChange ?? entry.change ?? entry.depreciation;
-      if (typeof change === 'number' && Number.isFinite(change)) {
-        labels.set(cc, change <= -15);
-      }
-    }
-    return labels;
-  }
-
-  for (const [cc, val] of Object.entries(data)) {
-    if (cc.length !== 2) continue;
-    const series = Array.isArray(val) ? val : (val?.series || val?.values || []);
-    if (!Array.isArray(series) || series.length < 2) continue;
-    const latest = Number(series[series.length - 1]?.value ?? series[series.length - 1]);
-    const yearAgo = Number(series[0]?.value ?? series[0]);
-    if (Number.isFinite(latest) && Number.isFinite(yearAgo) && yearAgo !== 0) {
-      const change = (latest - yearAgo) / Math.abs(yearAgo);
-      labels.set(cc.toUpperCase(), change <= -0.15);
+  const rates = Array.isArray(data) ? data : (data.rates || data.countries || data.data || []);
+  if (!Array.isArray(rates)) return labels;
+  for (const entry of rates) {
+    const iso2 = toIso2(entry);
+    if (!iso2) continue;
+    const change = entry.realChange ?? entry.yoyChange ?? entry.change ?? entry.depreciation;
+    if (typeof change === 'number' && Number.isFinite(change)) {
+      labels.set(iso2, change <= -15);
     }
   }
-
   return labels;
 }
 
@@ -262,22 +267,33 @@ function detectSovereignStress(_data, _allCountries) {
   return labels;
 }
 
-function detectPowerOutages(data, _allCountries) {
+// Infrastructure Outages detector — reads seed-internet-outages.mjs payload
+// (key infra:outages:v1). Shape:
+//   { outages: [{ id, title, country: "Iraq" (full name), detectedAt, ... }] }
+// Note: the upstream seeder collects *internet* outages (Cloudflare Radar +
+// news), not power outages specifically. We use event count as an
+// infrastructure-fragility proxy: any country that appears in the Cloudflare
+// Radar outage feed is labeled as having infrastructure stress. The current
+// feed is very sparse (typically 3-10 events globally per week), so we accept
+// even a single event as a positive signal — the alternative is zero
+// coverage. This is a looser proxy than the original "1M people power outage"
+// spec; a dedicated grid-outage seeder remains an open methodology question.
+const OUTAGE_EVENT_THRESHOLD = 1;
+
+function detectPowerOutages(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
-
-  const events = Array.isArray(data) ? data : (data.events || data.outages || []);
+  const events = Array.isArray(data) ? data : (data.outages || data.events || []);
   if (!Array.isArray(events)) return labels;
-
+  const countByIso2 = new Map();
   for (const event of events) {
-    const cc = (event.country || event.iso2 || event.cc || '').toUpperCase();
-    if (!cc || cc.length !== 2) continue;
-    const affected = event.affected ?? event.customersAffected ?? event.population ?? 0;
-    if (typeof affected === 'number' && affected >= 1_000_000) {
-      labels.set(cc, true);
-    }
+    const iso2 = toIso2(event);
+    if (!iso2) continue;
+    countByIso2.set(iso2, (countByIso2.get(iso2) ?? 0) + 1);
   }
-
+  for (const [iso2, count] of countByIso2) {
+    if (count >= OUTAGE_EVENT_THRESHOLD) labels.set(iso2, true);
+  }
   return labels;
 }
 
@@ -316,112 +332,111 @@ function detectFoodCrisis(data, _allCountries) {
   return labels;
 }
 
-function detectRefugeeSurges(data, _allCountries) {
+// Refugee Surges detector — reads seed-displacement-summary.mjs payload
+// (key displacement:summary:v1:<year>). Shape:
+//   { summary: { year, globalTotals, countries: [{ code: "AFG" (ISO3),
+//                name, refugees, asylumSeekers, idps, stateless,
+//                totalDisplaced, hostRefugees, hostTotal, location }] } }
+// UNHCR publishes annual totals, not a YoY delta, so we flag countries with
+// >= 100k people currently displaced (refugees + IDPs + stateless). This
+// captures Chronic-Crisis countries as positive events, consistent with the
+// "displacement stress" signal the family is measuring.
+const REFUGEE_SURGE_THRESHOLD = 100_000;
+
+function detectRefugeeSurges(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
-
-  if (Array.isArray(data)) {
-    for (const entry of data) {
-      const cc = (entry.country || entry.iso2 || entry.cc || entry.origin || '').toUpperCase();
-      if (!cc || cc.length !== 2) continue;
-      const displaced = entry.newDisplacement ?? entry.displaced ?? entry.totalDisplaced ?? entry.refugees ?? 0;
-      if (typeof displaced === 'number' && displaced >= 100_000) {
-        labels.set(cc, true);
-      }
-    }
-    return labels;
-  }
-
-  const nested = data.countries || data.summaries;
-  if (Array.isArray(nested)) {
-    for (const entry of nested) {
-      const cc = (entry.country || entry.iso2 || entry.cc || entry.origin || '').toUpperCase();
-      if (!cc || cc.length !== 2) continue;
-      const displaced = entry.newDisplacement ?? entry.displaced ?? entry.totalDisplaced ?? entry.refugees ?? 0;
-      if (typeof displaced === 'number' && displaced >= 100_000) {
-        labels.set(cc, true);
-      }
-    }
-    return labels;
-  }
-
-  for (const [cc, val] of Object.entries(data)) {
-    if (cc.length !== 2) continue;
-    const displaced = typeof val === 'number' ? val :
-      (val?.newDisplacement ?? val?.displaced ?? val?.totalDisplaced ?? 0);
-    if (typeof displaced === 'number' && displaced >= 100_000) {
-      labels.set(cc.toUpperCase(), true);
+  const countries = Array.isArray(data)
+    ? data
+    : (data.summary?.countries || data.countries || data.summaries || []);
+  if (!Array.isArray(countries)) return labels;
+  for (const entry of countries) {
+    const iso2 = toIso2(entry);
+    if (!iso2) continue;
+    const displaced = entry.totalDisplaced
+      ?? entry.newDisplacement
+      ?? entry.displaced
+      ?? entry.refugees
+      ?? 0;
+    if (typeof displaced === 'number' && displaced >= REFUGEE_SURGE_THRESHOLD) {
+      labels.set(iso2, true);
     }
   }
-
   return labels;
 }
 
-function detectSanctionsShocks(data, _allCountries) {
+// Sanctions Shocks detector — reads seed-sanctions-pressure.mjs payload
+// (key sanctions:country-counts:v1). Shape:
+//   { "CU": 35, "GB": 190, "CH": 98, ... }
+// This is the cumulative count of sanctioned entities linked to each ISO2,
+// not a yearly delta. Every country in the map has count > 0 by definition,
+// so the previous `count > 0` gate labeled all 70+ countries as positive —
+// AUC collapsed to ~0.53 noise. Use the top-quartile (>= Q3) as the
+// threshold so only countries with an outlier number of sanctioned entities
+// (likely genuine sanctions targets, not financial hubs that merely host
+// sanctioned entities) get flagged.
+function detectSanctionsShocks(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
 
+  const counts = new Map(); // iso2 → count
   if (Array.isArray(data)) {
     for (const entry of data) {
-      const cc = (entry.country || entry.iso2 || entry.cc || '').toUpperCase();
-      if (!cc || cc.length !== 2) continue;
-      const count = entry.count ?? entry.sanctions ?? entry.newSanctions ?? 0;
-      if (typeof count === 'number' && count > 0) {
-        labels.set(cc, true);
-      }
+      const iso2 = toIso2(entry);
+      if (!iso2) continue;
+      const c = entry.count ?? entry.sanctions ?? entry.newSanctions ?? 0;
+      if (typeof c === 'number' && c > 0) counts.set(iso2, c);
     }
   } else {
     for (const [cc, val] of Object.entries(data)) {
-      if (cc.length !== 2) continue;
-      const count = typeof val === 'number' ? val : (val?.count ?? val?.total ?? 0);
-      if (typeof count === 'number' && count > 0) {
-        labels.set(cc.toUpperCase(), true);
-      }
+      const iso2 = resolveIso2({ iso2: cc });
+      if (!iso2) continue;
+      const c = typeof val === 'number' ? val : (val?.count ?? val?.total ?? 0);
+      if (typeof c === 'number' && c > 0) counts.set(iso2, c);
     }
   }
 
+  if (counts.size === 0) return labels;
+
+  // Top-quartile threshold from the observed distribution. Minimum floor of
+  // 10 so a degenerate tiny payload doesn't flag everyone.
+  const sorted = [...counts.values()].sort((a, b) => a - b);
+  const q3 = sorted[Math.floor(sorted.length * 0.75)] ?? 0;
+  const threshold = Math.max(10, q3);
+  for (const [iso2, c] of counts) {
+    if (c >= threshold) labels.set(iso2, true);
+  }
   return labels;
 }
 
-function detectConflictSpillover(data, _allCountries) {
+// Conflict Spillover detector — reads seed-ucdp-events.mjs payload
+// (key conflict:ucdp-events:v1). Shape:
+//   { events: [{ id, dateStart, country: "Somalia" (full name), sideA, sideB,
+//                deathsBest, violenceType, ... }], fetchedAt, version,
+//                totalRaw, filteredCount }
+// UCDP emits full country names, not ISO codes. Previous detector filtered
+// on `cc.length === 2` so every event was dropped → AUC 0.500. With proper
+// ISO2 resolution every country that appeared in any UCDP event this year
+// is flagged, matching the family description "Armed conflict … in a
+// previously-stable neighbor". Threshold of >= 3 events filters out
+// single-incident noise while keeping genuine conflict countries labeled.
+const CONFLICT_EVENT_THRESHOLD = 3;
+
+function detectConflictSpillover(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
 
-  if (Array.isArray(data)) {
-    const countryCounts = new Map();
-    for (const event of data) {
-      const cc = (event.country || event.iso2 || event.cc || '').toUpperCase();
-      if (!cc || cc.length !== 2) continue;
-      countryCounts.set(cc, (countryCounts.get(cc) || 0) + 1);
-    }
-    for (const [cc, count] of countryCounts) {
-      if (count > 0) labels.set(cc, true);
-    }
-    return labels;
+  const events = Array.isArray(data) ? data : (data.events || data.conflicts || []);
+  if (!Array.isArray(events)) return labels;
+  const countryCounts = new Map();
+  for (const event of events) {
+    const iso2 = toIso2(event);
+    if (!iso2) continue;
+    countryCounts.set(iso2, (countryCounts.get(iso2) || 0) + 1);
   }
-
-  const nested = data.events || data.conflicts;
-  if (Array.isArray(nested)) {
-    const countryCounts = new Map();
-    for (const event of nested) {
-      const cc = (event.country || event.iso2 || event.cc || '').toUpperCase();
-      if (!cc || cc.length !== 2) continue;
-      countryCounts.set(cc, (countryCounts.get(cc) || 0) + 1);
-    }
-    for (const [cc, count] of countryCounts) {
-      if (count > 0) labels.set(cc, true);
-    }
-    return labels;
+  for (const [iso2, count] of countryCounts) {
+    if (count >= CONFLICT_EVENT_THRESHOLD) labels.set(iso2, true);
   }
-
-  for (const [cc, val] of Object.entries(data)) {
-    if (cc.length !== 2) continue;
-    const count = typeof val === 'number' ? val : (val?.events ?? val?.count ?? 0);
-    if (typeof count === 'number' && count > 0) {
-      labels.set(cc.toUpperCase(), true);
-    }
-  }
-
   return labels;
 }
 

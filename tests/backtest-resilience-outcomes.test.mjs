@@ -96,29 +96,29 @@ describe('checkGate', () => {
 
 describe('event detectors', () => {
   describe('detectFxStress', () => {
-    it('detects country with >15% depreciation from object format', () => {
+    // Real seed-bis-data.mjs payload shape: { rates: [{ countryCode, realEer, nominalEer, realChange, date }] }
+    it('detects country with <=-15% realChange from the BIS rates payload', () => {
       const data = {
-        AR: { series: [{ value: 100 }, { value: 80 }] },
-        US: { series: [{ value: 100 }, { value: 98 }] },
+        rates: [
+          { countryCode: 'TR', realEer: 55.1, realChange: -22.4, date: '2026-02' },
+          { countryCode: 'JP', realEer: 67.0, realChange: -0.5,  date: '2026-02' },
+        ],
       };
-      const labels = detectFxStress(data, ['AR', 'US']);
-      assert.equal(labels.get('AR'), true);
-      assert.equal(labels.get('US'), false);
-    });
-
-    it('returns empty map for null data', () => {
-      const labels = detectFxStress(null, []);
-      assert.equal(labels.size, 0);
-    });
-
-    it('handles array format with yoyChange in percentage points', () => {
-      const data = [
-        { country: 'TR', yoyChange: -20 },
-        { country: 'JP', yoyChange: -5 },
-      ];
-      const labels = detectFxStress(data, ['TR', 'JP']);
+      const labels = detectFxStress(data);
       assert.equal(labels.get('TR'), true);
       assert.equal(labels.get('JP'), false);
+    });
+
+    it('returns empty map for null or malformed data', () => {
+      assert.equal(detectFxStress(null).size, 0);
+      assert.equal(detectFxStress({}).size, 0);
+      assert.equal(detectFxStress({ rates: 'not-an-array' }).size, 0);
+    });
+
+    it('resolves full country names via resolveIso2 when countryCode is absent', () => {
+      const data = { rates: [{ country: 'Turkey', realChange: -20 }] };
+      const labels = detectFxStress(data);
+      assert.equal(labels.get('TR'), true);
     });
   });
 
@@ -138,20 +138,27 @@ describe('event detectors', () => {
   });
 
   describe('detectPowerOutages', () => {
-    it('flags countries with outages affecting >= 1M', () => {
+    // Real seed-internet-outages.mjs shape: { outages: [{ country: "Iraq", detectedAt, ... }] }
+    // Any appearance in the Cloudflare Radar outage feed flags the country as
+    // infrastructure-stressed; the feed is very sparse (typically a few events
+    // globally per week) so a threshold > 1 would zero out the signal entirely.
+    it('flags countries that appear in the outage feed (full-name → ISO2)', () => {
       const data = {
-        events: [
-          { country: 'NG', affected: 5_000_000 },
-          { country: 'DE', affected: 500_000 },
+        outages: [
+          { country: 'Iraq', detectedAt: 1775539800000 },
+          { country: 'Russian Federation', detectedAt: 1775626200000 },
+          { country: 'Iran', detectedAt: 1775539800000 },
         ],
       };
-      const labels = detectPowerOutages(data, ['NG', 'DE']);
-      assert.equal(labels.get('NG'), true);
-      assert.equal(labels.has('DE'), false);
+      const labels = detectPowerOutages(data);
+      assert.equal(labels.get('IQ'), true);
+      assert.equal(labels.get('RU'), true, 'Russian Federation normalized to RU');
+      assert.equal(labels.get('IR'), true);
     });
 
-    it('returns empty for null data', () => {
-      assert.equal(detectPowerOutages(null, []).size, 0);
+    it('returns empty for null data or unrecognized country names', () => {
+      assert.equal(detectPowerOutages(null).size, 0);
+      assert.equal(detectPowerOutages({ outages: [{ country: 'Westeros' }] }).size, 0);
     });
   });
 
@@ -178,53 +185,77 @@ describe('event detectors', () => {
   });
 
   describe('detectRefugeeSurges', () => {
-    it('detects countries with >= 100k displacement', () => {
-      const data = [
-        { country: 'UA', newDisplacement: 500_000 },
-        { country: 'FR', newDisplacement: 1_000 },
-      ];
-      const labels = detectRefugeeSurges(data, ['UA', 'FR']);
-      assert.equal(labels.get('UA'), true);
-      assert.equal(labels.has('FR'), false);
+    // Real seed-displacement-summary.mjs shape:
+    //   { summary: { year, countries: [{ code: "AFG" (ISO3), totalDisplaced, refugees, ... }] } }
+    it('detects >= 100k displaced from the nested summary.countries array with ISO3 codes', () => {
+      const data = {
+        summary: {
+          year: 2026,
+          countries: [
+            { code: 'UKR', name: 'Ukraine', totalDisplaced: 6_000_000 },
+            { code: 'AFG', name: 'Afghanistan', totalDisplaced: 500_000 },
+            { code: 'FRA', name: 'France', totalDisplaced: 50_000 },
+          ],
+        },
+      };
+      const labels = detectRefugeeSurges(data);
+      assert.equal(labels.get('UA'), true, 'Ukraine flagged (ISO3 UKR normalized to UA, 6M displaced)');
+      assert.equal(labels.get('AF'), true, 'Afghanistan flagged (500k displaced >= 100k)');
+      assert.equal(labels.has('FR'), false, 'France below threshold (50k < 100k)');
     });
 
-    it('handles object format with country keys', () => {
-      const data = { SD: 200_000, CH: 5_000 };
-      const labels = detectRefugeeSurges(data, ['SD', 'CH']);
-      assert.equal(labels.get('SD'), true);
-      assert.equal(labels.has('CH'), false);
+    it('returns empty for null data or missing summary wrapper', () => {
+      assert.equal(detectRefugeeSurges(null).size, 0);
+      assert.equal(detectRefugeeSurges({}).size, 0);
+      assert.equal(detectRefugeeSurges({ summary: {} }).size, 0);
     });
   });
 
   describe('detectSanctionsShocks', () => {
-    it('detects countries with sanctions from object format', () => {
-      const data = { RU: 150, IR: 80, FR: 0 };
-      const labels = detectSanctionsShocks(data, ['RU', 'IR', 'FR']);
+    // Real seed-sanctions-pressure.mjs shape: { ISO2: entryCount, ... }
+    // Top-quartile threshold (min floor 10) picks out genuinely sanctions-
+    // heavy countries vs financial hubs that merely host sanctioned entities.
+    it('flags top-quartile countries by cumulative sanctioned-entity count', () => {
+      const data = {
+        RU: 500, IR: 400, KP: 300,       // top quartile
+        CN: 50,  CU: 40,  VE: 30, SY: 20, // mid range — below q3
+        FR: 5,   DE: 3,   JP: 1,           // noise
+      };
+      const labels = detectSanctionsShocks(data);
       assert.equal(labels.get('RU'), true);
       assert.equal(labels.get('IR'), true);
-      assert.equal(labels.has('FR'), false);
+      assert.equal(labels.has('FR'), false, 'France/DE/JP have low counts — not a sanctions target');
+      // The previous `count > 0` gate flagged all 10 — regression would re-expand the label set.
+      assert.ok(labels.size < 10, `expected top-quartile filter, got ${labels.size} labels`);
+    });
+
+    it('returns empty for null data', () => {
+      assert.equal(detectSanctionsShocks(null).size, 0);
+      assert.equal(detectSanctionsShocks({}).size, 0);
     });
   });
 
   describe('detectConflictSpillover', () => {
-    it('detects countries with conflict events', () => {
+    // Real seed-ucdp-events.mjs shape:
+    //   { events: [{ id, dateStart, country: "Somalia" (full name),
+    //                sideA, sideB, deathsBest, ... }], fetchedAt, totalRaw }
+    it('counts events per country (resolving full-name to ISO2) and flags >= 3 events', () => {
       const data = {
         events: [
-          { country: 'SD', type: 'battle' },
-          { country: 'SD', type: 'violence' },
-          { country: 'ML', type: 'battle' },
+          { country: 'Somalia', sideA: 'Government of Somalia', sideB: 'Al-Shabaab', deathsBest: 5 },
+          { country: 'Somalia', sideA: 'Government of Somalia', sideB: 'Al-Shabaab', deathsBest: 3 },
+          { country: 'Somalia', sideA: 'Government of Somalia', sideB: 'Al-Shabaab', deathsBest: 1 },
+          { country: 'Mali',    sideA: 'Government of Mali',    sideB: 'JNIM',         deathsBest: 4 },
         ],
       };
-      const labels = detectConflictSpillover(data, ['SD', 'ML']);
-      assert.equal(labels.get('SD'), true);
-      assert.equal(labels.get('ML'), true);
+      const labels = detectConflictSpillover(data);
+      assert.equal(labels.get('SO'), true,  'Somalia: 3 events — flagged');
+      assert.equal(labels.has('ML'), false, 'Mali: 1 event < threshold');
     });
 
-    it('handles country-count object format', () => {
-      const data = { MM: 45, TH: 0 };
-      const labels = detectConflictSpillover(data, ['MM', 'TH']);
-      assert.equal(labels.get('MM'), true);
-      assert.equal(labels.has('TH'), false);
+    it('returns empty for null data or unrecognized country names', () => {
+      assert.equal(detectConflictSpillover(null).size, 0);
+      assert.equal(detectConflictSpillover({ events: [{ country: 'Westeros' }] }).size, 0);
     });
   });
 });
