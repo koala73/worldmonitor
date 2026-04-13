@@ -1,0 +1,173 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  buildGrowthCountries,
+  isAggregate as isAggregateGrowth,
+  latestValue as latestValueGrowth,
+  validate as validateGrowth,
+  CANONICAL_KEY as GROWTH_KEY,
+  CACHE_TTL as GROWTH_TTL,
+} from '../scripts/seed-imf-growth.mjs';
+
+import {
+  buildLaborCountries,
+  validate as validateLabor,
+  CANONICAL_KEY as LABOR_KEY,
+  CACHE_TTL as LABOR_TTL,
+} from '../scripts/seed-imf-labor.mjs';
+
+import {
+  buildExternalCountries,
+  validate as validateExternal,
+  CANONICAL_KEY as EXTERNAL_KEY,
+  CACHE_TTL as EXTERNAL_TTL,
+} from '../scripts/seed-imf-external.mjs';
+
+const YEAR = String(new Date().getFullYear());
+
+describe('seed-imf shared helpers', () => {
+  it('isAggregate flags WEO regional aggregates and rejects 2-letter codes', () => {
+    assert.equal(isAggregateGrowth('USA'), false);
+    assert.equal(isAggregateGrowth('GBR'), false);
+    assert.equal(isAggregateGrowth('EUROQ'), true); // ends with Q
+    assert.equal(isAggregateGrowth('WEOWORLD'), true);
+    assert.equal(isAggregateGrowth('EU'), true);   // not 3-letter
+    assert.equal(isAggregateGrowth(''), true);
+    assert.equal(isAggregateGrowth('G20'), true);
+  });
+
+  it('latestValue picks the most recent finite year-keyed value', () => {
+    const y = Number(YEAR);
+    const series = { [`${y - 2}`]: 1.1, [`${y - 1}`]: 2.2 };
+    const result = latestValueGrowth(series);
+    assert.deepEqual(result, { value: 2.2, year: y - 1 });
+
+    assert.equal(latestValueGrowth({}), null);
+    assert.equal(latestValueGrowth({ [`${y}`]: 'NaN' }), null);
+  });
+});
+
+describe('seed-imf-growth', () => {
+  it('uses the v1 economic:imf:growth canonical key with 35-day TTL', () => {
+    assert.equal(GROWTH_KEY, 'economic:imf:growth:v1');
+    assert.equal(GROWTH_TTL, 35 * 24 * 3600);
+  });
+
+  it('buildGrowthCountries maps ISO3 → ISO2, drops aggregates, and computes savings-investment gap', () => {
+    const countries = buildGrowthCountries({
+      realGdpGrowth:       { USA: { [YEAR]: 2.5 }, GBR: { [YEAR]: 1.1 }, WEOWORLD: { [YEAR]: 3 } },
+      nominalGdpPerCapita: { USA: { [YEAR]: 80000 }, GBR: { [YEAR]: 50000 } },
+      realGdp:             { USA: { [YEAR]: 22000 } },
+      pppPerCapita:        { USA: { [YEAR]: 80000 }, GBR: { [YEAR]: 55000 } },
+      pppGdp:              { USA: { [YEAR]: 27000 } },
+      investmentPct:       { USA: { [YEAR]: 21 }, GBR: { [YEAR]: 17.5 } },
+      savingsPct:          { USA: { [YEAR]: 18 }, GBR: { [YEAR]: 14 } },
+    });
+
+    assert.ok(countries.US, 'USA → US');
+    assert.equal(countries.US.realGdpGrowthPct, 2.5);
+    assert.equal(countries.US.gdpPerCapitaUsd, 80000);
+    assert.equal(countries.US.savingsInvestmentGap, -3);
+    assert.equal(countries.US.year, Number(YEAR));
+
+    assert.ok(countries.GB, 'GBR → GB');
+    assert.equal(countries.GB.savingsInvestmentGap, -3.5);
+
+    // Aggregates dropped (no entry for WEOWORLD).
+    assert.ok(!('WEOWORLD' in countries));
+    assert.ok(!('WW' in countries));
+  });
+
+  it('buildGrowthCountries omits countries with no usable data', () => {
+    const countries = buildGrowthCountries({
+      realGdpGrowth: { USA: { '1970': 2 } }, // year falls outside weoYears window
+    });
+    assert.ok(!('US' in countries), 'no IMF series for current window → no entry');
+  });
+
+  it('validate accepts 150+ countries and rejects sparse data', () => {
+    const countries = {};
+    for (let i = 0; i < 160; i++) countries[`X${i}`] = { realGdpGrowthPct: 1, year: 2025 };
+    assert.equal(validateGrowth({ countries }), true);
+    assert.equal(validateGrowth({ countries: {} }), false);
+    assert.equal(validateGrowth(null), false);
+  });
+});
+
+describe('seed-imf-labor', () => {
+  it('uses the v1 labor canonical key with 35-day TTL', () => {
+    assert.equal(LABOR_KEY, 'economic:imf:labor:v1');
+    assert.equal(LABOR_TTL, 35 * 24 * 3600);
+  });
+
+  it('buildLaborCountries surfaces unemployment and population per ISO2', () => {
+    const countries = buildLaborCountries({
+      unemployment: { USA: { [YEAR]: 4.1 }, FRA: { [YEAR]: 7.5 } },
+      population:   { USA: { [YEAR]: 333.3 }, FRA: { [YEAR]: 67.9 }, ZAF: { [YEAR]: 60.2 } },
+    });
+    assert.deepEqual(countries.US, {
+      unemploymentPct: 4.1, populationMillions: 333.3, year: Number(YEAR),
+    });
+    assert.deepEqual(countries.FR, {
+      unemploymentPct: 7.5, populationMillions: 67.9, year: Number(YEAR),
+    });
+    // South Africa: only population (no LUR); still included.
+    assert.deepEqual(countries.ZA, {
+      unemploymentPct: null, populationMillions: 60.2, year: Number(YEAR),
+    });
+  });
+
+  it('validate accepts 100+ countries (LUR coverage is patchier than other series)', () => {
+    const countries = {};
+    for (let i = 0; i < 110; i++) countries[`X${i}`] = { unemploymentPct: 5, year: 2025 };
+    assert.equal(validateLabor({ countries }), true);
+
+    const sparse = {};
+    for (let i = 0; i < 50; i++) sparse[`X${i}`] = { unemploymentPct: 5, year: 2025 };
+    assert.equal(validateLabor({ countries: sparse }), false);
+  });
+});
+
+describe('seed-imf-external', () => {
+  it('uses the v1 external canonical key with 35-day TTL', () => {
+    assert.equal(EXTERNAL_KEY, 'economic:imf:external:v1');
+    assert.equal(EXTERNAL_TTL, 35 * 24 * 3600);
+  });
+
+  it('buildExternalCountries computes trade balance from exports - imports', () => {
+    const countries = buildExternalCountries({
+      exports:        { USA: { [YEAR]: 3000 }, DEU: { [YEAR]: 2100 } },
+      imports:        { USA: { [YEAR]: 4000 }, DEU: { [YEAR]: 1750 } },
+      currentAccount: { USA: { [YEAR]: -800 } },
+      importVol:      { USA: { [YEAR]: 4.2 } },
+      exportVol:      { USA: { [YEAR]: 3.1 } },
+    });
+    assert.equal(countries.US.exportsUsd, 3000);
+    assert.equal(countries.US.importsUsd, 4000);
+    assert.equal(countries.US.tradeBalanceUsd, -1000);
+    assert.equal(countries.US.currentAccountUsd, -800);
+    assert.equal(countries.US.importVolumePctChg, 4.2);
+    assert.equal(countries.US.exportVolumePctChg, 3.1);
+
+    // Germany has trade surplus.
+    assert.equal(countries.DE.tradeBalanceUsd, 350);
+    // CA / volumes absent → null
+    assert.equal(countries.DE.currentAccountUsd, null);
+  });
+
+  it('buildExternalCountries leaves trade balance null when only one side is reported', () => {
+    const countries = buildExternalCountries({
+      exports: { USA: { [YEAR]: 3000 } },
+    });
+    assert.equal(countries.US.exportsUsd, 3000);
+    assert.equal(countries.US.tradeBalanceUsd, null);
+  });
+
+  it('validate gates >=150 country coverage', () => {
+    const countries = {};
+    for (let i = 0; i < 160; i++) countries[`X${i}`] = { exportsUsd: 1, year: 2025 };
+    assert.equal(validateExternal({ countries }), true);
+    assert.equal(validateExternal({ countries: {} }), false);
+  });
+});

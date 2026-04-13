@@ -48,6 +48,7 @@ import { iso2ToIso3, iso2ToUnCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
+import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -227,11 +228,23 @@ export class CountryIntelManager implements AppModule {
       }))
       .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
 
+    let latestStock: CountryStockSnapshot | null = null;
+    let latestImf: ImfCountryBundle | null = null;
+
     stockPromise.then((stock) => {
+      latestStock = stock;
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
       this.ctx.countryBriefPage.updateStock(stock);
-      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock));
+      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock, latestImf));
     });
+
+    // IMF WEO bundle (issue #3027): macro / growth / labor / external from
+    // the SDMX-3.0 seeded keys. Tolerant: missing data leaves card unchanged.
+    getImfCountryBundle(code).then((bundle) => {
+      latestImf = bundle;
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
+    }).catch(() => { /* non-fatal */ });
 
     fetchCountryMarkets(country)
       .then((markets) => {
@@ -1134,6 +1147,7 @@ export class CountryIntelManager implements AppModule {
     code: string,
     score: CountryScore | null,
     stock: CountryStockSnapshot | null,
+    imfBundle?: ImfCountryBundle | null,
   ): CountryDeepDiveEconomicIndicator[] {
     const indicators: CountryDeepDiveEconomicIndicator[] = [];
 
@@ -1182,7 +1196,16 @@ export class CountryIntelManager implements AppModule {
       });
     }
 
-    return indicators.slice(0, 3);
+    // IMF WEO indicators (issue #3027): real GDP growth, inflation,
+    // unemployment, GDP/capita. Appended after the live signals so that
+    // markets-driven rows take priority on the limited card surface.
+    if (imfBundle) {
+      for (const ind of buildImfEconomicIndicators(imfBundle)) {
+        indicators.push(ind);
+      }
+    }
+
+    return indicators.slice(0, 6);
   }
 
   private sameCountry(code: string, country: string, raw: string | undefined): boolean {

@@ -177,6 +177,15 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       YE: { inflationPct: 22.0, currentAccountPct: -6.0, govRevenuePct: 8.0, year: 2024 },
     },
   },
+  // IMF WEO labor (issue #3027) — LUR sub-metric for scoreMacroFiscal.
+  // Coverage ~150 countries; null-tolerant in the scorer.
+  'economic:imf:labor:v1': {
+    countries: {
+      NO: { unemploymentPct: 3.7, populationMillions: 5.5, year: 2024 },
+      US: { unemploymentPct: 4.1, populationMillions: 333.3, year: 2024 },
+      YE: { unemploymentPct: 18.0, populationMillions: 33.7, year: 2024 },
+    },
+  },
   'economic:bis:eer:v1': {
     rates: [
       { countryCode: 'NO', realChange: 1.0, realEer: 100, date: '2025-08' },

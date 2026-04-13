@@ -238,6 +238,7 @@ const RESILIENCE_TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const RESILIENCE_BIS_EXCHANGE_KEY = 'economic:bis:eer:v1';
 const RESILIENCE_NATIONAL_DEBT_KEY = 'economic:national-debt:v1';
 const RESILIENCE_IMF_MACRO_KEY = 'economic:imf:macro:v2';
+const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
 const RESILIENCE_SANCTIONS_KEY = 'sanctions:country-counts:v1';
 const RESILIENCE_TRADE_RESTRICTIONS_KEY = 'trade:restrictions:v1:tariff-overview:50';
 const RESILIENCE_TRADE_BARRIERS_KEY = 'trade:barriers:v1:tariff-gap:50';
@@ -569,6 +570,18 @@ function getImfMacroEntry(raw: unknown, countryCode: string): ImfMacroEntry | nu
   return (countries[countryCode] as ImfMacroEntry | undefined) ?? null;
 }
 
+interface ImfLaborEntry {
+  unemploymentPct?: number | null;
+  populationMillions?: number | null;
+  year?: number | null;
+}
+
+function getImfLaborEntry(raw: unknown, countryCode: string): ImfLaborEntry | null {
+  const countries = (raw as { countries?: Record<string, ImfLaborEntry> } | null)?.countries;
+  if (!countries || typeof countries !== 'object') return null;
+  return (countries[countryCode] as ImfLaborEntry | undefined) ?? null;
+}
+
 function getCountryBisExchangeRates(raw: unknown, countryCode: string): BisExchangeRate[] {
   const rates: BisExchangeRate[] = Array.isArray((raw as { rates?: unknown[] } | null)?.rates)
     ? ((raw as { rates?: BisExchangeRate[] }).rates ?? [])
@@ -771,12 +784,14 @@ export async function scoreMacroFiscal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [debtRaw, imfMacroRaw] = await Promise.all([
+  const [debtRaw, imfMacroRaw, imfLaborRaw] = await Promise.all([
     reader(RESILIENCE_NATIONAL_DEBT_KEY),
     reader(RESILIENCE_IMF_MACRO_KEY),
+    reader(RESILIENCE_IMF_LABOR_KEY),
   ]);
   const debtEntry = getLatestDebtEntry(debtRaw, countryCode);
   const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
+  const laborEntry = getImfLaborEntry(imfLaborRaw, countryCode);
 
   return weightedBlend([
     // Government revenue/GDP: fiscal capacity — how much the state can actually mobilise.
@@ -784,14 +799,21 @@ export async function scoreMacroFiscal(
     // states (Somalia 5% debt ≠ fiscal prudence; it reflects that no one will lend to them).
     // Anchor: 5% (Somalia, war-torn states) → 0, 45% (OECD median) → 100.
     imfMacroRaw == null
-      ? { score: null, weight: 0.5 }
-      : { score: imfEntry?.govRevenuePct == null ? null : normalizeHigherBetter(imfEntry.govRevenuePct, 5, 45), weight: 0.5 },
+      ? { score: null, weight: 0.4 }
+      : { score: imfEntry?.govRevenuePct == null ? null : normalizeHigherBetter(imfEntry.govRevenuePct, 5, 45), weight: 0.4 },
     // Debt growth rate: rapid debt accumulation = fiscal stress even at moderate levels.
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)), weight: 0.2 },
     // Current account balance: external position — deficit = more vulnerable to FX shocks.
     imfMacroRaw == null
-      ? { score: null, weight: 0.3 }
-      : { score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20), weight: 0.3 },
+      ? { score: null, weight: 0.25 }
+      : { score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20), weight: 0.25 },
+    // Phase 2 (#3027): IMF WEO LUR. Unemployment is a leading indicator for
+    // fiscal absorption capacity. Anchor: 25% → 0 (structural distress),
+    // 3% → 100 (tight labor market). Coverage ~150 countries — null-tolerant
+    // so weightedBlend redistributes when LUR is unavailable.
+    imfLaborRaw == null
+      ? { score: null, weight: 0.15 }
+      : { score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25), weight: 0.15 },
   ]);
 }
 

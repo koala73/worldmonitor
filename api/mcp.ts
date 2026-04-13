@@ -170,6 +170,25 @@ const TOOL_REGISTRY: ToolDef[] = [
     _maxStaleMin: 1440,
   },
   {
+    name: 'get_country_macro',
+    description: 'Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (exports, imports, trade balance, BOP, import/export volume changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'economic:imf:macro:v2',
+      'economic:imf:growth:v1',
+      'economic:imf:labor:v1',
+      'economic:imf:external:v1',
+    ],
+    _seedMetaKey: 'seed-meta:economic:imf-macro',
+    _maxStaleMin: 100800, // monthly WEO release; 70d = 2× interval (absorbs one missed run)
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:imf-macro', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-growth', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-labor', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-external', maxStaleMin: 100800 },
+    ],
+  },
+  {
     name: 'get_prediction_markets',
     description: 'Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.',
     inputSchema: { type: 'object', properties: {}, required: [] },

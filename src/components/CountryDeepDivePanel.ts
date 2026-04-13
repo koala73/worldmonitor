@@ -1988,7 +1988,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       trend,
       source: 'Market Service',
     });
-    this.economicIndicators = base.slice(0, 3);
+    this.economicIndicators = base.slice(0, 6);
     this.renderEconomicIndicators();
   }
 
@@ -2413,7 +2413,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       return;
     }
 
-    for (const indicator of this.economicIndicators.slice(0, 3)) {
+    for (const indicator of this.economicIndicators.slice(0, 6)) {
       const row = this.el('div', 'cdp-economic-item');
       const top = this.el('div', 'cdp-economic-top');
       const isMarketRow = indicator.label === 'Stock Index' || indicator.label === 'Weekly Momentum';

@@ -66,6 +66,11 @@ const SOURCE_KEY_META_OVERRIDES: Readonly<Record<string, string>> = {
   // seed-imf-macro.mjs: runSeed('economic', 'imf-macro', ...) writes
   // seed-meta:economic:imf-macro (dash, not colon).
   'economic:imf:macro': 'economic:imf-macro',
+  // seed-imf-growth.mjs / seed-imf-labor.mjs / seed-imf-external.mjs all use
+  // runSeed('economic', 'imf-{theme}', ...) → seed-meta key uses dash.
+  'economic:imf:growth': 'economic:imf-growth',
+  'economic:imf:labor': 'economic:imf-labor',
+  'economic:imf:external': 'economic:imf-external',
   // seed-bis-data.mjs: runSeed('economic', 'bis', ...) writes
   // seed-meta:economic:bis (the sub-resource 'eer' is only in the data
   // key, not the meta key).

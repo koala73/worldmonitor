@@ -326,6 +326,7 @@ describe('resilience dimension scorers', () => {
     const makeReader = (caPct: number) => async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
       if (key === 'economic:imf:macro:v2') return { countries: { HR: { inflationPct: 3.0, currentAccountPct: caPct, govRevenuePct: 40, year: 2024 } } };
+      if (key === 'economic:imf:labor:v1') return { countries: { HR: { unemploymentPct: 7, populationMillions: 4, year: 2024 } } };
       return null;
     };
     const surplus = await scoreMacroFiscal('HR', makeReader(10));
@@ -337,14 +338,33 @@ describe('resilience dimension scorers', () => {
   it('scoreMacroFiscal: IMF macro seed outage does not impute — debt growth still scores', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
-      return null; // economic:imf:macro:v1 null = seed outage
+      return null; // economic:imf:macro:v1 + economic:imf:labor:v1 null = seed outage
     };
     const score = await scoreMacroFiscal('HR', reader);
-    // govRevenuePct (0.5) and currentAccountPct (0.3) come from IMF macro (null = outage).
+    // govRevenuePct (0.4), currentAccountPct (0.25) come from IMF macro (null = outage).
+    // unemploymentPct (0.15) comes from IMF labor (null = outage).
     // Only debtGrowth (weight=0.2) has real data → coverage = 0.2.
     assert.ok(score.coverage > 0.15 && score.coverage < 0.25,
       `coverage should be ~0.2 (debt growth only, IMF outage), got ${score.coverage}`);
     assert.ok(score.score > 0, 'debt growth data alone should produce a non-zero score');
+  });
+
+  it('scoreMacroFiscal: IMF labor LUR sub-metric — high unemployment lowers macroFiscal score', async () => {
+    const baseFixtures = {
+      'economic:national-debt:v1': { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] },
+      'economic:imf:macro:v2': { countries: { HR: { inflationPct: 3.0, currentAccountPct: 1.0, govRevenuePct: 40, year: 2024 } } },
+    };
+    const makeReader = (lur: number) => async (key: string): Promise<unknown | null> => {
+      if (key in baseFixtures) return (baseFixtures as Record<string, unknown>)[key];
+      if (key === 'economic:imf:labor:v1') return { countries: { HR: { unemploymentPct: lur, populationMillions: 4, year: 2024 } } };
+      return null;
+    };
+    const tightLabor = await scoreMacroFiscal('HR', makeReader(3.5));
+    const slackLabor = await scoreMacroFiscal('HR', makeReader(20));
+    assert.ok(tightLabor.score > slackLabor.score,
+      `tight labor (LUR=3.5%, score=${tightLabor.score}) must outrank slack (LUR=20%, score=${slackLabor.score})`);
+    assert.equal(tightLabor.coverage, 1, 'all four sub-metrics observed → coverage=1');
+    assert.equal(slackLabor.coverage, 1, 'all four sub-metrics observed → coverage=1');
   });
 
   it('scoreFoodWater: country absent from FAO/IPC DB gets crisis_monitoring_absent imputation (not WGI proxy)', async () => {

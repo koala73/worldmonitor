@@ -126,6 +126,9 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   bisExchange:      'economic:bis:eer:v1',
   bisCredit:        'economic:bis:credit:v1',
   imfMacro:         'economic:imf:macro:v2',
+  imfGrowth:        'economic:imf:growth:v1',
+  imfLabor:         'economic:imf:labor:v1',
+  imfExternal:      'economic:imf:external:v1',
   shippingRates:    'supply_chain:shipping:v2',
   chokepoints:      'supply_chain:chokepoints:v4',
   minerals:         'supply_chain:minerals:v2',
@@ -212,7 +215,7 @@ export const PORTWATCH_PORT_ACTIVITY_KEY_PREFIX = 'supply_chain:portwatch-ports:
 export const PORTWATCH_PORT_ACTIVITY_COUNTRIES_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
-  bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow', imfMacro: 'slow',
+  bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow', imfMacro: 'slow', imfGrowth: 'slow', imfLabor: 'slow', imfExternal: 'slow',
   minerals: 'slow', giving: 'slow', sectors: 'slow',
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
