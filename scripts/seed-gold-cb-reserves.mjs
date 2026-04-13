@@ -28,7 +28,7 @@ const ISO3_NAMES = {
   SGP: 'Singapore', UZB: 'Uzbekistan', KAZ: 'Kazakhstan', THA: 'Thailand',
   PRT: 'Portugal', GBR: 'United Kingdom', ESP: 'Spain', SAU: 'Saudi Arabia',
   AUT: 'Austria', LBN: 'Lebanon', BEL: 'Belgium', PHL: 'Philippines',
-  VEN: 'Venezuela', ALG: 'Algeria', DZA: 'Algeria', LBY: 'Libya',
+  VEN: 'Venezuela', DZA: 'Algeria', LBY: 'Libya',
   IRQ: 'Iraq', BRA: 'Brazil', DNK: 'Denmark', PAK: 'Pakistan',
   SWE: 'Sweden', FIN: 'Finland', GRC: 'Greece', ROU: 'Romania',
   SRB: 'Serbia', BGR: 'Bulgaria', HUN: 'Hungary', CZE: 'Czech Republic',
