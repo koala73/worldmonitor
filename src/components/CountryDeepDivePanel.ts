@@ -317,7 +317,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         return this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate);
       });
 
-    const deduped = dedupeHeadlines(sorted).slice(0, 10);
+    const deduped = dedupeHeadlines(sorted, (it) => it.tier ?? getSourceTier(it.source)).slice(0, 10);
 
     this.currentHeadlineCount = deduped.length;
 

@@ -7,13 +7,21 @@ import {
 } from '../src/components/CountryDeepDivePanel-news-utils.ts';
 import type { NewsItem } from '../src/types/index.ts';
 
-function h(title: string, source: string, pubDate = '2026-04-12T00:00:00Z'): NewsItem {
-  return {
+function h(
+  title: string,
+  source: string,
+  pubDate: string = '2026-04-12T00:00:00Z',
+  tier?: number,
+): NewsItem {
+  const item: NewsItem = {
     title,
-    link: `https://example.com/${encodeURIComponent(title)}`,
+    link: `https://example.com/${encodeURIComponent(title)}::${source}`,
     source,
-    pubDate,
+    pubDate: new Date(pubDate),
+    isAlert: false,
   } as NewsItem;
+  if (typeof tier === 'number') item.tier = tier;
+  return item;
 }
 
 describe('normalizeHeadlineKey', () => {
@@ -30,17 +38,23 @@ describe('normalizeHeadlineKey', () => {
     assert.equal(a, b);
   });
 
-  it('returns empty string for titles with only short words', () => {
+  it('returns empty string for titles with only short words (fallback handled by dedupeHeadlines)', () => {
     assert.equal(normalizeHeadlineKey('a of in'), '');
+  });
+
+  it('decodes HTML entities so encoded and plain titles normalize the same way', () => {
+    const a = normalizeHeadlineKey('AT&amp;T announces new tower buildout');
+    const b = normalizeHeadlineKey('AT&T announces new tower buildout');
+    assert.equal(a, b);
   });
 });
 
 describe('dedupeHeadlines', () => {
   it('collapses same-story items from different sources and records extras', () => {
     const items = [
-      h('Pentagon, FAA sign agreement on anti-drone laser system near Mexico', 'Military Times'),
-      h('Pentagon FAA Sign Agreement on Anti-Drone Laser System Near Mexico', 'DefenseOne'),
-      h('Unrelated headline about shipping delays in the Gulf', 'Reuters'),
+      h('Pentagon, FAA sign agreement on anti-drone laser system near Mexico', 'Military Times', '2026-04-12T00:00:00Z', 2),
+      h('Pentagon FAA Sign Agreement on Anti-Drone Laser System Near Mexico', 'DefenseOne', '2026-04-12T00:00:00Z', 3),
+      h('Unrelated headline about shipping delays in the Gulf', 'Reuters', '2026-04-12T00:00:00Z', 1),
     ];
     const out = dedupeHeadlines(items);
     assert.equal(out.length, 2);
@@ -58,5 +72,38 @@ describe('dedupeHeadlines', () => {
     ];
     const [only] = dedupeHeadlines(items);
     assert.deepEqual(only!.extraSources, ['SourceB']);
+  });
+
+  it('never drops items whose normalized key is empty (two-letter-only titles)', () => {
+    const items = [
+      h('UK PM in US', 'BBC'),
+      h('US-EU in talks', 'FT'),
+    ];
+    const out = dedupeHeadlines(items);
+    assert.equal(out.length, 2);
+    assert.equal(out[0]!.item.title, 'UK PM in US');
+    assert.equal(out[1]!.item.title, 'US-EU in talks');
+  });
+
+  it('treats AT&T and AT&amp;T as the same story', () => {
+    const items = [
+      h('AT&T expands fiber rollout across the Southeast', 'Bloomberg'),
+      h('AT&amp;T expands fiber rollout across the Southeast', 'SomeBlog'),
+    ];
+    const out = dedupeHeadlines(items);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.extraSources.length, 1);
+  });
+
+  it('picks the highest-tier source as primary even when a lower-tier item appears first', () => {
+    // Lower tier number = better source. T4 arrives first/newer, T1 arrives second/older.
+    const items = [
+      h('Sanctions package advances in Brussels against major bank', 'RandoBlog', '2026-04-12T12:00:00Z', 4),
+      h('Sanctions package advances in Brussels against major bank', 'Reuters', '2026-04-12T09:00:00Z', 1),
+    ];
+    const out = dedupeHeadlines(items);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.item.source, 'Reuters');
+    assert.deepEqual(out[0]!.extraSources, ['RandoBlog']);
   });
 });
