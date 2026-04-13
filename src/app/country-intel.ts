@@ -930,11 +930,19 @@ export class CountryIntelManager implements AppModule {
 
     let militaryFlights = 0;
     let militaryVessels = 0;
+    let militaryFlightsInCountry = 0;
+    let militaryVesselsInCountry = 0;
     if (this.ctx.intelligenceCache.military) {
       militaryFlights = this.ctx.intelligenceCache.military.flights.filter((f) =>
-        hasGeoShape ? this.isInCountry(f.lat, f.lon, code) : f.operatorCountry?.toUpperCase() === code
+        hasGeoShape ? this.isNearCountry(f.lat, f.lon, code) : f.operatorCountry?.toUpperCase() === code
       ).length;
       militaryVessels = this.ctx.intelligenceCache.military.vessels.filter((v) =>
+        hasGeoShape ? this.isNearCountry(v.lat, v.lon, code) : v.operatorCountry?.toUpperCase() === code
+      ).length;
+      militaryFlightsInCountry = this.ctx.intelligenceCache.military.flights.filter((f) =>
+        hasGeoShape ? this.isInCountry(f.lat, f.lon, code) : f.operatorCountry?.toUpperCase() === code
+      ).length;
+      militaryVesselsInCountry = this.ctx.intelligenceCache.military.vessels.filter((v) =>
         hasGeoShape ? this.isInCountry(v.lat, v.lon, code) : v.operatorCountry?.toUpperCase() === code
       ).length;
     }
@@ -1013,6 +1021,8 @@ export class CountryIntelManager implements AppModule {
       protests,
       militaryFlights,
       militaryVessels,
+      militaryFlightsInCountry,
+      militaryVesselsInCountry,
       outages,
       aisDisruptions: signalTypeCounts.aisDisruptions,
       satelliteFires: signalTypeCounts.satelliteFires,
@@ -1265,6 +1275,18 @@ export class CountryIntelManager implements AppModule {
     const b = CountryIntelManager.COUNTRY_BOUNDS[code];
     if (!b) return false;
     return lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e;
+  }
+
+  // Near = bounding-box padded by ~2° (~220 km). Captures vessels/aircraft in
+  // adjacent waters/airspace so the risk chip reflects proximity, not just
+  // strict territory. See issue #2972 bug 2.
+  private static readonly NEAR_BUFFER_DEG = 2;
+  private isNearCountry(lat: number, lon: number, code: string): boolean {
+    if (this.isInCountry(lat, lon, code)) return true;
+    const b = CountryIntelManager.COUNTRY_BOUNDS[code];
+    if (!b) return false;
+    const pad = CountryIntelManager.NEAR_BUFFER_DEG;
+    return lat >= b.s - pad && lat <= b.n + pad && lon >= b.w - pad && lon <= b.e + pad;
   }
 
   static COUNTRY_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {

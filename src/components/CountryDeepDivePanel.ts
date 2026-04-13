@@ -2254,8 +2254,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const chips = this.el('div', 'cdp-signal-chips');
     this.addSignalChip(chips, signals.criticalNews, t('countryBrief.chips.criticalNews'), '🚨', 'conflict');
     this.addSignalChip(chips, signals.protests, t('countryBrief.chips.protests'), '📢', 'protest');
-    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military');
-    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military');
+    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military', `${signals.militaryFlights} near · ${signals.militaryFlightsInCountry} inside borders`);
+    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military', `${signals.militaryVessels} near · ${signals.militaryVesselsInCountry} inside borders`);
     this.addSignalChip(chips, signals.outages, t('countryBrief.chips.outages'), '🌐', 'outage');
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
@@ -2299,13 +2299,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalRecentBody.append(this.makeLoading('Loading top high-severity signals…'));
   }
 
-  private addSignalChip(container: HTMLElement, count: number, label: string, icon: string, cls: string): void {
+  private addSignalChip(container: HTMLElement, count: number, label: string, icon: string, cls: string, tooltip?: string): void {
     if (count <= 0) return;
-    container.append(this.makeSignalChip(`${icon} ${count} ${label}`, cls));
+    container.append(this.makeSignalChip(`${icon} ${count} ${label}`, cls, tooltip));
   }
 
-  private makeSignalChip(text: string, cls: string): HTMLElement {
-    return this.el('span', `cdp-signal-chip chip-${cls}`, text);
+  private makeSignalChip(text: string, cls: string, tooltip?: string): HTMLElement {
+    const chip = this.el('span', `cdp-signal-chip chip-${cls}`, text);
+    if (tooltip) chip.title = tooltip;
+    return chip;
   }
 
   private renderComponentBars(components: CountryScore['components']): HTMLElement {
