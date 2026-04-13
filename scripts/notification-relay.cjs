@@ -132,10 +132,11 @@ function isInQuietHours(rule) {
   if (!rule.quietHoursEnabled) return false;
   const start = rule.quietHoursStart ?? 22;
   const end = rule.quietHoursEnd ?? 7;
+  if (start === end) return false; // same hour = no quiet window
   const tz = rule.quietHoursTimezone ?? 'UTC';
   const localHour = toLocalHour(Date.now(), tz);
   if (localHour === -1) return false;
-  // spans midnight when start >= end (e.g. 23:00-07:00)
+  // spans midnight when start > end (e.g. 23:00-07:00)
   return start < end
     ? localHour >= start && localHour < end
     : localHour >= start || localHour < end;
