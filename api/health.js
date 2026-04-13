@@ -133,7 +133,8 @@ const STANDALONE_KEYS = {
   militaryFlights:       'military:flights:v1',
   militaryFlightsStale:  'military:flights:stale:v1',
   temporalAnomalies:     'temporal:anomalies:v1',
-  displacement:          `displacement:summary:v1:${new Date().getFullYear()}`,
+  displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
+  displacementPrev:      `displacement:summary:v1:${new Date().getUTCFullYear() - 1}`,
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',
   portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
@@ -374,6 +375,7 @@ const ON_DEMAND_KEYS = new Set([
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
   'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar: stub seeders not yet deployed, keys may be absent
+  'displacementPrev', // covered by cascade onto current-year displacement; empty most of the year
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
@@ -398,7 +400,12 @@ const CASCADE_GROUPS = {
   theaterPostureBackup: ['theaterPosture', 'theaterPostureLive', 'theaterPostureBackup'],
   militaryFlights:      ['militaryFlights', 'militaryFlightsStale'],
   militaryFlightsStale: ['militaryFlights', 'militaryFlightsStale'],
+  // Displacement key embeds UTC year — on Jan 1 the new-year key may be empty
+  // for hours until the seed runs. Cascade onto the previous-year snapshot.
+  displacement:         ['displacement', 'displacementPrev'],
+  displacementPrev:     ['displacement', 'displacementPrev'],
 };
+
 
 const NEG_SENTINEL = '__WM_NEG__';
 
@@ -408,8 +415,98 @@ function parseRedisValue(raw) {
   try { return JSON.parse(raw); } catch { return raw; }
 }
 
+// Real data is always >0 bytes. The negative-cache sentinel is exactly
+// NEG_SENTINEL.length bytes (10), so any strlen > 0 that is NOT exactly that
+// length counts as data. The previous `> 10` heuristic misclassified
+// legitimately small payloads (`{}`, `[]`, `0`) as missing.
+function strlenIsData(strlen) {
+  return strlen > 0 && strlen !== NEG_SENTINEL.length;
+}
 
-export default async function handler(req) {
+function readSeedMeta(seedCfg, keyMetaValues, now) {
+  if (!seedCfg) return { seedAge: null, seedStale: null, seedError: false, metaCount: null };
+  const meta = parseRedisValue(keyMetaValues.get(seedCfg.key));
+  if (meta?.status === 'error') {
+    return { seedAge: null, seedStale: true, seedError: true, metaCount: null };
+  }
+  let seedAge = null;
+  let seedStale = true;
+  if (meta?.fetchedAt) {
+    seedAge = Math.round((now - meta.fetchedAt) / 60_000);
+    seedStale = seedAge > seedCfg.maxStaleMin;
+  }
+  const metaCount = meta?.count ?? meta?.recordCount ?? null;
+  return { seedAge, seedStale, seedError: false, metaCount };
+}
+
+function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
+  const siblings = CASCADE_GROUPS[name];
+  if (!siblings || hasData) return false;
+  for (const sibling of siblings) {
+    if (sibling === name) continue;
+    const sibKey = STANDALONE_KEYS[sibling] ?? BOOTSTRAP_KEYS[sibling];
+    if (!sibKey) continue;
+    if (keyErrors.get(sibKey)) continue;
+    if (strlenIsData(keyStrens.get(sibKey) ?? 0)) return true;
+  }
+  return false;
+}
+
+function classifyKey(name, redisKey, opts, ctx) {
+  const { keyStrens, keyErrors, keyMetaValues, now } = ctx;
+  const seedCfg = SEED_META[name];
+  const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name);
+
+  // Per-command Redis errors propagate as their own bucket — don't conflate
+  // with "key missing", since ops needs to know if the read itself failed.
+  if (keyErrors.get(redisKey)) {
+    const entry = { status: 'REDIS_PARTIAL', records: null };
+    if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
+    return entry;
+  }
+
+  const strlen = keyStrens.get(redisKey) ?? 0;
+  const hasData = strlenIsData(strlen);
+  const { seedAge, seedStale, seedError, metaCount } = readSeedMeta(seedCfg, keyMetaValues, now);
+
+  // When the data key is gone the meta count is meaningless; force records=0
+  // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
+  const records = hasData ? (metaCount ?? 1) : 0;
+  const cascadeCovered = isCascadeCovered(name, hasData, keyStrens, keyErrors);
+
+  let status;
+  if (seedError) status = 'SEED_ERROR';
+  else if (!hasData) {
+    if (cascadeCovered) status = 'OK_CASCADE';
+    else if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
+    else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
+    else status = 'EMPTY';
+  } else if (records === 0) {
+    if (cascadeCovered) status = 'OK_CASCADE';
+    else if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
+    else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
+    else status = 'EMPTY_DATA';
+  } else if (seedStale === true) status = 'STALE_SEED';
+  else status = 'OK';
+
+  const entry = { status, records };
+  if (seedAge !== null) entry.seedAgeMin = seedAge;
+  if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
+  return entry;
+}
+
+const STATUS_COUNTS = {
+  OK: 'ok',
+  OK_CASCADE: 'ok',
+  STALE_SEED: 'warn',
+  SEED_ERROR: 'warn',
+  EMPTY_ON_DEMAND: 'warn',
+  REDIS_PARTIAL: 'warn',
+  EMPTY: 'crit',
+  EMPTY_DATA: 'crit',
+};
+
+export default async function handler(req, ctx) {
   const headers = {
     'Content-Type': 'application/json',
     'Cache-Control': 'private, no-store, max-age=0',
@@ -431,8 +528,8 @@ export default async function handler(req) {
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
 
   // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
-  // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — any real data is >10 bytes.
-  const NEG_SENTINEL_LEN = NEG_SENTINEL.length;
+  // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
+  // that length while accepting any other non-zero strlen as data.
   let results;
   try {
     const commands = [
@@ -451,9 +548,13 @@ export default async function handler(req) {
   }
 
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)
+  // keyErrors: per-command Redis errors so we can surface REDIS_PARTIAL
   const keyStrens = new Map();
+  const keyErrors = new Map();
   for (let i = 0; i < allDataKeys.length; i++) {
-    keyStrens.set(allDataKeys[i], results[i]?.result ?? 0);
+    const r = results[i];
+    if (r?.error) keyErrors.set(allDataKeys[i], r.error);
+    keyStrens.set(allDataKeys[i], r?.result ?? 0);
   }
   // keyMetaValues: parsed seed-meta objects (GET, small payloads)
   const keyMetaValues = new Map();
@@ -461,211 +562,56 @@ export default async function handler(req) {
     keyMetaValues.set(allMetaKeys[i], results[allDataKeys.length + i]?.result ?? null);
   }
 
+  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, now };
   const checks = {};
+  const counts = { ok: 0, warn: 0, onDemandWarn: 0, crit: 0 };
   let totalChecks = 0;
-  let okCount = 0;
-  let warnCount = 0;
-  let critCount = 0;
 
-  for (const [name, redisKey] of Object.entries(BOOTSTRAP_KEYS)) {
-    totalChecks++;
-    const strlen = keyStrens.get(redisKey) ?? 0;
-    const hasData = strlen > NEG_SENTINEL_LEN;
-    const seedCfg = SEED_META[name];
-
-    let seedAge = null;
-    let seedStale = null;
-    let seedError = false;
-    let metaCount = null;
-    if (seedCfg) {
-      const metaRaw = keyMetaValues.get(seedCfg.key);
-      const meta = parseRedisValue(metaRaw);
-      if (meta?.status === 'error') {
-        seedStale = true;
-        seedError = true;
-      } else if (meta?.fetchedAt) {
-        seedAge = Math.round((now - meta.fetchedAt) / 60_000);
-        seedStale = seedAge > seedCfg.maxStaleMin;
-      } else {
-        seedStale = true;
-      }
-      if (meta?.count != null) metaCount = meta.count;
-      else if (meta?.recordCount != null) metaCount = meta.recordCount;
+  const sources = [
+    [BOOTSTRAP_KEYS, { allowOnDemand: false }],
+    [STANDALONE_KEYS, { allowOnDemand: true }],
+  ];
+  for (const [registry, opts] of sources) {
+    for (const [name, redisKey] of Object.entries(registry)) {
+      totalChecks++;
+      const entry = classifyKey(name, redisKey, opts, classifyCtx);
+      checks[name] = entry;
+      const bucket = STATUS_COUNTS[entry.status] ?? 'warn';
+      counts[bucket]++;
+      if (entry.status === 'EMPTY_ON_DEMAND') counts.onDemandWarn++;
     }
-
-    const size = metaCount ?? (hasData ? 1 : 0);
-
-    let status;
-    if (seedError === true) {
-      status = 'SEED_ERROR';
-      warnCount++;
-    } else if (!hasData) {
-      if (EMPTY_DATA_OK_KEYS.has(name)) {
-        if (seedStale === true) {
-          status = 'STALE_SEED';
-          warnCount++;
-        } else {
-          status = 'OK';
-          okCount++;
-        }
-      } else {
-        status = 'EMPTY';
-        critCount++;
-      }
-    } else if (size === 0) {
-      if (EMPTY_DATA_OK_KEYS.has(name)) {
-        if (seedStale === true) {
-          status = 'STALE_SEED';
-          warnCount++;
-        } else {
-          status = 'OK';
-          okCount++;
-        }
-      } else {
-        status = 'EMPTY_DATA';
-        critCount++;
-      }
-    } else if (seedStale === true) {
-      status = 'STALE_SEED';
-      warnCount++;
-    } else {
-      status = 'OK';
-      okCount++;
-    }
-
-    const entry = { status, records: size };
-    if (seedAge !== null) entry.seedAgeMin = seedAge;
-    if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
-    checks[name] = entry;
   }
 
-  for (const [name, redisKey] of Object.entries(STANDALONE_KEYS)) {
-    totalChecks++;
-    const strlen = keyStrens.get(redisKey) ?? 0;
-    const hasData = strlen > NEG_SENTINEL_LEN;
-    const isOnDemand = ON_DEMAND_KEYS.has(name);
-    const seedCfg = SEED_META[name];
-
-    // Freshness tracking for standalone keys (same logic as bootstrap keys)
-    let seedAge = null;
-    let seedStale = null;
-    let seedError = false;
-    let metaCount = null;
-    if (seedCfg) {
-      const metaRaw = keyMetaValues.get(seedCfg.key);
-      const meta = parseRedisValue(metaRaw);
-      if (meta?.status === 'error') {
-        seedStale = true;
-        seedError = true;
-      } else if (meta?.fetchedAt) {
-        seedAge = Math.round((now - meta.fetchedAt) / 60_000);
-        seedStale = seedAge > seedCfg.maxStaleMin;
-      } else {
-        // No seed-meta → data exists but freshness is unknown → stale
-        seedStale = true;
-      }
-      if (meta?.count != null) metaCount = meta.count;
-      else if (meta?.recordCount != null) metaCount = meta.recordCount;
-    }
-
-    const size = metaCount ?? (hasData ? 1 : 0);
-
-    // Cascade: if this key is empty but a sibling in the cascade group has data, it's OK.
-    const cascadeSiblings = CASCADE_GROUPS[name];
-    let cascadeCovered = false;
-    if (cascadeSiblings && !hasData) {
-      for (const sibling of cascadeSiblings) {
-        if (sibling === name) continue;
-        const sibKey = STANDALONE_KEYS[sibling];
-        if (!sibKey) continue;
-        if ((keyStrens.get(sibKey) ?? 0) > NEG_SENTINEL_LEN) {
-          cascadeCovered = true;
-          break;
-        }
-      }
-    }
-
-    let status;
-    if (seedError === true) {
-      status = 'SEED_ERROR';
-      warnCount++;
-    } else if (!hasData) {
-      if (cascadeCovered) {
-        status = 'OK_CASCADE';
-        okCount++;
-      } else if (EMPTY_DATA_OK_KEYS.has(name)) {
-        if (seedStale === true) {
-          status = 'STALE_SEED';
-          warnCount++;
-        } else {
-          status = 'OK';
-          okCount++;
-        }
-      } else if (isOnDemand) {
-        status = 'EMPTY_ON_DEMAND';
-        warnCount++;
-      } else {
-        status = 'EMPTY';
-        critCount++;
-      }
-    } else if (size === 0) {
-      if (cascadeCovered) {
-        status = 'OK_CASCADE';
-        okCount++;
-      } else if (EMPTY_DATA_OK_KEYS.has(name)) {
-        if (seedStale === true) {
-          status = 'STALE_SEED';
-          warnCount++;
-        } else {
-          status = 'OK';
-          okCount++;
-        }
-      } else if (isOnDemand) {
-        status = 'EMPTY_ON_DEMAND';
-        warnCount++;
-      } else {
-        status = 'EMPTY_DATA';
-        critCount++;
-      }
-    } else if (seedStale === true) {
-      status = 'STALE_SEED';
-      warnCount++;
-    } else {
-      status = 'OK';
-      okCount++;
-    }
-
-    const entry = { status, records: size };
-    if (seedAge !== null) entry.seedAgeMin = seedAge;
-    if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
-    checks[name] = entry;
-  }
-
-  // On-demand keys that simply haven't been requested yet should not affect overall status.
-  const onDemandWarnCount = Object.values(checks).filter(c => c.status === 'EMPTY_ON_DEMAND').length;
-  const realWarnCount = warnCount - onDemandWarnCount;
+  // On-demand keys that simply haven't been requested yet should not flip
+  // overall to WARNING — they're warn-level only for visibility.
+  const realWarnCount = counts.warn - counts.onDemandWarn;
+  const critCount = counts.crit;
 
   let overall;
   if (critCount === 0 && realWarnCount === 0) overall = 'HEALTHY';
   else if (critCount === 0) overall = 'WARNING';
-  else if (critCount <= 3) overall = 'DEGRADED';
+  // Degraded threshold scales with registry size so adding keys doesn't
+  // silently raise the page-out bar. ~3% of total keys (was hardcoded 3).
+  else if (critCount / totalChecks <= 0.03) overall = 'DEGRADED';
   else overall = 'UNHEALTHY';
 
   const httpStatus = 200;
 
   if (overall !== 'HEALTHY' && overall !== 'WARNING') {
     const problemKeys = Object.entries(checks)
-      .filter(([, c]) => c.status === 'EMPTY' || c.status === 'EMPTY_DATA' || c.status === 'STALE_SEED' || c.status === 'SEED_ERROR')
+      .filter(([, c]) => c.status === 'EMPTY' || c.status === 'EMPTY_DATA' || c.status === 'STALE_SEED' || c.status === 'SEED_ERROR' || c.status === 'REDIS_PARTIAL')
       .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
     console.log('[health] %s crits=[%s]', overall, problemKeys.join(', '));
-    // Persist last failure snapshot to Redis (TTL 24h) for post-mortem inspection.
-    // Fire-and-forget — must not block or add latency to the health response.
-    void redisPipeline([['SET', 'health:last-failure', JSON.stringify({
+    // Persist last failure snapshot for post-mortem. Vercel edge isolates can
+    // terminate before a fire-and-forget Promise resolves; ctx.waitUntil keeps
+    // the runtime alive until the write completes.
+    const persist = redisPipeline([['SET', 'health:last-failure', JSON.stringify({
       at: new Date(now).toISOString(),
       status: overall,
       critCount,
       crits: problemKeys,
     }), 'EX', 86400]]).catch(() => {});
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
   }
 
   const url = new URL(req.url);
@@ -675,8 +621,11 @@ export default async function handler(req) {
     status: overall,
     summary: {
       total: totalChecks,
-      ok: okCount,
-      warn: warnCount,
+      ok: counts.ok,
+      // `warn` excludes on-demand-empty (cosmetic warns); `onDemandWarn` is
+      // surfaced separately so readers can reconcile against `overall`.
+      warn: realWarnCount,
+      onDemandWarn: counts.onDemandWarn,
       crit: critCount,
     },
     checkedAt: new Date(now).toISOString(),
