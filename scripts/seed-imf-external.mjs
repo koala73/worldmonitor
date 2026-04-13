@@ -105,8 +105,11 @@ export async function fetchImfExternal() {
   };
 }
 
+// IMF WEO external indicators (BX/BM/BCA) report ~210 countries. Require
+// >=190 to reject partial snapshots where a bad IMF run silently drops
+// dozens of countries.
 export function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 150;
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 190;
 }
 
 export { CANONICAL_KEY, CACHE_TTL };

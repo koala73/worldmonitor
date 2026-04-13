@@ -77,9 +77,12 @@ export async function fetchImfLabor() {
   };
 }
 
+// LUR (unemployment) is reported for ~100 countries while population (LP) is
+// reported for ~210. Since buildLaborCountries unions the two, healthy runs
+// yield ~210 countries. Require >=190 to reject partial snapshots; this still
+// accommodates indicators that have slightly narrower reporting.
 export function validate(data) {
-  // LUR coverage is patchier than population; require at least 100 countries.
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 100;
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 190;
 }
 
 export { CANONICAL_KEY, CACHE_TTL };

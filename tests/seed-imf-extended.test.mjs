@@ -86,10 +86,15 @@ describe('seed-imf-growth', () => {
     assert.ok(!('US' in countries), 'no IMF series for current window → no entry');
   });
 
-  it('validate accepts 150+ countries and rejects sparse data', () => {
+  it('validate accepts 190+ countries and rejects partial snapshots', () => {
     const countries = {};
-    for (let i = 0; i < 160; i++) countries[`X${i}`] = { realGdpGrowthPct: 1, year: 2025 };
+    for (let i = 0; i < 200; i++) countries[`X${i}`] = { realGdpGrowthPct: 1, year: 2025 };
     assert.equal(validateGrowth({ countries }), true);
+
+    const partial = {};
+    for (let i = 0; i < 170; i++) partial[`X${i}`] = { realGdpGrowthPct: 1, year: 2025 };
+    assert.equal(validateGrowth({ countries: partial }), false, 'rejects 170 countries (dozens missing)');
+
     assert.equal(validateGrowth({ countries: {} }), false);
     assert.equal(validateGrowth(null), false);
   });
@@ -118,10 +123,14 @@ describe('seed-imf-labor', () => {
     });
   });
 
-  it('validate accepts 100+ countries (LUR coverage is patchier than other series)', () => {
+  it('validate accepts 190+ countries and rejects partial snapshots', () => {
     const countries = {};
-    for (let i = 0; i < 110; i++) countries[`X${i}`] = { unemploymentPct: 5, year: 2025 };
+    for (let i = 0; i < 200; i++) countries[`X${i}`] = { populationMillions: 10, year: 2025 };
     assert.equal(validateLabor({ countries }), true);
+
+    const partial = {};
+    for (let i = 0; i < 170; i++) partial[`X${i}`] = { populationMillions: 10, year: 2025 };
+    assert.equal(validateLabor({ countries: partial }), false, 'rejects 170 countries (dozens missing)');
 
     const sparse = {};
     for (let i = 0; i < 50; i++) sparse[`X${i}`] = { unemploymentPct: 5, year: 2025 };
@@ -164,10 +173,15 @@ describe('seed-imf-external', () => {
     assert.equal(countries.US.tradeBalanceUsd, null);
   });
 
-  it('validate gates >=150 country coverage', () => {
+  it('validate gates >=190 country coverage and rejects partial snapshots', () => {
     const countries = {};
-    for (let i = 0; i < 160; i++) countries[`X${i}`] = { exportsUsd: 1, year: 2025 };
+    for (let i = 0; i < 200; i++) countries[`X${i}`] = { exportsUsd: 1, year: 2025 };
     assert.equal(validateExternal({ countries }), true);
+
+    const partial = {};
+    for (let i = 0; i < 170; i++) partial[`X${i}`] = { exportsUsd: 1, year: 2025 };
+    assert.equal(validateExternal({ countries: partial }), false, 'rejects 170 countries (dozens missing)');
+
     assert.equal(validateExternal({ countries: {} }), false);
   });
 });
