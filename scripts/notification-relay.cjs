@@ -470,9 +470,15 @@ async function sendWebhook(userId, webhookEnvelope, event) {
     return false;
   }
 
-  // v2: payload shape gained `corroborationCount` (PR #3069). Prior v1 omitted it.
+  // Envelope version stays at '1'. Payload gained optional `corroborationCount`
+  // on rss_alert (PR #3069) — this is an additive field, backwards-compatible
+  // for consumers that don't enforce `additionalProperties: false`. Bumping
+  // version here would have broken parity with the other webhook producers
+  // (scripts/proactive-intelligence.mjs, scripts/seed-digest-notifications.mjs)
+  // which still emit v1, causing the same endpoint to receive mixed envelope
+  // versions per event type.
   const payload = JSON.stringify({
-    version: '2',
+    version: '1',
     eventType: event.eventType,
     severity: event.severity ?? 'high',
     timestamp: event.publishedAt ?? Date.now(),
@@ -603,7 +609,7 @@ async function shadowLogScore(event) {
   // belt-and-suspenders EXPIRE. Saves ~50% round-trips vs sequential calls
   // and bounds growth even if writes stop and the rolling prune stalls.
   try {
-    await fetch(`${UPSTASH_URL}/pipeline`, {
+    const res = await fetch(`${UPSTASH_URL}/pipeline`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_TOKEN}`,
@@ -616,7 +622,21 @@ async function shadowLogScore(event) {
         ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
       ]),
     });
-  } catch {}
+    // Surface HTTP failures and per-command errors. Activation depends on v2
+    // filling with clean data; a silent write-failure would leave operators
+    // staring at an empty ZSET with no signal.
+    if (!res.ok) {
+      console.warn(`[relay] shadow-log pipeline HTTP ${res.status}`);
+      return;
+    }
+    const body = await res.json().catch(() => null);
+    if (Array.isArray(body)) {
+      const failures = body.map((cmd, i) => (cmd?.error ? `cmd[${i}] ${cmd.error}` : null)).filter(Boolean);
+      if (failures.length > 0) console.warn(`[relay] shadow-log pipeline partial failure: ${failures.join('; ')}`);
+    }
+  } catch (err) {
+    console.warn(`[relay] shadow-log pipeline threw: ${err?.message ?? err}`);
+  }
 }
 
 // ── AI impact analysis ───────────────────────────────────────────────────────
