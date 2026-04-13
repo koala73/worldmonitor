@@ -107,7 +107,14 @@ export class LiquidityShiftsPanel extends Panel {
         </div>`;
       }).join('');
 
-      const stocks = stocksResp.quotes ?? [];
+      // The RPC preserves seed-bootstrap order, not request order, so re-sort
+      // by TOP_STOCKS to keep the panel's row order stable.
+      const stockOrder = new Map(TOP_STOCKS.map((sym, i) => [sym, i]));
+      const stocks = [...(stocksResp.quotes ?? [])].sort((a, b) => {
+        const ai = stockOrder.get(a.symbol ?? '') ?? Number.MAX_SAFE_INTEGER;
+        const bi = stockOrder.get(b.symbol ?? '') ?? Number.MAX_SAFE_INTEGER;
+        return ai - bi;
+      });
       const stockRows = stocks
         .map((q) => {
           const ch = Number(q.change ?? 0);
