@@ -3270,10 +3270,13 @@ const RELAY_GATES_READY = process.env.RELAY_GATES_READY === '1';
 const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recency gate
 
 // ── Importance score parity with digest ──────────────────────────────────────
-// Source-tier data loaded from shared/source-tiers.json — same bytes the TS
-// digest reads via resolveJsonModule in server/_shared/source-tiers.ts. Formula
-// constants + computeImportanceScore mirror list-feed-digest.ts and are parity-
-// tested in tests/importance-score-parity.test.mjs.
+// Source-tier data loaded via requireShared('source-tiers.json'), which resolves
+// to either repo-root shared/ OR scripts/shared/ depending on packaging root.
+// Both copies are enforced byte-identical by tests/edge-functions.test.mjs
+// ('scripts/shared/ stays in sync with shared/') and cross-checked in
+// tests/importance-score-parity.test.mjs.
+// Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
+// is enforced by tests/importance-score-parity.test.mjs.
 const RELAY_SOURCE_TIERS = requireShared('source-tiers.json');
 
 function relayGetSourceTier(sourceName) {

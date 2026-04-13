@@ -20,15 +20,20 @@ export const STORY_TRACKING_TTL_S = 172800;
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
  *
  * TTL for all: 172800s (48h), refreshed each digest cycle.
- * Shadow scoring key (written by notification-relay.cjs):
- *   shadow:score-log:v1            ZSet   score=epoch_ms, member=JSON{importanceScore,severity,title,wouldNotify}
+ * Shadow scoring key (written by notification-relay.cjs, which owns the live
+ * value — the constant here is documentation only, not imported):
+ *   shadow:score-log:v2            ZSet   score=epoch_ms, member=JSON{ts,importanceScore,severity,eventType,title,source,publishedAt,corroborationCount,variant}
+ *   shadow:score-log:v1            ZSet   legacy — no longer written, self-prunes via 7d ZREMRANGEBYSCORE
  */
 export const STORY_TRACK_KEY = (titleHash: string) => `story:track:v1:${titleHash}`;
 export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titleHash}`;
 export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
 export const DIGEST_ACCUMULATOR_KEY = (variant: string, lang = 'en') => `digest:accumulator:v1:${variant}:${lang}`;
 export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest:last-sent:v1:${userId}:${variant}`;
-export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
+// NOTE: notification-relay.cjs owns the live value (shadow:score-log:v2 since PR #3069).
+// This export is documentation/discoverability; changing it here does NOT affect the relay.
+// If you modify the key, also update scripts/notification-relay.cjs SHADOW_SCORE_LOG_KEY.
+export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v2';
 export const STORY_TTL = 604800;           // 7 days — enough for sustained multi-day stories
 export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for digest content
 

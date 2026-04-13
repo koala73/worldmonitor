@@ -129,6 +129,18 @@ describe('SOURCE_TIERS structural parity', () => {
       assert.ok([1, 2, 3, 4].includes(tier), `${name} has invalid tier ${tier}`);
     }
   });
+
+  it('scripts/shared/source-tiers.json matches shared/source-tiers.json byte-for-byte', () => {
+    // Also guarded by tests/edge-functions.test.mjs (scripts-shared-mirror).
+    // Duplicated here as an explicit parity cross-check so drift can't sneak
+    // through if the edge-functions test is ever narrowed.
+    const canonical = readFileSync(resolve(repoRoot, 'shared/source-tiers.json'), 'utf-8');
+    const mirror = readFileSync(resolve(repoRoot, 'scripts/shared/source-tiers.json'), 'utf-8');
+    assert.equal(
+      mirror, canonical,
+      'scripts/shared/source-tiers.json drifted from shared/source-tiers.json — run: cp shared/source-tiers.json scripts/shared/',
+    );
+  });
 });
 
 describe('SEVERITY_SCORES parity (digest ↔ relay)', () => {
