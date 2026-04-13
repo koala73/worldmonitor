@@ -35,6 +35,7 @@ import { getCotPositioning } from './get-cot-positioning';
 import { getInsiderTransactions } from './get-insider-transactions';
 import { getMarketBreadthHistory } from './get-market-breadth-history';
 import { getGoldIntelligence } from './get-gold-intelligence';
+import { getHyperliquidFlow } from './get-hyperliquid-flow';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -59,4 +60,5 @@ export const marketHandler: MarketServiceHandler = {
   getInsiderTransactions,
   getMarketBreadthHistory,
   getGoldIntelligence,
+  getHyperliquidFlow,
 };

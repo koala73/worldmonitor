@@ -611,6 +611,43 @@ export interface GoldCbMover {
   deltaTonnes12m: number;
 }
 
+export interface GetHyperliquidFlowRequest {
+}
+
+export interface GetHyperliquidFlowResponse {
+  ts: string;
+  fetchedAt: string;
+  warmup: boolean;
+  assetCount: number;
+  assets: HyperliquidAssetFlow[];
+  unavailable: boolean;
+}
+
+export interface HyperliquidAssetFlow {
+  symbol: string;
+  display: string;
+  assetClass: string;
+  group: string;
+  funding: string;
+  openInterest: string;
+  markPx: string;
+  oraclePx: string;
+  dayNotional: string;
+  fundingScore: number;
+  volumeScore: number;
+  oiScore: number;
+  basisScore: number;
+  composite: number;
+  sparkFunding: number[];
+  sparkOi: number[];
+  sparkScore: number[];
+  warmup: boolean;
+  stale: boolean;
+  staleSince: string;
+  missingPolls: number;
+  alerts: string[];
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1195,6 +1232,29 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetGoldIntelligenceResponse;
+  }
+
+  async getHyperliquidFlow(req: GetHyperliquidFlowRequest, options?: MarketServiceCallOptions): Promise<GetHyperliquidFlowResponse> {
+    let path = "/api/market/v1/get-hyperliquid-flow";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetHyperliquidFlowResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

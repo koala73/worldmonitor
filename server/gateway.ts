@@ -201,6 +201,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/list-earnings-calendar': 'slow',
   '/api/market/v1/get-cot-positioning': 'slow',
   '/api/market/v1/get-gold-intelligence': 'slow',
+  '/api/market/v1/get-hyperliquid-flow': 'medium',
   '/api/market/v1/get-insider-transactions': 'slow',
   '/api/economic/v1/get-economic-calendar': 'slow',
   '/api/intelligence/v1/list-market-implications': 'slow',

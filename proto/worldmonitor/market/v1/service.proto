@@ -25,6 +25,7 @@ import "worldmonitor/market/v1/get_cot_positioning.proto";
 import "worldmonitor/market/v1/get_insider_transactions.proto";
 import "worldmonitor/market/v1/get_market_breadth_history.proto";
 import "worldmonitor/market/v1/get_gold_intelligence.proto";
+import "worldmonitor/market/v1/get_hyperliquid_flow.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -138,5 +139,10 @@ service MarketService {
   // GetGoldIntelligence retrieves gold pricing, cross-currency XAU, ratios, and CFTC positioning.
   rpc GetGoldIntelligence(GetGoldIntelligenceRequest) returns (GetGoldIntelligenceResponse) {
     option (sebuf.http.config) = {path: "/get-gold-intelligence", method: HTTP_METHOD_GET};
+  }
+
+  // GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
+  rpc GetHyperliquidFlow(GetHyperliquidFlowRequest) returns (GetHyperliquidFlowResponse) {
+    option (sebuf.http.config) = {path: "/get-hyperliquid-flow", method: HTTP_METHOD_GET};
   }
 }

@@ -71,6 +71,7 @@ const BOOTSTRAP_KEYS = {
   earningsCalendar:  'market:earnings-calendar:v1',
   econCalendar:      'economic:econ-calendar:v1',
   cotPositioning:    'market:cot:v1',
+  hyperliquidFlow:   'market:hyperliquid:flow:v1',
   crudeInventories:  'economic:crude-inventories:v1',
   natGasStorage:     'economic:nat-gas-storage:v1',
   spr:               'economic:spr:v1',
@@ -299,6 +300,7 @@ const SEED_META = {
   earningsCalendar:  { key: 'seed-meta:market:earnings-calendar',     maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   econCalendar:      { key: 'seed-meta:economic:econ-calendar',       maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   cotPositioning:    { key: 'seed-meta:market:cot',                   maxStaleMin: 14400 }, // weekly CFTC release; 14400min = 10d = 1.4x interval (weekend + delay buffer)
+  hyperliquidFlow:   { key: 'seed-meta:market:hyperliquid-flow',      maxStaleMin: 15 }, // Railway cron 5min; 15min = 3x interval
   crudeInventories:  { key: 'seed-meta:economic:crude-inventories',   maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   natGasStorage:     { key: 'seed-meta:economic:nat-gas-storage',     maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   spr:               { key: 'seed-meta:economic:spr',                 maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
@@ -382,6 +384,9 @@ const ON_DEMAND_KEYS = new Set([
            // gate as on-demand so a deploy-order race or first-cron-run failure doesn't
            // fire a CRIT health alarm. Remove from this set after ~7 days of clean
            // production cron runs (verify via `seed-meta:economic:fx-yoy.fetchedAt`).
+  'hyperliquidFlow', // TRANSITIONAL: seed-hyperliquid-flow runs inside seed-bundle-market-backup on
+                     // Railway; gate as on-demand so initial deploy-order race or first cold-start
+                     // snapshot doesn't CRIT. Remove after ~7 days of clean production cron runs.
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,

@@ -29,6 +29,7 @@ import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
 import type { EnergyCrisisPanel } from '@/components/EnergyCrisisPanel';
 import type { ETFFlowsPanel } from '@/components/ETFFlowsPanel';
+import type { CommoditiesPanel } from '@/components/MarketPanel';
 import type { MacroSignalsPanel } from '@/components/MacroSignalsPanel';
 import type { FearGreedPanel } from '@/components/FearGreedPanel';
 import type { HormuzPanel } from '@/components/HormuzPanel';
@@ -264,6 +265,10 @@ export class App {
     if (shouldPrime('hormuz-tracker')) {
       const panel = this.state.panels['hormuz-tracker'] as HormuzPanel | undefined;
       if (panel) primeTask('hormuz-tracker', () => panel.fetchData());
+    }
+    if (shouldPrime('commodities')) {
+      const panel = this.state.panels['commodities'] as CommoditiesPanel | undefined;
+      if (panel) primeTask('commodities-hyperliquid-flow', () => panel.fetchHyperliquidFlow());
     }
     if (shouldPrime('etf-flows')) {
       const panel = this.state.panels['etf-flows'] as ETFFlowsPanel | undefined;
@@ -1296,6 +1301,12 @@ export class App {
       () => (this.state.panels['hormuz-tracker'] as HormuzPanel).fetchData(),
       REFRESH_INTERVALS.hormuzTracker,
       () => this.isPanelNearViewport('hormuz-tracker')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'commodities-hyperliquid-flow',
+      () => (this.state.panels['commodities'] as CommoditiesPanel).fetchHyperliquidFlow(),
+      REFRESH_INTERVALS.hyperliquidFlow,
+      () => this.isPanelNearViewport('commodities')
     );
     this.refreshScheduler.scheduleRefresh(
       'strategic-posture',

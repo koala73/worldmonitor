@@ -56,6 +56,7 @@ export const REFRESH_INTERVALS = {
   wsbTickers: 10 * 60 * 1000,
   crossSourceSignals: 15 * 60 * 1000,
   hormuzTracker: 60 * 60 * 1000, // 1h — data updates daily
+  hyperliquidFlow: 5 * 60 * 1000, // 5min — matches Railway seed cadence
   energyCrisis: 6 * 60 * 60 * 1000, // 6h — policy data updates infrequently
   macroTiles: 30 * 60 * 1000,
   fsi: 30 * 60 * 1000,

@@ -611,6 +611,43 @@ export interface GoldCbMover {
   deltaTonnes12m: number;
 }
 
+export interface GetHyperliquidFlowRequest {
+}
+
+export interface GetHyperliquidFlowResponse {
+  ts: string;
+  fetchedAt: string;
+  warmup: boolean;
+  assetCount: number;
+  assets: HyperliquidAssetFlow[];
+  unavailable: boolean;
+}
+
+export interface HyperliquidAssetFlow {
+  symbol: string;
+  display: string;
+  assetClass: string;
+  group: string;
+  funding: string;
+  openInterest: string;
+  markPx: string;
+  oraclePx: string;
+  dayNotional: string;
+  fundingScore: number;
+  volumeScore: number;
+  oiScore: number;
+  basisScore: number;
+  composite: number;
+  sparkFunding: number[];
+  sparkOi: number[];
+  sparkScore: number[];
+  warmup: boolean;
+  stale: boolean;
+  staleSince: string;
+  missingPolls: number;
+  alerts: string[];
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -678,6 +715,7 @@ export interface MarketServiceHandler {
   getInsiderTransactions(ctx: ServerContext, req: GetInsiderTransactionsRequest): Promise<GetInsiderTransactionsResponse>;
   getMarketBreadthHistory(ctx: ServerContext, req: GetMarketBreadthHistoryRequest): Promise<GetMarketBreadthHistoryResponse>;
   getGoldIntelligence(ctx: ServerContext, req: GetGoldIntelligenceRequest): Promise<GetGoldIntelligenceResponse>;
+  getHyperliquidFlow(ctx: ServerContext, req: GetHyperliquidFlowRequest): Promise<GetHyperliquidFlowResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -1606,6 +1644,43 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getGoldIntelligence(ctx, body);
           return new Response(JSON.stringify(result as GetGoldIntelligenceResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-hyperliquid-flow",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetHyperliquidFlowRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getHyperliquidFlow(ctx, body);
+          return new Response(JSON.stringify(result as GetHyperliquidFlowResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

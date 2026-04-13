@@ -696,6 +696,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/get-hyperliquid-flow:
+        get:
+            tags:
+                - MarketService
+            summary: GetHyperliquidFlow
+            description: GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
+            operationId: GetHyperliquidFlow
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetHyperliquidFlowResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -2130,3 +2156,93 @@ components:
                 deltaTonnes12m:
                     type: number
                     format: double
+        GetHyperliquidFlowRequest:
+            type: object
+        GetHyperliquidFlowResponse:
+            type: object
+            properties:
+                ts:
+                    type: string
+                    format: int64
+                fetchedAt:
+                    type: string
+                warmup:
+                    type: boolean
+                assetCount:
+                    type: integer
+                    format: int32
+                assets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/HyperliquidAssetFlow'
+                unavailable:
+                    type: boolean
+        HyperliquidAssetFlow:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                display:
+                    type: string
+                assetClass:
+                    type: string
+                group:
+                    type: string
+                funding:
+                    type: string
+                    description: Raw metrics (nullable as strings to preserve precision; "" = unavailable)
+                openInterest:
+                    type: string
+                markPx:
+                    type: string
+                oraclePx:
+                    type: string
+                dayNotional:
+                    type: string
+                fundingScore:
+                    type: number
+                    format: double
+                    description: Component scores 0-100
+                volumeScore:
+                    type: number
+                    format: double
+                oiScore:
+                    type: number
+                    format: double
+                basisScore:
+                    type: number
+                    format: double
+                composite:
+                    type: number
+                    format: double
+                sparkFunding:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Sparkline arrays (most recent last); up to 60 samples (5h @ 5min)
+                sparkOi:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                sparkScore:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                warmup:
+                    type: boolean
+                    description: State flags
+                stale:
+                    type: boolean
+                staleSince:
+                    type: string
+                    format: int64
+                missingPolls:
+                    type: integer
+                    format: int32
+                alerts:
+                    type: array
+                    items:
+                        type: string
