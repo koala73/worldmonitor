@@ -84,9 +84,16 @@ export class LiquidityShiftsPanel extends Panel {
         const net = pct(longPos, shortPos);
         const levLong = toNum(row.leveragedFundsLong ?? 0);
         const levShort = toNum(row.leveragedFundsShort ?? 0);
-        const levNet = pct(levLong, levShort);
+        // CFTC Disaggregated report (GC/SI/CL) has no Leveraged Funds
+        // category — only TFF report (ES/NQ) does. Skip the sub-line entirely
+        // rather than render a misleading "Lev +0.0%" for commodity rows.
+        const hasLev = levLong > 0 || levShort > 0;
+        const levNet = hasLev ? pct(levLong, levShort) : null;
         const code = row.code ?? '';
         const label = INSTRUMENT_LABELS[code] ?? row.name ?? code;
+        const levLine = hasLev
+          ? `<div class="market-symbol">${t('components.liquidityShifts.lev')} ${escapeHtml(formatLevShift(levNet))}</div>`
+          : '';
 
         return `<div class="liquidity-row">
           <div class="liquidity-row__info">
@@ -95,7 +102,7 @@ export class LiquidityShiftsPanel extends Panel {
           </div>
           <div class="liquidity-row__values">
             <div>${renderShiftPill(net)}</div>
-            <div class="market-symbol">${t('components.liquidityShifts.lev')} ${escapeHtml(formatLevShift(levNet))}</div>
+            ${levLine}
           </div>
         </div>`;
       }).join('');

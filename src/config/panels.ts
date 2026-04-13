@@ -741,6 +741,7 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   'live-news': { name: 'Commodity Headlines', enabled: true, priority: 1 },
   insights: { name: 'AI Commodity Insights', enabled: true, priority: 1 },
   'commodity-news': { name: 'Commodity News', enabled: true, priority: 1 },
+  'liquidity-shifts': { name: 'Liquidity Shifts', enabled: true, priority: 1 },
   'gold-silver': { name: 'Gold & Silver', enabled: true, priority: 1 },
   energy: { name: 'Energy Markets', enabled: true, priority: 1 },
   'mining-news': { name: 'Mining News', enabled: true, priority: 1 },
