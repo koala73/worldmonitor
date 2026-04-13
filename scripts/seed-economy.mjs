@@ -69,8 +69,8 @@ function stressLabel(score) {
  * @returns {{ observations: { date: string; value: number }[] } | null}
  */
 export function extractGscpiObservations(parsed) {
-  const obs = /** @type {any} */ (parsed)?.series?.observations
-    ?? /** @type {any} */ (parsed)?.observations;
+  const p = /** @type {any} */ (parsed);
+  const obs = p?.series?.observations ?? p?.observations;
   return Array.isArray(obs) ? { observations: obs } : null;
 }
 
