@@ -378,6 +378,10 @@ const ON_DEMAND_KEYS = new Set([
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
   'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar: stub seeders not yet deployed, keys may be absent
   'displacementPrev', // covered by cascade onto current-year displacement; empty most of the year
+  'fxYoy', // TRANSITIONAL (PR #3071): seed-fx-yoy Railway cron deployed manually after merge —
+           // gate as on-demand so a deploy-order race or first-cron-run failure doesn't
+           // fire a CRIT health alarm. Remove from this set after ~7 days of clean
+           // production cron runs (verify via `seed-meta:economic:fx-yoy.fetchedAt`).
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
