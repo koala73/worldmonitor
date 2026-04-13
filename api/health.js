@@ -216,12 +216,13 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 20 },
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
-  // seed-bis-extended.mjs: runSeed('economic','bis-extended',...) writes a
-  // single seed-meta key; DSR / property-residential / property-commercial
-  // are extras written via afterPublish on the same run. 24h = 2× 12h cron.
-  bisDsr:                { key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 },
-  bisPropertyResidential:{ key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 },
-  bisPropertyCommercial: { key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 },
+  // seed-bis-extended.mjs writes per-dataset seed-meta keys ONLY when that
+  // specific dataset published fresh entries — so a single-dataset BIS outage
+  // (e.g. WS_DSR 500s) goes stale in health without falsely dragging down the
+  // healthy ones. 24h = 2× 12h cron.
+  bisDsr:                { key: 'seed-meta:economic:bis-dsr',                  maxStaleMin: 1440 },
+  bisPropertyResidential:{ key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
+  bisPropertyCommercial: { key: 'seed-meta:economic:bis-property-commercial',  maxStaleMin: 1440 },
   imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 100800 }, // monthly seed; 100800min = 70 days = 2× interval (absorbs one missed run)
   imfGrowth:        { key: 'seed-meta:economic:imf-growth',       maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro (same WEO release cadence)
   imfLabor:         { key: 'seed-meta:economic:imf-labor',        maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro

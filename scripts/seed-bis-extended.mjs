@@ -23,7 +23,7 @@
  *   - health maxStaleMin = 24h = 2× interval (see api/health.js)
  */
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, extendExistingTtl } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, extendExistingTtl, writeSeedMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -82,6 +82,17 @@ export const KEYS = {
   dsr: 'economic:bis:dsr:v1',
   spp: 'economic:bis:property-residential:v1',
   cpp: 'economic:bis:property-commercial:v1',
+};
+
+// Per-dataset seed-meta keys. Each is ONLY written when that dataset actually
+// published fresh entries — so a DSR-only outage cleanly stales bisDsr in
+// health.js while leaving bisPropertyResidential / bisPropertyCommercial green.
+// The aggregate seed-meta:economic:bis-extended (written by runSeed) is kept
+// as a "seeder ran at all" signal in api/seed-health.js.
+export const META_KEYS = {
+  dsr: 'seed-meta:economic:bis-dsr',
+  spp: 'seed-meta:economic:bis-property-residential',
+  cpp: 'seed-meta:economic:bis-property-commercial',
 };
 
 // Quarterly data, seeded on 12h cron. 3-day TTL absorbs 2 missed cycles.
@@ -377,8 +388,16 @@ export async function fetchAll() {
   // Publish SPP/CPP independently NOW — they must not be gated on DSR. Any
   // that came back empty get their existing snapshot's TTL extended so a
   // transient upstream failure doesn't silently expire healthy data.
-  await publishDatasetIndependently(KEYS.spp, spp);
-  await publishDatasetIndependently(KEYS.cpp, cpp);
+  await publishDatasetIndependently(KEYS.spp, spp, META_KEYS.spp);
+  await publishDatasetIndependently(KEYS.cpp, cpp, META_KEYS.cpp);
+
+  // DSR seed-meta is written here (not via runSeed's generic seed-meta) ONLY
+  // when DSR fetch succeeded. runSeed still writes the aggregate
+  // seed-meta:economic:bis-extended key via publishTransform/validate, but
+  // that is a "seeder ran" marker, not a DSR freshness signal.
+  if (planDatasetAction(dsr) === 'write') {
+    await writeSeedMeta(KEYS.dsr, dsr.entries.length, META_KEYS.dsr).catch(() => {});
+  }
 
   return { dsr, spp, cpp };
 }
@@ -393,11 +412,17 @@ export function planDatasetAction(payload) {
   return 'extend';
 }
 
-export async function publishDatasetIndependently(key, payload) {
+export async function publishDatasetIndependently(key, payload, metaKey) {
   const action = planDatasetAction(payload);
   if (action === 'write') {
     try {
       await writeExtraKey(key, payload, TTL);
+      // Per-dataset seed-meta is written ONLY on a successful fresh write.
+      // On the extend-TTL branch we deliberately do NOT refresh seed-meta —
+      // that is what lets api/health.js flag a stale per-dataset outage.
+      if (metaKey) {
+        await writeSeedMeta(key, payload.entries.length, metaKey).catch(() => {});
+      }
     } catch (err) {
       console.warn(`  ${key}: write failed (${err.message}); extending existing TTL`);
       await extendExistingTtl([key], TTL).catch(() => {});

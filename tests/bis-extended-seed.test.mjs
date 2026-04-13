@@ -10,7 +10,9 @@ import {
   validate,
   publishTransform,
   planDatasetAction,
+  publishDatasetIndependently,
   KEYS,
+  META_KEYS,
 } from '../scripts/seed-bis-extended.mjs';
 
 // Minimal BIS-style SDMX CSV fixture covering:
@@ -51,6 +53,19 @@ describe('seed-bis-extended parser', () => {
     assert.equal(KEYS.dsr, 'economic:bis:dsr:v1');
     assert.equal(KEYS.spp, 'economic:bis:property-residential:v1');
     assert.equal(KEYS.cpp, 'economic:bis:property-commercial:v1');
+  });
+
+  it('exports per-dataset seed-meta keys distinct from the aggregate', () => {
+    // Health monitoring (api/health.js bisDsr / bisPropertyResidential /
+    // bisPropertyCommercial) points at these keys — the whole point of the
+    // P1 fix is that a DSR-only outage stales ONLY bisDsr, not all three.
+    assert.equal(META_KEYS.dsr, 'seed-meta:economic:bis-dsr');
+    assert.equal(META_KEYS.spp, 'seed-meta:economic:bis-property-residential');
+    assert.equal(META_KEYS.cpp, 'seed-meta:economic:bis-property-commercial');
+    // Must not collide with the aggregate "seeder ran" marker.
+    assert.notEqual(META_KEYS.dsr, 'seed-meta:economic:bis-extended');
+    assert.notEqual(META_KEYS.spp, 'seed-meta:economic:bis-extended');
+    assert.notEqual(META_KEYS.cpp, 'seed-meta:economic:bis-extended');
   });
 
   it('maps BIS quarter strings to first day of the quarter', () => {
@@ -142,6 +157,48 @@ describe('seed-bis-extended parser', () => {
     assert.equal(planDatasetAction({ entries: [] }), 'extend');
     assert.equal(planDatasetAction(null), 'extend');
     assert.equal(planDatasetAction(undefined), 'extend');
+  });
+
+  it('publishDatasetIndependently writes per-dataset seed-meta ONLY on fresh write, not on extend-TTL', async () => {
+    // Capture every Upstash REST call so we can assert which keys were touched.
+    const origUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const origTok = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const origFetch = globalThis.fetch;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://mock.upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
+    const calls = [];
+    globalThis.fetch = async (_url, opts) => {
+      const body = JSON.parse(opts.body);
+      calls.push(body); // e.g. ['SET', 'key', 'value', 'EX', 123] or ['EXPIRE', ...]
+      return { ok: true, status: 200, json: async () => ({ result: 'OK' }) };
+    };
+    try {
+      // 1. Fresh payload → canonical key written + per-dataset seed-meta written.
+      calls.length = 0;
+      await publishDatasetIndependently(
+        KEYS.spp,
+        { entries: [{ countryCode: 'US', indexValue: 108.5 }], fetchedAt: 't' },
+        META_KEYS.spp,
+      );
+      const sets = calls.filter(c => c[0] === 'SET').map(c => c[1]);
+      assert.ok(sets.includes(KEYS.spp), `expected SET on canonical key ${KEYS.spp}, got ${JSON.stringify(sets)}`);
+      assert.ok(sets.includes(META_KEYS.spp), `expected SET on seed-meta key ${META_KEYS.spp}, got ${JSON.stringify(sets)}`);
+
+      // 2. Empty payload → canonical key TTL extended, seed-meta NOT written.
+      //    (This is the core P1 invariant: a DSR outage must not refresh
+      //     seed-meta:economic:bis-dsr, otherwise health lies "fresh".)
+      calls.length = 0;
+      await publishDatasetIndependently(KEYS.dsr, null, META_KEYS.dsr);
+      const metaSets = calls.filter(c => c[0] === 'SET' && c[1] === META_KEYS.dsr);
+      assert.equal(metaSets.length, 0, `seed-meta must NOT be written on extend-TTL path, got ${JSON.stringify(metaSets)}`);
+      // Any SET at all on the extend path is wrong — only EXPIRE-style calls expected.
+      const canonicalSets = calls.filter(c => c[0] === 'SET' && c[1] === KEYS.dsr);
+      assert.equal(canonicalSets.length, 0, `canonical key must NOT be re-written on extend-TTL path`);
+    } finally {
+      globalThis.fetch = origFetch;
+      if (origUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = origUrl;
+      if (origTok === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = origTok;
+    }
   });
 
   it('selectBestSeriesByCountry ignores series with no usable observations', () => {
