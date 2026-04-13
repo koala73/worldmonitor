@@ -309,6 +309,23 @@ export function onPrefChange(variant: string): void {
   schedulePrefUpload(variant);
 }
 
+export async function syncNow(): Promise<void> {
+  if (!isEnabled()) return;
+  if (_debounceTimer !== null) {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = null;
+  }
+  await uploadNow(_currentVariant);
+}
+
+export function getSyncState(): SyncState {
+  return (localStorage.getItem(KEY_SYNC_STATE) as SyncState) || 'signed-out';
+}
+
+export function getLastSyncAt(): number {
+  return parseInt(localStorage.getItem(KEY_LAST_SYNC_AT) ?? '0', 10) || 0;
+}
+
 // ── install ───────────────────────────────────────────────────────────────────
 
 export function install(variant: string): void {

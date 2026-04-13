@@ -16840,6 +16840,44 @@ a.prediction-link:hover {
   padding: 4px 14px 10px;
 }
 
+/* ── Cloud Sync status ── */
+
+.wm-sync-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.wm-sync-status-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-primary, #e8eaed);
+}
+
+.wm-sync-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wm-sync-status-label {
+  font-weight: 600;
+}
+
+.wm-sync-status-time {
+  color: var(--text-faint, #888);
+  font-size: 11px;
+}
+
+.wm-sync-now-btn {
+  flex-shrink: 0;
+}
+
 /* ============ AI Flow Toggle Styles (shared) ============ */
 
 .ai-flow-section-label {
