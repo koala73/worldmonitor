@@ -100,21 +100,33 @@ function computeYoy(series) {
   const yearAgo = series[yearAgoIdx];
   const yoyChange = ((latest.close - yearAgo.close) / yearAgo.close) * 100;
 
-  // Peak-to-trough drawdown over the available 24-month window. For USD
-  // pairs in the form {CCY}USD=X, the close is the price of 1 unit of CCY
-  // in USD — so a drop = currency depreciation against USD. We find the
-  // peak first, then the lowest point AFTER the peak.
-  let peak = series[0];
+  // Worst peak-to-trough drawdown over the available window using a
+  // running-peak scan. For USD pairs in the form {CCY}USD=X, the close
+  // is the price of 1 unit of CCY in USD — so a drop = currency
+  // depreciation against USD.
+  //
+  // A naive "global max → min after global max" approach erases earlier
+  // crashes that were followed by a partial recovery to a new high
+  // (e.g. series [10, 6, 11, 10] — true worst drawdown is 10→6=-40%, but
+  // global-peak-after picks 11→10=-9.1%). Track the running peak as we
+  // sweep forward and record the largest drop from that peak to any
+  // subsequent point — exactly what max-drawdown means in a time series.
+  let runningPeak = series[0];
+  let worstDrawdown = 0;
+  let peakAtWorst = series[0];
+  let troughAtWorst = series[0];
   for (const bar of series) {
-    if (bar.close > peak.close) peak = bar;
+    if (bar.close > runningPeak.close) runningPeak = bar;
+    const dd = ((bar.close - runningPeak.close) / runningPeak.close) * 100;
+    if (dd < worstDrawdown) {
+      worstDrawdown = dd;
+      peakAtWorst = runningPeak;
+      troughAtWorst = bar;
+    }
   }
-  let trough = peak;
-  for (const bar of series) {
-    if (bar.t > peak.t && bar.close < trough.close) trough = bar;
-  }
-  const drawdown24m = peak.close > 0
-    ? ((trough.close - peak.close) / peak.close) * 100
-    : 0;
+  const drawdown24m = worstDrawdown;
+  const peak = peakAtWorst;
+  const trough = troughAtWorst;
 
   return {
     currentRate: latest.close,
