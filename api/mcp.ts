@@ -189,6 +189,30 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
   },
   {
+    name: 'get_eu_housing_cycle',
+    description: 'Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:house-prices:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-house-prices',
+    _maxStaleMin: 60 * 24 * 50, // weekly cron, annual data
+  },
+  {
+    name: 'get_eu_quarterly_gov_debt',
+    description: 'Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-gov-debt-q',
+    _maxStaleMin: 60 * 24 * 14, // quarterly data, 2-day cron
+  },
+  {
+    name: 'get_eu_industrial_production',
+    description: 'Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:industrial-production:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-industrial-production',
+    _maxStaleMin: 60 * 24 * 5, // monthly data, daily cron
+  },
+  {
     name: 'get_prediction_markets',
     description: 'Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.',
     inputSchema: { type: 'object', properties: {}, required: [] },
