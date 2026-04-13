@@ -266,12 +266,20 @@ async function writeRankingSeedMeta(recordCount) {
   try {
     const { url, token } = getRedisCredentials();
     const meta = { fetchedAt: Date.now(), recordCount };
-    await fetch(url, {
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(['SET', 'seed-meta:resilience:ranking', JSON.stringify(meta), 'EX', 86400 * 7]),
       signal: AbortSignal.timeout(5_000),
     });
+    // fetch() doesn't throw on non-2xx — we must check resp.ok explicitly.
+    // Otherwise a 401/429/500 from Upstash silently looks like success, the
+    // seed-meta stays stale, and /api/health keeps alerting without ops
+    // knowing the write ever failed.
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '<unreadable>');
+      console.warn(`[resilience-scores] seed-meta:resilience:ranking write failed: HTTP ${resp.status} — ${body.slice(0, 200)}`);
+    }
   } catch (err) {
     console.warn('[resilience-scores] seed-meta:resilience:ranking write failed:', err?.message || err);
   }
