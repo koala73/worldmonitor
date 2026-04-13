@@ -217,15 +217,30 @@ async function seedResilienceScores() {
 
     // If any laggards were warmed, the ranking cache (written earlier by the
     // bulk endpoint) no longer reflects them — it froze them as coverage-0
-    // greyedOut entries. Delete the key so the next RPC call rebuilds the
-    // ranking from the now-complete per-country cache. Without this, the
-    // stale ranking persists for the full 6h TTL.
+    // greyedOut entries. DEL the key AND re-call the ranking endpoint to
+    // rebuild from the now-complete per-country cache. Don't stop at DEL:
+    // downstream consumers (benchmark-resilience-external.mjs) read
+    // resilience:ranking:v9 directly from Redis and skip on null, so a
+    // null-until-next-user-RPC window would leave the weekly validation
+    // cron with no ranking to benchmark against.
     if (laggardsWarmed > 0) {
       try {
         await redisPipeline(url, token, [['DEL', RESILIENCE_RANKING_CACHE_KEY]]);
-        console.log(`[resilience-scores] Invalidated ${RESILIENCE_RANKING_CACHE_KEY} — next call will rebuild with ${laggardsWarmed} new scores`);
+        const rebuildHeaders = { 'User-Agent': SEED_UA, 'Accept': 'application/json' };
+        if (WM_KEY) rebuildHeaders['X-WorldMonitor-Key'] = WM_KEY;
+        const rebuildResp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking`, {
+          headers: rebuildHeaders,
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (rebuildResp.ok) {
+          const rebuilt = await rebuildResp.json();
+          const total = (rebuilt.items?.length ?? 0) + (rebuilt.greyedOut?.length ?? 0);
+          console.log(`[resilience-scores] Rebuilt ${RESILIENCE_RANKING_CACHE_KEY} with ${total} countries after ${laggardsWarmed} laggard warms`);
+        } else {
+          console.warn(`[resilience-scores] Rebuild ranking HTTP ${rebuildResp.status} — ranking cache is null until next RPC call`);
+        }
       } catch (err) {
-        console.warn(`[resilience-scores] Failed to invalidate ranking cache: ${err.message}`);
+        console.warn(`[resilience-scores] Failed to rebuild ranking cache: ${err.message}`);
       }
     }
 
