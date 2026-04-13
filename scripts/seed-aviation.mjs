@@ -19,8 +19,8 @@ loadEnvFile(import.meta.url);
 const DEFAULT_AIRPORTS = ['IST', 'ESB', 'SAW', 'LHR', 'FRA', 'CDG'];
 const OPS_CACHE_KEY = `aviation:ops-summary:v1:${[...DEFAULT_AIRPORTS].sort().join(',')}`;
 const NEWS_CACHE_KEY = 'aviation:news::24:v1'; // empty entities, 24h window
-const OPS_TTL = 2100;
-const NEWS_TTL = 2100;
+const OPS_TTL = 2400;
+const NEWS_TTL = 2400;
 
 const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
 
