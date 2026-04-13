@@ -7,15 +7,16 @@ const CB_KEY = 'market:gold-cb-reserves:v1';
 const CB_TTL = 2_592_000; // 30 days — data is monthly, TTL long to survive missed runs
 
 // IMF IFS dataset via SDMX 3.0 — public, no auth. Gold reserves series.
-// Candidate indicator codes (tried in order until one returns non-empty).
-// Based on published IMF code lists — if IMF renames we iterate here, not
-// in the handler. See docs/plans/2026-04-12-003-feat-gold-cb-reserves-plan.md
-// for the source-selection rationale.
+// Candidate indicator codes, tried in ORDER OF PREFERENCE. Ounces-denominated
+// series come first because USD values conflate real buying with gold-price
+// moves; we only fall back to USD when no ounces series is available (in
+// which case buildReservesPayload emits holders with tonnes=0 and suppresses
+// the 12M buyers/sellers lists — see valueIsOunces handling there).
 const IMF_SDMX_BASE = 'https://api.imf.org/external/sdmx/3.0';
 const CANDIDATE_INDICATORS = [
-  'RAFAGOLD_USD',   // Reserve assets: gold, USD value (IFS)
-  'RAFAGOLDV_OZT',  // Reserve assets: gold, fine troy ounces (IFS)
-  'AFAGOLD',        // Legacy IFS code
+  'RAFAGOLDV_OZT',  // Reserve assets: gold, fine troy ounces (IFS) — PREFERRED
+  'AFAGOLD',        // Legacy IFS ounces code
+  'RAFAGOLD_USD',   // USD fallback (last resort; price-contaminated deltas)
 ];
 
 const TROY_OZ_PER_TONNE = 32_150.7;
