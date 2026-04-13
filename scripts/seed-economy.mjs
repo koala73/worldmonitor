@@ -60,8 +60,22 @@ function stressLabel(score) {
 }
 
 /**
+ * Extract GSCPI observations from the Redis-stored payload.
+ * ais-relay writes the FRED-compatible shape `{ series: { series_id, title, units,
+ * frequency, observations: [{ date, value }] } }` (see seedGscpi() in ais-relay.cjs).
+ * Earlier versions stored a flat `{ observations }` shape, so accept both.
+ * Exported for unit testing.
+ * @param {unknown} parsed
+ * @returns {{ observations: { date: string; value: number }[] } | null}
+ */
+export function extractGscpiObservations(parsed) {
+  const obs = /** @type {any} */ (parsed)?.series?.observations
+    ?? /** @type {any} */ (parsed)?.observations;
+  return Array.isArray(obs) ? { observations: obs } : null;
+}
+
+/**
  * Read GSCPI from Redis (seeded by ais-relay from NY Fed, not available via FRED API).
- * Format stored: { observations: [{ date, value }] } — no series wrapper.
  * @returns {Promise<{ observations: { date: string; value: number }[] } | null>}
  */
 async function fetchGscpiFromRedis() {
@@ -74,8 +88,7 @@ async function fetchGscpiFromRedis() {
     if (!resp.ok) return null;
     const body = /** @type {{ result: string | null }} */ (await resp.json());
     if (!body.result) return null;
-    const parsed = JSON.parse(body.result);
-    return Array.isArray(parsed.observations) ? parsed : null;
+    return extractGscpiObservations(JSON.parse(body.result));
   } catch {
     return null;
   }
