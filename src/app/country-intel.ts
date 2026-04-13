@@ -3,6 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
 import type {
+  CountryFactsData,
   CountryDeepDiveEconomicIndicator,
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveSignalDetails,
@@ -40,6 +41,7 @@ import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import { toApiUrl } from '@/services/runtime';
+import { getHydratedData } from '@/services/bootstrap';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import { getNearbyInfrastructure } from '@/services/related-assets';
@@ -64,11 +66,54 @@ type CountryStockSnapshot = {
   currency: string;
 };
 
+type ImfMacroCountryEntry = {
+  inflationPct?: number | null;
+  cpiEndPeriodInflationPct?: number | null;
+  year?: number | null;
+};
+
+type ImfGrowthCountryEntry = {
+  realGdpGrowthPct?: number | null;
+  nominalGdpPerCapitaUsd?: number | null;
+  pppGdpPerCapita?: number | null;
+  year?: number | null;
+};
+
+type ImfLaborCountryEntry = {
+  unemploymentPct?: number | null;
+  populationMillions?: number | null;
+  year?: number | null;
+};
+
+type ImfExternalCountryEntry = {
+  currentAccountUsd?: number | null;
+  exportsUsd?: number | null;
+  importsUsd?: number | null;
+  exportVolumeGrowthPct?: number | null;
+  importVolumeGrowthPct?: number | null;
+  year?: number | null;
+};
+
+type ImfCountrySnapshot = {
+  inflationPct: number | null;
+  realGdpGrowthPct: number | null;
+  unemploymentPct: number | null;
+  nominalGdpPerCapitaUsd: number | null;
+  pppGdpPerCapitaUsd: number | null;
+  populationMillions: number | null;
+  year: number | null;
+};
+
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
   private frameworkUnsubscribe: (() => void) | null = null;
   private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
+  private imfSeedLoadPromise: Promise<void> | null = null;
+  private imfMacroCountries: Record<string, ImfMacroCountryEntry> = {};
+  private imfGrowthCountries: Record<string, ImfGrowthCountryEntry> = {};
+  private imfLaborCountries: Record<string, ImfLaborCountryEntry> = {};
+  private imfExternalCountries: Record<string, ImfExternalCountryEntry> = {};
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -197,6 +242,15 @@ export class CountryIntelManager implements AppModule {
     }
 
     const signals = this.getCountrySignals(code, country);
+    let latestStock: CountryStockSnapshot | null = null;
+    let latestFacts: CountryFactsData | null = null;
+    const refreshImfEnrichment = () => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock));
+      if (latestFacts) {
+        this.ctx.countryBriefPage.updateCountryFacts?.(this.mergeCountryFactsWithImf(latestFacts, code));
+      }
+    };
 
     this.ctx.countryBriefPage.show(country, code, score, signals);
     this.ctx.map?.highlightCountry(code);
@@ -212,7 +266,12 @@ export class CountryIntelManager implements AppModule {
     }
     this.ctx.countryBriefPage.updateSignalDetails?.(this.buildSignalDetails(code));
     this.ctx.countryBriefPage.updateMilitaryActivity?.(this.buildMilitarySummary(code, country));
-    this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, null));
+    this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock));
+    void this.ensureImfSeedDataLoaded()
+      .then(() => {
+        refreshImfEnrichment();
+      })
+      .catch(() => {});
 
     const marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args) });
     const stockPromise = marketClient.getCountryStockIndex({ countryCode: code })
@@ -229,8 +288,9 @@ export class CountryIntelManager implements AppModule {
 
     stockPromise.then((stock) => {
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      latestStock = stock;
       this.ctx.countryBriefPage.updateStock(stock);
-      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock));
+      refreshImfEnrichment();
     });
 
     fetchCountryMarkets(country)
@@ -267,7 +327,7 @@ export class CountryIntelManager implements AppModule {
     intelClient.getCountryFacts({ countryCode: code })
       .then((facts) => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateCountryFacts?.({
+        const baseFacts: CountryFactsData = {
           headOfState: facts.headOfState,
           headOfStateTitle: facts.headOfStateTitle,
           wikipediaSummary: facts.wikipediaSummary,
@@ -278,15 +338,19 @@ export class CountryIntelManager implements AppModule {
           currencies: facts.currencies,
           areaSqKm: facts.areaSqKm,
           countryName: facts.countryName,
-        });
+        };
+        latestFacts = baseFacts;
+        this.ctx.countryBriefPage.updateCountryFacts?.(this.mergeCountryFactsWithImf(baseFacts, code));
       })
       .catch(() => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
-        this.ctx.countryBriefPage.updateCountryFacts?.({
+        const emptyFacts: CountryFactsData = {
           headOfState: '', headOfStateTitle: '', wikipediaSummary: '',
           wikipediaThumbnailUrl: '', population: 0, capital: '',
           languages: [], currencies: [], areaSqKm: 0, countryName: '',
-        });
+        };
+        latestFacts = emptyFacts;
+        this.ctx.countryBriefPage.updateCountryFacts?.(this.mergeCountryFactsWithImf(emptyFacts, code));
       });
 
     intelClient.getCountryEnergyProfile({ countryCode: code })
@@ -1130,25 +1194,143 @@ export class CountryIntelManager implements AppModule {
     };
   }
 
+  private toFiniteNumber(value: unknown): number | null {
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private extractImfCountries<T extends object>(raw: unknown): Record<string, T> | null {
+    const countries = (raw as { countries?: unknown } | null)?.countries;
+    if (!countries || typeof countries !== 'object') return null;
+    return countries as Record<string, T>;
+  }
+
+  private getMissingImfDatasetKeys(): string[] {
+    const missing: string[] = [];
+    if (Object.keys(this.imfMacroCountries).length === 0) missing.push('imfMacro');
+    if (Object.keys(this.imfGrowthCountries).length === 0) missing.push('imfGrowth');
+    if (Object.keys(this.imfLaborCountries).length === 0) missing.push('imfLabor');
+    if (Object.keys(this.imfExternalCountries).length === 0) missing.push('imfExternal');
+    return missing;
+  }
+
+  private async loadImfSeedData(): Promise<void> {
+    const hydratedMacro = this.extractImfCountries<ImfMacroCountryEntry>(getHydratedData('imfMacro'));
+    const hydratedGrowth = this.extractImfCountries<ImfGrowthCountryEntry>(getHydratedData('imfGrowth'));
+    const hydratedLabor = this.extractImfCountries<ImfLaborCountryEntry>(getHydratedData('imfLabor'));
+    const hydratedExternal = this.extractImfCountries<ImfExternalCountryEntry>(getHydratedData('imfExternal'));
+
+    if (hydratedMacro) this.imfMacroCountries = hydratedMacro;
+    if (hydratedGrowth) this.imfGrowthCountries = hydratedGrowth;
+    if (hydratedLabor) this.imfLaborCountries = hydratedLabor;
+    if (hydratedExternal) this.imfExternalCountries = hydratedExternal;
+
+    const missing = this.getMissingImfDatasetKeys();
+    if (missing.length === 0) return;
+
+    try {
+      const params = new URLSearchParams({ keys: missing.join(',') });
+      const resp = await fetch(toApiUrl(`/api/bootstrap?${params.toString()}`), {
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!resp.ok) return;
+      const json = await resp.json() as { data?: Record<string, unknown> };
+      const data = json?.data ?? {};
+
+      const fallbackMacro = this.extractImfCountries<ImfMacroCountryEntry>(data.imfMacro);
+      const fallbackGrowth = this.extractImfCountries<ImfGrowthCountryEntry>(data.imfGrowth);
+      const fallbackLabor = this.extractImfCountries<ImfLaborCountryEntry>(data.imfLabor);
+      const fallbackExternal = this.extractImfCountries<ImfExternalCountryEntry>(data.imfExternal);
+
+      if (fallbackMacro) this.imfMacroCountries = fallbackMacro;
+      if (fallbackGrowth) this.imfGrowthCountries = fallbackGrowth;
+      if (fallbackLabor) this.imfLaborCountries = fallbackLabor;
+      if (fallbackExternal) this.imfExternalCountries = fallbackExternal;
+    } catch {
+      // Non-blocking enrichment path.
+    }
+  }
+
+  private async ensureImfSeedDataLoaded(): Promise<void> {
+    if (!this.imfSeedLoadPromise) {
+      this.imfSeedLoadPromise = this.loadImfSeedData().finally(() => {
+        if (this.getMissingImfDatasetKeys().length > 0) {
+          this.imfSeedLoadPromise = null;
+        }
+      });
+    }
+    await this.imfSeedLoadPromise;
+  }
+
+  private getImfCountrySnapshot(countryCode: string): ImfCountrySnapshot {
+    const code = countryCode.toUpperCase();
+    const macro = this.imfMacroCountries[code];
+    const growth = this.imfGrowthCountries[code];
+    const labor = this.imfLaborCountries[code];
+    const external = this.imfExternalCountries[code];
+
+    const inflationPct =
+      this.toFiniteNumber(macro?.inflationPct)
+      ?? this.toFiniteNumber(macro?.cpiEndPeriodInflationPct);
+
+    const years = [
+      this.toFiniteNumber(macro?.year),
+      this.toFiniteNumber(growth?.year),
+      this.toFiniteNumber(labor?.year),
+      this.toFiniteNumber(external?.year),
+    ].filter((year): year is number => year != null);
+
+    return {
+      inflationPct,
+      realGdpGrowthPct: this.toFiniteNumber(growth?.realGdpGrowthPct),
+      unemploymentPct: this.toFiniteNumber(labor?.unemploymentPct),
+      nominalGdpPerCapitaUsd: this.toFiniteNumber(growth?.nominalGdpPerCapitaUsd),
+      pppGdpPerCapitaUsd: this.toFiniteNumber(growth?.pppGdpPerCapita),
+      populationMillions: this.toFiniteNumber(labor?.populationMillions),
+      year: years.length ? Math.max(...years) : null,
+    };
+  }
+
+  private mergeCountryFactsWithImf(baseFacts: CountryFactsData, countryCode: string): CountryFactsData {
+    const snapshot = this.getImfCountrySnapshot(countryCode);
+    const mergedPopulation = baseFacts.population > 0
+      ? baseFacts.population
+      : snapshot.populationMillions != null
+        ? Math.round(snapshot.populationMillions * 1_000_000)
+        : 0;
+
+    return {
+      ...baseFacts,
+      population: mergedPopulation,
+      nominalGdpPerCapitaUsd: snapshot.nominalGdpPerCapitaUsd,
+      pppGdpPerCapitaUsd: snapshot.pppGdpPerCapitaUsd,
+      imfPopulationMillions: snapshot.populationMillions,
+      imfDataYear: snapshot.year,
+    };
+  }
+
   private buildEconomicIndicators(
     code: string,
     score: CountryScore | null,
     stock: CountryStockSnapshot | null,
   ): CountryDeepDiveEconomicIndicator[] {
-    const indicators: CountryDeepDiveEconomicIndicator[] = [];
+    const imf = this.getImfCountrySnapshot(code);
+    const imfSource = imf.year ? `IMF WEO ${imf.year}` : 'IMF WEO';
+    const primaryIndicators: CountryDeepDiveEconomicIndicator[] = [];
+    const contextualIndicators: CountryDeepDiveEconomicIndicator[] = [];
 
     if (stock?.available) {
       const weekly = Number.parseFloat(stock.weekChangePercent);
       const weeklyTrend = Number.isFinite(weekly)
         ? weekly > 0 ? 'up' : weekly < 0 ? 'down' : 'flat'
         : 'flat';
-      indicators.push({
+      primaryIndicators.push({
         label: 'Stock Index',
         value: `${stock.indexName}: ${stock.price} ${stock.currency}`,
         trend: weeklyTrend,
         source: 'Market Service',
       });
-      indicators.push({
+      contextualIndicators.push({
         label: 'Weekly Momentum',
         value: `${weekly >= 0 ? '+' : ''}${stock.weekChangePercent}%`,
         trend: weeklyTrend,
@@ -1161,11 +1343,38 @@ export class CountryIntelManager implements AppModule {
         : score.trend === 'falling'
           ? 'down'
           : 'flat';
-      indicators.push({
+      primaryIndicators.push({
         label: 'Instability Regime',
         value: `${score.score}/100 (${score.level})`,
         trend,
         source: 'CII',
+      });
+    }
+
+    if (imf.realGdpGrowthPct != null) {
+      contextualIndicators.push({
+        label: 'GDP Growth',
+        value: `${imf.realGdpGrowthPct.toFixed(1)}%`,
+        trend: imf.realGdpGrowthPct > 1 ? 'up' : imf.realGdpGrowthPct < 0 ? 'down' : 'flat',
+        source: imfSource,
+      });
+    }
+
+    if (imf.unemploymentPct != null) {
+      contextualIndicators.push({
+        label: 'Unemployment',
+        value: `${imf.unemploymentPct.toFixed(1)}%`,
+        trend: imf.unemploymentPct <= 5 ? 'up' : imf.unemploymentPct >= 10 ? 'down' : 'flat',
+        source: imfSource,
+      });
+    }
+
+    if (imf.inflationPct != null) {
+      contextualIndicators.push({
+        label: 'Inflation',
+        value: `${imf.inflationPct.toFixed(1)}%`,
+        trend: imf.inflationPct <= 4 ? 'up' : imf.inflationPct >= 8 ? 'down' : 'flat',
+        source: imfSource,
       });
     }
 
@@ -1174,7 +1383,7 @@ export class CountryIntelManager implements AppModule {
       const displaced = countryData.displacementOutflow >= 1_000_000
         ? `${(countryData.displacementOutflow / 1_000_000).toFixed(1)}M`
         : `${Math.round(countryData.displacementOutflow / 1000)}K`;
-      indicators.push({
+      contextualIndicators.push({
         label: 'Displacement Outflow',
         value: displaced,
         trend: 'up',
@@ -1182,7 +1391,7 @@ export class CountryIntelManager implements AppModule {
       });
     }
 
-    return indicators.slice(0, 3);
+    return [...primaryIndicators, ...contextualIndicators].slice(0, 3);
   }
 
   private sameCountry(code: string, country: string, raw: string | undefined): boolean {

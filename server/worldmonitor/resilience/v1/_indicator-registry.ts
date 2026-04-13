@@ -35,14 +35,14 @@ export type IndicatorSpec = {
 };
 
 export const INDICATOR_REGISTRY: IndicatorSpec[] = [
-  // ── macroFiscal (3 sub-metrics) ───────────────────────────────────────────
+  // ── macroFiscal (4 sub-metrics) ───────────────────────────────────────────
   {
     id: 'govRevenuePct',
     dimension: 'macroFiscal',
     description: 'Government revenue as % of GDP (IMF GGR_G01_GDP_PT); fiscal capacity proxy',
     direction: 'higherBetter',
     goalposts: { worst: 5, best: 45 },
-    weight: 0.5,
+    weight: 0.4,
     sourceKey: 'economic:imf:macro:v2',
     scope: 'global',
     cadence: 'annual',
@@ -70,8 +70,22 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Current account balance as % of GDP (IMF); external position vulnerability',
     direction: 'higherBetter',
     goalposts: { worst: -20, best: 20 },
-    weight: 0.3,
+    weight: 0.25,
     sourceKey: 'economic:imf:macro:v2',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 190,
+    license: 'open-data',
+  },
+  {
+    id: 'unemploymentPct',
+    dimension: 'macroFiscal',
+    description: 'Unemployment rate (IMF LUR); labor-market stress proxy for fiscal and social fragility',
+    direction: 'lowerBetter',
+    goalposts: { worst: 35, best: 2 },
+    weight: 0.15,
+    sourceKey: 'economic:imf:labor:v1',
     scope: 'global',
     cadence: 'annual',
     tier: 'core',

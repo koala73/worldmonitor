@@ -58,6 +58,11 @@ const SEED_DOMAINS = {
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
+  // Monthly IMF WEO seeds; aligned with health.js maxStaleMin=100800 (70d).
+  'economic:imf-macro':     { key: 'seed-meta:economic:imf-macro',     intervalMin: 50400 },
+  'economic:imf-growth':    { key: 'seed-meta:economic:imf-growth',    intervalMin: 50400 },
+  'economic:imf-labor':     { key: 'seed-meta:economic:imf-labor',     intervalMin: 50400 },
+  'economic:imf-external':  { key: 'seed-meta:economic:imf-external',  intervalMin: 50400 },
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // 420min maxStaleMin / 2 — aligned with health.js (6h cron + 1h grace)
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },

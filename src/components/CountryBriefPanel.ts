@@ -78,6 +78,10 @@ export interface CountryFactsData {
   currencies: string[];
   areaSqKm: number;
   countryName: string;
+  nominalGdpPerCapitaUsd?: number | null;
+  pppGdpPerCapitaUsd?: number | null;
+  imfPopulationMillions?: number | null;
+  imfDataYear?: number | null;
 }
 
 export interface CountryEnergyProfileData {

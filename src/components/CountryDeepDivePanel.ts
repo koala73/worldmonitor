@@ -506,7 +506,20 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.factsBody) return;
     this.factsBody.replaceChildren();
 
-    if (!data.headOfState && !data.wikipediaSummary && data.population === 0 && !data.capital) {
+    const resolvedPopulation = data.population > 0
+      ? data.population
+      : data.imfPopulationMillions != null
+        ? Math.round(data.imfPopulationMillions * 1_000_000)
+        : 0;
+
+    if (
+      !data.headOfState
+      && !data.wikipediaSummary
+      && resolvedPopulation === 0
+      && !data.capital
+      && data.nominalGdpPerCapitaUsd == null
+      && data.pppGdpPerCapitaUsd == null
+    ) {
       this.factsBody.append(this.makeEmpty(t('countryBrief.noFacts')));
       return;
     }
@@ -528,20 +541,34 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const grid = this.el('div', 'cdp-facts-grid');
 
-    const popStr = data.population >= 1_000_000_000
-      ? `${(data.population / 1_000_000_000).toFixed(1)}B`
-      : data.population >= 1_000_000
-        ? `${(data.population / 1_000_000).toFixed(1)}M`
-        : data.population.toLocaleString();
+    const popStr = resolvedPopulation >= 1_000_000_000
+      ? `${(resolvedPopulation / 1_000_000_000).toFixed(1)}B`
+      : resolvedPopulation >= 1_000_000
+        ? `${(resolvedPopulation / 1_000_000).toFixed(1)}M`
+        : resolvedPopulation > 0
+          ? resolvedPopulation.toLocaleString()
+          : '—';
     grid.append(this.factItem(t('countryBrief.facts.population'), popStr));
     grid.append(this.factItem(t('countryBrief.facts.capital'), data.capital));
-    grid.append(this.factItem(t('countryBrief.facts.area'), `${data.areaSqKm.toLocaleString()} km\u00B2`));
+    grid.append(this.factItem(t('countryBrief.facts.area'), data.areaSqKm > 0 ? `${data.areaSqKm.toLocaleString()} km\u00B2` : '—'));
 
     const rawTitle = data.headOfStateTitle || '';
     const hosLabel = rawTitle.length > 30 ? t('countryBrief.facts.headOfState') : (rawTitle || t('countryBrief.facts.headOfState'));
     grid.append(this.factItem(hosLabel, data.headOfState));
     grid.append(this.factItem(t('countryBrief.facts.languages'), data.languages.join(', ')));
     grid.append(this.factItem(t('countryBrief.facts.currencies'), data.currencies.join(', ')));
+    if (data.nominalGdpPerCapitaUsd != null) {
+      grid.append(this.factItem('GDP / Capita (Nominal)', this.formatMoney(data.nominalGdpPerCapitaUsd)));
+    }
+    if (data.pppGdpPerCapitaUsd != null) {
+      grid.append(this.factItem('GDP / Capita (PPP)', this.formatMoney(data.pppGdpPerCapitaUsd)));
+    }
+    if (data.imfPopulationMillions != null) {
+      grid.append(this.factItem('Population (IMF)', `${data.imfPopulationMillions.toFixed(1)}M`));
+    }
+    if (data.imfDataYear != null) {
+      grid.append(this.factItem('IMF Data Year', String(Math.round(data.imfDataYear))));
+    }
 
     this.factsBody.append(grid);
   }

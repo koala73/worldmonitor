@@ -177,6 +177,13 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       YE: { inflationPct: 22.0, currentAccountPct: -6.0, govRevenuePct: 8.0, year: 2024 },
     },
   },
+  'economic:imf:labor:v1': {
+    countries: {
+      NO: { unemploymentPct: 3.8, populationMillions: 5.6, year: 2024 },
+      US: { unemploymentPct: 4.2, populationMillions: 341.8, year: 2024 },
+      YE: { unemploymentPct: 17.5, populationMillions: 34.1, year: 2024 },
+    },
+  },
   'economic:bis:eer:v1': {
     rates: [
       { countryCode: 'NO', realChange: 1.0, realEer: 100, date: '2025-08' },

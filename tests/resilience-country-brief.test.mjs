@@ -92,3 +92,54 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     harness.cleanup();
   }
 });
+
+test('country deep-dive panel renders IMF-populated economic indicators and country facts fields', async () => {
+  const harness = await createCountryDeepDivePanelHarness();
+  try {
+    const panel = harness.createPanel();
+    panel.show('United States', 'US', sampleScore, emptySignals);
+
+    panel.updateEconomicIndicators([
+      { label: 'GDP Growth', value: '2.4%', trend: 'up', source: 'IMF WEO 2025' },
+      { label: 'Unemployment', value: '4.1%', trend: 'up', source: 'IMF WEO 2025' },
+      { label: 'Inflation', value: '3.2%', trend: 'up', source: 'IMF WEO 2025' },
+    ]);
+
+    panel.updateCountryFacts({
+      headOfState: 'President',
+      headOfStateTitle: 'Head of State',
+      wikipediaSummary: 'United States overview.',
+      wikipediaThumbnailUrl: '',
+      population: 334_000_000,
+      capital: 'Washington, D.C.',
+      languages: ['English'],
+      currencies: ['USD'],
+      areaSqKm: 9_833_520,
+      countryName: 'United States',
+      nominalGdpPerCapitaUsd: 54_321,
+      pppGdpPerCapitaUsd: 65_800,
+      imfPopulationMillions: 334.2,
+      imfDataYear: 2025,
+    });
+
+    const root = harness.getPanelRoot();
+    assert.ok(root, 'expected panel root to be created');
+
+    const economicLabels = Array.from(root.querySelectorAll('.cdp-economic-item'))
+      .map((item) => item.querySelector('.cdp-economic-label')?.textContent?.trim())
+      .filter(Boolean);
+    assert.deepEqual(economicLabels, ['GDP Growth', 'Unemployment', 'Inflation']);
+
+    const factsText = root.querySelector('.cdp-facts-grid')?.textContent ?? '';
+    assert.match(factsText, /GDP \/ Capita \(Nominal\)/);
+    assert.match(factsText, /\$54\.3K/);
+    assert.match(factsText, /GDP \/ Capita \(PPP\)/);
+    assert.match(factsText, /\$65\.8K/);
+    assert.match(factsText, /Population \(IMF\)/);
+    assert.match(factsText, /334\.2M/);
+    assert.match(factsText, /IMF Data Year/);
+    assert.match(factsText, /2025/);
+  } finally {
+    harness.cleanup();
+  }
+});

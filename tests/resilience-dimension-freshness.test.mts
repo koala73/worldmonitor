@@ -51,8 +51,8 @@ function buildAllFreshMap(dimensionId: ResilienceDimensionId): Map<string, numbe
 
 describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
   it('all indicators fresh returns fresh and the oldest fetchedAt', () => {
-    // macroFiscal has three indicators; two share a sourceKey but the map
-    // is keyed by sourceKey so duplicates collapse to one entry.
+    // macroFiscal has four indicators; two share a sourceKey. The map is
+    // keyed by sourceKey so duplicates collapse to one entry.
     const map = buildAllFreshMap('macroFiscal');
     const result = classifyDimensionFreshness('macroFiscal', map, NOW);
     assert.equal(result.staleness, 'fresh');
@@ -354,6 +354,7 @@ describe('resolveSeedMetaKey (T1.5 propagation pass, P1 fix)', () => {
   it('applies SOURCE_KEY_META_OVERRIDES for the drift cases', () => {
     // Overrides for sourceKeys that still diverge after strip.
     assert.equal(resolveSeedMetaKey('economic:imf:macro:v2'), 'seed-meta:economic:imf-macro');
+    assert.equal(resolveSeedMetaKey('economic:imf:labor:v1'), 'seed-meta:economic:imf-labor');
     assert.equal(resolveSeedMetaKey('economic:bis:eer:v1'), 'seed-meta:economic:bis');
     assert.equal(resolveSeedMetaKey('economic:energy:v1:all'), 'seed-meta:economic:energy-prices');
     assert.equal(resolveSeedMetaKey('energy:mix:v1:{ISO2}'), 'seed-meta:economic:owid-energy-mix');

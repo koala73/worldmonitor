@@ -28,6 +28,7 @@
 - [ ] Tested on [worldmonitor.app](https://worldmonitor.app) variant
 - [ ] Tested on [tech.worldmonitor.app](https://tech.worldmonitor.app) variant (if applicable)
 - [ ] New RSS feed domains added to `api/rss-proxy.js` allowlist (if adding feeds)
+- [ ] New seed / canonical Redis key is exposed via MCP in `api/mcp.ts` (if adding or changing seeds)
 - [ ] No API keys or secrets committed
 - [ ] TypeScript compiles without errors (`npm run typecheck`)
 

@@ -33,19 +33,24 @@ function latestValue(byYear) {
   return null;
 }
 
-async function fetchImfMacro() {
-  const years = weoYears();
-  const [inflationData, currentAccountData, govRevenueData] = await Promise.all([
-    imfSdmxFetchIndicator('PCPIPCH', { years }),
-    imfSdmxFetchIndicator('BCA_NGDPD', { years }),
-    imfSdmxFetchIndicator('GGR_NGDP', { years }),
-  ]);
-
+export function buildImfMacroCountries({
+  inflationData = {},
+  currentAccountData = {},
+  govRevenueData = {},
+  cpiIndexData = {},
+  cpiEndPeriodInflationData = {},
+  govExpenditureData = {},
+  primaryBalanceData = {},
+} = {}) {
   const countries = {};
   const allIso3 = new Set([
     ...Object.keys(inflationData),
     ...Object.keys(currentAccountData),
     ...Object.keys(govRevenueData),
+    ...Object.keys(cpiIndexData),
+    ...Object.keys(cpiEndPeriodInflationData),
+    ...Object.keys(govExpenditureData),
+    ...Object.keys(primaryBalanceData),
   ]);
 
   for (const iso3 of allIso3) {
@@ -56,16 +61,69 @@ async function fetchImfMacro() {
     const infl = latestValue(inflationData[iso3]);
     const ca   = latestValue(currentAccountData[iso3]);
     const rev  = latestValue(govRevenueData[iso3]);
-    if (!infl && !ca && !rev) continue;
+    const cpi  = latestValue(cpiIndexData[iso3]);
+    const cpiEpch = latestValue(cpiEndPeriodInflationData[iso3]);
+    const exp  = latestValue(govExpenditureData[iso3]);
+    const primaryBal = latestValue(primaryBalanceData[iso3]);
+    if (!infl && !ca && !rev && !cpi && !cpiEpch && !exp && !primaryBal) continue;
 
     countries[iso2] = {
       inflationPct:    infl?.value ?? null,
       currentAccountPct: ca?.value ?? null,
       govRevenuePct:   rev?.value  ?? null,
-      year: infl?.year ?? ca?.year ?? rev?.year ?? null,
+      cpiIndex: cpi?.value ?? null,
+      cpiEndPeriodInflationPct: cpiEpch?.value ?? null,
+      govExpenditurePct: exp?.value ?? null,
+      primaryBalancePct: primaryBal?.value ?? null,
+      year: infl?.year ?? ca?.year ?? rev?.year ?? cpi?.year ?? cpiEpch?.year ?? exp?.year ?? primaryBal?.year ?? null,
     };
   }
 
+  return countries;
+}
+
+async function fetchOptionalIndicator(indicator, years, fetchIndicator = imfSdmxFetchIndicator, warn = console.warn) {
+  try {
+    return await fetchIndicator(indicator, { years });
+  } catch (err) {
+    warn(`  Optional IMF macro indicator ${indicator} unavailable: ${err.message || err}`);
+    return {};
+  }
+}
+
+export async function fetchImfMacroCountries(fetchIndicator = imfSdmxFetchIndicator, warn = console.warn) {
+  const years = weoYears();
+  const [inflationData, currentAccountData, govRevenueData] = await Promise.all([
+    fetchIndicator('PCPIPCH', { years }),
+    fetchIndicator('BCA_NGDPD', { years }),
+    fetchIndicator('GGR_NGDP', { years }),
+  ]);
+
+  const [
+    cpiIndexData,
+    cpiEndPeriodInflationData,
+    govExpenditureData,
+    primaryBalanceData,
+  ] = await Promise.all([
+    fetchOptionalIndicator('PCPI', years, fetchIndicator, warn),
+    fetchOptionalIndicator('PCPIEPCH', years, fetchIndicator, warn),
+    fetchOptionalIndicator('GGX', years, fetchIndicator, warn),
+    fetchOptionalIndicator('GGXONLB_NGDP', years, fetchIndicator, warn),
+  ]);
+
+  return buildImfMacroCountries({
+    inflationData,
+    currentAccountData,
+    govRevenueData,
+    cpiIndexData,
+    cpiEndPeriodInflationData,
+    govExpenditureData,
+    primaryBalanceData,
+  });
+}
+
+async function fetchImfMacro() {
+  const countries = await fetchImfMacroCountries();
   return { countries, seededAt: new Date().toISOString() };
 }
 

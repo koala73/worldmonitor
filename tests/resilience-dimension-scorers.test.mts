@@ -326,6 +326,7 @@ describe('resilience dimension scorers', () => {
     const makeReader = (caPct: number) => async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
       if (key === 'economic:imf:macro:v2') return { countries: { HR: { inflationPct: 3.0, currentAccountPct: caPct, govRevenuePct: 40, year: 2024 } } };
+      if (key === 'economic:imf:labor:v1') return { countries: { HR: { unemploymentPct: 4.2, year: 2024 } } };
       return null;
     };
     const surplus = await scoreMacroFiscal('HR', makeReader(10));
@@ -337,10 +338,11 @@ describe('resilience dimension scorers', () => {
   it('scoreMacroFiscal: IMF macro seed outage does not impute — debt growth still scores', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
-      return null; // economic:imf:macro:v1 null = seed outage
+      return null; // economic:imf:macro + economic:imf:labor null = seed outage
     };
     const score = await scoreMacroFiscal('HR', reader);
-    // govRevenuePct (0.5) and currentAccountPct (0.3) come from IMF macro (null = outage).
+    // govRevenuePct (0.4), currentAccountPct (0.25), and unemploymentPct (0.15)
+    // come from IMF seeds (null = outage).
     // Only debtGrowth (weight=0.2) has real data → coverage = 0.2.
     assert.ok(score.coverage > 0.15 && score.coverage < 0.25,
       `coverage should be ~0.2 (debt growth only, IMF outage), got ${score.coverage}`);

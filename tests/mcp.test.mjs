@@ -6,6 +6,53 @@ const originalEnv = { ...process.env };
 
 const VALID_KEY = 'wm_test_key_123';
 const BASE_URL = 'https://api.worldmonitor.app/mcp';
+const EXPECTED_GAP_KEYS = [
+  'economic:imf:macro:v2',
+  'economic:national-debt:v1',
+  'economic:bigmac:v1',
+  'economic:grocery-basket:v1',
+  'economic:fao-ffpi:v1',
+  'economic:eurostat-country-data:v1',
+  'resilience:recovery:fiscal-space:v1',
+  'resilience:recovery:reserve-adequacy:v1',
+  'resilience:recovery:external-debt:v1',
+  'resilience:recovery:import-hhi:v1',
+  'resilience:recovery:fuel-stocks:v1',
+  'economic:eu-gas-storage:v1',
+  'energy:chokepoint-baselines:v1',
+  'energy:chokepoint-flows:v1',
+  'energy:crisis-policies:v1',
+  'energy:iea-oil-stocks:v1:index',
+  'energy:intelligence:feed:v1',
+  'energy:jodi-gas:v1:_countries',
+  'energy:jodi-oil:v1:_countries',
+  'energy:spr-policies:v1',
+  'supply_chain:hormuz_tracker:v1',
+  'supply_chain:portwatch-ports:v1:_countries',
+  'supply_chain:portwatch:v1',
+  'portwatch:chokepoints:ref:v1',
+  'portwatch:disruptions:active:v1',
+  'market:crypto-sectors:v1',
+  'market:stablecoins:v1',
+  'shared:fx-rates:v1',
+  'health:disease-outbreaks:v1',
+  'health:vpd-tracker:realtime:v1',
+  'cyber:threats:v2',
+  'patents:defense:latest',
+  'infra:service-statuses:v1',
+  'infrastructure:submarine-cables:v1',
+  'regulatory:actions:v1',
+  'bls:series:v1',
+  'correlation:cards-bootstrap:v1',
+  'intelligence:advisories:v1',
+  'thermal:escalation:v1',
+];
+const EXPECTED_NEW_TOOL_NAMES = [
+  'get_resilience_recovery_data',
+  'get_energy_security_data',
+  'get_public_health_data',
+  'get_cross_domain_signals',
+];
 
 function makeReq(method = 'POST', body = null, headers = {}) {
   return new Request(BASE_URL, {
@@ -29,6 +76,7 @@ function initBody(id = 1) {
 
 let handler;
 let evaluateFreshness;
+let toolRegistry;
 
 describe('api/mcp.ts — PRO MCP Server', () => {
   beforeEach(async () => {
@@ -40,6 +88,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
     handler = mod.default;
     evaluateFreshness = mod.evaluateFreshness;
+    toolRegistry = mod.TOOL_REGISTRY;
   });
 
   afterEach(() => {
@@ -118,18 +167,21 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 28 tools with name, description, inputSchema', async () => {
+  it('tools/list returns the full registry with the expanded MCP cache surface', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 28, `Expected 28 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, toolRegistry.length, `Expected ${toolRegistry.length} tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
       assert.ok(tool.inputSchema, 'tool.inputSchema must be present');
       assert.ok(!('_cacheKeys' in tool), 'Internal _cacheKeys must not be exposed in tools/list');
       assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
+    }
+    for (const name of EXPECTED_NEW_TOOL_NAMES) {
+      assert.ok(body.result.tools.some((tool) => tool.name === name), `tools/list must include ${name}`);
     }
   });
 
@@ -160,6 +212,42 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(data.cached_at, null, 'cached_at must be null when no seed-meta');
     assert.ok('data' in data, 'data field must be present');
   });
+
+  it('cache tool registry covers every canonical seed key that was missing from MCP', () => {
+    const cacheKeys = new Set(
+      toolRegistry
+        .filter((tool) => Array.isArray(tool._cacheKeys))
+        .flatMap((tool) => tool._cacheKeys),
+    );
+
+    const uncovered = EXPECTED_GAP_KEYS.filter((key) => !cacheKeys.has(key));
+    assert.deepEqual(uncovered, []);
+  });
+
+  for (const [toolName, expectedLabels] of Object.entries({
+    get_resilience_recovery_data: ['fiscal-space', 'reserve-adequacy', 'external-debt', 'import-hhi', 'fuel-stocks'],
+    get_energy_security_data: ['chokepoint-baselines', 'chokepoint-flows', 'crisis-policies', 'iea-oil-stocks', 'energy-intelligence', 'jodi-gas', 'jodi-oil', 'spr-policies'],
+    get_supply_chain_data: ['shipping-stress', 'customs-revenue', 'comtrade-flows', 'hormuz-tracker', 'portwatch-ports', 'portwatch', 'portwatch-chokepoints', 'portwatch-disruptions'],
+    get_public_health_data: ['disease-outbreaks', 'vpd-tracker'],
+    get_research_signals: ['tech-events-bootstrap', 'defense-patents'],
+    get_cyber_threats: ['threats-bootstrap', 'threats'],
+    get_infrastructure_status: ['outages', 'service-statuses', 'submarine-cables'],
+    get_cross_domain_signals: ['correlation-cards', 'thermal-escalation', 'regulatory-actions'],
+  })) {
+    it(`${toolName} returns the expected labeled payload shape when cache is empty`, async () => {
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0',
+        id: `${toolName}-shape`,
+        method: 'tools/call',
+        params: { name: toolName, arguments: {} },
+      }));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      const data = JSON.parse(body.result.content[0].text);
+      assert.equal(data.stale, true);
+      assert.deepEqual(Object.keys(data.data).sort(), expectedLabels.slice().sort());
+    });
+  }
 
   it('evaluateFreshness marks bundled data stale when any required source meta is missing', () => {
     const now = Date.UTC(2026, 3, 1, 12, 0, 0);

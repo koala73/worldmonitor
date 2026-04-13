@@ -59,6 +59,7 @@ interface CacheToolDef extends BaseToolDef {
   _seedMetaKey: string;
   _maxStaleMin: number;
   _freshnessChecks?: FreshnessCheck[];
+  _resultLabels?: string[];
   _execute?: never;
 }
 
@@ -73,10 +74,10 @@ interface RpcToolDef extends BaseToolDef {
 
 type ToolDef = CacheToolDef | RpcToolDef;
 
-const TOOL_REGISTRY: ToolDef[] = [
+export const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
-    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Market snapshot across liquid global assets: equities, commodities, crypto, sector heatmaps, ETF flows, Gulf market quotes, stablecoin market structure, crypto sector rotation, and seeded FX rates. Mixes intraday relay-fed caches with daily FX reference data for fast cross-asset monitoring.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'market:stocks-bootstrap:v1',
@@ -86,9 +87,36 @@ const TOOL_REGISTRY: ToolDef[] = [
       'market:etf-flows:v1',
       'market:gulf-quotes:v1',
       'market:fear-greed:v1',
+      'market:stablecoins:v1',
+      'market:crypto-sectors:v1',
+      'shared:fx-rates:v1',
     ],
     _seedMetaKey: 'seed-meta:market:stocks',
     _maxStaleMin: 30,
+    _freshnessChecks: [
+      { key: 'seed-meta:market:stocks', maxStaleMin: 30 },
+      { key: 'seed-meta:market:commodities', maxStaleMin: 30 },
+      { key: 'seed-meta:market:crypto', maxStaleMin: 30 },
+      { key: 'seed-meta:market:sectors', maxStaleMin: 30 },
+      { key: 'seed-meta:market:etf-flows', maxStaleMin: 60 },
+      { key: 'seed-meta:market:gulf-quotes', maxStaleMin: 30 },
+      { key: 'seed-meta:market:fear-greed', maxStaleMin: 720 },
+      { key: 'seed-meta:market:stablecoins', maxStaleMin: 60 },
+      { key: 'seed-meta:market:crypto-sectors', maxStaleMin: 120 },
+      { key: 'seed-meta:shared:fx-rates', maxStaleMin: 1500 },
+    ],
+    _resultLabels: [
+      'stocks-bootstrap',
+      'commodities-bootstrap',
+      'crypto',
+      'sectors',
+      'etf-flows',
+      'gulf-quotes',
+      'fear-greed',
+      'stablecoins',
+      'crypto-sectors',
+      'fx-rates',
+    ],
   },
   {
     name: 'get_conflict_events',
@@ -113,16 +141,31 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_news_intelligence',
-    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer.',
+    description: 'Geopolitical intelligence layer: AI-classified threat summaries, GDELT event signals, cross-source fused alerts, and both bootstrap and canonical security advisories. Optimized for fast global monitoring with relay-fed freshness measured in minutes to hours.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'news:insights:v1',
       'intelligence:gdelt-intel:v1',
       'intelligence:cross-source-signals:v1',
       'intelligence:advisories-bootstrap:v1',
+      'intelligence:advisories:v1',
     ],
     _seedMetaKey: 'seed-meta:news:insights',
     _maxStaleMin: 30,
+    _freshnessChecks: [
+      { key: 'seed-meta:news:insights', maxStaleMin: 30 },
+      { key: 'seed-meta:intelligence:gdelt-intel', maxStaleMin: 420 },
+      { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 30 },
+      { key: 'seed-meta:intelligence:advisories', maxStaleMin: 120 },
+      { key: 'seed-meta:intelligence:advisories', maxStaleMin: 120 },
+    ],
+    _resultLabels: [
+      'news-insights',
+      'gdelt-intel',
+      'cross-source-signals',
+      'advisories-bootstrap',
+      'advisories',
+    ],
   },
   {
     name: 'get_natural_disasters',
@@ -146,15 +189,20 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_cyber_threats',
-    description: 'Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.',
+    description: 'Active cyber threat intelligence including the fast bootstrap summary and the full canonical threat corpus. Covers malware IOCs, CISA KEVs, active command-and-control infrastructure, and country-attributed cyber signals updated on a multi-hour cadence.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    _cacheKeys: ['cyber:threats-bootstrap:v2'],
+    _cacheKeys: ['cyber:threats-bootstrap:v2', 'cyber:threats:v2'],
     _seedMetaKey: 'seed-meta:cyber:threats',
     _maxStaleMin: 240,
+    _freshnessChecks: [
+      { key: 'seed-meta:cyber:threats', maxStaleMin: 240 },
+      { key: 'seed-meta:cyber:threats', maxStaleMin: 240 },
+    ],
+    _resultLabels: ['threats-bootstrap', 'threats'],
   },
   {
     name: 'get_economic_data',
-    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, and energy storage data.',
+    description: 'Macro and price intelligence: policy rates, economic calendar events, fuel prices, ECB FX and yield data, IMF WEO macro indicators for 200+ countries, sovereign debt, Big Mac PPP, grocery baskets, FAO food prices, Eurostat country metrics, EU gas storage, BLS series, earnings, and COT positioning.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'economic:fred:v1:FEDFUNDS:0',
@@ -165,9 +213,81 @@ const TOOL_REGISTRY: ToolDef[] = [
       'economic:spending:v1',
       'market:earnings-calendar:v1',
       'market:cot:v1',
+      'economic:imf:macro:v2',
+      'economic:national-debt:v1',
+      'economic:bigmac:v1',
+      'economic:grocery-basket:v1',
+      'economic:fao-ffpi:v1',
+      'economic:eurostat-country-data:v1',
+      'economic:eu-gas-storage:v1',
+      'bls:series:v1',
     ],
     _seedMetaKey: 'seed-meta:economic:econ-calendar',
     _maxStaleMin: 1440,
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:fred:v1:FEDFUNDS:0', maxStaleMin: 1500 },
+      { key: 'seed-meta:economic:econ-calendar', maxStaleMin: 1440 },
+      { key: 'seed-meta:economic:fuel-prices', maxStaleMin: 10080 },
+      { key: 'seed-meta:economic:ecb-fx-rates', maxStaleMin: 5760 },
+      { key: 'seed-meta:economic:yield-curve-eu', maxStaleMin: 4320 },
+      { key: 'seed-meta:economic:spending', maxStaleMin: 120 },
+      { key: 'seed-meta:market:earnings-calendar', maxStaleMin: 1440 },
+      { key: 'seed-meta:market:cot', maxStaleMin: 14400 },
+      { key: 'seed-meta:economic:imf-macro', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:national-debt', maxStaleMin: 10080 },
+      { key: 'seed-meta:economic:bigmac', maxStaleMin: 10080 },
+      { key: 'seed-meta:economic:grocery-basket', maxStaleMin: 10080 },
+      { key: 'seed-meta:economic:fao-ffpi', maxStaleMin: 86400 },
+      { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 },
+      { key: 'seed-meta:economic:eu-gas-storage', maxStaleMin: 2880 },
+      { key: 'seed-meta:economic:bls-series', maxStaleMin: 2880 },
+    ],
+    _resultLabels: [
+      'fedfunds',
+      'econ-calendar',
+      'fuel-prices',
+      'ecb-fx-rates',
+      'yield-curve-eu',
+      'spending',
+      'earnings-calendar',
+      'cot-positioning',
+      'imf-macro',
+      'national-debt',
+      'bigmac',
+      'grocery-basket',
+      'fao-ffpi',
+      'eurostat-country-data',
+      'eu-gas-storage',
+      'bls-series',
+    ],
+  },
+  {
+    name: 'get_resilience_recovery_data',
+    description: 'Recovery and fiscal resilience indicators across roughly 150+ countries. Bundles monthly fiscal space, reserve adequacy, external debt, import concentration, and fuel stock buffers used by WorldMonitor\'s resilience scoring system.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'resilience:recovery:fiscal-space:v1',
+      'resilience:recovery:reserve-adequacy:v1',
+      'resilience:recovery:external-debt:v1',
+      'resilience:recovery:import-hhi:v1',
+      'resilience:recovery:fuel-stocks:v1',
+    ],
+    _seedMetaKey: 'seed-meta:resilience:recovery:fiscal-space',
+    _maxStaleMin: 86400,
+    _freshnessChecks: [
+      { key: 'seed-meta:resilience:recovery:fiscal-space', maxStaleMin: 86400 },
+      { key: 'seed-meta:resilience:recovery:reserve-adequacy', maxStaleMin: 86400 },
+      { key: 'seed-meta:resilience:recovery:external-debt', maxStaleMin: 86400 },
+      { key: 'seed-meta:resilience:recovery:import-hhi', maxStaleMin: 86400 },
+      { key: 'seed-meta:resilience:recovery:fuel-stocks', maxStaleMin: 86400 },
+    ],
+    _resultLabels: [
+      'fiscal-space',
+      'reserve-adequacy',
+      'external-debt',
+      'import-hhi',
+      'fuel-stocks',
+    ],
   },
   {
     name: 'get_prediction_markets',
@@ -204,23 +324,111 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_infrastructure_status',
-    description: 'Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.',
+    description: 'Infrastructure status across internet and physical backbones: outage telemetry, major service status boards, and strategic submarine cable inventory. Covers rapidly changing outages plus slower-moving cable topology snapshots.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    _cacheKeys: ['infra:outages:v1'],
+    _cacheKeys: [
+      'infra:outages:v1',
+      'infra:service-statuses:v1',
+      'infrastructure:submarine-cables:v1',
+    ],
     _seedMetaKey: 'seed-meta:infra:outages',
     _maxStaleMin: 30,
+    _freshnessChecks: [
+      { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
+      { key: 'seed-meta:infra:service-statuses', maxStaleMin: 120 },
+      { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 20160 },
+    ],
+    _resultLabels: ['outages', 'service-statuses', 'submarine-cables'],
+  },
+  {
+    name: 'get_energy_security_data',
+    description: 'Energy security monitoring: live chokepoint flow baselines and disruptions, strategic reserve policy registries, IEA oil stock coverage, JODI oil and gas balances, and a curated energy intelligence feed. Mixes 6-hour geopolitical signals with monthly or static strategic datasets.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'energy:chokepoint-baselines:v1',
+      'energy:chokepoint-flows:v1',
+      'energy:crisis-policies:v1',
+      'energy:iea-oil-stocks:v1:index',
+      'energy:intelligence:feed:v1',
+      'energy:jodi-gas:v1:_countries',
+      'energy:jodi-oil:v1:_countries',
+      'energy:spr-policies:v1',
+    ],
+    _seedMetaKey: 'seed-meta:energy:intelligence',
+    _maxStaleMin: 720,
+    _freshnessChecks: [
+      { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 576000 },
+      { key: 'seed-meta:energy:chokepoint-flows', maxStaleMin: 720 },
+      { key: 'seed-meta:energy:crisis-policies', maxStaleMin: 576000 },
+      { key: 'seed-meta:energy:iea-oil-stocks', maxStaleMin: 57600 },
+      { key: 'seed-meta:energy:intelligence', maxStaleMin: 720 },
+      { key: 'seed-meta:energy:jodi-gas', maxStaleMin: 57600 },
+      { key: 'seed-meta:energy:jodi-oil', maxStaleMin: 57600 },
+      { key: 'seed-meta:energy:spr-policies', maxStaleMin: 576000 },
+    ],
+    _resultLabels: [
+      'chokepoint-baselines',
+      'chokepoint-flows',
+      'crisis-policies',
+      'iea-oil-stocks',
+      'energy-intelligence',
+      'jodi-gas',
+      'jodi-oil',
+      'spr-policies',
+    ],
   },
   {
     name: 'get_supply_chain_data',
-    description: 'Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.',
+    description: 'Supply chain monitoring across trade flows and chokepoints: shipping stress, customs revenue, COMTRADE trade flows, Hormuz tracker, PortWatch global port activity, chokepoint reference geometry, and active maritime disruptions.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'supply_chain:shipping_stress:v1',
       'trade:customs-revenue:v1',
       'comtrade:flows:v1',
+      'supply_chain:hormuz_tracker:v1',
+      'supply_chain:portwatch-ports:v1:_countries',
+      'supply_chain:portwatch:v1',
+      'portwatch:chokepoints:ref:v1',
+      'portwatch:disruptions:active:v1',
     ],
-    _seedMetaKey: 'seed-meta:trade:customs-revenue',
+    _seedMetaKey: 'seed-meta:supply_chain:shipping_stress',
+    _maxStaleMin: 45,
+    _freshnessChecks: [
+      { key: 'seed-meta:supply_chain:shipping_stress', maxStaleMin: 45 },
+      { key: 'seed-meta:trade:customs-revenue', maxStaleMin: 1440 },
+      { key: 'seed-meta:trade:comtrade-flows', maxStaleMin: 2880 },
+      { key: 'seed-meta:supply_chain:hormuz_tracker', maxStaleMin: 2880 },
+      { key: 'seed-meta:supply_chain:portwatch-ports', maxStaleMin: 2160 },
+      { key: 'seed-meta:supply_chain:portwatch', maxStaleMin: 720 },
+      { key: 'seed-meta:portwatch:chokepoints-ref', maxStaleMin: 2880 },
+      { key: 'seed-meta:portwatch:disruptions', maxStaleMin: 120 },
+    ],
+    _resultLabels: [
+      'shipping-stress',
+      'customs-revenue',
+      'comtrade-flows',
+      'hormuz-tracker',
+      'portwatch-ports',
+      'portwatch',
+      'portwatch-chokepoints',
+      'portwatch-disruptions',
+    ],
+  },
+  {
+    name: 'get_public_health_data',
+    description: 'Global public health monitoring with disease outbreak summaries and real-time vaccine-preventable disease alerts. Covers country-level outbreak feeds, geo-located alerts, and daily-to-near-daily health security snapshots.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'health:disease-outbreaks:v1',
+      'health:vpd-tracker:realtime:v1',
+    ],
+    _seedMetaKey: 'seed-meta:health:disease-outbreaks',
     _maxStaleMin: 2880,
+    _freshnessChecks: [
+      { key: 'seed-meta:health:disease-outbreaks', maxStaleMin: 2880 },
+      { key: 'seed-meta:health:vpd-tracker', maxStaleMin: 2880 },
+    ],
+    _resultLabels: ['disease-outbreaks', 'vpd-tracker'],
   },
   {
     name: 'get_positive_events',
@@ -240,11 +448,16 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_research_signals',
-    description: 'Tech and research event signals: emerging technology events bootstrap data from curated research feeds.',
+    description: 'Research and innovation signals from curated emerging-tech feeds plus recent defense and dual-use patent filings. Combines frequent research-event refreshes with slower weekly patent intelligence.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    _cacheKeys: ['research:tech-events-bootstrap:v1'],
+    _cacheKeys: ['research:tech-events-bootstrap:v1', 'patents:defense:latest'],
     _seedMetaKey: 'seed-meta:research:tech-events',
     _maxStaleMin: 480,
+    _freshnessChecks: [
+      { key: 'seed-meta:research:tech-events', maxStaleMin: 480 },
+      { key: 'seed-meta:military:defense-patents', maxStaleMin: 20160 },
+    ],
+    _resultLabels: ['tech-events-bootstrap', 'defense-patents'],
   },
   {
     name: 'get_forecast_predictions',
@@ -265,6 +478,24 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['intelligence:social:reddit:v1'],
     _seedMetaKey: 'seed-meta:intelligence:social-reddit',
     _maxStaleMin: 30,
+  },
+  {
+    name: 'get_cross_domain_signals',
+    description: 'Cross-domain signal pack for fast agent grounding: correlation cards linking economic, market, and geopolitical shocks; thermal escalation watchlists; and live regulatory actions from official agencies. Data refresh ranges from minutes to a few hours.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'correlation:cards-bootstrap:v1',
+      'thermal:escalation:v1',
+      'regulatory:actions:v1',
+    ],
+    _seedMetaKey: 'seed-meta:correlation:cards',
+    _maxStaleMin: 15,
+    _freshnessChecks: [
+      { key: 'seed-meta:correlation:cards', maxStaleMin: 15 },
+      { key: 'seed-meta:thermal:escalation', maxStaleMin: 360 },
+      { key: 'seed-meta:regulatory:actions', maxStaleMin: 360 },
+    ],
+    _resultLabels: ['correlation-cards', 'thermal-escalation', 'regulatory-actions'],
   },
 
   // -------------------------------------------------------------------------
@@ -718,6 +949,16 @@ export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], no
   };
 }
 
+function deriveResultLabel(key: string): string {
+  const parts = key.split(':');
+  const NON_LABEL = /^(v\d+|\d+|stale|sebuf)$/;
+  for (let idx = parts.length - 1; idx >= 0; idx--) {
+    const seg = parts[idx] ?? '';
+    if (!NON_LABEL.test(seg)) return seg;
+  }
+  return parts[0] ?? key;
+}
+
 // ---------------------------------------------------------------------------
 // Tool execution
 // ---------------------------------------------------------------------------
@@ -731,17 +972,9 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
   const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas);
 
   const data: Record<string, unknown> = {};
-  // Walk backward through ':'-delimited segments, skipping non-informative suffixes
-  // (version tags, bare numbers, internal format names) to produce a readable label.
-  const NON_LABEL = /^(v\d+|\d+|stale|sebuf)$/;
   tool._cacheKeys.forEach((key, i) => {
-    const parts = key.split(':');
-    let label = '';
-    for (let idx = parts.length - 1; idx >= 0; idx--) {
-      const seg = parts[idx] ?? '';
-      if (!NON_LABEL.test(seg)) { label = seg; break; }
-    }
-    data[label || (parts[0] ?? key)] = results[i];
+    const label = tool._resultLabels?.[i] || deriveResultLabel(key);
+    data[label] = results[i];
   });
 
   return { cached_at, stale, data };
