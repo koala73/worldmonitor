@@ -458,7 +458,11 @@ async function runBacktest() {
   const scores = await fetchAllResilienceScores(url, token);
   console.log(`Loaded resilience scores for ${scores.size} countries`);
   if (scores.size < 50) {
-    console.error('FATAL: Too few resilience scores loaded from Redis');
+    // Not actually fatal — the validation bundle runner reports ran:N failed:0
+    // for this branch. Happens on cold start when the validation bundle runs
+    // before the scores seeder populates Redis. Warn (not error) so ops pages
+    // don't trip on a transient.
+    console.warn(`[backtest] Skipping: only ${scores.size}/196 scores in Redis — scores seeder likely hasn't run yet`);
     return null;
   }
   console.log('');

@@ -314,7 +314,7 @@ const SEED_META = {
   sprPolicies:          { key: 'seed-meta:energy:spr-policies',         maxStaleMin: 60 * 24 * 400 }, // 400 days; static registry, same cadence as chokepoint baselines
   energyCrisisPolicies: { key: 'seed-meta:energy:crisis-policies',      maxStaleMin: 60 * 24 * 400 }, // static data, ~400d TTL matches seeder
   aaiiSentiment:        { key: 'seed-meta:market:aaii-sentiment',       maxStaleMin: 20160 }, // weekly cron; 20160min = 14 days = 2x weekly cadence
-  portwatchChokepointsRef: { key: 'seed-meta:portwatch:chokepoints-ref', maxStaleMin: 60 * 24 * 2 }, // daily cron; 2d = 2× interval
+  portwatchChokepointsRef: { key: 'seed-meta:portwatch:chokepoints-ref', maxStaleMin: 60 * 24 * 14 }, // seed-bundle-portwatch runs this at WEEK cadence; 14d = 2× interval
   chokepointFlows:      { key: 'seed-meta:energy:chokepoint-flows',     maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval

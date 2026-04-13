@@ -256,6 +256,27 @@ async function seedResilienceScores() {
   return { skipped: false, recordCount: preWarmed, total: countryCodes.length, intervalsWritten };
 }
 
+// Write seed-meta:resilience:ranking so api/health.js can track data freshness.
+// Without this, the meta key is only written by the get-resilience-ranking RPC
+// handler when a user hits it, and goes silently stale during quiet Pro usage —
+// firing a misleading "7× stale" alarm in the health endpoint even while the
+// underlying scores are fresh. Non-fatal on Redis failure; seed itself still
+// completed successfully.
+async function writeRankingSeedMeta(recordCount) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const meta = { fetchedAt: Date.now(), recordCount };
+    await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['SET', 'seed-meta:resilience:ranking', JSON.stringify(meta), 'EX', 86400 * 7]),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (err) {
+    console.warn('[resilience-scores] seed-meta:resilience:ranking write failed:', err?.message || err);
+  }
+}
+
 async function main() {
   const startedAt = Date.now();
   const result = await seedResilienceScores();
@@ -265,6 +286,9 @@ async function main() {
     ...(result.reason != null && { reason: result.reason }),
     ...(result.intervalsWritten != null && { intervalsWritten: result.intervalsWritten }),
   });
+  if (!result.skipped && (result.recordCount ?? 0) > 0) {
+    await writeRankingSeedMeta(result.recordCount);
+  }
 }
 
 if (process.argv[1]?.endsWith('seed-resilience-scores.mjs')) {

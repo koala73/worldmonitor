@@ -12,11 +12,22 @@ const ARCGIS_BASE =
 const FETCH_TIMEOUT = 30_000;
 const DAYS_BACK = 30; // events that ended within 30 days, or are still active
 
+// Format a JS timestamp as an ArcGIS SQL timestamp literal:
+//   timestamp 'YYYY-MM-DD HH:MM:SS'
+// The ArcGIS SQL parser rejects bare epoch-ms numbers against Date-typed
+// fields with "Cannot perform query. Invalid query parameters." (observed
+// 3× retry failure in prod, every run, portwatch:disruptions:active:v1
+// missing from Redis).
+export function toArcgisTimestamp(epochMs) {
+  return new Date(epochMs).toISOString().slice(0, 19).replace('T', ' ');
+}
+
 export async function fetchAll() {
   const sinceEpoch = Date.now() - DAYS_BACK * 86_400_000;
+  const sinceSql = toArcgisTimestamp(sinceEpoch);
 
   const params = new URLSearchParams({
-    where: `todate > ${sinceEpoch} OR todate IS NULL`,
+    where: `todate > timestamp '${sinceSql}' OR todate IS NULL`,
     outFields: [
       'eventid', 'eventtype', 'eventname', 'alertlevel', 'country',
       'fromdate', 'todate', 'severitytext', 'lat', 'long',
