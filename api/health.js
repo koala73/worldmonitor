@@ -423,11 +423,18 @@ function strlenIsData(strlen) {
   return strlen > 0 && strlen !== NEG_SENTINEL.length;
 }
 
-function readSeedMeta(seedCfg, keyMetaValues, now) {
-  if (!seedCfg) return { seedAge: null, seedStale: null, seedError: false, metaCount: null };
+function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
+  if (!seedCfg) {
+    return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: false, metaCount: null };
+  }
+  // Per-command Redis errors on the GET seed-meta half of the pipeline must
+  // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
+  if (keyMetaErrors.get(seedCfg.key)) {
+    return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: true, metaCount: null };
+  }
   const meta = parseRedisValue(keyMetaValues.get(seedCfg.key));
   if (meta?.status === 'error') {
-    return { seedAge: null, seedStale: true, seedError: true, metaCount: null };
+    return { seedAge: null, seedStale: true, seedError: true, metaReadFailed: false, metaCount: null };
   }
   let seedAge = null;
   let seedStale = true;
@@ -436,7 +443,7 @@ function readSeedMeta(seedCfg, keyMetaValues, now) {
     seedStale = seedAge > seedCfg.maxStaleMin;
   }
   const metaCount = meta?.count ?? meta?.recordCount ?? null;
-  return { seedAge, seedStale, seedError: false, metaCount };
+  return { seedAge, seedStale, seedError: false, metaReadFailed: false, metaCount };
 }
 
 function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
@@ -453,13 +460,16 @@ function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
 }
 
 function classifyKey(name, redisKey, opts, ctx) {
-  const { keyStrens, keyErrors, keyMetaValues, now } = ctx;
+  const { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now } = ctx;
   const seedCfg = SEED_META[name];
   const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name);
 
-  // Per-command Redis errors propagate as their own bucket — don't conflate
-  // with "key missing", since ops needs to know if the read itself failed.
-  if (keyErrors.get(redisKey)) {
+  const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
+
+  // Per-command Redis errors (data STRLEN or seed-meta GET) propagate as their
+  // own bucket — don't conflate with "key missing", since ops needs to know if
+  // the read itself failed.
+  if (keyErrors.get(redisKey) || meta.metaReadFailed) {
     const entry = { status: 'REDIS_PARTIAL', records: null };
     if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
     return entry;
@@ -467,7 +477,7 @@ function classifyKey(name, redisKey, opts, ctx) {
 
   const strlen = keyStrens.get(redisKey) ?? 0;
   const hasData = strlenIsData(strlen);
-  const { seedAge, seedStale, seedError, metaCount } = readSeedMeta(seedCfg, keyMetaValues, now);
+  const { seedAge, seedStale, seedError, metaCount } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -557,12 +567,17 @@ export default async function handler(req, ctx) {
     keyStrens.set(allDataKeys[i], r?.result ?? 0);
   }
   // keyMetaValues: parsed seed-meta objects (GET, small payloads)
+  // keyMetaErrors: per-command errors so a single GET failure surfaces as
+  // REDIS_PARTIAL instead of silently degrading to STALE_SEED.
   const keyMetaValues = new Map();
+  const keyMetaErrors = new Map();
   for (let i = 0; i < allMetaKeys.length; i++) {
-    keyMetaValues.set(allMetaKeys[i], results[allDataKeys.length + i]?.result ?? null);
+    const r = results[allDataKeys.length + i];
+    if (r?.error) keyMetaErrors.set(allMetaKeys[i], r.error);
+    keyMetaValues.set(allMetaKeys[i], r?.result ?? null);
   }
 
-  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, now };
+  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now };
   const checks = {};
   const counts = { ok: 0, warn: 0, onDemandWarn: 0, crit: 0 };
   let totalChecks = 0;
