@@ -22,19 +22,22 @@ import {
 const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
 const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-// How many missing countries to score synchronously per ranking request.
-// The shared memoized reader means global Redis keys are fetched once total
-// (not once per country), so the actual Upstash burst is:
+// Hard ceiling on one synchronous warm pass — purely a safety net against a
+// runaway static index. The shared memoized reader means global Redis keys are
+// fetched once total (not once per country), so the Upstash burst is
 //   17 shared reads + N×3 per-country reads + N pipeline writes
-// Wall time does NOT scale with N because all countries run via Promise.allSettled
-// in parallel; it is bounded by ~2-3 sequential RTTs within one country (~60-150 ms).
-// 200 covers the full static index (~130-180 countries) in a single cold-cache pass.
-const SYNC_WARM_LIMIT = 200;
+// and wall time does NOT scale with N because all countries run via
+// Promise.allSettled in parallel; it is bounded by ~2-3 sequential RTTs within
+// one country (~60-150 ms). 1000 is several multiples above the current static
+// index (~222 countries) so every warm pass is unconditionally complete.
+const SYNC_WARM_LIMIT = 1000;
 
 // Minimum fraction of scorable countries that must have a cached score before we
 // persist the ranking to Redis. Prevents a cold-start (0% cached) from being
 // locked in, while still allowing partial-state writes (e.g. 90%) to succeed so
-// the next call doesn't re-warm everything.
+// the next call doesn't re-warm everything. This is a safety rail against genuine
+// warm failures (Redis blips, data gaps) — it must NOT be tripped by the handler
+// capping how many countries it attempts. See SYNC_WARM_LIMIT above.
 const RANKING_CACHE_MIN_COVERAGE = 0.75;
 
 async function fetchIntervals(countryCodes: string[]): Promise<Map<string, ScoreInterval>> {

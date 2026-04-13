@@ -195,10 +195,10 @@ async function seedResilienceScores() {
     if (stillMissing.length > 0 && !WM_KEY) {
       console.warn(`[resilience-scores] ${stillMissing.length} laggards found but neither WORLDMONITOR_API_KEY nor WORLDMONITOR_VALID_KEYS is set — skipping individual warmup`);
     }
+    let laggardsWarmed = 0;
     if (stillMissing.length > 0 && WM_KEY) {
       console.log(`[resilience-scores] Warming ${stillMissing.length} laggards individually...`);
       const BATCH = 5;
-      let warmed = 0;
       for (let i = 0; i < stillMissing.length; i += BATCH) {
         const batch = stillMissing.slice(i, i + BATCH);
         const results = await Promise.allSettled(batch.map(async (cc) => {
@@ -210,9 +210,23 @@ async function seedResilienceScores() {
           if (!resp.ok) throw new Error(`${cc}: HTTP ${resp.status}`);
           return cc;
         }));
-        warmed += results.filter(r => r.status === 'fulfilled').length;
+        laggardsWarmed += results.filter(r => r.status === 'fulfilled').length;
       }
-      console.log(`[resilience-scores] Laggards warmed: ${warmed}/${stillMissing.length}`);
+      console.log(`[resilience-scores] Laggards warmed: ${laggardsWarmed}/${stillMissing.length}`);
+    }
+
+    // If any laggards were warmed, the ranking cache (written earlier by the
+    // bulk endpoint) no longer reflects them — it froze them as coverage-0
+    // greyedOut entries. Delete the key so the next RPC call rebuilds the
+    // ranking from the now-complete per-country cache. Without this, the
+    // stale ranking persists for the full 6h TTL.
+    if (laggardsWarmed > 0) {
+      try {
+        await redisPipeline(url, token, [['DEL', RESILIENCE_RANKING_CACHE_KEY]]);
+        console.log(`[resilience-scores] Invalidated ${RESILIENCE_RANKING_CACHE_KEY} — next call will rebuild with ${laggardsWarmed} new scores`);
+      } catch (err) {
+        console.warn(`[resilience-scores] Failed to invalidate ranking cache: ${err.message}`);
+      }
     }
 
     const finalResults = await redisPipeline(url, token, getCommands);
