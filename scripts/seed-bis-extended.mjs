@@ -391,15 +391,21 @@ export async function fetchAll() {
   await publishDatasetIndependently(KEYS.spp, spp, META_KEYS.spp);
   await publishDatasetIndependently(KEYS.cpp, cpp, META_KEYS.cpp);
 
-  // DSR seed-meta is written here (not via runSeed's generic seed-meta) ONLY
-  // when DSR fetch succeeded. runSeed still writes the aggregate
-  // seed-meta:economic:bis-extended key via publishTransform/validate, but
-  // that is a "seeder ran" marker, not a DSR freshness signal.
-  if (planDatasetAction(dsr) === 'write') {
-    await writeSeedMeta(KEYS.dsr, dsr.entries.length, META_KEYS.dsr).catch(() => {});
-  }
+  // NOTE: DSR per-dataset seed-meta is written by `dsrAfterPublish` (passed to
+  // runSeed below), NOT here. That guarantees seed-meta:economic:bis-dsr is
+  // refreshed only AFTER atomicPublish succeeds on the canonical DSR key — a
+  // Redis hiccup at publish time must not leave health reporting "fresh"
+  // while the canonical key is stale.
 
   return { dsr, spp, cpp };
+}
+
+// runSeed afterPublish hook — fires only on a successful atomicPublish of the
+// canonical DSR key. `data` is the raw fetchAll() return value; we re-derive
+// the DSR slice and refresh its per-dataset seed-meta.
+export async function dsrAfterPublish(data) {
+  if (planDatasetAction(data?.dsr) !== 'write') return;
+  await writeSeedMeta(KEYS.dsr, data.dsr.entries.length, META_KEYS.dsr).catch(() => {});
 }
 
 // Pure decision function: classifies what action should be taken for a
@@ -452,6 +458,7 @@ if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
     ttlSeconds: TTL,
     sourceVersion: 'bis-sdmx-csv-extended',
     publishTransform,
+    afterPublish: dsrAfterPublish,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

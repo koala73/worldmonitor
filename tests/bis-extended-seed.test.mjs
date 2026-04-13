@@ -11,6 +11,7 @@ import {
   publishTransform,
   planDatasetAction,
   publishDatasetIndependently,
+  dsrAfterPublish,
   KEYS,
   META_KEYS,
 } from '../scripts/seed-bis-extended.mjs';
@@ -194,6 +195,53 @@ describe('seed-bis-extended parser', () => {
       // Any SET at all on the extend path is wrong — only EXPIRE-style calls expected.
       const canonicalSets = calls.filter(c => c[0] === 'SET' && c[1] === KEYS.dsr);
       assert.equal(canonicalSets.length, 0, `canonical key must NOT be re-written on extend-TTL path`);
+    } finally {
+      globalThis.fetch = origFetch;
+      if (origUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = origUrl;
+      if (origTok === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = origTok;
+    }
+  });
+
+  it('dsrAfterPublish writes seed-meta:economic:bis-dsr only after a successful canonical DSR publish', async () => {
+    // Regression for the ordering bug: previously seed-meta was written
+    // INSIDE fetchAll() before runSeed/atomicPublish ran. If atomicPublish
+    // then failed (Redis hiccup), seed-meta would already be bumped → health
+    // reports DSR fresh while the canonical key is stale. The fix moves the
+    // write into an afterPublish callback that fires only on successful
+    // canonical publish.
+    const origUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const origTok = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const origFetch = globalThis.fetch;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://mock.upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
+    const calls = [];
+    globalThis.fetch = async (_url, opts) => {
+      const body = JSON.parse(opts.body);
+      calls.push(body);
+      return { ok: true, status: 200, json: async () => ({ result: 'OK' }) };
+    };
+    try {
+      // 1. DSR populated → seed-meta IS written (this is the post-publish path).
+      calls.length = 0;
+      await dsrAfterPublish({
+        dsr: { entries: [{ countryCode: 'US', dsrPct: 10.4 }], fetchedAt: 't' },
+        spp: null,
+        cpp: null,
+      });
+      const metaSets = calls.filter(c => c[0] === 'SET' && c[1] === META_KEYS.dsr);
+      assert.equal(metaSets.length, 1, `expected SET on ${META_KEYS.dsr} after successful publish, got ${JSON.stringify(calls)}`);
+
+      // 2. DSR null/empty → seed-meta NOT written. atomicPublish would have
+      //    skipped the canonical write in this case anyway (validate=false),
+      //    but this guards against a future caller invoking the hook with an
+      //    empty slice.
+      calls.length = 0;
+      await dsrAfterPublish({ dsr: null, spp: null, cpp: null });
+      assert.equal(calls.length, 0, `expected no Redis calls when DSR slice is empty, got ${JSON.stringify(calls)}`);
+
+      calls.length = 0;
+      await dsrAfterPublish({ dsr: { entries: [] }, spp: null, cpp: null });
+      assert.equal(calls.length, 0, `expected no Redis calls when DSR slice has zero entries`);
     } finally {
       globalThis.fetch = origFetch;
       if (origUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = origUrl;
