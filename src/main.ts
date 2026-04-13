@@ -314,14 +314,16 @@ Sentry.init({
     // generic hasFirstParty gate below can't see it — match by function name
     // (WORLDMONITOR-MK).
     if (frames.some(f => /FireglassUtils/.test(f.function ?? ''))) return null;
-    // Suppress Chrome Mobile WebView 105+ Request constructor quirk: vendored
-    // SDKs (Sentry/Clerk/Dodo fetch wrappers) pass ReadableStream bodies without
-    // duplex: 'half'. The message is exact-match unique to this spec requirement
-    // (Fetch § Request(), "duplex member must be specified"); cannot arise from
-    // other failure modes. Checkout flow already falls back to the pricing page
-    // (src/services/checkout.ts), so this is a non-user-facing Sentry event
-    // (WORLDMONITOR-MH).
-    if (/Failed to construct 'Request': The `duplex` member must be specified/.test(msg)) return null;
+    // Suppress Chrome Mobile WebView 105+ Request constructor quirk ONLY when
+    // the Dodo checkout lazy chunk is in the stack (WORLDMONITOR-MH). The
+    // exact message is unique to the Fetch § Request() duplex requirement, but
+    // src/services/runtime.ts (runtime fetch patch) also constructs `new
+    // Request(init)` at lines 861/869/902 — without this provenance guard the
+    // same filter would hide a real first-party streaming-fetch regression.
+    // Guard on the vendored chunk name (checkout-*.js = Dodo SDK, lazy-loaded
+    // only when startCheckout runs) so a runtime.ts failure still surfaces.
+    if (/Failed to construct 'Request': The `duplex` member must be specified/.test(msg)
+        && frames.some(f => /\/assets\/checkout-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress "options is not defined" from browser extension overriding Navigator getter (WORLDMONITOR-JN).
     // Only suppress when stack has no first-party frames (filename=<anonymous> is the extension getter).
     if (/^options is not defined$/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]')) return null;
