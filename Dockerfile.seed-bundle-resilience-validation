@@ -23,16 +23,19 @@ WORKDIR /app
 RUN npm install --prefix /app --no-save --no-audit --no-fund --no-package-lock tsx@4.21.0 \
     && test -f /app/node_modules/tsx/dist/loader.mjs
 
-# Copy only the scripts the bundle actually runs + their local helpers.
-# _seed-utils.mjs eagerly createRequire()s _proxy-utils.cjs at module load,
-# so the .cjs helper must ship alongside even if unused by these validators.
+# Ship the full scripts/ tree rather than a hand-picked file list. The cherry-
+# picked approach broke twice: once when _seed-utils.mjs started eagerly
+# createRequire()ing _proxy-utils.cjs (PR #3041 post-merge fix), and again
+# when backtest-resilience-outcomes.mjs imported _country-resolver.mjs
+# (PR #3052 post-merge fix — this file). Each time the bundle's scripts add
+# a new local import, the cherry-picked Dockerfile list becomes a hidden
+# dependency contract that nobody remembers to update until the cron
+# crashes with ERR_MODULE_NOT_FOUND in production. Copying the whole scripts/
+# dir is ~2 MB larger and robust to the next import.
+#
 # validate-resilience-sensitivity.mjs dynamic-imports ../server/*.ts so the
 # full server/ tree is copied (scorers pull from shared/ and data/ at runtime).
-COPY scripts/_seed-utils.mjs scripts/_bundle-runner.mjs scripts/_proxy-utils.cjs ./scripts/
-COPY scripts/seed-bundle-resilience-validation.mjs ./scripts/
-COPY scripts/benchmark-resilience-external.mjs ./scripts/
-COPY scripts/backtest-resilience-outcomes.mjs ./scripts/
-COPY scripts/validate-resilience-sensitivity.mjs ./scripts/
+COPY scripts/ ./scripts/
 COPY server/ ./server/
 COPY shared/ ./shared/
 COPY data/ ./data/
