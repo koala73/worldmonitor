@@ -295,7 +295,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       'resilience:recovery:fuel-stocks:v1',
     ],
     _seedMetaKey: 'seed-meta:resilience:recovery:fiscal-space',
-    _maxStaleMin: 43200,
+    _maxStaleMin: 86400,  // 60d = 2x monthly cron interval (matches health.js recoveryFiscalSpace maxStaleMin)
   },
 
   // -------------------------------------------------------------------------
