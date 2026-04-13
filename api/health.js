@@ -492,8 +492,9 @@ function classifyKey(name, redisKey, opts, ctx) {
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY';
   } else if (records === 0) {
-    if (cascadeCovered) status = 'OK_CASCADE';
-    else if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
+    // hasData is true in this branch, so cascade can never apply (isCascadeCovered
+    // short-circuits when hasData=true). Cascade only shields wholly absent keys.
+    if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY_DATA';
   } else if (seedStale === true) status = 'STALE_SEED';
