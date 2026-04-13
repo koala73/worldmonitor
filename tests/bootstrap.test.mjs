@@ -253,7 +253,17 @@ describe('Bootstrap key hydration coverage', () => {
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
     // Keys with planned but not-yet-wired consumers
-    const PENDING_CONSUMERS = new Set(['correlationCards', 'euGasStorage', 'chokepointBaselines', 'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal', 'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies', 'wsbTickers', 'electricityPrices', 'jodiOil', 'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd']);
+    const PENDING_CONSUMERS = new Set([
+      'correlationCards', 'euGasStorage', 'chokepointBaselines', 'imfMacro',
+      'imfGrowth', 'imfLabor', 'imfExternal',
+      'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
+      'wsbTickers', 'electricityPrices', 'jodiOil',
+      'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
+      // BIS extended dataflows are consumed via a direct scoped bootstrap
+      // fetch in CountryDeepDivePanel (housing cycle tile), not through the
+      // getHydratedData session cache — fetched on-click per country.
+      'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+    ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       assert.ok(

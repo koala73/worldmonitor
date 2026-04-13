@@ -327,12 +327,15 @@ describe('resilience dimension scorers', () => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
       if (key === 'economic:imf:macro:v2') return { countries: { HR: { inflationPct: 3.0, currentAccountPct: caPct, govRevenuePct: 40, year: 2024 } } };
       if (key === 'economic:imf:labor:v1') return { countries: { HR: { unemploymentPct: 7, populationMillions: 4, year: 2024 } } };
+      if (key === 'economic:bis:dsr:v1') return { entries: [] };
       return null;
     };
     const surplus = await scoreMacroFiscal('HR', makeReader(10));
     const deficit = await scoreMacroFiscal('HR', makeReader(-15));
     assert.ok(surplus.score > deficit.score, `surplus (${surplus.score}) must score higher than deficit (${deficit.score})`);
-    assert.equal(surplus.coverage, 1, 'all real data → coverage=1');
+    // BIS DSR has weight 0.05 and is absent for HR (no BIS coverage); the
+    // remaining 0.95 of weight is observed → coverage=0.95, not 1.0.
+    assert.equal(surplus.coverage, 0.95, 'all non-BIS data → coverage=0.95 (DSR=0.05 absent for HR)');
   });
 
   it('scoreMacroFiscal: IMF macro seed outage does not impute — debt growth still scores', async () => {

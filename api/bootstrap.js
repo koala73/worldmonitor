@@ -20,6 +20,9 @@ const BOOTSTRAP_CACHE_KEYS = {
   bisPolicy:        'economic:bis:policy:v1',
   bisExchange:      'economic:bis:eer:v1',
   bisCredit:        'economic:bis:credit:v1',
+  bisDsr:           'economic:bis:dsr:v1',
+  bisPropertyResidential: 'economic:bis:property-residential:v1',
+  bisPropertyCommercial:  'economic:bis:property-commercial:v1',
   imfMacro:         'economic:imf:macro:v2',
   imfGrowth:        'economic:imf:growth:v1',
   imfLabor:         'economic:imf:labor:v1',
@@ -108,7 +111,9 @@ const BOOTSTRAP_CACHE_KEYS = {
 };
 
 const SLOW_KEYS = new Set([
-  'bisPolicy', 'bisExchange', 'bisCredit', 'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal', 'minerals', 'giving',
+  'bisPolicy', 'bisExchange', 'bisCredit',
+  'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+  'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal', 'minerals', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',

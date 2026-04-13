@@ -104,6 +104,9 @@ const STANDALONE_KEYS = {
   bisPolicy:             'economic:bis:policy:v1',
   bisExchange:           'economic:bis:eer:v1',
   bisCredit:             'economic:bis:credit:v1',
+  bisDsr:                'economic:bis:dsr:v1',
+  bisPropertyResidential: 'economic:bis:property-residential:v1',
+  bisPropertyCommercial:  'economic:bis:property-commercial:v1',
   imfMacro:             'economic:imf:macro:v2',
   imfGrowth:            'economic:imf:growth:v1',
   imfLabor:             'economic:imf:labor:v1',
@@ -213,6 +216,12 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 20 },
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
+  // seed-bis-extended.mjs: runSeed('economic','bis-extended',...) writes a
+  // single seed-meta key; DSR / property-residential / property-commercial
+  // are extras written via afterPublish on the same run. 24h = 2× 12h cron.
+  bisDsr:                { key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 },
+  bisPropertyResidential:{ key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 },
+  bisPropertyCommercial: { key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 },
   imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 100800 }, // monthly seed; 100800min = 70 days = 2× interval (absorbs one missed run)
   imfGrowth:        { key: 'seed-meta:economic:imf-growth',       maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro (same WEO release cadence)
   imfLabor:         { key: 'seed-meta:economic:imf-labor',        maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
@@ -350,6 +359,8 @@ const ON_DEMAND_KEYS = new Set([
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
   'bisPolicy', 'bisExchange', 'bisCredit',
+  // bisDsr/bisPropertyResidential/bisPropertyCommercial have dedicated SEED_META
+  // entries (seed-bis-extended.mjs), so they are not on-demand.
   'macroSignals', 'shippingRates', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'temporalAnomalies', 'displacement',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1

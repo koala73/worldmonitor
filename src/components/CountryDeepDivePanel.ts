@@ -99,6 +99,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private militaryBody: HTMLElement | null = null;
   private infrastructureBody: HTMLElement | null = null;
   private economicBody: HTMLElement | null = null;
+  private housingBody: HTMLElement | null = null;
   private marketsBody: HTMLElement | null = null;
   private briefBody: HTMLElement | null = null;
   private timelineBody: HTMLElement | null = null;
@@ -544,6 +545,44 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     grid.append(this.factItem(t('countryBrief.facts.currencies'), data.currencies.join(', ')));
 
     this.factsBody.append(grid);
+  }
+
+  public updateHousingCycle(data: {
+    residential?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    commercial?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    dsr?: { dsrPct: number; change: number | null; period: string } | null;
+  } | null): void {
+    if (!this.housingBody) return;
+    this.housingBody.replaceChildren();
+    if (!data || (!data.residential && !data.commercial && !data.dsr)) {
+      this.housingBody.append(this.makeEmpty('No BIS housing cycle data for this country'));
+      return;
+    }
+    const grid = this.el('div', 'cdp-pro-metric-grid');
+    if (data.residential) {
+      grid.append(
+        this.proMetricBox('Residential (real)', `${data.residential.indexValue.toFixed(1)}`),
+        this.proMetricBox('Residential YoY', this.formatPctTrend(data.residential.yoyChange ?? 0)),
+      );
+    }
+    if (data.commercial) {
+      grid.append(
+        this.proMetricBox('Commercial (real)', `${data.commercial.indexValue.toFixed(1)}`),
+        this.proMetricBox('Commercial YoY', this.formatPctTrend(data.commercial.yoyChange ?? 0)),
+      );
+    }
+    if (data.dsr) {
+      grid.append(
+        this.proMetricBox('Household DSR', `${data.dsr.dsrPct.toFixed(1)}%`),
+        this.proMetricBox('DSR QoQ', this.formatPctTrend(data.dsr.change ?? 0)),
+      );
+    }
+    this.housingBody.append(grid);
+    const src = data.residential?.period || data.commercial?.period || data.dsr?.period || '';
+    if (src) {
+      const note = this.el('div', 'cdp-economic-source', `Source: BIS SDMX · latest ${src}`);
+      this.housingBody.append(note);
+    }
   }
 
   public updateNationalDebt(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void {
@@ -2164,6 +2203,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const [militaryCard, militaryBody] = this.sectionCard(t('countryBrief.militaryActivity'));
     const [infraCard, infraBody] = this.sectionCard(t('countryBrief.infrastructure'));
     const [economicCard, economicBody] = this.sectionCard(t('countryBrief.economicIndicators'));
+    const [housingCard, housingBody] = this.sectionCard(
+      'Housing Cycle',
+      'BIS quarterly real residential and commercial property price indices plus household debt service ratio — early-warning signals for credit / property cycle turns.',
+    );
     const [marketsCard, marketsBody] = this.sectionCard(t('countryBrief.predictionMarkets'));
     const [briefCard, briefBody] = this.sectionCard(t('countryBrief.intelBrief'));
 
@@ -2224,6 +2267,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.militaryBody = militaryBody;
     this.infrastructureBody = infraBody;
     this.economicBody = economicBody;
+    this.housingBody = housingBody;
     this.marketsBody = marketsBody;
     this.briefBody = briefBody;
 
@@ -2232,10 +2276,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     militaryBody.append(this.makeLoading('Loading flights, vessels, and nearby bases…'));
     infraBody.append(this.makeLoading('Computing nearby critical infrastructure…'));
     economicBody.append(this.makeLoading('Loading available indicators…'));
+    housingBody.append(this.makeLoading('Loading housing cycle data…'));
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -2259,6 +2304,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.tradeExposureBody = null;
     this.productImportsBody = null;
     this.debtBody = null;
+    this.housingBody = null;
     this.sanctionsBody = null;
     this.comtradeBody = null;
     this.tariffBody = null;

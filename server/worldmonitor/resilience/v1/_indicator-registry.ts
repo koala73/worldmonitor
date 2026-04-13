@@ -26,7 +26,7 @@ export type IndicatorSpec = {
   weight: number;
   sourceKey: string;
   scope: 'global' | 'curated';
-  cadence: 'realtime' | 'daily' | 'weekly' | 'monthly' | 'annual';
+  cadence: 'realtime' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual';
   imputation?: { type: 'absenceSignal' | 'conservative'; score: number; certainty: number };
   // Phase 2 T2.2a additions (REQUIRED on every entry):
   tier: IndicatorTier; // Core = moves the public overall score, Enrichment = drill-down only, Experimental = internal
@@ -70,7 +70,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Current account balance as % of GDP (IMF); external position vulnerability',
     direction: 'higherBetter',
     goalposts: { worst: -20, best: 20 },
-    weight: 0.25,
+    weight: 0.2,
     sourceKey: 'economic:imf:macro:v2',
     scope: 'global',
     cadence: 'annual',
@@ -79,12 +79,6 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     license: 'open-data',
   },
   {
-    // Phase 2 (#3027): IMF WEO LUR. Labor-market slack is a leading
-    // indicator for fiscal absorption capacity — 20%+ unemployment marks
-    // structural distress, sub-5% indicates tight labor markets.
-    // Coverage is patchier than the other WEO macro series (~150 countries
-    // — many emerging markets don't report LUR to the IMF), hence enrichment
-    // tier and a smaller weight.
     id: 'unemploymentPct',
     dimension: 'macroFiscal',
     description: 'Unemployment rate (IMF WEO LUR); higher = labor-market slack & lower fiscal absorption capacity',
@@ -97,6 +91,21 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 150,
     license: 'open-data',
+  },
+  {
+    id: 'householdDebtService',
+    dimension: 'macroFiscal',
+    description: 'BIS household debt service ratio (% income, quarterly). DSR > 10% precedes banking crises (Drehmann 2011). Lower is safer; goalposts anchor 20% → 0, 0% → 100.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 20, best: 0 },
+    weight: 0.05,
+    sourceKey: 'economic:bis:dsr:v1',
+    scope: 'curated',
+    cadence: 'quarterly',
+    imputation: { type: 'conservative', score: 60, certainty: 0.3 },
+    tier: 'enrichment',
+    coverage: 40,
+    license: 'non-commercial',
   },
 
   // ── currencyExternal (3 sub-metrics, plus IMF inflation fallback for non-BIS) ─

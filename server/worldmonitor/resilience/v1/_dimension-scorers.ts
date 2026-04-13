@@ -236,6 +236,7 @@ const RESILIENCE_STATIC_PREFIX = 'resilience:static:';
 const RESILIENCE_SHIPPING_STRESS_KEY = 'supply_chain:shipping_stress:v1';
 const RESILIENCE_TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const RESILIENCE_BIS_EXCHANGE_KEY = 'economic:bis:eer:v1';
+const RESILIENCE_BIS_DSR_KEY = 'economic:bis:dsr:v1';
 const RESILIENCE_NATIONAL_DEBT_KEY = 'economic:national-debt:v1';
 const RESILIENCE_IMF_MACRO_KEY = 'economic:imf:macro:v2';
 const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
@@ -780,18 +781,35 @@ function scoreAquastatValue(record: ResilienceStaticCountryRecord | null): numbe
     : normalizeLowerBetter(value, 0, 5000);
 }
 
+// BIS household debt service ratio for a specific country. Returns the most
+// recent DSR (% income) from seed-bis-extended, or null when the country is
+// outside the curated BIS sample.
+function getBisDsrEntry(
+  raw: unknown,
+  countryCode: string,
+): { dsrPct: number; date: string } | null {
+  const entries = (raw as { entries?: Array<{ countryCode: string; dsrPct: number; date: string }> } | null)?.entries;
+  if (!Array.isArray(entries)) return null;
+  const hit = entries.find(e => e?.countryCode === countryCode);
+  return hit && typeof hit.dsrPct === 'number'
+    ? { dsrPct: hit.dsrPct, date: hit.date ?? '' }
+    : null;
+}
+
 export async function scoreMacroFiscal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [debtRaw, imfMacroRaw, imfLaborRaw] = await Promise.all([
+  const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw] = await Promise.all([
     reader(RESILIENCE_NATIONAL_DEBT_KEY),
     reader(RESILIENCE_IMF_MACRO_KEY),
     reader(RESILIENCE_IMF_LABOR_KEY),
+    reader(RESILIENCE_BIS_DSR_KEY),
   ]);
   const debtEntry = getLatestDebtEntry(debtRaw, countryCode);
   const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
   const laborEntry = getImfLaborEntry(imfLaborRaw, countryCode);
+  const dsrEntry = getBisDsrEntry(bisDsrRaw, countryCode);
 
   return weightedBlend([
     // Government revenue/GDP: fiscal capacity — how much the state can actually mobilise.
@@ -805,15 +823,14 @@ export async function scoreMacroFiscal(
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)), weight: 0.2 },
     // Current account balance: external position — deficit = more vulnerable to FX shocks.
     imfMacroRaw == null
-      ? { score: null, weight: 0.25 }
-      : { score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20), weight: 0.25 },
-    // Phase 2 (#3027): IMF WEO LUR. Unemployment is a leading indicator for
-    // fiscal absorption capacity. Anchor: 25% → 0 (structural distress),
-    // 3% → 100 (tight labor market). Coverage ~150 countries — null-tolerant
-    // so weightedBlend redistributes when LUR is unavailable.
+      ? { score: null, weight: 0.2 }
+      : { score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20), weight: 0.2 },
     imfLaborRaw == null
       ? { score: null, weight: 0.15 }
       : { score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25), weight: 0.15 },
+    bisDsrRaw == null || dsrEntry == null
+      ? { score: null, weight: 0.05 }
+      : { score: normalizeLowerBetter(Math.max(0, Math.min(dsrEntry.dsrPct, 20)), 0, 20), weight: 0.05 },
   ]);
 }
 

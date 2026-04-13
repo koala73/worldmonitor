@@ -648,6 +648,48 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateProductImports?.(null);
       }
     });
+
+    // Housing cycle tile — BIS WS_SPP (residential), WS_CPP (commercial), WS_DSR.
+    // All three keys are seeded by the bis-extended cron and exposed via the
+    // public bootstrap endpoint, so one scoped bootstrap call covers the tile.
+    this.fetchHousingCycle(code);
+  }
+
+  private fetchHousingCycle(code: string): void {
+    const page = this.ctx.countryBriefPage;
+    if (!page?.updateHousingCycle) return;
+    const keys = 'bisDsr,bisPropertyResidential,bisPropertyCommercial';
+    fetch(toApiUrl(`/api/bootstrap?keys=${keys}`), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: page.signal,
+    }).then(async resp => {
+      if (!resp.ok) return null;
+      return resp.json() as Promise<{ data?: {
+        bisDsr?: { entries?: Array<{ countryCode: string; dsrPct: number; change: number | null; period: string }> };
+        bisPropertyResidential?: { entries?: Array<{ countryCode: string; indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string }> };
+        bisPropertyCommercial?: { entries?: Array<{ countryCode: string; indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string }> };
+      } }>;
+    }).then(body => {
+      if (!body || this.ctx.countryBriefPage?.getCode() !== code) return;
+      const pick = <T extends { countryCode: string }>(arr: T[] | undefined, cc: string): T | null =>
+        arr?.find(e => e?.countryCode === cc) ?? null;
+      // Euro area (XM) fallback for EU countries that BIS only publishes as a bloc aggregate.
+      const EURO_AREA = new Set(['DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'IE', 'PT', 'GR', 'FI', 'SK', 'SI', 'LV', 'LT', 'EE', 'CY', 'MT', 'LU']);
+      const fallbackCC = EURO_AREA.has(code) ? 'XM' : null;
+      const res = pick(body.data?.bisPropertyResidential?.entries, code) ?? (fallbackCC ? pick(body.data?.bisPropertyResidential?.entries, fallbackCC) : null);
+      const com = pick(body.data?.bisPropertyCommercial?.entries, code) ?? (fallbackCC ? pick(body.data?.bisPropertyCommercial?.entries, fallbackCC) : null);
+      const dsr = pick(body.data?.bisDsr?.entries, code) ?? (fallbackCC ? pick(body.data?.bisDsr?.entries, fallbackCC) : null);
+      this.ctx.countryBriefPage?.updateHousingCycle?.({
+        residential: res ? { indexValue: res.indexValue, qoqChange: res.qoqChange, yoyChange: res.yoyChange, period: res.period } : null,
+        commercial: com ? { indexValue: com.indexValue, qoqChange: com.qoqChange, yoyChange: com.yoyChange, period: com.period } : null,
+        dsr: dsr ? { dsrPct: dsr.dsrPct, change: dsr.change, period: dsr.period } : null,
+      });
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) {
+        this.ctx.countryBriefPage.updateHousingCycle?.(null);
+      }
+    });
   }
 
 

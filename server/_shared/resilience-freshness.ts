@@ -28,7 +28,7 @@
 // cadences the methodology document lists without per-cadence ad-hoc
 // numbers.
 
-export type ResilienceCadence = 'realtime' | 'daily' | 'weekly' | 'monthly' | 'annual';
+export type ResilienceCadence = 'realtime' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual';
 
 export type StalenessLevel = 'fresh' | 'aging' | 'stale';
 
@@ -40,6 +40,7 @@ const CADENCE_UNIT_MS: Record<ResilienceCadence, number> = {
   daily: 24 * 60 * 60 * 1000,                   // 1 day
   weekly: 7 * 24 * 60 * 60 * 1000,              // 7 days
   monthly: 30 * 24 * 60 * 60 * 1000,            // 30 days
+  quarterly: 91 * 24 * 60 * 60 * 1000,          // 91 days
   annual: 365 * 24 * 60 * 60 * 1000,            // 365 days
 };
 

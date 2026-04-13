@@ -154,7 +154,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_economic_data',
-    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, and energy storage data.',
+    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'economic:fred:v1:FEDFUNDS:0',
@@ -165,9 +165,16 @@ const TOOL_REGISTRY: ToolDef[] = [
       'economic:spending:v1',
       'market:earnings-calendar:v1',
       'market:cot:v1',
+      'economic:bis:dsr:v1',
+      'economic:bis:property-residential:v1',
+      'economic:bis:property-commercial:v1',
     ],
     _seedMetaKey: 'seed-meta:economic:econ-calendar',
     _maxStaleMin: 1440,
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:econ-calendar', maxStaleMin: 1440 },
+      { key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 }, // 12h cron × 2
+    ],
   },
   {
     name: 'get_country_macro',

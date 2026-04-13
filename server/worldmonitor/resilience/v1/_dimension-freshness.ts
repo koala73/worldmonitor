@@ -75,6 +75,13 @@ const SOURCE_KEY_META_OVERRIDES: Readonly<Record<string, string>> = {
   // seed-meta:economic:bis (the sub-resource 'eer' is only in the data
   // key, not the meta key).
   'economic:bis:eer': 'economic:bis',
+  // seed-bis-extended.mjs: runSeed('economic', 'bis-extended', ...) writes
+  // seed-meta:economic:bis-extended. DSR is the published key; property-*
+  // keys are extras written via afterPublish on the same seed run, so all
+  // three share this seed-meta.
+  'economic:bis:dsr': 'economic:bis-extended',
+  'economic:bis:property-residential': 'economic:bis-extended',
+  'economic:bis:property-commercial': 'economic:bis-extended',
   // seed-economy.mjs: runSeed('economic', 'energy-prices', ...) writes
   // seed-meta:economic:energy-prices for the economic:energy:v1:all key.
   // The :v1:all tail means neither template-strip nor version-strip

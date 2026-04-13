@@ -3,6 +3,7 @@ import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 
 await runBundle('macro', [
   { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
+  { label: 'BIS-Extended', script: 'seed-bis-extended.mjs', seedMetaKey: 'economic:bis-extended', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
   { label: 'BLS-Series', script: 'seed-bls-series.mjs', seedMetaKey: 'economic:bls-series', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'Eurostat', script: 'seed-eurostat-country-data.mjs', seedMetaKey: 'economic:eurostat-country-data', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Eurostat-HousePrices', script: 'seed-eurostat-house-prices.mjs', seedMetaKey: 'economic:eurostat-house-prices', intervalMs: 7 * DAY, timeoutMs: 300_000 },
