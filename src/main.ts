@@ -311,9 +311,11 @@ Sentry.init({
     // Suppress Fireglass (Symantec/Broadcom CloudSOC) console-hook recursion.
     // Fireglass wraps console.log and recurses on its own debug output, producing
     // "Maximum call stack size exceeded". Stack frames are <anonymous> so the
-    // generic hasFirstParty gate below can't see it — match by function name
-    // (WORLDMONITOR-MK).
-    if (frames.some(f => /FireglassUtils/.test(f.function ?? ''))) return null;
+    // generic hasFirstParty gate below can't see it — match by function name.
+    // Gated on excType === 'RangeError' (mirrors the sortedTrackListForMenu
+    // pattern above) so an unrelated exception with a FireglassUtils frame
+    // isn't silently dropped (WORLDMONITOR-MK).
+    if (excType === 'RangeError' && frames.some(f => /FireglassUtils/.test(f.function ?? ''))) return null;
     // Suppress Chrome Mobile WebView 105+ Request constructor quirk ONLY when
     // the Dodo checkout lazy chunk is in the stack (WORLDMONITOR-MH). The
     // exact message is unique to the Fetch § Request() duplex requirement, but
