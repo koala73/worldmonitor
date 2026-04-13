@@ -95,6 +95,41 @@ describe('dedupeHeadlines', () => {
     assert.equal(out[0]!.extraSources.length, 1);
   });
 
+  it('caller re-sort by primary positions the displayed card, not the first-seen duplicate', () => {
+    // Repro: A and B are duplicates. A is newer + higher-severity + tier 4 (low quality),
+    // B is older + lower-severity + tier 1 (Reuters). C is unrelated, medium severity.
+    // dedupeHeadlines picks B (tier 1) as primary for the A/B group. The caller must re-sort
+    // by the chosen primary's severity/time; otherwise the group stays anchored at A's
+    // pre-dedupe position and slice(0, N) picks the wrong cards.
+    type Sev = 'high' | 'medium' | 'low';
+    const SEV: Record<Sev, number> = { low: 0, medium: 1, high: 2 };
+    const mk = (title: string, source: string, t: string, tier: number, sev: Sev) => {
+      const it = h(title, source, t, tier) as NewsItem & { __sev: Sev };
+      it.__sev = sev;
+      return it;
+    };
+
+    const A = mk('Sanctions package advances in Brussels', 'RandoBlog', '2026-04-12T12:00:00Z', 4, 'high');
+    const B = mk('Sanctions package advances in Brussels', 'Reuters', '2026-04-12T09:00:00Z', 1, 'low');
+    const C = mk('Shipping lanes reopen near Hormuz', 'AP', '2026-04-12T10:00:00Z', 1, 'medium');
+
+    const compare = (a: NewsItem, b: NewsItem) => {
+      const sa = SEV[(a as NewsItem & { __sev: Sev }).__sev];
+      const sb = SEV[(b as NewsItem & { __sev: Sev }).__sev];
+      if (sb !== sa) return sb - sa;
+      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+    };
+
+    const sorted = [A, B, C].sort(compare);
+    const deduped = dedupeHeadlines(sorted).sort((x, y) => compare(x.item, y.item));
+
+    assert.equal(deduped.length, 2);
+    // B (primary chosen for A/B group) is 'low', C is 'medium' — C must come first now.
+    assert.equal(deduped[0]!.item.source, 'AP');
+    assert.equal(deduped[1]!.item.source, 'Reuters');
+    assert.deepEqual(deduped[1]!.extraSources, ['RandoBlog']);
+  });
+
   it('picks the highest-tier source as primary even when a lower-tier item appears first', () => {
     // Lower tier number = better source. T4 arrives first/newer, T1 arrives second/older.
     const items = [

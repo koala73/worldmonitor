@@ -309,15 +309,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.newsBody) return;
     this.newsBody.replaceChildren();
 
-    const sorted = [...headlines]
-      .sort((a, b) => {
-        const sa = SEVERITY_ORDER[this.toThreatLevel(a.threat?.level)];
-        const sb = SEVERITY_ORDER[this.toThreatLevel(b.threat?.level)];
-        if (sb !== sa) return sb - sa;
-        return this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate);
-      });
+    const compare = (a: NewsItem, b: NewsItem) => {
+      const sa = SEVERITY_ORDER[this.toThreatLevel(a.threat?.level)];
+      const sb = SEVERITY_ORDER[this.toThreatLevel(b.threat?.level)];
+      if (sb !== sa) return sb - sa;
+      return this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate);
+    };
 
-    const deduped = dedupeHeadlines(sorted, (it) => it.tier ?? getSourceTier(it.source)).slice(0, 10);
+    const sorted = [...headlines].sort(compare);
+
+    const deduped = dedupeHeadlines(sorted, (it) => it.tier ?? getSourceTier(it.source))
+      .sort((a, b) => compare(a.item, b.item))
+      .slice(0, 10);
 
     this.currentHeadlineCount = deduped.length;
 
