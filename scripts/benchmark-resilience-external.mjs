@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 // Cross-index benchmark: compares WorldMonitor resilience scores against
-// INFORM Global, ND-GAIN, WorldRiskIndex, and FSI using Spearman/Pearson.
+// INFORM Risk (JRC), UNDP HDI, and WorldRiskIndex (HDX) using Spearman/Pearson.
 //
-// FSI data sourced from the Fund for Peace under non-commercial academic license.
-// WorldMonitor uses FSI scores for internal validation benchmarking only.
-// FSI scores are NOT displayed in the product UI or included in the public ranking.
+// All three sources are CC-BY or open-licensed:
+//   INFORM Risk       — JRC, CC-BY 4.0
+//   UNDP HDI          — UNDP, publicly downloadable HDR statistical annex
+//   WorldRiskIndex    — Bündnis Entwicklung Hilft / IFHV, CC-BY 4.0 via HDX
+// Scores are used for INTERNAL validation benchmarking only; not displayed
+// in product UI or the public resilience ranking.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -20,16 +23,38 @@ const REFERENCE_DIR = join(VALIDATION_DIR, 'reference-data');
 const REDIS_KEY = 'resilience:benchmark:external:v1';
 const REDIS_TTL = 7 * 24 * 60 * 60;
 
-const INFORM_CSV_URL = 'https://drmkc.jrc.ec.europa.eu/inform-index/Portals/0/InfoRM/INFORM_Composite_2024.csv';
-const NDGAIN_CSV_URL = 'https://gain.nd.edu/assets/522870/nd_gain_countryindex_2023data.csv';
-const WRI_CSV_URL = 'https://weltrisikobericht.de/download/2944/';
-const FSI_CSV_URL = 'https://fragilestatesindex.org/wp-content/uploads/2024/06/fsi-2024.csv';
+// INFORM Risk 2026 — JRC moved away from year-stamped composite CSVs to a JSON
+// API. WorkflowId=505 is "INFORM Risk 2026" (queried via /Workflows endpoint,
+// bump when a newer release lands).
+const INFORM_JSON_URL = 'https://drmkc.jrc.ec.europa.eu/inform-index/API/InformAPI/countries/Scores/?WorkflowId=505&IndicatorId=INFORM';
+// UNDP HDI 2025 — composite-indices time series CSV, refreshed annually with
+// the new HDR publication. Latest year column is hdi_YYYY (currently 2023 in
+// the 2025 HDR). Wide format: one row per country, one column per year.
+const HDI_CSV_URL = 'https://hdr.undp.org/sites/default/files/2025_HDR/HDR25_Composite_indices_complete_time_series.csv';
+// WorldRiskIndex — migrated from weltrisikobericht.de/download/2944/ (404'd)
+// to the HDX dataset which is CDN-stable and not geo-blocked. Multi-year
+// "trend" CSV; we pick each country's latest year.
+const WRI_CSV_URL = 'https://data.humdata.org/dataset/1efb6ee7-051a-440f-a2cf-e652fecccf73/resource/3a2320fa-41b4-4dda-a847-3f397d865378/download/worldriskindex-trend.csv';
+// ND-GAIN 2026 is published ONLY inside a ZIP (resources/gain/gain.csv).
+// Node has no built-in zip reader and the validation Docker image only
+// installs tsx. Deferred until we wire an unzip step (adm-zip dep or alpine
+// apk add unzip). Notre Dame's previously-direct 2023 CSV URL now serves
+// the year's PDF report instead of CSV data.
+const NDGAIN_ZIP_URL = 'https://gain.nd.edu/assets/647440/ndgain_countryindex_2026.zip';
+// FSI retired — latest bulk download is 2023 XLSX (no parser in image) and
+// Fund for Peace stopped publishing 2024/2025 bulk data. Replaced in the
+// HYPOTHESES list below by UNDP HDI (fresher, authoritative, CSV).
 
 export const HYPOTHESES = [
+  // Higher WM resilience ↔ lower humanitarian/disaster risk: expect negative
+  // correlation with INFORM (0-10, higher = more risk).
   { index: 'INFORM', pillar: 'overall', direction: 'negative', minSpearman: 0.60 },
-  { index: 'ND-GAIN', pillar: 'structural-readiness', direction: 'positive', minSpearman: 0.65 },
+  // Higher WM resilience ↔ higher human development: expect positive
+  // correlation with HDI (0-1, higher = more developed).
+  { index: 'HDI', pillar: 'overall', direction: 'positive', minSpearman: 0.65 },
+  // Higher WM resilience ↔ lower disaster risk: expect negative correlation
+  // with WRI (0-100, higher = more risk).
   { index: 'WorldRiskIndex', pillar: 'overall', direction: 'negative', minSpearman: 0.55 },
-  { index: 'FSI', pillar: 'overall', direction: 'negative', minSpearman: 0.60 },
 ];
 
 const ISO3_TO_ISO2 = buildIso3ToIso2Map();
@@ -125,66 +150,109 @@ function findColumn(headers, ...candidates) {
   return null;
 }
 
+// INFORM JSON API returns an array of { Iso3, IndicatorId, IndicatorScore, … }.
+// We filter IndicatorId='INFORM' (the composite top-level score) and convert
+// ISO3→ISO2 via the shared toIso2 helper. Falls back to a reference JSON file
+// at REFERENCE_DIR/inform.json if the live API is unreachable.
 export async function fetchInformGlobal() {
-  const { text, source } = await fetchCSV(INFORM_CSV_URL, 'INFORM');
-  if (!text) return { scores: new Map(), source };
-  const rows = parseCSV(text);
+  const label = 'INFORM';
+  let rows = null;
+  let source = 'live';
+  try {
+    // JRC's WAF returns an HTML bot-check page to desktop-browser UAs (including
+    // our shared CHROME_UA). Using a plain programmatic UA bypasses the
+    // challenge and gets the raw JSON response.
+    const resp = await fetch(INFORM_JSON_URL, {
+      headers: { 'User-Agent': 'WorldMonitor-Benchmark/1.0', Accept: 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    rows = await resp.json();
+    console.log(`[benchmark] Fetched ${label} live (${rows.length} rows)`);
+  } catch (err) {
+    console.warn(`[benchmark] Live fetch failed for ${label}: ${err.message}`);
+    const refPath = join(REFERENCE_DIR, 'inform.json');
+    if (existsSync(refPath)) {
+      rows = JSON.parse(readFileSync(refPath, 'utf8'));
+      source = 'stub';
+      console.log(`[benchmark] Loaded ${label} from reference JSON (${rows.length} rows)`);
+    } else {
+      console.warn(`[benchmark] No reference JSON at ${refPath}, skipping ${label}`);
+      return { scores: new Map(), source: 'unavailable' };
+    }
+  }
+
   const scores = new Map();
-  let isoCol = findColumn(Object.keys(rows[0] || {}), 'iso3', 'iso', 'country_iso');
-  let scoreCol = findColumn(Object.keys(rows[0] || {}), 'inform_risk', 'inform', 'risk_score', 'composite');
+  if (!Array.isArray(rows)) return { scores, source };
   for (const row of rows) {
-    const keys = Object.keys(row);
-    const code = toIso2(row[isoCol || keys[0]]);
-    const val = parseFloat(row[scoreCol || keys[keys.length - 1]]);
-    if (code && !Number.isNaN(val)) scores.set(code, val);
+    if (row.IndicatorId !== 'INFORM') continue;
+    const code = toIso2(row.Iso3);
+    const val = typeof row.IndicatorScore === 'number' ? row.IndicatorScore : parseFloat(row.IndicatorScore);
+    if (code && Number.isFinite(val)) scores.set(code, val);
   }
   return { scores, source };
 }
 
-export async function fetchNdGain() {
-  const { text, source } = await fetchCSV(NDGAIN_CSV_URL, 'ND-GAIN');
-  if (!text) return { scores: new Map(), source };
-  const rows = parseCSV(text);
-  const scores = new Map();
-  const isoCol = findColumn(Object.keys(rows[0] || {}), 'iso3', 'iso', 'country');
-  const scoreCol = findColumn(Object.keys(rows[0] || {}), 'gain', 'nd-gain', 'score', 'readiness', 'index');
-  for (const row of rows) {
-    const keys = Object.keys(row);
-    const code = toIso2(row[isoCol || keys[0]]);
-    const val = parseFloat(row[scoreCol || keys[keys.length - 1]]);
-    if (code && !Number.isNaN(val)) scores.set(code, val);
-  }
-  return { scores, source };
-}
+// ND-GAIN deferred — the 2026 release ships only as a ZIP (resources/gain/gain.csv
+// inside NDGAIN_ZIP_URL above). Add a zip reader (adm-zip dep or apk add unzip
+// in Dockerfile.seed-bundle-resilience-validation) then restore a fetchNdGain()
+// that unzips-and-parses. Legacy /assets/522870/nd_gain_countryindex_2023data.csv
+// URL now returns the 2023 report PDF, which silently produced 0 parsed rows
+// while logging 2.4 MB "fetched" — misleading. Dropped entirely rather than
+// keep a broken source.
 
+// WorldRiskIndex — HDX publishes a multi-year "trend" CSV
+// (worldriskindex-trend.csv) with columns: WRI.Country, ISO3.Code, Year, W
+// (composite), plus pillar components. Filter to each country's latest
+// year and use W as the composite score (0-100 scale).
 export async function fetchWorldRiskIndex() {
   const { text, source } = await fetchCSV(WRI_CSV_URL, 'WorldRiskIndex');
   if (!text) return { scores: new Map(), source };
   const rows = parseCSV(text);
   const scores = new Map();
-  const isoCol = findColumn(Object.keys(rows[0] || {}), 'iso3', 'iso', 'country_code');
-  const scoreCol = findColumn(Object.keys(rows[0] || {}), 'worldriskindex', 'wri', 'risk_index', 'score');
+  const latestYear = new Map(); // iso2 → latest year seen
   for (const row of rows) {
-    const keys = Object.keys(row);
-    const code = toIso2(row[isoCol || keys[0]]);
-    const val = parseFloat(row[scoreCol || keys[keys.length - 1]]);
-    if (code && !Number.isNaN(val)) scores.set(code, val);
+    const code = toIso2(row['ISO3.Code'] || row.iso3 || row.ISO3);
+    if (!code) continue;
+    const year = parseInt(row.Year ?? row.year, 10);
+    const val = parseFloat(row.W ?? row.WRI ?? row.worldriskindex);
+    if (!Number.isFinite(year) || !Number.isFinite(val)) continue;
+    const prev = latestYear.get(code);
+    if (prev == null || year > prev) {
+      latestYear.set(code, year);
+      scores.set(code, val);
+    }
   }
   return { scores, source };
 }
 
-export async function fetchFsi() {
-  const { text, source } = await fetchCSV(FSI_CSV_URL, 'FSI');
+// UNDP HDI — wide-format CSV, columns: iso3, country, hdicode, region,
+// hdi_rank_2023, hdi_1990..hdi_2023, plus other composite indices. Pick each
+// country's latest non-null hdi_YYYY column. Higher HDI = more developed =
+// expect positive correlation with our resilience score.
+export async function fetchHdi() {
+  const { text, source } = await fetchCSV(HDI_CSV_URL, 'HDI');
   if (!text) return { scores: new Map(), source };
   const rows = parseCSV(text);
   const scores = new Map();
-  const isoCol = findColumn(Object.keys(rows[0] || {}), 'iso', 'country_code', 'code');
-  const scoreCol = findColumn(Object.keys(rows[0] || {}), 'total', 'fsi', 'score', 'fragility');
+  if (rows.length === 0) return { scores, source };
+  // Find the highest-year hdi_* column with any data; callers care about
+  // "latest snapshot" not a specific year.
+  const headers = Object.keys(rows[0]);
+  const yearCols = headers
+    .filter((h) => /^hdi_\d{4}$/i.test(h))
+    .map((h) => ({ col: h, year: Number(h.slice(4)) }))
+    .sort((a, b) => b.year - a.year);
   for (const row of rows) {
-    const keys = Object.keys(row);
-    const code = toIso2(row[isoCol || keys[0]]);
-    const val = parseFloat(row[scoreCol || keys[keys.length - 1]]);
-    if (code && !Number.isNaN(val)) scores.set(code, val);
+    const iso2 = toIso2(row.iso3 || row.ISO3);
+    if (!iso2) continue;
+    for (const { col } of yearCols) {
+      const val = parseFloat(row[col]);
+      if (Number.isFinite(val)) {
+        scores.set(iso2, val);
+        break;
+      }
+    }
   }
   return { scores, source };
 }
@@ -268,15 +336,12 @@ function generateCommentary(outlier, indexName, wmScores, _extScores) {
     'INFORM': wmHigh
       ? `${countryCode}: WM scores high (fiscal/institutional capacity); INFORM penalizes geographic/hazard exposure`
       : `${countryCode}: WM scores low (limited structural buffers); INFORM rates risk ${direction} than WM resilience inversion`,
-    'ND-GAIN': wmHigh
-      ? `${countryCode}: WM structural readiness aligns with ND-GAIN readiness; external rank ${direction} than expected`
-      : `${countryCode}: WM structural readiness diverges from ND-GAIN; possible data-vintage or indicator-coverage gap`,
+    'HDI': wmHigh
+      ? `${countryCode}: WM resilience tracks HDI human-development levels; external rank ${direction} than expected`
+      : `${countryCode}: WM resilience and HDI diverge — HDI weights health/education/income; WM weights stress buffers`,
     'WorldRiskIndex': wmHigh
       ? `${countryCode}: WM rates resilience high; WRI emphasizes exposure/vulnerability dimensions differently`
       : `${countryCode}: WM rates resilience low; WRI susceptibility weighting drives rank ${direction}`,
-    'FSI': wmHigh
-      ? `${countryCode}: WM resilience high; FSI fragility captures governance/legitimacy dimensions WM weights differently`
-      : `${countryCode}: WM resilience low; FSI cohesion/economic indicators drive ${direction} fragility rank`,
   };
   return templates[indexName] || `${countryCode}: WM diverges from ${indexName} by ${residual} sigma`;
 }
@@ -348,9 +413,8 @@ export async function runBenchmark(opts = {}) {
 
   const fetchers = [
     { name: 'INFORM', fn: opts.fetchInform || fetchInformGlobal },
-    { name: 'ND-GAIN', fn: opts.fetchNdGain || fetchNdGain },
+    { name: 'HDI', fn: opts.fetchHdi || fetchHdi },
     { name: 'WorldRiskIndex', fn: opts.fetchWri || fetchWorldRiskIndex },
-    { name: 'FSI', fn: opts.fetchFsi || fetchFsi },
   ];
 
   const externalResults = {};
@@ -404,7 +468,7 @@ export async function runBenchmark(opts = {}) {
 
   const result = {
     generatedAt: Date.now(),
-    license: 'FSI data: Fund for Peace, non-commercial academic license. For internal validation only.',
+    license: 'INFORM Risk (JRC) CC-BY 4.0, UNDP HDI public, WorldRiskIndex (HDX) CC-BY 4.0. Internal validation only.',
     hypotheses: hypothesisResults,
     correlations,
     outliers: allOutliers,

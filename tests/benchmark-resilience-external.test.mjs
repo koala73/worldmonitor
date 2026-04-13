@@ -98,8 +98,11 @@ describe('detectOutliers', () => {
 });
 
 describe('HYPOTHESES', () => {
-  it('has 4 hypothesis entries', () => {
-    assert.equal(HYPOTHESES.length, 4);
+  // INFORM (negative) + HDI (positive) + WRI (negative). FSI was dropped
+  // (no fresh bulk data) and ND-GAIN is deferred until the seeder can unzip
+  // the 2026 archive — both documented at the top of benchmark-resilience-external.mjs.
+  it('has 3 hypothesis entries', () => {
+    assert.equal(HYPOTHESES.length, 3);
   });
 
   it('each hypothesis has required fields', () => {
@@ -117,9 +120,14 @@ describe('HYPOTHESES', () => {
     assert.equal(inform.direction, 'negative');
   });
 
-  it('ND-GAIN expects positive correlation', () => {
-    const ndgain = HYPOTHESES.find(h => h.index === 'ND-GAIN');
-    assert.equal(ndgain.direction, 'positive');
+  it('HDI expects positive correlation', () => {
+    const hdi = HYPOTHESES.find(h => h.index === 'HDI');
+    assert.equal(hdi.direction, 'positive');
+  });
+
+  it('WorldRiskIndex expects negative correlation', () => {
+    const wri = HYPOTHESES.find(h => h.index === 'WorldRiskIndex');
+    assert.equal(wri.direction, 'negative');
   });
 });
 
@@ -165,19 +173,17 @@ describe('runBenchmark (mocked)', () => {
     const result = await runBenchmark({
       wmScores,
       fetchInform: mockInform,
-      fetchNdGain: mockNdGain,
+      fetchHdi: mockNdGain,  // HDI test fixture reused — same correlation pattern
       fetchWri: mockWri,
-      fetchFsi: mockFsi,
       dryRun: true,
     });
 
     assert.ok(result.generatedAt > 0, 'missing generatedAt');
-    assert.ok(result.license, 'missing FSI license note');
-    assert.equal(result.hypotheses.length, 4, 'expected 4 hypotheses');
+    assert.ok(result.license, 'missing license note');
+    assert.equal(result.hypotheses.length, 3, 'expected 3 hypotheses');
     assert.ok(result.correlations.INFORM, 'missing INFORM correlation');
-    assert.ok(result.correlations['ND-GAIN'], 'missing ND-GAIN correlation');
+    assert.ok(result.correlations.HDI, 'missing HDI correlation');
     assert.ok(result.correlations.WorldRiskIndex, 'missing WorldRiskIndex correlation');
-    assert.ok(result.correlations.FSI, 'missing FSI correlation');
     assert.ok(Array.isArray(result.outliers), 'outliers must be an array');
     assert.ok(result.sourceStatus, 'missing sourceStatus');
 
@@ -195,7 +201,7 @@ describe('runBenchmark (mocked)', () => {
     }
   });
 
-  it('INFORM and FSI show negative correlation with mock data', async () => {
+  it('INFORM shows negative correlation with mock data', async () => {
     const wmScores = new Map([
       ['US', 85], ['GB', 78], ['DE', 80], ['FR', 76], ['JP', 82],
       ['IN', 45], ['BR', 50], ['NG', 30], ['SO', 20], ['CH', 88],
@@ -213,9 +219,8 @@ describe('runBenchmark (mocked)', () => {
     const result = await runBenchmark({
       wmScores,
       fetchInform: mockInform,
-      fetchNdGain: emptyFetcher,
+      fetchHdi: emptyFetcher,
       fetchWri: emptyFetcher,
-      fetchFsi: emptyFetcher,
       dryRun: true,
     });
 
@@ -230,9 +235,8 @@ describe('runBenchmark (mocked)', () => {
     const result = await runBenchmark({
       wmScores,
       fetchInform: emptyFetcher,
-      fetchNdGain: emptyFetcher,
+      fetchHdi: emptyFetcher,
       fetchWri: emptyFetcher,
-      fetchFsi: emptyFetcher,
       dryRun: true,
     });
 
@@ -257,9 +261,8 @@ describe('runBenchmark (mocked)', () => {
     const result = await runBenchmark({
       wmScores,
       fetchInform: async () => ({ scores: informScores, source: 'mock' }),
-      fetchNdGain: async () => ({ scores: new Map(), source: 'mock' }),
+      fetchHdi: async () => ({ scores: new Map(), source: 'mock' }),
       fetchWri: async () => ({ scores: new Map(), source: 'mock' }),
-      fetchFsi: async () => ({ scores: new Map(), source: 'mock' }),
       dryRun: true,
     });
 
