@@ -272,15 +272,17 @@ function pctChange(latest, prev) {
 
 // ── Dataflow builders ──────────────────────────────────────────────────────
 
-// Household debt service ratio (private non-financial sector, consolidated,
-// adjusted). Typical BIS_DSR key dimensions: FREQ.BORROWERS_CTY.DSR_BORROWERS
-// e.g. Q.US.H (households), Q.US.P (private non-financial). Select the
-// private-sector, adjusted variant where available.
+// Household debt service ratio. BIS_DSR key dimensions:
+// FREQ.BORROWERS_CTY.DSR_BORROWERS e.g. Q.US.H (households), Q.US.P (private
+// non-financial). The UI labels this "Household DSR" and resilience scoring
+// uses it as `householdDebtService`, so we MUST prefer H — picking P would
+// mislabel private-non-financial data as household data. Countries without
+// an H series are dropped (honest absence beats silent mis-attribution).
 export function buildDsr(rows) {
   const byCountry = selectBestSeriesByCountry(rows, {
     countryColumns: ['BORROWERS_CTY', 'REF_AREA', 'Reference area', 'Borrowers\u2019 country'],
     prefs: {
-      DSR_BORROWERS: 'P', // private non-financial
+      DSR_BORROWERS: 'H', // households
       DSR_ADJUST: 'A',    // adjusted
     },
   });

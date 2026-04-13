@@ -173,7 +173,13 @@ const TOOL_REGISTRY: ToolDef[] = [
     _maxStaleMin: 1440,
     _freshnessChecks: [
       { key: 'seed-meta:economic:econ-calendar', maxStaleMin: 1440 },
-      { key: 'seed-meta:economic:bis-extended', maxStaleMin: 1440 }, // 12h cron × 2
+      // Per-dataset BIS seed-meta keys — the aggregate
+      // `seed-meta:economic:bis-extended` would report "fresh" even if only
+      // one of the three datasets (DSR / SPP / CPP) is current, matching the
+      // false-freshness bug already fixed for /api/health and resilience.
+      { key: 'seed-meta:economic:bis-dsr', maxStaleMin: 1440 }, // 12h cron × 2
+      { key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
+      { key: 'seed-meta:economic:bis-property-commercial', maxStaleMin: 1440 },
     ],
   },
   {
