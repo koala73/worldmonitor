@@ -150,6 +150,28 @@ describe('Seeder validator (issue #3028)', () => {
     const big = Object.fromEntries(EU_GEOS.slice(0, 15).map((g) => [g, {}]));
     assert.equal(validate({ countries: big }), true);
   });
+
+  it('each Eurostat overlay seeder enforces near-complete EU coverage', async () => {
+    // Guard against regressions: a bad Eurostat run that returns only a
+    // handful of geos must NOT be accepted as a valid snapshot. Universe is
+    // fixed at 29 (EU27 + EA20 + EU27_2020); require >=22 geos across all
+    // three seeders so no seeder can publish a snapshot missing most of the EU.
+    const files = [
+      'scripts/seed-eurostat-house-prices.mjs',
+      'scripts/seed-eurostat-gov-debt-q.mjs',
+      'scripts/seed-eurostat-industrial-production.mjs',
+    ];
+    for (const rel of files) {
+      const src = await readFile(resolve(ROOT, rel), 'utf8');
+      const match = src.match(/makeValidator\((\d+)\)/);
+      assert.ok(match, `${rel} must call makeValidator(N)`);
+      const n = Number(match[1]);
+      assert.ok(
+        n >= 22,
+        `${rel} makeValidator threshold ${n} too low — EU universe is 29, must be >=22 to catch partial-coverage failures`,
+      );
+    }
+  });
 });
 
 describe('Registry wiring (issue #3028)', () => {

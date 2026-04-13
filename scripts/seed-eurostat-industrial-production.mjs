@@ -43,7 +43,10 @@ if (process.argv[1]?.endsWith('seed-eurostat-industrial-production.mjs')) {
     CANONICAL_KEY,
     fetchAll,
     {
-      validateFn: makeValidator(10),
+      // Monthly industrial-production has slightly patchier coverage than the
+      // annual/quarterly datasets (small members lag or skip months); require
+      // at least 22/29 geos so a bad run can't silently drop most of the EU.
+      validateFn: makeValidator(22),
       ttlSeconds: TTL,
       sourceVersion: 'eurostat-sts-inpr-m-v1',
       recordCount: (data) => Object.keys(data?.countries || {}).length,

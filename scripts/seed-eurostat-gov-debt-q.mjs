@@ -37,7 +37,10 @@ async function fetchAll() {
 
 if (process.argv[1]?.endsWith('seed-eurostat-gov-debt-q.mjs')) {
   runSeed('economic', 'eurostat-gov-debt-q', CANONICAL_KEY, fetchAll, {
-    validateFn: makeValidator(10),
+    // Near-complete coverage: quarterly Maastricht gross-debt is reported by
+    // all 27 EU members + EA20/EU27_2020 aggregates; allow up to ~5 of 29 geos
+    // missing (24/29) before refusing to publish.
+    validateFn: makeValidator(24),
     ttlSeconds: TTL,
     sourceVersion: 'eurostat-gov-10q-ggdebt-v1',
     recordCount: (data) => Object.keys(data?.countries || {}).length,

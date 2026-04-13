@@ -33,7 +33,10 @@ async function fetchAll() {
 
 if (process.argv[1]?.endsWith('seed-eurostat-house-prices.mjs')) {
   runSeed('economic', 'eurostat-house-prices', CANONICAL_KEY, fetchAll, {
-    validateFn: makeValidator(10),
+    // Near-complete coverage: annual house-price index is well-reported across
+    // all 27 EU members; allow up to ~5 of 29 geos missing (24/29) before we
+    // refuse to publish a snapshot that would silently lose most of the EU.
+    validateFn: makeValidator(24),
     ttlSeconds: TTL,
     sourceVersion: 'eurostat-prc-hpi-a-v1',
     recordCount: (data) => Object.keys(data?.countries || {}).length,
