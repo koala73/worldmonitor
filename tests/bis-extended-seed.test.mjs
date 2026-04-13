@@ -7,6 +7,9 @@ import {
   buildDsr,
   buildPropertyPrices,
   quarterToDate,
+  validate,
+  publishTransform,
+  planDatasetAction,
   KEYS,
 } from '../scripts/seed-bis-extended.mjs';
 
@@ -92,6 +95,53 @@ describe('seed-bis-extended parser', () => {
     const xm = entries.find(e => e.countryCode === 'XM');
     assert.ok(xm, 'expected XM entry');
     assert.equal(xm.kind, 'residential');
+  });
+
+  it('decouples DSR / SPP / CPP: DSR empty + SPP+CPP healthy → SPP+CPP written, DSR TTL extended', () => {
+    // Simulated fetchAll() output when WS_DSR fetch failed but WS_SPP / WS_CPP
+    // succeeded. The previous code hard-gated everything on DSR: publishTransform
+    // would yield { entries: [] }, validate() would fail on the full object, and
+    // afterPublish() never ran → fresh SPP/CPP data silently dropped. The fix
+    // must classify each dataset independently.
+    const data = {
+      dsr: null,
+      spp: { entries: [{ countryCode: 'US', indexValue: 108.5 }], fetchedAt: 't' },
+      cpp: { entries: [{ countryCode: 'US', indexValue: 95.2 }], fetchedAt: 't' },
+    };
+    // SPP/CPP must be WRITTEN (fresh data).
+    assert.equal(planDatasetAction(data.spp), 'write');
+    assert.equal(planDatasetAction(data.cpp), 'write');
+    // DSR must have its EXISTING TTL extended (no canonical overwrite).
+    assert.equal(planDatasetAction(data.dsr), 'extend');
+    // publishTransform yields an empty DSR payload → validate() returns false
+    // → atomicPublish skips the canonical DSR write and extends its TTL via
+    // runSeed's own skipped branch (preserving the previous DSR snapshot).
+    const publishData = publishTransform(data);
+    assert.deepEqual(publishData, { entries: [] });
+    assert.equal(validate(publishData), false);
+  });
+
+  it('decouples DSR / SPP / CPP: DSR healthy + SPP+CPP empty → DSR written, SPP+CPP TTLs extended', () => {
+    // Reverse failure mode: DSR fetch succeeded, SPP/CPP both returned empty
+    // (e.g. BIS property-price endpoint hiccup). DSR must still publish fresh
+    // data; SPP/CPP old snapshots must survive via TTL extension.
+    const data = {
+      dsr: { entries: [{ countryCode: 'US', dsrPct: 10.4 }], fetchedAt: 't' },
+      spp: null,
+      cpp: null,
+    };
+    assert.equal(planDatasetAction(data.dsr), 'write');
+    assert.equal(planDatasetAction(data.spp), 'extend');
+    assert.equal(planDatasetAction(data.cpp), 'extend');
+    const publishData = publishTransform(data);
+    assert.equal(publishData, data.dsr); // passes DSR slice straight through
+    assert.equal(validate(publishData), true); // canonical DSR write proceeds
+  });
+
+  it('planDatasetAction treats a {entries:[]} slice as extend-TTL (not write)', () => {
+    assert.equal(planDatasetAction({ entries: [] }), 'extend');
+    assert.equal(planDatasetAction(null), 'extend');
+    assert.equal(planDatasetAction(undefined), 'extend');
   });
 
   it('selectBestSeriesByCountry ignores series with no usable observations', () => {

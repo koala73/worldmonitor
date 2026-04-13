@@ -358,7 +358,14 @@ async function fetchProperty(dataset, kind) {
   return entries.length > 0 ? { entries, fetchedAt: new Date().toISOString() } : null;
 }
 
-async function fetchAll() {
+// Each dataset is handled independently: a single fetch failure in any ONE
+// of DSR/SPP/CPP must not block the healthy ones from publishing fresh data.
+// We do SPP/CPP writes as side-effects of fetchAll (via writeExtraKey or
+// extendExistingTtl, per-dataset). The DSR slice flows through the normal
+// runSeed canonical-write path; when DSR is empty, publishTransform yields
+// an empty payload that fails validate() → atomicPublish.skipped=true →
+// runSeed extends the canonical DSR key's TTL in its own skipped branch.
+export async function fetchAll() {
   const [dsr, spp, cpp] = await Promise.all([
     fetchDsr().catch(err => { console.warn(`  DSR failed: ${err.message}`); return null; }),
     fetchProperty('WS_SPP', 'residential').catch(err => { console.warn(`  SPP failed: ${err.message}`); return null; }),
@@ -366,31 +373,52 @@ async function fetchAll() {
   ]);
   const total = (dsr?.entries?.length || 0) + (spp?.entries?.length || 0) + (cpp?.entries?.length || 0);
   if (total === 0) throw new Error('All BIS extended fetches returned empty');
-  // When DSR is empty the publishTransform yields { entries: [] }, validate()
-  // fails, and runSeed rejects the publish — that would skip afterPublish and
-  // silently expire SPP/CPP even when their fetches succeeded. Extend existing
-  // SPP/CPP TTLs here so they survive the rejected publish; refreshed SPP/CPP
-  // data still writes through afterPublish on the next successful DSR run.
-  if (!dsr || !(dsr.entries?.length > 0)) {
-    await extendExistingTtl([KEYS.spp, KEYS.cpp], TTL).catch(() => {});
-  }
+
+  // Publish SPP/CPP independently NOW — they must not be gated on DSR. Any
+  // that came back empty get their existing snapshot's TTL extended so a
+  // transient upstream failure doesn't silently expire healthy data.
+  await publishDatasetIndependently(KEYS.spp, spp);
+  await publishDatasetIndependently(KEYS.cpp, cpp);
+
   return { dsr, spp, cpp };
 }
 
-function validate(data) {
-  return Array.isArray(data?.entries) && data.entries.length > 0;
+// Pure decision function: classifies what action should be taken for a
+// dataset slice (write fresh vs. extend existing TTL). Unit-testable; the
+// Redis side-effects live in publishDatasetIndependently below.
+export function planDatasetAction(payload) {
+  if (payload && Array.isArray(payload.entries) && payload.entries.length > 0) {
+    return 'write';
+  }
+  return 'extend';
 }
 
-// Primary publish key is DSR (required for resilience macroFiscal). Property
-// prices are written as extras through afterPublish so a single seed run
-// keeps all three keys in sync.
-function publishTransform(data) {
-  return data.dsr ?? { entries: [] };
+export async function publishDatasetIndependently(key, payload) {
+  const action = planDatasetAction(payload);
+  if (action === 'write') {
+    try {
+      await writeExtraKey(key, payload, TTL);
+    } catch (err) {
+      console.warn(`  ${key}: write failed (${err.message}); extending existing TTL`);
+      await extendExistingTtl([key], TTL).catch(() => {});
+    }
+  } else {
+    await extendExistingTtl([key], TTL).catch(() => {});
+  }
 }
 
-async function afterPublish(data) {
-  if (data.spp) await writeExtraKey(KEYS.spp, data.spp, TTL);
-  if (data.cpp) await writeExtraKey(KEYS.cpp, data.cpp, TTL);
+// validate() is invoked by atomicPublish against the POST-publishTransform
+// payload (the DSR slice). Returning false when DSR is empty makes runSeed
+// take its skipped branch, which extends the canonical DSR key's TTL and
+// refreshes seed-meta without overwriting the existing DSR snapshot.
+export function validate(publishData) {
+  return Array.isArray(publishData?.entries) && publishData.entries.length > 0;
+}
+
+export function publishTransform(data) {
+  return data.dsr && data.dsr.entries?.length > 0
+    ? data.dsr
+    : { entries: [] };
 }
 
 if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
@@ -399,7 +427,6 @@ if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
     ttlSeconds: TTL,
     sourceVersion: 'bis-sdmx-csv-extended',
     publishTransform,
-    afterPublish,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
