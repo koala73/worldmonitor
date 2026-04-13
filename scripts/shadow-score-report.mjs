@@ -18,9 +18,12 @@ function loadEnv() {
   if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) return;
   const envPath = resolve(process.cwd(), '.env.local');
   if (!existsSync(envPath)) return;
+  // Only hydrate the two Upstash creds we actually need — don't bulk-import
+  // every uppercase var from .env.local into this process.
+  const NEEDED = new Set(['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*"?([^"\n]+)"?\s*$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+    if (m && NEEDED.has(m[1]) && !process.env[m[1]]) process.env[m[1]] = m[2];
   }
 }
 
@@ -162,8 +165,18 @@ function csvEscape(v) {
     process.exit(1);
   }
   console.log(`Fetching ${KEY} ...`);
-  const members = await redis(['zrange', KEY, '0', '-1']);
+  // Bounded fetch: cap at 20k members to stay under Upstash's 10MB REST
+  // response cap even if the rolling 7-day prune falls behind. 20k × ~300B
+  // JSON ≈ 6MB. If this limit is hit, the 7-day TTL prune is broken —
+  // warn so the operator investigates instead of silently analyzing a
+  // partial slice.
+  const FETCH_CAP = 20000;
+  const members = await redis(['zrange', KEY, '0', String(FETCH_CAP - 1)]);
   if (!Array.isArray(members)) { console.error('Unexpected response', members); process.exit(1); }
+  if (members.length === FETCH_CAP) {
+    console.warn(`  WARNING: fetched ${FETCH_CAP} members (cap reached).`);
+    console.warn(`  Rolling 7-day TTL prune may be stalled; investigate ZCARD ${KEY}.`);
+  }
   console.log(`  ${members.length} members`);
 
   const events = members.map(parseMember).filter(e => Number.isFinite(e.ts) && e.score != null);

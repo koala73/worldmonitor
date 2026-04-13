@@ -470,8 +470,9 @@ async function sendWebhook(userId, webhookEnvelope, event) {
     return false;
   }
 
+  // v2: payload shape gained `corroborationCount` (PR #3069). Prior v1 omitted it.
   const payload = JSON.stringify({
-    version: '1',
+    version: '2',
     eventType: event.eventType,
     severity: event.severity ?? 'high',
     timestamp: event.publishedAt ?? Date.now(),
@@ -598,9 +599,23 @@ async function shadowLogScore(event) {
   };
   const member = JSON.stringify(record);
   const cutoff = String(now - SHADOW_LOG_TTL * 1000); // prune entries older than 7 days
+  // One pipelined HTTP request: ZADD + ZREMRANGEBYSCORE prune + 30-day
+  // belt-and-suspenders EXPIRE. Saves ~50% round-trips vs sequential calls
+  // and bounds growth even if writes stop and the rolling prune stalls.
   try {
-    await upstashRest('ZADD', SHADOW_SCORE_LOG_KEY, String(now), member);
-    await upstashRest('ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', cutoff);
+    await fetch(`${UPSTASH_URL}/pipeline`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-relay/1.0',
+      },
+      body: JSON.stringify([
+        ['ZADD', SHADOW_SCORE_LOG_KEY, String(now), member],
+        ['ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', cutoff],
+        ['EXPIRE', SHADOW_SCORE_LOG_KEY, '2592000'],
+      ]),
+    });
   } catch {}
 }
 
@@ -672,8 +687,10 @@ async function processEvent(event) {
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
   console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
 
-  // Shadow log importanceScore for comparison (always runs when score is present)
-  shadowLogScore(event).catch(() => {});
+  // Shadow log importanceScore for comparison. Gate at caller: only rss_alert
+  // events carry importanceScore; for everything else shadowLogScore would
+  // short-circuit, but we still pay the promise/microtask cost unless gated here.
+  if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
 
   // Score gate — only for rss_alert; other event types (oref_siren, conflict_escalation,
   // notam_closure, etc.) never attach importanceScore so they must never be gated here.

@@ -29,6 +29,12 @@ const SHEET_TSV = resolve(OUT, 'rating-sheet.tsv');
 const SHEET_MD = resolve(OUT, 'rating-sheet.md');
 const EVENTS_JSON = resolve(OUT, 'events.json');
 
+// Escape markdown specials so a crafted RSS title can't render as formatting,
+// embed `[label](javascript:...)` links, or break the table layout.
+function escapeMd(s) {
+  return String(s ?? '').replace(/[\\\[\]()<>|*_`~]/g, (ch) => '\\' + ch);
+}
+
 const BANDS = [
   { label: '00-19', lo: 0,  hi: 19 },
   { label: '20-29', lo: 20, hi: 29 },
@@ -118,7 +124,7 @@ function doSample(perBand) {
     '',
     '| id | title | your rating (0–4) |',
     '|----|-------|--------------------|',
-    ...shuffled.map((e, i) => `| S${String(i + 1).padStart(3, '0')} | ${e.title.replace(/\|/g, '\\|')} | |`),
+    ...shuffled.map((e, i) => `| S${String(i + 1).padStart(3, '0')} | ${escapeMd(e.title)} | |`),
   ];
   writeFileSync(SHEET_MD, md.join('\n') + '\n');
 
