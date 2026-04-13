@@ -77,8 +77,11 @@ const EVENT_FAMILIES = [
     description: '>= 100k people displaced (refugees + IDPs + stateless)',
     // seed-displacement-summary.mjs writes `displacement:summary:v1:<year>`
     // (`${CANONICAL_KEY_PREFIX}:${currentYear}` on line 226) because the
-    // UNHCR dataset is annual. Match the suffix here, not the bare key.
-    redisKey: `displacement:summary:v1:${new Date().getUTCFullYear()}`,
+    // UNHCR dataset is annual. Match the suffix here. Use `getFullYear()`
+    // (not `getUTCFullYear()`) to mirror exactly what the seeder computes
+    // and what seed-cross-source-signals.mjs reads — otherwise the values
+    // can disagree by one for the hours around UTC new year.
+    redisKey: `displacement:summary:v1:${new Date().getFullYear()}`,
     detect: detectRefugeeSurges,
     dataSource: 'live',
   },
@@ -271,28 +274,23 @@ function detectSovereignStress(_data, _allCountries) {
 // (key infra:outages:v1). Shape:
 //   { outages: [{ id, title, country: "Iraq" (full name), detectedAt, ... }] }
 // Note: the upstream seeder collects *internet* outages (Cloudflare Radar +
-// news), not power outages specifically. We use event count as an
-// infrastructure-fragility proxy: any country that appears in the Cloudflare
-// Radar outage feed is labeled as having infrastructure stress. The current
-// feed is very sparse (typically 3-10 events globally per week), so we accept
-// even a single event as a positive signal — the alternative is zero
-// coverage. This is a looser proxy than the original "1M people power outage"
-// spec; a dedicated grid-outage seeder remains an open methodology question.
-const OUTAGE_EVENT_THRESHOLD = 1;
-
+// news), not power outages specifically. We treat any appearance in the
+// outage feed as infrastructure stress — the feed is very sparse (typically
+// 3-10 events globally per week) so a count-based threshold would zero out
+// the signal entirely. This is a looser proxy than the original "1M people
+// power outage" spec; a dedicated grid-outage seeder remains an open
+// methodology question. TODO: if the upstream feed ever densifies (direct
+// grid-operator APIs, ENTSO-E, EIA, etc.), re-introduce a count threshold
+// so noisy single events don't dominate.
 function detectPowerOutages(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
   const events = Array.isArray(data) ? data : (data.outages || data.events || []);
   if (!Array.isArray(events)) return labels;
-  const countByIso2 = new Map();
   for (const event of events) {
     const iso2 = toIso2(event);
     if (!iso2) continue;
-    countByIso2.set(iso2, (countByIso2.get(iso2) ?? 0) + 1);
-  }
-  for (const [iso2, count] of countByIso2) {
-    if (count >= OUTAGE_EVENT_THRESHOLD) labels.set(iso2, true);
+    labels.set(iso2, true);
   }
   return labels;
 }
