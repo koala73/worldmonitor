@@ -76,7 +76,7 @@ type ToolDef = CacheToolDef | RpcToolDef;
 const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
-    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, Gulf market quotes, crypto sector performance, stablecoin market data, and wholesale FX rates from WorldMonitor\'s curated bootstrap cache.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'market:stocks-bootstrap:v1',
@@ -86,6 +86,9 @@ const TOOL_REGISTRY: ToolDef[] = [
       'market:etf-flows:v1',
       'market:gulf-quotes:v1',
       'market:fear-greed:v1',
+      'market:crypto-sectors:v1',
+      'market:stablecoins:v1',
+      'shared:fx-rates:v1',
     ],
     _seedMetaKey: 'seed-meta:market:stocks',
     _maxStaleMin: 30,
@@ -154,7 +157,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_economic_data',
-    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, and energy storage data.',
+    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage, IMF WEO macro (inflation, GDP, debt, 200+ countries), national debt-to-GDP timeseries, Big Mac PPP index, FAO Food Price Index, and Eurostat EU statistics from WorldMonitor\'s seed cache.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'economic:fred:v1:FEDFUNDS:0',
@@ -165,6 +168,11 @@ const TOOL_REGISTRY: ToolDef[] = [
       'economic:spending:v1',
       'market:earnings-calendar:v1',
       'market:cot:v1',
+      'economic:imf:macro:v2',
+      'economic:national-debt:v1',
+      'economic:bigmac:v1',
+      'economic:fao-ffpi:v1',
+      'economic:eurostat-country-data:v1',
     ],
     _seedMetaKey: 'seed-meta:economic:econ-calendar',
     _maxStaleMin: 1440,
@@ -212,12 +220,17 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_supply_chain_data',
-    description: 'Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.',
+    description: 'Dry bulk shipping stress index, customs revenue flows, COMTRADE bilateral trade data, Hormuz tracker, port chokepoint reference data, active disruptions, energy crisis policies, and energy intelligence feeds. Tracks global supply chain pressure and trade disruptions.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'supply_chain:shipping_stress:v1',
       'trade:customs-revenue:v1',
       'comtrade:flows:v1',
+      'supply_chain:hormuz_tracker:v1',
+      'portwatch:chokepoints:ref:v1',
+      'portwatch:disruptions:active:v1',
+      'energy:crisis-policies:v1',
+      'energy:intelligence:feed:v1',
     ],
     _seedMetaKey: 'seed-meta:trade:customs-revenue',
     _maxStaleMin: 2880,
@@ -265,6 +278,24 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['intelligence:social:reddit:v1'],
     _seedMetaKey: 'seed-meta:intelligence:social-reddit',
     _maxStaleMin: 30,
+  },
+
+  // -------------------------------------------------------------------------
+  // Resilience recovery — cache read (IMF WEO-derived resilience indicators)
+  // -------------------------------------------------------------------------
+  {
+    name: 'get_resilience_recovery',
+    description: 'IMF WEO-derived resilience and recovery indicators: fiscal space (revenue vs. spending headroom), reserve adequacy (external reserves vs. imports), external debt sustainability, import concentration (HHI), and strategic fuel stock levels. Covers 200+ countries with monthly/quarterly cadence.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'resilience:recovery:fiscal-space:v1',
+      'resilience:recovery:reserve-adequacy:v1',
+      'resilience:recovery:external-debt:v1',
+      'resilience:recovery:import-hhi:v1',
+      'resilience:recovery:fuel-stocks:v1',
+    ],
+    _seedMetaKey: 'seed-meta:resilience:recovery:fiscal-space',
+    _maxStaleMin: 43200,
   },
 
   // -------------------------------------------------------------------------
