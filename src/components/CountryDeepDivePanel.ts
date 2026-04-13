@@ -637,7 +637,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!data || (!data.sectors.length && !data.unavailableReason)) {
       // Remove the card entirely to avoid showing an empty "Cost Shock" widget
       // alongside the Trade Exposure sector table (issue #2973 bug 1).
-      this.costShockCalcBody.closest('.cdp-section-card')?.remove();
+      // sectionCard() creates a .cdp-card (not .cdp-section-card); parentElement
+      // is the card wrapper. Matches the updateTradeExposure cleanup pattern.
+      this.costShockCalcBody.parentElement?.remove();
       this.costShockCalcBody = null;
       return;
     }
