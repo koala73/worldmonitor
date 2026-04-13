@@ -42,8 +42,8 @@ const EVENT_FAMILIES = [
   {
     id: 'fx-stress',
     label: 'FX Stress',
-    description: 'Currency depreciation >= 15% in 12 months',
-    redisKey: 'economic:bis:eer:v1',
+    description: 'Currency peak-to-trough drawdown >= 15% over 24 months',
+    redisKey: 'economic:fx:yoy:v1',
     detect: detectFxStress,
     dataSource: 'live',
   },
@@ -232,20 +232,32 @@ async function fetchAllResilienceScores(url, token) {
   return scores;
 }
 
-// FX Stress detector — reads the BIS real effective exchange rate payload
-// (seed-bis-data.mjs, key economic:bis:eer:v1). Shape:
-//   { rates: [{ countryCode: "IN", realEer, nominalEer, realChange, date }] }
-// `realChange` is YoY percent change (already in percent units, e.g. -1.4
-// means -1.4%). Stress is a significant depreciation; we flag countries with
-// realChange <= -15 (drop of 15% or more YoY, matching the family description
-// "Currency depreciation >= 15% in 12 months").
+// FX Stress detector — reads the wider-coverage Yahoo FX payload
+// (seed-fx-yoy.mjs, key economic:fx:yoy:v1). Shape:
+//   { rates: [{ countryCode: "AR", currency: "ARS",
+//                currentRate, yearAgoRate, yoyChange,
+//                drawdown24m, peakRate, peakDate, troughRate, troughDate,
+//                asOf, yearAgo }], fetchedAt }
 //
-// DATA-COVERAGE CAVEAT: BIS publishes EER for ~12 advanced + select EM
-// economies (G10 + a handful of BRICS). Genuine currency crises like Turkey
-// 2021 or Argentina 2023 won't necessarily appear unless BIS covers them.
-// The detector is correct; the upstream source is narrow. Expanding to a
-// broader FX dataset (FRED, IMF IFS, or central-bank direct) would materially
-// improve this family's signal.
+// Use peak-to-trough drawdown over the last 24 months as the stress signal,
+// with a -15% threshold matching the methodology spec. A rolling 12-month
+// YoY window slices through the middle of historic crises (Egypt's March
+// 2024 devaluation, Nigeria's June 2023 devaluation, etc. all fall outside
+// an April→April YoY window by 2026) so YoY-only systematically misses the
+// very events the family is trying to label. Drawdown captures the actual
+// magnitude of stress regardless of crisis timing.
+//
+// Falls back to yoyChange / realChange for back-compat with the old BIS
+// payload during transition deploys (eliminates a CRIT-level health flap if
+// seed-fx-yoy.mjs hasn't run yet but seed-bis-data.mjs has).
+//
+// Coverage: ~45 single-country currencies including Argentina (ARS), Egypt
+// (EGP), Turkey (TRY), Pakistan (PKR), Nigeria (NGN), etc. — the historic
+// FX-crisis countries that BIS WS_EER (~12 G10 + select EM) excluded.
+// Multi-country shared currencies (EUR, XOF, XAF) are intentionally absent
+// because depreciation can't be attributed to any single member.
+const FX_STRESS_THRESHOLD_PCT = -15;
+
 function detectFxStress(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
@@ -254,9 +266,13 @@ function detectFxStress(data) {
   for (const entry of rates) {
     const iso2 = toIso2(entry);
     if (!iso2) continue;
-    const change = entry.realChange ?? entry.yoyChange ?? entry.change ?? entry.depreciation;
+    const change = entry.drawdown24m
+      ?? entry.yoyChange
+      ?? entry.realChange
+      ?? entry.change
+      ?? entry.depreciation;
     if (typeof change === 'number' && Number.isFinite(change)) {
-      labels.set(iso2, change <= -15);
+      labels.set(iso2, change <= FX_STRESS_THRESHOLD_PCT);
     }
   }
   return labels;
@@ -367,12 +383,20 @@ function detectRefugeeSurges(data) {
 // (key sanctions:country-counts:v1). Shape:
 //   { "CU": 35, "GB": 190, "CH": 98, ... }
 // This is the cumulative count of sanctioned entities linked to each ISO2,
-// not a yearly delta. Every country in the map has count > 0 by definition,
-// so the previous `count > 0` gate labeled all 70+ countries as positive —
-// AUC collapsed to ~0.53 noise. Use the top-quartile (>= Q3) as the
-// threshold so only countries with an outlier number of sanctioned entities
-// (likely genuine sanctions targets, not financial hubs that merely host
-// sanctioned entities) get flagged.
+// not a yearly delta. The OFAC distribution is heavily right-skewed:
+// comprehensive-sanctions targets (RU, IR, KP, CU, SY, VE, BY, MM) carry
+// hundreds-to-thousands of entities each. The long tail (financial hubs +
+// incidental nexus countries) carries dozens.
+//
+// The previous Q3 (top-quartile) gate flagged ~50 countries — AUC stuck
+// at ~0.62 because half the flags were financial hubs that merely host
+// sanctioned entities, not the targets themselves. An absolute threshold
+// of SANCTIONS_TARGET_THRESHOLD entities is a more semantically meaningful
+// cutoff: a country with 100+ designated entities IS being heavily
+// targeted, regardless of how the rest of the distribution looks. Review
+// annually as global sanctions volume evolves.
+const SANCTIONS_TARGET_THRESHOLD = 100;
+
 function detectSanctionsShocks(data) {
   const labels = new Map();
   if (!data || typeof data !== 'object') return labels;
@@ -394,15 +418,8 @@ function detectSanctionsShocks(data) {
     }
   }
 
-  if (counts.size === 0) return labels;
-
-  // Top-quartile threshold from the observed distribution. Minimum floor of
-  // 10 so a degenerate tiny payload doesn't flag everyone.
-  const sorted = [...counts.values()].sort((a, b) => a - b);
-  const q3 = sorted[Math.floor(sorted.length * 0.75)] ?? 0;
-  const threshold = Math.max(10, q3);
   for (const [iso2, c] of counts) {
-    if (c >= threshold) labels.set(iso2, true);
+    if (c >= SANCTIONS_TARGET_THRESHOLD) labels.set(iso2, true);
   }
   return labels;
 }

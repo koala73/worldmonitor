@@ -96,8 +96,39 @@ describe('checkGate', () => {
 
 describe('event detectors', () => {
   describe('detectFxStress', () => {
-    // Real seed-bis-data.mjs payload shape: { rates: [{ countryCode, realEer, nominalEer, realChange, date }] }
-    it('detects country with <=-15% realChange from the BIS rates payload', () => {
+    // Real seed-fx-yoy.mjs payload shape:
+    //   { rates: [{ countryCode, currency, currentRate, yearAgoRate, yoyChange,
+    //                drawdown24m, peakRate, peakDate, troughRate, troughDate,
+    //                asOf, yearAgo }] }
+    it('detects country with <=-15% drawdown24m from the FX payload', () => {
+      const data = {
+        rates: [
+          { countryCode: 'AR', currency: 'ARS', drawdown24m: -38.4, yoyChange: -13.2 },
+          { countryCode: 'EG', currency: 'EGP', drawdown24m: -22.4, yoyChange: -6.7 },
+          { countryCode: 'NG', currency: 'NGN', drawdown24m: -20.9, yoyChange: 17.3 },
+          { countryCode: 'JP', currency: 'JPY', drawdown24m: -10.0, yoyChange: -9.6 },
+        ],
+      };
+      const labels = detectFxStress(data);
+      assert.equal(labels.get('AR'), true, 'Argentina drawdown 38% — flagged');
+      assert.equal(labels.get('EG'), true, 'Egypt drawdown 22% — flagged (YoY would have missed this)');
+      assert.equal(labels.get('NG'), true, 'Nigeria drawdown 21% — flagged (YoY shows recovery, drawdown captures crisis)');
+      assert.equal(labels.get('JP'), false, 'Japan drawdown 10% — below threshold');
+    });
+
+    it('falls back to yoyChange when drawdown24m is absent', () => {
+      const data = {
+        rates: [
+          { countryCode: 'AR', currency: 'ARS', yoyChange: -22.4 },
+          { countryCode: 'JP', currency: 'JPY', yoyChange: -3.0 },
+        ],
+      };
+      const labels = detectFxStress(data);
+      assert.equal(labels.get('AR'), true);
+      assert.equal(labels.get('JP'), false);
+    });
+
+    it('falls back to legacy BIS realChange field for back-compat', () => {
       const data = {
         rates: [
           { countryCode: 'TR', realEer: 55.1, realChange: -22.4, date: '2026-02' },
@@ -116,7 +147,7 @@ describe('event detectors', () => {
     });
 
     it('resolves full country names via resolveIso2 when countryCode is absent', () => {
-      const data = { rates: [{ country: 'Turkey', realChange: -20 }] };
+      const data = { rates: [{ country: 'Turkey', drawdown24m: -27.9 }] };
       const labels = detectFxStress(data);
       assert.equal(labels.get('TR'), true);
     });
@@ -213,20 +244,31 @@ describe('event detectors', () => {
 
   describe('detectSanctionsShocks', () => {
     // Real seed-sanctions-pressure.mjs shape: { ISO2: entryCount, ... }
-    // Top-quartile threshold (min floor 10) picks out genuinely sanctions-
-    // heavy countries vs financial hubs that merely host sanctioned entities.
-    it('flags top-quartile countries by cumulative sanctioned-entity count', () => {
+    // Absolute threshold of 100 entities isolates comprehensive-sanctions
+    // targets from financial hubs that merely host sanctioned entities.
+    it('flags only countries above the 100-entity threshold', () => {
       const data = {
-        RU: 500, IR: 400, KP: 300,       // top quartile
-        CN: 50,  CU: 40,  VE: 30, SY: 20, // mid range — below q3
-        FR: 5,   DE: 3,   JP: 1,           // noise
+        RU: 8000, IR: 1200, KP: 800, CU: 600, SY: 500, VE: 450, BY: 400, MM: 350,
+        // Financial hubs with sub-threshold counts (Q3 gate would have flagged these):
+        GB: 90, CH: 80, DE: 70, US: 60, AE: 50,
+        // Long tail of incidental nexus entities:
+        FR: 30, JP: 15, CA: 10, AU: 8, IT: 5, NL: 3,
       };
       const labels = detectSanctionsShocks(data);
-      assert.equal(labels.get('RU'), true);
-      assert.equal(labels.get('IR'), true);
-      assert.equal(labels.has('FR'), false, 'France/DE/JP have low counts — not a sanctions target');
-      // The previous `count > 0` gate flagged all 10 — regression would re-expand the label set.
-      assert.ok(labels.size < 10, `expected top-quartile filter, got ${labels.size} labels`);
+      assert.equal(labels.get('RU'), true, 'Russia: 8000 entries, comprehensive sanctions');
+      assert.equal(labels.get('IR'), true, 'Iran: 1200 entries, comprehensive sanctions');
+      assert.equal(labels.get('KP'), true, 'North Korea: 800 entries');
+      assert.equal(labels.get('MM'), true, 'Myanmar: 350 entries — comprehensive sanctions');
+      assert.equal(labels.has('GB'), false, 'UK: 90 entries below threshold — financial hub, not target');
+      assert.equal(labels.has('CH'), false, 'Switzerland: 80 entries below threshold');
+      assert.equal(labels.has('FR'), false, 'France: noise level');
+      assert.equal(labels.size, 8, 'exactly the 8 comprehensive-sanctions targets');
+    });
+
+    it('flags nothing in a tiny-payload edge case (no country above threshold)', () => {
+      const data = { US: 90, GB: 50, FR: 20, DE: 10 };
+      const labels = detectSanctionsShocks(data);
+      assert.equal(labels.size, 0, 'no country above threshold — none flagged');
     });
 
     it('returns empty for null data', () => {
