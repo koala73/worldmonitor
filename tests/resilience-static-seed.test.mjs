@@ -618,6 +618,20 @@ describe('resilience static health registrations', () => {
     assert.match(healthSrc, /'resilienceStaticFao'/);
   });
 
+  it('registers SEED_META for resilienceStaticFao so empty data degrades to STALE_SEED, not silent OK', () => {
+    // Without a SEED_META entry, the STANDALONE_KEYS health branch leaves
+    // seedStale=null and treats an empty/missing key in EMPTY_DATA_OK_KEYS
+    // as plain OK — which would mask the exact "nothing wrote the key"
+    // state this seeder is designed to fix. Must share the static seeder's
+    // heartbeat (seed-meta:resilience:static) since the aggregate is
+    // written in the same Redis pipeline.
+    assert.match(
+      healthSrc,
+      /resilienceStaticFao:\s*\{\s*key:\s*'seed-meta:resilience:static'/,
+      'resilienceStaticFao must appear in SEED_META pointing at seed-meta:resilience:static',
+    );
+  });
+
   it('registers annual seed-health monitoring for resilience static', () => {
     assert.match(seedHealthSrc, /'resilience:static':\s+\{ key: 'seed-meta:resilience:static',\s+intervalMin: 288000 \}/);
   });
