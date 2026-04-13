@@ -30,7 +30,10 @@ function parseCsv(text) {
     out.push(cur.trim());
     return out;
   };
-  const header = splitLine(lines[0]).map(h => h.trim().toLowerCase());
+  // Strip UTF-8 BOM from first header cell — SPDR's CSV has been observed
+  // both with and without one; without this, findCol('date') silently returns
+  // -1 and the outer 30-row guard throws a misleading "format may have changed".
+  const header = splitLine(lines[0]).map(h => h.trim().toLowerCase().replace(/^\ufeff/, ''));
   const rows = lines.slice(1).map(splitLine);
   return { header, rows };
 }

@@ -43,6 +43,17 @@ describe('seed-gold-etf-flows: parseGldArchive', () => {
     assert.equal(rows[0].tonnes, 905.20);
   });
 
+  it('strips UTF-8 BOM from the first header cell', () => {
+    // Regression guard (PR #3037 review): SPDR has been observed serving the
+    // CSV with a leading UTF-8 BOM. Without stripping, findCol('date') would
+    // return -1 and parseGldArchive silently returns [].
+    const csv = `\uFEFFDate,Gold (Tonnes)
+10-Apr-26,905.20`;
+    const rows = parseGldArchive(csv);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].tonnes, 905.20);
+  });
+
   it('returns empty on malformed CSV', () => {
     assert.deepEqual(parseGldArchive(''), []);
     assert.deepEqual(parseGldArchive('junk\ndata'), []);
