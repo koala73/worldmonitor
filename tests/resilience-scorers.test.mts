@@ -93,7 +93,7 @@ describe('resilience scorer contracts', () => {
     }));
 
     assert.deepEqual(domainAverages, {
-      economic: 66.33,
+      economic: 68,
       infrastructure: 79,
       energy: 80,
       'social-governance': 61.75,
@@ -126,7 +126,7 @@ describe('resilience scorer contracts', () => {
     const stressScore = round(coverageWeightedMean(stressDims));
     const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
 
-    assert.equal(baselineScore, 62.23);
+    assert.equal(baselineScore, 62.59);
     assert.equal(stressScore, 65.84);
     assert.equal(stressFactor, 0.3416);
 
@@ -140,7 +140,7 @@ describe('resilience scorer contracts', () => {
         return round(cwMean) * getResilienceDomainWeight(domainId);
       }).reduce((sum, v) => sum + v, 0),
     );
-    assert.equal(overallScore, 65.23);
+    assert.equal(overallScore, 65.52);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -211,7 +211,7 @@ describe('resilience scorer contracts', () => {
     );
 
     assert.ok(expected > 0, 'overall should be positive');
-    assert.equal(expected, 65.23, 'overallScore should match sum(domainScore * domainWeight)');
+    assert.equal(expected, 65.52, 'overallScore should match sum(domainScore * domainWeight)');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

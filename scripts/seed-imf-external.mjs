@@ -73,7 +73,9 @@ export function buildExternalCountries({
 
     if (!ex && !im && !ca && !tm && !tx) continue;
 
-    const tradeBalance = ex && im ? Number((ex.value - im.value).toFixed(3)) : null;
+    const tradeBalance = ex && im && ex.year === im.year
+      ? Number((ex.value - im.value).toFixed(3))
+      : null;
 
     countries[iso2] = {
       exportsUsd:           ex?.value ?? null,
