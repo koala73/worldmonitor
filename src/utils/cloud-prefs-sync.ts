@@ -278,8 +278,10 @@ async function uploadNow(variant: string): Promise<void> {
         if (!('conflict' in retryResult)) {
           setSyncVersion(retryResult.syncVersion);
           Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
+          setState('synced');
+        } else {
+          setState('conflict');
         }
-        setState('synced');
       } else {
         setState('error');
       }
