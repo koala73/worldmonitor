@@ -355,6 +355,19 @@ describe('resolveSeedMetaKey (T1.5 propagation pass, P1 fix)', () => {
     // Overrides for sourceKeys that still diverge after strip.
     assert.equal(resolveSeedMetaKey('economic:imf:macro:v2'), 'seed-meta:economic:imf-macro');
     assert.equal(resolveSeedMetaKey('economic:bis:eer:v1'), 'seed-meta:economic:bis');
+    // Per-dataset BIS seed-meta keys (P1 fix): seed-bis-extended.mjs writes
+    // seed-meta:economic:bis-dsr / bis-property-residential / bis-property-commercial
+    // independently. Must NOT collapse to the aggregate bis-extended key or a
+    // DSR-only outage would falsely report macroFiscal inputs as fresh.
+    assert.equal(resolveSeedMetaKey('economic:bis:dsr:v1'), 'seed-meta:economic:bis-dsr');
+    assert.equal(
+      resolveSeedMetaKey('economic:bis:property-residential:v1'),
+      'seed-meta:economic:bis-property-residential',
+    );
+    assert.equal(
+      resolveSeedMetaKey('economic:bis:property-commercial:v1'),
+      'seed-meta:economic:bis-property-commercial',
+    );
     assert.equal(resolveSeedMetaKey('economic:energy:v1:all'), 'seed-meta:economic:energy-prices');
     assert.equal(resolveSeedMetaKey('energy:mix:v1:{ISO2}'), 'seed-meta:economic:owid-energy-mix');
     assert.equal(
