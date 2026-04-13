@@ -28,6 +28,11 @@ loadEnvFile(import.meta.url);
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 export const RESILIENCE_STATIC_PREFIX = 'resilience:static:';
+// Aggregated IPC Phase 3+ view — readers that want "which countries are in a
+// food crisis this year" without fanning out to 222 per-country keys. Shape is
+// compatible with scripts/backtest-resilience-outcomes.mjs::detectFoodCrisis:
+// { countries: { ISO2: { ipcPhase, phase, peopleInCrisis, year } } }.
+export const RESILIENCE_STATIC_FAO_KEY = 'resilience:static:fao';
 export const RESILIENCE_STATIC_TTL_SECONDS = 400 * 24 * 60 * 60;
 export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v7';
 export const RESILIENCE_STATIC_WINDOW_CRON = '0 */4 1-3 10 *';
@@ -825,13 +830,53 @@ async function readJsonKey(key) {
   return verifySeedKey(key);
 }
 
-async function publishSuccess(countryPayloads, manifest, meta) {
+/**
+ * Build the aggregated `resilience:static:fao` payload from the per-country
+ * FAO dataset map. Only includes countries that IPC lists as Phase 3+ — by
+ * design, IPC's "global latest" CSV only publishes crisis cases, so absence
+ * from this aggregate means "not an IPC-monitored crisis country" (consistent
+ * with how scoreFoodWater() treats missing per-country fao data).
+ *
+ * Output shape matches backtest-resilience-outcomes.mjs::detectFoodCrisis:
+ *   { countries: { [iso2]: { ipcPhase, phase, peopleInCrisis, year, source } },
+ *     fetchedAt, source, count, seedYear }
+ */
+export function buildFaoAggregate(faoMap, seedYear, seededAt) {
+  const countries = {};
+  let count = 0;
+  for (const [iso2, entry] of faoMap.entries()) {
+    if (!entry || typeof entry !== 'object') continue;
+    const phaseMatch = typeof entry.phase === 'string' ? entry.phase.match(/\d+/) : null;
+    const ipcPhase = phaseMatch ? Number(phaseMatch[0]) : null;
+    if (ipcPhase == null || ipcPhase < 3) continue;
+    countries[iso2] = {
+      ipcPhase,
+      phase: entry.phase,
+      peopleInCrisis: entry.peopleInCrisis ?? null,
+      year: entry.year ?? null,
+      source: entry.source ?? 'hdx-ipc',
+    };
+    count += 1;
+  }
+  return {
+    countries,
+    count,
+    fetchedAt: seededAt,
+    seedYear,
+    source: 'hdx-ipc',
+  };
+}
+
+async function publishSuccess(countryPayloads, manifest, meta, { faoAggregate } = {}) {
   const commands = [];
   for (const [iso2, payload] of countryPayloads.entries()) {
     commands.push(['SET', countryRedisKey(iso2), JSON.stringify(payload), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
   }
   commands.push(['SET', RESILIENCE_STATIC_INDEX_KEY, JSON.stringify(manifest), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
   commands.push(['SET', RESILIENCE_STATIC_META_KEY, JSON.stringify(meta), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
+  if (faoAggregate) {
+    commands.push(['SET', RESILIENCE_STATIC_FAO_KEY, JSON.stringify(faoAggregate), 'EX', RESILIENCE_STATIC_TTL_SECONDS]);
+  }
   const results = await redisPipeline(commands);
   const failures = results.filter(r => r?.error || r?.result === 'ERR');
   if (failures.length > 0) {
@@ -988,7 +1033,15 @@ export async function seedResilienceStatic() {
     failedDatasets,
   });
 
-  await publishSuccess(countryPayloads, manifest, meta);
+  // Piggyback on the same fetch: the FAO dataset map is already in memory,
+  // just reshape and publish as an aggregate readable by the weekly
+  // validation cron's Outcome-Backtest (resilience:static:fao). Skip when
+  // the FAO fetch itself failed — the rest of the snapshot is still valid.
+  const faoAggregate = failedDatasets.includes('fao')
+    ? null
+    : buildFaoAggregate(datasetMaps.fao ?? new Map(), seedYear, seededAt);
+
+  await publishSuccess(countryPayloads, manifest, meta, { faoAggregate });
 
   return {
     skipped: false,

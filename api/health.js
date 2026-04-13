@@ -143,6 +143,7 @@ const STANDALONE_KEYS = {
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
+  resilienceStaticFao:      'resilience:static:fao',
   resilienceRanking:        'resilience:ranking:v9',
   productCatalog:           'product-catalog:v2',
   energySpineCountries:     'energy:spine:v1:_countries',
@@ -361,6 +362,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'recoveryFiscalSpace',
   'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar seeds: stub seeders write empty payloads until real sources are wired
   'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
+  'resilienceStaticFao', // empty aggregate = no IPC Phase 3+ countries this year (possible in theory); the key must exist but count=0 is fine
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
