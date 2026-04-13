@@ -574,16 +574,29 @@ async function processWelcome(event) {
 
 const IMPORTANCE_SCORE_LIVE = process.env.IMPORTANCE_SCORE_LIVE === '1';
 const IMPORTANCE_SCORE_MIN = Number(process.env.IMPORTANCE_SCORE_MIN ?? 40);
-const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
+// v2 key: JSON-encoded members, used after the stale-score fix (PR #TBD).
+// The old v1 key (compact string format) is retained by consumers for
+// backward-compat reading but is no longer written. See
+// docs/internal/scoringDiagnostic.md §5 and §9 Step 4.
+const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v2';
 const SHADOW_LOG_TTL = 7 * 24 * 3600; // 7 days
 
 async function shadowLogScore(event) {
   const importanceScore = event.payload?.importanceScore ?? 0;
   if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return;
   const now = Date.now();
-  // Use timestamp as the sorted-set score so entries are time-sortable for analysis.
-  // Member encodes importanceScore + context for review.
-  const member = `${now}:score=${importanceScore}:${event.eventType}:${String(event.payload?.title ?? '').slice(0, 60)}`;
+  const record = {
+    ts: now,
+    importanceScore,
+    severity: event.severity ?? 'high',
+    eventType: event.eventType,
+    title: String(event.payload?.title ?? '').slice(0, 160),
+    source: event.payload?.source ?? '',
+    publishedAt: event.payload?.publishedAt ?? null,
+    corroborationCount: event.payload?.corroborationCount ?? null,
+    variant: event.variant ?? '',
+  };
+  const member = JSON.stringify(record);
   const cutoff = String(now - SHADOW_LOG_TTL * 1000); // prune entries older than 7 days
   try {
     await upstashRest('ZADD', SHADOW_SCORE_LOG_KEY, String(now), member);
@@ -679,9 +692,6 @@ async function processEvent(event) {
     console.error('[relay] Failed to fetch alert rules:', err.message);
     return;
   }
-
-  // Shadow log the score on every rss_alert event (fire-and-forget, no await needed)
-  if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
 
   const matching = enabledRules.filter(r =>
     (!r.digestMode || r.digestMode === 'realtime') &&   // skip digest-mode rules — handled by seed-digest-notifications cron
