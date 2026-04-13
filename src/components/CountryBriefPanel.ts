@@ -194,4 +194,9 @@ export interface CountryBriefPanel {
   updateTariffTrends?(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void;
   updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;
   updateProductImports?(data: CountryProductsResponse | null): void;
+  updateHousingCycle?(data: {
+    residential?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    commercial?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    dsr?: { dsrPct: number; change: number | null; period: string } | null;
+  } | null): void;
 }

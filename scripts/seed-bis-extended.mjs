@@ -23,7 +23,7 @@
  *   - health maxStaleMin = 24h = 2× interval (see api/health.js)
  */
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, extendExistingTtl } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -366,6 +366,14 @@ async function fetchAll() {
   ]);
   const total = (dsr?.entries?.length || 0) + (spp?.entries?.length || 0) + (cpp?.entries?.length || 0);
   if (total === 0) throw new Error('All BIS extended fetches returned empty');
+  // When DSR is empty the publishTransform yields { entries: [] }, validate()
+  // fails, and runSeed rejects the publish — that would skip afterPublish and
+  // silently expire SPP/CPP even when their fetches succeeded. Extend existing
+  // SPP/CPP TTLs here so they survive the rejected publish; refreshed SPP/CPP
+  // data still writes through afterPublish on the next successful DSR run.
+  if (!dsr || !(dsr.entries?.length > 0)) {
+    await extendExistingTtl([KEYS.spp, KEYS.cpp], TTL).catch(() => {});
+  }
   return { dsr, spp, cpp };
 }
 

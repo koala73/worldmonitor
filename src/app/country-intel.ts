@@ -675,7 +675,7 @@ export class CountryIntelManager implements AppModule {
       const pick = <T extends { countryCode: string }>(arr: T[] | undefined, cc: string): T | null =>
         arr?.find(e => e?.countryCode === cc) ?? null;
       // Euro area (XM) fallback for EU countries that BIS only publishes as a bloc aggregate.
-      const EURO_AREA = new Set(['DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'IE', 'PT', 'GR', 'FI', 'SK', 'SI', 'LV', 'LT', 'EE', 'CY', 'MT', 'LU']);
+      const EURO_AREA = new Set(['DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'IE', 'PT', 'GR', 'FI', 'SK', 'SI', 'LV', 'LT', 'EE', 'CY', 'MT', 'LU', 'HR']);
       const fallbackCC = EURO_AREA.has(code) ? 'XM' : null;
       const res = pick(body.data?.bisPropertyResidential?.entries, code) ?? (fallbackCC ? pick(body.data?.bisPropertyResidential?.entries, fallbackCC) : null);
       const com = pick(body.data?.bisPropertyCommercial?.entries, code) ?? (fallbackCC ? pick(body.data?.bisPropertyCommercial?.entries, fallbackCC) : null);

@@ -28,7 +28,7 @@ describe('indicator registry', () => {
   });
 
   it('every indicator has valid cadence and scope', () => {
-    const validCadences = new Set(['realtime', 'daily', 'weekly', 'monthly', 'annual']);
+    const validCadences = new Set(['realtime', 'daily', 'weekly', 'monthly', 'quarterly', 'annual']);
     const validScopes = new Set(['global', 'curated']);
     for (const spec of INDICATOR_REGISTRY) {
       assert.ok(validCadences.has(spec.cadence), `${spec.id} has invalid cadence: ${spec.cadence}`);
