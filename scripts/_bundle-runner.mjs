@@ -9,11 +9,15 @@
  *   import { runBundle } from './_bundle-runner.mjs';
  *   await runBundle('ecb-eu', [ { label, script, seedMetaKey, intervalMs, timeoutMs } ]);
  *
- * Budget: Railway cron services SIGKILL the container at 10min. If the sum of
- * timeoutMs for sections that happen to be due exceeds ~9min, we risk losing
- * the in-flight section's logs AND marking the job as crashed. The runner
- * enforces a wall-time budget and defers any section whose worst-case timeout
- * wouldn't fit in the remaining budget — the deferred section runs next tick.
+ * Budget (opt-in): Railway cron services SIGKILL the container at 10min. If
+ * the sum of timeoutMs for sections that happen to be due exceeds ~9min, we
+ * risk losing the in-flight section's logs AND marking the job as crashed.
+ * Callers on Railway cron can pass `{ maxBundleMs }` to enforce a wall-time
+ * budget — sections whose worst-case timeout wouldn't fit in the remaining
+ * budget are deferred to the next tick. Default is Infinity (no budget) so
+ * existing bundles whose individual sections already exceed 9min (e.g.
+ * 600_000-1 timeouts in imf-extended, energy-sources) are not silently
+ * broken by adopting the runner.
  */
 
 import { execFile } from 'node:child_process';
@@ -90,8 +94,9 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
  */
 export async function runBundle(label, sections, opts = {}) {
   const t0 = Date.now();
-  const maxBundleMs = opts.maxBundleMs ?? 540_000;
-  console.log(`[Bundle:${label}] Starting (${sections.length} sections, budget ${Math.round(maxBundleMs / 1000)}s)`);
+  const maxBundleMs = opts.maxBundleMs ?? Infinity;
+  const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
+  console.log(`[Bundle:${label}] Starting (${sections.length} sections${budgetLabel})`);
 
   let ran = 0, skipped = 0, deferred = 0, failed = 0;
 
