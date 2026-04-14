@@ -38,8 +38,10 @@ const EDGE = resolve(repoRoot, 'api/_seed-envelope.js');
  * Extract bare function bodies from a source file, keyed by name.
  * Returns a Map<name, body> where body is the function's implementation with
  * TypeScript type annotations stripped and whitespace normalized.
+ *
+ * Exported so tests can exercise brace/string edge cases directly.
  */
-function extractFunctions(source) {
+export function extractFunctions(source) {
   const fns = new Map();
   // Match: export function NAME<generics?>(args): returnType? { body }
   // We capture NAME and the brace-balanced body.
@@ -49,26 +51,19 @@ function extractFunctions(source) {
     const name = match[1];
     const afterParen = match.index + match[0].length;
     // Find matching close paren for args
-    let depth = 1;
-    let i = afterParen;
-    while (i < source.length && depth > 0) {
-      if (source[i] === '(') depth++;
-      else if (source[i] === ')') depth--;
-      i++;
-    }
-    // Skip to opening {
+    // Balance the arg-list parens, skipping string / template / comment bodies.
+    // scanBalanced expects `start` to point at (or before) the opening
+    // delimiter; `afterParen` is one past it, so step back.
+    let i = scanBalanced(source, afterParen - 1, '(', ')');
+    // Skip to opening { (may cross return-type annotations that contain `:`).
     while (i < source.length && source[i] !== '{') i++;
     if (i >= source.length) continue;
-    // Brace-balance to find end of function body
+    // Balance the function body's braces using the same string/comment-aware
+    // scanner. Raw `{` inside a string literal like `const marker = '{'` used
+    // to drop `depth` past zero and either truncate or overrun the body.
     const bodyStart = i + 1;
-    depth = 1;
-    i++;
-    while (i < source.length && depth > 0) {
-      const ch = source[i];
-      if (ch === '{') depth++;
-      else if (ch === '}') depth--;
-      i++;
-    }
+    // `i` points at the opening `{`, which is exactly what scanBalanced wants.
+    i = scanBalanced(source, i, '{', '}');
     const bodyEnd = i - 1;
     const body = source.slice(bodyStart, bodyEnd);
     // Bodies must be VERBATIM identical across the three files (parity rule).
@@ -78,6 +73,56 @@ function extractFunctions(source) {
     fns.set(name, normalize(body));
   }
   return fns;
+}
+
+/**
+ * Scan from `start` (which must point AT or just before the opening delimiter),
+ * balancing `open`/`close` while skipping characters inside line comments,
+ * block comments, and string / template literals. Returns the index one past
+ * the matching close delimiter. If input is malformed we return `source.length`
+ * so the caller still produces a (truncated) body rather than an infinite loop.
+ */
+export function scanBalanced(source, start, open, close) {
+  let i = start;
+  // Align `i` to the opening delimiter if it isn't already.
+  while (i < source.length && source[i] !== open) i++;
+  if (i >= source.length) return source.length;
+  let depth = 1;
+  i++;
+  while (i < source.length && depth > 0) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      const nl = source.indexOf('\n', i);
+      i = nl < 0 ? source.length : nl;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const c = source.indexOf('*/', i + 2);
+      i = c < 0 ? source.length : c + 2;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      let j = i + 1;
+      while (j < source.length && source[j] !== ch) {
+        if (source[j] === '\\' && j + 1 < source.length) { j += 2; continue; }
+        // Template-literal interpolation `${ ... }` — recurse to skip matched
+        // braces inside the interpolation so an expression like `${{a:1}}`
+        // doesn't leak a stray `}` into our outer body balance.
+        if (ch === '`' && source[j] === '$' && source[j + 1] === '{') {
+          j = scanBalanced(source, j + 1, '{', '}');
+          continue;
+        }
+        j++;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === open) depth++;
+    else if (ch === close) depth--;
+    i++;
+  }
+  return i;
 }
 
 function normalize(s) {
@@ -129,7 +174,14 @@ async function main() {
   console.log('seed-envelope parity: OK (3 exports verified across source + edge). TS mirror checked by tsc.');
 }
 
-main().catch((err) => {
-  console.error('verify-seed-envelope-parity: unexpected error', err);
-  process.exit(1);
-});
+// isMain guard — only run the verifier when invoked directly as a CLI. Tests
+// import this module to exercise extractFunctions/scanBalanced in isolation,
+// and running main() on import would trigger process.exit from the test
+// process.
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+if (isMain) {
+  main().catch((err) => {
+    console.error('verify-seed-envelope-parity: unexpected error', err);
+    process.exit(1);
+  });
+}
