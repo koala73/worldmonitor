@@ -365,17 +365,28 @@ export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeo
 // so try proxy first to avoid 20s timeout on every direct attempt.
 export async function fredFetchJson(url, proxyAuth) {
   if (proxyAuth) {
-    try {
-      return await httpsProxyFetchJson(url, proxyAuth);
-    } catch (proxyErr) {
-      console.warn(`  [fredFetch] proxy failed (${proxyErr.message}) — retrying direct`);
+    // Decodo proxy flaps on 5xx/522 — retry up to 3 times with backoff before falling back direct.
+    let lastProxyErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
-        if (r.ok) return r.json();
-        throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
-      } catch (directErr) {
-        throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
+        return await httpsProxyFetchJson(url, proxyAuth);
+      } catch (proxyErr) {
+        lastProxyErr = proxyErr;
+        const transient = /HTTP 5\d{2}|522|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(proxyErr.message || '');
+        if (attempt < 3 && transient) {
+          await new Promise((r) => setTimeout(r, 400 * attempt + Math.random() * 300));
+          continue;
+        }
+        break;
       }
+    }
+    console.warn(`  [fredFetch] proxy failed after retries (${lastProxyErr?.message}) — retrying direct`);
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+      if (r.ok) return r.json();
+      throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+    } catch (directErr) {
+      throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
     }
   }
   const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
