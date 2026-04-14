@@ -42,7 +42,11 @@ async function fetchFromCoinGecko() {
   const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
   if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
 
-  const resp = await fetchWithRateLimitRetry(url, 5, headers);
+  // Capped at 2 attempts (10+20=30s budget) so the fallback path itself
+  // cannot recreate the 150s>120s bundle-timeout overrun this PR fixes.
+  // CoinGecko's free-tier 429s are exactly why CoinPaprika is now primary;
+  // a long retry budget here would just defer the same failure mode.
+  const resp = await fetchWithRateLimitRetry(url, 2, headers);
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error('CoinGecko returned no data');
@@ -138,7 +142,7 @@ function validate(data) {
 runSeed('market', 'crypto', CANONICAL_KEY, fetchCryptoQuotes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'coingecko-markets',
+  sourceVersion: 'coinpaprika-tickers+coingecko-fallback',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
