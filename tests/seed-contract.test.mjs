@@ -71,6 +71,33 @@ test('validateDescriptor: rejects ttlSeconds <= 0', () => {
   assert.throws(() => validateDescriptor(minimalDescriptor({ ttlSeconds: -5 })), SeedContractError);
 });
 
+test('validateDescriptor: rejects non-finite ttlSeconds (NaN, Infinity)', () => {
+  // `typeof NaN === "number"` and `NaN > 0 === false`, so the old check
+  // silently accepted it; Number.isFinite is what we actually want.
+  assert.throws(() => validateDescriptor(minimalDescriptor({ ttlSeconds: NaN })), SeedContractError);
+  assert.throws(() => validateDescriptor(minimalDescriptor({ ttlSeconds: Infinity })), SeedContractError);
+  assert.throws(() => validateDescriptor(minimalDescriptor({ ttlSeconds: -Infinity })), SeedContractError);
+});
+
+test('validateDescriptor: rejects non-finite maxStaleMin (NaN, Infinity)', () => {
+  assert.throws(() => validateDescriptor(minimalDescriptor({ maxStaleMin: NaN })), SeedContractError);
+  assert.throws(() => validateDescriptor(minimalDescriptor({ maxStaleMin: Infinity })), SeedContractError);
+});
+
+for (const field of ['domain', 'resource', 'canonicalKey', 'sourceVersion']) {
+  test(`validateDescriptor: rejects empty string for "${field}"`, () => {
+    const err = expectThrows(() => validateDescriptor(minimalDescriptor({ [field]: '' })));
+    assert.ok(err instanceof SeedContractError);
+    assert.equal(err.field, field);
+  });
+
+  test(`validateDescriptor: rejects whitespace-only string for "${field}"`, () => {
+    const err = expectThrows(() => validateDescriptor(minimalDescriptor({ [field]: '   ' })));
+    assert.ok(err instanceof SeedContractError);
+    assert.equal(err.field, field);
+  });
+}
+
 test('validateDescriptor: rejects non-integer schemaVersion', () => {
   assert.throws(() => validateDescriptor(minimalDescriptor({ schemaVersion: 1.5 })), SeedContractError);
   assert.throws(() => validateDescriptor(minimalDescriptor({ schemaVersion: 0 })), SeedContractError);
@@ -113,6 +140,13 @@ test('resolveRecordCount: wraps thrown errors with SeedContractError + cause', (
   assert.ok(err instanceof SeedContractError);
   assert.match(err.message, /declareRecords threw: boom/);
   assert.equal(err.cause?.message, 'boom');
+});
+
+test('SeedContractError: accepts cause via options bag (Error v2 spec)', () => {
+  const underlying = new TypeError('inner');
+  const err = new SeedContractError('wrap', { field: 'declareRecords', cause: underlying });
+  assert.equal(err.cause, underlying);
+  assert.equal(err.field, 'declareRecords');
 });
 
 test('resolveRecordCount: rejects non-function declareRecords', () => {

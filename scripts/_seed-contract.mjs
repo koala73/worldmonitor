@@ -8,8 +8,11 @@
 // contract is enforced at runtime. PR 3 hard-fails the conformance test.
 
 export class SeedContractError extends Error {
-  constructor(message, { descriptor, field } = {}) {
-    super(message);
+  constructor(message, { descriptor, field, cause } = {}) {
+    // Pass `cause` through the standard Error options bag (Node ≥16.9) so the
+    // usual Error causal-chain tooling works (`err.cause`, Node's default
+    // stack printer, Sentry's chained-cause serializer).
+    super(message, cause !== undefined ? { cause } : undefined);
     this.name = 'SeedContractError';
     this.descriptor = descriptor;
     this.field = field;
@@ -82,14 +85,26 @@ export function validateDescriptor(descriptor) {
     }
   }
 
-  if (descriptor.ttlSeconds <= 0) {
-    throw new SeedContractError('runSeed descriptor ttlSeconds must be > 0', { descriptor, field: 'ttlSeconds' });
+  // Non-empty-string fields. `typeof 'string'` accepts '' which would let a
+  // seeder publish to key '' and write seed-meta under a blank resource.
+  for (const field of ['domain', 'resource', 'canonicalKey', 'sourceVersion']) {
+    if (descriptor[field].trim() === '') {
+      throw new SeedContractError(`runSeed descriptor field "${field}" must be a non-empty string`, { descriptor, field });
+    }
+  }
+
+  // Finite positive numbers. `typeof NaN === 'number'` and `NaN > 0 === false`
+  // means a NaN ttl/age would pass the typeof+<=0 check and then poison
+  // expiry/freshness once enforced at runtime. Number.isFinite rejects NaN and
+  // ±Infinity.
+  if (!Number.isFinite(descriptor.ttlSeconds) || descriptor.ttlSeconds <= 0) {
+    throw new SeedContractError('runSeed descriptor ttlSeconds must be a finite number > 0', { descriptor, field: 'ttlSeconds' });
   }
   if (!Number.isInteger(descriptor.schemaVersion) || descriptor.schemaVersion < 1) {
     throw new SeedContractError('runSeed descriptor schemaVersion must be a positive integer', { descriptor, field: 'schemaVersion' });
   }
-  if (descriptor.maxStaleMin <= 0) {
-    throw new SeedContractError('runSeed descriptor maxStaleMin must be > 0', { descriptor, field: 'maxStaleMin' });
+  if (!Number.isFinite(descriptor.maxStaleMin) || descriptor.maxStaleMin <= 0) {
+    throw new SeedContractError('runSeed descriptor maxStaleMin must be a finite number > 0', { descriptor, field: 'maxStaleMin' });
   }
 
   if (descriptor.populationMode != null && descriptor.populationMode !== 'scheduled' && descriptor.populationMode !== 'on_demand') {
@@ -121,9 +136,10 @@ export function resolveRecordCount(declareRecords, data) {
   try {
     count = declareRecords(data);
   } catch (err) {
-    const wrapped = new SeedContractError(`declareRecords threw: ${err && err.message ? err.message : err}`, { field: 'declareRecords' });
-    wrapped.cause = err;
-    throw wrapped;
+    throw new SeedContractError(
+      `declareRecords threw: ${err && err.message ? err.message : err}`,
+      { field: 'declareRecords', cause: err }
+    );
   }
   if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
     throw new SeedContractError(
