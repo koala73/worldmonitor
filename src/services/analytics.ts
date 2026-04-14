@@ -100,6 +100,7 @@ export function clearIdentity(): void {
 }
 
 let _unsubAuth: (() => void) | null = null;
+let _unsubBilling: (() => void) | null = null;
 
 // Cached latest values so either subscription firing can re-identify with full data
 let _lastAuth: AuthSession | null = null;
@@ -127,10 +128,21 @@ export function initAuthAnalytics(): void {
     _syncIdentity();
   });
 
-  onSubscriptionChange((sub) => {
+  _unsubBilling = onSubscriptionChange((sub) => {
     _lastSub = sub;
     _syncIdentity();
   });
+}
+
+/** Tear down auth + billing listeners. Symmetric with initAuthAnalytics(). */
+export function destroyAuthAnalytics(): void {
+  _unsubAuth?.();
+  _unsubBilling?.();
+  _unsubAuth = null;
+  _unsubBilling = null;
+  _lastAuth = null;
+  _lastSub = null;
+  clearIdentity();
 }
 
 // ---------------------------------------------------------------------------
