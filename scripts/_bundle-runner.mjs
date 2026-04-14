@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnvFile } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -27,19 +28,47 @@ loadEnvFile(import.meta.url);
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-async function readSeedMeta(seedMetaKey) {
+async function readRedisKey(key) {
   if (!REDIS_URL || !REDIS_TOKEN) return null;
   try {
-    const resp = await fetch(`${REDIS_URL}/get/${encodeURIComponent(`seed-meta:${seedMetaKey}`)}`, {
+    const resp = await fetch(`${REDIS_URL}/get/${encodeURIComponent(key)}`, {
       headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
       signal: AbortSignal.timeout(5_000),
     });
     if (!resp.ok) return null;
-    const data = await resp.json();
-    return data.result ? JSON.parse(data.result) : null;
+    const body = await resp.json();
+    return body.result ? JSON.parse(body.result) : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Read section freshness for the interval gate.
+ *
+ * Returns `{ fetchedAt }` or null. Prefers envelope-form data when the section
+ * declares `canonicalKey` (PR 2+); falls back to the legacy `seed-meta:<key>`
+ * read used by every bundle file today. PR 1 keeps legacy as the ONLY live
+ * path — `unwrapEnvelope` here is behavior-preserving because legacy seed-meta
+ * values have no `_seed` field and pass through as `data` unchanged. When PR 2
+ * migrates bundles to `canonicalKey`, this function starts reading envelopes.
+ */
+async function readSectionFreshness(section) {
+  if (section.canonicalKey) {
+    const raw = await readRedisKey(section.canonicalKey);
+    const { _seed } = unwrapEnvelope(raw);
+    if (_seed?.fetchedAt) return { fetchedAt: _seed.fetchedAt };
+    return null;
+  }
+  if (section.seedMetaKey) {
+    const raw = await readRedisKey(`seed-meta:${section.seedMetaKey}`);
+    // Legacy seed-meta is `{ fetchedAt, recordCount, sourceVersion }` at top
+    // level. It has no `_seed` wrapper so unwrapEnvelope returns it as data.
+    const meta = unwrapEnvelope(raw).data;
+    if (meta?.fetchedAt) return { fetchedAt: meta.fetchedAt };
+    return null;
+  }
+  return null;
 }
 
 function spawnSeed(scriptPath, { timeoutMs, label }) {
@@ -76,7 +105,8 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
  * @param {Array<{
  *   label: string,
  *   script: string,
- *   seedMetaKey: string,
+ *   seedMetaKey?: string,    // legacy (pre-contract); reads `seed-meta:<key>`
+ *   canonicalKey?: string,   // PR 2+: reads envelope from the canonical data key
  *   intervalMs: number,
  *   timeoutMs?: number,
  * }>} sections
@@ -91,9 +121,9 @@ export async function runBundle(label, sections) {
     const scriptPath = join(__dirname, section.script);
     const timeout = section.timeoutMs || 300_000;
 
-    const meta = await readSeedMeta(section.seedMetaKey);
-    if (meta?.fetchedAt) {
-      const elapsed = Date.now() - meta.fetchedAt;
+    const freshness = await readSectionFreshness(section);
+    if (freshness?.fetchedAt) {
+      const elapsed = Date.now() - freshness.fetchedAt;
       if (elapsed < section.intervalMs * 0.8) {
         const agoMin = Math.round(elapsed / 60_000);
         const intervalMin = Math.round(section.intervalMs / 60_000);

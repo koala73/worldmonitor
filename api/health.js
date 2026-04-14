@@ -1,4 +1,9 @@
 import { jsonResponse } from './_json-response.js';
+// Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
+// reads at specific call sites without further plumbing. It's a no-op on
+// legacy-shape seed-meta values (they have no `_seed` wrapper and pass through
+// as `.data`), so importing it is behavior-preserving.
+import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
 
@@ -443,7 +448,12 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (keyMetaErrors.get(seedCfg.key)) {
     return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: true, metaCount: null };
   }
-  const meta = parseRedisValue(keyMetaValues.get(seedCfg.key));
+  // Unwrap through the envelope helper. Legacy seed-meta is a bare
+  // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
+  // wrapper, so `unwrapEnvelope` returns it as `.data` unchanged. PR 2 wires
+  // true envelope reads at the canonical-key layer; this import establishes
+  // the dependency so behavior stays byte-identical in PR 1.
+  const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
   if (meta?.status === 'error') {
     return { seedAge: null, seedStale: true, seedError: true, metaReadFailed: false, metaCount: null };
   }
