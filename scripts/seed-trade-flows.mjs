@@ -12,6 +12,10 @@ const KEY_PREFIX = 'comtrade:flows';
 const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1';
 const INTER_REQUEST_DELAY_MS = 3_000;
 const ANOMALY_THRESHOLD = 0.30; // 30% YoY change
+// Require at least this fraction of (reporter × commodity) pairs to return
+// non-empty flows. Guards against an entire reporter silently flatlining
+// (e.g., wrong reporterCode → HTTP 200 with count:0 for every commodity).
+const MIN_COVERAGE_RATIO = 0.70;
 
 // Strategic reporters: US, China, Russia, Iran, India, Taiwan
 const REPORTERS = [
@@ -19,8 +23,8 @@ const REPORTERS = [
   { code: '156', name: 'China' },
   { code: '643', name: 'Russia' },
   { code: '364', name: 'Iran' },
-  { code: '356', name: 'India' },
-  { code: '158', name: 'Taiwan' },
+  { code: '699', name: 'India' },
+  { code: '490', name: 'Taiwan' },
 ];
 
 // Strategic HS commodity codes
@@ -50,9 +54,10 @@ async function fetchFlows(reporter, commodity) {
   const records = data?.data ?? [];
   if (!Array.isArray(records)) return [];
 
-  // Group by (flowCode, year) to keep exports and imports separate.
-  // Using just year as key caused the second flow direction (M after X) to
-  // silently overwrite the first, producing wrong YoY values.
+  // The preview endpoint returns partner-level rows (one per counterparty).
+  // Aggregate to World totals per (flowCode, year) by summing, so YoY is
+  // computed against full-year totals. Keying on (flowCode, year) without
+  // summing would silently drop every partner except the last one seen.
   const byFlowYear = new Map(); // key: `${flowCode}:${year}`
   for (const r of records) {
     const year = Number(r.period ?? r.refYear ?? r.refMonth?.slice(0, 4) ?? 0);
@@ -60,10 +65,14 @@ async function fetchFlows(reporter, commodity) {
     const flowCode = String(r.flowCode ?? r.rgDesc ?? 'X');
     const val = Number(r.primaryValue ?? r.cifvalue ?? r.fobvalue ?? 0);
     const wt = Number(r.netWgt ?? 0);
-    const partnerCode = String(r.partnerCode ?? r.partner2Code ?? '000').padStart(3, '0');
-    const partnerName = String(r.partnerDesc ?? r.partner2Desc ?? 'World');
     const mapKey = `${flowCode}:${year}`;
-    byFlowYear.set(mapKey, { year, flowCode, val, wt, partnerCode, partnerName });
+    const prev = byFlowYear.get(mapKey);
+    if (prev) {
+      prev.val += val;
+      prev.wt += wt;
+    } else {
+      byFlowYear.set(mapKey, { year, flowCode, val, wt, partnerCode: '000', partnerName: 'World' });
+    }
   }
 
   // Derive the set of (flowCode, year) pairs sorted for YoY lookup.
@@ -119,6 +128,14 @@ async function fetchAllFlows() {
       const key = `${KEY_PREFIX}:${reporter.code}:${commodity.code}`;
       perKeyFlows[key] = { flows, fetchedAt: new Date().toISOString() };
     }
+  }
+
+  const total = REPORTERS.length * COMMODITIES.length;
+  const populated = Object.values(perKeyFlows).filter((v) => (v.flows?.length ?? 0) > 0).length;
+  const coverage = populated / total;
+  console.log(`  Coverage: ${populated}/${total} (${(coverage * 100).toFixed(0)}%) reporter×commodity pairs populated`);
+  if (coverage < MIN_COVERAGE_RATIO) {
+    throw new Error(`coverage ${populated}/${total} below floor ${MIN_COVERAGE_RATIO}; refusing to publish partial snapshot`);
   }
 
   return { flows: allFlows, perKeyFlows, fetchedAt: new Date().toISOString() };

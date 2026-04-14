@@ -39,9 +39,16 @@ if (COMTRADE_KEYS.length === 0) {
 const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
 const PER_KEY_DELAY_MS = 600;
 
+// UN M49 codes mostly match UN Comtrade reporterCodes, except for India (699,
+// not 356) and Taiwan (490 "Other Asia, nes", not 158). Using M49 codes for
+// these silently returns count:0 from the Comtrade API.
+const COMTRADE_REPORTER_OVERRIDES = { IN: '699', TW: '490' };
 const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
 );
+for (const [iso2, code] of Object.entries(COMTRADE_REPORTER_OVERRIDES)) {
+  ISO2_TO_UN[iso2] = code;
+}
 
 const ALL_REPORTERS = Object.values(UN_TO_ISO2).filter(c => c.length === 2);
 

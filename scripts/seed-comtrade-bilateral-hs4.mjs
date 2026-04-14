@@ -85,6 +85,8 @@ const COMTRADE_REPORTER_OVERRIDES = {
   FR: '251', // UN M49 standard is 250, but Comtrade registers France as reporter 251
   IT: '381', // UN M49 standard is 380, but Comtrade registers Italy as reporter 381
   US: '842', // UN M49 standard is 840, but Comtrade registers the US as reporter 842
+  IN: '699', // UN M49 standard is 356, Comtrade registers India as reporter 699
+  TW: '490', // M49 has no entry; Comtrade reports Taiwan as 490 "Other Asia, nes"
 };
 
 /**

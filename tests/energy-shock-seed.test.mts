@@ -79,7 +79,7 @@ describe('energy shock scenario computation', () => {
 
     it('returns hasData=false when country has no Comtrade data (no numeric code mapping)', () => {
       const ISO2_TO_COMTRADE: Record<string, string> = {
-        US: '842', CN: '156', RU: '643', IR: '364', IN: '356', TW: '158',
+        US: '842', CN: '156', RU: '643', IR: '364', IN: '699', TW: '490',
       };
       const unsupportedCountries = ['DE', 'FR', 'JP', 'KR', 'BR', 'SA'];
       for (const code of unsupportedCountries) {

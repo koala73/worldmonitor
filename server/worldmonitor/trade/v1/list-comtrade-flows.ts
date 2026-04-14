@@ -10,7 +10,7 @@ import { isCallerPremium } from '../../../_shared/premium-check';
 const KEY_PREFIX = 'comtrade:flows';
 
 // Strategic reporters and commodities mirrored from the seed script.
-const REPORTERS = ['842', '156', '643', '364', '356', '158'];
+const REPORTERS = ['842', '156', '643', '364', '699', '490'];
 const CMD_CODES = ['2709', '2711', '7108', '8542', '9301'];
 
 function isValidCode(c: string): boolean {

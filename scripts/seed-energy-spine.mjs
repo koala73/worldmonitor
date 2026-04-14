@@ -30,8 +30,8 @@ const ISO2_TO_COMTRADE = {
   CN: '156',
   RU: '643',
   IR: '364',
-  IN: '356',
-  TW: '158',
+  IN: '699',
+  TW: '490',
 };
 
 // Chokepoints supported by the shock model for comtrade-mapped countries.
