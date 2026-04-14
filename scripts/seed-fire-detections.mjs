@@ -63,7 +63,7 @@ async function fetchRegionSource(apiKey, regionName, bbox, source) {
       return parseCSV(await res.text());
     } catch (err) {
       lastErr = err;
-      if (attempt < 2) await sleep(5_000);
+      if (attempt < 2) await sleep(6_000); // match inter-call pacing so retry stays within FIRMS 10 req/min budget
     }
   }
   throw lastErr;
@@ -128,7 +128,7 @@ async function main() {
   await runSeed('wildfire', 'fires', CANONICAL_KEY, () => fetchAllRegions(apiKey), {
     validateFn: (data) => Array.isArray(data?.fireDetections) && data.fireDetections.length > 0,
     ttlSeconds: 7200,
-    lockTtlMs: 600_000, // 10 min — 27 calls × (6s pace + up to 30s timeout) can exceed 5 min under partial slowness
+    lockTtlMs: 1_500_000, // 25 min — with retry path, 27 slots × ~71s worst case (30s timeout + 6s backoff + 30s retry + 6s pace) can exceed 10 min
     sourceVersion: FIRMS_SOURCES.join('+'),
   });
 }
