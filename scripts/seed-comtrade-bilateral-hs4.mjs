@@ -120,6 +120,12 @@ export function isTransientComtrade(status) {
   return status === 500 || status === 502 || status === 503 || status === 504;
 }
 
+// Retry sleep is indirected through a module-local binding so unit tests can
+// swap in a no-op without changing production cadence. Production defaults
+// to the real sleep import; tests call __setSleepForTests(() => Promise.resolve()).
+let _retrySleep = sleep;
+export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
+
 async function fetchBilateralOnce(url, timeoutMs = 45_000) {
   return fetch(url, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -156,7 +162,7 @@ export async function fetchBilateral(reporterCode, hs4Batch) {
 
     if (resp.status === 429 && !rateLimitedOnce) {
       console.warn(`  429 rate-limited for reporter ${reporterCode}, waiting 60s...`);
-      await sleep(60_000);
+      await _retrySleep(60_000);
       rateLimitedOnce = true;
       continue;
     }
@@ -164,7 +170,7 @@ export async function fetchBilateral(reporterCode, hs4Batch) {
     if (isTransientComtrade(resp.status) && transientRetries < MAX_TRANSIENT_RETRIES) {
       const delay = transientRetries === 0 ? 5_000 : 15_000;
       console.warn(`    transient HTTP ${resp.status} for reporter ${reporterCode}, retrying in ${delay / 1000}s...`);
-      await sleep(delay);
+      await _retrySleep(delay);
       transientRetries++;
       continue;
     }

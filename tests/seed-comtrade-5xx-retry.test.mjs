@@ -6,25 +6,31 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isTransientComtrade, fetchBilateral } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
+import { isTransientComtrade, fetchBilateral, __setSleepForTests } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
 let fetchCalls;
 let fetchResponses; // queue of { status, body } per call
+let sleepCalls;
 
 beforeEach(() => {
   fetchCalls = [];
   fetchResponses = [];
-  globalThis.fetch = async (url, opts) => {
+  sleepCalls = [];
+  globalThis.fetch = async (url) => {
     fetchCalls.push(String(url));
     const next = fetchResponses.shift() ?? { status: 200, body: { data: [] } };
     return new Response(JSON.stringify(next.body ?? {}), { status: next.status });
   };
+  // Swap the retry sleep for a no-op that records the requested delay so
+  // tests can assert the production backoff cadence without actually waiting.
+  __setSleepForTests((ms) => { sleepCalls.push(ms); return Promise.resolve(); });
 });
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
+  __setSleepForTests(null); // restore default
 });
 
 test('isTransientComtrade: recognizes 500/502/503/504 only', () => {
@@ -65,6 +71,7 @@ test('fetchBilateral: retries twice on consecutive 503s, succeeds on third', asy
   const result = await fetchBilateral('699', ['2709']);
   assert.equal(fetchCalls.length, 3, 'initial + two retries');
   assert.equal(result.length, 1);
+  assert.deepEqual(sleepCalls, [5_000, 15_000]);
 });
 
 test('fetchBilateral: gives up (returns []) after 3 consecutive 5xx', async () => {
@@ -76,6 +83,7 @@ test('fetchBilateral: gives up (returns []) after 3 consecutive 5xx', async () =
   const result = await fetchBilateral('699', ['2709']);
   assert.equal(fetchCalls.length, 3, 'caps at 3 attempts');
   assert.deepEqual(result, [], 'empty array after exhausting retries — caller can skip write');
+  assert.deepEqual(sleepCalls, [5_000, 15_000], 'no sleep after final attempt');
 });
 
 test('fetchBilateral: does NOT retry on 4xx (non-transient)', async () => {
@@ -99,7 +107,10 @@ test('fetchBilateral: 429 then 503 still consumes the 5xx retries (regression fo
   const result = await fetchBilateral('699', ['2709']);
   assert.equal(fetchCalls.length, 4, '1 initial 429 + 1 post-429 retry + 2 transient-5xx retries');
   assert.equal(result.length, 1, 'recovered after mixed 429+5xx sequence');
-}, { timeout: 90_000 });
+  // Pin the production backoff cadence so a future refactor that changes
+  // these numbers has to update the test too.
+  assert.deepEqual(sleepCalls, [60_000, 5_000, 15_000], '60s 429 wait, then 5s and 15s transient backoffs');
+});
 
 test('fetchBilateral: 429 once → 429 again does NOT re-wait 60s (one 429 cap)', async () => {
   fetchResponses = [
@@ -109,4 +120,5 @@ test('fetchBilateral: 429 once → 429 again does NOT re-wait 60s (one 429 cap)'
   const result = await fetchBilateral('699', ['2709']);
   assert.equal(fetchCalls.length, 2, 'cap 429 retries at one wait');
   assert.deepEqual(result, []);
-}, { timeout: 90_000 });
+  assert.deepEqual(sleepCalls, [60_000], 'only one 60s wait, no second 429 backoff');
+});
