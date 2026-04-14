@@ -81,6 +81,7 @@
     "predictionMarkets": "Prediction Markets",
     "loadingMarkets": "Loading prediction markets...",
     "infrastructure": "Infrastructure Exposure",
+    "tierBadgeTooltip": "Source reliability tier — Tier 1 = highest confidence, Tier 4 = emerging sources",
     "briefUnavailable": "AI brief unavailable — configure GROQ_API_KEY in Settings.",
     "cached": "Cached",
     "fresh": "Fresh",

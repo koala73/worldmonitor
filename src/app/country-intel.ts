@@ -265,12 +265,22 @@ export class CountryIntelManager implements AppModule {
       const ourPos = CountryIntelManager.firstMentionPosition(t, searchTerms);
       const otherPos = CountryIntelManager.firstMentionPosition(t, otherCountryTerms);
       return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
-    }).sort((a, b) => {
+    });
+    const seen = new Set<string>();
+    const deduped: typeof filteredNews = [];
+    for (const n of filteredNews) {
+      const normalized = n.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+      if (normalized.length > 0 && !seen.has(normalized)) {
+        seen.add(normalized);
+        deduped.push(n);
+      }
+    }
+    deduped.sort((a, b) => {
       const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
       if (severityDelta !== 0) return severityDelta;
       return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
     });
-    this.ctx.countryBriefPage.updateNews(filteredNews.slice(0, 10));
+    this.ctx.countryBriefPage.updateNews(deduped.slice(0, 10));
 
     this.ctx.countryBriefPage.updateInfrastructure(code);
 

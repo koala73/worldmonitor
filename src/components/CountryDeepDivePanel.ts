@@ -42,7 +42,6 @@ import type {
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
-import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -99,7 +98,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private militaryBody: HTMLElement | null = null;
   private infrastructureBody: HTMLElement | null = null;
   private economicBody: HTMLElement | null = null;
-  private housingBody: HTMLElement | null = null;
   private marketsBody: HTMLElement | null = null;
   private briefBody: HTMLElement | null = null;
   private timelineBody: HTMLElement | null = null;
@@ -310,28 +308,24 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.newsBody) return;
     this.newsBody.replaceChildren();
 
-    const compare = (a: NewsItem, b: NewsItem) => {
-      const sa = SEVERITY_ORDER[this.toThreatLevel(a.threat?.level)];
-      const sb = SEVERITY_ORDER[this.toThreatLevel(b.threat?.level)];
-      if (sb !== sa) return sb - sa;
-      return this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate);
-    };
-
-    const sorted = [...headlines].sort(compare);
-
-    const deduped = dedupeHeadlines(sorted, (it) => it.tier ?? getSourceTier(it.source))
-      .sort((a, b) => compare(a.item, b.item))
+    const items = [...headlines]
+      .sort((a, b) => {
+        const sa = SEVERITY_ORDER[this.toThreatLevel(a.threat?.level)];
+        const sb = SEVERITY_ORDER[this.toThreatLevel(b.threat?.level)];
+        if (sb !== sa) return sb - sa;
+        return this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate);
+      })
       .slice(0, 10);
 
-    this.currentHeadlineCount = deduped.length;
+    this.currentHeadlineCount = items.length;
 
-    if (deduped.length === 0) {
+    if (items.length === 0) {
       this.newsBody.append(this.makeEmpty(t('countryBrief.noNews')));
       return;
     }
 
-    for (let i = 0; i < deduped.length; i++) {
-      const { item, extraSources } = deduped[i]!;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
       const row = this.el('a', 'cdp-news-item');
       row.id = `cdp-news-${i + 1}`;
       const href = sanitizeUrl(item.link);
@@ -363,13 +357,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
 
       const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));
-      const metaText = extraSources.length > 0
-        ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
-        : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
-      const meta = this.el('div', 'cdp-news-meta', metaText);
-      if (extraSources.length > 0) {
-        meta.setAttribute('title', `Also reported by: ${extraSources.join(', ')}`);
-      }
+      const meta = this.el('div', 'cdp-news-meta', `${item.source} • ${this.formatRelativeTime(item.pubDate)}`);
       row.append(top, title, meta);
 
       if (i >= 5) {
@@ -381,7 +369,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
     }
   }
-
 
   public updateMilitaryActivity(summary: CountryDeepDiveMilitarySummary): void {
     if (!this.militaryBody) return;
@@ -547,44 +534,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.factsBody.append(grid);
   }
 
-  public updateHousingCycle(data: {
-    residential?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
-    commercial?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
-    dsr?: { dsrPct: number; change: number | null; period: string } | null;
-  } | null): void {
-    if (!this.housingBody) return;
-    this.housingBody.replaceChildren();
-    if (!data || (!data.residential && !data.commercial && !data.dsr)) {
-      this.housingBody.append(this.makeEmpty('No BIS housing cycle data for this country'));
-      return;
-    }
-    const grid = this.el('div', 'cdp-pro-metric-grid');
-    if (data.residential) {
-      grid.append(
-        this.proMetricBox('Residential (real)', `${data.residential.indexValue.toFixed(1)}`),
-        this.proMetricBox('Residential YoY', this.formatPctTrend(data.residential.yoyChange)),
-      );
-    }
-    if (data.commercial) {
-      grid.append(
-        this.proMetricBox('Commercial (real)', `${data.commercial.indexValue.toFixed(1)}`),
-        this.proMetricBox('Commercial YoY', this.formatPctTrend(data.commercial.yoyChange)),
-      );
-    }
-    if (data.dsr) {
-      grid.append(
-        this.proMetricBox('Household DSR', `${data.dsr.dsrPct.toFixed(1)}%`),
-        this.proMetricBox('DSR QoQ', this.formatPctTrend(data.dsr.change)),
-      );
-    }
-    this.housingBody.append(grid);
-    const src = data.residential?.period || data.commercial?.period || data.dsr?.period || '';
-    if (src) {
-      const note = this.el('div', 'cdp-economic-source', `Source: BIS SDMX · latest ${src}`);
-      this.housingBody.append(note);
-    }
-  }
-
   public updateNationalDebt(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void {
     if (!this.debtBody) return;
     this.debtBody.replaceChildren();
@@ -621,7 +570,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.comtradeBody) return;
     this.comtradeBody.replaceChildren();
     if (!flows || flows.length === 0) {
-      this.comtradeBody.append(this.makeEmpty('No data available'));
+      this.comtradeBody.append(this.makeEmpty('No trade flow data available'));
       return;
     }
     const table = this.el('table', 'cdp-pro-flow-table');
@@ -674,12 +623,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.costShockCalcBody.replaceChildren();
 
     if (!data || (!data.sectors.length && !data.unavailableReason)) {
-      // Remove the card entirely to avoid showing an empty "Cost Shock" widget
-      // alongside the Trade Exposure sector table (issue #2973 bug 1).
-      // sectionCard() creates a .cdp-card (not .cdp-section-card); parentElement
-      // is the card wrapper. Matches the updateTradeExposure cleanup pattern.
-      this.costShockCalcBody.parentElement?.remove();
-      this.costShockCalcBody = null;
+      this.costShockCalcBody.append(this.makeEmpty('No multi-sector cost shock data'));
       return;
     }
 
@@ -831,34 +775,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (usd >= 1e12) return `$${(usd / 1e12).toFixed(1)}T`;
     if (usd >= 1e9) return `$${(usd / 1e9).toFixed(1)}B`;
     if (usd >= 1e6) return `$${(usd / 1e6).toFixed(1)}M`;
-    if (usd >= 1e3) return `$${(usd / 1e3).toFixed(1)}K`;
     return `$${Math.round(usd).toLocaleString()}`;
   }
 
-  /**
-   * Format a USD value using the same scale as a reference value so row totals
-   * and supplier rows share a unit suffix (issue #2973 bug 5).
-   */
-  private formatMoneyAtScale(usd: number, referenceUsd: number): string {
-    if (referenceUsd >= 1e12) return `$${(usd / 1e12).toFixed(2)}T`;
-    if (referenceUsd >= 1e9) return `$${(usd / 1e9).toFixed(2)}B`;
-    if (referenceUsd >= 1e6) return `$${(usd / 1e6).toFixed(2)}M`;
-    if (referenceUsd >= 1e3) return `$${(usd / 1e3).toFixed(2)}K`;
-    return `$${Math.round(usd).toLocaleString()}`;
-  }
-
-  /**
-   * Shared exposure-score color scale used by vuln header and row scores
-   * (issue #2973 bug 4).
-   */
-  private static exposureScoreColor(score: number): string {
-    if (score >= 70) return 'var(--danger, #ef4444)';
-    if (score > 30) return 'var(--warning, #f59e0b)';
-    return 'var(--text-muted, #64748b)';
-  }
-
-  private formatPctTrend(pct: number | null | undefined): string {
-    if (pct == null || !Number.isFinite(pct)) return '\u2014';
+  private formatPctTrend(pct: number): string {
     const sign = pct >= 0 ? '+' : '';
     return `${sign}${pct.toFixed(1)}%`;
   }
@@ -1537,9 +1457,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     this.tradeExposureBody.replaceChildren();
 
-    const vulnScore = Math.round(data.vulnerabilityIndex);
-    const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${vulnScore}/100`);
-    vulnDiv.style.color = CountryDeepDivePanel.exposureScoreColor(vulnScore);
+    const vulnDiv = this.el('div', 'cdp-vuln-index', `Vulnerability: ${Math.round(data.vulnerabilityIndex)}/100`);
     this.tradeExposureBody.append(vulnDiv);
 
     if (sectors && sectors.length > 0) {
@@ -1571,8 +1489,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         const cpCell = this.el('td', 'cdp-chokepoint-name');
         cpCell.textContent = s.primaryChokepointName;
         const scoreCell = this.el('td', 'cdp-exposure-score');
+        const scoreColor = s.exposureScore >= 70 ? 'var(--danger, #ef4444)' : s.exposureScore > 30 ? 'var(--warning, #f59e0b)' : 'var(--text-muted, #64748b)';
         scoreCell.textContent = `${s.exposureScore.toFixed(0)}`;
-        scoreCell.style.color = CountryDeepDivePanel.exposureScoreColor(s.exposureScore);
+        scoreCell.style.color = scoreColor;
         tr.append(sectorCell, cpCell, scoreCell);
         tbody.append(tr);
 
@@ -1608,7 +1527,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         bar.style.width = `${Math.min(entry.exposureScore, 100)}%`;
         barWrap.append(bar);
         const pctCell = this.el('td', 'cdp-exposure-pct', `${entry.exposureScore.toFixed(1)}`);
-        pctCell.style.color = CountryDeepDivePanel.exposureScoreColor(entry.exposureScore);
         tr.append(nameCell, barWrap, pctCell);
         tbody.append(tr);
       }
@@ -1760,7 +1678,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (!this.productImportsBody) return;
     this.productImportsBody.replaceChildren();
     if (!data || data.products.length === 0) {
-      this.productImportsBody.append(this.makeEmpty('No data available'));
+      this.productImportsBody.append(this.makeEmpty('No product import data available'));
       return;
     }
     this.renderProductSelector(data.products);
@@ -1888,7 +1806,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         shareTd.append(barWrap);
         tr.append(shareTd);
 
-        tr.append(this.el('td', 'cdp-product-val', this.formatMoneyAtScale(exp.value, product.totalValue)));
+        tr.append(this.el('td', 'cdp-product-val', this.formatMoney(exp.value)));
 
         const riskTd = this.el('td', 'cdp-product-risk');
         if (exp.risk) {
@@ -2028,7 +1946,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       trend,
       source: 'Market Service',
     });
-    this.economicIndicators = base.slice(0, 6);
+    this.economicIndicators = base.slice(0, 3);
     this.renderEconomicIndicators();
   }
 
@@ -2204,10 +2122,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const [militaryCard, militaryBody] = this.sectionCard(t('countryBrief.militaryActivity'));
     const [infraCard, infraBody] = this.sectionCard(t('countryBrief.infrastructure'));
     const [economicCard, economicBody] = this.sectionCard(t('countryBrief.economicIndicators'));
-    const [housingCard, housingBody] = this.sectionCard(
-      'Housing Cycle',
-      'BIS quarterly real residential and commercial property price indices plus household debt service ratio — early-warning signals for credit / property cycle turns.',
-    );
     const [marketsCard, marketsBody] = this.sectionCard(t('countryBrief.predictionMarkets'));
     const [briefCard, briefBody] = this.sectionCard(t('countryBrief.intelBrief'));
 
@@ -2268,7 +2182,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.militaryBody = militaryBody;
     this.infrastructureBody = infraBody;
     this.economicBody = economicBody;
-    this.housingBody = housingBody;
     this.marketsBody = marketsBody;
     this.briefBody = briefBody;
 
@@ -2277,11 +2190,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     militaryBody.append(this.makeLoading('Loading flights, vessels, and nearby bases…'));
     infraBody.append(this.makeLoading('Computing nearby critical infrastructure…'));
     economicBody.append(this.makeLoading('Loading available indicators…'));
-    housingBody.append(this.makeLoading('Loading housing cycle data…'));
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -2305,7 +2217,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.tradeExposureBody = null;
     this.productImportsBody = null;
     this.debtBody = null;
-    this.housingBody = null;
     this.sanctionsBody = null;
     this.comtradeBody = null;
     this.tariffBody = null;
@@ -2331,8 +2242,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const chips = this.el('div', 'cdp-signal-chips');
     this.addSignalChip(chips, signals.criticalNews, t('countryBrief.chips.criticalNews'), '🚨', 'conflict');
     this.addSignalChip(chips, signals.protests, t('countryBrief.chips.protests'), '📢', 'protest');
-    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military', `${signals.militaryFlights} near · ${signals.militaryFlightsInCountry} inside borders`);
-    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military', `${signals.militaryVessels} near · ${signals.militaryVesselsInCountry} inside borders`);
+    this.addSignalChip(chips, signals.militaryFlights, t('countryBrief.chips.militaryAir'), '✈️', 'military');
+    this.addSignalChip(chips, signals.militaryVessels, t('countryBrief.chips.navalVessels'), '⚓', 'military');
     this.addSignalChip(chips, signals.outages, t('countryBrief.chips.outages'), '🌐', 'outage');
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
@@ -2376,15 +2287,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.signalRecentBody.append(this.makeLoading('Loading top high-severity signals…'));
   }
 
-  private addSignalChip(container: HTMLElement, count: number, label: string, icon: string, cls: string, tooltip?: string): void {
+  private addSignalChip(container: HTMLElement, count: number, label: string, icon: string, cls: string): void {
     if (count <= 0) return;
-    container.append(this.makeSignalChip(`${icon} ${count} ${label}`, cls, tooltip));
+    container.append(this.makeSignalChip(`${icon} ${count} ${label}`, cls));
   }
 
-  private makeSignalChip(text: string, cls: string, tooltip?: string): HTMLElement {
-    const chip = this.el('span', `cdp-signal-chip chip-${cls}`, text);
-    if (tooltip) chip.title = tooltip;
-    return chip;
+  private makeSignalChip(text: string, cls: string): HTMLElement {
+    return this.el('span', `cdp-signal-chip chip-${cls}`, text);
   }
 
   private renderComponentBars(components: CountryScore['components']): HTMLElement {
@@ -2460,7 +2369,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       return;
     }
 
-    for (const indicator of this.economicIndicators.slice(0, 6)) {
+    for (const indicator of this.economicIndicators.slice(0, 3)) {
       const row = this.el('div', 'cdp-economic-item');
       const top = this.el('div', 'cdp-economic-top');
       const isMarketRow = indicator.label === 'Stock Index' || indicator.label === 'Weekly Momentum';
@@ -2568,8 +2477,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return this.el('div', 'cdp-empty', text);
   }
 
-  private badge(text: string, className: string): HTMLElement {
-    return this.el('span', className, text);
+  private badge(text: string, className: string, title?: string): HTMLElement {
+    const el = this.el('span', className, text);
+    if (title) el.title = title;
+    return el;
   }
 
   private formatBrief(text: string, headlineCount = 0): string {
