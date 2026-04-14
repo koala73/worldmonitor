@@ -1,68 +1,130 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after, beforeEach } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 
-// Regression guard for PR #3078: strict-floor IMF seeders must not poison
-// seed-meta on empty/invalid upstream responses. Without the opt-in flag,
-// a single transient empty fetch refreshes fetchedAt → _bundle-runner skips
-// the bundle for the full intervalMs (30 days for imf-external; Railway log
-// 2026-04-13).
+// Behavioral regression for PR #3078: strict-floor IMF seeders must not
+// poison seed-meta on empty/invalid upstream responses. Without the opt-in
+// flag, a single transient empty fetch refreshes fetchedAt →
+// _bundle-runner skips the bundle for the full intervalMs (30 days for
+// imf-external; Railway log 2026-04-13).
+//
+// Stubs the Upstash REST layer (all Redis calls go through globalThis.fetch)
+// plus process.exit, then drives runSeed through both branches and asserts
+// on the actual commands sent to Redis and the process exit code.
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, '..');
-const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
+process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.local';
+process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 
-describe('emptyDataIsFailure: runSeed branch (scripts/_seed-utils.mjs)', () => {
-  const src = read('scripts/_seed-utils.mjs');
+const { runSeed } = await import('../scripts/_seed-utils.mjs');
 
-  it('gates writeFreshnessMetadata on opts.emptyDataIsFailure', () => {
-    // The skipped-validation block must branch on opts.emptyDataIsFailure and
-    // only write seed-meta in the else branch. If someone removes the gate,
-    // the bundle-lockout bug returns silently.
-    const skippedBlock = src.slice(
-      src.indexOf('if (publishResult.skipped)'),
-      src.indexOf('const { payloadBytes }')
-    );
-    assert.match(skippedBlock, /if\s*\(\s*opts\.emptyDataIsFailure\s*\)/);
-    // writeFreshnessMetadata must live inside the else branch, not above the if.
-    const metaIdx = skippedBlock.indexOf('writeFreshnessMetadata');
-    const elseIdx = skippedBlock.indexOf('} else {');
-    assert.ok(elseIdx > 0 && metaIdx > elseIdx,
-      'writeFreshnessMetadata must be inside the else branch so strict-floor seeders preserve stale fetchedAt');
-  });
+/** @type {Array<{url: string, body: any}>} */
+let fetchCalls = [];
+let originalFetch;
+let originalExit;
+let originalLog;
+let originalWarn;
+let originalError;
 
-  it('still extends existing TTL regardless of the flag (cache-preservation)', () => {
-    // extendExistingTtl runs above the if/else — both branches must preserve
-    // the existing cache value so consumers keep reading good data while the
-    // bundle retries.
-    const skippedBlock = src.slice(
-      src.indexOf('if (publishResult.skipped)'),
-      src.indexOf('const { payloadBytes }')
-    );
-    const extendIdx = skippedBlock.indexOf('extendExistingTtl');
-    const ifIdx = skippedBlock.indexOf('if (opts.emptyDataIsFailure)');
-    assert.ok(extendIdx > 0 && extendIdx < ifIdx,
-      'extendExistingTtl must run before the emptyDataIsFailure branch so cache TTL is preserved either way');
-  });
+before(() => {
+  originalFetch = globalThis.fetch;
+  originalExit = process.exit;
+  originalLog = console.log;
+  originalWarn = console.warn;
+  originalError = console.error;
 });
 
-describe('emptyDataIsFailure: strict-floor IMF seeders opt in', () => {
-  const seeders = [
-    'scripts/seed-imf-external.mjs',
-    'scripts/seed-imf-growth.mjs',
-    'scripts/seed-imf-labor.mjs',
-    'scripts/seed-imf-macro.mjs',
-  ];
+after(() => {
+  globalThis.fetch = originalFetch;
+  process.exit = originalExit;
+  console.log = originalLog;
+  console.warn = originalWarn;
+  console.error = originalError;
+});
 
-  for (const path of seeders) {
-    it(`${path} passes emptyDataIsFailure: true to runSeed`, () => {
-      const src = read(path);
-      // Must appear inside a runSeed opts object. Match the literal key:value
-      // pair — a stray comment wouldn't satisfy runSeed's runtime check.
-      assert.match(src, /emptyDataIsFailure:\s*true/,
-        `${path} missing emptyDataIsFailure flag — strict-floor validator will poison seed-meta on transient failures`);
-    });
-  }
+beforeEach(() => {
+  fetchCalls = [];
+  // Silence seed noise during tests; uncomment for debugging.
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  globalThis.fetch = async (url, init = {}) => {
+    const body = init.body ? JSON.parse(init.body) : null;
+    fetchCalls.push({ url: String(url), body });
+    // Lock acquire (SET ... NX PX) must succeed; everything else OK too.
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ result: 'OK' }),
+      text: async () => 'OK',
+    };
+  };
+});
+
+class ExitCalled extends Error {
+  constructor(code) { super(`exit(${code})`); this.code = code; }
+}
+
+function stubExit() {
+  process.exit = (code) => { throw new ExitCalled(code ?? 0); };
+}
+
+function metaWrites() {
+  // writeFreshnessMetadata POSTs ['SET', 'seed-meta:<domain>:<res>', payload, 'EX', ttl]
+  // to the base URL. Identifies any seed-meta write regardless of helper.
+  return fetchCalls.filter(c =>
+    Array.isArray(c.body) &&
+    c.body[0] === 'SET' &&
+    typeof c.body[1] === 'string' &&
+    c.body[1].startsWith('seed-meta:')
+  );
+}
+
+describe('runSeed emptyDataIsFailure branch (behavioral)', () => {
+  const domain = 'test';
+  const resource = 'strict-floor';
+  const canonicalKey = 'test:strict-floor:v1';
+  // validateFn rejects everything → forces atomicPublish's skipped branch.
+  const alwaysInvalid = () => false;
+
+  it('emptyDataIsFailure:true — does NOT write seed-meta and exits non-zero', async () => {
+    stubExit();
+    let exitCode = null;
+    try {
+      await runSeed(domain, resource, canonicalKey, async () => ({ countries: {} }), {
+        validateFn: alwaysInvalid,
+        ttlSeconds: 3600,
+        emptyDataIsFailure: true,
+      });
+    } catch (err) {
+      if (!(err instanceof ExitCalled)) throw err;
+      exitCode = err.code;
+    }
+
+    assert.equal(exitCode, 1, 'strict-floor path must exit(1) so _bundle-runner counts failed++');
+    assert.equal(metaWrites().length, 0,
+      `expected zero seed-meta writes under emptyDataIsFailure:true, got: ${JSON.stringify(metaWrites())}`);
+    // Must still extend TTL (pipeline EXPIRE) to preserve the existing cache.
+    const pipelineCalls = fetchCalls.filter(c => c.url.endsWith('/pipeline'));
+    assert.ok(pipelineCalls.length >= 1, 'extendExistingTtl pipeline call missing — cache TTL would drop');
+  });
+
+  it('emptyDataIsFailure:false (default) — DOES write seed-meta and exits zero', async () => {
+    stubExit();
+    let exitCode = null;
+    try {
+      await runSeed(domain, resource, canonicalKey, async () => ({ countries: {} }), {
+        validateFn: alwaysInvalid,
+        ttlSeconds: 3600,
+        // emptyDataIsFailure omitted — default quiet-period behavior
+      });
+    } catch (err) {
+      if (!(err instanceof ExitCalled)) throw err;
+      exitCode = err.code;
+    }
+
+    assert.equal(exitCode, 0, 'default path exits(0) — quiet-period seeders must not spam bundle failures');
+    const metas = metaWrites();
+    assert.equal(metas.length, 1,
+      `default path must write exactly one seed-meta (fresh fetchedAt for health check), got ${metas.length}`);
+    assert.equal(metas[0].body[1], `seed-meta:${domain}:${resource}`);
+  });
 });

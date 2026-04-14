@@ -735,7 +735,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
       if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
       await extendExistingTtl(keys, ttlSeconds || 600);
-      if (opts.emptyDataIsFailure) {
+      const strictFailure = Boolean(opts.emptyDataIsFailure);
+      if (strictFailure) {
         // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
         // empty data as a real upstream failure. Do NOT refresh seed-meta —
         // letting fetchedAt stay stale lets bundles retry on their next cron
@@ -752,7 +753,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
-      process.exit(0);
+      // Strict path exits non-zero so _bundle-runner counts it as failed++
+      // (otherwise the bundle summary hides upstream outages behind ran++).
+      process.exit(strictFailure ? 1 : 0);
     }
     const { payloadBytes } = publishResult;
     const topicArticleCount = Array.isArray(data?.topics)
