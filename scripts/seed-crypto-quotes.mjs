@@ -112,12 +112,27 @@ async function fetchCryptoQuotes() {
   return { quotes };
 }
 
+/**
+ * Require full coverage of the configured CRYPTO_IDS set with positive prices.
+ *
+ * On a fixed-cardinality top-N feed, accepting partial snapshots (e.g. 9/10)
+ * is silent data loss — health stays green while one tracked asset
+ * disappears from the panel. If CoinPaprika drops or renames a mapped
+ * ticker, this validator forces the seeder to fail loudly so the broken
+ * mapping is caught at the next cycle instead of weeks later.
+ */
 function validate(data) {
-  return (
-    Array.isArray(data?.quotes) &&
-    data.quotes.length >= 1 &&
-    data.quotes.some((q) => q.price > 0)
-  );
+  if (!Array.isArray(data?.quotes)) return false;
+  if (data.quotes.length !== CRYPTO_IDS.length) return false;
+  if (!data.quotes.every((q) => Number.isFinite(q?.price) && q.price > 0)) return false;
+  // Verify every configured ID is represented (defends against duplicate
+  // IDs masquerading as full coverage).
+  const expected = new Set(CRYPTO_IDS.map((id) => CRYPTO_META[id]?.symbol || id.toUpperCase()));
+  const actual = new Set(data.quotes.map((q) => q.symbol));
+  for (const sym of expected) {
+    if (!actual.has(sym)) return false;
+  }
+  return true;
 }
 
 runSeed('market', 'crypto', CANONICAL_KEY, fetchCryptoQuotes, {
