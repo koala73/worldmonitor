@@ -723,7 +723,12 @@ for (let i = 0; i < fetchResults.length; i++) {
 // last healthy snapshot serving the panel, and health flips to STALE_SEED
 // once maxStaleMin is exceeded — a correct, visible failure signal.
 if (failedSources.length > 0) {
-  console.warn(`  [DEGRADED] ${failedSources.length} source(s) failed this run — publish will be rejected by validator, previous snapshot will continue serving until cache TTL`);
+  const untolerated = failedSources.filter(n => !TOLERATED_FAILURES.has(n));
+  if (untolerated.length > 0) {
+    console.warn(`  [DEGRADED] ${failedSources.length} source(s) failed this run (${untolerated.length} untolerated) — publish will be rejected by validator, previous snapshot will continue serving until cache TTL`);
+  } else {
+    console.warn(`  [DEGRADED] ${failedSources.length} tolerated source(s) failed (${failedSources.join(', ')}) — publishing without them`);
+  }
 }
 
 const countries = Array.from(countryMap.values());
