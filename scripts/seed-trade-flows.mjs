@@ -8,14 +8,21 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'comtrade:flows:v1';
 const CACHE_TTL = 259200; // 72h = 3× daily interval
-const KEY_PREFIX = 'comtrade:flows';
+export const KEY_PREFIX = 'comtrade:flows';
 const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1';
 const INTER_REQUEST_DELAY_MS = 3_000;
 const ANOMALY_THRESHOLD = 0.30; // 30% YoY change
 // Require at least this fraction of (reporter × commodity) pairs to return
 // non-empty flows. Guards against an entire reporter silently flatlining
 // (e.g., wrong reporterCode → HTTP 200 with count:0 for every commodity).
+// Global coverage floor — overall populated/total must be ≥ this.
 const MIN_COVERAGE_RATIO = 0.70;
+// Per-reporter coverage floor — each reporter must have ≥ this fraction of
+// its commodities populated. Prevents the "India/Taiwan flatlines entirely"
+// failure mode: with 6 reporters × 5 commodities, losing one full reporter
+// is only 5/30 missing (83% global coverage → passes MIN_COVERAGE_RATIO),
+// but 0/5 per-reporter coverage for the dead one blocks publish here.
+const MIN_PER_REPORTER_RATIO = 0.40; // at least 2 of 5 commodities per reporter
 
 // Strategic reporters: US, China, Russia, Iran, India, Taiwan
 const REPORTERS = [
@@ -159,15 +166,46 @@ async function fetchAllFlows() {
     }
   }
 
-  const total = REPORTERS.length * COMMODITIES.length;
-  const populated = Object.values(perKeyFlows).filter((v) => (v.flows?.length ?? 0) > 0).length;
-  const coverage = populated / total;
-  console.log(`  Coverage: ${populated}/${total} (${(coverage * 100).toFixed(0)}%) reporter×commodity pairs populated`);
-  if (coverage < MIN_COVERAGE_RATIO) {
-    throw new Error(`coverage ${populated}/${total} below floor ${MIN_COVERAGE_RATIO}; refusing to publish partial snapshot`);
+  const gate = checkCoverage(perKeyFlows, REPORTERS, COMMODITIES);
+  console.log(`  Coverage: ${gate.populated}/${gate.total} (${(gate.globalRatio * 100).toFixed(0)}%) reporter×commodity pairs populated`);
+  for (const r of gate.perReporter) {
+    if (r.ratio < MIN_PER_REPORTER_RATIO) {
+      console.warn(`    ${r.reporter} reporter ${r.code}: ${r.populated}/${r.total} (${(r.ratio * 100).toFixed(0)}%) — below per-reporter floor ${MIN_PER_REPORTER_RATIO}`);
+    }
   }
+  if (!gate.ok) throw new Error(gate.reason);
 
   return { flows: allFlows, perKeyFlows, fetchedAt: new Date().toISOString() };
+}
+
+/**
+ * Pure coverage gate. Returns pass/fail + per-reporter breakdown.
+ * Exported for unit testing — mocking 30+ fetches in fetchAllFlows is fragile,
+ * and the failure mode the PR is trying to block lives here, not in fetchFlows.
+ *
+ * Blocks publish when EITHER: global ratio < MIN_COVERAGE_RATIO, OR any single
+ * reporter's commodity coverage < MIN_PER_REPORTER_RATIO. The latter catches
+ * the India/Taiwan-style "one reporter flatlines completely" case that passes
+ * a global-only gate.
+ */
+export function checkCoverage(perKeyFlows, reporters, commodities) {
+  const total = reporters.length * commodities.length;
+  const populated = Object.values(perKeyFlows).filter((v) => (v.flows?.length ?? 0) > 0).length;
+  const globalRatio = total > 0 ? populated / total : 0;
+
+  const perReporter = reporters.map((r) => {
+    const pop = commodities.filter((c) => (perKeyFlows[`${KEY_PREFIX}:${r.code}:${c.code}`]?.flows?.length ?? 0) > 0).length;
+    return { reporter: r.name, code: r.code, populated: pop, total: commodities.length, ratio: commodities.length > 0 ? pop / commodities.length : 0 };
+  });
+
+  if (globalRatio < MIN_COVERAGE_RATIO) {
+    return { ok: false, populated, total, globalRatio, perReporter, reason: `coverage ${populated}/${total} below global floor ${MIN_COVERAGE_RATIO}; refusing to publish partial snapshot` };
+  }
+  const dead = perReporter.find((r) => r.ratio < MIN_PER_REPORTER_RATIO);
+  if (dead) {
+    return { ok: false, populated, total, globalRatio, perReporter, reason: `reporter ${dead.reporter} (${dead.code}) only ${dead.populated}/${dead.total} commodities — below per-reporter floor ${MIN_PER_REPORTER_RATIO}; refusing to publish snapshot with a flatlined reporter` };
+  }
+  return { ok: true, populated, total, globalRatio, perReporter, reason: null };
 }
 
 function validate(data) {

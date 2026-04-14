@@ -7,7 +7,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { isTransientComtrade, fetchBilateral, __setSleepForTests } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
-import { fetchFlows, __setSleepForTests as __setFlowsSleep } from '../scripts/seed-trade-flows.mjs';
+import { fetchFlows, checkCoverage, KEY_PREFIX, __setSleepForTests as __setFlowsSleep } from '../scripts/seed-trade-flows.mjs';
 import { fetchImportsForReporter, __setSleepForTests as __setHhiSleep } from '../scripts/seed-recovery-import-hhi.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -214,4 +214,91 @@ test('fetchImportsForReporter: gives up ({records:[], status:503}) after 3 conse
   assert.deepEqual(records, []);
   assert.equal(status, 500, 'returns the final upstream status so caller can log it');
   assert.equal(fetchCalls.length, 3);
+});
+
+// -----------------------------------------------------------------------------
+// seed-trade-flows — checkCoverage (publish gate)
+// Regression for the India/Taiwan-style "entire reporter flatlines" case.
+// 6 reporters × 5 commodities = 30 pairs. MIN_COVERAGE_RATIO = 0.70 means
+// >=21 pairs pass the global gate. Losing one full reporter (5 pairs) yields
+// 25/30 = 83% — which passes the global ratio but should fail per-reporter.
+// -----------------------------------------------------------------------------
+
+const FLOWS_REPORTERS = [
+  { code: '842', name: 'USA' }, { code: '156', name: 'China' }, { code: '643', name: 'Russia' },
+  { code: '364', name: 'Iran' }, { code: '699', name: 'India' }, { code: '490', name: 'Taiwan' },
+];
+const FLOWS_COMMODITIES = [
+  { code: '2709', desc: 'Crude' }, { code: '7108', desc: 'Gold' },
+  { code: '7112', desc: 'Rare earths' }, { code: '8542', desc: 'Semis' },
+  { code: '9301', desc: 'Arms' },
+];
+
+function buildPerKey(populatedPairs /* Array<[reporterCode, commodityCode]> */) {
+  const out = {};
+  for (const r of FLOWS_REPORTERS) {
+    for (const c of FLOWS_COMMODITIES) {
+      const key = `${KEY_PREFIX}:${r.code}:${c.code}`;
+      const isPop = populatedPairs.some(([rc, cc]) => rc === r.code && cc === c.code);
+      out[key] = { flows: isPop ? [{ year: 2024 }] : [], fetchedAt: '2026-04-14T00:00Z' };
+    }
+  }
+  return out;
+}
+
+test('checkCoverage: all 30/30 pairs populated → ok', () => {
+  const pairs = [];
+  for (const r of FLOWS_REPORTERS) for (const c of FLOWS_COMMODITIES) pairs.push([r.code, c.code]);
+  const res = checkCoverage(buildPerKey(pairs), FLOWS_REPORTERS, FLOWS_COMMODITIES);
+  assert.equal(res.ok, true);
+  assert.equal(res.populated, 30);
+});
+
+test('checkCoverage: India flatlines (0/5 commodities) → REJECT despite 83% global coverage', () => {
+  // 25/30 populated = 83% global (passes MIN_COVERAGE_RATIO 0.70) but India
+  // has 0/5 per-reporter coverage. Prior gate published this silently.
+  const pairs = [];
+  for (const r of FLOWS_REPORTERS) {
+    if (r.code === '699') continue; // India flatlines
+    for (const c of FLOWS_COMMODITIES) pairs.push([r.code, c.code]);
+  }
+  const res = checkCoverage(buildPerKey(pairs), FLOWS_REPORTERS, FLOWS_COMMODITIES);
+  assert.equal(res.ok, false, 'per-reporter gate must block full-reporter flatline');
+  assert.match(res.reason, /India.*per-reporter/);
+  assert.equal(res.populated, 25);
+  assert.equal(Math.round(res.globalRatio * 100), 83, 'global ratio alone would have allowed this');
+});
+
+test('checkCoverage: Taiwan flatlines → REJECT by reporter name', () => {
+  const pairs = [];
+  for (const r of FLOWS_REPORTERS) {
+    if (r.code === '490') continue; // Taiwan
+    for (const c of FLOWS_COMMODITIES) pairs.push([r.code, c.code]);
+  }
+  const res = checkCoverage(buildPerKey(pairs), FLOWS_REPORTERS, FLOWS_COMMODITIES);
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /Taiwan/);
+});
+
+test('checkCoverage: each reporter missing 3/5 commodities → global 12/30 = 40% → REJECT global', () => {
+  // Failure mode: broad upstream outage. Global ratio catches this.
+  const pairs = [];
+  for (const r of FLOWS_REPORTERS) pairs.push([r.code, FLOWS_COMMODITIES[0].code], [r.code, FLOWS_COMMODITIES[1].code]);
+  const res = checkCoverage(buildPerKey(pairs), FLOWS_REPORTERS, FLOWS_COMMODITIES);
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /below global floor/);
+});
+
+test('checkCoverage: each reporter has 4/5 (global 80%) → passes both gates', () => {
+  const pairs = [];
+  for (const r of FLOWS_REPORTERS) for (const c of FLOWS_COMMODITIES.slice(0, 4)) pairs.push([r.code, c.code]);
+  // 6 × 4 = 24/30 = 80% global (≥70%), each reporter 4/5 = 80% (≥40%)
+  const res = checkCoverage(buildPerKey(pairs), FLOWS_REPORTERS, FLOWS_COMMODITIES);
+  assert.equal(res.ok, true, `expected ok, got: ${res.reason}`);
+});
+
+test('checkCoverage: per-reporter breakdown includes every reporter', () => {
+  const res = checkCoverage(buildPerKey([]), FLOWS_REPORTERS, FLOWS_COMMODITIES);
+  assert.equal(res.perReporter.length, FLOWS_REPORTERS.length);
+  assert.ok(res.perReporter.every((r) => r.populated === 0 && r.total === 5));
 });
