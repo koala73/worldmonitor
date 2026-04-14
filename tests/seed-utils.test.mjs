@@ -81,7 +81,7 @@ describe('computeRecordCount', () => {
     );
   });
 
-  it.each = undefined; // node:test doesn't have it.each; explicit cases below
+  // Note: node:test does not provide it.each — explicit cases below.
   it('auto-detects data.events.length', () => {
     assert.equal(
       computeRecordCount({ data: { events: [{}, {}, {}] }, payloadBytes: 50 }),
@@ -101,6 +101,23 @@ describe('computeRecordCount', () => {
       computeRecordCount({ data: { topics: [{}] }, topicArticleCount: 17, payloadBytes: 200 }),
       17,
     );
+  });
+
+  it('does NOT fire fallback when known shape returns 0 (empty array, payloadBytes>0)', () => {
+    // Regression guard: if a seeder publishes {events: []} (genuinely zero
+    // events upstream), the JSON serialization is non-empty (~12 bytes for
+    // {"events":[]}). detectedFromShape resolves to 0 (a real number, not
+    // null), so the chain MUST stop there and report 0 — not flip to the
+    // payloadBytes>0 fallback. Otherwise we'd silently mask genuine empty
+    // upstream cycles as "1 record" and break the SKIPPED/EMPTY signal.
+    let warned = false;
+    const result = computeRecordCount({
+      data: { events: [] },
+      payloadBytes: 12,
+      onPhantomFallback: () => { warned = true; },
+    });
+    assert.equal(result, 0);
+    assert.equal(warned, false, 'no fallback when known shape is present but empty');
   });
 
   it('FALLBACK: returns 1 when payloadBytes>0 and shape unknown (phantom EMPTY_DATA fix)', () => {
