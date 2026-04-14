@@ -84,6 +84,7 @@
     "convex-test": "^0.0.43",
     "cross-env": "^10.1.0",
     "esbuild": "^0.27.3",
+    "exceljs": "^4.4.0",
     "h3-js": "^4.4.0",
     "markdownlint-cli2": "^0.21.0",
     "tsx": "^4.21.0",

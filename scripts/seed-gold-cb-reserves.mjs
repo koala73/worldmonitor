@@ -131,7 +131,7 @@ export function monthOffset(period, deltaMonths) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-export function buildReservesPayload(raw, indicator) {
+export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, totalReservesUsdByCountry = {}) {
   const asOfMonth = (() => {
     const all = new Set();
     for (const c of Object.values(raw)) {
@@ -150,6 +150,20 @@ export function buildReservesPayload(raw, indicator) {
   const valueIsOunces = /_FTO|_OZT|OUNCE/i.test(indicator);
 
   const toTonnes = (v) => valueIsOunces ? v / TROY_OZ_PER_TONNE : null;
+
+  // Find latest month within a country's byMonth map at or before asOfMonth.
+  // IRFCL reporting lags vary per country — use the most recent available
+  // value within the last 3 months to compute pctOfReserves so we don't drop
+  // countries that report one month late.
+  const latestAtOrBefore = (byMonth, cutoff) => {
+    if (!byMonth) return null;
+    for (let back = 0; back < 3; back++) {
+      const m = monthOffset(cutoff, -back);
+      const v = byMonth[m];
+      if (v != null && Number.isFinite(v) && v > 0) return v;
+    }
+    return null;
+  };
 
   const holders = [];
   for (const [iso3, rec] of Object.entries(raw)) {
@@ -172,12 +186,22 @@ export function buildReservesPayload(raw, indicator) {
       tonnes = 0; // mark "unknown in tonnes"
     }
 
+    // pctOfReserves = gold's share of total official reserve assets (both in
+    // USD). Requires the two parallel indicator series — falls back to 0 when
+    // either side is missing for this country (small reporters often publish
+    // only the core ounces series).
+    const goldUsd = latestAtOrBefore(goldUsdByCountry[iso3]?.byMonth, asOfMonth);
+    const totalUsd = latestAtOrBefore(totalReservesUsdByCountry[iso3]?.byMonth, asOfMonth);
+    const pctOfReserves = (goldUsd != null && totalUsd != null && totalUsd > 0)
+      ? +((goldUsd / totalUsd) * 100).toFixed(2)
+      : 0;
+
     holders.push({
       iso3,
       name: ISO3_NAMES[iso3] || rec.name || iso3,
       tonnes: Number.isFinite(tonnes) ? +tonnes.toFixed(2) : 0,
-      pctOfReserves: 0, // IFS doesn't give us total reserves side-by-side in this series
-      valueUsd: valueIsOunces ? 0 : +current.toFixed(0),
+      pctOfReserves,
+      valueUsd: valueIsOunces ? (goldUsd ?? 0) : +current.toFixed(0),
       deltaTonnes12m,
     });
   }
@@ -211,10 +235,33 @@ export function buildReservesPayload(raw, indicator) {
   };
 }
 
+// Indicators used to compute pctOfReserves = gold_usd / total_reserves_usd.
+// Both are IRFCLDT1 USD-denominated; fetched in parallel with the primary
+// tonnage indicator so the share is computed from matched-month values.
+const GOLD_USD_INDICATOR = 'IRFCLDT1_IRFCL56_USD';   // Official reserve assets, gold (USD market value)
+const TOTAL_RESERVES_USD = 'IRFCLDT1_IRFCL65_USD';   // Official reserve assets (total, USD market value)
+
 async function fetchCbReserves() {
-  const res = await fetchFirstAvailableIndicator();
-  if (!res) throw new Error('All IMF IFS candidate indicators returned empty / failed');
-  const payload = buildReservesPayload(res.data, res.indicator);
+  // Fetch the tonnage indicator + the two USD series for pctOfReserves in
+  // parallel. The pct series are optional — on failure we still publish the
+  // tonnage payload with pctOfReserves=0 rather than blocking the seed.
+  const [primary, goldUsdRes, totalUsdRes] = await Promise.allSettled([
+    fetchFirstAvailableIndicator(),
+    fetchIrfclMonthlySeries(GOLD_USD_INDICATOR),
+    fetchIrfclMonthlySeries(TOTAL_RESERVES_USD),
+  ]);
+
+  const res = primary.status === 'fulfilled' ? primary.value : null;
+  if (!res) throw new Error('All IMF IRFCL candidate tonnage indicators returned empty / failed');
+
+  const goldUsd = goldUsdRes.status === 'fulfilled' ? goldUsdRes.value : {};
+  const totalUsd = totalUsdRes.status === 'fulfilled' ? totalUsdRes.value : {};
+  const pctCoverage = Object.keys(goldUsd).length && Object.keys(totalUsd).length
+    ? Math.min(Object.keys(goldUsd).length, Object.keys(totalUsd).length)
+    : 0;
+  console.log(`  [IMF IRFCL] pctOfReserves denominator coverage: ${pctCoverage} countries (gold_usd=${Object.keys(goldUsd).length}, total_usd=${Object.keys(totalUsd).length})`);
+
+  const payload = buildReservesPayload(res.data, res.indicator, goldUsd, totalUsd);
   if (!payload) throw new Error(`buildReservesPayload returned null (indicator=${res.indicator})`);
   return payload;
 }

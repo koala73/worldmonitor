@@ -94,3 +94,67 @@ describe('seed-gold-cb-reserves: buildReservesPayload (USD indicator)', () => {
     assert.equal(payload.topBuyers12m.length, 0);
   });
 });
+
+describe('seed-gold-cb-reserves: pctOfReserves computation', () => {
+  it('computes gold share of total reserves when both USD series are supplied', () => {
+    const raw = {
+      USA: { name: 'United States', byMonth: { '2026-01': 261_500_000 } },
+      DEU: { name: 'Germany',       byMonth: { '2026-01': 108_000_000 } },
+      CHN: { name: 'China',         byMonth: { '2026-01':  74_000_000 } },
+    };
+    // Gold USD value per country (market value, approximate)
+    const goldUsd = {
+      USA: { byMonth: { '2026-01': 400_000_000_000 } },
+      DEU: { byMonth: { '2026-01': 170_000_000_000 } },
+      CHN: { byMonth: { '2026-01': 115_000_000_000 } },
+    };
+    // Total reserve assets per country
+    const totalUsd = {
+      USA: { byMonth: { '2026-01': 800_000_000_000 } },  // US: 50% gold share (synthetic)
+      DEU: { byMonth: { '2026-01': 250_000_000_000 } },  // DE: 68% (synthetic, realistic)
+      CHN: { byMonth: { '2026-01': 3_300_000_000_000 } }, // CN: ~3.5% (realistic — mostly FX)
+    };
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
+    assert.ok(payload);
+
+    const by = Object.fromEntries(payload.topHolders.map(h => [h.iso3, h]));
+    assert.equal(by.USA.pctOfReserves, 50);
+    assert.equal(by.DEU.pctOfReserves, 68);
+    assert.equal(by.CHN.pctOfReserves, 3.48);
+  });
+
+  it('falls back to pctOfReserves=0 when denominator series is missing for a country', () => {
+    const raw = {
+      USA: { name: 'United States', byMonth: { '2026-01': 261_500_000 } },
+    };
+    // Gold USD present, but total reserves missing for USA
+    const goldUsd = { USA: { byMonth: { '2026-01': 400_000_000_000 } } };
+    const totalUsd = {};
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
+    assert.equal(payload.topHolders[0].pctOfReserves, 0, 'no denominator → 0');
+  });
+
+  it('accepts a denominator from 1-2 months before asOfMonth (per-country reporting lag)', () => {
+    // Primary tonnage reports 2026-03. Total reserves only has 2026-02 (1mo lag).
+    // Should still compute pctOfReserves using the 2026-02 denominator.
+    const raw = {
+      USA: { name: 'United States', byMonth: { '2026-03': 261_500_000 } },
+    };
+    const goldUsd = { USA: { byMonth: { '2026-03': 400_000_000_000 } } };
+    const totalUsd = { USA: { byMonth: { '2026-02': 800_000_000_000 } } };
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
+    assert.equal(payload.asOfMonth, '2026-03');
+    assert.equal(payload.topHolders[0].pctOfReserves, 50, '2026-02 total is within the 3-month lookback window');
+  });
+
+  it('rejects a denominator older than 3 months (stale data shouldn\'t contaminate current pct)', () => {
+    const raw = {
+      USA: { name: 'United States', byMonth: { '2026-06': 261_500_000 } },
+    };
+    const goldUsd = { USA: { byMonth: { '2026-06': 400_000_000_000 } } };
+    // Total reserves last reported 2026-01 — 5 months before; outside the window.
+    const totalUsd = { USA: { byMonth: { '2026-01': 800_000_000_000 } } };
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
+    assert.equal(payload.topHolders[0].pctOfReserves, 0, 'stale denominator (>3mo) is dropped');
+  });
+});
