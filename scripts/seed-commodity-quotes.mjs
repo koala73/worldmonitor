@@ -262,14 +262,32 @@ function validate(data) {
  *
  * See ~/.claude/skills/runseed-then-after-process-exit for full diagnosis.
  */
-async function writeCompanionKeys(data) {
-  if (!data) return;
+/**
+ * Required companion writes — alias keys that must succeed alongside the
+ * canonical commodity publish. Any failure here MUST propagate up so runSeed's
+ * outer try/catch rejects the run, the lock is released, and process.exit(1)
+ * fires via the outer .catch. Otherwise seed-meta on the canonical key gets
+ * stamped as fresh while the alias keys are stale or missing — phantom-success.
+ *
+ * Per Codex review on PR #3088: only the OPTIONAL gold-extended branch is
+ * downgraded to a warning. Required writes are not.
+ */
+async function writeRequiredCompanionKeys(data) {
   const commodityKey = `market:commodities:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesKey = `market:quotes:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesPayload = { ...data, finnhubSkipped: false, skipReason: '', rateLimited: false };
   await writeExtraKey(commodityKey, data, CACHE_TTL);
   await writeExtraKey(quotesKey, quotesPayload, CACHE_TTL);
+}
 
+/**
+ * Optional gold-extended write — Yahoo cross-currency XAU + drivers. Has its
+ * own seed-meta:market:gold-extended key with independent maxStaleMin in
+ * api/health.js, so a Yahoo outage here degrades only the gold panel; the
+ * canonical commodity publish stays healthy. Errors are caught and logged so
+ * Yahoo flakiness does NOT poison runSeed's success path.
+ */
+async function writeOptionalGoldExtended() {
   try {
     const extended = await fetchGoldExtended();
     // Require gold (the core metal) AND at least one driver or silver. Writing a
@@ -296,13 +314,18 @@ runSeed('market', 'commodities', CANONICAL_KEY, fetchCommodityQuotes, {
   sourceVersion: 'alphavantage+yahoo-chart',
   afterPublish: async (data) => {
     // afterPublish is awaited inside runSeed BEFORE process.exit, so these
-    // writes actually run. Wrap in try so any companion-key failure logs
-    // explicitly instead of falling through to the runSeed catch.
-    try {
-      await writeCompanionKeys(data);
-    } catch (e) {
-      console.warn(`  [Companion] write failed: ${e?.message || e}`);
-    }
+    // writes actually run. SPLIT semantics:
+    //
+    //   - Required alias keys (commodityKey, quotesKey): errors PROPAGATE so
+    //     the seed run fails (lock released, process.exit(1) via outer catch,
+    //     seed-meta NOT stamped fresh). Health correctly flags STALE_SEED.
+    //
+    //   - Optional gold-extended: errors are caught + warned inside
+    //     writeOptionalGoldExtended; gold has its own seed-meta key that goes
+    //     stale independently if Yahoo XAU is down.
+    if (!data) return;
+    await writeRequiredCompanionKeys(data);
+    await writeOptionalGoldExtended();
   },
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
