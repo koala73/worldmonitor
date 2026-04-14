@@ -125,6 +125,11 @@ export function initAuthAnalytics(): void {
   if (_unsubAuth) return;
 
   _unsubAuth = subscribeAuthState((state) => {
+    const prevUserId = _lastAuth?.user?.id ?? null;
+    const nextUserId = state.user?.id ?? null;
+    if (prevUserId !== nextUserId) {
+      _lastSub = null;
+    }
     _lastAuth = state;
     _syncIdentity();
   });
