@@ -43,9 +43,16 @@ const HS4_LABELS: Record<string, string> = {
   '8704': 'Commercial Vehicles', '8708': 'Auto Parts',
 };
 
+// UN M49 mostly matches UN Comtrade reporterCodes, except India (699, not 356)
+// and Taiwan (490 "Other Asia, nes", not 158). Using M49 codes silently yields
+// count:0 from the Comtrade API for these two countries.
+const COMTRADE_REPORTER_OVERRIDES: Record<string, string> = { IN: '699', TW: '490' };
 const ISO2_TO_UN: Record<string, string> = Object.fromEntries(
   Object.entries(UN_TO_ISO2 as Record<string, string>).map(([un, iso]) => [iso, un]),
 );
+for (const [iso2, code] of Object.entries(COMTRADE_REPORTER_OVERRIDES)) {
+  ISO2_TO_UN[iso2] = code;
+}
 
 let fetchInFlight = false;
 
