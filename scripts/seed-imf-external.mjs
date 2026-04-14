@@ -4,11 +4,15 @@
 // Canonical key: economic:imf:external:v1
 //
 // Indicators:
-//   BX        — Exports of goods & services, USD
-//   BM        — Imports of goods & services, USD
-//   BCA       — Current account balance, USD
-//   TM_RPCH   — Volume of imports of goods & services, % change
-//   TX_RPCH   — Volume of exports of goods & services, % change
+//   BCA       — Current account balance, USD (broad coverage, ~209 countries)
+//   TM_RPCH   — Volume of imports of goods & services, % change (~189 countries)
+//   TX_RPCH   — Volume of exports of goods & services, % change (~190 countries)
+//
+// NOTE: BX/BM (export/import LEVELS in USD) were dropped 2026-04 — WEO
+// currently publishes these for only ~10 countries, so joining on them
+// collapsed the result set below the 190-country validate floor and the
+// whole seed was rejected on every run. If WEO republishes BX/BM with
+// broader coverage, re-add them + restore the tradeBalance join.
 //
 // Per WorldMonitor #3027 — feeds Trade Flows card.
 
@@ -46,16 +50,12 @@ export function latestValue(byYear) {
 }
 
 export function buildExternalCountries({
-  exports = {},
-  imports = {},
   currentAccount = {},
   importVol = {},
   exportVol = {},
 }) {
   const countries = {};
   const allIso3 = new Set([
-    ...Object.keys(exports),
-    ...Object.keys(imports),
     ...Object.keys(currentAccount),
     ...Object.keys(importVol),
     ...Object.keys(exportVol),
@@ -65,26 +65,23 @@ export function buildExternalCountries({
     const iso2 = ISO3_TO_ISO2[iso3];
     if (!iso2) continue;
 
-    const ex   = latestValue(exports[iso3]);
-    const im   = latestValue(imports[iso3]);
-    const ca   = latestValue(currentAccount[iso3]);
-    const tm   = latestValue(importVol[iso3]);
-    const tx   = latestValue(exportVol[iso3]);
+    const ca = latestValue(currentAccount[iso3]);
+    const tm = latestValue(importVol[iso3]);
+    const tx = latestValue(exportVol[iso3]);
 
-    if (!ex && !im && !ca && !tm && !tx) continue;
-
-    const tradeBalance = ex && im && ex.year === im.year
-      ? Number((ex.value - im.value).toFixed(3))
-      : null;
+    if (!ca && !tm && !tx) continue;
 
     countries[iso2] = {
-      exportsUsd:           ex?.value ?? null,
-      importsUsd:           im?.value ?? null,
-      tradeBalanceUsd:      tradeBalance,
-      currentAccountUsd:    ca?.value ?? null,
-      importVolumePctChg:   tm?.value ?? null,
-      exportVolumePctChg:   tx?.value ?? null,
-      year: ex?.year ?? im?.year ?? ca?.year ?? tm?.year ?? tx?.year ?? null,
+      // BX/BM dropped — WEO coverage is ~10 countries. Fields kept as null so
+      // downstream consumers that probed for their presence see an explicit
+      // gap rather than a missing field.
+      exportsUsd:         null,
+      importsUsd:         null,
+      tradeBalanceUsd:    null,
+      currentAccountUsd:  ca?.value ?? null,
+      importVolumePctChg: tm?.value ?? null,
+      exportVolumePctChg: tx?.value ?? null,
+      year: ca?.year ?? tm?.year ?? tx?.year ?? null,
     };
   }
   return countries;
@@ -92,24 +89,22 @@ export function buildExternalCountries({
 
 export async function fetchImfExternal() {
   const years = weoYears();
-  const [exports, imports, currentAccount, importVol, exportVol] = await Promise.all([
-    imfSdmxFetchIndicator('BX', { years }),
-    imfSdmxFetchIndicator('BM', { years }),
+  const [currentAccount, importVol, exportVol] = await Promise.all([
     imfSdmxFetchIndicator('BCA', { years }),
     imfSdmxFetchIndicator('TM_RPCH', { years }),
     imfSdmxFetchIndicator('TX_RPCH', { years }),
   ]);
   return {
-    countries: buildExternalCountries({ exports, imports, currentAccount, importVol, exportVol }),
+    countries: buildExternalCountries({ currentAccount, importVol, exportVol }),
     seededAt: new Date().toISOString(),
   };
 }
 
-// IMF WEO external indicators (BX/BM/BCA) report ~210 countries. Require
-// >=190 to reject partial snapshots where a bad IMF run silently drops
-// dozens of countries.
+// BCA ~209 / TM_RPCH ~189 / TX_RPCH ~190. The union typically yields 189-210
+// non-aggregate countries. 180 is a safe floor that rejects a broken IMF run
+// while absorbing normal per-indicator sparseness.
 export function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 190;
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 180;
 }
 
 export { CANONICAL_KEY, CACHE_TTL };

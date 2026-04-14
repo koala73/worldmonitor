@@ -144,43 +144,51 @@ describe('seed-imf-external', () => {
     assert.equal(EXTERNAL_TTL, 35 * 24 * 3600);
   });
 
-  it('buildExternalCountries computes trade balance from exports - imports', () => {
+  it('buildExternalCountries maps current account + volume changes and nulls out legacy BX/BM fields', () => {
+    // BX/BM (export/import levels in USD) were removed 2026-04 — WEO coverage
+    // dropped to ~10 countries on those indicators, collapsing the result
+    // below the validate floor. Fields remain on the output as explicit null
+    // so downstream consumers see a deliberate gap rather than a missing key.
     const countries = buildExternalCountries({
-      exports:        { USA: { [YEAR]: 3000 }, DEU: { [YEAR]: 2100 } },
-      imports:        { USA: { [YEAR]: 4000 }, DEU: { [YEAR]: 1750 } },
-      currentAccount: { USA: { [YEAR]: -800 } },
+      currentAccount: { USA: { [YEAR]: -800 }, DEU: { [YEAR]: 250 } },
       importVol:      { USA: { [YEAR]: 4.2 } },
       exportVol:      { USA: { [YEAR]: 3.1 } },
     });
-    assert.equal(countries.US.exportsUsd, 3000);
-    assert.equal(countries.US.importsUsd, 4000);
-    assert.equal(countries.US.tradeBalanceUsd, -1000);
+    assert.equal(countries.US.exportsUsd, null);
+    assert.equal(countries.US.importsUsd, null);
+    assert.equal(countries.US.tradeBalanceUsd, null);
     assert.equal(countries.US.currentAccountUsd, -800);
     assert.equal(countries.US.importVolumePctChg, 4.2);
     assert.equal(countries.US.exportVolumePctChg, 3.1);
 
-    // Germany has trade surplus.
-    assert.equal(countries.DE.tradeBalanceUsd, 350);
-    // CA / volumes absent → null
-    assert.equal(countries.DE.currentAccountUsd, null);
+    // Germany has only currentAccount — still included.
+    assert.equal(countries.DE.currentAccountUsd, 250);
+    assert.equal(countries.DE.importVolumePctChg, null);
   });
 
-  it('buildExternalCountries leaves trade balance null when only one side is reported', () => {
+  it('buildExternalCountries drops countries with no usable indicator data', () => {
     const countries = buildExternalCountries({
-      exports: { USA: { [YEAR]: 3000 } },
+      currentAccount: { USA: { [YEAR]: -800 } },
+      importVol: {},
+      exportVol: {},
     });
-    assert.equal(countries.US.exportsUsd, 3000);
-    assert.equal(countries.US.tradeBalanceUsd, null);
+    assert.equal(Object.keys(countries).length, 1);
+    assert.ok(countries.US);
   });
 
-  it('validate gates >=190 country coverage and rejects partial snapshots', () => {
+  it('validate gates >=180 country coverage (relaxed from 190 after BX/BM removal)', () => {
     const countries = {};
-    for (let i = 0; i < 200; i++) countries[`X${i}`] = { exportsUsd: 1, year: 2025 };
+    for (let i = 0; i < 200; i++) countries[`X${i}`] = { currentAccountUsd: 1, year: 2025 };
     assert.equal(validateExternal({ countries }), true);
 
+    // 180 is the new minimum (BCA ~209 / TM ~189 / TX ~190; union floor).
+    const at180 = {};
+    for (let i = 0; i < 180; i++) at180[`X${i}`] = { currentAccountUsd: 1, year: 2025 };
+    assert.equal(validateExternal({ countries: at180 }), true, 'exactly 180 passes');
+
     const partial = {};
-    for (let i = 0; i < 170; i++) partial[`X${i}`] = { exportsUsd: 1, year: 2025 };
-    assert.equal(validateExternal({ countries: partial }), false, 'rejects 170 countries (dozens missing)');
+    for (let i = 0; i < 170; i++) partial[`X${i}`] = { currentAccountUsd: 1, year: 2025 };
+    assert.equal(validateExternal({ countries: partial }), false, 'rejects 170 countries');
 
     assert.equal(validateExternal({ countries: {} }), false);
   });

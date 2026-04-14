@@ -1,74 +1,99 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
-import { parseGldArchive, computeFlows } from '../scripts/seed-gold-etf-flows.mjs';
+import { parseGldArchiveXlsx, computeFlows } from '../scripts/seed-gold-etf-flows.mjs';
 
-describe('seed-gold-etf-flows: parseGldArchive', () => {
-  it('parses tonnes column directly when present', () => {
-    const csv = `Date,Gold (Tonnes),Total Net Assets,NAV
-10-Apr-26,905.20,90500000000,78.50
-09-Apr-26,904.10,90000000000,78.20`;
-    const rows = parseGldArchive(csv);
-    assert.equal(rows.length, 2);
+// exceljs lives in scripts/node_modules (not the repo root) — resolve from
+// the scripts package the seeder itself ships from.
+const require = createRequire(new URL('../scripts/package.json', import.meta.url));
+
+// Build a synthetic XLSX in memory that mirrors the real SPDR layout:
+//   sheet "US GLD Historical Archive"
+//   row 1 = headers; col 1=Date, 2=Close, 10=Tonnes, 11=AUM
+async function buildSyntheticXlsx(rows, sheetName = 'US GLD Historical Archive') {
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  wb.addWorksheet('Disclaimer').addRow(['SPDR GOLD SHARES DISCLAIMER — synthetic test data']);
+  const ws = wb.addWorksheet(sheetName);
+  ws.addRow([
+    'Date', 'Closing Price', 'Ounces of Gold per Share', 'NAV/Share',
+    'IOPV', 'Mid', 'Premium/Discount', 'Volume',
+    'Total Ounces', 'Tonnes of Gold', 'Total Net Asset Value',
+  ]);
+  for (const r of rows) {
+    ws.addRow([r.date, r.nav ?? 0, 0, 0, 0, 0, 0, 0, 0, r.tonnes ?? 0, r.aum ?? 0]);
+  }
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+// Parser guards on rowCount < 10 to reject nearly-empty sheets; tests that
+// want data back must supply ≥ 9 data rows.
+function daysAgoIso(n) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function spdrDate(iso) {
+  const d = new Date(iso + 'T00:00:00Z');
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+  return `${String(d.getUTCDate()).padStart(2,'0')}-${mon}-${d.getUTCFullYear()}`;
+}
+
+async function buildHistoricalXlsx(n, { tonnesBase = 900, aumBase = 90e9, navBase = 78 } = {}) {
+  const rows = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const iso = daysAgoIso(i);
+    rows.push({ date: spdrDate(iso), nav: navBase + i * 0.01, tonnes: tonnesBase + i, aum: aumBase + i * 1e6 });
+  }
+  return buildSyntheticXlsx(rows);
+}
+
+describe('seed-gold-etf-flows: parseGldArchiveXlsx', () => {
+  it('parses the real SPDR column layout (Date=1, Close=2, Tonnes=10, AUM=11)', async () => {
+    const buf = await buildHistoricalXlsx(15);
+    const rows = await parseGldArchiveXlsx(buf);
+    assert.equal(rows.length, 15);
     // Sorted ascending
-    assert.equal(rows[0].date, '2026-04-09');
-    assert.equal(rows[1].date, '2026-04-10');
-    assert.equal(rows[1].tonnes, 905.20);
-    assert.equal(rows[1].aum, 90500000000);
+    for (let i = 1; i < rows.length; i++) assert.ok(rows[i - 1].date <= rows[i].date);
+    // Column mapping sanity
+    assert.ok(rows[0].tonnes > 0);
+    assert.ok(rows[0].aum > 0);
+    assert.ok(rows[0].nav > 0);
   });
 
-  it('falls back to troy oz → tonnes conversion', () => {
-    const csv = `Date,Gold Troy Oz,Total Net Assets,NAV
-10-Apr-26,29097063.5,90500000000,78.50`;
-    const rows = parseGldArchive(csv);
-    assert.equal(rows.length, 1);
-    // 29,097,063.5 / 32,150.7 ≈ 905.02
-    assert.ok(Math.abs(rows[0].tonnes - 905.02) < 0.1, `got ${rows[0].tonnes}`);
+  it('accepts "DD-MMM-YYYY" dates (real SPDR format)', async () => {
+    const buf = await buildSyntheticXlsx(
+      Array.from({ length: 11 }, (_, i) => ({ date: `${String(i + 1).padStart(2,'0')}-Nov-2004`, tonnes: 8 + i * 0.1, aum: 1e8, nav: 44 })),
+    );
+    const rows = await parseGldArchiveXlsx(buf);
+    assert.ok(rows.length >= 11);
+    assert.ok(rows[0].date.startsWith('2004-11-'), `got ${rows[0].date}`);
   });
 
-  it('handles M/D/YYYY date format', () => {
-    const csv = `Date,Gold (Tonnes)
-4/10/2026,905.20`;
-    const rows = parseGldArchive(csv);
-    assert.equal(rows[0]?.date, '2026-04-10');
+  it('skips rows with zero or negative tonnage', async () => {
+    const good = Array.from({ length: 11 }, (_, i) => ({ date: spdrDate(daysAgoIso(i + 3)), tonnes: 900 + i }));
+    const bad = [
+      { date: spdrDate(daysAgoIso(1)), tonnes: 0 },
+      { date: spdrDate(daysAgoIso(2)), tonnes: -5 },
+    ];
+    const buf = await buildSyntheticXlsx([...good, ...bad]);
+    const rows = await parseGldArchiveXlsx(buf);
+    assert.equal(rows.length, 11, 'zero/negative tonnage rows dropped');
   });
 
-  it('skips rows with zero or negative tonnage', () => {
-    const csv = `Date,Gold (Tonnes)
-10-Apr-26,905.20
-09-Apr-26,0
-08-Apr-26,-5`;
-    const rows = parseGldArchive(csv);
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].tonnes, 905.20);
-  });
-
-  it('strips UTF-8 BOM from the first header cell', () => {
-    // Regression guard (PR #3037 review): SPDR has been observed serving the
-    // CSV with a leading UTF-8 BOM. Without stripping, findCol('date') would
-    // return -1 and parseGldArchive silently returns [].
-    const csv = `\uFEFFDate,Gold (Tonnes)
-10-Apr-26,905.20`;
-    const rows = parseGldArchive(csv);
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].tonnes, 905.20);
-  });
-
-  it('returns empty on malformed CSV', () => {
-    assert.deepEqual(parseGldArchive(''), []);
-    assert.deepEqual(parseGldArchive('junk\ndata'), []);
-  });
-
-  it('strips commas and dollar signs from numeric cells', () => {
-    const csv = `Date,Gold (Tonnes),Total Net Assets
-10-Apr-26,"905.20","$90,500,000,000"`;
-    const rows = parseGldArchive(csv);
-    assert.equal(rows[0].aum, 90500000000);
+  it('returns empty when the data sheet has fewer than 10 rows (too little to trust)', async () => {
+    const buf = await buildSyntheticXlsx([
+      { date: '10-Apr-2026', tonnes: 905.20 },
+      { date: '09-Apr-2026', tonnes: 904.10 },
+    ]);
+    const rows = await parseGldArchiveXlsx(buf);
+    assert.equal(rows.length, 0);
   });
 });
 
 describe('seed-gold-etf-flows: computeFlows', () => {
-  // Build a 260-day synthetic history (~1 trading year + slack)
   const buildHistory = (tonnesFn) => {
     const out = [];
     const start = new Date('2025-04-15T00:00:00Z');
@@ -84,7 +109,6 @@ describe('seed-gold-etf-flows: computeFlows', () => {
   });
 
   it('computes 1W / 1M / 1Y tonnage deltas correctly', () => {
-    // Linear +1 tonne/day
     const history = buildHistory(i => 800 + i);
     const flows = computeFlows(history);
     // latest = 800 + 259 = 1059; 5d ago = 1054 → +5 tonnes; 21d ago = 1038 → +21; 252d ago = 807 → +252
@@ -98,7 +122,7 @@ describe('seed-gold-etf-flows: computeFlows', () => {
     const history = buildHistory(i => 800 + i);
     const flows = computeFlows(history);
     assert.equal(flows.sparkline90d.length, 90);
-    assert.equal(flows.sparkline90d[0], 800 + 170); // 260 - 90 = index 170
+    assert.equal(flows.sparkline90d[0], 800 + 170);
     assert.equal(flows.sparkline90d[89], 1059);
   });
 
@@ -106,7 +130,6 @@ describe('seed-gold-etf-flows: computeFlows', () => {
     const history = buildHistory(i => 800 + i).slice(0, 10);
     const flows = computeFlows(history);
     assert.ok(flows !== null);
-    // With <5 days of prior data, changeW1 uses oldest row as baseline
     assert.ok(Number.isFinite(flows.changeW1Tonnes));
     assert.ok(Number.isFinite(flows.changeY1Tonnes));
   });

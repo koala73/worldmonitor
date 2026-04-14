@@ -1,105 +1,90 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'node:module';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+
 loadEnvFile(import.meta.url);
+
+const require = createRequire(import.meta.url);
 
 const GLD_KEY = 'market:gold-etf-flows:v1';
 const GLD_TTL = 86400;
-const GLD_URL = 'https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv';
 
-// SPDR publishes a daily CSV of GLD holdings. Columns observed (header order):
-// Date, Gold (oz), Total Net Assets, NAV, Shares Outstanding
-// Some archive versions use tonnes directly. We parse defensively — either Gold
-// column is converted to tonnes on the way out (1 tonne = 32,150.7 troy oz).
-const TROY_OZ_PER_TONNE = 32_150.7;
+// SPDR migrated from the legacy CSV archive to a Next.js JSON/XLSX API in
+// early 2026. The old URL (/assets/dynamic/GLD/GLD_US_archive_EN.csv) now
+// silently returns a PDF (Content-Type: application/pdf, ~700 KB) which
+// broke the original CSV parser with "Parsed only 0 rows" on every run.
+//
+// The new endpoint serves the full history as XLSX (~530 KB, sheet "US GLD
+// Historical Archive", ~5500 rows). Parse with exceljs (already in scripts
+// package deps).
+const GLD_API_BASE = 'https://api.spdrgoldshares.com/api/v1';
+const GLD_ORIGIN = 'https://www.spdrgoldshares.com';
+const GLD_HIST_URL = `${GLD_API_BASE}/historical-archive?product=gld&exchange=NYSE&lang=en`;
 
-function parseCsv(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-  if (lines.length < 2) return { header: [], rows: [] };
-  const splitLine = (l) => {
-    // Handles simple CSV with optional double-quoted cells containing commas.
-    const out = [];
-    let cur = '';
-    let inQuote = false;
-    for (let i = 0; i < l.length; i++) {
-      const ch = l[i];
-      if (ch === '"') { inQuote = !inQuote; continue; }
-      if (ch === ',' && !inQuote) { out.push(cur.trim()); cur = ''; continue; }
-      cur += ch;
-    }
-    out.push(cur.trim());
-    return out;
-  };
-  // Strip UTF-8 BOM from first header cell — SPDR's CSV has been observed
-  // both with and without one; without this, findCol('date') silently returns
-  // -1 and the outer 30-row guard throws a misleading "format may have changed".
-  const header = splitLine(lines[0]).map(h => h.trim().toLowerCase().replace(/^\ufeff/, ''));
-  const rows = lines.slice(1).map(splitLine);
-  return { header, rows };
-}
-
-function toNum(s) {
-  if (!s) return NaN;
-  const n = parseFloat(String(s).replace(/[,$"]/g, ''));
+function parseSpdrNumber(raw) {
+  if (raw == null) return NaN;
+  const s = String(raw).replace(/[$,\s£€¥]/g, '').replace(/^US\$/i, '').trim();
+  const n = parseFloat(s);
   return Number.isFinite(n) ? n : NaN;
 }
 
-function parseIsoDate(s) {
-  // SPDR typically writes "DD-MMM-YY" (e.g. 10-Apr-26) or "M/D/YYYY". Normalize.
-  if (!s) return '';
-  const raw = String(s).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-  const m1 = raw.match(/^(\d{1,2})[-/](\w{3})[-/](\d{2,4})$/);
+function parseSpdrDate(raw) {
+  if (!raw) return '';
+  if (raw instanceof Date) return raw.toISOString().slice(0, 10);
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // "18-Nov-2004" / "10-Apr-2026"
+  const m1 = s.match(/^(\d{1,2})-(\w{3})-(\d{4})$/);
   if (m1) {
-    const [, d, mon, y] = m1;
     const months = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-    const mm = months[mon.toLowerCase()];
-    if (!mm) return '';
-    const yyyy = y.length === 2 ? (parseInt(y, 10) >= 50 ? `19${y}` : `20${y}`) : y;
-    return `${yyyy}-${String(mm).padStart(2, '0')}-${String(parseInt(d, 10)).padStart(2, '0')}`;
+    const mm = months[m1[2].toLowerCase()];
+    if (mm) return `${m1[3]}-${String(mm).padStart(2, '0')}-${m1[1].padStart(2, '0')}`;
   }
-  const m2 = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  // "April 13, 2026" (used by the /data endpoint; kept for forward compat if
+  // we ever backfill from that source).
+  const m2 = s.match(/^(\w+)\s+(\d{1,2}),\s+(\d{4})$/);
   if (m2) {
-    const [, mm, dd, yyyy] = m2;
-    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    const months = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+    const mm = months[m2[1].toLowerCase()];
+    if (mm) return `${m2[3]}-${String(mm).padStart(2, '0')}-${m2[2].padStart(2, '0')}`;
   }
   return '';
 }
 
-export function parseGldArchive(csvText) {
-  const { header, rows } = parseCsv(csvText);
-  if (!header.length || !rows.length) return [];
+/**
+ * Parse the XLSX historical archive into an ascending-by-date array of
+ * `{ date, tonnes, aum, nav }` records. Exposed for unit tests.
+ */
+export async function parseGldArchiveXlsx(xlsxBuffer) {
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(xlsxBuffer);
+  const ws = wb.worksheets.find(w => w.name !== 'Disclaimer') || wb.worksheets[1] || wb.worksheets[0];
+  if (!ws || ws.rowCount < 10) return [];
 
-  const findCol = (...candidates) => {
-    for (const c of candidates) {
-      const idx = header.findIndex(h => h === c || h.startsWith(c));
-      if (idx !== -1) return idx;
-    }
-    return -1;
-  };
-  const idxDate = findCol('date');
-  const idxOz = findCol('gold troy oz', 'gold (oz)', 'gold oz', 'ounces');
-  const idxTonnes = findCol('gold (tonnes)', 'gold tonnes', 'tonnes', 'metric tonnes');
-  const idxAum = findCol('total net assets', 'net assets', 'aum');
-  const idxNav = findCol('nav', 'price per share', 'share price');
-  if (idxDate === -1 || (idxOz === -1 && idxTonnes === -1)) return [];
+  // Column layout (header row 1; observed 2026-04):
+  //   1 Date | 2 Closing Price | 3 Ounces/Share | 4 NAV/Share | 5 IOPV | 6 Mid
+  //   7 Premium/Discount | 8 Volume | 9 Total Ounces | 10 Tonnes | 11 Total NAV USD
+  const COL_DATE = 1, COL_NAV = 2, COL_TONNES = 10, COL_AUM = 11;
 
   const out = [];
-  for (const r of rows) {
-    const date = parseIsoDate(r[idxDate]);
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const date = parseSpdrDate(row.getCell(COL_DATE).value);
     if (!date) continue;
-    let tonnes = NaN;
-    if (idxTonnes !== -1) tonnes = toNum(r[idxTonnes]);
-    if (!Number.isFinite(tonnes) && idxOz !== -1) {
-      const oz = toNum(r[idxOz]);
-      if (Number.isFinite(oz) && oz > 0) tonnes = oz / TROY_OZ_PER_TONNE;
-    }
+    const tonnes = parseSpdrNumber(row.getCell(COL_TONNES).value);
     if (!Number.isFinite(tonnes) || tonnes <= 0) continue;
-    const aum = idxAum !== -1 ? toNum(r[idxAum]) : NaN;
-    const nav = idxNav !== -1 ? toNum(r[idxNav]) : NaN;
-    out.push({ date, tonnes, aum: Number.isFinite(aum) ? aum : 0, nav: Number.isFinite(nav) ? nav : 0 });
+    const aum = parseSpdrNumber(row.getCell(COL_AUM).value);
+    const nav = parseSpdrNumber(row.getCell(COL_NAV).value);
+    out.push({
+      date,
+      tonnes,
+      aum: Number.isFinite(aum) ? aum : 0,
+      nav: Number.isFinite(nav) ? nav : 0,
+    });
   }
-  // Sort ascending by date so index arithmetic for deltas is obvious.
+  // Sort ascending so index arithmetic for deltas is obvious.
   out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return out;
 }
@@ -129,14 +114,25 @@ export function computeFlows(history) {
 }
 
 async function fetchGldFlows() {
-  const resp = await fetch(GLD_URL, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
-    signal: AbortSignal.timeout(20_000),
+  const resp = await fetch(GLD_HIST_URL, {
+    headers: {
+      'User-Agent': CHROME_UA,
+      Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*',
+      // The SPDR API silently swaps the payload for a PDF when these headers
+      // are absent — always send browser-ish Origin/Referer.
+      Origin: GLD_ORIGIN,
+      Referer: `${GLD_ORIGIN}/usa/historical-data/`,
+    },
+    signal: AbortSignal.timeout(30_000),
   });
-  if (!resp.ok) throw new Error(`SPDR GLD archive HTTP ${resp.status}`);
-  const text = await resp.text();
-  const history = parseGldArchive(text);
-  if (history.length < 30) throw new Error(`Parsed only ${history.length} rows — SPDR format may have changed`);
+  if (!resp.ok) throw new Error(`SPDR historical-archive HTTP ${resp.status}`);
+  const ct = resp.headers.get('content-type') || '';
+  if (!/spreadsheet|xlsx|octet-stream/i.test(ct)) {
+    throw new Error(`SPDR historical-archive returned non-XLSX content-type: ${ct}`);
+  }
+  const buf = Buffer.from(await resp.arrayBuffer());
+  const history = await parseGldArchiveXlsx(buf);
+  if (history.length < 30) throw new Error(`Parsed only ${history.length} rows — SPDR XLSX format may have changed`);
   const flows = computeFlows(history);
   if (!flows) throw new Error('flows computation returned null');
   return { updatedAt: new Date().toISOString(), ...flows };
