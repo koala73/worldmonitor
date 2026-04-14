@@ -8,6 +8,12 @@
  * Usage from a bundle script:
  *   import { runBundle } from './_bundle-runner.mjs';
  *   await runBundle('ecb-eu', [ { label, script, seedMetaKey, intervalMs, timeoutMs } ]);
+ *
+ * Budget: Railway cron services SIGKILL the container at 10min. If the sum of
+ * timeoutMs for sections that happen to be due exceeds ~9min, we risk losing
+ * the in-flight section's logs AND marking the job as crashed. The runner
+ * enforces a wall-time budget and defers any section whose worst-case timeout
+ * wouldn't fit in the remaining budget — the deferred section runs next tick.
  */
 
 import { execFile } from 'node:child_process';
@@ -80,12 +86,14 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
  *   intervalMs: number,
  *   timeoutMs?: number,
  * }>} sections
+ * @param {{ maxBundleMs?: number }} [opts]
  */
-export async function runBundle(label, sections) {
+export async function runBundle(label, sections, opts = {}) {
   const t0 = Date.now();
-  console.log(`[Bundle:${label}] Starting (${sections.length} sections)`);
+  const maxBundleMs = opts.maxBundleMs ?? 540_000;
+  console.log(`[Bundle:${label}] Starting (${sections.length} sections, budget ${Math.round(maxBundleMs / 1000)}s)`);
 
-  let ran = 0, skipped = 0, failed = 0;
+  let ran = 0, skipped = 0, deferred = 0, failed = 0;
 
   for (const section of sections) {
     const scriptPath = join(__dirname, section.script);
@@ -103,6 +111,15 @@ export async function runBundle(label, sections) {
       }
     }
 
+    const elapsedBundle = Date.now() - t0;
+    if (elapsedBundle + timeout > maxBundleMs) {
+      const remainingSec = Math.max(0, Math.round((maxBundleMs - elapsedBundle) / 1000));
+      const timeoutSec = Math.round(timeout / 1000);
+      console.log(`  [${section.label}] Deferred, needs ${timeoutSec}s but only ${remainingSec}s left in bundle budget`);
+      deferred++;
+      continue;
+    }
+
     try {
       const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label });
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);
@@ -114,6 +131,6 @@ export async function runBundle(label, sections) {
   }
 
   const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} failed:${failed}`);
+  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred} failed:${failed}`);
   process.exit(failed > 0 ? 1 : 0);
 }
