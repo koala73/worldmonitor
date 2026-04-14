@@ -137,36 +137,44 @@ function buildFetchUrl(reporterCode, hs4Batch, key) {
 }
 
 /**
+ * Single classification loop so a post-429 5xx still consumes the bounded
+ * 5xx retries (and vice versa). Caps: one 429 wait (60s), then up to two
+ * transient-5xx retries (5s, 15s). Any non-transient non-OK status exits.
+ *
  * @param {string} reporterCode
  * @param {string[]} hs4Batch
  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
  */
 export async function fetchBilateral(reporterCode, hs4Batch) {
-  let resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
+  let rateLimitedOnce = false;
+  let transientRetries = 0;
+  const MAX_TRANSIENT_RETRIES = 2;
 
-  if (resp.status === 429) {
-    console.warn(`  429 rate-limited for reporter ${reporterCode}, waiting 60s...`);
-    await sleep(60_000);
+  let resp;
+  while (true) {
     resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
-    if (!resp.ok) {
-      console.warn(`  Retry for reporter ${reporterCode} also failed (HTTP ${resp.status})`);
-      return [];
+
+    if (resp.status === 429 && !rateLimitedOnce) {
+      console.warn(`  429 rate-limited for reporter ${reporterCode}, waiting 60s...`);
+      await sleep(60_000);
+      rateLimitedOnce = true;
+      continue;
     }
-  } else if (isTransientComtrade(resp.status)) {
-    console.warn(`    transient HTTP ${resp.status} for reporter ${reporterCode}, retrying in 5s...`);
-    await sleep(5_000);
-    resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
-    if (isTransientComtrade(resp.status)) {
-      console.warn(`    second transient HTTP ${resp.status} for reporter ${reporterCode}, retrying in 15s...`);
-      await sleep(15_000);
-      resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
+
+    if (isTransientComtrade(resp.status) && transientRetries < MAX_TRANSIENT_RETRIES) {
+      const delay = transientRetries === 0 ? 5_000 : 15_000;
+      console.warn(`    transient HTTP ${resp.status} for reporter ${reporterCode}, retrying in ${delay / 1000}s...`);
+      await sleep(delay);
+      transientRetries++;
+      continue;
     }
-    if (!resp.ok) {
-      console.warn(`    HTTP ${resp.status} for reporter ${reporterCode} (after 5xx retries)`);
-      return [];
-    }
-  } else if (!resp.ok) {
-    console.warn(`    HTTP ${resp.status} for reporter ${reporterCode}`);
+
+    break;
+  }
+
+  if (!resp.ok) {
+    const tag = (rateLimitedOnce || transientRetries > 0) ? ' (after retries)' : '';
+    console.warn(`    HTTP ${resp.status} for reporter ${reporterCode}${tag}`);
     return [];
   }
 

@@ -104,23 +104,30 @@ async function fetchImportsForReporter(reporterCode, apiKey) {
     });
   }
 
-  let resp = await once();
+  // Single classification loop: 429 wait (15s — bundle budget is tight), then
+  // up to two transient-5xx retries (5s, 10s). Collapsed from branched retries
+  // so a post-429 5xx still consumes the bounded 5xx retries.
+  let rateLimitedOnce = false;
+  let transientRetries = 0;
+  const MAX_TRANSIENT_RETRIES = 2;
 
-  if (resp.status === 429) {
-    // Short backoff on 429 — 60s is too long when the overall bundle budget is tight.
-    await sleep(15_000);
+  let resp;
+  while (true) {
     resp = await once();
-    if (!resp.ok) return { records: [], status: resp.status };
-    return { records: parseRecords(await resp.json()), status: resp.status };
-  }
 
-  if (isTransientComtrade(resp.status)) {
-    await sleep(5_000);
-    resp = await once();
-    if (isTransientComtrade(resp.status)) {
-      await sleep(10_000);
-      resp = await once();
+    if (resp.status === 429 && !rateLimitedOnce) {
+      await sleep(15_000);
+      rateLimitedOnce = true;
+      continue;
     }
+
+    if (isTransientComtrade(resp.status) && transientRetries < MAX_TRANSIENT_RETRIES) {
+      await sleep(transientRetries === 0 ? 5_000 : 10_000);
+      transientRetries++;
+      continue;
+    }
+
+    break;
   }
 
   if (!resp.ok) return { records: [], status: resp.status };

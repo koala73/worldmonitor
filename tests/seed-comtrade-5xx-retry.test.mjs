@@ -84,3 +84,29 @@ test('fetchBilateral: does NOT retry on 4xx (non-transient)', async () => {
   assert.equal(fetchCalls.length, 1, 'no retry on client error');
   assert.deepEqual(result, []);
 });
+
+test('fetchBilateral: 429 then 503 still consumes the 5xx retries (regression for PR review)', async () => {
+  // Previously the 429 branch would return immediately if its retry came back
+  // 5xx, bypassing the bounded transient retries. Now the classification loop
+  // reclassifies each response: 429 waits → retry hits 503 → 5s backoff → 15s
+  // backoff → 200 success.
+  fetchResponses = [
+    { status: 429, body: {} },
+    { status: 503, body: {} },
+    { status: 502, body: {} },
+    { status: 200, body: { data: [{ cmdCode: '2709', partnerCode: '156', primaryValue: 42, period: 2024 }] } },
+  ];
+  const result = await fetchBilateral('699', ['2709']);
+  assert.equal(fetchCalls.length, 4, '1 initial 429 + 1 post-429 retry + 2 transient-5xx retries');
+  assert.equal(result.length, 1, 'recovered after mixed 429+5xx sequence');
+}, { timeout: 90_000 });
+
+test('fetchBilateral: 429 once → 429 again does NOT re-wait 60s (one 429 cap)', async () => {
+  fetchResponses = [
+    { status: 429, body: {} },
+    { status: 429, body: {} },
+  ];
+  const result = await fetchBilateral('699', ['2709']);
+  assert.equal(fetchCalls.length, 2, 'cap 429 retries at one wait');
+  assert.deepEqual(result, []);
+}, { timeout: 90_000 });
