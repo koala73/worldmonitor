@@ -794,8 +794,11 @@ const mostExpensiveDiesel = withDiesel.length
   : '';
 
 const allSourcesFresh = failedSources.length === 0;
+const untoleratedFailures = failedSources.filter(name => !TOLERATED_FAILURES.has(name));
+const publishBlocking = untoleratedFailures.length > 0;
 console.log(`\n  Summary: ${countries.length} countries, ${successfulSources}/${sourceNames.length} sources`);
-if (!allSourcesFresh) console.warn(`  [FRESHNESS] Failed sources this run: ${failedSources.join(', ')} — publish will be rejected, prev snapshot keeps serving`);
+if (publishBlocking) console.warn(`  [FRESHNESS] Failed sources this run: ${failedSources.join(', ')} — publish will be rejected, prev snapshot keeps serving`);
+else if (!allSourcesFresh) console.warn(`  [FRESHNESS] Tolerated failures this run: ${failedSources.join(', ')} — publishing without them; :prev will rotate`);
 console.log(`  Cheapest gasoline: ${cheapestGasoline}, Cheapest diesel: ${cheapestDiesel}`);
 console.log(`  Most expensive gasoline: ${mostExpensiveGasoline}, Most expensive diesel: ${mostExpensiveDiesel}`);
 
@@ -815,10 +818,13 @@ const data = {
   allSourcesFresh,
 };
 
-// Only rotate :prev when EVERY source succeeded this run. A partial rotation
-// poisons next week's WoW for every country the failed source owned (would
-// compare fresh-this-week to stale-carried-last-week = ~0% change forever).
-const rotatePrev = allSourcesFresh;
+// Rotate :prev when no untolerated source failed. Tolerated-only failures
+// (e.g. Brazil ANP unreachable) drop those countries from the published
+// snapshot entirely, so rotating is safe — next week has no prev entry to
+// compare against, so no false ~0% WoW. Blocking failures (untolerated)
+// still freeze :prev to preserve WoW integrity, since the panel would
+// otherwise compare fresh-this-week to stale-carried-last-week = ~0%.
+const rotatePrev = !publishBlocking;
 if (!rotatePrev) console.warn(`  [:prev] Skipping rotation — WoW integrity preserved for next run`);
 
 await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
