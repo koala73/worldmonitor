@@ -35,6 +35,13 @@ const SPR_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit 
 const REFINERY_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 
 // EIA retries transient upstream failures: timeouts and 5xx. Returns parsed JSON.
+// 4xx and other non-network errors are thrown immediately (no retry).
+function isTransientFetchError(e) {
+  const msg = e?.message || '';
+  return e?.name === 'TimeoutError' || e?.name === 'AbortError' ||
+    /timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|ECONNREFUSED|socket hang up/i.test(msg);
+}
+
 async function eiaFetchJson(url, label, { timeoutMs = 20_000, attempts = 3 } = {}) {
   let lastErr;
   for (let i = 1; i <= attempts; i++) {
@@ -44,10 +51,13 @@ async function eiaFetchJson(url, label, { timeoutMs = 20_000, attempts = 3 } = {
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (resp.ok) return await resp.json();
-      const err = new Error(`EIA ${label}: HTTP ${resp.status}`);
-      if (resp.status < 500 || i === attempts) throw err;
+      const err = Object.assign(new Error(`EIA ${label}: HTTP ${resp.status}`), { status: resp.status });
+      // Only 5xx is transient; 4xx is a permanent config/request error — bail immediately.
+      if (resp.status < 500) throw err;
       lastErr = err;
+      if (i === attempts) throw err;
     } catch (e) {
+      if (!isTransientFetchError(e) && !(e?.status >= 500)) throw e;
       lastErr = e;
       if (i === attempts) throw e;
     }
@@ -859,13 +869,14 @@ async function fetchAll() {
     } else {
       console.warn('  [StressIndex] GSCPI not in Redis yet (ais-relay lag or first run) — excluding');
     }
+    let stressResult = null;
     try {
-      const stressResult = computeStressIndex(fr);
-      if (stressResult) {
-        await writeExtraKeyWithMeta(STRESS_INDEX_KEY, stressResult, STRESS_INDEX_TTL, STRESS_COMPONENTS.length);
-      }
+      stressResult = computeStressIndex(fr);
     } catch (e) {
       console.warn(`  [StressIndex] skipped write — ${e.message}`);
+    }
+    if (stressResult) {
+      await writeExtraKeyWithMeta(STRESS_INDEX_KEY, stressResult, STRESS_INDEX_TTL, STRESS_COMPONENTS.length);
     }
   }
 
