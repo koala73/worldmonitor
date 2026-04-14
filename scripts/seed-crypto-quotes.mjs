@@ -51,7 +51,7 @@ async function fetchFromCoinGecko() {
 }
 
 async function fetchFromCoinPaprika() {
-  console.log('  [CoinPaprika] Falling back to CoinPaprika...');
+  console.log('  [CoinPaprika] Fetching tickers...');
   const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
@@ -73,12 +73,17 @@ async function fetchFromCoinPaprika() {
 }
 
 async function fetchCryptoQuotes() {
+  // CoinPaprika is the PRIMARY source — CoinGecko's free tier 429s frequently
+  // and its 5-step retry budget (10+20+30+40+50=150s) overruns the bundle's
+  // 120s timeout, killing the section before the fallback can fire (Railway
+  // bundle log 2026-04-14 07:17 UTC). CoinGecko is retained as fallback for
+  // its sparkline_in_7d data, which CoinPaprika does not provide.
   let data;
   try {
-    data = await fetchFromCoinGecko();
-  } catch (err) {
-    console.warn(`  [CoinGecko] Failed: ${err.message}`);
     data = await fetchFromCoinPaprika();
+  } catch (err) {
+    console.warn(`  [CoinPaprika] Failed: ${err.message} — falling back to CoinGecko`);
+    data = await fetchFromCoinGecko();
   }
 
   const byId = new Map(data.map((c) => [c.id, c]));
