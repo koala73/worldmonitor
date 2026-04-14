@@ -37,52 +37,53 @@ test('parseCREStationPrices handles empty XML', () => {
   assert.deepEqual(diesel, []);
 });
 
-test('validateFuel rejects when country count < 25', () => {
-  const data = {
-    countries: [
-      { code: 'US' }, { code: 'GB' }, { code: 'MY' },
-      ...Array.from({ length: 20 }, (_, i) => ({ code: `X${i}` })),
-    ],
-  };
-  assert.equal(validateFuel(data), false, '23 countries should fail the >=25 floor');
+const HEALTHY_COUNTRIES = [
+  { code: 'US' }, { code: 'GB' }, { code: 'MY' }, { code: 'BR' }, { code: 'MX' }, { code: 'NZ' },
+  ...Array.from({ length: 27 }, (_, i) => ({ code: `EU${i}` })),
+];
+
+test('validateFuel accepts healthy snapshot (all sources fresh, 33 countries, US+GB+MY present)', () => {
+  assert.equal(validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: [] }), true);
 });
 
-test('validateFuel rejects when a critical source (US/GB/MY) is missing', () => {
-  const countries = Array.from({ length: 27 }, (_, i) => ({ code: `EU${i}` }));
-  countries.push({ code: 'GB' }, { code: 'MY' }); // US missing
-  assert.equal(validateFuel({ countries }), false, 'missing US should fail');
+test('validateFuel rejects when ANY source failed (no silent degraded publishes)', () => {
+  assert.equal(
+    validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: ['Brazil'] }),
+    false,
+    'even a single failed source must block publish; cache TTL serves last healthy snapshot',
+  );
 });
 
-test('validateFuel rejects when a critical source is only present as stale-carried', () => {
+test('validateFuel rejects when country count < 30', () => {
   const countries = [
-    { code: 'US', stale: true },
-    { code: 'GB' },
-    { code: 'MY' },
+    { code: 'US' }, { code: 'GB' }, { code: 'MY' },
+    ...Array.from({ length: 25 }, (_, i) => ({ code: `EU${i}` })),
+  ];
+  assert.equal(validateFuel({ countries, failedSources: [] }), false, '28 countries should fail >=30');
+});
+
+test('validateFuel rejects when critical source US is missing', () => {
+  const countries = [
+    { code: 'GB' }, { code: 'MY' }, { code: 'BR' }, { code: 'MX' }, { code: 'NZ' },
     ...Array.from({ length: 27 }, (_, i) => ({ code: `EU${i}` })),
   ];
-  assert.equal(validateFuel({ countries }), false, 'stale US does not count as fresh critical anchor');
+  assert.equal(validateFuel({ countries, failedSources: [] }), false, 'missing US fails gate');
 });
 
-test('validateFuel accepts healthy snapshot (all critical fresh + 25+ countries)', () => {
+test('validateFuel rejects when critical source GB is missing', () => {
   const countries = [
-    { code: 'US' },
-    { code: 'GB' },
-    { code: 'MY' },
+    { code: 'US' }, { code: 'MY' }, { code: 'BR' }, { code: 'MX' }, { code: 'NZ' },
     ...Array.from({ length: 27 }, (_, i) => ({ code: `EU${i}` })),
   ];
-  assert.equal(validateFuel({ countries }), true);
+  assert.equal(validateFuel({ countries, failedSources: [] }), false, 'missing GB fails gate');
 });
 
-test('validateFuel accepts snapshot with some stale-carried non-critical entries', () => {
+test('validateFuel rejects when critical source MY is missing', () => {
   const countries = [
-    { code: 'US' },
-    { code: 'GB' },
-    { code: 'MY' },
-    { code: 'BR', stale: true },
-    { code: 'MX', stale: true },
+    { code: 'US' }, { code: 'GB' }, { code: 'BR' }, { code: 'MX' }, { code: 'NZ' },
     ...Array.from({ length: 27 }, (_, i) => ({ code: `EU${i}` })),
   ];
-  assert.equal(validateFuel({ countries }), true, 'stale BR/MX is OK as long as US/GB/MY are fresh');
+  assert.equal(validateFuel({ countries, failedSources: [] }), false, 'missing MY fails gate');
 });
 
 test('validateFuel rejects null/undefined/empty', () => {

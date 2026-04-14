@@ -608,14 +608,25 @@ export function parseCREStationPrices(xml) {
   return { regular: collect('regular'), diesel: collect('diesel') };
 }
 
-// Publish gate. Exported so tests can lock in the contract: ≥25 countries total
-// AND US+GB+MY present as FRESH (non-stale-carried) — guarantees at least one
-// live non-EU anchor per run.
+// Publish gate. Exported so tests can lock in the contract.
+//
+// All entries in `countries` are FRESH from this run (no stale-carry-forward —
+// that was removed after review: carrying previous-week's data as if current
+// created a freshness bug because the proto/UI have no badge for staleness).
+// A degraded run that can't meet this gate fails publish; the 10-day cache TTL
+// serves the last healthy snapshot and health flips to STALE_SEED after its
+// maxStaleMin window.
+//
+// Contract:
+//   - ≥30 countries (EU-CSV alone is 27 + at least 3 of US/GB/MY/BR/MX/NZ).
+//   - US + GB + MY present (each uniquely covers a non-EU region).
+//   - No failed sources — partial failures must not publish as healthy.
 export function validateFuel(d) {
-  const freshCodes = new Set((d?.countries ?? []).filter(c => !c.stale).map(c => c.code));
+  const codes = new Set((d?.countries ?? []).map(c => c.code));
   const total = d?.countries?.length ?? 0;
-  const criticalFresh = ['US', 'GB', 'MY'].every(code => freshCodes.has(code));
-  return total >= 25 && criticalFresh;
+  const criticalPresent = ['US', 'GB', 'MY'].every(code => codes.has(code));
+  const allSourcesOk = Array.isArray(d?.failedSources) ? d.failedSources.length === 0 : true;
+  return total >= 30 && criticalPresent && allSourcesOk;
 }
 
 async function main() {
@@ -640,18 +651,6 @@ const fetchResults = await Promise.allSettled([
 ]);
 
 const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ'];
-// Source → country codes it owns. Drives stale-carry-forward when a source
-// fails: we pull those ISO codes from the previous snapshot rather than
-// silently dropping the country from the panel.
-const SOURCE_COUNTRY_CODES = {
-  Malaysia: ['MY'],
-  Mexico: ['MX'],
-  'US-EIA': ['US'],
-  'EU-CSV': Object.keys(EU_COUNTRY_INFO),
-  Brazil: ['BR'],
-  'New Zealand': ['NZ'],
-  'UK-DESNZ': ['GB'],
-};
 let successfulSources = 0;
 const failedSources = [];
 
@@ -703,37 +702,20 @@ for (let i = 0; i < fetchResults.length; i++) {
   }
 }
 
-// Stale-carry-forward: for every failed source, pull its countries from the
-// previous snapshot (if available) and insert them flagged `stale:true` with
-// the original observedAt preserved. Prevents "Brazil vanishes for a week"
-// silent coverage regressions. UI should badge stale entries.
-const prevByCode = new Map((prevSnapshot?.countries ?? []).map(c => [c.code, c]));
-let staleCarried = 0;
-for (const src of failedSources) {
-  const codes = SOURCE_COUNTRY_CODES[src] ?? [];
-  for (const code of codes) {
-    if (countryMap.has(code)) continue; // source failed but country arrived via another path
-    const prev = prevByCode.get(code);
-    if (!prev) continue;
-    const stale = {
-      ...prev,
-      stale: true,
-      staleReason: `source ${src} failed`,
-      // fxRate is recomputed below for anyone currently in the map; for
-      // carried-forward entries we keep prev.fxRate so usdPrice remains valid.
-    };
-    if (stale.gasoline) stale.gasoline = { ...stale.gasoline, stale: true };
-    if (stale.diesel) stale.diesel = { ...stale.diesel, stale: true };
-    countryMap.set(code, stale);
-    staleCarried++;
-  }
-}
-if (staleCarried > 0) {
-  console.warn(`  [STALE] Carried forward ${staleCarried} countries from prev snapshot (failed sources: ${failedSources.join(', ')})`);
+// Stale-carry-forward was removed after review: it inserted week-old data
+// into the published payload with a `stale:true` field that no proto schema
+// or panel knew how to render, so BR/MX/NZ carried-forward entries would
+// display as ordinary current prices. That's a freshness bug, not resilience.
+//
+// Instead: on partial failure, the strict validator (≥30 countries + US/GB/MY
+// + no failed sources) rejects the publish. The 10-day cache TTL keeps the
+// last healthy snapshot serving the panel, and health flips to STALE_SEED
+// once maxStaleMin is exceeded — a correct, visible failure signal.
+if (failedSources.length > 0) {
+  console.warn(`  [DEGRADED] ${failedSources.length} source(s) failed this run — publish will be rejected by validator, previous snapshot will continue serving until cache TTL`);
 }
 
 const countries = Array.from(countryMap.values());
-const freshCountries = countries.filter(c => !c.stale);
 
 // Coverage warnings — log but always publish what we have
 if (countries.length < MIN_COUNTRIES) {
@@ -761,9 +743,6 @@ let wowAvailable = hasPrevData && !prevTooRecent;
 if (wowAvailable) {
   const prevMap = new Map(prevSnapshot.countries.map(c => [c.code, c]));
   for (const country of countries) {
-    // Stale-carried entries are literally the prev snapshot — WoW vs self = 0% always,
-    // which is misleading. Skip WoW for them; UI will render a stale badge instead.
-    if (country.stale) continue;
     const prev = prevMap.get(country.code);
     if (!prev) continue;
 
@@ -786,10 +765,9 @@ if (wowAvailable) {
   }
 }
 
-// Compute cheapest/most-expensive from FRESH data only — using stale-carried
-// entries would let a week-old price win "cheapest" and mislead the UI.
-const withGasoline = freshCountries.filter(c => c.gasoline?.usdPrice > 0);
-const withDiesel = freshCountries.filter(c => c.diesel?.usdPrice > 0);
+// All entries are fresh this run (carry-forward removed).
+const withGasoline = countries.filter(c => c.gasoline?.usdPrice > 0);
+const withDiesel = countries.filter(c => c.diesel?.usdPrice > 0);
 
 const cheapestGasoline = withGasoline.length
   ? withGasoline.reduce((a, b) => a.gasoline.usdPrice < b.gasoline.usdPrice ? a : b).code
@@ -805,8 +783,8 @@ const mostExpensiveDiesel = withDiesel.length
   : '';
 
 const allSourcesFresh = failedSources.length === 0;
-console.log(`\n  Summary: ${countries.length} countries (${freshCountries.length} fresh, ${staleCarried} stale-carried), ${successfulSources}/${sourceNames.length} sources`);
-if (!allSourcesFresh) console.warn(`  [FRESHNESS] Failed sources this run: ${failedSources.join(', ')} — :prev will NOT be rotated`);
+console.log(`\n  Summary: ${countries.length} countries, ${successfulSources}/${sourceNames.length} sources`);
+if (!allSourcesFresh) console.warn(`  [FRESHNESS] Failed sources this run: ${failedSources.join(', ')} — publish will be rejected, prev snapshot keeps serving`);
 console.log(`  Cheapest gasoline: ${cheapestGasoline}, Cheapest diesel: ${cheapestDiesel}`);
 console.log(`  Most expensive gasoline: ${mostExpensiveGasoline}, Most expensive diesel: ${mostExpensiveDiesel}`);
 
@@ -822,9 +800,7 @@ const data = {
   sourceCount: successfulSources,
   totalSources: sourceNames.length,
   failedSources,
-  staleCarried,
   countryCount: countries.length,
-  freshCountryCount: freshCountries.length,
   allSourcesFresh,
 };
 
