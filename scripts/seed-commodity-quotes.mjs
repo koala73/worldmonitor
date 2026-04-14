@@ -249,35 +249,40 @@ function validate(data) {
 // as `data`, which is where the companion-key writes happen.
 
 /**
- * Write companion / derived keys after the canonical commodity publish.
- *
- * MUST be invoked via runSeed's opts.afterPublish (NOT via .then() chained on
- * the runSeed promise). runSeed ends with process.exit(0) on success, which
- * terminates the process before any chained .then() microtask runs — so a
- * .then-chained version of this code silently never executes and three
- * Redis keys (market:commodities:v1:<symbols>, market:quotes:v1:<symbols>,
- * market:gold-extended:v1) get permanently dropped. Verified against
- * Railway log 2026-04-14 08:50:31: zero [Gold] log lines, zero extra-key
- * writes, goldExtended health=EMPTY for months.
- *
- * See ~/.claude/skills/runseed-then-after-process-exit for full diagnosis.
- */
-/**
  * Required companion writes — alias keys that must succeed alongside the
- * canonical commodity publish. Any failure here MUST propagate up so runSeed's
- * outer try/catch rejects the run, the lock is released, and process.exit(1)
- * fires via the outer .catch. Otherwise seed-meta on the canonical key gets
- * stamped as fresh while the alias keys are stale or missing — phantom-success.
+ * canonical commodity publish.
  *
- * Per Codex review on PR #3088: only the OPTIONAL gold-extended branch is
- * downgraded to a warning. Required writes are not.
+ * BACKGROUND (do NOT regress to .then() pattern):
+ * runSeed() in scripts/_seed-utils.mjs ends with process.exit(0) on success,
+ * which terminates Node before any .then() microtask chained on its returned
+ * promise can run. The previous implementation used `runSeed(...).then(write...)`
+ * and these three keys (market:commodities:v1:<symbols>, market:quotes:v1:<symbols>,
+ * market:gold-extended:v1) were silently dead for months — Railway log
+ * 2026-04-14 08:50:31 confirms zero [Gold] log lines and goldExtended
+ * health=EMPTY since the seeder was added. The fix is to wire post-publish
+ * writes via opts.afterPublish, which runSeed awaits BEFORE process.exit
+ * (see _seed-utils.mjs runSeed() lines ~792-794).
+ *
+ * ERROR SEMANTICS (per Codex review on PR #3088):
+ * Required alias writes propagate errors. Any failure here MUST bubble up so
+ * runSeed's outer try/catch rejects the run, the lock is released, and
+ * process.exit(1) fires via the outer .catch. Otherwise seed-meta on the
+ * canonical key would be stamped fresh while the alias keys are stale or
+ * missing — phantom-success returns by a different door. Only the OPTIONAL
+ * gold-extended branch (separate function below) is downgraded to a warning,
+ * because it has its own independent seed-meta key.
+ *
+ * Writes are parallelized via Promise.all — independent Redis writes, no
+ * read-after-write ordering required (per Greptile review on PR #3088).
  */
 async function writeRequiredCompanionKeys(data) {
   const commodityKey = `market:commodities:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesKey = `market:quotes:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesPayload = { ...data, finnhubSkipped: false, skipReason: '', rateLimited: false };
-  await writeExtraKey(commodityKey, data, CACHE_TTL);
-  await writeExtraKey(quotesKey, quotesPayload, CACHE_TTL);
+  await Promise.all([
+    writeExtraKey(commodityKey, data, CACHE_TTL),
+    writeExtraKey(quotesKey, quotesPayload, CACHE_TTL),
+  ]);
 }
 
 /**
