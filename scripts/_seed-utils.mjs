@@ -735,10 +735,21 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
       if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
       await extendExistingTtl(keys, ttlSeconds || 600);
-      // Always write seed-meta even when data is empty so health checks can
-      // distinguish "seeder ran but nothing to publish" from "seeder stopped".
-      await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
-      console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed, existing cache TTL extended`);
+      if (opts.emptyDataIsFailure) {
+        // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
+        // empty data as a real upstream failure. Do NOT refresh seed-meta —
+        // letting fetchedAt stay stale lets bundles retry on their next cron
+        // fire and lets health flip to STALE_SEED. Writing fresh meta here
+        // caused imf-external to skip for the full 30-day interval after a
+        // single transient failure (Railway log 2026-04-13).
+        console.error(`  FAILURE: validation failed (empty data) — seed-meta NOT refreshed; bundle will retry next cycle`);
+      } else {
+        // Write seed-meta even when data is empty so health can distinguish
+        // "seeder ran but nothing to publish" from "seeder stopped" (quiet-
+        // period feeds: news, events, sparse indicators).
+        await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
+        console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed, existing cache TTL extended`);
+      }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
       process.exit(0);

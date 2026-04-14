@@ -151,6 +151,7 @@ if (process.argv[1]?.endsWith('seed-imf-growth.mjs')) {
     ttlSeconds: CACHE_TTL,
     sourceVersion: `imf-sdmx-weo-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
+    emptyDataIsFailure: true,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

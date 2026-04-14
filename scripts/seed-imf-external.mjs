@@ -115,6 +115,10 @@ if (process.argv[1]?.endsWith('seed-imf-external.mjs')) {
     ttlSeconds: CACHE_TTL,
     sourceVersion: `imf-sdmx-weo-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
+    // Empty/short result = real upstream failure (floor is 180 countries).
+    // Without this, a single transient fetch glitch refreshes seed-meta and
+    // locks the bundle out for 30 days (see log 2026-04-13).
+    emptyDataIsFailure: true,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
