@@ -695,19 +695,23 @@ async function readInputKeys() {
   ];
   // Sized for Upstash REST /pipeline payload limits.
   //
-  // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; the top 5 keys
+  // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; top 5 keys
   // (ucdp 657KB + chokepoints 500KB + cyber 390KB + commodities 192KB +
-  // gpsjam 174KB) account for 90% of payload. Worst-case co-located batch
-  // at BATCH_SIZE=5 is ~1.9 MB (3 heavies + 2 mediums).
+  // gpsjam 174KB) = 90% of payload. Because BATCH_SIZE divides the keys
+  // array deterministically by index, the worst batch is fixed by array
+  // order — currently batch 2 (indices 5-9: chokepoints + iran + ucdp +
+  // unrest + outages) at **1.17 MB** verified live. Not random
+  // co-location — deterministic.
   //
-  // The original 10s timeout deterministically failed every retry on ~1.5
-  // MB batches at Upstash REST's observed slow-spike floor of ~100 KB/s
-  // (Railway log 2026-04-14 10:01 UTC showed 12 consecutive abort-timeouts).
-  // 45s gives ~4.5× headroom at that floor.
+  // The original 10s timeout deterministically failed every retry on this
+  // batch at Upstash REST's observed slow-spike floor of ~100 KB/s
+  // (Railway log 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts).
+  // At 100 KB/s, 1.17 MB takes ~12s. 45s gives ~3.7× headroom.
   //
-  // Diagnostic methodology: STRLEN-probe each input key, sum sizes, multiply
-  // by max likely co-location count, then time-budget against the observed
-  // slow-spike throughput floor inferred from the original failure.
+  // Future improvement: interleave heavy keys (chokepoints + ucdp) with
+  // smalls in the keys array above. Would split the deterministic
+  // worst-case across two batches, halving the per-request payload.
+  // Tracked as follow-up; not in scope for this hotfix.
   const BATCH_SIZE = 5;
   const results = [];
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
