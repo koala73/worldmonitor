@@ -38,11 +38,16 @@ const COMMODITIES = [
 
 // Comtrade preview regularly hits transient 5xx (500/502/503/504). Without
 // retry each (reporter,commodity) pair that drew a 5xx is silently lost.
-function isTransientComtrade(status) {
+export function isTransientComtrade(status) {
   return status === 500 || status === 502 || status === 503 || status === 504;
 }
 
-async function fetchFlows(reporter, commodity) {
+// Injectable sleep so unit tests can exercise the retry loop without real
+// 5s/15s waits. Production defaults to the real sleep.
+let _retrySleep = sleep;
+export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
+
+export async function fetchFlows(reporter, commodity) {
   const url = new URL(`${COMTRADE_BASE}/preview/C/A/HS`);
   url.searchParams.set('reporterCode', reporter.code);
   url.searchParams.set('cmdCode', commodity.code);
@@ -55,16 +60,20 @@ async function fetchFlows(reporter, commodity) {
     });
   }
 
-  let resp = await once();
-  if (isTransientComtrade(resp.status)) {
-    console.warn(`  transient HTTP ${resp.status} for reporter ${reporter.code} cmd ${commodity.code}, retrying in 5s...`);
-    await sleep(5_000);
+  // Classification loop: up to two transient-5xx retries (5s, 15s) then give up.
+  let transientRetries = 0;
+  const MAX_TRANSIENT_RETRIES = 2;
+  let resp;
+  while (true) {
     resp = await once();
-    if (isTransientComtrade(resp.status)) {
-      console.warn(`  second transient HTTP ${resp.status} for reporter ${reporter.code} cmd ${commodity.code}, retrying in 15s...`);
-      await sleep(15_000);
-      resp = await once();
+    if (isTransientComtrade(resp.status) && transientRetries < MAX_TRANSIENT_RETRIES) {
+      const delay = transientRetries === 0 ? 5_000 : 15_000;
+      console.warn(`  transient HTTP ${resp.status} for reporter ${reporter.code} cmd ${commodity.code}, retrying in ${delay / 1000}s...`);
+      await _retrySleep(delay);
+      transientRetries++;
+      continue;
     }
+    break;
   }
 
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -178,14 +187,17 @@ async function afterPublish(data, _meta) {
   }
 }
 
-runSeed('trade', 'comtrade-flows', CANONICAL_KEY, fetchAllFlows, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'comtrade-preview-v1',
-  publishTransform,
-  afterPublish,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
-  console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(0);
-});
+// isMain guard so tests can import fetchFlows without triggering a real seed run.
+if (process.argv[1]?.endsWith('seed-trade-flows.mjs')) {
+  runSeed('trade', 'comtrade-flows', CANONICAL_KEY, fetchAllFlows, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'comtrade-preview-v1',
+    publishTransform,
+    afterPublish,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(0);
+  });
+}

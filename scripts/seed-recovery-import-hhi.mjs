@@ -85,11 +85,16 @@ function parseRecords(data) {
 // silently drops from the HHI calc. The seeder's resume cache picks up
 // still-missing reporters on the next run, so we cap retries to keep the
 // 30-min bundle budget viable.
-function isTransientComtrade(status) {
+export function isTransientComtrade(status) {
   return status === 500 || status === 502 || status === 503 || status === 504;
 }
 
-async function fetchImportsForReporter(reporterCode, apiKey) {
+// Injectable sleep so unit tests can exercise the classification loop without
+// real 15s/5s/10s waits. Production defaults to the real sleep.
+let _retrySleep = sleep;
+export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
+
+export async function fetchImportsForReporter(reporterCode, apiKey) {
   const url = new URL(COMTRADE_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('flowCode', 'M');
@@ -116,13 +121,13 @@ async function fetchImportsForReporter(reporterCode, apiKey) {
     resp = await once();
 
     if (resp.status === 429 && !rateLimitedOnce) {
-      await sleep(15_000);
+      await _retrySleep(15_000);
       rateLimitedOnce = true;
       continue;
     }
 
     if (isTransientComtrade(resp.status) && transientRetries < MAX_TRANSIENT_RETRIES) {
-      await sleep(transientRetries === 0 ? 5_000 : 10_000);
+      await _retrySleep(transientRetries === 0 ? 5_000 : 10_000);
       transientRetries++;
       continue;
     }

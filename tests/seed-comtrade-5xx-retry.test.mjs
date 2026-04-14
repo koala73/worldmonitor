@@ -7,6 +7,8 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { isTransientComtrade, fetchBilateral, __setSleepForTests } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
+import { fetchFlows, __setSleepForTests as __setFlowsSleep } from '../scripts/seed-trade-flows.mjs';
+import { fetchImportsForReporter, __setSleepForTests as __setHhiSleep } from '../scripts/seed-recovery-import-hhi.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -23,14 +25,20 @@ beforeEach(() => {
     const next = fetchResponses.shift() ?? { status: 200, body: { data: [] } };
     return new Response(JSON.stringify(next.body ?? {}), { status: next.status });
   };
-  // Swap the retry sleep for a no-op that records the requested delay so
-  // tests can assert the production backoff cadence without actually waiting.
-  __setSleepForTests((ms) => { sleepCalls.push(ms); return Promise.resolve(); });
+  // Swap the retry sleep for a no-op that records the requested delay across
+  // all three seeders so tests can assert the production backoff cadence
+  // without actually waiting.
+  const stub = (ms) => { sleepCalls.push(ms); return Promise.resolve(); };
+  __setSleepForTests(stub);
+  __setFlowsSleep(stub);
+  __setHhiSleep(stub);
 });
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
-  __setSleepForTests(null); // restore default
+  __setSleepForTests(null);
+  __setFlowsSleep(null);
+  __setHhiSleep(null);
 });
 
 test('isTransientComtrade: recognizes 500/502/503/504 only', () => {
@@ -66,7 +74,10 @@ test('fetchBilateral: retries twice on consecutive 503s, succeeds on third', asy
   fetchResponses = [
     { status: 503, body: {} },
     { status: 503, body: {} },
-    { status: 200, body: { data: [{ cmdCode: '2709', partnerCode: '000', primaryValue: 999, period: 2024 }] } },
+    // Real partner code (China=156), NOT '000': groupByProduct() downstream
+    // filters 0/000 partners, so a test asserting "data recovered" with '000'
+    // would pass here while the user-visible seeder would still drop the row.
+    { status: 200, body: { data: [{ cmdCode: '2709', partnerCode: '156', primaryValue: 999, period: 2024 }] } },
   ];
   const result = await fetchBilateral('699', ['2709']);
   assert.equal(fetchCalls.length, 3, 'initial + two retries');
@@ -121,4 +132,86 @@ test('fetchBilateral: 429 once → 429 again does NOT re-wait 60s (one 429 cap)'
   assert.equal(fetchCalls.length, 2, 'cap 429 retries at one wait');
   assert.deepEqual(result, []);
   assert.deepEqual(sleepCalls, [60_000], 'only one 60s wait, no second 429 backoff');
+});
+
+// -----------------------------------------------------------------------------
+// seed-trade-flows.mjs — fetchFlows
+// -----------------------------------------------------------------------------
+
+test('fetchFlows: succeeds on first 200', async () => {
+  fetchResponses = [{ status: 200, body: { data: [{ period: 2024, flowCode: 'M', primaryValue: 100, partnerCode: '156' }] } }];
+  const result = await fetchFlows({ code: '699', name: 'India' }, { code: '2709', desc: 'Crude' });
+  assert.equal(fetchCalls.length, 1);
+  assert.ok(result.length >= 1, 'returns aggregated flows');
+  assert.deepEqual(sleepCalls, []);
+});
+
+test('fetchFlows: retries twice on 503s, succeeds on third', async () => {
+  fetchResponses = [
+    { status: 503, body: {} },
+    { status: 502, body: {} },
+    { status: 200, body: { data: [{ period: 2024, flowCode: 'X', primaryValue: 500, partnerCode: '156' }] } },
+  ];
+  const result = await fetchFlows({ code: '699', name: 'India' }, { code: '2709', desc: 'Crude' });
+  assert.equal(fetchCalls.length, 3);
+  assert.ok(result.length >= 1, 'recovered after transient 5xx');
+  assert.deepEqual(sleepCalls, [5_000, 15_000]);
+});
+
+test('fetchFlows: throws after 3 consecutive 5xx (caller catches via allSettled)', async () => {
+  fetchResponses = [{ status: 503 }, { status: 502 }, { status: 500 }];
+  await assert.rejects(
+    () => fetchFlows({ code: '699', name: 'India' }, { code: '2709', desc: 'Crude' }),
+    /HTTP 500/,
+  );
+  assert.equal(fetchCalls.length, 3, 'caps at 3 attempts');
+  assert.deepEqual(sleepCalls, [5_000, 15_000]);
+});
+
+// -----------------------------------------------------------------------------
+// seed-recovery-import-hhi.mjs — fetchImportsForReporter
+// -----------------------------------------------------------------------------
+
+test('fetchImportsForReporter: succeeds on first 200', async () => {
+  fetchResponses = [{ status: 200, body: { data: [{ period: 2024, primaryValue: 1_000_000, partnerCode: '156' }] } }];
+  const { records, status } = await fetchImportsForReporter('699', 'fake-key');
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(status, 200);
+  assert.ok(records.length >= 0);
+  assert.deepEqual(sleepCalls, []);
+});
+
+test('fetchImportsForReporter: retries twice on 503s, succeeds on third', async () => {
+  fetchResponses = [
+    { status: 503, body: {} },
+    { status: 503, body: {} },
+    { status: 200, body: { data: [{ period: 2024, primaryValue: 999, partnerCode: '156' }] } },
+  ];
+  const { records, status } = await fetchImportsForReporter('699', 'fake-key');
+  assert.equal(fetchCalls.length, 3);
+  assert.equal(status, 200);
+  assert.ok(records.length >= 0);
+  assert.deepEqual(sleepCalls, [5_000, 10_000], 'import-hhi uses 10s not 15s for second retry (tighter bundle budget)');
+});
+
+test('fetchImportsForReporter: 429 then 503 still consumes the 5xx retries', async () => {
+  fetchResponses = [
+    { status: 429, body: {} },
+    { status: 503, body: {} },
+    { status: 502, body: {} },
+    { status: 200, body: { data: [{ period: 2024, primaryValue: 42, partnerCode: '156' }] } },
+  ];
+  const { records, status } = await fetchImportsForReporter('699', 'fake-key');
+  assert.equal(fetchCalls.length, 4, 'classification loop: 429 + 3 transient 5xx attempts (of which 2 retried)');
+  assert.equal(status, 200);
+  assert.ok(records.length >= 0);
+  assert.deepEqual(sleepCalls, [15_000, 5_000, 10_000], '15s 429 + 5s/10s transient backoffs');
+});
+
+test('fetchImportsForReporter: gives up ({records:[], status:503}) after 3 consecutive 5xx', async () => {
+  fetchResponses = [{ status: 503 }, { status: 502 }, { status: 500 }];
+  const { records, status } = await fetchImportsForReporter('699', 'fake-key');
+  assert.deepEqual(records, []);
+  assert.equal(status, 500, 'returns the final upstream status so caller can log it');
+  assert.equal(fetchCalls.length, 3);
 });
