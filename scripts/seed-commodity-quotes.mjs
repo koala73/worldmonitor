@@ -244,23 +244,30 @@ function validate(data) {
   return Array.isArray(data?.quotes) && data.quotes.length >= 1;
 }
 
-let seedData = null;
+// fetchCommodityQuotes returns the canonical {quotes} payload that runSeed
+// then writes to CANONICAL_KEY. The same value is passed to opts.afterPublish
+// as `data`, which is where the companion-key writes happen.
 
-async function fetchAndStash() {
-  seedData = await fetchCommodityQuotes();
-  return seedData;
-}
-
-runSeed('market', 'commodities', CANONICAL_KEY, fetchAndStash, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'alphavantage+yahoo-chart',
-}).then(async (result) => {
-  if (result?.skipped || !seedData) return;
+/**
+ * Write companion / derived keys after the canonical commodity publish.
+ *
+ * MUST be invoked via runSeed's opts.afterPublish (NOT via .then() chained on
+ * the runSeed promise). runSeed ends with process.exit(0) on success, which
+ * terminates the process before any chained .then() microtask runs — so a
+ * .then-chained version of this code silently never executes and three
+ * Redis keys (market:commodities:v1:<symbols>, market:quotes:v1:<symbols>,
+ * market:gold-extended:v1) get permanently dropped. Verified against
+ * Railway log 2026-04-14 08:50:31: zero [Gold] log lines, zero extra-key
+ * writes, goldExtended health=EMPTY for months.
+ *
+ * See ~/.claude/skills/runseed-then-after-process-exit for full diagnosis.
+ */
+async function writeCompanionKeys(data) {
+  if (!data) return;
   const commodityKey = `market:commodities:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesKey = `market:quotes:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
-  const quotesPayload = { ...seedData, finnhubSkipped: false, skipReason: '', rateLimited: false };
-  await writeExtraKey(commodityKey, seedData, CACHE_TTL);
+  const quotesPayload = { ...data, finnhubSkipped: false, skipReason: '', rateLimited: false };
+  await writeExtraKey(commodityKey, data, CACHE_TTL);
   await writeExtraKey(quotesKey, quotesPayload, CACHE_TTL);
 
   try {
@@ -281,6 +288,22 @@ runSeed('market', 'commodities', CANONICAL_KEY, fetchAndStash, {
   } catch (e) {
     console.warn(`  [Gold] extended fetch error: ${e?.message || e} — skipping write, letting seed-meta go stale`);
   }
+}
+
+runSeed('market', 'commodities', CANONICAL_KEY, fetchCommodityQuotes, {
+  validateFn: validate,
+  ttlSeconds: CACHE_TTL,
+  sourceVersion: 'alphavantage+yahoo-chart',
+  afterPublish: async (data) => {
+    // afterPublish is awaited inside runSeed BEFORE process.exit, so these
+    // writes actually run. Wrap in try so any companion-key failure logs
+    // explicitly instead of falling through to the runSeed catch.
+    try {
+      await writeCompanionKeys(data);
+    } catch (e) {
+      console.warn(`  [Companion] write failed: ${e?.message || e}`);
+    }
+  },
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
