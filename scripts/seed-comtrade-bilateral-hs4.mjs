@@ -112,44 +112,64 @@ async function redisPipeline(commands) {
  * @param {string[]} hs4Batch
  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
  */
-async function fetchBilateral(reporterCode, hs4Batch) {
+// Comtrade's API regularly returns transient 5xx (500/502/503/504) on otherwise
+// valid reporter fetches — observed 2026-04-14 with India (699) 503×2 and
+// Iran (364) 500. Without a 5xx retry those reporters silently drop from
+// the snapshot and the panel shows missing countries for a full cycle.
+export function isTransientComtrade(status) {
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function fetchBilateralOnce(url, timeoutMs = 45_000) {
+  return fetch(url, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+function buildFetchUrl(reporterCode, hs4Batch, key) {
   const url = new URL(COMTRADE_FETCH_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('cmdCode', hs4Batch.join(','));
   url.searchParams.set('flowCode', 'M');
-  const key = getNextKey();
   if (key) url.searchParams.set('subscription-key', key);
+  return url.toString();
+}
 
-  const resp = await fetch(url.toString(), {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(45_000),
-  });
+/**
+ * @param {string} reporterCode
+ * @param {string[]} hs4Batch
+ * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
+ */
+export async function fetchBilateral(reporterCode, hs4Batch) {
+  let resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
 
   if (resp.status === 429) {
     console.warn(`  429 rate-limited for reporter ${reporterCode}, waiting 60s...`);
     await sleep(60_000);
-    const retryKey = getNextKey();
-    const retryUrl = new URL(COMTRADE_FETCH_URL);
-    retryUrl.searchParams.set('reporterCode', reporterCode);
-    retryUrl.searchParams.set('cmdCode', hs4Batch.join(','));
-    retryUrl.searchParams.set('flowCode', 'M');
-    if (retryKey) retryUrl.searchParams.set('subscription-key', retryKey);
-    const retry = await fetch(retryUrl.toString(), {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (!retry.ok) {
-      console.warn(`  Retry for reporter ${reporterCode} also failed (HTTP ${retry.status})`);
+    resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
+    if (!resp.ok) {
+      console.warn(`  Retry for reporter ${reporterCode} also failed (HTTP ${resp.status})`);
       return [];
     }
-    const retryData = await retry.json();
-    return parseRecords(retryData);
-  }
-
-  if (!resp.ok) {
+  } else if (isTransientComtrade(resp.status)) {
+    console.warn(`    transient HTTP ${resp.status} for reporter ${reporterCode}, retrying in 5s...`);
+    await sleep(5_000);
+    resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
+    if (isTransientComtrade(resp.status)) {
+      console.warn(`    second transient HTTP ${resp.status} for reporter ${reporterCode}, retrying in 15s...`);
+      await sleep(15_000);
+      resp = await fetchBilateralOnce(buildFetchUrl(reporterCode, hs4Batch, getNextKey()));
+    }
+    if (!resp.ok) {
+      console.warn(`    HTTP ${resp.status} for reporter ${reporterCode} (after 5xx retries)`);
+      return [];
+    }
+  } else if (!resp.ok) {
     console.warn(`    HTTP ${resp.status} for reporter ${reporterCode}`);
     return [];
   }
+
   const data = await resp.json();
   const parsed = parseRecords(data);
   if (parsed.length === 0 && data?.count > 0) {

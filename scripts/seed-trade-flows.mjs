@@ -36,16 +36,36 @@ const COMMODITIES = [
   { code: '9301', desc: 'Arms / military equipment' },
 ];
 
+// Comtrade preview regularly hits transient 5xx (500/502/503/504). Without
+// retry each (reporter,commodity) pair that drew a 5xx is silently lost.
+function isTransientComtrade(status) {
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
 async function fetchFlows(reporter, commodity) {
   const url = new URL(`${COMTRADE_BASE}/preview/C/A/HS`);
   url.searchParams.set('reporterCode', reporter.code);
   url.searchParams.set('cmdCode', commodity.code);
   url.searchParams.set('flowCode', 'X,M'); // exports + imports
 
-  const resp = await fetch(url.toString(), {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
+  async function once() {
+    return fetch(url.toString(), {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+  }
+
+  let resp = await once();
+  if (isTransientComtrade(resp.status)) {
+    console.warn(`  transient HTTP ${resp.status} for reporter ${reporter.code} cmd ${commodity.code}, retrying in 5s...`);
+    await sleep(5_000);
+    resp = await once();
+    if (isTransientComtrade(resp.status)) {
+      console.warn(`  second transient HTTP ${resp.status} for reporter ${reporter.code} cmd ${commodity.code}, retrying in 15s...`);
+      await sleep(15_000);
+      resp = await once();
+    }
+  }
 
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
