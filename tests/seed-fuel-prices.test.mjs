@@ -46,11 +46,19 @@ test('validateFuel accepts healthy snapshot (all sources fresh, 33 countries, US
   assert.equal(validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: [] }), true);
 });
 
-test('validateFuel rejects when ANY source failed (no silent degraded publishes)', () => {
+test('validateFuel rejects when an untolerated source failed (no silent degraded publishes)', () => {
+  assert.equal(
+    validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: ['Mexico'] }),
+    false,
+    'a non-tolerated source failure must block publish; cache TTL serves last healthy snapshot',
+  );
+});
+
+test('validateFuel accepts when only a TOLERATED source (Brazil) failed', () => {
   assert.equal(
     validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: ['Brazil'] }),
-    false,
-    'even a single failed source must block publish; cache TTL serves last healthy snapshot',
+    true,
+    'Brazil ANP is structurally unreachable from Railway; must not gate publish or Railway crash-loops',
   );
 });
 

@@ -608,6 +608,13 @@ export function parseCREStationPrices(xml) {
   return { regular: collect('regular'), diesel: collect('diesel') };
 }
 
+// Sources whose failure must not gate publish. Brazil ANP (gov.br) is
+// unreachable from Railway IPs both ways: Decodo proxy 403s all .gov.br
+// CONNECTs by policy, and direct fetch fails undici TLS handshake. Until a
+// working route is found, gating publish on Brazil's freshness means every
+// run exits 1 → Railway "Deployment crashed" banner + STALE_SEED flip.
+const TOLERATED_FAILURES = new Set(['Brazil']);
+
 // Publish gate. Exported so tests can lock in the contract.
 //
 // All entries in `countries` are FRESH from this run (no stale-carry-forward —
@@ -620,13 +627,17 @@ export function parseCREStationPrices(xml) {
 // Contract:
 //   - ≥30 countries (EU-CSV alone is 27 + at least 3 of US/GB/MY/BR/MX/NZ).
 //   - US + GB + MY present (each uniquely covers a non-EU region).
-//   - No failed sources — partial failures must not publish as healthy.
+//   - No untolerated failed sources — partial failures of critical regions
+//     must not publish as healthy, but TOLERATED_FAILURES (e.g. structurally
+//     unreachable Brazil ANP) don't gate publish.
 export function validateFuel(d) {
   const codes = new Set((d?.countries ?? []).map(c => c.code));
   const total = d?.countries?.length ?? 0;
   const criticalPresent = ['US', 'GB', 'MY'].every(code => codes.has(code));
-  const allSourcesOk = Array.isArray(d?.failedSources) ? d.failedSources.length === 0 : true;
-  return total >= 30 && criticalPresent && allSourcesOk;
+  const untoleratedFailures = Array.isArray(d?.failedSources)
+    ? d.failedSources.filter(name => !TOLERATED_FAILURES.has(name))
+    : [];
+  return total >= 30 && criticalPresent && untoleratedFailures.length === 0;
 }
 
 async function main() {
