@@ -5,6 +5,7 @@ import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/ut
 import { escapeHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
+import { getHydratedData } from '@/services/bootstrap';
 import {
   getMarketWatchlistEntries,
   parseMarketWatchlistInput,
@@ -371,6 +372,43 @@ function oiDelta1h(sparkOi: number[]): number | null {
   return (last - lookback) / lookback;
 }
 
+/**
+ * Map the raw bootstrap-hydrated seed snapshot (seeder JSON shape) into the
+ * same view model the RPC mapper produces. Bootstrap returns the raw Redis
+ * blob (numeric fields), not the proto response (string-encoded numbers).
+ */
+export function mapHyperliquidFlowSeed(raw: Record<string, unknown>): HyperliquidFlowView | null {
+  const assets = Array.isArray(raw.assets) ? (raw.assets as Array<Record<string, unknown>>) : null;
+  if (!assets || assets.length === 0) return null;
+  const fxAssets: HyperliquidAssetView[] = [];
+  const commodityAssets: HyperliquidAssetView[] = [];
+  for (const a of assets) {
+    const funding = typeof a.funding === 'number' && Number.isFinite(a.funding) ? a.funding : null;
+    const sparkOi = Array.isArray(a.sparkOi) ? (a.sparkOi as number[]).filter((v) => Number.isFinite(v)) : [];
+    const sparkScore = Array.isArray(a.sparkScore) ? (a.sparkScore as number[]).filter((v) => Number.isFinite(v)) : [];
+    const view: HyperliquidAssetView = {
+      symbol: String(a.symbol ?? ''),
+      display: String(a.display ?? ''),
+      group: String(a.group ?? ''),
+      funding,
+      oiDelta1h: oiDelta1h(sparkOi),
+      composite: typeof a.composite === 'number' ? a.composite : 0,
+      warmup: Boolean(a.warmup),
+      stale: Boolean(a.stale),
+      sparkScore,
+    };
+    if (view.group === 'fx') fxAssets.push(view);
+    else commodityAssets.push(view);
+  }
+  return {
+    ts: typeof raw.ts === 'number' ? raw.ts : 0,
+    warmup: Boolean(raw.warmup),
+    fxAssets,
+    commodityAssets,
+    unavailable: false,
+  };
+}
+
 export function mapHyperliquidFlowResponse(resp: GetHyperliquidFlowResponse): HyperliquidFlowView {
   const fxAssets: HyperliquidAssetView[] = [];
   const commodityAssets: HyperliquidAssetView[] = [];
@@ -460,11 +498,24 @@ export class CommoditiesPanel extends Panel {
   /**
    * Fetch Hyperliquid perp positioning flow snapshot.
    * Called from App.ts primeVisiblePanelData() and refreshScheduler.
+   * Uses bootstrap-hydrated data on first render if available (AGENTS.md mandates
+   * bootstrap hydration for new data sources), then refreshes from RPC.
    */
   public async fetchHyperliquidFlow(): Promise<boolean> {
     if (this._flowLoading) return false;
     this._flowLoading = true;
     try {
+      if (!this._flow) {
+        const hydrated = getHydratedData('hyperliquidFlow') as Record<string, unknown> | undefined;
+        if (hydrated && !hydrated.unavailable) {
+          const mapped = mapHyperliquidFlowSeed(hydrated);
+          if (mapped) {
+            this._flow = mapped;
+            if (this._tab === 'flow') this._render();
+          }
+        }
+      }
+
       const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new MarketServiceClient(getRpcBaseUrl(), {
@@ -472,7 +523,7 @@ export class CommoditiesPanel extends Panel {
       });
       const resp = await client.getHyperliquidFlow({});
       if (resp.unavailable || !resp.assets || resp.assets.length === 0) {
-        this._flow = { ts: 0, warmup: true, fxAssets: [], commodityAssets: [], unavailable: true };
+        if (!this._flow) this._flow = { ts: 0, warmup: true, fxAssets: [], commodityAssets: [], unavailable: true };
       } else {
         this._flow = mapHyperliquidFlowResponse(resp);
       }
