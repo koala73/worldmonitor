@@ -176,39 +176,112 @@ function hasRunSeedCall(src) {
   return /\brunSeed\s*\(/.test(src);
 }
 
-test('conformance: every scripts/seed-*.mjs that calls runSeed() should export declareRecords', async (t) => {
+// Required opts-based fields a descriptor must carry (positional args
+// `domain, resource, canonicalKey, fetchFn` are handled outside the opts).
+// Must match the REQUIRED_FIELDS set in scripts/_seed-contract.mjs minus the
+// four positional arg names.
+const REQUIRED_OPTS_FIELDS = ['validateFn', 'declareRecords', 'ttlSeconds', 'sourceVersion', 'schemaVersion', 'maxStaleMin'];
+
+/**
+ * Extract the single `runSeed(...)` call site as a raw string, balance-matching
+ * parentheses so embedded function literals and object literals don't throw off
+ * substring checks. Returns null if no runSeed call is found.
+ */
+function extractRunSeedCall(src) {
+  const start = src.search(/\brunSeed\s*\(/);
+  if (start < 0) return null;
+  const open = src.indexOf('(', start);
+  let depth = 1;
+  let i = open + 1;
+  while (i < src.length && depth > 0) {
+    const ch = src[i];
+    if (ch === '(' ) depth++;
+    else if (ch === ')') depth--;
+    else if (ch === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i);
+      i = nl < 0 ? src.length : nl;
+      continue;
+    } else if (ch === '/' && src[i + 1] === '*') {
+      const close = src.indexOf('*/', i);
+      i = close < 0 ? src.length : close + 2;
+      continue;
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      // Skip over string literal — rough but adequate for these seeders.
+      let j = i + 1;
+      while (j < src.length && src[j] !== ch) {
+        if (src[j] === '\\') j += 2;
+        else j++;
+      }
+      i = j + 1;
+      continue;
+    }
+    i++;
+  }
+  return src.slice(open + 1, i - 1);
+}
+
+/**
+ * True when a `runSeed(...)` call-site carries all required opts-based
+ * descriptor fields (checked by presence of the field name as a key).
+ */
+function descriptorFieldsPresent(callSrc) {
+  const missing = [];
+  for (const field of REQUIRED_OPTS_FIELDS) {
+    // Match `field:` or `field ,` (shorthand property) with a word boundary so
+    // `sourceVersion` doesn't accidentally match `sourceVersions:`.
+    const re = new RegExp(`\\b${field}\\b\\s*[:,}]`);
+    if (!re.test(callSrc)) missing.push(field);
+  }
+  return { ok: missing.length === 0, missing };
+}
+
+test('conformance: every scripts/seed-*.mjs that calls runSeed() satisfies the descriptor contract', async (t) => {
   const files = await findSeederFiles();
   assert.ok(files.length > 0, 'expected at least one seeder file');
 
   const runSeedCallers = [];
-  const missing = [];
+  const incomplete = []; // [{ file, missing: string[] }]
   for (const file of files) {
     const src = await readFile(file, 'utf8');
     if (!hasRunSeedCall(src)) continue;
     runSeedCallers.push(file);
-    if (!hasDeclareRecordsExport(src)) {
-      missing.push(file.replace(scriptsDir + '/', ''));
+
+    const missing = [];
+    if (!hasDeclareRecordsExport(src)) missing.push('declareRecords export');
+
+    const callSrc = extractRunSeedCall(src);
+    if (callSrc == null) {
+      missing.push('unparseable runSeed(...) call');
+    } else {
+      const result = descriptorFieldsPresent(callSrc);
+      if (!result.ok) missing.push(...result.missing.map((f) => `opt:${f}`));
+    }
+
+    if (missing.length > 0) {
+      incomplete.push({ file: file.replace(scriptsDir + '/', ''), missing });
     }
   }
 
-  // Surface the summary as a diagnostic so it's visible in `node --test` output
-  // even when the test passes. This is the migration-progress signal.
-  const migrated = runSeedCallers.length - missing.length;
-  t.diagnostic(`seed-contract conformance: ${migrated}/${runSeedCallers.length} seeders export declareRecords`);
+  // Migration-progress signal. Must remain visible in `node --test` even when
+  // the test passes — this is the readiness indicator for PR 2/PR 3.
+  const migrated = runSeedCallers.length - incomplete.length;
+  t.diagnostic(`seed-contract conformance: ${migrated}/${runSeedCallers.length} seeders satisfy the full descriptor`);
 
-  if (missing.length > 0) {
-    // SEED_CONTRACT_STRICT=1 flips this to a hard failure — the mechanism PR 3
-    // will use to block merges once the migration is complete. PR 1 default is
-    // soft-warn so local dev and CI don't red-flag an expected migration state.
+  if (incomplete.length > 0) {
+    // SEED_CONTRACT_STRICT=1 flips this to a hard failure. PR 3 will enable
+    // strict mode by default once the fleet is migrated.
     const strict = process.env.SEED_CONTRACT_STRICT === '1';
-    const head = `[seed-contract] ${missing.length} seeders missing declareRecords (of ${runSeedCallers.length} runSeed callers)`;
+    const head = `[seed-contract] ${incomplete.length}/${runSeedCallers.length} seeders incomplete (missing declareRecords export AND/OR required opts ${REQUIRED_OPTS_FIELDS.join(', ')})`;
     if (strict) {
-      assert.fail(`${head}: ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ', …' : ''}`);
+      const sample = incomplete.slice(0, 5).map((x) => `${x.file}: ${x.missing.join(', ')}`).join(' | ');
+      assert.fail(`${head}. First offenders: ${sample}${incomplete.length > 5 ? ', …' : ''}`);
     }
     console.warn(head);
-    for (const name of missing) console.warn(`  - ${name}`);
+    for (const { file, missing } of incomplete) {
+      console.warn(`  - ${file}: ${missing.join(', ')}`);
+    }
     console.warn('Soft-warn: expected during PR 1/2. Set SEED_CONTRACT_STRICT=1 to hard-fail. PR 3 will enable strict mode by default.');
-    t.diagnostic(`${missing.length} seeders awaiting declareRecords migration`);
+    t.diagnostic(`${incomplete.length} seeders awaiting full descriptor migration`);
   }
 });
 
