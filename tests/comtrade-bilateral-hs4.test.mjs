@@ -262,8 +262,11 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
       src.includes('rate-limited'),
       'seeder: must log rate limit events',
     );
+    // Matches bare `sleep(60_000)` or indirected `_retrySleep(60_000)` — the
+    // latter is the test-injectable form used so retry unit tests don't
+    // actually sleep 60s. Either form preserves the 60s production cadence.
     assert.ok(
-      src.includes('sleep(60_000)') || src.includes('sleep(60000)'),
+      /\b(?:_retrySleep|sleep)\(60[_]?000\)/.test(src),
       'seeder: must wait 60 seconds on 429 before retrying',
     );
   });
