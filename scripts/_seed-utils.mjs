@@ -676,6 +676,42 @@ export async function readSeedSnapshot(canonicalKey) {
   }
 }
 
+/**
+ * Resolve recordCount for runSeed's freshness metadata write.
+ *
+ * Resolution order:
+ *   1. opts.recordCount (function or number) — the seeder declared it explicitly
+ *   2. Auto-detect from a known shape (Array.isArray, .predictions, .events, ...)
+ *   3. payloadBytes > 0 → 1 (proven-payload fallback) + warn so the seeder author
+ *      adds an explicit opts.recordCount
+ *   4. 0
+ *
+ * The fallback exists because seeders publishing custom shapes would otherwise
+ * trigger phantom EMPTY_DATA in /api/health even though the payload is fully
+ * populated. See ~/.claude/skills/seed-recordcount-autodetect-phantom-empty.
+ *
+ * Pure function — extracted from runSeed for unit testing.
+ */
+export function computeRecordCount({ opts = {}, data, payloadBytes = 0, topicArticleCount, onPhantomFallback }) {
+  if (opts.recordCount != null) {
+    return typeof opts.recordCount === 'function' ? opts.recordCount(data) : opts.recordCount;
+  }
+  const detectedFromShape = Array.isArray(data)
+    ? data.length
+    : (topicArticleCount
+      ?? data?.predictions?.length
+      ?? data?.events?.length ?? data?.earthquakes?.length ?? data?.outages?.length
+      ?? data?.fireDetections?.length ?? data?.anomalies?.length ?? data?.threats?.length
+      ?? data?.quotes?.length ?? data?.stablecoins?.length
+      ?? data?.cables?.length);
+  if (detectedFromShape != null) return detectedFromShape;
+  if (payloadBytes > 0) {
+    if (typeof onPhantomFallback === 'function') onPhantomFallback();
+    return 1;
+  }
+  return 0;
+}
+
 export function parseYahooChart(data, symbol) {
   const result = data?.chart?.result?.[0];
   const meta = result?.meta;
@@ -772,15 +808,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const topicArticleCount = Array.isArray(data?.topics)
       ? data.topics.reduce((n, t) => n + (t?.articles?.length || t?.events?.length || 0), 0)
       : undefined;
-    const recordCount = opts.recordCount != null
-      ? (typeof opts.recordCount === 'function' ? opts.recordCount(data) : opts.recordCount)
-      : Array.isArray(data) ? data.length
-      : (topicArticleCount
-        ?? data?.predictions?.length
-        ?? data?.events?.length ?? data?.earthquakes?.length ?? data?.outages?.length
-        ?? data?.fireDetections?.length ?? data?.anomalies?.length ?? data?.threats?.length
-        ?? data?.quotes?.length ?? data?.stablecoins?.length
-        ?? data?.cables?.length ?? 0);
+    const recordCount = computeRecordCount({
+      opts, data, payloadBytes, topicArticleCount,
+      onPhantomFallback: () => console.warn(
+        `  [recordCount] auto-detect did not match a known shape (payloadBytes=${payloadBytes}); falling back to 1. Add opts.recordCount to ${domain}:${resource} for accurate health metrics.`
+      ),
+    });
 
     // Write extra keys (e.g., bootstrap hydration keys)
     if (extraKeys) {
