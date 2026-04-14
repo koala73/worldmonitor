@@ -111,6 +111,7 @@ function _syncIdentity(): void {
   if (user) {
     identifyUser(user.id, user.role, _lastSub?.status ?? null, _lastSub?.planKey ?? null);
   } else {
+    _lastSub = null;
     clearIdentity();
   }
 }
