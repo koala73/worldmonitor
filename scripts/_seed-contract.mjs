@@ -39,7 +39,8 @@ const OPTIONAL_FIELDS = new Set([
   'populationMode',
   'cascadeGroup',
   'groupMembers',
-  'recordCount', // legacy — kept optional through PR 2, removed in PR 3 in favor of declareRecords
+  'recordCount',     // legacy — kept optional through PR 2, removed in PR 3 in favor of declareRecords
+  'metaTtlSeconds',  // legacy — used today by writeSeedMeta / writeExtraKeyWithMeta (e.g. scripts/seed-jodi-gas.mjs); removed in PR 3 when legacy meta writes go away
 ]);
 
 /**

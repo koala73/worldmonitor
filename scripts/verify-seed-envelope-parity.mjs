@@ -43,7 +43,7 @@ function extractFunctions(source) {
   const fns = new Map();
   // Match: export function NAME<generics?>(args): returnType? { body }
   // We capture NAME and the brace-balanced body.
-  const pattern = /export\s+function\s+(\w+)\s*(?:<[^>]+>)?\s*\(/g;
+  const pattern = /export\s+(?:async\s+)?function\s+(\w+)\s*(?:<[^>]+>)?\s*\(/g;
   let match;
   while ((match = pattern.exec(source)) != null) {
     const name = match[1];

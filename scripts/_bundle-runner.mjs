@@ -54,11 +54,14 @@ async function readRedisKey(key) {
  * migrates bundles to `canonicalKey`, this function starts reading envelopes.
  */
 async function readSectionFreshness(section) {
+  // Try the envelope path first when a canonicalKey is declared. If the canonical
+  // key isn't yet written as an envelope (PR 2 writer migration lagging reader
+  // migration, or a legacy payload still present), fall through to the legacy
+  // seed-meta read so the bundle doesn't over-run during the transition.
   if (section.canonicalKey) {
     const raw = await readRedisKey(section.canonicalKey);
     const { _seed } = unwrapEnvelope(raw);
     if (_seed?.fetchedAt) return { fetchedAt: _seed.fetchedAt };
-    return null;
   }
   if (section.seedMetaKey) {
     const raw = await readRedisKey(`seed-meta:${section.seedMetaKey}`);
@@ -66,7 +69,6 @@ async function readSectionFreshness(section) {
     // level. It has no `_seed` wrapper so unwrapEnvelope returns it as data.
     const meta = unwrapEnvelope(raw).data;
     if (meta?.fetchedAt) return { fetchedAt: meta.fetchedAt };
-    return null;
   }
   return null;
 }

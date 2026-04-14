@@ -142,25 +142,38 @@ function hasRunSeedCall(src) {
   return /\brunSeed\s*\(/.test(src);
 }
 
-test('conformance: every scripts/seed-*.mjs that calls runSeed() should export declareRecords (soft-warn in PR 1)', async (t) => {
+test('conformance: every scripts/seed-*.mjs that calls runSeed() should export declareRecords', async (t) => {
   const files = await findSeederFiles();
   assert.ok(files.length > 0, 'expected at least one seeder file');
 
+  const runSeedCallers = [];
   const missing = [];
   for (const file of files) {
     const src = await readFile(file, 'utf8');
     if (!hasRunSeedCall(src)) continue;
+    runSeedCallers.push(file);
     if (!hasDeclareRecordsExport(src)) {
       missing.push(file.replace(scriptsDir + '/', ''));
     }
   }
 
+  // Surface the summary as a diagnostic so it's visible in `node --test` output
+  // even when the test passes. This is the migration-progress signal.
+  const migrated = runSeedCallers.length - missing.length;
+  t.diagnostic(`seed-contract conformance: ${migrated}/${runSeedCallers.length} seeders export declareRecords`);
+
   if (missing.length > 0) {
-    // PR 1: soft-warn. Do NOT fail the test — the plan mandates gradual migration.
-    // PR 3 will flip this to assert.equal(missing.length, 0).
-    console.warn(`[seed-contract soft-warn] ${missing.length} seeders do not yet export declareRecords:`);
+    // SEED_CONTRACT_STRICT=1 flips this to a hard failure — the mechanism PR 3
+    // will use to block merges once the migration is complete. PR 1 default is
+    // soft-warn so local dev and CI don't red-flag an expected migration state.
+    const strict = process.env.SEED_CONTRACT_STRICT === '1';
+    const head = `[seed-contract] ${missing.length} seeders missing declareRecords (of ${runSeedCallers.length} runSeed callers)`;
+    if (strict) {
+      assert.fail(`${head}: ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ', …' : ''}`);
+    }
+    console.warn(head);
     for (const name of missing) console.warn(`  - ${name}`);
-    console.warn('This is expected during PR 1. PR 2 migrates each seeder; PR 3 will hard-fail this test.');
+    console.warn('Soft-warn: expected during PR 1/2. Set SEED_CONTRACT_STRICT=1 to hard-fail. PR 3 will enable strict mode by default.');
     t.diagnostic(`${missing.length} seeders awaiting declareRecords migration`);
   }
 });
