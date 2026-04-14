@@ -693,7 +693,15 @@ async function readInputKeys() {
     'conflict:ema-windows:v1',
     ...fredKeys,
   ];
-  const BATCH_SIZE = 10;
+  // BATCH_SIZE=5 + 45s timeout absorbs the worst-case ~1.9 MB co-located batch
+  // (3 heavies + 2 mediums) at Upstash REST's observed ~100 KB/s slow-spike
+  // floor. STRLEN-probed 2026-04-14: 40 keys total ~2.27 MB, top 5 keys
+  // (ucdp 657KB + chokepoints 500KB + cyber 390KB + commodities 192KB +
+  // gpsjam 174KB) = 90% of payload. Original 10s budget deterministically
+  // failed every retry on ~1.5 MB co-located batches (Railway log
+  // 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts).
+  // See ~/.claude/skills/upstash-pipeline-payload-timeout for diagnosis methodology.
+  const BATCH_SIZE = 5;
   const results = [];
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
     const batchNum = i / BATCH_SIZE + 1;
@@ -703,7 +711,7 @@ async function readInputKeys() {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(batch),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(45_000),
       });
       if (!resp.ok) throw new Error(`Redis pipeline batch ${batchNum} failed: ${resp.status}`);
       return resp.json();
