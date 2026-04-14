@@ -183,7 +183,19 @@ function shiftAndAppend(prev, value) {
 
 // ── Hyperliquid client ────────────────────────────────────────────────────────
 
-export async function fetchHyperliquidMetaAndCtxs(fetchImpl = fetch) {
+// Minimum universe size expected per dex. Default perps have ~200; xyz builder
+// dex has ~60. Each threshold is half the observed size so we still reject
+// genuinely broken payloads without false-positives on a thinner dex.
+const MIN_UNIVERSE_DEFAULT = 50;
+const MIN_UNIVERSE_XYZ = 30;
+
+/**
+ * POST /info {type:'metaAndAssetCtxs', [dex]}. Returns raw [meta, assetCtxs].
+ * @param {string|undefined} dex
+ * @param {typeof fetch} [fetchImpl]
+ */
+export async function fetchHyperliquidMetaAndCtxs(dex = undefined, fetchImpl = fetch) {
+  const body = dex ? { type: 'metaAndAssetCtxs', dex } : { type: 'metaAndAssetCtxs' };
   const resp = await fetchImpl(HYPERLIQUID_URL, {
     method: 'POST',
     headers: {
@@ -191,47 +203,85 @@ export async function fetchHyperliquidMetaAndCtxs(fetchImpl = fetch) {
       Accept: 'application/json',
       'User-Agent': 'WorldMonitor/1.0 (+https://worldmonitor.app)',
     },
-    body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (!resp.ok) throw new Error(`Hyperliquid HTTP ${resp.status}`);
+  if (!resp.ok) throw new Error(`Hyperliquid HTTP ${resp.status}${dex ? ` (dex=${dex})` : ''}`);
   const ct = resp.headers?.get?.('content-type') || '';
   if (!ct.toLowerCase().includes('application/json')) {
-    throw new Error(`Hyperliquid wrong content-type: ${ct || '<missing>'}`);
+    throw new Error(`Hyperliquid wrong content-type: ${ct || '<missing>'}${dex ? ` (dex=${dex})` : ''}`);
   }
-  const json = await resp.json();
-  return json;
+  return resp.json();
 }
 
 /**
- * Strict shape validation. Hyperliquid returns `[meta, assetCtxs]` where
+ * Fetch both the default perp dex (BTC/ETH/SOL/PAXG...) and the xyz builder
+ * dex (commodities + FX perps) in parallel, validate each payload, and merge
+ * into a single `{universe, assetCtxs}`.
+ *
+ * xyz: asset names already carry the `xyz:` prefix in their universe entries,
+ * so no rewriting is needed — just concatenate.
+ */
+export async function fetchAllMetaAndCtxs(fetchImpl = fetch) {
+  const [defaultRaw, xyzRaw] = await Promise.all([
+    fetchHyperliquidMetaAndCtxs(undefined, fetchImpl),
+    fetchHyperliquidMetaAndCtxs('xyz', fetchImpl),
+  ]);
+  const def = validateDexPayload(defaultRaw, 'default', MIN_UNIVERSE_DEFAULT);
+  const xyz = validateDexPayload(xyzRaw, 'xyz', MIN_UNIVERSE_XYZ);
+  return {
+    universe: [...def.universe, ...xyz.universe],
+    assetCtxs: [...def.assetCtxs, ...xyz.assetCtxs],
+  };
+}
+
+/**
+ * Strict shape validation for ONE dex payload. Returns `[meta, assetCtxs]` where
  *   meta = { universe: [{ name, ... }, ...] }
  *   assetCtxs = [{ funding, openInterest, markPx, oraclePx, dayNtlVlm, ... }, ...]
  * with assetCtxs[i] aligned to universe[i].
  *
  * Throws on any mismatch — never persist a partial / malformed payload.
+ *
+ * @param {unknown} raw
+ * @param {string} dexLabel
+ * @param {number} minUniverse
  */
-export function validateUpstream(raw) {
+export function validateDexPayload(raw, dexLabel, minUniverse) {
   if (!Array.isArray(raw) || raw.length < 2) {
-    throw new Error('Hyperliquid payload not a [meta, assetCtxs] tuple');
+    throw new Error(`Hyperliquid ${dexLabel} payload not a [meta, assetCtxs] tuple`);
   }
   const [meta, assetCtxs] = raw;
   if (!meta || !Array.isArray(meta.universe)) {
-    throw new Error('Hyperliquid meta.universe missing or not array');
+    throw new Error(`Hyperliquid ${dexLabel} meta.universe missing or not array`);
   }
-  if (meta.universe.length < 50) {
-    throw new Error(`Hyperliquid universe suspiciously small: ${meta.universe.length}`);
+  if (meta.universe.length < minUniverse) {
+    throw new Error(`Hyperliquid ${dexLabel} universe suspiciously small: ${meta.universe.length} < ${minUniverse}`);
   }
   if (meta.universe.length > MAX_UPSTREAM_UNIVERSE) {
-    throw new Error(`Hyperliquid universe over cap: ${meta.universe.length} > ${MAX_UPSTREAM_UNIVERSE}`);
+    throw new Error(`Hyperliquid ${dexLabel} universe over cap: ${meta.universe.length} > ${MAX_UPSTREAM_UNIVERSE}`);
   }
   if (!Array.isArray(assetCtxs) || assetCtxs.length !== meta.universe.length) {
-    throw new Error('Hyperliquid assetCtxs length does not match universe');
+    throw new Error(`Hyperliquid ${dexLabel} assetCtxs length does not match universe`);
   }
   for (const m of meta.universe) {
-    if (typeof m?.name !== 'string') throw new Error('Hyperliquid universe entry missing name');
+    if (typeof m?.name !== 'string') throw new Error(`Hyperliquid ${dexLabel} universe entry missing name`);
   }
   return { universe: meta.universe, assetCtxs };
+}
+
+/**
+ * Back-compat wrapper used by buildSnapshot. Accepts either a single-dex raw
+ * `[meta, assetCtxs]` tuple (tests) or the merged `{universe, assetCtxs}` shape
+ * produced by fetchAllMetaAndCtxs. Returns the merged shape.
+ */
+export function validateUpstream(raw) {
+  // Merged shape from fetchAllMetaAndCtxs: already validated per-dex.
+  if (raw && !Array.isArray(raw) && Array.isArray(raw.universe) && Array.isArray(raw.assetCtxs)) {
+    return { universe: raw.universe, assetCtxs: raw.assetCtxs };
+  }
+  // Single-dex tuple (legacy / tests): validate as default dex.
+  return validateDexPayload(raw, 'default', MIN_UNIVERSE_DEFAULT);
 }
 
 export function indexBySymbol({ universe, assetCtxs }) {
@@ -318,7 +368,9 @@ const isMain = process.argv[1]?.endsWith('seed-hyperliquid-flow.mjs');
 if (isMain) {
   const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY);
   await runSeed('market', 'hyperliquid-flow', CANONICAL_KEY, async () => {
-    const upstream = await fetchHyperliquidMetaAndCtxs();
+    // Commodity + FX perps live on the xyz builder dex, NOT the default dex.
+    // Must fetch both and merge before scoring (see fetchAllMetaAndCtxs).
+    const upstream = await fetchAllMetaAndCtxs();
     return buildSnapshot(upstream, prevSnapshot);
   }, {
     ttlSeconds: CACHE_TTL_SECONDS,

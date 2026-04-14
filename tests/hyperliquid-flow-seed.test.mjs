@@ -17,6 +17,8 @@ import {
   scoreBasis,
   computeAsset,
   validateUpstream,
+  validateDexPayload,
+  fetchAllMetaAndCtxs,
   indexBySymbol,
   buildSnapshot,
   validateFn,
@@ -210,14 +212,14 @@ describe('volume baseline uses the MOST RECENT window (slice(-12), not slice(0,1
   });
 });
 
-describe('validateUpstream', () => {
-  it('rejects non-tuple', () => {
-    assert.throws(() => validateUpstream({}), /tuple/);
+describe('validateUpstream (back-compat + merged shape)', () => {
+  it('rejects non-tuple single-dex input', () => {
+    assert.throws(() => validateUpstream(null), /tuple/);
   });
   it('rejects missing universe', () => {
     assert.throws(() => validateUpstream([{}, []]), /universe/);
   });
-  it('rejects too-small universe', () => {
+  it('rejects too-small default universe', () => {
     const small = Array.from({ length: 10 }, (_, i) => ({ name: `X${i}` }));
     assert.throws(() => validateUpstream([{ universe: small }, makeAssetCtxs(small)]), /suspiciously small/);
   });
@@ -225,11 +227,80 @@ describe('validateUpstream', () => {
     const u = makeUniverse();
     assert.throws(() => validateUpstream([{ universe: u }, []]), /length does not match/);
   });
-  it('accepts well-formed tuple', () => {
+  it('accepts single-dex tuple (back-compat)', () => {
     const u = makeUniverse();
     const ctxs = makeAssetCtxs(u);
     const out = validateUpstream([{ universe: u }, ctxs]);
     assert.equal(out.universe.length, u.length);
+  });
+  it('passes through merged {universe, assetCtxs} shape', () => {
+    const u = makeUniverse();
+    const ctxs = makeAssetCtxs(u);
+    const out = validateUpstream({ universe: u, assetCtxs: ctxs });
+    assert.equal(out.universe.length, u.length);
+    assert.equal(out.assetCtxs.length, ctxs.length);
+  });
+});
+
+describe('validateDexPayload — xyz dex has lower floor than default', () => {
+  it('accepts a xyz payload with ~63 entries (above MIN_UNIVERSE_XYZ=30)', () => {
+    const u = Array.from({ length: 40 }, (_, i) => ({ name: `xyz:X${i}` }));
+    const ctxs = makeAssetCtxs(u);
+    const out = validateDexPayload([{ universe: u }, ctxs], 'xyz', 30);
+    assert.equal(out.universe.length, 40);
+  });
+  it('rejects a xyz payload below its floor', () => {
+    const u = Array.from({ length: 10 }, (_, i) => ({ name: `xyz:X${i}` }));
+    assert.throws(
+      () => validateDexPayload([{ universe: u }, makeAssetCtxs(u)], 'xyz', 30),
+      /xyz universe suspiciously small: 10 < 30/,
+    );
+  });
+});
+
+describe('fetchAllMetaAndCtxs — dual-dex fetch and merge', () => {
+  it('merges default and xyz responses into one {universe, assetCtxs}', async () => {
+    const defaultUniverse = [
+      ...Array.from({ length: 50 }, (_, i) => ({ name: `D${i}` })),
+      { name: 'BTC' }, { name: 'ETH' }, { name: 'SOL' }, { name: 'PAXG' },
+    ];
+    const xyzUniverse = [
+      ...Array.from({ length: 30 }, (_, i) => ({ name: `xyz:Z${i}` })),
+      { name: 'xyz:CL' }, { name: 'xyz:BRENTOIL' }, { name: 'xyz:GOLD' },
+      { name: 'xyz:SILVER' }, { name: 'xyz:EUR' }, { name: 'xyz:JPY' },
+    ];
+    const fakeFetch = async (_url, opts) => {
+      const body = JSON.parse(opts.body);
+      const isXyz = body.dex === 'xyz';
+      const universe = isXyz ? xyzUniverse : defaultUniverse;
+      const payload = [{ universe }, makeAssetCtxs(universe)];
+      return {
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => payload,
+      };
+    };
+    const merged = await fetchAllMetaAndCtxs(fakeFetch);
+    const merged_names = merged.universe.map((u) => u.name);
+    assert.ok(merged_names.includes('BTC'), 'merged should include default-dex BTC');
+    assert.ok(merged_names.includes('xyz:CL'), 'merged should include xyz-dex xyz:CL');
+    assert.equal(merged.universe.length, defaultUniverse.length + xyzUniverse.length);
+    assert.equal(merged.assetCtxs.length, defaultUniverse.length + xyzUniverse.length);
+  });
+
+  it('propagates validation errors from either dex', async () => {
+    const fakeFetch = async (_url, opts) => {
+      const body = JSON.parse(opts.body);
+      const isXyz = body.dex === 'xyz';
+      // Return too-small universe on xyz side to trigger its floor check.
+      if (isXyz) {
+        const u = [{ name: 'xyz:CL' }];
+        return { ok: true, headers: { get: () => 'application/json' }, json: async () => [{ universe: u }, makeAssetCtxs(u)] };
+      }
+      const u = Array.from({ length: 60 }, (_, i) => ({ name: `D${i}` }));
+      return { ok: true, headers: { get: () => 'application/json' }, json: async () => [{ universe: u }, makeAssetCtxs(u)] };
+    };
+    await assert.rejects(() => fetchAllMetaAndCtxs(fakeFetch), /xyz universe suspiciously small/);
   });
 });
 
