@@ -846,9 +846,7 @@ export class App {
 
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
     await initAuthState();
-    if (isProUser()) {
-      initAuthAnalytics();
-    }
+    initAuthAnalytics();
     installCloudPrefsSync(SITE_VARIANT);
     this.enforceFreeTierLimits();
 

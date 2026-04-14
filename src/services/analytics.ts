@@ -5,7 +5,8 @@
  * even if the Umami script has not loaded yet (e.g. ad blockers, SSR).
  */
 
-import { subscribeAuthState } from './auth-state';
+import { subscribeAuthState, type AuthSession } from './auth-state';
+import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -80,29 +81,55 @@ export async function initAnalytics(): Promise<void> {
 // by user/plan. Safe to call before Umami script loads.
 // ---------------------------------------------------------------------------
 
-export function identifyUser(userId: string, plan: string): void {
-  window.umami?.identify({ userId, plan });
+export function identifyUser(
+  userId: string,
+  plan: string,
+  subStatus?: SubscriptionInfo['status'] | null,
+  planKey?: string | null,
+): void {
+  window.umami?.identify({
+    userId,
+    plan,
+    ...(subStatus != null && { subStatus }),
+    ...(planKey != null && { planKey }),
+  });
 }
 
 export function clearIdentity(): void {
   window.umami?.identify({});
 }
 
-let _unsubscribeAuthAnalytics: (() => void) | null = null;
+let _unsubAuth: (() => void) | null = null;
+
+// Cached latest values so either subscription firing can re-identify with full data
+let _lastAuth: AuthSession | null = null;
+let _lastSub: SubscriptionInfo | null = null;
+
+function _syncIdentity(): void {
+  const user = _lastAuth?.user;
+  if (user) {
+    identifyUser(user.id, user.role, _lastSub?.status ?? null, _lastSub?.planKey ?? null);
+  } else {
+    clearIdentity();
+  }
+}
 
 /**
  * Call once after initAuthState() to keep Umami identity in sync with
- * the authenticated user. Re-entrant safe: subsequent calls are no-ops.
+ * the authenticated user and their subscription status.
+ * Re-entrant safe: subsequent calls are no-ops.
  */
 export function initAuthAnalytics(): void {
-  if (_unsubscribeAuthAnalytics) return;
+  if (_unsubAuth) return;
 
-  _unsubscribeAuthAnalytics = subscribeAuthState((state) => {
-    if (state.user) {
-      identifyUser(state.user.id, state.user.role);
-    } else {
-      clearIdentity();
-    }
+  _unsubAuth = subscribeAuthState((state) => {
+    _lastAuth = state;
+    _syncIdentity();
+  });
+
+  onSubscriptionChange((sub) => {
+    _lastSub = sub;
+    _syncIdentity();
   });
 }
 
