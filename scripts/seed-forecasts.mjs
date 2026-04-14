@@ -693,14 +693,21 @@ async function readInputKeys() {
     'conflict:ema-windows:v1',
     ...fredKeys,
   ];
-  // BATCH_SIZE=5 + 45s timeout absorbs the worst-case ~1.9 MB co-located batch
-  // (3 heavies + 2 mediums) at Upstash REST's observed ~100 KB/s slow-spike
-  // floor. STRLEN-probed 2026-04-14: 40 keys total ~2.27 MB, top 5 keys
+  // Sized for Upstash REST /pipeline payload limits.
+  //
+  // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; the top 5 keys
   // (ucdp 657KB + chokepoints 500KB + cyber 390KB + commodities 192KB +
-  // gpsjam 174KB) = 90% of payload. Original 10s budget deterministically
-  // failed every retry on ~1.5 MB co-located batches (Railway log
-  // 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts).
-  // See ~/.claude/skills/upstash-pipeline-payload-timeout for diagnosis methodology.
+  // gpsjam 174KB) account for 90% of payload. Worst-case co-located batch
+  // at BATCH_SIZE=5 is ~1.9 MB (3 heavies + 2 mediums).
+  //
+  // The original 10s timeout deterministically failed every retry on ~1.5
+  // MB batches at Upstash REST's observed slow-spike floor of ~100 KB/s
+  // (Railway log 2026-04-14 10:01 UTC showed 12 consecutive abort-timeouts).
+  // 45s gives ~4.5× headroom at that floor.
+  //
+  // Diagnostic methodology: STRLEN-probe each input key, sum sizes, multiply
+  // by max likely co-location count, then time-budget against the observed
+  // slow-spike throughput floor inferred from the original failure.
   const BATCH_SIZE = 5;
   const results = [];
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
