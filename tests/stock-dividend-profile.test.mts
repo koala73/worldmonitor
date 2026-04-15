@@ -190,6 +190,32 @@ describe('fetchDividendProfile', () => {
     assert.equal(profile.dividendFrequency, '');
   });
 
+  it('detects a recent monthly → quarterly cadence change', async () => {
+    // 12 monthly payments in year -2..-1 (all outside trailing 12 months)
+    // plus 4 quarterly payments inside the trailing year. A 2-year median
+    // gap is ~30d (Monthly dominates the history), but current cadence
+    // is clearly quarterly. The classifier must look at trailing-year
+    // gaps only when there are enough of them.
+    const now = Math.floor(Date.now() / 1000);
+    const day = 24 * 3600;
+    const divs: Record<string, { amount: number; date: number }> = {};
+    // Monthly leg: 12 payments from month -24 to month -13.
+    for (let m = 13; m <= 24; m++) {
+      const ts = now - m * 30 * day;
+      divs[String(ts)] = { amount: 0.10, date: ts };
+    }
+    // Quarterly leg: 4 payments in the last year at ~ -30, -120, -210, -300 days.
+    for (let q = 0; q < 4; q++) {
+      const ts = now - (30 + q * 90) * day;
+      divs[String(ts)] = { amount: 0.30, date: ts };
+    }
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify(makeDividendChartPayload(divs)), { status: 200 });
+    }) as typeof fetch;
+    const profile = await fetchDividendProfile('SHIFT', 100);
+    assert.equal(profile.dividendFrequency, 'Quarterly');
+  });
+
   it('detects a recent quarterly → annual cadence change', async () => {
     // 3 years of quarterly history (12 entries, ~91d gap) followed by
     // a single annual payment in the last year. Whole-series median
