@@ -1,6 +1,5 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
 // === Pre-Sentry error buffer ===
 // Captures errors thrown before Sentry loads (deferred to requestIdleCallback).

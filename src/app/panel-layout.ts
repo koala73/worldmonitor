@@ -845,8 +845,9 @@ export class PanelLayoutManager implements AppModule {
     mapContainer.appendChild(mapPlaceholder);
 
     const mapObserver = new IntersectionObserver(
-      async ([entry]) => {
-        if (!entry.isIntersecting) return;
+      async (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
         mapObserver.disconnect();
 
         try {
@@ -873,6 +874,11 @@ export class PanelLayoutManager implements AppModule {
 
           this.ctx.map.initEscalationGetters();
           this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+
+          this.ctx.map.onTimeRangeChanged((range) => {
+            this.ctx.currentTimeRange = range;
+            this.applyTimeRangeFilterDebounced();
+          });
 
           // Panels using this.ctx.map?.setCenter() already use optional chaining
           // so they gracefully handle the map being null before this point.
@@ -1591,11 +1597,6 @@ export class PanelLayoutManager implements AppModule {
     }
 
     window.addEventListener('resize', () => this.ensureCorrectZones());
-
-    this.ctx.map.onTimeRangeChanged((range) => {
-      this.ctx.currentTimeRange = range;
-      this.applyTimeRangeFilterDebounced();
-    });
 
     this.applyPanelSettings();
     this.applyInitialUrlState();
