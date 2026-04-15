@@ -5,17 +5,19 @@ export async function upsertProductMatch(input: {
   canonicalProductId: string;
   basketItemId: string;
   matchScore: number;
-  matchStatus: 'auto' | 'approved';
+  matchStatus: 'auto' | 'approved' | 'candidate';
+  evidence?: Record<string, unknown>;
 }): Promise<void> {
   await query(
     `INSERT INTO product_matches
        (retailer_product_id, canonical_product_id, basket_item_id, match_score, match_status, evidence_json)
-     VALUES ($1,$2,$3,$4,$5,'{}')
+     VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (retailer_product_id, canonical_product_id)
      DO UPDATE SET
        basket_item_id  = EXCLUDED.basket_item_id,
        match_score     = EXCLUDED.match_score,
        match_status    = EXCLUDED.match_status,
+       evidence_json   = EXCLUDED.evidence_json,
        pin_disabled_at = NULL`,
     [
       input.retailerProductId,
@@ -23,6 +25,7 @@ export async function upsertProductMatch(input: {
       input.basketItemId,
       input.matchScore,
       input.matchStatus,
+      JSON.stringify(input.evidence ?? {}),
     ],
   );
   // Reset stale counters when Exa re-discovers a product — fresh match means the URL works.
