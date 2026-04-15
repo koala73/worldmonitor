@@ -16,16 +16,32 @@ export async function upsertProductMatch(input: {
      DO UPDATE SET
        basket_item_id  = EXCLUDED.basket_item_id,
        match_score     = EXCLUDED.match_score,
-       -- Human-curated 'approved' rows are immutable via this path. Without
-       -- the CASE guard, a re-scrape whose validator scored the same URL
-       -- below AUTO_MATCH_THRESHOLD would demote an approved match to
-       -- 'candidate' and silently drop it from aggregate queries.
+       -- Curated states are immutable via the scrape upsert:
+       --   'approved' — human accepted the match
+       --   'review'   — validate-job quarantined on price outlier, or
+       --                human sent it back for review (see jobs/validate.ts)
+       --   'rejected' — human explicitly blocked this URL
+       -- Conflict key is (retailer_product_id, canonical_product_id), so
+       -- rediscovery is the normal path for these rows. Without this
+       -- guard a re-scrape writes 'auto' or 'candidate' and silently
+       -- re-enables a previously quarantined URL in aggregate queries
+       -- (aggregate.ts / snapshots filter on ('auto','approved')).
+       -- Only machine-written states ('auto', 'candidate') are allowed
+       -- to move to the fresh validator verdict.
        match_status    = CASE
-         WHEN product_matches.match_status = 'approved' THEN 'approved'
+         WHEN product_matches.match_status IN ('approved', 'review', 'rejected')
+           THEN product_matches.match_status
          ELSE EXCLUDED.match_status
        END,
        evidence_json   = EXCLUDED.evidence_json,
-       pin_disabled_at = NULL`,
+       -- Only clear pin_disabled_at when the row is actually moving back
+       -- to a machine-writable state. A 'review'/'rejected' row keeps
+       -- its disabled flag until the review workflow resolves it.
+       pin_disabled_at = CASE
+         WHEN product_matches.match_status IN ('review', 'rejected')
+           THEN product_matches.pin_disabled_at
+         ELSE NULL
+       END`,
     [
       input.retailerProductId,
       input.canonicalProductId,
