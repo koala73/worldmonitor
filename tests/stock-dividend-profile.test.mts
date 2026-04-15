@@ -90,6 +90,8 @@ describe('fetchDividendProfile', () => {
     const currentYear = new Date().getFullYear();
     const divs: Record<string, { amount: number; date: number }> = {};
     // Four fully completed prior calendar years, growing 0.50 -> 0.65.
+    // CAGR is computed only on years < currentYear (see computeDividendCagr),
+    // so the prior-year block is the sole source of CAGR signal.
     const startYear = currentYear - 4;
     for (let yearIndex = 0; yearIndex < 4; yearIndex++) {
       const year = startYear + yearIndex;
