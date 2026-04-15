@@ -311,11 +311,18 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
     //                           prior-year Q1 fell outside the 365d window)
     let paymentsPerYear = 0;
     if (recentDivs.length >= 3) {
-      const byInterval = paymentsPerYearFromInterval(entries);
+      // Use the trailing-year window directly. Scoping the median to
+      // ≥3 trailing-year entries (= 2+ gaps) reflects the CURRENT cadence,
+      // so regime changes like monthly → quarterly (whose 2-year median
+      // would still skew to monthly from prior-year history) are caught.
+      const byInterval = paymentsPerYearFromInterval(recentDivs);
       paymentsPerYear = byInterval > 0
         ? byInterval
         : (recentDivs.length || (entries.length / Math.max(1, annualTotals.size)));
     } else if (recentDivs.length > 0) {
+      // 1..2 recent payments: reach into the 2-year history to decide
+      // between calendar drift and regime slowdown. Most-recent gap
+      // > 180d means a real slowdown → trust the count.
       const lastTwo = entries.slice(-2);
       const mostRecentGapDays =
         lastTwo.length === 2
