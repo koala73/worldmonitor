@@ -862,7 +862,7 @@ export default defineConfig(({ mode }) => {
         },
 
         workbox: {
-          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+          globPatterns: ['**/*.html'],
           globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
           // core-panels chunk (shared infra + multi-variant panels) exceeds 4 MiB
           // temporarily; Phase 20 dynamic imports will split it further.
@@ -957,6 +957,16 @@ export default defineConfig(({ mode }) => {
               options: {
                 cacheName: 'images',
                 expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              },
+            },
+            {
+              urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+                sameOrigin && /^\/assets\/.*\.(js|css)$/.test(url.pathname),
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'app-assets',
+                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
               },
             },
           ],
