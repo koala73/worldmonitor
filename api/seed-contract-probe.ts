@@ -163,7 +163,15 @@ const BOUNDARY_CHECKS: BoundaryCheck[] = [
 export async function checkPublicBoundary(origin: string): Promise<BoundaryResult[]> {
   return Promise.all(BOUNDARY_CHECKS.map(async ({ endpoint, requireSourceHeader }): Promise<BoundaryResult> => {
     try {
-      const r = await fetch(`${origin}${endpoint}`, { signal: AbortSignal.timeout(5_000) });
+      // Send Origin of the canonical public host so endpoints that gate
+      // behind validateApiKey() (e.g. /api/bootstrap) take the trusted-browser
+      // branch instead of demanding an API key. The probe runs edge-side with
+      // internal auth; we intentionally emulate a trusted browser for boundary
+      // verification only.
+      const r = await fetch(`${origin}${endpoint}`, {
+        signal: AbortSignal.timeout(5_000),
+        headers: { Origin: 'https://worldmonitor.app' },
+      });
       const text = await r.text();
       // Detect any envelope leak in the response body. A substring match on
       // the literal `"_seed":` is sufficient because `_seed` only appears on
