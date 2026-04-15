@@ -2119,7 +2119,7 @@ async function seedStablecoinMarkets() {
   const totalVolume24h = stablecoins.reduce((s, c) => s + c.volume24h, 0);
   const depeggedCount = stablecoins.filter((c) => c.pegStatus === 'DEPEGGED').length;
   const payload = { timestamp: new Date().toISOString(), summary: { totalMarketCap, totalVolume24h, coinCount: stablecoins.length, depeggedCount, healthStatus: depeggedCount === 0 ? 'HEALTHY' : depeggedCount === 1 ? 'CAUTION' : 'WARNING' }, stablecoins };
-  const ok1 = await upstashSet('market:stablecoins:v1', payload, STABLECOIN_SEED_TTL);
+  const ok1 = await envelopeWrite('market:stablecoins:v1', payload, STABLECOIN_SEED_TTL, { recordCount: stablecoins.length, sourceVersion: 'market-stablecoins' });
   const ok2 = await upstashSet('seed-meta:market:stablecoins', { fetchedAt: Date.now(), recordCount: stablecoins.length }, 604800);
   console.log(`[Stablecoin] Seeded ${stablecoins.length} coins (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'})`);
   return stablecoins.length;
@@ -2161,7 +2161,7 @@ async function seedCryptoSectors() {
     const change = changes.length > 0 ? changes.reduce((a, b) => a + b, 0) / changes.length : 0;
     return { id: sector.id, name: sector.name, change };
   });
-  const ok1 = await upstashSet('market:crypto-sectors:v1', { sectors }, SECTORS_SEED_TTL);
+  const ok1 = await envelopeWrite('market:crypto-sectors:v1', { sectors }, SECTORS_SEED_TTL, { recordCount: sectors.length, sourceVersion: 'market-crypto-sectors' });
   const ok2 = await upstashSet('seed-meta:market:crypto-sectors', { fetchedAt: Date.now(), recordCount: sectors.length }, 604800);
   console.log(`[CryptoSectors] Seeded ${sectors.length} sectors (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
@@ -2228,9 +2228,9 @@ async function seedTokenPanels() {
     console.warn('[TokenPanels] All panels empty after mapping — skipping Redis write to preserve cached data');
     return 0;
   }
-  const ok1 = await upstashSet('market:defi-tokens:v1', defi, TOKEN_PANELS_SEED_TTL);
-  const ok2 = await upstashSet('market:ai-tokens:v1', ai, TOKEN_PANELS_SEED_TTL);
-  const ok3 = await upstashSet('market:other-tokens:v1', other, TOKEN_PANELS_SEED_TTL);
+  const ok1 = await envelopeWrite('market:defi-tokens:v1', defi, TOKEN_PANELS_SEED_TTL, { recordCount: defi.tokens.length, sourceVersion: 'market-defi-tokens' });
+  const ok2 = await envelopeWrite('market:ai-tokens:v1', ai, TOKEN_PANELS_SEED_TTL, { recordCount: ai.tokens.length, sourceVersion: 'market-ai-tokens' });
+  const ok3 = await envelopeWrite('market:other-tokens:v1', other, TOKEN_PANELS_SEED_TTL, { recordCount: other.tokens.length, sourceVersion: 'market-other-tokens' });
   await upstashSet('seed-meta:market:token-panels', { fetchedAt: Date.now(), recordCount: defi.tokens.length + ai.tokens.length + other.tokens.length }, 604800);
   const total = defi.tokens.length + ai.tokens.length + other.tokens.length;
   const allOk = ok1 && ok2 && ok3;
@@ -2527,7 +2527,7 @@ async function seedAviationDelays() {
       return;
     }
 
-    const ok = await upstashSet(AVIATION_REDIS_KEY, { alerts }, AVIATION_SEED_TTL);
+    const ok = await envelopeWrite(AVIATION_REDIS_KEY, { alerts }, AVIATION_SEED_TTL, { recordCount: alerts.length, sourceVersion: 'aviationstack' });
     await upstashSet('seed-meta:aviation:intl', { fetchedAt: Date.now(), recordCount: alerts.length }, 604800);
     console.log(`[Aviation] Seeded ${alerts.length} alerts (${succeeded} ok, ${failed} failed, redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const severeAlerts = alerts.filter(a =>
@@ -2705,7 +2705,7 @@ async function seedNotamClosures() {
 
   const closedIcaos = [...closedSet];
   const payload = { closedIcaos, reasons };
-  const ok = await upstashSet(NOTAM_REDIS_KEY, payload, NOTAM_SEED_TTL);
+  const ok = await envelopeWrite(NOTAM_REDIS_KEY, payload, NOTAM_SEED_TTL, { recordCount: closedIcaos.length, sourceVersion: 'icao-notam', zeroOk: true });
   await upstashSet('seed-meta:aviation:notam', { fetchedAt: Date.now(), recordCount: closedIcaos.length }, 604800);
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`[NOTAM-Seed] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures (redis: ${ok ? 'OK' : 'FAIL'}) in ${elapsed}s`);
@@ -3089,8 +3089,8 @@ async function seedCyberThreats() {
     }
 
     const payload = { threats };
-    const ok1 = await upstashSet(CYBER_RPC_KEY, payload, CYBER_SEED_TTL);
-    const ok2 = await upstashSet(CYBER_BOOTSTRAP_KEY, payload, CYBER_SEED_TTL);
+    const ok1 = await envelopeWrite(CYBER_RPC_KEY, payload, CYBER_SEED_TTL, { recordCount: threats.length, sourceVersion: 'cyber-threats' });
+    const ok2 = await envelopeWrite(CYBER_BOOTSTRAP_KEY, payload, CYBER_SEED_TTL, { recordCount: threats.length, sourceVersion: 'cyber-threats' });
     const ok3 = await upstashSet('seed-meta:cyber:threats', { fetchedAt: Date.now(), recordCount: threats.length }, 604800);
     console.log(`[Cyber] Seeded ${threats.length} threats (feodo:${feodo.length} urlhaus:${urlhaus.length} c2intel:${c2intel.length} otx:${otx.length} abuseipdb:${abuseipdb.length} redis:${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const newCyber = hydrated.filter(t =>
@@ -3259,8 +3259,8 @@ async function seedPositiveEvents() {
 
     const capped = allEvents.slice(0, POSITIVE_EVENTS_MAX);
     const payload = { events: capped, fetchedAt: Date.now() };
-    const ok1 = await upstashSet(POSITIVE_EVENTS_RPC_KEY, payload, POSITIVE_EVENTS_TTL);
-    const ok2 = await upstashSet(POSITIVE_EVENTS_BOOTSTRAP_KEY, payload, POSITIVE_EVENTS_TTL);
+    const ok1 = await envelopeWrite(POSITIVE_EVENTS_RPC_KEY, payload, POSITIVE_EVENTS_TTL, { recordCount: capped.length, sourceVersion: 'positive-events' });
+    const ok2 = await envelopeWrite(POSITIVE_EVENTS_BOOTSTRAP_KEY, payload, POSITIVE_EVENTS_TTL, { recordCount: capped.length, sourceVersion: 'positive-events' });
     const ok3 = await upstashSet('seed-meta:positive-events:geo', { fetchedAt: Date.now(), recordCount: capped.length }, 604800);
     console.log(`[PositiveEvents] Seeded ${capped.length} events (redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
@@ -3738,7 +3738,7 @@ async function seedClassify() {
 
     await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
     if (Object.keys(mergedByCountry).length > 0) {
-      await upstashSet(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: Date.now() }, NEWS_THREAT_SUMMARY_TTL);
+      await envelopeWrite(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: Date.now() }, NEWS_THREAT_SUMMARY_TTL, { recordCount: Object.keys(mergedByCountry).length, sourceVersion: 'news-threat-summary' });
       console.log(`[Classify] Threat summary written for ${Object.keys(mergedByCountry).length} countries`);
     }
 
@@ -4319,9 +4319,9 @@ async function seedTheaterPosture() {
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
   const payload = { theaters };
-  const ok1 = await upstashSet(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL);
-  const ok2 = await upstashSet(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL);
-  const ok3 = await upstashSet(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL);
+  const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
+  const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
+  const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
   await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels }, 604800);
   const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -4521,7 +4521,7 @@ async function seedWeatherAlerts() {
       return;
     }
     const payload = { alerts };
-    const ok1 = await upstashSet(WEATHER_REDIS_KEY, payload, WEATHER_CACHE_TTL);
+    const ok1 = await envelopeWrite(WEATHER_REDIS_KEY, payload, WEATHER_CACHE_TTL, { recordCount: alerts.length, sourceVersion: 'nws-weather' });
     const ok2 = await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: alerts.length }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
@@ -4627,7 +4627,7 @@ async function seedUsaSpending() {
     }
     const totalAmount = awards.reduce((s, a) => s + a.amount, 0);
     const payload = { awards, totalAmount, periodStart, periodEnd, fetchedAt: Date.now() };
-    const ok1 = await upstashSet(SPENDING_REDIS_KEY, payload, SPENDING_CACHE_TTL);
+    const ok1 = await envelopeWrite(SPENDING_REDIS_KEY, payload, SPENDING_CACHE_TTL, { recordCount: awards.length, sourceVersion: 'usaspending' });
     const ok2 = await upstashSet('seed-meta:economic:spending', { fetchedAt: Date.now(), recordCount: awards.length }, 604800);
     console.log(`[Spending] Seeded ${awards.length} awards, $${(totalAmount / 1e6).toFixed(1)}M (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
@@ -4740,7 +4740,7 @@ async function seedGscpi() {
         observations,
       },
     };
-    await upstashSet(GSCPI_REDIS_KEY, payload, GSCPI_SEED_TTL);
+    await envelopeWrite(GSCPI_REDIS_KEY, payload, GSCPI_SEED_TTL, { recordCount: observations.length, sourceVersion: 'nyfed-gscpi' });
     await upstashSet('seed-meta:economic:gscpi', { fetchedAt: Date.now(), recordCount: observations.length }, 604800);
     console.log(`[GSCPI] Seeded ${observations.length} months; latest ${latest.date} = ${latest.value.toFixed(2)}`);
   } catch (e) {
@@ -4950,8 +4950,8 @@ async function seedTechEvents() {
       error: '',
     };
 
-    const ok1 = await upstashSet(TECH_EVENTS_REDIS_KEY, payload, TECH_EVENTS_TTL_SECONDS);
-    const ok2 = await upstashSet(TECH_EVENTS_BOOTSTRAP_KEY, payload, TECH_EVENTS_TTL_SECONDS);
+    const ok1 = await envelopeWrite(TECH_EVENTS_REDIS_KEY, payload, TECH_EVENTS_TTL_SECONDS, { recordCount: events.length, sourceVersion: 'tech-events' });
+    const ok2 = await envelopeWrite(TECH_EVENTS_BOOTSTRAP_KEY, payload, TECH_EVENTS_TTL_SECONDS, { recordCount: events.length, sourceVersion: 'tech-events' });
     const ok3 = await upstashSet('seed-meta:research:tech-events', { fetchedAt: Date.now(), recordCount: events.length }, 604800);
     console.log(`[TechEvents] Seeded ${events.length} events (redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
@@ -5201,18 +5201,18 @@ async function seedWorldBank() {
     }
 
     const metaTtl = WB_TTL_SECONDS + 3600;
-    let ok = await upstashSet(WB_BOOTSTRAP_KEY, rankings, WB_TTL_SECONDS);
+    let ok = await envelopeWrite(WB_BOOTSTRAP_KEY, rankings, WB_TTL_SECONDS, { recordCount: rankings.length, sourceVersion: 'worldbank-techreadiness' });
     console.log(`[WB] techReadiness: ${rankings.length} rankings (redis: ${ok ? 'OK' : 'FAIL'})`);
     await upstashSet(`seed-meta:${WB_BOOTSTRAP_KEY}`, { fetchedAt: Date.now(), recordCount: rankings.length }, metaTtl);
 
     if (progressWithData.length > 0) {
-      ok = await upstashSet(WB_PROGRESS_KEY, progressData, WB_TTL_SECONDS);
+      ok = await envelopeWrite(WB_PROGRESS_KEY, progressData, WB_TTL_SECONDS, { recordCount: progressWithData.length, sourceVersion: 'worldbank-progress' });
       console.log(`[WB] progressData: ${progressWithData.length} indicators (redis: ${ok ? 'OK' : 'FAIL'})`);
       await upstashSet(`seed-meta:${WB_PROGRESS_KEY}`, { fetchedAt: Date.now(), recordCount: progressWithData.length }, metaTtl);
     }
 
     if (renewableData.historicalData.length > 0) {
-      ok = await upstashSet(WB_RENEWABLE_KEY, renewableData, WB_TTL_SECONDS);
+      ok = await envelopeWrite(WB_RENEWABLE_KEY, renewableData, WB_TTL_SECONDS, { recordCount: renewableData.historicalData.length, sourceVersion: 'worldbank-renewable' });
       console.log(`[WB] renewableEnergy: ${renewableData.regions.length} regions (redis: ${ok ? 'OK' : 'FAIL'})`);
       await upstashSet(`seed-meta:${WB_RENEWABLE_KEY}`, { fetchedAt: Date.now(), recordCount: renewableData.historicalData.length }, metaTtl);
     }
@@ -5305,7 +5305,7 @@ async function seedCorridorRisk() {
       return;
     }
     latestCorridorRiskData = result;
-    const ok = await upstashSet(CORRIDOR_RISK_REDIS_KEY, result, CORRIDOR_RISK_TTL);
+    const ok = await envelopeWrite(CORRIDOR_RISK_REDIS_KEY, result, CORRIDOR_RISK_TTL, { recordCount: Object.keys(result).length, sourceVersion: 'corridor-risk' });
     await upstashSet('seed-meta:supply_chain:corridorrisk', { fetchedAt: Date.now(), recordCount: Object.keys(result).length }, 604800);
     console.log(`[CorridorRisk] Seeded ${Object.keys(result).length} corridors (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
@@ -5563,8 +5563,8 @@ async function seedUsniFleet() {
     const report = usniParseArticle(htmlContent, articleUrl, articleDate, articleTitle);
     if (!report.vessels.length) { console.warn('[USNI] No vessels parsed, skipping write'); return; }
 
-    const ok = await upstashSet(USNI_REDIS_KEY, report, USNI_TTL);
-    await upstashSet(USNI_STALE_KEY, report, USNI_STALE_TTL);
+    const ok = await envelopeWrite(USNI_REDIS_KEY, report, USNI_TTL, { recordCount: report.vessels.length, sourceVersion: 'usni-fleet' });
+    await envelopeWrite(USNI_STALE_KEY, report, USNI_STALE_TTL, { recordCount: report.vessels.length, sourceVersion: 'usni-fleet' });
     await upstashSet('seed-meta:military:usni-fleet', { fetchedAt: Date.now(), recordCount: report.vessels.length }, 604800);
 
     console.log(`[USNI] ${report.vessels.length} vessels, ${report.strikeGroups.length} CSGs, ${report.regions.length} regions (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -5640,7 +5640,7 @@ async function seedShippingStress() {
     const stressScore = Math.min(100, Math.max(0, Math.round(40 - avgChange * 3)));
     const stressLevel = stressScore >= 75 ? 'critical' : stressScore >= 50 ? 'elevated' : stressScore >= 25 ? 'moderate' : 'low';
     const payload = { carriers: results, stressScore, stressLevel, fetchedAt: Date.now() };
-    const ok = await upstashSet(SHIPPING_STRESS_REDIS_KEY, payload, SHIPPING_STRESS_TTL);
+    const ok = await envelopeWrite(SHIPPING_STRESS_REDIS_KEY, payload, SHIPPING_STRESS_TTL, { recordCount: results.length, sourceVersion: 'shipping-stress' });
     await upstashSet('seed-meta:supply_chain:shipping_stress', { fetchedAt: Date.now(), recordCount: results.length }, 604800);
     console.log(`[ShippingStress] Seeded ${results.length} carriers score=${stressScore}/${stressLevel} (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     if (stressScore >= 75) {
@@ -5741,7 +5741,7 @@ async function seedSocialVelocity() {
     allPosts.sort((a, b) => b.velocityScore - a.velocityScore);
     const top = allPosts.slice(0, 30);
     const payload = { posts: top, fetchedAt: Date.now() };
-    const ok = await upstashSet(SOCIAL_VELOCITY_REDIS_KEY, payload, SOCIAL_VELOCITY_TTL);
+    const ok = await envelopeWrite(SOCIAL_VELOCITY_REDIS_KEY, payload, SOCIAL_VELOCITY_TTL, { recordCount: top.length, sourceVersion: 'social-reddit' });
     await upstashSet('seed-meta:intelligence:social-reddit', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
     console.log(`[SocialVelocity] Seeded ${top.length} posts (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
@@ -5933,7 +5933,7 @@ async function seedWsbTickers() {
     tickers.sort((a, b) => b.velocityScore - a.velocityScore);
     const top = tickers.slice(0, 50);
     const payload = { tickers: top, fetchedAt: Date.now(), subredditsScanned: WSB_SUBREDDITS.length, postsScanned };
-    const writeOk = await upstashSet(WSB_TICKERS_REDIS_KEY, payload, WSB_TICKERS_TTL);
+    const writeOk = await envelopeWrite(WSB_TICKERS_REDIS_KEY, payload, WSB_TICKERS_TTL, { recordCount: top.length, sourceVersion: 'wsb-tickers' });
     if (writeOk) {
       await upstashSet('seed-meta:intelligence:wsb-tickers', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
     } else {
@@ -6206,7 +6206,7 @@ async function seedPizzint() {
     } catch { /* GDELT unavailable — non-fatal */ }
 
     const payload = { pizzint, tensionPairs };
-    const ok1 = await upstashSet(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL);
+    const ok1 = await envelopeWrite(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL, { recordCount: locations.length, sourceVersion: 'pizzint' });
     const ok2 = await upstashSet('seed-meta:intelligence:pizzint', { fetchedAt: Date.now(), recordCount: locations.length }, 604800);
     console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} gdelt:${tensionPairs.length} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
@@ -6357,7 +6357,7 @@ async function seedDodoPrices() {
     // Only write to Redis when ALL prices came from Dodo (no fallback contamination).
     // Partial/fallback results are not persisted — edge endpoint serves them directly with short cache.
     if (priceSource === 'dodo') {
-      const ok1 = await upstashSet(DODO_PRICE_REDIS_KEY, payload, DODO_PRICE_SEED_TTL);
+      const ok1 = await envelopeWrite(DODO_PRICE_REDIS_KEY, payload, DODO_PRICE_SEED_TTL, { recordCount: fetchedCount, sourceVersion: 'dodo-prices' });
       const ok2 = await upstashSet('seed-meta:product-catalog', { fetchedAt: now, recordCount: fetchedCount, priceSource }, 604800);
       console.log(`[DodoPrices] Seeded ${fetchedCount}/${DODO_PRODUCT_IDS.length} from Dodo (redis=${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     } else {
@@ -7202,7 +7202,7 @@ async function seedChokepointTransits() {
     };
   }
   const payload = { transits, fetchedAt: now };
-  await upstashSet(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL);
+  await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: Object.keys(transits).length, sourceVersion: 'chokepoint-transits' });
   await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: Object.keys(transits).length }, 604800);
   console.log(`[Transit] Seeded ${Object.keys(transits).length} chokepoint transit counts`);
 }
@@ -7312,7 +7312,7 @@ async function seedTransitSummaries() {
     };
   }
 
-  const ok = await upstashSet(TRANSIT_SUMMARY_REDIS_KEY, { summaries, fetchedAt: now }, TRANSIT_SUMMARY_TTL);
+  const ok = await envelopeWrite(TRANSIT_SUMMARY_REDIS_KEY, { summaries, fetchedAt: now }, TRANSIT_SUMMARY_TTL, { recordCount: Object.keys(summaries).length, sourceVersion: 'transit-summaries' });
   await upstashSet('seed-meta:supply_chain:transit-summaries', { fetchedAt: now, recordCount: Object.keys(summaries).length }, 604800);
   console.log(`[TransitSummary] Seeded ${Object.keys(summaries).length} summaries (redis: ${ok ? 'OK' : 'FAIL'})`);
 }

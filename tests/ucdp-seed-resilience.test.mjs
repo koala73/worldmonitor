@@ -70,7 +70,10 @@ describe('UCDP seed resilience branches', () => {
     const publishSection = fnBody.slice(fnBody.indexOf('const payload = {'));
     assert.match(
       publishSection,
-      /upstashSet\(UCDP_REDIS_KEY,\s*payload/,
+      // Accept both the pre-contract `upstashSet(KEY, payload, ...)` shape and
+      // the post-contract `envelopeWrite(KEY, payload, ...)` shape — dual
+      // form is part of the seed-contract PR 2 envelope migration.
+      /(?:upstashSet|envelopeWrite)\(UCDP_REDIS_KEY,\s*payload/,
       'Should write payload to UCDP key',
     );
     assert.match(
