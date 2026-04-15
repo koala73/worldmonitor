@@ -832,15 +832,22 @@ const data = {
 const rotatePrev = !publishBlocking;
 if (!rotatePrev) console.warn(`  [:prev] Skipping rotation — WoW integrity preserved for next run`);
 
+const declareRecords = (d) => d?.countries?.length || 0;
+
 await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
   ttlSeconds: CACHE_TTL,
   validateFn: validateFuel,
   emptyDataIsFailure: true,
   recordCount: (d) => d?.countries?.length || 0,
+  declareRecords,
+  sourceVersion: 'multi-source-fuel-prices-v1',
+  schemaVersion: 1,
+  maxStaleMin: 10080,
   extraKeys: (wowAvailable && rotatePrev) ? [{
     key: `${CANONICAL_KEY}:prev`,
     transform: () => data,
     ttl: CACHE_TTL * 2,
+    declareRecords,
   }] : [],
 });
 }

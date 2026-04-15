@@ -266,6 +266,10 @@ function validate(data) {
   return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 80;
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-recovery-import-hhi.mjs')) {
   runSeed('resilience', 'recovery:import-hhi', CANONICAL_KEY, fetchImportHhi, {
     validateFn: validate,
@@ -273,6 +277,10 @@ if (process.argv[1]?.endsWith('seed-recovery-import-hhi.mjs')) {
     lockTtlMs: LOCK_TTL_MS,
     sourceVersion: `comtrade-hhi-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 86400,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

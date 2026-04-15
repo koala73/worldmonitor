@@ -6,6 +6,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
+import { buildEnvelope } from './_seed-envelope-source.mjs';
+import { resolveRecordCount } from './_seed-contract.mjs';
+
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
 
@@ -159,16 +162,10 @@ export async function releaseLock(domain, runId) {
   }
 }
 
-export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds) {
+export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, options = {}) {
   const { url, token } = getRedisCredentials();
   const runId = String(Date.now());
   const stagingKey = `${canonicalKey}:staging:${runId}`;
-
-  const payload = JSON.stringify(data);
-  const payloadBytes = Buffer.byteLength(payload, 'utf8');
-  if (payloadBytes > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
-  }
 
   if (validateFn) {
     const valid = validateFn(data);
@@ -177,8 +174,21 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds) 
     }
   }
 
+  // When the seeder opts into the contract (options.envelopeMeta provided), wrap
+  // the payload in the seed envelope before publishing so the data key and its
+  // freshness metadata share one lifecycle. Legacy seeders pass no envelopeMeta
+  // and publish bare data, preserving pre-contract behavior.
+  const payloadValue = options.envelopeMeta
+    ? buildEnvelope({ ...options.envelopeMeta, data })
+    : data;
+  const payload = JSON.stringify(payloadValue);
+  const payloadBytes = Buffer.byteLength(payload, 'utf8');
+  if (payloadBytes > MAX_PAYLOAD_BYTES) {
+    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
+  }
+
   // Write to staging key
-  await redisSet(url, token, stagingKey, data, 300); // 5 min staging TTL
+  await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
 
   // Overwrite canonical key
   if (ttlSeconds) {
@@ -243,9 +253,10 @@ export async function verifySeedKey(key) {
   return data;
 }
 
-export async function writeExtraKey(key, data, ttl) {
+export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   const { url, token } = getRedisCredentials();
-  const payload = JSON.stringify(data);
+  const value = envelopeMeta ? buildEnvelope({ ...envelopeMeta, data }) : data;
+  const payload = JSON.stringify(value);
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -734,13 +745,31 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     extraKeys,
     afterPublish,
     publishTransform,
+    declareRecords,        // new — contract opt-in. When present, runSeed enters
+                           // envelope-dual-write path: writes `{_seed, data}` to
+                           // canonicalKey alongside legacy `seed-meta:*` key.
+    sourceVersion,         // new — required when declareRecords is passed
+    schemaVersion,         // new — required when declareRecords is passed
+    zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
   } = opts;
+  const contractMode = typeof declareRecords === 'function';
+  if (contractMode) {
+    // Soft-warn (PR 2) on other mandatory contract fields; PR 3 hard-aborts.
+    const missing = [];
+    if (typeof sourceVersion !== 'string' || sourceVersion.trim() === '') missing.push('sourceVersion');
+    if (!Number.isInteger(schemaVersion) || schemaVersion < 1) missing.push('schemaVersion');
+    if (typeof opts.maxStaleMin !== 'number') missing.push('maxStaleMin');
+    if (missing.length) {
+      console.warn(`  [seed-contract] ${domain}:${resource} missing fields: ${missing.join(', ')} — required in PR 3`);
+    }
+  }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const startMs = Date.now();
 
   console.log(`=== ${domain}:${resource} Seed ===`);
   console.log(`  Run ID:  ${runId}`);
   console.log(`  Key:     ${canonicalKey}`);
+  if (contractMode) console.log(`  Mode:    contract (envelope dual-write)`);
 
   // Acquire lock
   const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, lockTtlMs, {
@@ -776,7 +805,53 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {
     const publishData = publishTransform ? publishTransform(data) : data;
-    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds);
+
+    // In contract mode, resolve recordCount from declareRecords BEFORE publish so
+    // the envelope carries the correct state. RETRY-on-empty paths skip the
+    // publish entirely (leaving the previous envelope in place).
+    let contractState = null;   // 'OK' | 'OK_ZERO' | 'RETRY'
+    let contractRecordCount = null;
+    let envelopeMeta = null;
+    if (contractMode) {
+      try {
+        contractRecordCount = resolveRecordCount(declareRecords, publishData);
+      } catch (err) {
+        // Contract violation — declareRecords returned non-int / threw. HARD FAIL.
+        await releaseLock(`${domain}:${resource}`, runId);
+        console.error(`  CONTRACT VIOLATION: ${err.message || err}`);
+        process.exit(1);
+      }
+      if (contractRecordCount > 0) {
+        contractState = 'OK';
+      } else if (zeroIsValid) {
+        contractState = 'OK_ZERO';
+      } else {
+        contractState = 'RETRY';
+      }
+      if (contractState !== 'RETRY') {
+        envelopeMeta = {
+          fetchedAt: Date.now(),
+          recordCount: contractRecordCount,
+          sourceVersion: sourceVersion || '',
+          schemaVersion: schemaVersion || 1,
+          state: contractState,
+        };
+      }
+    }
+
+    // Contract RETRY on empty (no zeroIsValid) — skip publish, extend TTL, exit 0.
+    if (contractState === 'RETRY') {
+      const durationMs = Date.now() - startMs;
+      const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
+      if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
+      await extendExistingTtl(keys, ttlSeconds || 600);
+      console.log(`  RETRY: declareRecords returned 0 (zeroIsValid=false) — envelope unchanged, TTL extended, bundle will retry next cycle`);
+      console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY) ===`);
+      await releaseLock(`${domain}:${resource}`, runId);
+      process.exit(0);
+    }
+
+    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, { envelopeMeta });
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
       const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
@@ -808,17 +883,41 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const topicArticleCount = Array.isArray(data?.topics)
       ? data.topics.reduce((n, t) => n + (t?.articles?.length || t?.events?.length || 0), 0)
       : undefined;
-    const recordCount = computeRecordCount({
-      opts, data, payloadBytes, topicArticleCount,
-      onPhantomFallback: () => console.warn(
-        `  [recordCount] auto-detect did not match a known shape (payloadBytes=${payloadBytes}); falling back to 1. Add opts.recordCount to ${domain}:${resource} for accurate health metrics.`
-      ),
-    });
+    const recordCount = contractMode
+      ? contractRecordCount
+      : computeRecordCount({
+          opts, data, payloadBytes, topicArticleCount,
+          onPhantomFallback: () => console.warn(
+            `  [recordCount] auto-detect did not match a known shape (payloadBytes=${payloadBytes}); falling back to 1. Add opts.recordCount to ${domain}:${resource} for accurate health metrics.`
+          ),
+        });
 
-    // Write extra keys (e.g., bootstrap hydration keys)
+    // Write extra keys (e.g., bootstrap hydration keys). In contract mode each
+    // extra key gets its own envelope; declareRecords may be per-key or reuse
+    // the canonical one.
     if (extraKeys) {
       for (const ek of extraKeys) {
-        await writeExtraKey(ek.key, ek.transform ? ek.transform(data) : data, ek.ttl || ttlSeconds);
+        const ekData = ek.transform ? ek.transform(data) : data;
+        let ekEnvelope = null;
+        if (contractMode) {
+          const ekDeclare = typeof ek.declareRecords === 'function' ? ek.declareRecords : declareRecords;
+          let ekCount;
+          try {
+            ekCount = resolveRecordCount(ekDeclare, ekData);
+          } catch (err) {
+            await releaseLock(`${domain}:${resource}`, runId);
+            console.error(`  CONTRACT VIOLATION on extraKey ${ek.key}: ${err.message || err}`);
+            process.exit(1);
+          }
+          ekEnvelope = {
+            fetchedAt: envelopeMeta.fetchedAt,
+            recordCount: ekCount,
+            sourceVersion: sourceVersion || '',
+            schemaVersion: schemaVersion || 1,
+            state: ekCount > 0 ? 'OK' : (zeroIsValid ? 'OK_ZERO' : 'OK'),
+          };
+        }
+        await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
       }
     }
 
@@ -829,7 +928,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, ttlSeconds);
 
     const durationMs = Date.now() - startMs;
-    logSeedResult(domain, recordCount, durationMs, { payloadBytes });
+    logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });
 
     // Verify (best-effort: write already succeeded, don't fail the job on transient read issues)
     let verified = false;

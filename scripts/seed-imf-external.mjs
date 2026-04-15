@@ -109,6 +109,10 @@ export function validate(data) {
 
 export { CANONICAL_KEY, CACHE_TTL };
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-imf-external.mjs')) {
   runSeed('economic', 'imf-external', CANONICAL_KEY, fetchImfExternal, {
     validateFn: validate,
@@ -119,6 +123,10 @@ if (process.argv[1]?.endsWith('seed-imf-external.mjs')) {
     // Without this, a single transient fetch glitch refreshes seed-meta and
     // locks the bundle out for 30 days (see log 2026-04-13).
     emptyDataIsFailure: true,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 100800,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

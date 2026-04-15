@@ -266,10 +266,19 @@ async function fetchCbReserves() {
   return payload;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.topHolders) ? data.topHolders.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-gold-cb-reserves.mjs')) {
   runSeed('market', 'gold-cb-reserves', CB_KEY, fetchCbReserves, {
     ttlSeconds: CB_TTL,
     validateFn: data => Array.isArray(data?.topHolders) && data.topHolders.length >= 10,
     recordCount: data => data?.topHolders?.length ?? 0,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 44640,
+    sourceVersion: 'imf-ifs-v1',
   }).catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
 }

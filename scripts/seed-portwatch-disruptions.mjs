@@ -79,6 +79,10 @@ export function validateFn(data) {
   return data && Array.isArray(data.events) && data.events.length > 0;
 }
 
+export function declareRecords(data) {
+  return data?.events?.length ?? 0;
+}
+
 const isMain = process.argv[1]?.endsWith('seed-portwatch-disruptions.mjs');
 if (isMain) {
   runSeed('portwatch', 'disruptions', CANONICAL_KEY, fetchAll, {
@@ -86,6 +90,9 @@ if (isMain) {
     ttlSeconds: TTL,
     sourceVersion: 'imf-portwatch-disruptions-arcgis-v1',
     recordCount: (data) => data?.events?.length ?? 0,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 150,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

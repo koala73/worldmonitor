@@ -138,10 +138,19 @@ async function fetchGldFlows() {
   return { updatedAt: new Date().toISOString(), ...flows };
 }
 
+export function declareRecords(data) {
+  return Number.isFinite(data?.tonnes) && data.tonnes > 0 ? 1 : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-gold-etf-flows.mjs')) {
   runSeed('market', 'gold-etf-flows', GLD_KEY, fetchGldFlows, {
     ttlSeconds: GLD_TTL,
     validateFn: data => Number.isFinite(data?.tonnes) && data.tonnes > 0,
     recordCount: () => 1,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
+    sourceVersion: 'spdr-gld-xlsx-v1',
   }).catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
 }

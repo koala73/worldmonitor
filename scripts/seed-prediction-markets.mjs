@@ -190,8 +190,17 @@ async function fetchAllPredictions() {
   };
 }
 
+export function declareRecords(data) {
+  return (data?.geopolitical?.length || 0) + (data?.tech?.length || 0) + (data?.finance?.length || 0);
+}
+
 await runSeed('prediction', 'markets', CANONICAL_KEY, fetchAllPredictions, {
   ttlSeconds: CACHE_TTL,
   lockTtlMs: 60_000,
   validateFn: (data) => (data?.geopolitical?.length > 0 || data?.tech?.length > 0) && data?.finance?.length > 0,
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 90,
+  sourceVersion: 'prediction-markets-v1',
 });

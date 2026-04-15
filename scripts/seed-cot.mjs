@@ -184,10 +184,18 @@ async function fetchCotData() {
   return { instruments, reportDate: latestReportDate };
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.instruments) ? data.instruments.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-cot.mjs')) {
   runSeed('market', 'cot', COT_KEY, fetchCotData, {
     ttlSeconds: COT_TTL,
     validateFn: data => Array.isArray(data?.instruments) && data.instruments.length > 0,
     recordCount: data => data?.instruments?.length ?? 0,
+    declareRecords,
+    sourceVersion: 'cftc-cot-v1',
+    schemaVersion: 1,
+    maxStaleMin: 14400,
   }).catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
 }

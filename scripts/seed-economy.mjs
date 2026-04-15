@@ -887,11 +887,18 @@ function validate(data) {
   return data?.prices?.length > 0;
 }
 
+export function declareRecords(data) {
+  return data?.prices?.length ?? 0;
+}
+
 if (process.argv[1]?.endsWith('seed-economy.mjs')) {
   runSeed('economic', 'energy-prices', KEYS.energyPrices, fetchAll, {
     validateFn: validate,
     ttlSeconds: ENERGY_TTL,
     sourceVersion: 'eia-fred-macro',
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 150,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

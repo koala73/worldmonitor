@@ -36,6 +36,10 @@ async function fetchAll() {
   return fetchEurostatAllGeos(DATASET);
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-eurostat-industrial-production.mjs')) {
   runSeed(
     'economic',
@@ -50,6 +54,10 @@ if (process.argv[1]?.endsWith('seed-eurostat-industrial-production.mjs')) {
       ttlSeconds: TTL,
       sourceVersion: 'eurostat-sts-inpr-m-v1',
       recordCount: (data) => Object.keys(data?.countries || {}).length,
+    
+      declareRecords,
+      schemaVersion: 1,
+      maxStaleMin: 7200,
     },
   ).catch((err) => {
     const cause = err.cause

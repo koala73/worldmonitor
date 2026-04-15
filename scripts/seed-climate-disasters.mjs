@@ -485,12 +485,20 @@ function isMain() {
   return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.disasters) ? data.disasters.length : 0;
+}
+
 if (isMain()) {
   runSeed('climate', 'disasters', CANONICAL_KEY, fetchClimateDisasters, {
     validateFn: (data) => Array.isArray(data?.disasters) && data.disasters.length > 0,
     recordCount: (data) => data?.disasters?.length || 0,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'reliefweb+natural-cache-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 720,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

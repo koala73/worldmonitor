@@ -165,12 +165,20 @@ function validate(data) {
 }
 
 // Guard: only run seed when executed directly, not when imported by tests
+export function declareRecords(data) {
+  return Array.isArray(data?.entries) ? data.entries.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-national-debt.mjs')) {
   runSeed('economic', 'national-debt', CANONICAL_KEY, fetchNationalDebt, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'imf-sdmx-weo-2024',
     recordCount: (data) => data?.entries?.length ?? 0,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 10080,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

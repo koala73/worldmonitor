@@ -478,10 +478,18 @@ function validate(data) {
   return data?.composite?.score != null && data.timestamp != null;
 }
 
+export function declareRecords(data) {
+  return data?.composite?.score != null ? 1 : 0;
+}
+
 runSeed('market', 'fear-greed', FEAR_GREED_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: FEAR_GREED_TTL,
   sourceVersion: 'yahoo-cboe-cnn-fred-v1',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 720,
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

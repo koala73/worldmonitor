@@ -349,10 +349,18 @@ function validate(data) {
   return Array.isArray(data?.topStories) && data.topStories.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.topStories) ? data.topStories.length : 0;
+}
+
 runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'digest-clustering-v1',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   // Exit gracefully for cron — health endpoint flags stale data via seed-meta.

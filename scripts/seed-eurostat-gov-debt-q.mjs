@@ -35,6 +35,10 @@ async function fetchAll() {
   return fetchEurostatAllGeos(DATASET);
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-eurostat-gov-debt-q.mjs')) {
   runSeed('economic', 'eurostat-gov-debt-q', CANONICAL_KEY, fetchAll, {
     // Near-complete coverage: quarterly Maastricht gross-debt is reported by
@@ -44,6 +48,10 @@ if (process.argv[1]?.endsWith('seed-eurostat-gov-debt-q.mjs')) {
     ttlSeconds: TTL,
     sourceVersion: 'eurostat-gov-10q-ggdebt-v1',
     recordCount: (data) => Object.keys(data?.countries || {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 20160,
   }).catch((err) => {
     const cause = err.cause
       ? ` (cause: ${err.cause.message || err.cause.code || err.cause})`

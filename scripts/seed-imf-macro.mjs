@@ -102,6 +102,10 @@ function validate(data) {
 export { fetchImfMacro, latestValue, isAggregate, CANONICAL_KEY, CACHE_TTL };
 
 // Guard: only run when executed directly, not when imported by tests
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-imf-macro.mjs')) {
   runSeed('economic', 'imf-macro', CANONICAL_KEY, fetchImfMacro, {
     validateFn: validate,
@@ -109,6 +113,10 @@ if (process.argv[1]?.endsWith('seed-imf-macro.mjs')) {
     sourceVersion: `imf-sdmx-weo-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
     emptyDataIsFailure: true,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 100800,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

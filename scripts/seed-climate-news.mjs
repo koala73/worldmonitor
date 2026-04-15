@@ -192,11 +192,19 @@ function validate(data) {
   return Array.isArray(data?.items) && data.items.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.items) ? data.items.length : 0;
+}
+
 runSeed('climate', 'news-intelligence', CANONICAL_KEY, fetchClimateNews, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'climate-rss-v1',
   recordCount: (data) => data?.items?.length || 0,
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 90,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

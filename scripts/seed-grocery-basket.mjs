@@ -455,6 +455,10 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
 
 const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY);
 
+export function declareRecords(data) {
+  return Array.isArray(data?.countries) ? data.countries.length : 0;
+}
+
 await runSeed('economic', 'grocery-basket', CANONICAL_KEY, () => fetchGroceryBasketPrices(prevSnapshot), {
   ttlSeconds: CACHE_TTL,
   validateFn: (data) => {
@@ -469,5 +473,11 @@ await runSeed('economic', 'grocery-basket', CANONICAL_KEY, () => fetchGroceryBas
     key: `${CANONICAL_KEY}:prev`,
     transform: () => prevSnapshot,  // write PRE-overwrite snapshot; ignore new data
     ttl: CACHE_TTL * 2,
+    declareRecords,
   }] : undefined,
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 10080,
+  sourceVersion: 'grocery-basket-v1',
 });

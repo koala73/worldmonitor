@@ -145,6 +145,10 @@ export function validate(data) {
 
 export { CANONICAL_KEY, CACHE_TTL };
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-imf-growth.mjs')) {
   runSeed('economic', 'imf-growth', CANONICAL_KEY, fetchImfGrowth, {
     validateFn: validate,
@@ -152,6 +156,10 @@ if (process.argv[1]?.endsWith('seed-imf-growth.mjs')) {
     sourceVersion: `imf-sdmx-weo-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
     emptyDataIsFailure: true,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 100800,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

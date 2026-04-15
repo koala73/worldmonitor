@@ -226,6 +226,10 @@ async function afterPublish(data, _meta) {
 }
 
 // isMain guard so tests can import fetchFlows without triggering a real seed run.
+export function declareRecords(data) {
+  return Array.isArray(data?.flows) ? data.flows.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-trade-flows.mjs')) {
   runSeed('trade', 'comtrade-flows', CANONICAL_KEY, fetchAllFlows, {
     validateFn: validate,
@@ -233,6 +237,10 @@ if (process.argv[1]?.endsWith('seed-trade-flows.mjs')) {
     sourceVersion: 'comtrade-preview-v1',
     publishTransform,
     afterPublish,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

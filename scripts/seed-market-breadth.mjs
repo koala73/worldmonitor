@@ -118,9 +118,18 @@ function validate(data) {
   );
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.history) ? data.history.length : 0;
+}
+
 runSeed('market', 'breadth-history', BREADTH_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: BREADTH_TTL,
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 2880,
+  sourceVersion: 'market-breadth-v1',
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

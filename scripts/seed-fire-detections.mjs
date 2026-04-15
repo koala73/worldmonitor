@@ -116,6 +116,10 @@ async function fetchAllRegions(apiKey) {
   return { fireDetections, pagination: undefined };
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.fireDetections) ? data.fireDetections.length : 0;
+}
+
 async function main() {
   const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
   if (!apiKey) {
@@ -130,6 +134,9 @@ async function main() {
     ttlSeconds: 7200,
     lockTtlMs: 2_400_000, // 40 min — 27 slots × ~72s worst case (30s timeout + 6s backoff + 30s retry + 6s pace) ≈ 32.4 min; pad headroom. Next cron tick sees lock held and safely skips.
     sourceVersion: FIRMS_SOURCES.join('+'),
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 360,
   });
 }
 

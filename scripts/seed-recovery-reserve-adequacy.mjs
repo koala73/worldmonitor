@@ -52,12 +52,20 @@ function validate(data) {
   return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 100;
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-recovery-reserve-adequacy.mjs')) {
   runSeed('resilience', 'recovery:reserve-adequacy', CANONICAL_KEY, fetchReserveAdequacy, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     sourceVersion: `wb-reserves-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 86400,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

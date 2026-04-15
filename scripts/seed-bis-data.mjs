@@ -205,6 +205,12 @@ function validate(data) {
   return Array.isArray(data?.rates) && data.rates.length > 0;
 }
 
+// Contract: canonical key stores bis policy rates; declareRecords sees the
+// post-transform `{rates: [...]}` shape, same as validateFn.
+export function declareRecords(data) {
+  return Array.isArray(data?.rates) ? data.rates.length : 0;
+}
+
 // publishTransform: store only policy data (correct shape) at canonical key.
 // runSeed() calls process.exit(0) — .then() is unreachable; use afterPublish instead.
 function publishTransform(data) {
@@ -221,6 +227,9 @@ if (process.argv[1]?.endsWith('seed-bis-data.mjs')) {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'bis-sdmx-csv',
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 10080,
     publishTransform,
     afterPublish,
   }).catch((err) => {

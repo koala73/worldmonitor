@@ -244,6 +244,10 @@ function validate(data) {
   return Array.isArray(data?.quotes) && data.quotes.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.quotes) ? data.quotes.length : 0;
+}
+
 // fetchCommodityQuotes returns the canonical {quotes} payload that runSeed
 // then writes to CANONICAL_KEY. The same value is passed to opts.afterPublish
 // as `data`, which is where the companion-key writes happen.
@@ -317,6 +321,9 @@ runSeed('market', 'commodities', CANONICAL_KEY, fetchCommodityQuotes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alphavantage+yahoo-chart',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
   afterPublish: async (data) => {
     // afterPublish is awaited inside runSeed BEFORE process.exit, so these
     // writes actually run. SPLIT semantics:

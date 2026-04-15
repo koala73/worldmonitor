@@ -454,6 +454,12 @@ export function publishTransform(data) {
     : { entries: [] };
 }
 
+export function declareRecords(data) {
+  // publishTransform yields `data.dsr || { entries: [] }` — count entries.
+  const payload = data?.dsr && data.dsr.entries?.length > 0 ? data.dsr : data;
+  return Array.isArray(payload?.entries) ? payload.entries.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
   runSeed('economic', 'bis-extended', KEYS.dsr, fetchAll, {
     validateFn: validate,
@@ -461,6 +467,9 @@ if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
     sourceVersion: 'bis-sdmx-csv-extended',
     publishTransform,
     afterPublish: dsrAfterPublish,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 1440,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

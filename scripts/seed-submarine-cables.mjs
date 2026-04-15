@@ -292,10 +292,17 @@ function validate(data) {
   return data?.cables?.length >= Math.floor(allCount * 0.9);
 }
 
+export function declareRecords(data) {
+  return data?.cables?.length ?? 0;
+}
+
 runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCables, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'telegeography-v3',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 25200,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

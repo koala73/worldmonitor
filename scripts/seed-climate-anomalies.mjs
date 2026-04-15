@@ -170,11 +170,19 @@ function validate(data) {
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+export function declareRecords(data) {
+  return Array.isArray(data?.anomalies) ? data.anomalies.length : 0;
+}
+
 if (isMain) {
   runSeed('climate', 'anomalies', CANONICAL_KEY, fetchClimateAnomalies, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'open-meteo-archive-wmo-1991-2020-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 240,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

@@ -31,6 +31,10 @@ async function fetchAll() {
   return fetchEurostatAllGeos(DATASET);
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.countries || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-eurostat-house-prices.mjs')) {
   runSeed('economic', 'eurostat-house-prices', CANONICAL_KEY, fetchAll, {
     // Near-complete coverage: annual house-price index is well-reported across
@@ -40,6 +44,10 @@ if (process.argv[1]?.endsWith('seed-eurostat-house-prices.mjs')) {
     ttlSeconds: TTL,
     sourceVersion: 'eurostat-prc-hpi-a-v1',
     recordCount: (data) => Object.keys(data?.countries || {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 72000,
   }).catch((err) => {
     const cause = err.cause
       ? ` (cause: ${err.cause.message || err.cause.code || err.cause})`

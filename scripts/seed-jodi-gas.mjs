@@ -244,6 +244,10 @@ export function buildLngVulnerabilityIndex(members, dataMonth, updatedAt) {
 
 const isMain = process.argv[1]?.endsWith('seed-jodi-gas.mjs');
 
+export function declareRecords(data) {
+  return Array.isArray(data) ? data.length : 0;
+}
+
 if (isMain) {
   await runSeed('energy', 'jodi-gas', CANONICAL_KEY, fetchJodiGas, {
     ttlSeconds: GAS_TTL,
@@ -269,5 +273,10 @@ if (isMain) {
       }
       // LNG vulnerability index is now written via extraKeys (gets TTL-preserved on failure)
     },
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 57600,
+    sourceVersion: 'jodi-gas-v1',
   });
 }

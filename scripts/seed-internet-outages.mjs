@@ -243,10 +243,18 @@ function validate(data) {
   return data && Array.isArray(data.outages);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.outages) ? data.outages.length : 0;
+}
+
 runSeed('infra', 'outages', CANONICAL_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'cloudflare-radar-7d',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

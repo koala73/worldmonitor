@@ -212,6 +212,10 @@ async function afterPublish(data, _meta) {
   }
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.topics) ? data.topics.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
   runSeed('intelligence', 'gdelt-intel', CANONICAL_KEY, fetchAllTopics, {
     validateFn: validate,
@@ -219,6 +223,10 @@ if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
     sourceVersion: 'gdelt-doc-v2',
     publishTransform,
     afterPublish,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 420,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

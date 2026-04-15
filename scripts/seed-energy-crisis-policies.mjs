@@ -59,12 +59,20 @@ export function validateFn(data) {
 }
 
 const isMain = process.argv[1]?.endsWith('seed-energy-crisis-policies.mjs');
+export function declareRecords(data) {
+  return Array.isArray(data?.policies) ? data.policies.length : 0;
+}
+
 if (isMain) {
   runSeed('energy', 'crisis-policies', CANONICAL_KEY, buildPayload, {
     validateFn,
     ttlSeconds: CRISIS_POLICIES_TTL_SECONDS,
     sourceVersion: 'iea-crisis-policies-v1',
     recordCount: (data) => data?.policies?.length ?? 0,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 576000,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

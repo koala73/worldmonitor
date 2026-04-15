@@ -867,6 +867,10 @@ function validate(data) {
   return Array.isArray(data?.signals);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.signals) ? data.signals.length : 0;
+}
+
 runSeed('intelligence', 'cross-source-signals', CANONICAL_KEY, aggregateCrossSourceSignals, {
   ttlSeconds: CACHE_TTL,
   validateFn: validate,
@@ -883,4 +887,8 @@ runSeed('intelligence', 'cross-source-signals', CANONICAL_KEY, aggregateCrossSou
       signal: AbortSignal.timeout(5_000),
     }).catch(err => console.warn(`  seed-meta write failed: ${err.message}`));
   },
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 });

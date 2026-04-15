@@ -113,6 +113,10 @@ function validate(data) {
   );
 }
 
+export function declareRecords(data) {
+  return (data?.defi?.tokens?.length || 0) + (data?.ai?.tokens?.length || 0) + (data?.other?.tokens?.length || 0);
+}
+
 runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
@@ -123,6 +127,10 @@ runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
     { key: AI_KEY, transform: (data) => data.ai, ttl: CACHE_TTL },
     { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL },
   ],
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 90,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

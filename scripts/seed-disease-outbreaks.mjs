@@ -294,10 +294,18 @@ function validate(data) {
   return Array.isArray(data?.outbreaks) && data.outbreaks.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.outbreaks) ? data.outbreaks.length : 0;
+}
+
 runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'who-api-cdc-ont-v6',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 2880,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

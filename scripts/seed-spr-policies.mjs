@@ -55,12 +55,20 @@ export function validateFn(data) {
 }
 
 const isMain = process.argv[1]?.endsWith('seed-spr-policies.mjs');
+export function declareRecords(data) {
+  return Object.keys(data?.policies || {}).length;
+}
+
 if (isMain) {
   runSeed('energy', 'spr-policies', CANONICAL_KEY, buildPayload, {
     validateFn,
     ttlSeconds: SPR_POLICIES_TTL_SECONDS,
     sourceVersion: 'spr-policies-registry-v1',
     recordCount: (data) => Object.keys(data?.policies ?? {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 576000,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

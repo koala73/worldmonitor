@@ -166,12 +166,20 @@ async function fetchFxYoy() {
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+export function declareRecords(data) {
+  return Array.isArray(data?.rates) ? data.rates.length : 0;
+}
+
 if (isMain) {
   await runSeed('economic', 'fx-yoy', CANONICAL_KEY, fetchFxYoy, {
     ttlSeconds: CACHE_TTL,
     validateFn: (data) => Array.isArray(data?.rates) && data.rates.length >= 10,
     recordCount: (data) => data?.rates?.length ?? 0,
     sourceVersion: 'yahoo-fx-yoy-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 1500,
   });
 }
 

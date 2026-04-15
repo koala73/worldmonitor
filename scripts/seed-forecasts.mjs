@@ -16014,6 +16014,10 @@ async function buildAndSeedMarketImplications(inputs) {
   console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.predictions) ? data.predictions.length : 0;
+}
+
 if (_isDirectRun) {
   const refreshRequest = await readForecastRefreshRequest();
   const triggerContext = buildForecastTriggerContext(refreshRequest);
@@ -16029,6 +16033,9 @@ if (_isDirectRun) {
     ttlSeconds: TTL_SECONDS,
     lockTtlMs: 180_000,
     validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 90,
     publishTransform: buildPublishedSeedPayload,
     afterPublish: async (data, meta) => {
       if (triggerContext.triggerRequest) {
@@ -16130,6 +16137,7 @@ if (_isDirectRun) {
           predictions: data.predictions.map(buildPriorForecastSnapshot),
         }),
         ttl: 7200,
+        declareRecords,
       },
     ],
   });

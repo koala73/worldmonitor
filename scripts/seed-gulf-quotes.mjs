@@ -126,10 +126,18 @@ function validate(data) {
   return Array.isArray(data?.quotes) && data.quotes.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.quotes) ? data.quotes.length : 0;
+}
+
 runSeed('market', 'gulf-quotes', CANONICAL_KEY, fetchGulfQuotes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alphavantage+yahoo-chart',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

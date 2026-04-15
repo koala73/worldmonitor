@@ -264,10 +264,17 @@ function validate(data) {
   return data?.summaries?.length > 0;
 }
 
+export function declareRecords(data) {
+  return data?.summaries?.length ?? 0;
+}
+
 runSeed('aviation', 'ops-news', OPS_CACHE_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: OPS_TTL,
   sourceVersion: 'aviationstack-rss',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 150,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

@@ -362,6 +362,10 @@ export function validateFn(snapshot) {
   return !!snapshot && Array.isArray(snapshot.assets) && snapshot.assets.length >= 12;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.assets) ? data.assets.length : 0;
+}
+
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 const isMain = process.argv[1]?.endsWith('seed-hyperliquid-flow.mjs');
@@ -377,6 +381,9 @@ if (isMain) {
     validateFn,
     sourceVersion: 'hyperliquid-info-metaAndAssetCtxs-v1',
     recordCount: (snap) => snap?.assets?.length || 0,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 15,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
