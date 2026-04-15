@@ -269,8 +269,10 @@ Sentry.init({
     if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0) {
       if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast)
-    if (/reading '(?:type|pathType|count|__globeObjType)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count|__globeObjType)'\)|null is not an object \(evaluating '\w+\.__globeObjType'\)/.test(msg)) {
+    // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
+    // __globeObjType is exclusively set by three-globe on its own objects and we have no user onClick/onHover handler, so it is always globe.gl internal even when the stack shows the bundled main chunk (WORLDMONITOR-ME).
+    if (/reading '__globeObjType'|__globeObjType/.test(msg)) return null;
+    if (/reading '(?:type|pathType|count)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count)'\)/.test(msg)) {
       if (!hasFirstParty) return null;
     }
     // Suppress minified Three.js/globe.gl crashes (e.g. "l is undefined" in raycast, "b is undefined" in update/initGlobe)
@@ -306,6 +308,24 @@ Sentry.init({
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)
     if (frames.some(f => /beacon\.min\.js/.test(f.filename ?? ''))) return null;
+    // Suppress Fireglass (Symantec/Broadcom CloudSOC) console-hook recursion.
+    // Fireglass wraps console.log and recurses on its own debug output, producing
+    // "Maximum call stack size exceeded". Stack frames are <anonymous> so the
+    // generic hasFirstParty gate below can't see it — match by function name.
+    // Gated on excType === 'RangeError' (mirrors the sortedTrackListForMenu
+    // pattern above) so an unrelated exception with a FireglassUtils frame
+    // isn't silently dropped (WORLDMONITOR-MK).
+    if (excType === 'RangeError' && frames.some(f => /FireglassUtils/.test(f.function ?? ''))) return null;
+    // Suppress Chrome Mobile WebView 105+ Request constructor quirk ONLY when
+    // the Dodo checkout lazy chunk is in the stack (WORLDMONITOR-MH). The
+    // exact message is unique to the Fetch § Request() duplex requirement, but
+    // src/services/runtime.ts (runtime fetch patch) also constructs `new
+    // Request(init)` at lines 861/869/902 — without this provenance guard the
+    // same filter would hide a real first-party streaming-fetch regression.
+    // Guard on the vendored chunk name (checkout-*.js = Dodo SDK, lazy-loaded
+    // only when startCheckout runs) so a runtime.ts failure still surfaces.
+    if (/Failed to construct 'Request': The `duplex` member must be specified/.test(msg)
+        && frames.some(f => /\/assets\/checkout-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress "options is not defined" from browser extension overriding Navigator getter (WORLDMONITOR-JN).
     // Only suppress when stack has no first-party frames (filename=<anonymous> is the extension getter).
     if (/^options is not defined$/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]')) return null;

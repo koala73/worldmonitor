@@ -3,7 +3,10 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   getLatestStockAnalysisSnapshots,
+  getMissingOrStaleStockAnalysisSymbols,
+  hasFreshStockAnalysisHistory,
   mergeStockAnalysisHistory,
+  STOCK_ANALYSIS_FRESH_MS,
   type StockAnalysisSnapshot,
 } from '../src/services/stock-analysis-history.ts';
 import { analyzeStock } from '../server/worldmonitor/market/v1/analyze-stock.ts';
@@ -140,8 +143,9 @@ function makeSnapshot(
   generatedAt: string,
   signalScore: number,
   signal = 'Buy',
+  options: { withAnalystFields?: boolean } = {},
 ): StockAnalysisSnapshot {
-  return {
+  const base: StockAnalysisSnapshot = {
     available: true,
     symbol,
     name: symbol,
@@ -188,7 +192,13 @@ function makeSnapshot(
     stopLoss: 95,
     takeProfit: 110,
     engineVersion: 'v2',
+    recentUpgrades: [],
   };
+  if (options.withAnalystFields) {
+    base.analystConsensus = { strongBuy: 1, buy: 2, hold: 3, sell: 0, strongSell: 0, total: 6, period: '0m' };
+    base.priceTarget = { mean: 150, median: 152, high: 180, low: 130, current: 145, numberOfAnalysts: 6 };
+  }
+  return base;
 }
 
 describe('stock analysis history helpers', () => {
@@ -246,6 +256,36 @@ describe('stock analysis history helpers', () => {
     assert.equal(latest.length, 2);
     assert.equal(latest[0]?.symbol, 'AAPL');
     assert.equal(latest[1]?.symbol, 'MSFT');
+  });
+
+  it('treats time-fresh snapshots that lack analyst fields as stale so a refetch is forced', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70)],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+
+  it('treats fresh snapshots with the new analyst fields as truly fresh', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', { withAnalystFields: true })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), true);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), []);
+  });
+
+  it('still treats time-stale snapshots as stale even with analyst fields', () => {
+    const stale = new Date(Date.now() - (STOCK_ANALYSIS_FRESH_MS * 2)).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', stale, 70, 'Buy', { withAnalystFields: true })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
   });
 });
 

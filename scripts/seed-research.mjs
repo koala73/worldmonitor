@@ -336,10 +336,17 @@ function validate(data) {
   return data?.papers?.length > 0;
 }
 
+export function declareRecords(data) {
+  return data?.papers?.length ?? 0;
+}
+
 runSeed('research', 'arxiv-hn-trending', 'research:arxiv:v1:cs.AI::50', fetchAll, {
   validateFn: validate,
   ttlSeconds: ARXIV_TTL,
   sourceVersion: 'arxiv-hn-gitter',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 150,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

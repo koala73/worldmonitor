@@ -349,6 +349,13 @@ interface TripData {
   width: number;
 }
 
+type HighlightedMarker = { id: string; lon: number; lat: number; name: string; score: number };
+
+interface BypassArcDatum {
+  source: [number, number];
+  target: [number, number];
+}
+
 function interpolateGreatCircle(
   start: [number, number],
   end: [number, number],
@@ -380,6 +387,8 @@ const TRADE_ANIMATION_CYCLE = 1000;
 const TRADE_TRAIL_LENGTH = 200;
 const TRADE_ANIMATION_SPEED = 0.3;
 const TRADE_GC_INTERPOLATION_POINTS = 20;
+const CHOKEPOINT_PULSE_FREQ = 0.01;
+const CHOKEPOINT_PULSE_AMP = 0.3;
 
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
@@ -443,6 +452,9 @@ export class DeckGLMap {
   private tradeAnimationFrame: number | null = null;
   private tradeAnimationFrameCount = 0;
   private storedChokepointData: GetChokepointStatusResponse | null = null;
+  private highlightedRouteIds: Set<string> = new Set();
+  private highlightedMarkers: HighlightedMarker[] = [];
+  private bypassArcData: BypassArcDatum[] = [];
   private scenarioState: ScenarioVisualState | null = null;
   private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
@@ -1731,12 +1743,18 @@ export class DeckGLMap {
       layers.push(this.createTradeRoutesLayer());
       layers.push(this.createTradeRouteTripsLayer());
       layers.push(this.createTradeChokepointsLayer());
+      const hlMarkers = this.createHighlightedChokepointMarkers();
+      if (hlMarkers) layers.push(hlMarkers);
+      const bypassArcs = this.createBypassArcsLayer();
+      if (bypassArcs) layers.push(bypassArcs);
       this.startTradeAnimation();
     } else {
       this.stopTradeAnimation();
       this.layerCache.delete('trade-routes-layer');
       this.layerCache.delete('trade-route-trips-layer');
       this.layerCache.delete('trade-chokepoints-layer');
+      this.layerCache.delete('highlighted-chokepoint-markers');
+      this.layerCache.delete('bypass-arcs-layer');
     }
 
     // Tech variant layers (Supercluster-based deck.gl layers for HQs and events)
@@ -5060,15 +5078,30 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
+    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlIds = this.highlightedRouteIds;
+
+    const dimColor = (c: [number, number, number, number]): [number, number, number, number] =>
+      [c[0], c[1], c[2], 40];
+
     const getColor = (d: TradeRouteSegment): [number, number, number, number] => {
+      let base: [number, number, number, number];
       if (scenarioDisrupted && scenarioDisrupted.size > 0) {
         const waypoints = ROUTE_WAYPOINTS_MAP.get(d.routeId);
         if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
-          return scenario;
+          base = scenario;
+        } else if (!hasPremiumAccess(getAuthState())) {
+          base = active;
+        } else {
+          base = colorFor(d.status);
         }
+      } else if (!hasPremiumAccess(getAuthState())) {
+        base = active;
+      } else {
+        base = colorFor(d.status);
       }
-      if (!hasPremiumAccess(getAuthState())) return active;  // free users: always blue
-      return colorFor(d.status);
+      if (hlActive && !hlIds.has(d.routeId)) return dimColor(base);
+      return base;
     };
 
     return new ArcLayer<TradeRouteSegment>({
@@ -5078,9 +5111,12 @@ export class DeckGLMap {
       getTargetPosition: (d) => d.targetPosition,
       getSourceColor: getColor,
       getTargetColor: getColor,
-      getWidth: (d) => d.category === 'energy' ? 3 : 2,
+      getWidth: (d) => {
+        if (hlActive && hlIds.has(d.routeId)) return 6;
+        return d.category === 'energy' ? 3 : 2;
+      },
       widthMinPixels: 1,
-      widthMaxPixels: 6,
+      widthMaxPixels: 8,
       greatCircle: true,
       pickable: true,
     });
@@ -5098,15 +5134,27 @@ export class DeckGLMap {
       ? new Set(this.scenarioState.disruptedChokepointIds)
       : null;
 
+    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlIds = this.highlightedRouteIds;
+
     const colorForRoute = (routeId: string, status: string): [number, number, number, number] => {
+      let base: [number, number, number, number];
       if (scenarioDisrupted && scenarioDisrupted.size > 0) {
         const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
         if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
-          return scenarioColor;
+          base = scenarioColor;
+        } else if (!isPremium) {
+          base = activeColor;
+        } else {
+          base = status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
         }
+      } else if (!isPremium) {
+        base = activeColor;
+      } else {
+        base = status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
       }
-      if (!isPremium) return activeColor;
-      return status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
+      if (hlActive && !hlIds.has(routeId)) return [base[0], base[1], base[2], 40];
+      return base;
     };
 
     const widthFor = (category: string): number =>
@@ -5223,11 +5271,69 @@ export class DeckGLMap {
     });
   }
 
-  /**
-   * Compute the solar terminator polygon (night side of the Earth).
-   * Uses standard astronomical formulas to find the subsolar point,
-   * then traces the terminator line and closes around the dark pole.
-   */
+  private rebuildHighlightedMarkers(): void {
+    if (this.highlightedRouteIds.size === 0) { this.highlightedMarkers = []; return; }
+    const cpIds = new Set<string>();
+    for (const routeId of this.highlightedRouteIds) {
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
+      if (waypoints) for (const wp of waypoints) cpIds.add(wp);
+    }
+    this.highlightedMarkers = STRATEGIC_WATERWAYS
+      .filter(w => cpIds.has(w.id))
+      .map(w => {
+        const score = this.storedChokepointData?.chokepoints?.find(cp => cp.id === w.id)?.disruptionScore ?? 0;
+        return { id: w.id, lon: w.lon, lat: w.lat, name: w.name, score };
+      });
+  }
+
+  private createHighlightedChokepointMarkers(): ScatterplotLayer | null {
+    if (this.highlightedMarkers.length === 0) return null;
+
+    const pulse = Math.sin(this.tradeAnimationTime * CHOKEPOINT_PULSE_FREQ) * CHOKEPOINT_PULSE_AMP + 1;
+
+    return new ScatterplotLayer({
+      id: 'highlighted-chokepoint-markers',
+      data: this.highlightedMarkers,
+      getPosition: (d: HighlightedMarker) => [d.lon, d.lat],
+      getRadius: (d: HighlightedMarker) => (d.score >= 70 ? 12000 : d.score > 30 ? 10000 : 8000) * pulse,
+      getFillColor: (d: HighlightedMarker) => d.score >= 70
+        ? [255, 60, 60, 180] as [number, number, number, number]
+        : d.score > 30
+          ? [255, 180, 50, 160] as [number, number, number, number]
+          : [60, 200, 120, 140] as [number, number, number, number],
+      radiusUnits: 'meters' as const,
+      pickable: false,
+      stroked: true,
+      getLineColor: (d: HighlightedMarker) => d.score >= 70
+        ? [255, 80, 80, 255] as [number, number, number, number]
+        : d.score > 30
+          ? [255, 200, 80, 255] as [number, number, number, number]
+          : [80, 220, 140, 255] as [number, number, number, number],
+      getLineWidth: 2,
+      lineWidthUnits: 'pixels' as const,
+      updateTriggers: {
+        getRadius: [this.tradeAnimationTime],
+        getFillColor: [this.storedChokepointData],
+      },
+    });
+  }
+
+  private createBypassArcsLayer(): ArcLayer | null {
+    if (this.bypassArcData.length === 0) return null;
+    return new ArcLayer({
+      id: 'bypass-arcs-layer',
+      data: this.bypassArcData,
+      getSourcePosition: (d: BypassArcDatum) => d.source,
+      getTargetPosition: (d: BypassArcDatum) => d.target,
+      getSourceColor: [60, 200, 120, 160],
+      getTargetColor: [60, 200, 120, 160],
+      getWidth: 3,
+      widthMinPixels: 2,
+      greatCircle: true,
+      pickable: false,
+    });
+  }
+
   private computeNightPolygon(): [number, number][] {
     const now = new Date();
     const JD = now.getTime() / 86400000 + 2440587.5;
@@ -5593,6 +5699,7 @@ export class DeckGLMap {
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
     this.popup.setChokepointData(data);
     this.storedChokepointData = data;
+    this.rebuildHighlightedMarkers();
     if (this.storedChokepointData) this.refreshTradeRouteStatus(this.storedChokepointData);
   }
 
@@ -5619,6 +5726,61 @@ export class DeckGLMap {
     this.affectedIso2Set = new Set(state?.affectedIso2s ?? []);
     this.buildTradeTrips();
     this.render();
+  }
+
+  public highlightRoute(routeIds: string[]): void {
+    this.highlightedRouteIds = new Set(routeIds);
+    this.rebuildHighlightedMarkers();
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  public clearHighlightedRoute(): void {
+    if (this.highlightedRouteIds.size === 0) return;
+    this.highlightedRouteIds.clear();
+    this.rebuildHighlightedMarkers();
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  public setBypassRoutes(corridors: Array<{fromPort: [number, number]; toPort: [number, number]}>): void {
+    this.bypassArcData = corridors.map(c => ({
+      source: c.fromPort,
+      target: c.toPort,
+    }));
+    this.render();
+  }
+
+  public clearBypassRoutes(): void {
+    if (this.bypassArcData.length === 0) return;
+    this.bypassArcData = [];
+    this.render();
+  }
+
+  public zoomToRoutes(routeIds: string[]): void {
+    if (!this.maplibreMap || routeIds.length === 0) return;
+    const ids = new Set(routeIds);
+    let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+    let found = false;
+    for (const seg of this.tradeRouteSegments) {
+      if (!ids.has(seg.routeId)) continue;
+      found = true;
+      const [sLng, sLat] = seg.sourcePosition;
+      const [tLng, tLat] = seg.targetPosition;
+      if (sLng < minLng) minLng = sLng;
+      if (sLng > maxLng) maxLng = sLng;
+      if (sLat < minLat) minLat = sLat;
+      if (sLat > maxLat) maxLat = sLat;
+      if (tLng < minLng) minLng = tLng;
+      if (tLng > maxLng) maxLng = tLng;
+      if (tLat < minLat) minLat = tLat;
+      if (tLat > maxLat) maxLat = tLat;
+    }
+    if (!found) return;
+    this.maplibreMap.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+      padding: 60,
+      duration: 1000,
+    });
   }
 
   public setHappinessScores(data: HappinessData): void {

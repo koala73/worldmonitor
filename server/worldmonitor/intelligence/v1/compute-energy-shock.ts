@@ -265,7 +265,9 @@ export async function computeEnergyShockScenario(
       return {
         product: p.name,
         outputLossKbd: Math.round(outputLossKbd * 10) / 10,
-        demandKbd: p.demand,
+        // Round to 1 decimal to match outputLossKbd precision; raw JODI values like
+        // 136.5629 kbd wasted display space with fake precision (see #2971).
+        demandKbd: Math.round(p.demand * 10) / 10,
         deficitPct: Math.round(deficitPct * 10) / 10,
       };
     });

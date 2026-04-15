@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch, getRedisCredentials } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -34,6 +35,38 @@ export const REFINERY_INPUTS_TTL = 1_814_400; // 21 days (3× weekly)
 const SPR_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 const REFINERY_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 
+// EIA retries transient upstream failures: timeouts and 5xx. Returns parsed JSON.
+// 4xx and other non-network errors are thrown immediately (no retry).
+function isTransientFetchError(e) {
+  const msg = e?.message || '';
+  return e?.name === 'TimeoutError' || e?.name === 'AbortError' ||
+    /timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|ECONNREFUSED|socket hang up/i.test(msg);
+}
+
+async function eiaFetchJson(url, label, { timeoutMs = 20_000, attempts = 3 } = {}) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const resp = await fetch(url, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (resp.ok) return await resp.json();
+      const err = Object.assign(new Error(`EIA ${label}: HTTP ${resp.status}`), { status: resp.status });
+      // Only 5xx is transient; 4xx is a permanent config/request error — bail immediately.
+      if (resp.status < 500) throw err;
+      lastErr = err;
+      if (i === attempts) throw err;
+    } catch (e) {
+      if (!isTransientFetchError(e) && !(e?.status >= 500)) throw e;
+      lastErr = e;
+      if (i === attempts) throw e;
+    }
+    await new Promise((r) => setTimeout(r, 500 * i + Math.random() * 400));
+  }
+  throw lastErr;
+}
+
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30', 'T10Y3M', 'STLFSI4'];
 
 // ─── Economic Stress Index (computed last from FRED data in fetchAll) ───
@@ -60,8 +93,22 @@ function stressLabel(score) {
 }
 
 /**
+ * Extract GSCPI observations from the Redis-stored payload.
+ * ais-relay writes the FRED-compatible shape `{ series: { series_id, title, units,
+ * frequency, observations: [{ date, value }] } }` (see seedGscpi() in ais-relay.cjs).
+ * Earlier versions stored a flat `{ observations }` shape, so accept both.
+ * Exported for unit testing.
+ * @param {unknown} parsed
+ * @returns {{ observations: { date: string; value: number }[] } | null}
+ */
+export function extractGscpiObservations(parsed) {
+  const p = /** @type {any} */ (parsed);
+  const obs = p?.series?.observations ?? p?.observations;
+  return Array.isArray(obs) ? { observations: obs } : null;
+}
+
+/**
  * Read GSCPI from Redis (seeded by ais-relay from NY Fed, not available via FRED API).
- * Format stored: { observations: [{ date, value }] } — no series wrapper.
  * @returns {Promise<{ observations: { date: string; value: number }[] } | null>}
  */
 async function fetchGscpiFromRedis() {
@@ -74,8 +121,7 @@ async function fetchGscpiFromRedis() {
     if (!resp.ok) return null;
     const body = /** @type {{ result: string | null }} */ (await resp.json());
     if (!body.result) return null;
-    const parsed = JSON.parse(body.result);
-    return Array.isArray(parsed.observations) ? parsed : null;
+    return extractGscpiObservations(unwrapEnvelope(JSON.parse(body.result)).data);
   } catch {
     return null;
   }
@@ -105,7 +151,11 @@ function computeStressIndex(fr) {
 
     if (rawValue === null) {
       missingCount++;
-      if (comp.id !== 'GSCPI') console.warn(`  [StressIndex] ${comp.id} missing from FRED — excluding`);
+      if (comp.id !== 'GSCPI') {
+        // FRED-sourced component missing = refuse to publish degraded composite.
+        throw new Error(`StressIndex: required FRED component ${comp.id} missing — refusing to publish partial composite`);
+      }
+      console.warn(`  [StressIndex] ${comp.id} missing (ais-relay lag) — excluding`);
       components.push({ id: comp.id, label: comp.label, rawValue: null, missing: true, score: 0, weight: comp.weight });
       continue;
     }
@@ -150,12 +200,10 @@ async function fetchEnergyPrices() {
       'sort[0][direction]': 'desc',
       length: '2',
     });
-    const resp = await fetch(`https://api.eia.gov${c.apiPath}?${params}`, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!resp.ok) { console.warn(`  EIA ${c.commodity}: HTTP ${resp.status}`); continue; }
-    const data = await resp.json();
+    let data;
+    try {
+      data = await eiaFetchJson(`https://api.eia.gov${c.apiPath}?${params}`, c.commodity);
+    } catch (e) { console.warn(`  EIA ${c.commodity}: ${e.message}`); continue; }
     const rows = data.response?.data;
     if (!rows || rows.length === 0) continue;
     const current = rows[0];
@@ -529,12 +577,7 @@ async function fetchCrudeInventories() {
     'sort[0][direction]': 'desc',
     length: '9', // fetch 9 so the oldest of 8 has a prior week for weeklyChangeMb
   });
-  const resp = await fetch(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!resp.ok) throw new Error(`EIA WCRSTUS1: HTTP ${resp.status}`);
-  const data = await resp.json();
+  const data = await eiaFetchJson(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, 'WCRSTUS1');
   const rows = data.response?.data;
   if (!rows || rows.length === 0) throw new Error('EIA WCRSTUS1: no data rows');
 
@@ -583,12 +626,7 @@ async function fetchNatGasStorage() {
     'sort[0][direction]': 'desc',
     length: '9', // fetch 9 so the oldest of 8 has a prior week for weeklyChangeBcf
   });
-  const resp = await fetch(`https://api.eia.gov/v2/natural-gas/stor/wkly/data/?${params}`, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!resp.ok) throw new Error(`EIA NW2_EPG0_SWO_R48_BCF: HTTP ${resp.status}`);
-  const data = await resp.json();
+  const data = await eiaFetchJson(`https://api.eia.gov/v2/natural-gas/stor/wkly/data/?${params}`, 'NW2_EPG0_SWO_R48_BCF');
   const rows = data.response?.data;
   if (!rows || rows.length === 0) throw new Error('EIA NW2_EPG0_SWO_R48_BCF: no data rows');
 
@@ -649,12 +687,7 @@ async function fetchSprLevels() {
     'sort[0][direction]': 'desc',
     length: '9', // fetch 9 so we can compute 4-week change
   });
-  const resp = await fetch(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!resp.ok) throw new Error(`EIA WCSSTUS1: HTTP ${resp.status}`);
-  const data = await resp.json();
+  const data = await eiaFetchJson(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, 'WCSSTUS1');
   const rows = data.response?.data;
   if (!rows || rows.length === 0) throw new Error('EIA WCSSTUS1: no data rows');
 
@@ -720,12 +753,7 @@ async function fetchRefineryInputs() {
     'sort[0][direction]': 'desc',
     length: '9', // fetch 9 so the oldest of 8 has a prior week for WoW change
   });
-  const resp = await fetch(`https://api.eia.gov/v2/petroleum/pnp/wiup/data/?${params}`, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!resp.ok) throw new Error(`EIA WCRRIUS2: HTTP ${resp.status}`);
-  const data = await resp.json();
+  const data = await eiaFetchJson(`https://api.eia.gov/v2/petroleum/pnp/wiup/data/?${params}`, 'WCRRIUS2');
   const rows = data.response?.data;
   if (!rows || rows.length === 0) throw new Error('EIA WCRRIUS2: no data rows');
 
@@ -842,7 +870,12 @@ async function fetchAll() {
     } else {
       console.warn('  [StressIndex] GSCPI not in Redis yet (ais-relay lag or first run) — excluding');
     }
-    const stressResult = computeStressIndex(fr);
+    let stressResult = null;
+    try {
+      stressResult = computeStressIndex(fr);
+    } catch (e) {
+      console.warn(`  [StressIndex] skipped write — ${e.message}`);
+    }
     if (stressResult) {
       await writeExtraKeyWithMeta(STRESS_INDEX_KEY, stressResult, STRESS_INDEX_TTL, STRESS_COMPONENTS.length);
     }
@@ -855,11 +888,18 @@ function validate(data) {
   return data?.prices?.length > 0;
 }
 
+export function declareRecords(data) {
+  return data?.prices?.length ?? 0;
+}
+
 if (process.argv[1]?.endsWith('seed-economy.mjs')) {
   runSeed('economic', 'energy-prices', KEYS.energyPrices, fetchAll, {
     validateFn: validate,
     ttlSeconds: ENERGY_TTL,
     sourceVersion: 'eia-fred-macro',
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 150,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

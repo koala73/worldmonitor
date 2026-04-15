@@ -1,6 +1,8 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { StockAnalysisResult } from '@/services/stock-analysis';
+import type { AnalystConsensus, PriceTarget, UpgradeDowngrade } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { InsiderTransactionsResult } from '@/services/insider-transactions';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
@@ -27,9 +29,33 @@ function list(items: string[], cssClass: string): string {
   return `<ul class="${cssClass}" style="margin:8px 0 0;padding-left:18px;font-size:12px;line-height:1.5">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
 }
 
+function formatDollarCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `$${(value / 1e3).toFixed(0)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+function txCodeLabel(code: string): string {
+  if (code === 'P') return 'Buy';
+  if (code === 'S') return 'Sell';
+  if (code === 'M') return 'Exercise';
+  if (code === 'A') return 'Award';
+  if (code === 'D') return 'Disposition';
+  if (code === 'F') return 'Tax/Fee';
+  return code;
+}
+
 export class StockAnalysisPanel extends Panel {
+  private insiderBySymbol: Record<string, InsiderTransactionsResult> = {};
+
   constructor() {
     super({ id: 'stock-analysis', title: 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip'), premium: 'locked' });
+  }
+
+  public setInsiderData(symbol: string, data: InsiderTransactionsResult): void {
+    this.insiderBySymbol[symbol] = data;
   }
 
   public renderAnalyses(items: StockAnalysisResult[], historyBySymbol: StockAnalysisHistory = {}, source: 'live' | 'cached' = 'live'): void {
@@ -51,6 +77,55 @@ export class StockAnalysisPanel extends Panel {
     `;
 
     this.setContent(html);
+  }
+
+  private formatDividendRate(rate: number, currency: string): string {
+    const trimmed = (currency || '').trim().toUpperCase();
+    if (trimmed && trimmed !== 'USD') {
+      try {
+        return `${new Intl.NumberFormat('en-US', { style: 'currency', currency: trimmed }).format(rate)}/share`;
+      } catch {
+        return `${trimmed} ${rate.toFixed(2)}/share`;
+      }
+    }
+    return `$${rate.toFixed(2)}/share`;
+  }
+
+  private renderDividendProfile(item: StockAnalysisResult): string {
+    if (!item.dividendYield || item.dividendYield <= 0) return '';
+
+    const yieldStr = `${item.dividendYield.toFixed(1)}%`;
+    const rateStr = item.trailingAnnualDividendRate > 0
+      ? ` (${this.formatDividendRate(item.trailingAnnualDividendRate, item.currency)})`
+      : '';
+    const cagrStr = item.dividendCagr !== 0
+      ? `${item.dividendCagr > 0 ? '+' : ''}${item.dividendCagr.toFixed(1)}%`
+      : 'N/A';
+    const freqBadge = item.dividendFrequency
+      ? `<span class="badge-neutral" style="font-size:10px;padding:2px 6px;border-radius:3px">${escapeHtml(item.dividendFrequency)}</span>`
+      : '';
+    const exDateStr = item.exDividendDate > 0
+      ? new Date(item.exDividendDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'N/A';
+
+    const hasPayoutRatio = typeof item.payoutRatio === 'number' && item.payoutRatio > 0;
+    const payoutPctStr = hasPayoutRatio ? `${(item.payoutRatio! * 100).toFixed(1)}%` : '';
+    const payoutCell = hasPayoutRatio
+      ? `<div><div style="color:var(--text-dim)">Payout Ratio</div><div style="margin-top:3px">${escapeHtml(payoutPctStr)}</div></div>`
+      : '';
+
+    return `
+      <div style="border:1px solid var(--border);padding:10px 12px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">Dividend Profile</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:11px">
+          <div><div style="color:var(--text-dim)">Yield</div><div style="margin-top:3px">${escapeHtml(yieldStr)}${escapeHtml(rateStr)}</div></div>
+          <div><div style="color:var(--text-dim)">5Y CAGR</div><div style="margin-top:3px">${escapeHtml(cagrStr)}</div></div>
+          <div><div style="color:var(--text-dim)">Frequency</div><div style="margin-top:3px">${freqBadge || 'N/A'}</div></div>
+          ${payoutCell}
+          <div><div style="color:var(--text-dim)">Ex-Dividend</div><div style="margin-top:3px">${escapeHtml(exDateStr)}</div></div>
+        </div>
+      </div>
+    `;
   }
 
   private renderCard(item: StockAnalysisResult, history: StockAnalysisResult[]): string {
@@ -94,6 +169,7 @@ export class StockAnalysisPanel extends Panel {
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">RSI 12</div><div style="margin-top:4px">${escapeHtml(item.rsi12.toFixed(1))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Volume</div><div style="margin-top:4px">${escapeHtml(item.volumeStatus)}</div></div>
         </div>
+        ${this.renderDividendProfile(item)}
         <div style="font-size:12px;line-height:1.55;color:var(--text)"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Action</strong><div style="margin-top:4px">${escapeHtml(item.action)}</div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
           <div>
@@ -129,8 +205,193 @@ export class StockAnalysisPanel extends Panel {
             `).join('')}
           </div>
         ` : ''}
+        ${this.renderInsiderSection(item.symbol)}
         ${headlines ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">${headlines}</div>` : ''}
+        ${this.renderAnalystConsensus(item)}
       </section>
     `;
+  }
+
+  private renderAnalystConsensus(item: StockAnalysisResult): string {
+    const consensus = item.analystConsensus;
+    const pt = item.priceTarget;
+    const upgrades = item.recentUpgrades;
+    const hasConsensus = consensus && consensus.total > 0;
+    const hasMean = typeof pt?.mean === 'number' && pt.mean > 0;
+    const hasMedian = typeof pt?.median === 'number' && pt.median > 0;
+    const hasPriceTarget = !!pt && pt.numberOfAnalysts > 0 && (hasMean || hasMedian);
+    const hasUpgrades = upgrades && upgrades.length > 0;
+
+    if (!hasConsensus && !hasPriceTarget && !hasUpgrades) return '';
+
+    return `
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:10px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">Analyst Consensus</div>
+        ${hasConsensus ? this.renderRatingBar(consensus) : ''}
+        ${hasPriceTarget ? this.renderPriceTarget(pt, item.currentPrice, item.currency) : ''}
+        ${hasUpgrades ? this.renderRecentUpgrades(upgrades) : ''}
+      </div>
+    `;
+  }
+
+  private renderRatingBar(c: AnalystConsensus): string {
+    const total = c.total || 1;
+    const pct = (v: number) => ((v / total) * 100).toFixed(1);
+    const segments = [
+      { label: 'Strong Buy', count: c.strongBuy, color: '#16a34a', pct: pct(c.strongBuy) },
+      { label: 'Buy', count: c.buy, color: '#4ade80', pct: pct(c.buy) },
+      { label: 'Hold', count: c.hold, color: '#facc15', pct: pct(c.hold) },
+      { label: 'Sell', count: c.sell, color: '#f87171', pct: pct(c.sell) },
+      { label: 'Strong Sell', count: c.strongSell, color: '#dc2626', pct: pct(c.strongSell) },
+    ].filter((s) => s.count > 0);
+
+    const bar = segments.map((s) =>
+      `<div style="flex:${s.count};background:${s.color};height:8px;min-width:2px" title="${escapeHtml(s.label)}: ${s.count} (${s.pct}%)"></div>`
+    ).join('');
+
+    const legend = segments.map((s) =>
+      `<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:${s.color};display:inline-block"></span>${s.count}</span>`
+    ).join('<span style="color:var(--border);margin:0 4px">|</span>');
+
+    return `
+      <div style="margin-bottom:8px">
+        <div style="display:flex;gap:1px;border-radius:4px;overflow:hidden;margin-bottom:4px">${bar}</div>
+        <div style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;flex-wrap:wrap;gap:2px">${legend}<span style="margin-left:6px;color:var(--text-dim)">(${total} analysts)</span></div>
+      </div>
+    `;
+  }
+
+  private renderPriceTarget(pt: PriceTarget, currentPrice: number, currency: string): string {
+    const currSymbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : (currency || '$');
+    const isSymbolPrefix = currSymbol.length === 1;
+    const fmt = (v: number) => isSymbolPrefix ? `${currSymbol}${v.toFixed(2)}` : `${v.toFixed(2)} ${currSymbol}`;
+
+    const hasVal = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
+    const low = hasVal(pt.low) ? pt.low : undefined;
+    const high = hasVal(pt.high) ? pt.high : undefined;
+    const mean = hasVal(pt.mean) ? pt.mean : undefined;
+    const median = hasVal(pt.median) ? pt.median : undefined;
+    const displayMedian = median ?? mean;
+
+    if (!displayMedian) return '';
+
+    const cells: string[] = [];
+    if (low !== undefined) {
+      cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Low</div><div style="margin-top:2px">${escapeHtml(fmt(low))}</div></div>`);
+    }
+    cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Median</div><div style="margin-top:2px">${escapeHtml(fmt(displayMedian))}</div></div>`);
+    if (high !== undefined) {
+      cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">High</div><div style="margin-top:2px">${escapeHtml(fmt(high))}</div></div>`);
+    }
+    cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Analysts</div><div style="margin-top:2px">${escapeHtml(String(pt.numberOfAnalysts))}</div></div>`);
+
+    if (currentPrice > 0) {
+      const upsidePct = ((displayMedian - currentPrice) / currentPrice) * 100;
+      const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+      const upsideStr = `${upsidePct >= 0 ? '+' : ''}${upsidePct.toFixed(1)}%`;
+      cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">vs Current</div><div style="margin-top:2px;color:${upsideColor}">${escapeHtml(upsideStr)}</div></div>`);
+    }
+
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;margin-bottom:8px">${cells.join('')}</div>`;
+  }
+
+  private renderRecentUpgrades(upgrades: UpgradeDowngrade[]): string {
+    const rows = upgrades.slice(0, 3).map((u) => {
+      const actionColor = u.action === 'up' || u.action === 'init' ? 'var(--semantic-normal)' : u.action === 'down' ? 'var(--semantic-critical)' : 'var(--text-dim)';
+      const actionLabel = u.action === 'up' ? 'Upgrade' : u.action === 'down' ? 'Downgrade' : u.action === 'init' ? 'Initiated' : escapeHtml(u.action);
+      const gradeChange = u.fromGrade ? `${escapeHtml(u.fromGrade)} → ${escapeHtml(u.toGrade)}` : escapeHtml(u.toGrade);
+
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--border);background:rgba(255,255,255,0.02);font-size:11px">
+          <span style="font-weight:500">${escapeHtml(u.firm)}</span>
+          <span style="color:${actionColor};white-space:nowrap">${actionLabel}</span>
+          <span style="color:var(--text-dim);white-space:nowrap">${gradeChange}</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="display:grid;gap:4px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Recent Actions</div>
+        ${rows}
+      </div>
+    `;
+  }
+
+  private renderInsiderSection(symbol: string): string {
+    const data = this.insiderBySymbol[symbol];
+    // Unknown / not yet fetched: omit the section entirely. A later
+    // re-render from loadInsiderDataForPanel fills it in, so we avoid a
+    // transient "Insider data unavailable" flash on initial render before
+    // the RPC completes.
+    if (data === undefined) {
+      return '';
+    }
+    if (data.unavailable) {
+      return `
+        <div style="font-size:11px;color:var(--text-dim);padding:8px;border:1px solid var(--border)">
+          Insider data unavailable
+        </div>`;
+    }
+    if (data.transactions.length === 0 && data.totalBuys === 0 && data.totalSells === 0) {
+      return `
+        <div style="font-size:11px;color:var(--text-dim);padding:8px;border:1px solid var(--border)">
+          No insider transactions in the last 6 months
+        </div>`;
+    }
+
+    const buysStr = formatDollarCompact(data.totalBuys);
+    const sellsStr = formatDollarCompact(data.totalSells);
+    const netStr = `${data.netValue >= 0 ? '+' : ''}${formatDollarCompact(data.netValue)}`;
+    const netColor = data.netValue >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+
+    const summary = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;font-family:var(--font-mono)">
+        <span>Buys: <span style="color:var(--semantic-normal)">${escapeHtml(buysStr)}</span></span>
+        <span>Sells: <span style="color:var(--semantic-critical)">${escapeHtml(sellsStr)}</span></span>
+        <span>Net: <span style="color:${netColor};font-weight:600">${escapeHtml(netStr)}</span></span>
+      </div>`;
+
+    const rows = data.transactions.slice(0, 5);
+    const table = rows.length > 0 ? `
+      <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px">
+        <thead>
+          <tr style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;text-align:left">
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border)">Type</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Shares</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Value</th>
+            <th style="padding:4px 6px;border-bottom:1px solid var(--border)">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(tx => {
+            const isBuy = tx.transactionCode === 'P';
+            const isSell = tx.transactionCode === 'S';
+            const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical)' : 'var(--text-dim)';
+            // Non-market rows (M/A/D/F) carry value: 0 from the server because
+            // their transactionPrice is not a market execution price (strike,
+            // grant price, buyback redemption, or tax withholding). Render a
+            // dash so users do not read a misleading dollar figure that
+            // contradicts the buy/sell totals (which only count P and S).
+            const valueCell = tx.value === 0 ? '—' : formatDollarCompact(tx.value);
+            return `
+              <tr>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:${typeColor}">${escapeHtml(txCodeLabel(tx.transactionCode))}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${Number.isFinite(tx.shares) ? tx.shares.toLocaleString() : '0'}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${valueCell}</td>
+                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:var(--text-dim)">${escapeHtml(tx.transactionDate)}</td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : '';
+
+    return `
+      <div style="display:grid;gap:6px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Insider Activity (6 months)</div>
+        ${summary}
+        ${table}
+      </div>`;
   }
 }

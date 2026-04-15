@@ -82,7 +82,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
       'market:crypto:v1',
-      'market:sectors:v1',
+      'market:sectors:v2',
       'market:etf-flows:v1',
       'market:gulf-quotes:v1',
       'market:fear-greed:v1',
@@ -154,7 +154,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_economic_data',
-    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, and energy storage data.',
+    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'economic:fred:v1:FEDFUNDS:0',
@@ -165,9 +165,65 @@ const TOOL_REGISTRY: ToolDef[] = [
       'economic:spending:v1',
       'market:earnings-calendar:v1',
       'market:cot:v1',
+      'economic:bis:dsr:v1',
+      'economic:bis:property-residential:v1',
+      'economic:bis:property-commercial:v1',
     ],
     _seedMetaKey: 'seed-meta:economic:econ-calendar',
     _maxStaleMin: 1440,
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:econ-calendar', maxStaleMin: 1440 },
+      // Per-dataset BIS seed-meta keys — the aggregate
+      // `seed-meta:economic:bis-extended` would report "fresh" even if only
+      // one of the three datasets (DSR / SPP / CPP) is current, matching the
+      // false-freshness bug already fixed for /api/health and resilience.
+      { key: 'seed-meta:economic:bis-dsr', maxStaleMin: 1440 }, // 12h cron × 2
+      { key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
+      { key: 'seed-meta:economic:bis-property-commercial', maxStaleMin: 1440 },
+    ],
+  },
+  {
+    name: 'get_country_macro',
+    description: 'Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'economic:imf:macro:v2',
+      'economic:imf:growth:v1',
+      'economic:imf:labor:v1',
+      'economic:imf:external:v1',
+    ],
+    _seedMetaKey: 'seed-meta:economic:imf-macro',
+    _maxStaleMin: 100800, // monthly WEO release; 70d = 2× interval (absorbs one missed run)
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:imf-macro', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-growth', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-labor', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-external', maxStaleMin: 100800 },
+    ],
+  },
+  {
+    name: 'get_eu_housing_cycle',
+    description: 'Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:house-prices:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-house-prices',
+    _maxStaleMin: 60 * 24 * 50, // weekly cron, annual data
+  },
+  {
+    name: 'get_eu_quarterly_gov_debt',
+    description: 'Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-gov-debt-q',
+    _maxStaleMin: 60 * 24 * 14, // quarterly data, 2-day cron
+  },
+  {
+    name: 'get_eu_industrial_production',
+    description: 'Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:industrial-production:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-industrial-production',
+    _maxStaleMin: 60 * 24 * 5, // monthly data, daily cron
   },
   {
     name: 'get_prediction_markets',

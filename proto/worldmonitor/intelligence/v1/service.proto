@@ -24,6 +24,9 @@ import "worldmonitor/intelligence/v1/get_social_velocity.proto";
 import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
 import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
 import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
+import "worldmonitor/intelligence/v1/get_regional_snapshot.proto";
+import "worldmonitor/intelligence/v1/get_regime_history.proto";
+import "worldmonitor/intelligence/v1/get_regional_brief.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
@@ -170,5 +173,25 @@ service IntelligenceService {
   // GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
   rpc GetCountryPortActivity(GetCountryPortActivityRequest) returns (CountryPortActivityResponse) {
     option (sebuf.http.config) = {path: "/get-country-port-activity", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a
+  // region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;
+  // this handler only reads canonical state. Premium-gated.
+  rpc GetRegionalSnapshot(GetRegionalSnapshotRequest) returns (GetRegionalSnapshotResponse) {
+    option (sebuf.http.config) = {path: "/get-regional-snapshot", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegimeHistory returns the region's regime transition log newest-first.
+  // Entries are append-only from the seed writer, recorded only when
+  // diffRegionalSnapshot reports regime_changed. Premium-gated.
+  rpc GetRegimeHistory(GetRegimeHistoryRequest) returns (GetRegimeHistoryResponse) {
+    option (sebuf.http.config) = {path: "/get-regime-history", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegionalBrief returns the latest weekly intelligence brief for a region.
+  // Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
+  rpc GetRegionalBrief(GetRegionalBriefRequest) returns (GetRegionalBriefResponse) {
+    option (sebuf.http.config) = {path: "/get-regional-brief", method: HTTP_METHOD_GET};
   }
 }

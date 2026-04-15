@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// EnergyCrisisPolicy represents a single government policy response to the 2026 energy crisis.
+message EnergyCrisisPolicy {
+  // Country name.
+  string country = 1;
+  // ISO 3166-1 alpha-2 country code.
+  string country_code = 2;
+  // Policy category: "conservation" or "consumer_support".
+  string category = 3;
+  // Affected sector: transport, buildings, industry, electricity, agriculture, general.
+  string sector = 4;
+  // Description of the policy measure.
+  string measure = 5;
+  // Date announced in ISO-8601 (YYYY-MM-DD) format.
+  string date_announced = 6;
+  // Status of the policy: active, planned, or ended.
+  string status = 7;
+}
+
+// GetEnergyCrisisPoliciesRequest allows optional filtering by country or category.
+message GetEnergyCrisisPoliciesRequest {
+  // Optional ISO-2 country code filter.
+  string country_code = 1 [(sebuf.http.query) = { name: "country_code" }];
+  // Optional category filter: "conservation" or "consumer_support".
+  string category = 2 [(sebuf.http.query) = { name: "category" }];
+}
+
+// GetEnergyCrisisPoliciesResponse contains energy crisis policy data from the IEA tracker.
+message GetEnergyCrisisPoliciesResponse {
+  // Source attribution.
+  string source = 1;
+  // Source URL.
+  string source_url = 2;
+  // Context description.
+  string context = 3;
+  // The list of policy responses.
+  repeated EnergyCrisisPolicy policies = 4;
+  // UTC ISO-8601 timestamp when this data was last updated.
+  string updated_at = 5;
+  // True when upstream seed data is unavailable (fallback result).
+  bool unavailable = 6;
+}

@@ -306,11 +306,19 @@ function validate(data) {
   return Array.isArray(data?.events) && data.events.length > 0;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.events) ? data.events.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-economic-calendar.mjs')) {
   runSeed('economic', 'econ-calendar', CANONICAL_KEY, fetchEconomicCalendar, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'fred-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 1440,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -76,7 +76,7 @@
     "intelBrief": "Intelligence Brief",
     "generatingBrief": "Generating intelligence brief...",
     "topNews": "Top News",
-    "activeSignals": "Active Signals",
+    "activeSignals": "Country Signals",
     "timeline": "7-Day Timeline",
     "predictionMarkets": "Prediction Markets",
     "loadingMarkets": "Loading prediction markets...",
@@ -300,6 +300,9 @@
     "asia": "Asia-Pacific",
     "energy": "Energy & Resources",
     "energyComplex": "Energy Complex",
+    "oilInventories": "Oil Inventories",
+    "energyCrisis": "Energy Crisis Tracker",
+    "goldIntelligence": "Gold Intelligence",
     "gov": "Government",
     "thinktanks": "Think Tanks",
     "polymarket": "Predictions",
@@ -319,6 +322,7 @@
     "etfFlows": "BTC ETF Tracker",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
+    "wsbTickerScanner": "WSB Ticker Scanner",
     "ucdpEvents": "Armed Conflict Events",
     "giving": "Global Giving",
     "displacement": "UNHCR Displacement",
@@ -377,6 +381,7 @@
     "airlineIntel": "✈️ Airline Intelligence",
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
+    "marketBreadth": "Market Breadth",
     "climateNews": "Climate News"
   },
   "commands": {
@@ -709,7 +714,7 @@
       "intelBrief": "Intelligence Brief",
       "generatingBrief": "Generating intelligence brief...",
       "topNews": "Top News",
-      "activeSignals": "Active Signals",
+      "activeSignals": "Country Signals",
       "timeline": "7-Day Timeline",
       "predictionMarkets": "Prediction Markets",
       "loadingMarkets": "Loading prediction markets...",
@@ -902,6 +907,9 @@
         "steadyDetail": "Macro conditions are stable for now."
       },
       "infoTooltip": "<strong>Macro Stress</strong> Macro gauges, government spending, and central bank data:<ul><li><strong>Indicators</strong>: VIX, rates, yield curve, labor, inflation</li><li><strong>Gov</strong>: Recent US government contract awards</li><li><strong>Central Banks</strong>: BIS policy rates and exchange rate data</li></ul>"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>Oil Inventories</strong> US crude oil and SPR stockpiles (EIA weekly), natural gas storage, EU gas fill percentage (GIE AGSI+), and OECD oil stocks days-of-cover (IEA monthly)."
     },
     "energyComplex": {
       "noData": "Energy data temporarily unavailable - will retry",
@@ -2079,6 +2087,22 @@
     "cotPositioning": {
       "infoTooltip": "<strong>CFTC COT Positioning</strong> Commitments of Traders report: net positioning of commercials, large speculators, and small traders across commodity and financial futures. Published weekly (Friday). Source: CFTC."
     },
+    "liquidityShifts": {
+      "title": "Liquidity Shifts",
+      "infoTooltip": "<strong>Liquidity Shifts</strong> High-liquidity positioning and daily shift monitor for oil, gold, silver, equity index futures, and top US stocks. COT asset-manager net and leveraged-funds net vs daily price change.",
+      "cotSection": "Oil / Gold / Silver + Index Positioning (COT)",
+      "stocksSection": "Top US Stocks: Daily Shift",
+      "longShort": "Long {{long}} / Short {{short}}",
+      "lev": "Lev",
+      "noCot": "No COT rows available.",
+      "noStocks": "No top stock quotes available.",
+      "reportDate": "COT report date: {{date}}",
+      "unavailable": "Liquidity data unavailable",
+      "failed": "Failed to load"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>Gold Intelligence</strong> Gold spot price, gold/silver ratio, gold vs platinum premium, cross-currency XAU prices (EUR, GBP, JPY, CNY, INR, CHF), and CFTC managed money positioning. Sources: Yahoo Finance, CFTC COT."
+    },
     "counters": {
       "infoTooltip": "<strong>Live Counters</strong> Real-time extrapolated counters for global metrics: military spending, natural disasters, disease burden, and more. Figures are statistical estimates based on annual data rates."
     },
@@ -2093,6 +2117,9 @@
     },
     "fsi": {
       "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City."
+    },
+    "energyCrisis": {
+      "infoTooltip": "<strong>Energy Crisis Tracker</strong> IEA 2026 Energy Crisis Policy Response Tracker. Tracks government measures to conserve energy and support consumers in response to the Middle East conflict and Strait of Hormuz supply disruptions. Covers 60+ countries with nearly 200 policy measures."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily."
@@ -2111,6 +2138,9 @@
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Social Velocity</strong> Trending topics and viral content with geopolitical significance. Measures social media velocity: how rapidly a story spreads relative to baseline. Helps surface emerging narratives before they hit mainstream news."
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSB Ticker Scanner</strong> Real-time ticker mentions from r/wallstreetbets, r/stocks, and r/investing. Ranked by mention frequency and engagement. Velocity measures how rapidly a ticker gains momentum across posts."
     },
     "conservationWins": {
       "infoTooltip": "<strong>Conservation Wins</strong> Positive conservation news: species population recoveries, habitat restoration milestones, and de-extinction efforts. Sourced from IUCN, WWF, and conservation research publications."

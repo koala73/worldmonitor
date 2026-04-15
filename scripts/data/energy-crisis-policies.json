@@ -1,0 +1,1286 @@
+{
+  "source": "IEA 2026 Energy Crisis Policy Response Tracker",
+  "sourceUrl": "https://www.iea.org/data-and-statistics/data-tools/2026-energy-crisis-policy-response-tracker",
+  "context": "Policy responses to energy market impacts of Middle East conflict and Strait of Hormuz closure, 2026",
+  "lastScraped": "2026-04-12",
+  "policies": [
+    {
+      "country": "Australia",
+      "countryCode": "AU",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Encourages citizens to voluntarily reduce their fuel use",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Australia",
+      "countryCode": "AU",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel excise duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Australia",
+      "countryCode": "AU",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Interest-free loans to support most affected businesses",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Argentina",
+      "countryCode": "AR",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Allow higher bioethanol content in gasoline blend",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Argentina",
+      "countryCode": "AR",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Delay increases in fuel taxes",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Bangladesh",
+      "countryCode": "BD",
+      "category": "conservation",
+      "sector": "Cooling",
+      "measure": "Limit to 25 degrees",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Bangladesh",
+      "countryCode": "BD",
+      "category": "conservation",
+      "sector": "Schools and universities",
+      "measure": "Public and private university closure",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Bangladesh",
+      "countryCode": "BD",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Ask public and businesses to save energy, including unnecessary lighting",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Bangladesh",
+      "countryCode": "BD",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Fuel supply limits for vehicles; promote public transport",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Brunei",
+      "countryCode": "BN",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Limit fuel purchases for foreign vehicles and domestic vehicles leaving",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Chile",
+      "countryCode": "CL",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Freeze or contain rises in public transport fares; credits for taxis",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Chile",
+      "countryCode": "CL",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Suspend differentiated fuel credit",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Chile",
+      "countryCode": "CL",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Freeze on kerosene prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Cambodia",
+      "countryCode": "KH",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Hold meetings online for civil servants",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Cambodia",
+      "countryCode": "KH",
+      "category": "conservation",
+      "sector": "Cooling",
+      "measure": "Encourage limit to 24-25 degrees in public offices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Cambodia",
+      "countryCode": "KH",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Reduce long-distance official travel and avoid commuting in peak hours",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Cambodia",
+      "countryCode": "KH",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "State-owned electricity company urging public to reduce electricity use",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Cambodia",
+      "countryCode": "KH",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Reductions in import taxes for products related to EVs, renewables",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Egypt",
+      "countryCode": "EG",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "One day remote work for public sector",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Egypt",
+      "countryCode": "EG",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Limit travel by public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Egypt",
+      "countryCode": "EG",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Daily closing of administrative capital at 6pm to turn off lighting",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Egypt",
+      "countryCode": "EG",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Ask public to save fuel, limit commercial and public lighting, close shops",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Egypt",
+      "countryCode": "EG",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Promote public transport and cut fuel use by government administrations",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Egypt",
+      "countryCode": "EG",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Subsidise diesel and gasoline prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Ethiopia",
+      "countryCode": "ET",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Urge public to be frugal in use of fuel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "India",
+      "countryCode": "IN",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Cap industry natural gas usage, speed up piped natural gas rollout",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "India",
+      "countryCode": "IN",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut petrol and diesel excise duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Indonesia",
+      "countryCode": "ID",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Work from home on Fridays for civil servants",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Indonesia",
+      "countryCode": "ID",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Limit travel by public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Indonesia",
+      "countryCode": "ID",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Encourage energy saving strategies in government office buildings",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Indonesia",
+      "countryCode": "ID",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Accelerate biodiesel programme and limit purchases of subsidised fuel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Indonesia",
+      "countryCode": "ID",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Increase the state budget for fuel subsidies",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Jordan",
+      "countryCode": "JO",
+      "category": "conservation",
+      "sector": "Cooling",
+      "measure": "Ban AC use in public offices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Jordan",
+      "countryCode": "JO",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Temporary ban of international travel for public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Jordan",
+      "countryCode": "JO",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Curbs on use of government vehicles",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Korea",
+      "countryCode": "KR",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Mandate 2-day odd-even no driving by number plate for public sector",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Korea",
+      "countryCode": "KR",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Public campaign on practical saving actions encouraging top companies",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Korea",
+      "countryCode": "KR",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Ask private vehicles to not drive 1 day per week, limit public parking",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Korea",
+      "countryCode": "KR",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Provide cash vouchers to bottom 70% of income groups, extra support",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Korea",
+      "countryCode": "KR",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Domestic fuel price cap",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Lao PDR",
+      "countryCode": "LA",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Remote work and rotating shifts for civil servants",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Lao PDR",
+      "countryCode": "LA",
+      "category": "conservation",
+      "sector": "Schools and universities",
+      "measure": "Shorten school week from five to three days",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Lao PDR",
+      "countryCode": "LA",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Ask public to conserve fuel in campaign",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Lao PDR",
+      "countryCode": "LA",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Encourage public transport, lower excise tax electric transport",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Lao PDR",
+      "countryCode": "LA",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel excise duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Lao PDR",
+      "countryCode": "LA",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Allocate funds from subsidy programme to stabilise prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Lithuania",
+      "countryCode": "LT",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Reduce local train fares by 50% for two months",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Malaysia",
+      "countryCode": "MY",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Remote work for civil servants",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Malaysia",
+      "countryCode": "MY",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Limit travel by public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Maldives",
+      "countryCode": "MV",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Temporarily half-fill LPG cylinders for cooking",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Mauritius",
+      "countryCode": "MU",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Restrict non-essential electricity use decorative lightning, heating",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Myanmar",
+      "countryCode": "MM",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Mandatory remote work on Wednesdays for public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Myanmar",
+      "countryCode": "MM",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Alternate driving days, fuel rationing",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Nepal",
+      "countryCode": "NP",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Restrict use of government vehicles",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Nepal",
+      "countryCode": "NP",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Ration LPG for cooking, ask public to limit travel and adopt practices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "4-day work week for officials, 50% remote work on remaining days",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Ban on foreign travel by public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "category": "conservation",
+      "sector": "Schools and universities",
+      "measure": "100% online classes, remote work encouraged",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Ask local governments to save energy, no official dinners or meetings",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Pakistan",
+      "countryCode": "PK",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Reduce speed limit on highways, vehicle purchase ban, free public transport",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Peru",
+      "countryCode": "PE",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Encourage public and private sector to work remotely",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Peru",
+      "countryCode": "PE",
+      "category": "conservation",
+      "sector": "Schools and universities",
+      "measure": "Shift schools to online classes",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Philippines",
+      "countryCode": "PH",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "4-day work week for public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Philippines",
+      "countryCode": "PH",
+      "category": "conservation",
+      "sector": "Cooling",
+      "measure": "Encourage limit to 24 degrees in public offices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Philippines",
+      "countryCode": "PH",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Limit non-essential government travel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Philippines",
+      "countryCode": "PH",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Declare national energy emergency, ask agencies to reduce consumption",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Philippines",
+      "countryCode": "PH",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Free bus rides for students and workers in selected cities",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Philippines",
+      "countryCode": "PH",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Fuel subsidies for bus, taxi, delivery, ride-hailing drivers and workers",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Philippines",
+      "countryCode": "PH",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Lower fuel excise taxes",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Senegal",
+      "countryCode": "SN",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Call to adapt energy consumption habits",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Singapore",
+      "countryCode": "SG",
+      "category": "conservation",
+      "sector": "Cooling",
+      "measure": "Encourage raising AC temperature setpoints",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Singapore",
+      "countryCode": "SG",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Urge public to conserve energy, use efficient appliances, expand grants",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Singapore",
+      "countryCode": "SG",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Encourage less private car use, more public transport and carpooling",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Singapore",
+      "countryCode": "SG",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Increase corporate income tax rebate for 2026",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Singapore",
+      "countryCode": "SG",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Provide generic cash reliefs and targeted support for taxi drivers",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Slovak Republic",
+      "countryCode": "SK",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Cap fuel purchases, higher prices for foreign number plates",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Slovenia",
+      "countryCode": "SI",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Temporarily cap fuel purchases",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Slovenia",
+      "countryCode": "SI",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Reduction of excise duty on petrol, diesel and heating oil",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Spain",
+      "countryCode": "ES",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Reduce personal income tax for renovations, solar installation",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Spain",
+      "countryCode": "ES",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel VAT and suspend the hydrocarbon excise duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Spain",
+      "countryCode": "ES",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Change regulation to promote new energy communities",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Sri Lanka",
+      "countryCode": "LK",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Encourage less private car use, more public transport and carpooling",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Sri Lanka",
+      "countryCode": "LK",
+      "category": "conservation",
+      "sector": "Cooling",
+      "measure": "Limit offices to 26 degrees, encourage 1-2 hr switch off daily",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Sri Lanka",
+      "countryCode": "LK",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Limit public official travel, encourage public transport",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Sri Lanka",
+      "countryCode": "LK",
+      "category": "conservation",
+      "sector": "Schools and universities",
+      "measure": "Close schools and universities on Wednesdays",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Sri Lanka",
+      "countryCode": "LK",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Nationwide QR code fuel rationing, 9pm billboard lighting switch off",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Sri Lanka",
+      "countryCode": "LK",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Fuel quotas for private cars and motorcycles",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Thailand",
+      "countryCode": "TH",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Encourage remote work and video conferencing in public and private",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Thailand",
+      "countryCode": "TH",
+      "category": "conservation",
+      "sector": "Cooling",
+      "measure": "Encourage limit to 26 degrees",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Thailand",
+      "countryCode": "TH",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Avoid overseas travel by public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Thailand",
+      "countryCode": "TH",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Ask office workers to limit demand including stairs, turning off devices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Thailand",
+      "countryCode": "TH",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Encourage carpooling and limit unnecessary travel, increase biofuel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Thailand",
+      "countryCode": "TH",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Freeze fuel cooking prices until May",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Thailand",
+      "countryCode": "TH",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Provide fuel subsidies under the Oil Fuel Fund",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Viet Nam",
+      "countryCode": "VN",
+      "category": "conservation",
+      "sector": "Work from home",
+      "measure": "Encourage remote work",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Viet Nam",
+      "countryCode": "VN",
+      "category": "conservation",
+      "sector": "Government travel",
+      "measure": "Limit travel by public officials",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Viet Nam",
+      "countryCode": "VN",
+      "category": "conservation",
+      "sector": "Campaign",
+      "measure": "Ask local governments to help save energy",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Viet Nam",
+      "countryCode": "VN",
+      "category": "conservation",
+      "sector": "Transport",
+      "measure": "Discourage private vehicle use, promote public transport and carpooling",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Viet Nam",
+      "countryCode": "VN",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel import tariffs until 30 April",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Viet Nam",
+      "countryCode": "VN",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Provide extra funds to existing fuel price stabilisation mechanism",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Albania",
+      "countryCode": "AL",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel excise duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Austria",
+      "countryCode": "AT",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Cap fuel-retailer margins",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Austria",
+      "countryCode": "AT",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut gasoline and diesel taxes",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Barbados",
+      "countryCode": "BB",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Lock in heavy fuel oil price for 3 months",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Barbados",
+      "countryCode": "BB",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Subsidise electricity",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Barbados",
+      "countryCode": "BB",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cap VAT on natural gas and diesel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Brazil",
+      "countryCode": "BR",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Subsidise fuel for producers and importers",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Brazil",
+      "countryCode": "BR",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Lower energy tax on diesel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Cambodia",
+      "countryCode": "KH",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut in fuel VAT",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Cambodia",
+      "countryCode": "KH",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Increase government oversight to prevent fuel pump price gouging",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "China",
+      "countryCode": "CN",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Put controls on domestic refined oil prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Croatia",
+      "countryCode": "HR",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Cap oil and diesel prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Croatia",
+      "countryCode": "HR",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel excise duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Czechia",
+      "countryCode": "CZ",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Cap fuel retailers' profit margins",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Czechia",
+      "countryCode": "CZ",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut excise tax",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "France",
+      "countryCode": "FR",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Provide targeted temporary support for key sectors transport, fishing",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Germany",
+      "countryCode": "DE",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Limit for fuel stations to raise prices only once per day",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Greece",
+      "countryCode": "GR",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Cap profit margins on fuel for 3 months",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Greece",
+      "countryCode": "GR",
+      "category": "consumer_support",
+      "sector": "Fuel subsidies",
+      "measure": "Subsidise diesel, fuel card for households and subsidy on fertilizer",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Hungary",
+      "countryCode": "HU",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Cap fuel prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Ireland",
+      "countryCode": "IE",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Fuel allowance extension and diesel rebate increase",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Ireland",
+      "countryCode": "IE",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut excise rates on petrol and diesel and reduce NORA levy",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Ireland",
+      "countryCode": "IE",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Targeted energy supports for pensioners, carers and people with disabilities",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Italy",
+      "countryCode": "IT",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel excise taxes",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Japan",
+      "countryCode": "JP",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Subsidy-backed fuel price cap",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Latvia",
+      "countryCode": "LV",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Reduction of excise duty on diesel and green diesel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Mexico",
+      "countryCode": "MX",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Existing agreement with fuel retailers to cap gasoline prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Morocco",
+      "countryCode": "MA",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Payment of direct and exceptional support for professionals",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Mozambique",
+      "countryCode": "MZ",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Cap retail fuel prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Namibia",
+      "countryCode": "NA",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel levies",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "New Zealand",
+      "countryCode": "NZ",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Relief package to help vulnerable families",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Poland",
+      "countryCode": "PL",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Cap petrol and diesel prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Poland",
+      "countryCode": "PL",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut VAT on fuel and reduce excise duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Portugal",
+      "countryCode": "PT",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel tax temporarily",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Serbia",
+      "countryCode": "RS",
+      "category": "consumer_support",
+      "sector": "Price caps",
+      "measure": "Temporarily cap fuel prices",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Serbia",
+      "countryCode": "RS",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel excise duties",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "South Africa",
+      "countryCode": "ZA",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut fuel levy",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Sweden",
+      "countryCode": "SE",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Temporary cut vehicle fuels duty",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Türkiye",
+      "countryCode": "TR",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Lower fuel tax on oil",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "United Kingdom",
+      "countryCode": "GB",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Heating support for vulnerable consumers",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "United Kingdom",
+      "countryCode": "GB",
+      "category": "consumer_support",
+      "sector": "Other",
+      "measure": "Accelerate Warm Homes Plan, work to approve plug-in solar",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    },
+    {
+      "country": "Zambia",
+      "countryCode": "ZM",
+      "category": "consumer_support",
+      "sector": "Taxation",
+      "measure": "Cut VAT on petrol and diesel",
+      "status": "active",
+      "dateAnnounced": "2026-04-07"
+    }
+  ]
+}

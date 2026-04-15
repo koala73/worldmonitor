@@ -4,6 +4,22 @@ description: "Real-time vessel tracking with chokepoint monitoring, traffic dens
 ---
 The Ships layer provides real-time vessel tracking and maritime domain awareness through AIS (Automatic Identification System) data, monitoring critical chokepoints, detecting anomalous vessel behavior, and streaming position updates over WebSocket connections.
 
+## Route Explorer
+
+The Route Explorer lets users plan shipments between any two countries by querying real-time maritime route intelligence. Open it via **CMD+K** and search for "route".
+
+**Features:**
+- **Country pair + HS2 product picker** with typeahead search across 197 port-clustered countries and 50 HS2 chapters
+- **Current route tab** showing the primary maritime lane, chokepoint exposures ranked by severity, estimated transit days and freight ranges
+- **Alternatives tab** with ranked bypass sea routes including cost deltas, transit deltas, and war risk tiers
+- **Land tab** showing overland corridor options where available, with honest empty states for unmodeled regions
+- **Impact tab** showing strategic-product trade data, lane value at risk, dependency flags, and resilience scores
+- **Map integration** highlighting the selected route with bypass arc overlays
+- **Keyboard-first design** with digit-based tab switching (1-4), picker shortcuts (F/T/P/S), and a cheat sheet (?)
+- **URL state sharing** via `?explorer=from:CN,to:DE,hs:85`
+
+PRO users get full route intelligence. Free users see a public route highlight on the map with details blurred behind an upgrade prompt.
+
 ## Chokepoint Monitoring
 
 The system monitors 13 strategic waterways where disruptions could impact global trade, powered by three data sources: IMF PortWatch (weekly vessel transit counts), AISStream (real-time 24h crossing counter), and CorridorRisk (risk intelligence).

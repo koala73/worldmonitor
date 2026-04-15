@@ -28,6 +28,8 @@ import "worldmonitor/economic/v1/get_eu_fsi.proto";
 import "worldmonitor/economic/v1/get_economic_stress.proto";
 import "worldmonitor/economic/v1/get_fao_food_price_index.proto";
 import "worldmonitor/economic/v1/get_oil_stocks_analysis.proto";
+import "worldmonitor/economic/v1/get_oil_inventories.proto";
+import "worldmonitor/economic/v1/get_energy_crisis_policies.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -156,5 +158,14 @@ service EconomicService {
   // GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
   rpc GetOilStocksAnalysis(GetOilStocksAnalysisRequest) returns (GetOilStocksAnalysisResponse) {
     option (sebuf.http.config) = {path: "/get-oil-stocks-analysis", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetOilInventories(GetOilInventoriesRequest) returns (GetOilInventoriesResponse) {
+    option (sebuf.http.config) = {path: "/get-oil-inventories", method: HTTP_METHOD_GET};
+  }
+
+  // GetEnergyCrisisPolicies retrieves government policy responses to the 2026 energy crisis from the IEA tracker.
+  rpc GetEnergyCrisisPolicies(GetEnergyCrisisPoliciesRequest) returns (GetEnergyCrisisPoliciesResponse) {
+    option (sebuf.http.config) = {path: "/get-energy-crisis-policies", method: HTTP_METHOD_GET};
   }
 }

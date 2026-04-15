@@ -9,7 +9,7 @@ import {
   ENERGY_INTELLIGENCE_KEY,
   SPR_KEY,
   SPR_POLICIES_KEY,
-  REFINERY_UTIL_KEY,
+  REFINERY_INPUTS_KEY,
   ENERGY_SPINE_KEY_PREFIX,
 } from '../../../_shared/cache-keys';
 
@@ -362,7 +362,7 @@ async function buildSprLevel(): Promise<string | undefined> {
 
 async function buildRefineryUtil(): Promise<string | undefined> {
   try {
-    const data = await getCachedJson(REFINERY_UTIL_KEY, true);
+    const data = await getCachedJson(REFINERY_INPUTS_KEY, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
     if (typeof d.inputsMbblpd !== 'number') return undefined;

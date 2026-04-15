@@ -39,8 +39,8 @@ describe('resilience handlers', () => {
     });
 
     assert.equal(response.countryCode, 'US');
-    assert.equal(response.domains.length, 5);
-    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 13);
+    assert.equal(response.domains.length, 6);
+    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 19);
     assert.ok(response.overallScore > 0 && response.overallScore <= 100);
     assert.equal(response.level, response.overallScore >= 70 ? 'high' : response.overallScore >= 40 ? 'medium' : 'low');
     assert.equal(response.trend, 'rising');
@@ -55,7 +55,7 @@ describe('resilience handlers', () => {
     assert.ok(response.stressFactor >= 0 && response.stressFactor <= 0.5, `stressFactor out of bounds: ${response.stressFactor}`);
     assert.equal(response.dataVersion, '2024-04-03', 'dataVersion should be the ISO date from seed-meta fetchedAt');
 
-    const cachedScore = redis.get('resilience:score:v7:US');
+    const cachedScore = redis.get('resilience:score:v9:US');
     assert.ok(cachedScore, 'expected score cache to be written');
     assert.equal(JSON.parse(cachedScore || '{}').countryCode, 'US');
 

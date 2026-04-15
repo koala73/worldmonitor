@@ -220,6 +220,15 @@ export interface AnalyzeStockResponse {
   stopLoss: number;
   takeProfit: number;
   engineVersion: string;
+  analystConsensus?: AnalystConsensus;
+  priceTarget?: PriceTarget;
+  recentUpgrades: UpgradeDowngrade[];
+  dividendYield: number;
+  trailingAnnualDividendRate: number;
+  exDividendDate: number;
+  payoutRatio?: number;
+  dividendFrequency: string;
+  dividendCagr: number;
 }
 
 export interface StockAnalysisHeadline {
@@ -227,6 +236,33 @@ export interface StockAnalysisHeadline {
   source: string;
   link: string;
   publishedAt: number;
+}
+
+export interface AnalystConsensus {
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+  total: number;
+  period: string;
+}
+
+export interface PriceTarget {
+  high?: number;
+  low?: number;
+  mean?: number;
+  median?: number;
+  current?: number;
+  numberOfAnalysts: number;
+}
+
+export interface UpgradeDowngrade {
+  firm: string;
+  toGrade: string;
+  fromGrade: string;
+  action: string;
+  epochGradeDate: number;
 }
 
 export interface GetStockAnalysisHistoryRequest {
@@ -426,6 +462,192 @@ export interface CotInstrument {
   netPct: number;
 }
 
+export interface GetInsiderTransactionsRequest {
+  symbol: string;
+}
+
+export interface GetInsiderTransactionsResponse {
+  unavailable: boolean;
+  symbol: string;
+  totalBuys: number;
+  totalSells: number;
+  netValue: number;
+  transactions: InsiderTransaction[];
+  fetchedAt: string;
+}
+
+export interface InsiderTransaction {
+  name: string;
+  shares: number;
+  value: number;
+  transactionCode: string;
+  transactionDate: string;
+}
+
+export interface GetMarketBreadthHistoryRequest {
+}
+
+export interface GetMarketBreadthHistoryResponse {
+  currentPctAbove20d?: number;
+  currentPctAbove50d?: number;
+  currentPctAbove200d?: number;
+  updatedAt: string;
+  history: BreadthSnapshot[];
+  unavailable: boolean;
+}
+
+export interface BreadthSnapshot {
+  date: string;
+  pctAbove20d?: number;
+  pctAbove50d?: number;
+  pctAbove200d?: number;
+}
+
+export interface GetGoldIntelligenceRequest {
+}
+
+export interface GetGoldIntelligenceResponse {
+  goldPrice: number;
+  goldChangePct: number;
+  goldSparkline: number[];
+  silverPrice: number;
+  platinumPrice: number;
+  palladiumPrice: number;
+  goldSilverRatio?: number;
+  goldPlatinumPremiumPct?: number;
+  crossCurrencyPrices: GoldCrossCurrencyPrice[];
+  cot?: GoldCotPositioning;
+  updatedAt: string;
+  unavailable: boolean;
+  session?: GoldSessionRange;
+  returns?: GoldReturns;
+  range52w?: GoldRange52w;
+  drivers: GoldDriver[];
+  etfFlows?: GoldEtfFlows;
+  cbReserves?: GoldCbReserves;
+}
+
+export interface GoldCrossCurrencyPrice {
+  currency: string;
+  flag: string;
+  price: number;
+}
+
+export interface GoldCotPositioning {
+  reportDate: string;
+  nextReleaseDate: string;
+  openInterest: string;
+  managedMoney?: GoldCotCategory;
+  producerSwap?: GoldCotCategory;
+}
+
+export interface GoldCotCategory {
+  longPositions: string;
+  shortPositions: string;
+  netPct: number;
+  oiSharePct: number;
+  wowNetDelta: string;
+}
+
+export interface GoldSessionRange {
+  dayHigh: number;
+  dayLow: number;
+  prevClose: number;
+}
+
+export interface GoldReturns {
+  w1: number;
+  m1: number;
+  ytd: number;
+  y1: number;
+}
+
+export interface GoldRange52w {
+  hi: number;
+  lo: number;
+  positionPct: number;
+}
+
+export interface GoldDriver {
+  symbol: string;
+  label: string;
+  value: number;
+  changePct: number;
+  correlation30d: number;
+}
+
+export interface GoldEtfFlows {
+  asOfDate: string;
+  tonnes: number;
+  aumUsd: number;
+  nav: number;
+  changeW1Tonnes: number;
+  changeM1Tonnes: number;
+  changeY1Tonnes: number;
+  changeW1Pct: number;
+  changeM1Pct: number;
+  changeY1Pct: number;
+  sparkline90d: number[];
+}
+
+export interface GoldCbReserves {
+  asOfMonth: string;
+  totalTonnes: number;
+  topHolders: GoldCbHolder[];
+  topBuyers12m: GoldCbMover[];
+  topSellers12m: GoldCbMover[];
+}
+
+export interface GoldCbHolder {
+  iso3: string;
+  name: string;
+  tonnes: number;
+  pctOfReserves: number;
+}
+
+export interface GoldCbMover {
+  iso3: string;
+  name: string;
+  deltaTonnes12m: number;
+}
+
+export interface GetHyperliquidFlowRequest {
+}
+
+export interface GetHyperliquidFlowResponse {
+  ts: string;
+  fetchedAt: string;
+  warmup: boolean;
+  assetCount: number;
+  assets: HyperliquidAssetFlow[];
+  unavailable: boolean;
+}
+
+export interface HyperliquidAssetFlow {
+  symbol: string;
+  display: string;
+  assetClass: string;
+  group: string;
+  funding: string;
+  openInterest: string;
+  markPx: string;
+  oraclePx: string;
+  dayNotional: string;
+  fundingScore: number;
+  volumeScore: number;
+  oiScore: number;
+  basisScore: number;
+  composite: number;
+  sparkFunding: number[];
+  sparkOi: number[];
+  sparkScore: number[];
+  warmup: boolean;
+  stale: boolean;
+  staleSince: string;
+  missingPolls: number;
+  alerts: string[];
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -490,6 +712,10 @@ export interface MarketServiceHandler {
   getFearGreedIndex(ctx: ServerContext, req: GetFearGreedIndexRequest): Promise<GetFearGreedIndexResponse>;
   listEarningsCalendar(ctx: ServerContext, req: ListEarningsCalendarRequest): Promise<ListEarningsCalendarResponse>;
   getCotPositioning(ctx: ServerContext, req: GetCotPositioningRequest): Promise<GetCotPositioningResponse>;
+  getInsiderTransactions(ctx: ServerContext, req: GetInsiderTransactionsRequest): Promise<GetInsiderTransactionsResponse>;
+  getMarketBreadthHistory(ctx: ServerContext, req: GetMarketBreadthHistoryRequest): Promise<GetMarketBreadthHistoryResponse>;
+  getGoldIntelligence(ctx: ServerContext, req: GetGoldIntelligenceRequest): Promise<GetGoldIntelligenceResponse>;
+  getHyperliquidFlow(ctx: ServerContext, req: GetHyperliquidFlowRequest): Promise<GetHyperliquidFlowResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -1297,6 +1523,164 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getCotPositioning(ctx, body);
           return new Response(JSON.stringify(result as GetCotPositioningResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-insider-transactions",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetInsiderTransactionsRequest = {
+            symbol: params.get("symbol") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getInsiderTransactions", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getInsiderTransactions(ctx, body);
+          return new Response(JSON.stringify(result as GetInsiderTransactionsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-market-breadth-history",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetMarketBreadthHistoryRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getMarketBreadthHistory(ctx, body);
+          return new Response(JSON.stringify(result as GetMarketBreadthHistoryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-gold-intelligence",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetGoldIntelligenceRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getGoldIntelligence(ctx, body);
+          return new Response(JSON.stringify(result as GetGoldIntelligenceResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-hyperliquid-flow",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetHyperliquidFlowRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getHyperliquidFlow(ctx, body);
+          return new Response(JSON.stringify(result as GetHyperliquidFlowResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

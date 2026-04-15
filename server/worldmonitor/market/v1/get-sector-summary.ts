@@ -10,7 +10,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
 
-const SEED_CACHE_KEY = 'market:sectors:v1';
+const SEED_CACHE_KEY = 'market:sectors:v2';
 
 export async function getSectorSummary(
   _ctx: ServerContext,

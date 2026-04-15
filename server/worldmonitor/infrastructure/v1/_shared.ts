@@ -56,6 +56,8 @@ export function getBaselineSeverity(zScore: number): string {
 // getCachedJson / setCachedJson are imported from ../../../_shared/redis.ts
 // ========================================================================
 
+import { unwrapEnvelope } from '../../../_shared/seed-envelope';
+
 export async function mgetJson(keys: string[]): Promise<(unknown | null)[]> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -72,7 +74,9 @@ export async function mgetJson(keys: string[]): Promise<(unknown | null)[]> {
     });
     if (!resp.ok) return keys.map(() => null);
     const data = (await resp.json()) as { result?: (string | null)[] };
-    return (data.result || []).map(v => v ? JSON.parse(v) : null);
+    // Envelope-aware: several of these count-source keys (wildfire:fires:v1,
+    // news:insights:v1) are contract-mode canonical keys post-PR-2.
+    return (data.result || []).map(v => v ? unwrapEnvelope(JSON.parse(v)).data : null);
   } catch {
     return keys.map(() => null);
   }

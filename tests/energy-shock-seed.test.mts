@@ -11,6 +11,7 @@ import {
   computeGulfShare,
   computeEffectiveCoverDays,
   buildAssessment,
+  EFFECTIVE_COVER_DAYS_CAP,
   GULF_PARTNER_CODES,
   CHOKEPOINT_EXPOSURE,
   VALID_CHOKEPOINTS,
@@ -78,7 +79,7 @@ describe('energy shock scenario computation', () => {
 
     it('returns hasData=false when country has no Comtrade data (no numeric code mapping)', () => {
       const ISO2_TO_COMTRADE: Record<string, string> = {
-        US: '842', CN: '156', RU: '643', IR: '364', IN: '356', TW: '158',
+        US: '842', CN: '156', RU: '643', IR: '364', IN: '699', TW: '490',
       };
       const unsupportedCountries = ['DE', 'FR', 'JP', 'KR', 'BR', 'SA'];
       for (const code of unsupportedCountries) {
@@ -172,14 +173,42 @@ describe('energy shock scenario computation', () => {
       const result = computeEffectiveCoverDays(90, false, 180, 200);
       assert.equal(result, 100);
     });
+
+    it('caps runaway cover days (#2971: 96 / 0.005 = 19,200 day absurdity)', () => {
+      // 96 days cover, 0.5% deficit (1 kbd loss of 200 kbd imports) -> raw output 19,200
+      const result = computeEffectiveCoverDays(96, false, 1, 200);
+      assert.equal(result, EFFECTIVE_COVER_DAYS_CAP);
+    });
+
+    it('does NOT cap legitimate ~365-day scenarios', () => {
+      // 90 days cover, 24.66% deficit (49.32 kbd loss of 200 kbd imports) -> raw 365
+      const result = computeEffectiveCoverDays(90, false, 49.32, 200);
+      assert.equal(result, 365);
+      assert.ok(result < EFFECTIVE_COVER_DAYS_CAP, 'natural 365 should not equal the cap');
+    });
+
+    it('renders indefinitely-bridgeable prose only at or above the cap', () => {
+      const msg = buildAssessment('FR', 'hormuz_strait', true, 0.5, EFFECTIVE_COVER_DAYS_CAP, 96, 25, []);
+      assert.ok(msg.includes('indefinitely bridgeable'));
+      assert.ok(!msg.match(/~\d{4,}\s+days/), 'should never print raw 4-digit day counts');
+    });
+
+    it('renders numeric prose for naturally-365-day scenarios (no cap regression)', () => {
+      const msg = buildAssessment('FR', 'hormuz_strait', true, 0.5, 365, 90, 25, []);
+      assert.ok(msg.includes('~365 days'));
+      assert.ok(!msg.includes('indefinitely bridgeable'));
+    });
   });
 
   describe('assessment string branches', () => {
     it('uses insufficient data message when dataAvailable is false', () => {
       const assessment = buildAssessment('XZ', 'suez', false, 0, 0, 0, 50, []);
       assert.ok(assessment.includes('Insufficient import data'));
-      assert.ok(assessment.includes('XZ'));
-      assert.ok(assessment.includes('suez'));
+      // CLDR behaviour for unrecognised codes varies across ICU versions;
+      // most return the raw code, but some may resolve to "Unknown Region".
+      assert.ok(assessment.includes('XZ') || assessment.includes('Unknown Region'));
+      // chokepoint id is resolved to its display name ("Suez Canal")
+      assert.ok(assessment.includes('Suez'));
     });
 
     it('uses net-exporter branch when effectiveCoverDays === -1', () => {

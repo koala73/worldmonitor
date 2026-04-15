@@ -109,6 +109,10 @@ function validate(data) {
     && Array.isArray(data?.historical) && data.historical.length >= 100;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.alerts) ? data.alerts.length : 0;
+}
+
 runSeed('health', 'vpd-tracker', CANONICAL_KEY, fetchVpdTracker, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
@@ -120,6 +124,10 @@ runSeed('health', 'vpd-tracker', CANONICAL_KEY, fetchVpdTracker, {
       transform: data => ({ records: data.historical, fetchedAt: data.fetchedAt }),
     },
   ],
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 2880,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

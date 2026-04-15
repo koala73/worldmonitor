@@ -161,10 +161,18 @@ function validate(data) {
   return Array.isArray(data?.etfs) && data.etfs.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.etfs) ? data.etfs.length : 0;
+}
+
 runSeed('market', 'etf-flows', CANONICAL_KEY, fetchEtfFlows, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alphavantage+yahoo-chart-5d',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 60,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

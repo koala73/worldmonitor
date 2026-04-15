@@ -249,6 +249,10 @@ const ANALYSIS_META_EXTRA_KEY = {
 };
 
 const isMain = process.argv[1]?.endsWith('seed-iea-oil-stocks.mjs');
+export function declareRecords(data) {
+  return Array.isArray(data?.members) ? data.members.length : 0;
+}
+
 if (isMain) {
   runSeed('energy', 'iea-oil-stocks', CANONICAL_KEY, fetchIeaOilStocks, {
     validateFn: (data) => Array.isArray(data?.members) && data.members.length > 0,
@@ -257,6 +261,10 @@ if (isMain) {
     recordCount: (data) => data?.members?.length || 0,
     publishTransform: (data) => buildIndex(data.members, data.dataMonth, data.seededAt),
     extraKeys: [...COUNTRY_EXTRA_KEYS, ANALYSIS_EXTRA_KEY, ANALYSIS_META_EXTRA_KEY],
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 57600,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

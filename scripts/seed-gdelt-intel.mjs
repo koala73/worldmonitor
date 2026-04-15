@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey, writeExtraKey, extendExistingTtl } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -177,17 +177,43 @@ function publishTransform(data) {
   };
 }
 
-// Write per-topic tone/vol timeline keys (1h TTL) — separate from the 24h canonical key.
+// Write per-topic tone/vol timeline keys (TIMELINE_TTL, separate from the
+// 24h canonical key). When GDELT rate-limits a topic's TimelineTone/Vol
+// sub-fetch, _tone / _vol arrive empty for that topic — rather than let
+// the existing Redis key silently expire mid-cycle, extend its TTL with
+// EXPIRE so downstream consumers (cross-source-signals, etc.) keep seeing
+// the last successful snapshot until the next cron cycle refreshes it.
 async function afterPublish(data, _meta) {
+  const toneKeysToExtend = [];
+  const volKeysToExtend = [];
   for (const topic of data.topics ?? []) {
     const fetchedAt = topic.fetchedAt ?? data.fetchedAt;
+    const toneKey = `gdelt:intel:tone:${topic.id}`;
+    const volKey = `gdelt:intel:vol:${topic.id}`;
+
     if (Array.isArray(topic._tone) && topic._tone.length > 0) {
-      await writeExtraKey(`gdelt:intel:tone:${topic.id}`, { data: topic._tone, fetchedAt }, TIMELINE_TTL);
+      await writeExtraKey(toneKey, { data: topic._tone, fetchedAt }, TIMELINE_TTL);
+    } else {
+      toneKeysToExtend.push(toneKey);
     }
     if (Array.isArray(topic._vol) && topic._vol.length > 0) {
-      await writeExtraKey(`gdelt:intel:vol:${topic.id}`, { data: topic._vol, fetchedAt }, TIMELINE_TTL);
+      await writeExtraKey(volKey, { data: topic._vol, fetchedAt }, TIMELINE_TTL);
+    } else {
+      volKeysToExtend.push(volKey);
     }
   }
+  if (toneKeysToExtend.length > 0) {
+    console.log(`  Extending tone TTL for ${toneKeysToExtend.length} rate-limited topic(s): ${toneKeysToExtend.map((k) => k.split(':').pop()).join(', ')}`);
+    await extendExistingTtl(toneKeysToExtend, TIMELINE_TTL);
+  }
+  if (volKeysToExtend.length > 0) {
+    console.log(`  Extending vol TTL for ${volKeysToExtend.length} rate-limited topic(s): ${volKeysToExtend.map((k) => k.split(':').pop()).join(', ')}`);
+    await extendExistingTtl(volKeysToExtend, TIMELINE_TTL);
+  }
+}
+
+export function declareRecords(data) {
+  return Array.isArray(data?.topics) ? data.topics.length : 0;
 }
 
 if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
@@ -197,6 +223,10 @@ if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
     sourceVersion: 'gdelt-doc-v2',
     publishTransform,
     afterPublish,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 420,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -593,6 +593,104 @@ export interface OilStocksRegionalSummaryNorthAmerica {
   avgDays?: number;
 }
 
+export interface GetOilInventoriesRequest {
+}
+
+export interface GetOilInventoriesResponse {
+  crudeWeeks: CrudeInventoryWeekRef[];
+  spr?: OilInventoriesSprSnapshot;
+  natGasWeeks: NatGasWeekRef[];
+  euGas?: OilInventoriesEuGas;
+  ieaStocks?: OilInventoriesIeaStocks;
+  refinery?: OilInventoriesRefinery;
+  updatedAt: string;
+}
+
+export interface CrudeInventoryWeekRef {
+  period: string;
+  stocksMb: number;
+  weeklyChangeMb?: number;
+}
+
+export interface OilInventoriesSprSnapshot {
+  latestStocksMb: number;
+  changeWow: number;
+  weeks: OilInventoriesSprWeek[];
+}
+
+export interface OilInventoriesSprWeek {
+  period: string;
+  stocksMb: number;
+}
+
+export interface NatGasWeekRef {
+  period: string;
+  storBcf: number;
+  weeklyChangeBcf?: number;
+}
+
+export interface OilInventoriesEuGas {
+  fillPct: number;
+  fillPctChange1d: number;
+  trend: string;
+  history: OilInventoriesEuGasDay[];
+}
+
+export interface OilInventoriesEuGasDay {
+  date: string;
+  fillPct: number;
+}
+
+export interface OilInventoriesIeaStocks {
+  dataMonth: string;
+  members: OilInventoriesIeaMember[];
+  europe?: OilInventoriesRegionStats;
+  asiaPacific?: OilInventoriesRegionStats;
+  northAmerica?: OilInventoriesRegionStats;
+}
+
+export interface OilInventoriesIeaMember {
+  iso2: string;
+  daysOfCover?: number;
+  netExporter: boolean;
+  belowObligation: boolean;
+}
+
+export interface OilInventoriesRegionStats {
+  avgDays?: number;
+  minDays?: number;
+  countBelowObligation?: number;
+}
+
+export interface OilInventoriesRefinery {
+  inputsMbpd: number;
+  period: string;
+}
+
+export interface GetEnergyCrisisPoliciesRequest {
+  countryCode: string;
+  category: string;
+}
+
+export interface GetEnergyCrisisPoliciesResponse {
+  source: string;
+  sourceUrl: string;
+  context: string;
+  policies: EnergyCrisisPolicy[];
+  updatedAt: string;
+  unavailable: boolean;
+}
+
+export interface EnergyCrisisPolicy {
+  country: string;
+  countryCode: string;
+  category: string;
+  sector: string;
+  measure: string;
+  dateAnnounced: string;
+  status: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1235,6 +1333,55 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetOilStocksAnalysisResponse;
+  }
+
+  async getOilInventories(req: GetOilInventoriesRequest, options?: EconomicServiceCallOptions): Promise<GetOilInventoriesResponse> {
+    let path = "/api/economic/v1/get-oil-inventories";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetOilInventoriesResponse;
+  }
+
+  async getEnergyCrisisPolicies(req: GetEnergyCrisisPoliciesRequest, options?: EconomicServiceCallOptions): Promise<GetEnergyCrisisPoliciesResponse> {
+    let path = "/api/economic/v1/get-energy-crisis-policies";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.category != null && req.category !== "") params.set("category", String(req.category));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetEnergyCrisisPoliciesResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

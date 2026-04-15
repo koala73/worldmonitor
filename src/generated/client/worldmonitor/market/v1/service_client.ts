@@ -220,6 +220,15 @@ export interface AnalyzeStockResponse {
   stopLoss: number;
   takeProfit: number;
   engineVersion: string;
+  analystConsensus?: AnalystConsensus;
+  priceTarget?: PriceTarget;
+  recentUpgrades: UpgradeDowngrade[];
+  dividendYield: number;
+  trailingAnnualDividendRate: number;
+  exDividendDate: number;
+  payoutRatio?: number;
+  dividendFrequency: string;
+  dividendCagr: number;
 }
 
 export interface StockAnalysisHeadline {
@@ -227,6 +236,33 @@ export interface StockAnalysisHeadline {
   source: string;
   link: string;
   publishedAt: number;
+}
+
+export interface AnalystConsensus {
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+  total: number;
+  period: string;
+}
+
+export interface PriceTarget {
+  high?: number;
+  low?: number;
+  mean?: number;
+  median?: number;
+  current?: number;
+  numberOfAnalysts: number;
+}
+
+export interface UpgradeDowngrade {
+  firm: string;
+  toGrade: string;
+  fromGrade: string;
+  action: string;
+  epochGradeDate: number;
 }
 
 export interface GetStockAnalysisHistoryRequest {
@@ -424,6 +460,192 @@ export interface CotInstrument {
   dealerLong: string;
   dealerShort: string;
   netPct: number;
+}
+
+export interface GetInsiderTransactionsRequest {
+  symbol: string;
+}
+
+export interface GetInsiderTransactionsResponse {
+  unavailable: boolean;
+  symbol: string;
+  totalBuys: number;
+  totalSells: number;
+  netValue: number;
+  transactions: InsiderTransaction[];
+  fetchedAt: string;
+}
+
+export interface InsiderTransaction {
+  name: string;
+  shares: number;
+  value: number;
+  transactionCode: string;
+  transactionDate: string;
+}
+
+export interface GetMarketBreadthHistoryRequest {
+}
+
+export interface GetMarketBreadthHistoryResponse {
+  currentPctAbove20d?: number;
+  currentPctAbove50d?: number;
+  currentPctAbove200d?: number;
+  updatedAt: string;
+  history: BreadthSnapshot[];
+  unavailable: boolean;
+}
+
+export interface BreadthSnapshot {
+  date: string;
+  pctAbove20d?: number;
+  pctAbove50d?: number;
+  pctAbove200d?: number;
+}
+
+export interface GetGoldIntelligenceRequest {
+}
+
+export interface GetGoldIntelligenceResponse {
+  goldPrice: number;
+  goldChangePct: number;
+  goldSparkline: number[];
+  silverPrice: number;
+  platinumPrice: number;
+  palladiumPrice: number;
+  goldSilverRatio?: number;
+  goldPlatinumPremiumPct?: number;
+  crossCurrencyPrices: GoldCrossCurrencyPrice[];
+  cot?: GoldCotPositioning;
+  updatedAt: string;
+  unavailable: boolean;
+  session?: GoldSessionRange;
+  returns?: GoldReturns;
+  range52w?: GoldRange52w;
+  drivers: GoldDriver[];
+  etfFlows?: GoldEtfFlows;
+  cbReserves?: GoldCbReserves;
+}
+
+export interface GoldCrossCurrencyPrice {
+  currency: string;
+  flag: string;
+  price: number;
+}
+
+export interface GoldCotPositioning {
+  reportDate: string;
+  nextReleaseDate: string;
+  openInterest: string;
+  managedMoney?: GoldCotCategory;
+  producerSwap?: GoldCotCategory;
+}
+
+export interface GoldCotCategory {
+  longPositions: string;
+  shortPositions: string;
+  netPct: number;
+  oiSharePct: number;
+  wowNetDelta: string;
+}
+
+export interface GoldSessionRange {
+  dayHigh: number;
+  dayLow: number;
+  prevClose: number;
+}
+
+export interface GoldReturns {
+  w1: number;
+  m1: number;
+  ytd: number;
+  y1: number;
+}
+
+export interface GoldRange52w {
+  hi: number;
+  lo: number;
+  positionPct: number;
+}
+
+export interface GoldDriver {
+  symbol: string;
+  label: string;
+  value: number;
+  changePct: number;
+  correlation30d: number;
+}
+
+export interface GoldEtfFlows {
+  asOfDate: string;
+  tonnes: number;
+  aumUsd: number;
+  nav: number;
+  changeW1Tonnes: number;
+  changeM1Tonnes: number;
+  changeY1Tonnes: number;
+  changeW1Pct: number;
+  changeM1Pct: number;
+  changeY1Pct: number;
+  sparkline90d: number[];
+}
+
+export interface GoldCbReserves {
+  asOfMonth: string;
+  totalTonnes: number;
+  topHolders: GoldCbHolder[];
+  topBuyers12m: GoldCbMover[];
+  topSellers12m: GoldCbMover[];
+}
+
+export interface GoldCbHolder {
+  iso3: string;
+  name: string;
+  tonnes: number;
+  pctOfReserves: number;
+}
+
+export interface GoldCbMover {
+  iso3: string;
+  name: string;
+  deltaTonnes12m: number;
+}
+
+export interface GetHyperliquidFlowRequest {
+}
+
+export interface GetHyperliquidFlowResponse {
+  ts: string;
+  fetchedAt: string;
+  warmup: boolean;
+  assetCount: number;
+  assets: HyperliquidAssetFlow[];
+  unavailable: boolean;
+}
+
+export interface HyperliquidAssetFlow {
+  symbol: string;
+  display: string;
+  assetClass: string;
+  group: string;
+  funding: string;
+  openInterest: string;
+  markPx: string;
+  oraclePx: string;
+  dayNotional: string;
+  fundingScore: number;
+  volumeScore: number;
+  oiScore: number;
+  basisScore: number;
+  composite: number;
+  sparkFunding: number[];
+  sparkOi: number[];
+  sparkScore: number[];
+  warmup: boolean;
+  stale: boolean;
+  staleSince: string;
+  missingPolls: number;
+  alerts: string[];
 }
 
 export interface FieldViolation {
@@ -939,6 +1161,100 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetCotPositioningResponse;
+  }
+
+  async getInsiderTransactions(req: GetInsiderTransactionsRequest, options?: MarketServiceCallOptions): Promise<GetInsiderTransactionsResponse> {
+    let path = "/api/market/v1/get-insider-transactions";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetInsiderTransactionsResponse;
+  }
+
+  async getMarketBreadthHistory(req: GetMarketBreadthHistoryRequest, options?: MarketServiceCallOptions): Promise<GetMarketBreadthHistoryResponse> {
+    let path = "/api/market/v1/get-market-breadth-history";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetMarketBreadthHistoryResponse;
+  }
+
+  async getGoldIntelligence(req: GetGoldIntelligenceRequest, options?: MarketServiceCallOptions): Promise<GetGoldIntelligenceResponse> {
+    let path = "/api/market/v1/get-gold-intelligence";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetGoldIntelligenceResponse;
+  }
+
+  async getHyperliquidFlow(req: GetHyperliquidFlowRequest, options?: MarketServiceCallOptions): Promise<GetHyperliquidFlowResponse> {
+    let path = "/api/market/v1/get-hyperliquid-flow";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetHyperliquidFlowResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

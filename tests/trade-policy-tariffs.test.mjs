@@ -42,10 +42,10 @@ describe('Generated tariff types', () => {
   });
 });
 
-describe('Budget Lab effective tariff seed integration', () => {
-  it('imports parse helpers from shared utils module', () => {
-    assert.match(seedSrc, /_trade-parse-utils\.mjs/);
-    assert.match(seedSrc, /parseBudgetLabEffectiveTariffHtml/);
+describe('FRED effective tariff rate seed integration', () => {
+  it('uses FRED customs duties and imports of goods series', () => {
+    assert.match(seedSrc, /B235RC1Q027SBEA/);
+    assert.match(seedSrc, /A255RC1Q027SBEA/);
   });
 
   it('attaches the effective tariff snapshot only to the US tariff payload', () => {

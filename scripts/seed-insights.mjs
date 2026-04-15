@@ -3,6 +3,7 @@
 import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-utils.mjs';
 import { clusterItems, selectTopStories } from './_clustering.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -60,7 +61,7 @@ async function readDigestFromRedis() {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
 }
 
 async function readExistingInsights() {
@@ -71,7 +72,7 @@ async function readExistingInsights() {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
 }
 
 // Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
@@ -349,10 +350,18 @@ function validate(data) {
   return Array.isArray(data?.topStories) && data.topStories.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.topStories) ? data.topStories.length : 0;
+}
+
 runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'digest-clustering-v1',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   // Exit gracefully for cron — health endpoint flags stale data via seed-meta.

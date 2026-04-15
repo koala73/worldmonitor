@@ -961,6 +961,120 @@
   text-align: right;
 }
 
+/* T1.6 Phase 1 of the country-resilience reference-grade upgrade plan:
+   per-dimension confidence grid. Renders a compact 2-column grid of the
+   13 scorer dimensions between the 5-domain bars and the footer.
+   Each cell shows a short label, a coverage bar, and a percentage.
+   Status modifiers (--observed, --partial, --imputed, --absent) tint
+   the bar fill so analysts can see provenance at a glance. */
+.resilience-widget__dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.resilience-widget__dimension-cell {
+  display: grid;
+  /* label | coverage-bar | imputation-icon | percentage | freshness-dot */
+  grid-template-columns: minmax(56px, 72px) minmax(0, 1fr) 12px 28px 10px;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.resilience-widget__dimension-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resilience-widget__dimension-bar-track {
+  height: 4px;
+  background: var(--bar-track, rgba(255, 255, 255, 0.06));
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.resilience-widget__dimension-bar-fill {
+  height: 100%;
+  background: var(--text-faint);
+  border-radius: 2px;
+  transition: width 0.25s ease-out;
+}
+
+/* Status modifiers tint the fill so the provenance class is legible
+   even when the cell label is truncated. Colors reuse the existing
+   resilience visual-level palette from resilience-widget-utils.ts so
+   the grid stays in the same chromatic family as the domain bars. */
+.resilience-widget__dimension-cell--observed .resilience-widget__dimension-bar-fill {
+  background: #84cc16;
+}
+
+.resilience-widget__dimension-cell--partial .resilience-widget__dimension-bar-fill {
+  background: #eab308;
+}
+
+.resilience-widget__dimension-cell--imputed .resilience-widget__dimension-bar-fill {
+  background: #f97316;
+}
+
+.resilience-widget__dimension-cell--absent .resilience-widget__dimension-bar-fill {
+  background: var(--text-faint);
+  opacity: 0.35;
+}
+
+.resilience-widget__dimension-cell--absent .resilience-widget__dimension-label,
+.resilience-widget__dimension-cell--absent .resilience-widget__dimension-pct {
+  opacity: 0.55;
+}
+
+.resilience-widget__dimension-pct {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* T1.6 full grid: imputation class icon column between the coverage
+   bar and the percentage. Rendered as a single glyph (checkmark,
+   question mark, exclamation, em-dash) tinted per class. Empty span
+   when the dimension has observed data or the scorer has not tagged
+   the class. Tooltip is carried on the parent cell's `title`. */
+.resilience-widget__dimension-imputation {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.resilience-widget__dimension-imputation--stable-absence { color: #84cc16; }
+.resilience-widget__dimension-imputation--unmonitored { color: #eab308; }
+.resilience-widget__dimension-imputation--source-failure { color: #ef4444; }
+.resilience-widget__dimension-imputation--not-applicable { color: var(--text-faint); }
+
+/* T1.5 propagation: freshness dot at the far right. Colors mirror the
+   fresh/aging/stale staleness levels from the classifier. Empty span
+   when freshness is unknown so the grid column reserves its 10px slot
+   and rows stay aligned. */
+.resilience-widget__dimension-freshness {
+  font-size: 8px;
+  line-height: 1;
+  text-align: center;
+  cursor: help;
+}
+
+.resilience-widget__dimension-freshness--fresh { color: #22c55e; }
+.resilience-widget__dimension-freshness--aging { color: #eab308; }
+.resilience-widget__dimension-freshness--stale { color: #ef4444; }
+
 .resilience-widget__footer {
   display: flex;
   align-items: center;
@@ -1016,6 +1130,20 @@
 
   .resilience-widget__domain-score {
     text-align: left;
+  }
+
+  .resilience-widget__dimension-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  /* T1.6 full grid on narrow widths: tighten the label column and
+     shrink the inter-column gap so all five cells stay on one row
+     without wrapping. The imputation / freshness slots stay at their
+     12px / 10px intrinsic widths. */
+  .resilience-widget__dimension-cell {
+    grid-template-columns: minmax(48px, 64px) minmax(0, 1fr) 12px 24px 10px;
+    gap: 4px;
   }
 }
 
@@ -1248,4 +1376,352 @@
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 10px;
+}
+
+.cdp-trade-exposure-table tbody tr.cdp-sector-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cdp-trade-exposure-table tbody tr.cdp-sector-row:hover {
+  background: rgba(100, 160, 255, 0.06);
+}
+.cdp-trade-exposure-table tbody tr.cdp-sector-row--selected {
+  background: rgba(100, 160, 255, 0.1);
+}
+.cdp-route-detail {
+  padding: 10px 0;
+  border-top: 1px solid rgba(100, 116, 139, 0.12);
+}
+.cdp-route-path {
+  font-size: 12px;
+  color: #e2e8f0;
+  font-family: var(--mono-font, 'JetBrains Mono', monospace);
+  padding: 6px 8px;
+  background: rgba(100, 116, 139, 0.06);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.cdp-route-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 10px;
+}
+.cdp-route-stats span { color: #e2e8f0; font-weight: 500; }
+.cdp-bypass-heading {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.cdp-sector-detail-row td {
+  padding: 0 4px 8px;
+}
+
+.cdp-product-selector {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.cdp-product-search {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary, #1a1a2e);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.cdp-product-search:focus {
+  border-color: var(--accent, #3b82f6);
+}
+
+.cdp-product-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.cdp-product-list:empty {
+  display: none;
+}
+
+.cdp-product-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cdp-product-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.cdp-product-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.cdp-product-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.cdp-product-value {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--accent, #3b82f6);
+  white-space: nowrap;
+}
+
+.cdp-product-suppliers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.cdp-product-suppliers-table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.cdp-product-suppliers-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.cdp-product-supplier {
+  white-space: nowrap;
+}
+
+.cdp-product-share {
+  min-width: 80px;
+}
+
+.cdp-product-share-bar-wrap {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 2px;
+}
+
+.cdp-product-share-bar {
+  height: 100%;
+  background: var(--accent, #3b82f6);
+  border-radius: 2px;
+  min-width: 2px;
+}
+
+.cdp-product-share-bar.cdp-product-share-high {
+  background: var(--warning, #f59e0b);
+}
+
+.cdp-product-val {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cdp-product-risk {
+  white-space: nowrap;
+}
+
+.cdp-risk-badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.cdp-risk-safe {
+  background: rgba(34,197,94,0.12);
+  color: #4ade80;
+}
+
+.cdp-risk-at-risk {
+  background: rgba(249,115,22,0.12);
+  color: #fb923c;
+}
+
+.cdp-risk-critical {
+  background: rgba(220,38,38,0.15);
+  color: #ef4444;
+}
+
+.cdp-risk-unknown {
+  background: rgba(100,116,139,0.1);
+  color: #94a3b8;
+}
+
+.cdp-risk-chokepoints {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.cdp-recommendations {
+  margin-top: 10px;
+  padding: 8px;
+  background: rgba(100,116,139,0.06);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.cdp-recommendations:empty {
+  display: none;
+}
+
+.cdp-recommendation-item {
+  padding: 4px 0;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.cdp-recommendation-safe {
+  color: #4ade80;
+}
+
+.cdp-recommendation-warn {
+  color: #fb923c;
+}
+
+.cdp-recommendation-critical {
+  color: #ef4444;
+}
+
+/* ── Phase 5: Cost Shock Calculator ───────────────────────────────────── */
+.cdp-cost-shock-calc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.cdp-cost-shock-calc-tier {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning, #f59e0b) 20%, transparent);
+  color: var(--warning, #fb923c);
+  font-weight: 500;
+}
+
+.cdp-cost-shock-calc-slider-wrap {
+  margin: 10px 0 14px;
+}
+
+.cdp-cost-shock-calc-slider-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 6px;
+}
+
+.cdp-cost-shock-calc-duration-value {
+  color: var(--text, #e2e8f0);
+  font-weight: 600;
+}
+
+.cdp-cost-shock-calc-slider {
+  width: 100%;
+  accent-color: var(--accent, #60a5fa);
+  cursor: pointer;
+}
+
+.cdp-cost-shock-calc-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted, #64748b);
+  margin-top: 4px;
+}
+
+.cdp-cost-shock-calc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.cdp-cost-shock-calc-table th {
+  text-align: left;
+  font-weight: 500;
+  padding: 4px 6px;
+  color: var(--text-muted, #94a3b8);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-muted, #475569) 25%, transparent);
+}
+
+.cdp-cost-shock-calc-cost-col {
+  text-align: right;
+}
+
+.cdp-cost-shock-calc-row td {
+  padding: 4px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-muted, #334155) 15%, transparent);
+}
+
+.cdp-cost-shock-calc-sector {
+  color: var(--text, #e2e8f0);
+}
+
+.cdp-cost-shock-calc-cost {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #e2e8f0);
+  font-weight: 500;
+}
+
+.cdp-cost-shock-calc-cost--zero {
+  color: var(--text-muted, #64748b);
+  font-weight: 400;
+}
+
+.cdp-cost-shock-calc-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 6px 6px;
+  border-top: 2px solid color-mix(in srgb, var(--accent, #60a5fa) 40%, transparent);
+  margin-top: 4px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.cdp-cost-shock-calc-total-label {
+  color: var(--text-muted, #94a3b8);
+}
+
+.cdp-cost-shock-calc-total-value {
+  color: var(--accent, #60a5fa);
+  font-variant-numeric: tabular-nums;
 }

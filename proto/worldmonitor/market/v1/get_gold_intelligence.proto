@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GoldCrossCurrencyPrice {
+  string currency = 1;
+  string flag = 2;
+  double price = 3;
+}
+
+message GoldSessionRange {
+  double day_high = 1;
+  double day_low = 2;
+  double prev_close = 3;
+}
+
+message GoldReturns {
+  double w1 = 1;
+  double m1 = 2;
+  double ytd = 3;
+  double y1 = 4;
+}
+
+message GoldRange52w {
+  double hi = 1;
+  double lo = 2;
+  double position_pct = 3;
+}
+
+message GoldCotCategory {
+  int64 long_positions = 1;
+  int64 short_positions = 2;
+  double net_pct = 3;
+  double oi_share_pct = 4;
+  int64 wow_net_delta = 5;
+}
+
+message GoldCotPositioning {
+  string report_date = 1;
+  string next_release_date = 2;
+  int64 open_interest = 3;
+  GoldCotCategory managed_money = 4;
+  GoldCotCategory producer_swap = 5;
+}
+
+message GoldDriver {
+  string symbol = 1;
+  string label = 2;
+  double value = 3;
+  double change_pct = 4;
+  double correlation_30d = 5;
+}
+
+message GoldCbHolder {
+  string iso3 = 1;
+  string name = 2;
+  double tonnes = 3;
+  double pct_of_reserves = 4;
+}
+
+message GoldCbMover {
+  string iso3 = 1;
+  string name = 2;
+  double delta_tonnes_12m = 3;
+}
+
+message GoldCbReserves {
+  string as_of_month = 1;
+  double total_tonnes = 2;
+  repeated GoldCbHolder top_holders = 3;
+  repeated GoldCbMover top_buyers_12m = 4;
+  repeated GoldCbMover top_sellers_12m = 5;
+}
+
+message GoldEtfFlows {
+  string as_of_date = 1;
+  double tonnes = 2;
+  double aum_usd = 3;
+  double nav = 4;
+  double change_w1_tonnes = 5;
+  double change_m1_tonnes = 6;
+  double change_y1_tonnes = 7;
+  double change_w1_pct = 8;
+  double change_m1_pct = 9;
+  double change_y1_pct = 10;
+  repeated double sparkline_90d = 11;
+}
+
+message GetGoldIntelligenceRequest {}
+
+message GetGoldIntelligenceResponse {
+  double gold_price = 1;
+  double gold_change_pct = 2;
+  repeated double gold_sparkline = 3;
+  double silver_price = 4;
+  double platinum_price = 5;
+  double palladium_price = 6;
+  optional double gold_silver_ratio = 7;
+  optional double gold_platinum_premium_pct = 8;
+  repeated GoldCrossCurrencyPrice cross_currency_prices = 9;
+  GoldCotPositioning cot = 10;
+  string updated_at = 11;
+  bool unavailable = 12;
+  GoldSessionRange session = 13;
+  GoldReturns returns = 14;
+  GoldRange52w range_52w = 15;
+  repeated GoldDriver drivers = 16;
+  GoldEtfFlows etf_flows = 17;
+  GoldCbReserves cb_reserves = 18;
+}

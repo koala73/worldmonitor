@@ -89,10 +89,18 @@ function validate(data) {
   return Array.isArray(data?.earnings) && data.earnings.length >= 3;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.earnings) ? data.earnings.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-earnings-calendar.mjs')) {
   runSeed('market', 'earnings-calendar', KEY, fetchAll, {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'finnhub-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 1440,
   }).catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
 }

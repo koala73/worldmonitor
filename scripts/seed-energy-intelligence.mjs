@@ -202,12 +202,20 @@ export function validate(data) {
 
 export { CANONICAL_KEY as ENERGY_INTELLIGENCE_KEY };
 
+export function declareRecords(data) {
+  return Array.isArray(data?.items) ? data.items.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-energy-intelligence.mjs')) {
   runSeed('energy', 'intelligence', CANONICAL_KEY, fetchEnergyIntelligence, {
     validateFn: validate,
     ttlSeconds: INTELLIGENCE_TTL_SECONDS,
     sourceVersion: 'energy-intel-rss-v1',
     recordCount: (data) => data?.items?.length || 0,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 720,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

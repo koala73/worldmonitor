@@ -1476,6 +1476,8 @@ export interface CountryBriefSignals {
   protests: number;
   militaryFlights: number;
   militaryVessels: number;
+  militaryFlightsInCountry: number;
+  militaryVesselsInCountry: number;
   outages: number;
   aisDisruptions: number;
   satelliteFires: number;

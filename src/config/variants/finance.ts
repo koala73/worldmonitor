@@ -162,6 +162,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 1 },
   'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 1 },
+  'market-breadth': { name: 'Market Breadth', enabled: true, priority: 1 },
   derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
   fintech: { name: 'Fintech & Trading Tech', enabled: true, priority: 2 },
   regulation: { name: 'Financial Regulation', enabled: true, priority: 2 },

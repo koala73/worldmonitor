@@ -21,6 +21,7 @@ const SEED_DOMAINS = {
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
   'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },
   'market:crypto':            { key: 'seed-meta:market:crypto',            intervalMin: 15 },
+  'market:hyperliquid-flow':  { key: 'seed-meta:market:hyperliquid-flow',  intervalMin: 5 }, // Railway cron 5min via seed-bundle-market-backup
   'market:etf-flows':         { key: 'seed-meta:market:etf-flows',         intervalMin: 30 },
   'market:gulf-quotes':       { key: 'seed-meta:market:gulf-quotes',       intervalMin: 15 },
   'market:stablecoins':       { key: 'seed-meta:market:stablecoins',       intervalMin: 30 },
@@ -30,6 +31,11 @@ const SEED_DOMAINS = {
   // Aligned with health.js SEED_META (intervalMin = maxStaleMin / 2)
   'market:stocks':            { key: 'seed-meta:market:stocks',            intervalMin: 15 },
   'market:commodities':       { key: 'seed-meta:market:commodities',       intervalMin: 15 },
+  'market:gold-extended':     { key: 'seed-meta:market:gold-extended',     intervalMin: 15 },
+  'market:gold-etf-flows':    { key: 'seed-meta:market:gold-etf-flows',    intervalMin: 1440 },
+  // maxStaleMin in health.js is 44640 (~31 days; IMF IFS is monthly w/ 2-3mo lag).
+  // This endpoint flags stale at intervalMin*2, so keep intervalMin = 22320 to match.
+  'market:gold-cb-reserves':  { key: 'seed-meta:market:gold-cb-reserves',  intervalMin: 22320 },
   'market:sectors':           { key: 'seed-meta:market:sectors',           intervalMin: 15 },
   'aviation:faa':             { key: 'seed-meta:aviation:faa',             intervalMin: 45 },
   'news:insights':            { key: 'seed-meta:news:insights',            intervalMin: 15 },
@@ -53,10 +59,15 @@ const SEED_DOMAINS = {
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
+  'economic:bis-extended':    { key: 'seed-meta:economic:bis-extended',    intervalMin: 720 }, // 12h Railway cron; "seeder ran" aggregate — per-dataset freshness lives below
+  'economic:bis-dsr':                  { key: 'seed-meta:economic:bis-dsr',                  intervalMin: 720 }, // 12h cron; only written when DSR slice fetched fresh entries
+  'economic:bis-property-residential': { key: 'seed-meta:economic:bis-property-residential', intervalMin: 720 }, // 12h cron; only written when SPP slice fetched fresh entries
+  'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // 420min maxStaleMin / 2 — aligned with health.js (6h cron + 1h grace)
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
+  'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 15 }, // 10min relay loop; intervalMin = maxStaleMin / 2 (30 / 2)
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
   'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
   'radiation:observations':   { key: 'seed-meta:radiation:observations',   intervalMin: 15 },
@@ -69,13 +80,21 @@ const SEED_DOMAINS = {
   'regulatory:actions':       { key: 'seed-meta:regulatory:actions',       intervalMin: 120 }, // 2h cron; intervalMin = maxStaleMin / 3
   'economic:owid-energy-mix': { key: 'seed-meta:economic:owid-energy-mix', intervalMin: 25200 }, // monthly cron on 1st; intervalMin = health.js maxStaleMin / 2 (50400 / 2)
   'economic:fao-ffpi':        { key: 'seed-meta:economic:fao-ffpi',        intervalMin: 43200 }, // monthly seed; intervalMin = health.js maxStaleMin / 2 (86400 / 2)
+  'economic:imf-growth':      { key: 'seed-meta:economic:imf-growth',      intervalMin: 50400 }, // monthly WEO seed; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
+  'economic:imf-labor':       { key: 'seed-meta:economic:imf-labor',       intervalMin: 50400 }, // monthly WEO seed; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
+  'economic:imf-external':    { key: 'seed-meta:economic:imf-external',    intervalMin: 50400 }, // monthly WEO seed; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
   'product-catalog':          { key: 'seed-meta:product-catalog',          intervalMin: 360 }, // relay loop every 6h; intervalMin = health.js maxStaleMin / 3 (1080 / 3)
-  'portwatch:chokepoints-ref': { key: 'seed-meta:portwatch:chokepoints-ref', intervalMin: 1440 }, // daily cron (0 0 * * *)
+  'portwatch:chokepoints-ref': { key: 'seed-meta:portwatch:chokepoints-ref', intervalMin: 10080 }, // seed-bundle-portwatch runs this at WEEK cadence; intervalMin*2 = 14d matches api/health.js SEED_META.portwatchChokepointsRef
   'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3)
   'energy:chokepoint-flows': { key: 'seed-meta:energy:chokepoint-flows', intervalMin: 360 }, // 6h relay loop; intervalMin = maxStaleMin / 2 (720 / 2)
   'energy:spine':                 { key: 'seed-meta:energy:spine',                 intervalMin: 1440 }, // daily cron (0 6 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
   'energy:ember': { key: 'seed-meta:energy:ember', intervalMin: 1440 }, // daily cron (0 8 * * *); intervalMin = maxStaleMin / 2 (2880 / 2)
   'energy:spr-policies': { key: 'seed-meta:energy:spr-policies', intervalMin: 288000 }, // annual static registry; intervalMin = health.js maxStaleMin / 2 (576000 / 2)
+  'market:aaii-sentiment': { key: 'seed-meta:market:aaii-sentiment', intervalMin: 10080 }, // weekly cron; intervalMin = maxStaleMin / 2 (20160 / 2)
+  'intelligence:regional-briefs': { key: 'seed-meta:intelligence:regional-briefs', intervalMin: 10080 }, // weekly cron; intervalMin = health.js maxStaleMin / 2 (20160 / 2)
+  'economic:eurostat-house-prices': { key: 'seed-meta:economic:eurostat-house-prices', intervalMin: 36000 }, // weekly cron, annual data; intervalMin = health.js maxStaleMin / 2 (72000 / 2)
+  'economic:eurostat-gov-debt-q':   { key: 'seed-meta:economic:eurostat-gov-debt-q',   intervalMin: 10080 }, // 2d cron, quarterly data; intervalMin = health.js maxStaleMin / 2 (20160 / 2)
+  'economic:eurostat-industrial-production': { key: 'seed-meta:economic:eurostat-industrial-production', intervalMin: 3600 }, // daily cron, monthly data; intervalMin = health.js maxStaleMin / 2 (7200 / 2)
 };
 
 async function getMetaBatch(keys) {

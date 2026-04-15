@@ -17,6 +17,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — generated JS module
 import { FALLBACK_PRICES } from './_product-fallback-prices.js';
+// @ts-expect-error — JS module
+import { unwrapEnvelope } from './_seed-envelope.js';
 
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
@@ -73,12 +75,17 @@ const TIER_CONFIG = {
 // Tier groups shown on the /pro page (ordered)
 const PUBLIC_TIER_GROUPS = ['free', 'pro', 'api_starter', 'enterprise'];
 
-function json(body, status, cors, cacheControl) {
+function json(body, status, cors, cacheControl, source) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       'Content-Type': 'application/json',
       ...(cacheControl ? { 'Cache-Control': cacheControl } : {}),
+      // Signals which code-path served the response so operators + the
+      // seed-contract probe can distinguish cache hits from Dodo/fallback.
+      // Without this header a green probe would not prove the cached-reader
+      // path is healthy — it could be silently falling through to fallback.
+      ...(source ? { 'X-Product-Catalog-Source': source } : {}),
       ...cors,
     },
   });
@@ -93,7 +100,12 @@ async function getFromCache() {
     });
     if (!res.ok) return null;
     const { result } = await res.json();
-    return result ? JSON.parse(result) : null;
+    if (!result) return null;
+    // Envelope-aware: ais-relay now writes `product-catalog:v2` as {_seed, data}
+    // (PR #3097). Return the bare payload so clients see the legacy
+    // {tiers, fetchedAt, cachedUntil, priceSource} shape. Pre-contract bare
+    // values pass through unchanged.
+    return unwrapEnvelope(JSON.parse(result)).data;
   } catch { return null; }
 }
 
@@ -238,7 +250,7 @@ export default async function handler(req) {
   // Read from Redis (populated by Railway ais-relay seed loop)
   const cached = await getFromCache();
   if (cached) {
-    return json(cached, 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300');
+    return json(cached, 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300', 'cache');
   }
 
   // Redis empty (purged or seed hasn't run). Try Dodo directly as backup.
@@ -256,12 +268,12 @@ export default async function handler(req) {
       const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000, priceSource };
       // Don't write to Redis — let the Railway seed own that key with its longer TTL.
       // Just return the result with short cache so the next Railway cycle repopulates properly.
-      return json(result, 200, cors, 'public, max-age=60, s-maxage=60');
+      return json(result, 200, cors, 'public, max-age=60, s-maxage=60', 'dodo');
     }
   }
 
   // All sources failed. Return fallback with short cache.
   const tiers = buildTiers({});
   const now = Date.now();
-  return json({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }, 200, cors, 'public, max-age=60, s-maxage=60');
+  return json({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }, 200, cors, 'public, max-age=60, s-maxage=60', 'fallback');
 }

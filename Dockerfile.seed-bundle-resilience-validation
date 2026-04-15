@@ -1,0 +1,52 @@
+# =============================================================================
+# Seed Bundle: Resilience Validation (weekly cron)
+# =============================================================================
+# Runs scripts/seed-bundle-resilience-validation.mjs which spawns:
+#   - benchmark-resilience-external.mjs
+#   - backtest-resilience-outcomes.mjs
+#   - validate-resilience-sensitivity.mjs (imports ../server/*.ts via tsx)
+#
+# The validation scripts only touch node: builtins, local helpers, and .ts
+# files under ../server/ via dynamic import. The ONLY external runtime dep
+# is tsx (to register the ESM loader for .ts imports).
+# =============================================================================
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Install only tsx at /app/node_modules/tsx. Single-package install keeps the
+# image small and eliminates the previous ambiguity where tsx existed at both
+# /app/node_modules and /app/scripts/node_modules and Node 22 resolved the
+# wrong one (which had an incomplete dist/). The test is a build-time assert
+# that tsx's ESM loader is at the path referenced by NODE_OPTIONS below.
+RUN npm install --prefix /app --no-save --no-audit --no-fund --no-package-lock tsx@4.21.0 \
+    && test -f /app/node_modules/tsx/dist/loader.mjs
+
+# Ship the full scripts/ tree rather than a hand-picked file list. The cherry-
+# picked approach broke twice: once when _seed-utils.mjs started eagerly
+# createRequire()ing _proxy-utils.cjs (PR #3041 post-merge fix), and again
+# when backtest-resilience-outcomes.mjs imported _country-resolver.mjs
+# (PR #3052 post-merge fix — this file). Each time the bundle's scripts add
+# a new local import, the cherry-picked Dockerfile list becomes a hidden
+# dependency contract that nobody remembers to update until the cron
+# crashes with ERR_MODULE_NOT_FOUND in production. Copying the whole scripts/
+# dir is ~2 MB larger and robust to the next import.
+#
+# validate-resilience-sensitivity.mjs dynamic-imports ../server/*.ts so the
+# full server/ tree is copied (scorers pull from shared/ and data/ at runtime).
+COPY scripts/ ./scripts/
+COPY server/ ./server/
+COPY shared/ ./shared/
+COPY data/ ./data/
+COPY tsconfig.json tsconfig.api.json ./
+
+# Absolute path sidesteps bare-specifier resolution entirely — Node 22 can
+# resolve "tsx/esm" to the wrong node_modules when multiple exist, and "tsx/esm"
+# also triggers ERR_REQUIRE_CYCLE_MODULE under Node 22 when the loaded .ts
+# has its own imports. dist/loader.mjs is tsx's default ESM loader and works
+# for both the parent process and children spawned via execFile (which inherit
+# NODE_OPTIONS).
+ENV NODE_OPTIONS="--max-old-space-size=8192 --dns-result-order=ipv4first --import=file:///app/node_modules/tsx/dist/loader.mjs"
+
+CMD ["node", "scripts/seed-bundle-resilience-validation.mjs"]

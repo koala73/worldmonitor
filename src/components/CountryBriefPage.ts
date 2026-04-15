@@ -237,8 +237,14 @@ export class CountryBriefPage implements CountryBriefPanel {
     const chips: string[] = [];
     if (signals.criticalNews > 0) chips.push(`<span class="signal-chip conflict">🚨 ${signals.criticalNews} Critical News</span>`);
     if (signals.protests > 0) chips.push(`<span class="signal-chip protest">📢 ${signals.protests} ${t('modals.countryBrief.signals.protests')}</span>`);
-    if (signals.militaryFlights > 0) chips.push(`<span class="signal-chip military">✈️ ${signals.militaryFlights} ${t('modals.countryBrief.signals.militaryAir')}</span>`);
-    if (signals.militaryVessels > 0) chips.push(`<span class="signal-chip military">⚓ ${signals.militaryVessels} ${t('modals.countryBrief.signals.militarySea')}</span>`);
+    if (signals.militaryFlights > 0) {
+      const tip = `${signals.militaryFlights} near · ${signals.militaryFlightsInCountry} inside borders`;
+      chips.push(`<span class="signal-chip military" title="${tip}">✈️ ${signals.militaryFlights} ${t('modals.countryBrief.signals.militaryAir')}</span>`);
+    }
+    if (signals.militaryVessels > 0) {
+      const tip = `${signals.militaryVessels} near · ${signals.militaryVesselsInCountry} inside borders`;
+      chips.push(`<span class="signal-chip military" title="${tip}">⚓ ${signals.militaryVessels} ${t('modals.countryBrief.signals.militarySea')}</span>`);
+    }
     if (signals.outages > 0) chips.push(`<span class="signal-chip outage">🌐 ${signals.outages} ${t('modals.countryBrief.signals.outages')}</span>`);
     if (signals.aisDisruptions > 0) chips.push(`<span class="signal-chip outage">🚢 ${signals.aisDisruptions} AIS Disruptions</span>`);
     if (signals.satelliteFires > 0) chips.push(`<span class="signal-chip climate">🔥 ${signals.satelliteFires} Satellite Fires</span>`);

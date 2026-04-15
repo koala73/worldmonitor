@@ -214,12 +214,20 @@ function validate(data) {
   return Array.isArray(data?.advisories) && data.advisories.length > 0;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.advisories) ? data.advisories.length : 0;
+}
+
 runSeed('intelligence', 'advisories', CANONICAL_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: TTL,
   recordCount: (d) => d?.advisories?.length || 0,
   sourceVersion: 'rss-feeds',
-  extraKeys: [{ key: BOOTSTRAP_KEY, transform: (d) => d, ttl: TTL }],
+  extraKeys: [{ key: BOOTSTRAP_KEY, transform: (d) => d, ttl: TTL, declareRecords }],
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 120,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

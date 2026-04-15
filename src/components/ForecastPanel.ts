@@ -2,9 +2,29 @@ import { Panel } from './Panel';
 import { escapeHtml } from '@/services/forecast';
 import type { Forecast } from '@/services/forecast';
 import { t } from '@/services/i18n';
+import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
+
+// Macro region pill values. Each non-empty id matches an entry in the
+// ForecastMacroRegionId union emitted by getForecastMacroRegion() (see
+// shared/forecast-macro-regions.js). Filtering is entirely client-side:
+// this.forecasts stays the full unfiltered set, and the render pipeline
+// applies the active macro region on every render so the filter survives
+// refresh-time updateForecasts() calls. The '' (empty) id means
+// "All Regions" — no filter applied. Forecasts whose region does not
+// classify (unknown or 'global') only appear under "All Regions".
+const FORECAST_REGIONS = [
+  { id: '', label: 'All Regions' },
+  { id: 'mena', label: 'MENA' },
+  { id: 'east-asia', label: 'East Asia' },
+  { id: 'europe', label: 'Europe' },
+  { id: 'south-asia', label: 'South Asia' },
+  { id: 'sub-saharan-africa', label: 'Africa' },
+  { id: 'latam', label: 'LatAm' },
+  { id: 'north-america', label: 'N. America' },
+] as const;
 
 const DOMAIN_LABELS: Record<string, string> = {
   all: 'All',
@@ -226,8 +246,12 @@ function injectStyles(): void {
 }
 
 export class ForecastPanel extends Panel {
+  // Full unfiltered set from the server. The region + domain filters are
+  // applied on every render() — never mutate this by filtering, or refresh
+  // updates from data-loader will wipe the filter state.
   private forecasts: Forecast[] = [];
   private activeDomain: string = 'all';
+  private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
   private expandedTheaterId: string | null = null;
 
@@ -240,6 +264,19 @@ export class ForecastPanel extends Panel {
       const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {
         this.activeDomain = filterBtn.dataset.fcDomain || 'all';
+        this.render();
+        return;
+      }
+
+      const regionBtn = target.closest('[data-fc-region]') as HTMLElement | null;
+      if (regionBtn) {
+        const nextRegion = regionBtn.dataset.fcRegion ?? '';
+        if (nextRegion === this.selectedRegion) return;
+        this.selectedRegion = nextRegion;
+        // Client-side filter only — no RPC fires. The next render() pulls
+        // from the full this.forecasts set and applies the macro region
+        // filter in getVisibleForecasts().
+        this.setCount(this.getVisibleForecasts().length);
         this.render();
         return;
       }
@@ -276,7 +313,12 @@ export class ForecastPanel extends Panel {
     this.forecasts = forecasts;
     const visible = this.getVisibleForecasts();
     this.setCount(visible.length);
-    this.setDataBadge(visible.length > 0 ? 'live' : 'unavailable');
+    // Badge reflects fetch success (this.forecasts.length), not the filtered
+    // result. A user who picks a region with zero matches should still see
+    // the feed as "live" — the empty-state copy inside the panel communicates
+    // the filter miss. Tying the badge to the filter caused the panel to
+    // flip to "unavailable" on any empty region pill.
+    this.setDataBadge(this.forecasts.length > 0 ? 'live' : 'unavailable');
     this.render();
   }
 
@@ -288,24 +330,54 @@ export class ForecastPanel extends Panel {
     if (this.forecasts.length > 0) this.render();
   }
 
+  // Returns forecasts that pass the probability AND region filters. Domain
+  // filter is applied later in render() so the count reflects the prob+region
+  // view (matching what the user sees with 'All' domains selected). Keep this
+  // pure and idempotent — it reads from this.forecasts + this.selectedRegion
+  // and must survive arbitrary refresh-time updateForecasts() calls.
   private getVisibleForecasts(): Forecast[] {
-    return this.forecasts.filter(f => (f.probability || 0) >= PANEL_MIN_PROBABILITY);
+    const probFiltered = this.forecasts.filter(
+      f => (f.probability || 0) >= PANEL_MIN_PROBABILITY,
+    );
+    if (!this.selectedRegion) return probFiltered;
+    return probFiltered.filter(
+      f => getForecastMacroRegion(f.region) === this.selectedRegion,
+    );
   }
 
   private render(): void {
     const visibleForecasts = this.getVisibleForecasts();
+    const filtersHtml = DOMAINS.map(d =>
+      `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
+    ).join('');
+    const regionsHtml = FORECAST_REGIONS.map(r =>
+      `<button class="fc-filter${r.id === this.selectedRegion ? ' fc-active' : ''}" data-fc-region="${escapeHtml(r.id)}">${escapeHtml(r.label)}</button>`
+    ).join('');
+
     if (visibleForecasts.length === 0) {
-      this.setContent('<div class="fc-empty">No forecasts available</div>');
+      // Differentiate fetch-miss (this.forecasts.length === 0) from
+      // filter-miss (this.forecasts has rows but none match the current
+      // region/probability filter). The badge already reflects fetch success
+      // independently; this copy just helps the user understand why the
+      // list is empty so they can adjust the pill without thinking the feed
+      // is broken.
+      const hasAnyForecasts = this.forecasts.length > 0;
+      const emptyCopy = hasAnyForecasts
+        ? 'No forecasts match the current filter'
+        : 'No forecasts available';
+      this.setContent(`
+        <div class="fc-panel">
+          <div class="fc-filters">${filtersHtml}</div>
+          <div class="fc-filters">${regionsHtml}</div>
+          <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
+        </div>
+      `);
       return;
     }
 
     const filtered = this.activeDomain === 'all'
       ? visibleForecasts
       : visibleForecasts.filter(f => f.domain === this.activeDomain);
-
-    const filtersHtml = DOMAINS.map(d =>
-      `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
-    ).join('');
 
     const nexusHtml = this.theaters.length > 0
       ? `<div class="fc-nexus">${this.renderNexus()}</div><div class="fc-section-label">Probability Bets</div>`
@@ -315,6 +387,7 @@ export class ForecastPanel extends Panel {
     this.setContent(`
       <div class="fc-panel">
         <div class="fc-filters">${filtersHtml}</div>
+        <div class="fc-filters">${regionsHtml}</div>
         ${nexusHtml}
         ${tableHtml}
       </div>

@@ -251,10 +251,18 @@ function validate(data) {
   return Array.isArray(data?.events) && data.events.length > 0;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.events) ? data.events.length : 0;
+}
+
 runSeed('unrest', 'events', CANONICAL_KEY, fetchUnrestEvents, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'acled+gdelt',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 120,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

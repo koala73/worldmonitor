@@ -29,6 +29,16 @@ import {
 import { getCurrentClerkUser } from '@/services/clerk';
 import { hasTier } from '@/services/entitlements';
 import { SITE_VARIANT } from '@/config/variant';
+import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
+
+const SYNC_STATE_LABELS: Record<string, string> = {
+  synced: 'Synced', pending: 'Pending', syncing: 'Syncing\u2026',
+  conflict: 'Conflict', offline: 'Offline', 'signed-out': 'Signed out', error: 'Error',
+};
+const SYNC_STATE_COLORS: Record<string, string> = {
+  synced: 'var(--color-ok, #34d399)', pending: 'var(--color-warn, #fbbf24)', syncing: 'var(--color-warn, #fbbf24)',
+  conflict: 'var(--color-error, #f87171)', offline: 'var(--text-faint, #888)', 'signed-out': 'var(--text-faint, #888)', error: 'var(--color-error, #f87171)',
+};
 // When VITE_QUIET_HOURS_BATCH_ENABLED=0 the relay does not honour batch_on_wake.
 // Hide that option so users cannot select a mode that silently behaves as critical_only.
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
@@ -80,6 +90,20 @@ function renderMapThemeDropdown(container: HTMLElement, provider: MapProvider): 
   select.innerHTML = MAP_THEME_OPTIONS[provider]
     .map(opt => `<option value="${opt.value}"${opt.value === currentTheme ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`)
     .join('');
+}
+
+function updateSyncStatusUI(container: HTMLElement): void {
+  const dot = container.querySelector<HTMLElement>('#usSyncDot');
+  const label = container.querySelector<HTMLElement>('#usSyncLabel');
+  const time = container.querySelector<HTMLElement>('#usSyncTime');
+  if (!dot || !label || !time) return;
+
+  const state = getSyncState();
+  const lastSync = getLastSyncAt();
+
+  dot.style.background = (SYNC_STATE_COLORS[state] ?? SYNC_STATE_COLORS.error) as string;
+  label.textContent = SYNC_STATE_LABELS[state] ?? 'Unknown';
+  time.textContent = `Last synced: ${lastSync ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : 'Never'}`;
 }
 
 function updateAiStatus(container: HTMLElement): void {
@@ -339,6 +363,28 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `<div class="wm-pref-group-content">`;
   html += toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), settings.badgeAnimation);
   html += `</div></details>`;
+
+  // ── Cloud Sync group (web-only, signed-in, feature flag on) ──
+  if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
+    const syncState = getSyncState();
+    const lastSync = getLastSyncAt();
+    const lastSyncStr = lastSync
+      ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+      : 'Never';
+
+    html += `<details class="wm-pref-group">`;
+    html += `<summary>Cloud Sync</summary>`;
+    html += `<div class="wm-pref-group-content">`;
+    html += `<div class="wm-sync-status-row">
+      <div class="wm-sync-status-info">
+        <span class="wm-sync-status-dot" id="usSyncDot" style="background:${SYNC_STATE_COLORS[syncState] ?? SYNC_STATE_COLORS.error}"></span>
+        <span class="wm-sync-status-label" id="usSyncLabel">${SYNC_STATE_LABELS[syncState] ?? 'Unknown'}</span>
+        <span class="wm-sync-status-time" id="usSyncTime">Last synced: ${escapeHtml(lastSyncStr)}</span>
+      </div>
+      <button type="button" class="settings-btn settings-btn-secondary wm-sync-now-btn" id="usSyncNowBtn">Sync now</button>
+    </div>`;
+    html += `</div></details>`;
+  }
 
   // ── Data & Community group ──
   html += `<details class="wm-pref-group">`;
@@ -626,6 +672,24 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       }, { signal });
 
       if (!host.isDesktopApp) updateAiStatus(container);
+
+      // ── Cloud Sync: wire "Sync now" button + live state updates ──
+      if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
+        const syncBtn = container.querySelector<HTMLButtonElement>('#usSyncNowBtn');
+        if (syncBtn) {
+          syncBtn.addEventListener('click', () => {
+            syncBtn.disabled = true;
+            syncBtn.textContent = 'Syncing\u2026';
+            syncNow().finally(() => {
+              syncBtn.disabled = false;
+              syncBtn.textContent = 'Sync now';
+              updateSyncStatusUI(container);
+            });
+          }, { signal });
+        }
+        const syncPollId = setInterval(() => updateSyncStatusUI(container), 2000);
+        signal.addEventListener('abort', () => clearInterval(syncPollId));
+      }
 
       // ── Notifications section: locked [PRO] upgrade button ──
       if (!host.isDesktopApp && !(host.isSignedIn && hasTier(1))) {

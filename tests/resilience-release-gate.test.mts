@@ -48,11 +48,11 @@ function installRedisFixtures() {
 }
 
 describe('resilience release gate', () => {
-  it('keeps all 13 dimension scorers non-placeholder for the required countries', async () => {
+  it('keeps all 19 dimension scorers non-placeholder for the required countries', async () => {
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
       const entries = Object.entries(scores);
-      assert.equal(entries.length, 13, `${countryCode} should have all resilience dimensions`);
+      assert.equal(entries.length, 19, `${countryCode} should have all resilience dimensions`);
       for (const [dimensionId, score] of entries) {
         assert.ok(Number.isFinite(score.score), `${countryCode} ${dimensionId} should produce a numeric score`);
         assert.ok(score.coverage > 0, `${countryCode} ${dimensionId} should not fall back to zero-coverage placeholder scoring`);
@@ -134,6 +134,72 @@ describe('resilience release gate', () => {
     assert.equal(us.lowConfidence, false, `US has full 9/9 dataset coverage in fixtures and should not be flagged low-confidence`);
   });
 
+  // T1.1 regression test (Phase 1 of the country-resilience reference-grade
+  // upgrade plan, docs/internal/country-resilience-upgrade-plan.md).
+  //
+  // The origin review document (docs/internal/upgrading-country-resilience.md)
+  // claims: "Norway and the US both hit 100 under current fixtures, which
+  // broke the intended ordering and exposed a ceiling effect at the top end
+  // of the ranking."
+  //
+  // Investigation outcome (2026-04-11): the claim does NOT reproduce.
+  //
+  // Measured scores under the current release-gate fixtures and the
+  // post-PR-#2847 domain-weighted-average formula:
+  //
+  //     NO (elite tier)   overallScore = 86.58, baseline 86.85, stress 84.36
+  //     US (strong tier)  overallScore = 72.80, baseline 73.15, stress 70.58
+  //     Delta             NO - US = 13.78 points
+  //     Ceiling           neither country approaches 100; all 5 domains stay
+  //                       well inside the [0, 100] clamp range
+  //
+  // The ordering elite > strong > stressed > fragile is preserved. There is
+  // no hard 100 ceiling in the scorer, and nothing in _dimension-scorers.ts
+  // can produce a top-of-ranking tie between NO and US given the 14-point
+  // quality differential wired into the fixtures.
+  //
+  // Conclusion: the origin-doc symptom is misattributed or stale (it likely
+  // predates PR #2847's formula revert or references an older fixture set).
+  // The origin-doc changelog will be updated in a trailing commit after
+  // PR #2938 (the reference-grade plan) merges, since the origin doc is
+  // part of that PR.
+  //
+  // This test pins the current correct behavior so any future regression to
+  // a real top-of-ranking ceiling bug is caught immediately by CI.
+  it('T1.1 regression: Norway and US do not both pin at 100 and preserve elite > strong ordering', async () => {
+    installRedisFixtures();
+
+    const [no, us] = await Promise.all([
+      getResilienceScore({ request: new Request('https://example.com?countryCode=NO') } as never, { countryCode: 'NO' }),
+      getResilienceScore({ request: new Request('https://example.com?countryCode=US') } as never, { countryCode: 'US' }),
+    ]);
+
+    assert.ok(
+      no.overallScore < 100,
+      `Norway should not pin at the ceiling (overallScore=${no.overallScore})`,
+    );
+    assert.ok(
+      us.overallScore < 100,
+      `US should not pin at the ceiling (overallScore=${us.overallScore})`,
+    );
+    assert.ok(
+      no.overallScore > us.overallScore,
+      `Norway (elite fixture, ${no.overallScore}) should score higher than the US (strong fixture, ${us.overallScore})`,
+    );
+    // Guard against a near-tie that would still break meaningful ranking.
+    // Actual measured delta at commit time is 13.78 points; the threshold
+    // of 8 (about 60% of the measured delta) leaves room for fixture
+    // tuning while catching a tier-separation collapse before the ordering
+    // degrades into a near-tie. An earlier version of this test used a
+    // threshold of 3, which would have silently accepted a ~71% erosion
+    // of the elite-strong separation signal. Bumped in response to PR
+    // review feedback on #2941.
+    assert.ok(
+      no.overallScore - us.overallScore >= 8,
+      `Norway should lead the US by at least 8 points (NO=${no.overallScore}, US=${us.overallScore}, delta=${no.overallScore - us.overallScore})`,
+    );
+  });
+
   it('produces complete ranking and choropleth entries for the full G20 + EU27 release set', async () => {
     installRedisFixtures();
 
@@ -152,5 +218,159 @@ describe('resilience release gate', () => {
     for (const countryCode of CHOROPLETH_TARGET_COUNTRIES) {
       assert.ok(choropleth.has(countryCode), `expected choropleth data for ${countryCode}`);
     }
+  });
+
+  // T1.7 schema pass: the serialized ResilienceDimension now carries an
+  // imputationClass field that downstream consumers (widget icon column,
+  // methodology changelog) can use to distinguish stable-absence,
+  // unmonitored, source-failure, and not-applicable from observed data.
+  // This test pins the shape so the field is not silently dropped.
+  it('T1.7: every serialized ResilienceDimension carries an imputationClass field', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
+    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
+    for (const dimension of allDimensions) {
+      assert.equal(
+        typeof dimension.imputationClass,
+        'string',
+        `dimension ${dimension.id} must carry a string imputationClass (got ${typeof dimension.imputationClass})`,
+      );
+      const valid = ['', 'stable-absence', 'unmonitored', 'source-failure', 'not-applicable'];
+      assert.ok(
+        valid.includes(dimension.imputationClass),
+        `dimension ${dimension.id} imputationClass="${dimension.imputationClass}" must be one of [${valid.join(', ')}]`,
+      );
+    }
+  });
+
+  // T1.5 propagation pass: the serialized ResilienceDimension now carries
+  // a `freshness` payload aggregated across the dimension's constituent
+  // signals. PR #2947 shipped the classifier; this test pins the end-to-end
+  // response shape so the field is not silently dropped.
+  it('T1.5: every serialized ResilienceDimension carries a freshness payload', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
+    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
+    const validLevels = ['', 'fresh', 'aging', 'stale'];
+    for (const dimension of allDimensions) {
+      assert.ok(dimension.freshness != null, `dimension ${dimension.id} must carry a freshness payload`);
+      const freshness = dimension.freshness!;
+      assert.equal(
+        typeof freshness.lastObservedAtMs,
+        'string',
+        `dimension ${dimension.id} freshness.lastObservedAtMs must be a string (proto int64), got ${typeof freshness.lastObservedAtMs}`,
+      );
+      assert.equal(
+        typeof freshness.staleness,
+        'string',
+        `dimension ${dimension.id} freshness.staleness must be a string`,
+      );
+      assert.ok(
+        validLevels.includes(freshness.staleness),
+        `dimension ${dimension.id} freshness.staleness="${freshness.staleness}" must be one of [${validLevels.join(', ')}]`,
+      );
+      // The serialized int64 string must parse cleanly to a non-negative
+      // integer so downstream consumers (widget badge, CMD+K Freshness
+      // column) can render it without defensive string handling.
+      const asNumber = Number(freshness.lastObservedAtMs);
+      assert.ok(Number.isFinite(asNumber), `lastObservedAtMs="${freshness.lastObservedAtMs}" must parse to a finite number`);
+      assert.ok(asNumber >= 0, `lastObservedAtMs="${freshness.lastObservedAtMs}" must be non-negative`);
+    }
+  });
+
+  // Phase 2 T2.1: the three-pillar schema is now the default (v2 flag
+  // flipped to true in PR #2993). The response carries schemaVersion="2.0"
+  // and a non-empty pillars array with the three-pillar structure.
+  it('T2.1: default response shape is v2 (pillars populated, schemaVersion="2.0")', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    assert.equal(
+      response.schemaVersion,
+      '2.0',
+      'with RESILIENCE_SCHEMA_V2_ENABLED default true (post Phase 2), response must report schemaVersion="2.0"',
+    );
+    assert.ok(
+      Array.isArray(response.pillars) && response.pillars.length === 3,
+      'v2 response must include 3 pillars (structural-readiness, live-shock-exposure, recovery-capacity)',
+    );
+  });
+
+  it('T2.1: v1 default response keeps every Phase 1 top-level field populated', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+
+    // The plan promises one release cycle of parallel field population
+    // so widget / map layer / Country Brief consumers can migrate. Pin
+    // every field that the v1 widget reads so a future PR cannot drop
+    // them prematurely.
+    assert.equal(typeof response.overallScore, 'number');
+    assert.equal(typeof response.baselineScore, 'number');
+    assert.equal(typeof response.stressScore, 'number');
+    assert.equal(typeof response.stressFactor, 'number');
+    assert.equal(typeof response.level, 'string');
+    assert.ok(Array.isArray(response.domains));
+    assert.equal(response.domains.length, 6, 'v1 shape keeps all 6 domains under the top-level domains[] field');
+    assert.equal(typeof response.imputationShare, 'number');
+    assert.equal(typeof response.lowConfidence, 'boolean');
+    assert.equal(typeof response.dataVersion, 'string');
+    assert.equal(typeof response.trend, 'string');
+    assert.equal(typeof response.change30d, 'number');
+  });
+
+  it('T2.1: response carries the pillars and schemaVersion fields on the wire', async () => {
+    installRedisFixtures();
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=NO') } as never,
+      { countryCode: 'NO' },
+    );
+
+    // Both fields must be present (not undefined) so downstream
+    // consumers can branch on schemaVersion without optional-chaining
+    // every read. proto3 defaults handle returning users gracefully.
+    assert.ok('pillars' in response, 'response must serialize the pillars field');
+    assert.ok('schemaVersion' in response, 'response must serialize the schemaVersion field');
+    assert.ok(Array.isArray(response.pillars));
+    assert.equal(typeof response.schemaVersion, 'string');
+  });
+
+  it('T1.7: fully imputed dimension serializes a non-empty imputationClass', async () => {
+    // XX has no fixture: every scorer will fall through to either null (no
+    // data at all) or imputation. scoreFoodWater requires resilience:static
+    // to be loaded before it imputes, so we supply a minimal static record
+    // with fao:null and aquastat:null to trigger the IPC impute path.
+    // This exercises the full pipeline: scorer → weightedBlend → buildDimensionList
+    // → ResilienceDimension → response.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return { fao: null, aquastat: null };
+      return null;
+    };
+    const scores = await scoreAllDimensions('XX', reader);
+    assert.equal(
+      scores.foodWater.imputationClass,
+      'stable-absence',
+      `foodWater with fao:null should be stable-absence at the scorer boundary, got ${scores.foodWater.imputationClass}`,
+    );
   });
 });

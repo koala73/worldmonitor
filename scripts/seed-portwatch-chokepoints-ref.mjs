@@ -72,12 +72,20 @@ export function validateFn(data) {
 }
 
 const isMain = process.argv[1]?.endsWith('seed-portwatch-chokepoints-ref.mjs');
+export function declareRecords(data) {
+  return data && typeof data === "object" ? Object.keys(data).length : 0;
+}
+
 if (isMain) {
   runSeed('portwatch', 'chokepoints-ref', CANONICAL_KEY, fetchAll, {
     validateFn,
     ttlSeconds: TTL,
     sourceVersion: 'imf-portwatch-chokepoints-arcgis-v1',
     recordCount: (data) => Object.keys(data).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 20160,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

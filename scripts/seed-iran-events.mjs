@@ -240,10 +240,18 @@ function validate(data) {
   return Array.isArray(data?.events) && data.events.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.events) ? data.events.length : 0;
+}
+
 runSeed('conflict', 'iran-events', CANONICAL_KEY, fetchIranEvents, {
   validateFn: validate,
   ttlSeconds: 172800,
   sourceVersion: 'liveuamap-manual-v1',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 20160,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(0);

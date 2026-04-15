@@ -6,12 +6,12 @@ import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indica
 import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 
 describe('indicator registry', () => {
-  it('covers all 13 dimensions', () => {
+  it('covers all 19 dimensions', () => {
     const coveredDimensions = new Set(INDICATOR_REGISTRY.map((i) => i.dimension));
     for (const dimId of RESILIENCE_DIMENSION_ORDER) {
       assert.ok(coveredDimensions.has(dimId), `${dimId} has no indicators in registry`);
     }
-    assert.equal(coveredDimensions.size, 13);
+    assert.equal(coveredDimensions.size, 19);
   });
 
   it('has no duplicate indicator ids', () => {
@@ -28,7 +28,7 @@ describe('indicator registry', () => {
   });
 
   it('every indicator has valid cadence and scope', () => {
-    const validCadences = new Set(['realtime', 'daily', 'weekly', 'monthly', 'annual']);
+    const validCadences = new Set(['realtime', 'daily', 'weekly', 'monthly', 'quarterly', 'annual']);
     const validScopes = new Set(['global', 'curated']);
     for (const spec of INDICATOR_REGISTRY) {
       assert.ok(validCadences.has(spec.cadence), `${spec.id} has invalid cadence: ${spec.cadence}`);

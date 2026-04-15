@@ -17,6 +17,21 @@ describe('seed-portwatch-disruptions.mjs exports', () => {
     assert.match(src, /export\s+async\s+function\s+fetchAll/);
   });
 
+  // Regression guard: ArcGIS SQL parser rejects bare epoch-ms integers against
+  // Date-typed fields with "Cannot perform query. Invalid query parameters."
+  // The WHERE clause must use `timestamp '...'` literals, produced by
+  // toArcgisTimestamp(). Reverting to a raw ${sinceEpoch} breaks every run.
+  it('WHERE clause uses ArcGIS timestamp literal, not raw epoch-ms', () => {
+    assert.match(src, /todate\s*>\s*timestamp\s*'\$\{sinceSql\}'/, 'WHERE clause must compare against an ArcGIS timestamp literal');
+    assert.doesNotMatch(src, /todate\s*>\s*\$\{sinceEpoch\}/, 'WHERE clause must NOT compare against a raw epoch-ms integer');
+  });
+
+  it('toArcgisTimestamp formats epoch-ms as "YYYY-MM-DD HH:MM:SS"', async () => {
+    const mod = await import('../scripts/seed-portwatch-disruptions.mjs');
+    const formatted = mod.toArcgisTimestamp(Date.UTC(2026, 3, 13, 8, 30, 45)); // 2026-04-13T08:30:45Z
+    assert.equal(formatted, '2026-04-13 08:30:45');
+  });
+
   it('exports validateFn', () => {
     assert.match(src, /export\s+function\s+validateFn/);
   });

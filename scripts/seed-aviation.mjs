@@ -13,14 +13,15 @@
  */
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
 const DEFAULT_AIRPORTS = ['IST', 'ESB', 'SAW', 'LHR', 'FRA', 'CDG'];
 const OPS_CACHE_KEY = `aviation:ops-summary:v1:${[...DEFAULT_AIRPORTS].sort().join(',')}`;
 const NEWS_CACHE_KEY = 'aviation:news::24:v1'; // empty entities, 24h window
-const OPS_TTL = 300;
-const NEWS_TTL = 900;
+const OPS_TTL = 2400;
+const NEWS_TTL = 2400;
 
 const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
 
@@ -74,7 +75,7 @@ async function fetchNotamClosures() {
     });
     if (!resp.ok) return null;
     const data = await resp.json();
-    return data.result ? JSON.parse(data.result) : null;
+    return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
   } catch {
     return null;
   }
@@ -264,10 +265,17 @@ function validate(data) {
   return data?.summaries?.length > 0;
 }
 
+export function declareRecords(data) {
+  return data?.summaries?.length ?? 0;
+}
+
 runSeed('aviation', 'ops-news', OPS_CACHE_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: OPS_TTL,
   sourceVersion: 'aviationstack-rss',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 150,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

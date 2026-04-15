@@ -86,10 +86,17 @@ function validate(data) {
   return Array.isArray(data?.earthquakes) && data.earthquakes.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.earthquakes) ? data.earthquakes.length : 0;
+}
+
 runSeed('seismology', 'earthquakes', CANONICAL_KEY, fetchEarthquakes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'usgs-4.5-day-nuclear-v1',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetMarketBreadthHistoryRequest {}
+
+message BreadthSnapshot {
+  string date = 1;
+  // Optional so a missing/failed Barchart reading serializes as JSON null
+  // instead of collapsing to 0, which would render identically to a real 0%
+  // reading (severe market dislocation with no S&P stocks above SMA).
+  optional double pct_above_20d = 2;
+  optional double pct_above_50d = 3;
+  optional double pct_above_200d = 4;
+}
+
+message GetMarketBreadthHistoryResponse {
+  optional double current_pct_above_20d = 1;
+  optional double current_pct_above_50d = 2;
+  optional double current_pct_above_200d = 3;
+  string updated_at = 4;
+  repeated BreadthSnapshot history = 5;
+  bool unavailable = 6;
+}

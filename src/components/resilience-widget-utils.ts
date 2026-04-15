@@ -1,5 +1,108 @@
 import type { ResilienceScoreResponse } from '@/services/resilience';
 
+// Gated locked-preview fixture rendered when the resilience widget is
+// visible to non-entitled users. The preview is blurred and
+// non-interactive via the .resilience-widget__preview CSS class, so
+// the exact values do not need to match any real country. They just
+// need to populate the 5 domain bars AND the 13-cell per-dimension
+// confidence grid (T1.6) with realistic-looking data so the gated
+// card is not a blank gap. Raised in PR #2949 review. Lives in this
+// dependency-free utils module so tests can import it without
+// pulling in the full ResilienceWidget class (the class indirectly
+// depends on `import.meta.env.DEV` via proxy.ts, which breaks plain
+// node test runners).
+// Snapshot-stable clock so the locked preview fixture does not drift
+// in snapshot tests or re-render with a different lastObservedAtMs on
+// every mount. Date picked arbitrarily within the "fresh" window of a
+// typical dimension cadence. Epoch-millis string mirrors the proto
+// wire shape (int64 strings).
+const LOCKED_PREVIEW_FRESH_AT_MS = '1712000000000';
+const LOCKED_PREVIEW_AGING_AT_MS = '1700000000000';
+const LOCKED_PREVIEW_STALE_AT_MS = '1680000000000';
+
+export const LOCKED_PREVIEW: ResilienceScoreResponse = {
+  countryCode: 'US',
+  overallScore: 73,
+  baselineScore: 82,
+  stressScore: 58,
+  stressFactor: 0.21,
+  level: 'high',
+  domains: [
+    {
+      id: 'economic',
+      score: 82,
+      weight: 0.22,
+      dimensions: [
+        { id: 'macroFiscal', score: 85, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'currencyExternal', score: 80, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'tradeSanctions', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+      ],
+    },
+    {
+      id: 'infrastructure',
+      score: 68,
+      weight: 0.2,
+      dimensions: [
+        { id: 'cyberDigital', score: 72, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'logisticsSupply', score: 70, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2, imputationClass: 'stable-absence', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'infrastructure', score: 65, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+      ],
+    },
+    {
+      id: 'energy',
+      score: 88,
+      weight: 0.15,
+      dimensions: [
+        { id: 'energy', score: 88, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+      ],
+    },
+    {
+      id: 'social-governance',
+      score: 71,
+      weight: 0.25,
+      dimensions: [
+        { id: 'governanceInstitutional', score: 78, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'socialCohesion', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: 'stable-absence', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'borderSecurity', score: 68, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
+        { id: 'informationCognitive', score: 66, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+      ],
+    },
+    {
+      id: 'health-food',
+      score: 54,
+      weight: 0.18,
+      dimensions: [
+        { id: 'healthPublicService', score: 58, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'foodWater', score: 50, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_STALE_AT_MS, staleness: 'stale' } },
+      ],
+    },
+    {
+      id: 'recovery',
+      score: 65,
+      weight: 1.0,
+      dimensions: [
+        { id: 'fiscalSpace', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'reserveAdequacy', score: 55, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'externalDebtCoverage', score: 60, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'importConcentration', score: 70, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
+        { id: 'stateContinuity', score: 80, coverage: 0.92, observedWeight: 0.92, imputedWeight: 0.08, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'fuelStockDays', score: 50, coverage: 0.3, observedWeight: 0, imputedWeight: 1, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_STALE_AT_MS, staleness: 'stale' } },
+      ],
+    },
+  ],
+  trend: 'rising',
+  change30d: 2.4,
+  lowConfidence: false,
+  imputationShare: 0,
+  dataVersion: '',
+  // Phase 2 T2.1: locked preview ships the v1 shape (pillars empty,
+  // schemaVersion="1.0") so the gated card matches what unentitled
+  // users would see live, and so the type checker is satisfied without
+  // dragging pillar logic into a fixture.
+  pillars: [],
+  schemaVersion: '1.0',
+};
+
 export type ResilienceVisualLevel = 'very_high' | 'high' | 'moderate' | 'low' | 'very_low' | 'unknown';
 
 export const RESILIENCE_VISUAL_LEVEL_COLORS: Record<ResilienceVisualLevel, string> = {
@@ -57,4 +160,261 @@ export function formatBaselineStress(baseline: number, stress: number): string {
   const b = Number.isFinite(baseline) ? Math.round(baseline) : 0;
   const s = Number.isFinite(stress) ? Math.round(stress) : 0;
   return `Baseline: ${b} | Stress: ${s}`;
+}
+
+// Formats the dataVersion field (ISO date YYYY-MM-DD, sourced from the
+// seed-meta key) for display in the widget footer. Returns an empty string
+// when dataVersion is missing, malformed, or not a real calendar date so
+// the caller can skip rendering. Format is stable and regex + calendar
+// tested by resilience-widget.test.mts.
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+export function formatResilienceDataVersion(dataVersion: string | null | undefined): string {
+  if (typeof dataVersion !== 'string' || !ISO_DATE_PATTERN.test(dataVersion)) return '';
+  // Regex-shape is not enough: `/^\d{4}-\d{2}-\d{2}$/` accepts values like
+  // `9999-99-99` or `2024-13-45`. A stale or corrupted Redis key could emit
+  // one, and the widget would render it without complaint. Defensively
+  // verify the string parses to a real calendar date AND round-trips back
+  // to the same YYYY-MM-DD slice (so e.g. `2024-02-30` does not silently
+  // become `2024-03-01`). Raised in review of PR #2943.
+  const parsed = new Date(dataVersion);
+  if (Number.isNaN(parsed.getTime())) return '';
+  if (parsed.toISOString().slice(0, 10) !== dataVersion) return '';
+  return `Data ${dataVersion}`;
+}
+
+// T1.6 Phase 1 of the country-resilience reference-grade upgrade plan.
+// Per-dimension confidence helpers. The widget uses these to render a
+// compact confidence grid below the 5-domain rows so analysts can see
+// per-dimension data coverage without opening the deep-dive panel.
+//
+// This slice uses ONLY the existing ResilienceDimension fields (`id`,
+// `coverage`, `observedWeight`, `imputedWeight`) already on every
+// response, so no proto or schema changes are needed. The downstream
+// adds (imputation class icon from T1.7, freshness badge from T1.5)
+// land as additional columns in later PRs once the schema exposes
+// those fields through the response type.
+
+// Short labels for each of the 13 dimensions so the compact grid does
+// not wrap. Keys match `ResilienceDimensionId` from
+// server/worldmonitor/resilience/v1/_dimension-scorers.ts. The doc
+// linter test (resilience-methodology-lint.test.mts) already pins the
+// scorer side, so any new dimension must land in both places together.
+const DIMENSION_LABELS: Record<string, string> = {
+  macroFiscal: 'Macro',
+  currencyExternal: 'Currency',
+  tradeSanctions: 'Trade',
+  cyberDigital: 'Cyber',
+  logisticsSupply: 'Logistics',
+  infrastructure: 'Infra',
+  energy: 'Energy',
+  governanceInstitutional: 'Gov',
+  socialCohesion: 'Social',
+  borderSecurity: 'Border',
+  informationCognitive: 'Info',
+  healthPublicService: 'Health',
+  foodWater: 'Food',
+  fiscalSpace: 'Fiscal',
+  reserveAdequacy: 'Reserves',
+  externalDebtCoverage: 'Ext Debt',
+  importConcentration: 'Imports',
+  stateContinuity: 'Continuity',
+  fuelStockDays: 'Fuel',
+};
+
+export function getResilienceDimensionLabel(dimensionId: string): string {
+  return DIMENSION_LABELS[dimensionId] ?? dimensionId;
+}
+
+// Minimal shape the confidence helpers need from a ResilienceDimension.
+// Defined locally so this module does not take a hard dependency on the
+// generated service types; the real ResilienceDimension from the proto
+// already has these fields (plus more).
+export interface DimensionConfidenceInput {
+  id: string;
+  coverage: number;
+  observedWeight: number;
+  imputedWeight: number;
+  // PR 1 (#2959) T1.7 schema pass: four-class imputation taxonomy.
+  // Empty string when the dimension has any observed data (i.e. the
+  // taxonomy only applies to fully-imputed dimensions). Downstream
+  // `formatDimensionConfidence` normalizes empty string and any
+  // unknown value to `null`.
+  imputationClass?: string;
+  // PR 2 (#2961) T1.5 propagation pass: aggregated dimension freshness
+  // surfaced from the per-signal staleness classifier. Optional on the
+  // input so existing fixtures and mock data keep compiling. The
+  // `lastObservedAtMs` field is a proto int64 so the wire shape is a
+  // string; `formatDimensionConfidence` coerces it to a number.
+  freshness?: {
+    lastObservedAtMs?: string | number;
+    staleness?: string;
+  };
+}
+
+export type DimensionCoverageStatus = 'observed' | 'partial' | 'imputed' | 'absent';
+
+export type DimensionImputationClass =
+  | 'stable-absence'
+  | 'unmonitored'
+  | 'source-failure'
+  | 'not-applicable'
+  | null;
+
+export type DimensionStaleness = 'fresh' | 'aging' | 'stale' | null;
+
+export interface DimensionConfidence {
+  id: string;
+  label: string;
+  coveragePct: number;
+  status: DimensionCoverageStatus;
+  /** True when total weight (observed + imputed) is zero, meaning no data at all. */
+  absent: boolean;
+  /** PR 1 (#2959) taxonomy class, or null when the dimension has observed data or the class is unset/unknown. */
+  imputationClass: DimensionImputationClass;
+  /** PR 2 (#2961) staleness level, or null when freshness is unset/unknown. */
+  staleness: DimensionStaleness;
+  /** Epoch millis of the most recent observation in this dimension, or null when unknown. */
+  lastObservedAtMs: number | null;
+}
+
+const IMPUTATION_CLASS_VALUES: ReadonlySet<string> = new Set([
+  'stable-absence',
+  'unmonitored',
+  'source-failure',
+  'not-applicable',
+]);
+
+const STALENESS_VALUES: ReadonlySet<string> = new Set(['fresh', 'aging', 'stale']);
+
+function normalizeImputationClass(value: string | undefined): DimensionImputationClass {
+  if (!value) return null;
+  return IMPUTATION_CLASS_VALUES.has(value) ? (value as Exclude<DimensionImputationClass, null>) : null;
+}
+
+function normalizeStaleness(value: string | undefined): DimensionStaleness {
+  if (!value) return null;
+  return STALENESS_VALUES.has(value) ? (value as Exclude<DimensionStaleness, null>) : null;
+}
+
+function normalizeLastObservedAtMs(value: string | number | undefined): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+const IMPUTATION_CLASS_LABELS: Record<Exclude<DimensionImputationClass, null>, string> = {
+  'stable-absence': 'Stable absence: country is not in source because the phenomenon is not happening',
+  unmonitored: 'Unmonitored: source is curated and absence is ambiguous',
+  'source-failure': 'Source down: upstream seeder failed',
+  'not-applicable': 'Not applicable: structurally N/A for this country',
+};
+
+const IMPUTATION_CLASS_ICONS: Record<Exclude<DimensionImputationClass, null>, string> = {
+  'stable-absence': '\u2713',
+  unmonitored: '?',
+  'source-failure': '!',
+  'not-applicable': '\u2014',
+};
+
+const STALENESS_LABELS: Record<Exclude<DimensionStaleness, null>, string> = {
+  fresh: 'Fresh (within 1.5x cadence)',
+  aging: 'Aging (1.5 to 3x cadence)',
+  stale: 'Stale (beyond 3x cadence)',
+};
+
+export function getImputationClassLabel(c: DimensionImputationClass): string {
+  if (!c) return 'Unknown imputation class';
+  return IMPUTATION_CLASS_LABELS[c];
+}
+
+export function getImputationClassIcon(c: DimensionImputationClass): string {
+  if (!c) return '';
+  return IMPUTATION_CLASS_ICONS[c];
+}
+
+export function getStalenessLabel(s: DimensionStaleness): string {
+  if (!s) return 'Unknown freshness';
+  return STALENESS_LABELS[s];
+}
+
+/**
+ * Classify a dimension's coverage into one of four semantic buckets so
+ * the widget can render a status icon without re-deriving the logic.
+ *
+ * - `absent`: no observed or imputed weight at all (dimension scorer
+ *   returned an empty result). Rare, indicates a data-collection bug.
+ * - `imputed`: all weight came from imputation, zero real data.
+ * - `partial`: mix of observed and imputed weight; less than 80%
+ *   observed share.
+ * - `observed`: at least 80% of weight came from real data.
+ *
+ * The 80% threshold mirrors the existing `lowConfidence` rule in
+ * `_shared.ts` where imputation share above 40% (i.e. below 60% observed)
+ * flips the widget-wide low-confidence flag. The per-dimension threshold
+ * is stricter because a single well-covered dimension should not be
+ * obscured by the domain's worst case.
+ */
+export function formatDimensionConfidence(input: DimensionConfidenceInput): DimensionConfidence {
+  const coverage = Number.isFinite(input.coverage) ? input.coverage : 0;
+  const coveragePct = Math.round(Math.max(0, Math.min(1, coverage)) * 100);
+  const observed = Number.isFinite(input.observedWeight) ? input.observedWeight : 0;
+  const imputed = Number.isFinite(input.imputedWeight) ? input.imputedWeight : 0;
+  const total = observed + imputed;
+  const label = getResilienceDimensionLabel(input.id);
+  const imputationClass = normalizeImputationClass(input.imputationClass);
+  const staleness = normalizeStaleness(input.freshness?.staleness);
+  const lastObservedAtMs = normalizeLastObservedAtMs(input.freshness?.lastObservedAtMs);
+
+  if (total <= 0) {
+    return {
+      id: input.id,
+      label,
+      coveragePct: 0,
+      status: 'absent',
+      absent: true,
+      imputationClass,
+      staleness,
+      lastObservedAtMs,
+    };
+  }
+
+  const observedShare = observed / total;
+  let status: DimensionCoverageStatus;
+  if (observed === 0) {
+    status = 'imputed';
+  } else if (observedShare >= 0.8) {
+    status = 'observed';
+  } else {
+    status = 'partial';
+  }
+
+  return {
+    id: input.id,
+    label,
+    coveragePct,
+    status,
+    absent: false,
+    imputationClass,
+    staleness,
+    lastObservedAtMs,
+  };
+}
+
+/**
+ * Collect every dimension across every domain in the response into a
+ * flat, stable-ordered list of DimensionConfidence entries. Preserves
+ * the order the scorer emits (domain order, then dimension order inside
+ * each domain) so the widget can render a predictable grid.
+ */
+export function collectDimensionConfidences(
+  domains: ReadonlyArray<{ dimensions: ReadonlyArray<DimensionConfidenceInput> }>,
+): DimensionConfidence[] {
+  const out: DimensionConfidence[] = [];
+  for (const domain of domains) {
+    for (const dim of domain.dimensions) {
+      out.push(formatDimensionConfidence(dim));
+    }
+  }
+  return out;
 }

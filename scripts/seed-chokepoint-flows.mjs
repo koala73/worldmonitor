@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -52,7 +53,7 @@ async function redisGet(url, token, key) {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
 }
 
 function avg(arr) {
@@ -145,12 +146,20 @@ export function validateFn(data) {
 }
 
 const isMain = process.argv[1]?.endsWith('seed-chokepoint-flows.mjs');
+export function declareRecords(data) {
+  return data && typeof data === "object" ? Object.keys(data).length : 0;
+}
+
 if (isMain) {
   runSeed('energy', 'chokepoint-flows', CANONICAL_KEY, fetchAll, {
     validateFn,
     ttlSeconds: TTL,
     sourceVersion: 'portwatch-eia-flows-v1',
     recordCount: (data) => Object.keys(data).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 720,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

@@ -1,5 +1,22 @@
 import type { ResilienceDimensionId } from './_dimension-scorers.ts';
 
+// Phase 2 T2.2a signal tiering. See docs/internal/country-resilience-upgrade-plan.md
+// section "Signal tiering (Core / Enrichment / Experimental)".
+export type IndicatorTier = 'core' | 'enrichment' | 'experimental';
+
+// Phase 2 T2.2a license audit field. The values come from the parent plan's
+// licensing audit workstream (Phase 2 A9). New entries that have not yet been
+// audited use 'unknown' as a placeholder; the linter test reports the count
+// without failing so the audit can chase them.
+export type IndicatorLicense =
+  | 'public-domain' // WGI, WHO GHO, FRED, UN Comtrade (openly usable)
+  | 'open-data' // ND-GAIN, World Bank Open Data, IMF Open Data (CC-BY or similar)
+  | 'open-attribution' // GDELT, RSF Index, OWID (attribution required)
+  | 'research-only' // UCDP (Uppsala), ACLED (academic/press), INFORM-Global (CC-BY-NC)
+  | 'non-commercial' // FSI, BIS EER, GPI/IEP (free with carve-out)
+  | 'proprietary' // Bloomberg, S&P Global Platts (not used in Core)
+  | 'unknown'; // placeholder for any indicator still awaiting license audit
+
 export type IndicatorSpec = {
   id: string;
   dimension: ResilienceDimensionId;
@@ -9,22 +26,29 @@ export type IndicatorSpec = {
   weight: number;
   sourceKey: string;
   scope: 'global' | 'curated';
-  cadence: 'realtime' | 'daily' | 'weekly' | 'monthly' | 'annual';
+  cadence: 'realtime' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual';
   imputation?: { type: 'absenceSignal' | 'conservative'; score: number; certainty: number };
+  // Phase 2 T2.2a additions (REQUIRED on every entry):
+  tier: IndicatorTier; // Core = moves the public overall score, Enrichment = drill-down only, Experimental = internal
+  coverage: number; // expected country count; the tier linter enforces Core >= 180
+  license: IndicatorLicense; // source license category for the audit trail
 };
 
 export const INDICATOR_REGISTRY: IndicatorSpec[] = [
-  // ── macroFiscal (3 sub-metrics) ───────────────────────────────────────────
+  // ── macroFiscal (4 sub-metrics) ───────────────────────────────────────────
   {
     id: 'govRevenuePct',
     dimension: 'macroFiscal',
     description: 'Government revenue as % of GDP (IMF GGR_G01_GDP_PT); fiscal capacity proxy',
     direction: 'higherBetter',
     goalposts: { worst: 5, best: 45 },
-    weight: 0.5,
+    weight: 0.4,
     sourceKey: 'economic:imf:macro:v2',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 212,
+    license: 'open-data',
   },
   {
     id: 'debtGrowthRate',
@@ -36,6 +60,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'economic:national-debt:v1',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 190,
+    license: 'open-data',
   },
   {
     id: 'currentAccountPct',
@@ -43,10 +70,42 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Current account balance as % of GDP (IMF); external position vulnerability',
     direction: 'higherBetter',
     goalposts: { worst: -20, best: 20 },
-    weight: 0.3,
+    weight: 0.2,
     sourceKey: 'economic:imf:macro:v2',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 190,
+    license: 'open-data',
+  },
+  {
+    id: 'unemploymentPct',
+    dimension: 'macroFiscal',
+    description: 'Unemployment rate (IMF WEO LUR); higher = labor-market slack & lower fiscal absorption capacity',
+    direction: 'lowerBetter',
+    goalposts: { worst: 25, best: 3 },
+    weight: 0.15,
+    sourceKey: 'economic:imf:labor:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'enrichment',
+    coverage: 150,
+    license: 'open-data',
+  },
+  {
+    id: 'householdDebtService',
+    dimension: 'macroFiscal',
+    description: 'BIS household debt service ratio (% income, quarterly). DSR > 10% precedes banking crises (Drehmann 2011). Lower is safer; goalposts anchor 20% → 0, 0% → 100.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 20, best: 0 },
+    weight: 0.05,
+    sourceKey: 'economic:bis:dsr:v1',
+    scope: 'curated',
+    cadence: 'quarterly',
+    imputation: { type: 'conservative', score: 60, certainty: 0.3 },
+    tier: 'enrichment',
+    coverage: 40,
+    license: 'non-commercial',
   },
 
   // ── currencyExternal (3 sub-metrics, plus IMF inflation fallback for non-BIS) ─
@@ -61,6 +120,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'monthly',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    // BIS REER is curated (~60 countries). Demoted to Enrichment by the
+    // Phase 2 A4 coverage gate; the IMF inflation + WB reserves fallback
+    // chain still feeds the Core fxReservesAdequacy signal globally.
+    tier: 'enrichment',
+    coverage: 60,
+    license: 'non-commercial',
   },
   {
     id: 'fxDeviation',
@@ -73,6 +138,10 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'monthly',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    // BIS REER curated source, same coverage limitation as fxVolatility.
+    tier: 'enrichment',
+    coverage: 60,
+    license: 'non-commercial',
   },
   {
     id: 'fxReservesAdequacy',
@@ -84,6 +153,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:*',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
   },
 
   // ── tradeSanctions (4 sub-metrics) ────────────────────────────────────────
@@ -97,6 +169,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'sanctions:country-counts:v1',
     scope: 'global',
     cadence: 'daily',
+    tier: 'core',
+    coverage: 200,
+    license: 'public-domain',
   },
   {
     id: 'tradeRestrictions',
@@ -109,6 +184,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'weekly',
     imputation: { type: 'conservative', score: 60, certainty: 0.4 },
+    // WTO tariff-overview reporter set is the curated top-50 reporters; below
+    // the Core 180 gate so the signal sits in Enrichment until a wider seeder
+    // ships in a future PR.
+    tier: 'enrichment',
+    coverage: 50,
+    license: 'open-data',
   },
   {
     id: 'tradeBarriers',
@@ -121,6 +202,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'weekly',
     imputation: { type: 'conservative', score: 60, certainty: 0.4 },
+    tier: 'enrichment',
+    coverage: 50,
+    license: 'open-data',
   },
   {
     id: 'appliedTariffRate',
@@ -132,6 +216,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
   },
 
   // ── cyberDigital (3 sub-metrics) ──────────────────────────────────────────
@@ -145,6 +232,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'cyber:threats:v2',
     scope: 'global',
     cadence: 'daily',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
   {
     id: 'internetOutages',
@@ -156,6 +246,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'infra:outages:v1',
     scope: 'global',
     cadence: 'realtime',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
   {
     id: 'gpsJamming',
@@ -167,6 +260,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'intelligence:gpsjam:v2',
     scope: 'global',
     cadence: 'daily',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
 
   // ── logisticsSupply (3 sub-metrics) ───────────────────────────────────────
@@ -180,6 +276,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
   },
   {
     id: 'shippingStress',
@@ -191,6 +290,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'supply_chain:shipping_stress:v1',
     scope: 'global',
     cadence: 'daily',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
   {
     id: 'transitDisruption',
@@ -202,6 +304,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'supply_chain:transit-summaries:v1',
     scope: 'global',
     cadence: 'daily',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
 
   // ── infrastructure (3 sub-metrics) ────────────────────────────────────────
@@ -215,6 +320,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 217,
+    license: 'open-data',
   },
   {
     id: 'roadsPavedInfra',
@@ -226,6 +334,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
   },
   {
     id: 'infraOutages',
@@ -237,6 +348,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'infra:outages:v1',
     scope: 'global',
     cadence: 'realtime',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
 
   // ── energy (7 sub-metrics) ────────────────────────────────────────────────
@@ -250,6 +364,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
   },
   {
     id: 'gasShare',
@@ -261,6 +378,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'energy:mix:v1:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
   {
     id: 'coalShare',
@@ -272,6 +392,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'energy:mix:v1:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
   {
     id: 'renewShare',
@@ -283,6 +406,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'energy:mix:v1:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
   {
     id: 'gasStorageStress',
@@ -294,6 +420,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'energy:gas-storage:v1:{ISO2}',
     scope: 'global',
     cadence: 'daily',
+    // GIE AGSI+ covers EU + a few neighbours; below the Core 180 gate so the
+    // signal lives in Enrichment until a wider gas-storage feed lands.
+    tier: 'enrichment',
+    coverage: 38,
+    license: 'open-attribution',
   },
   {
     id: 'energyPriceStress',
@@ -305,6 +436,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'economic:energy:v1:all',
     scope: 'global',
     cadence: 'daily',
+    tier: 'core',
+    coverage: 195,
+    license: 'public-domain',
   },
   {
     id: 'electricityConsumption',
@@ -316,6 +450,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 217,
+    license: 'open-data',
   },
 
   // ── governanceInstitutional (6 sub-metrics, equal weight) ─────────────────
@@ -329,6 +466,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 214,
+    license: 'public-domain',
   },
   {
     id: 'wgiPoliticalStability',
@@ -340,6 +480,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 214,
+    license: 'public-domain',
   },
   {
     id: 'wgiGovernmentEffectiveness',
@@ -351,6 +494,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 214,
+    license: 'public-domain',
   },
   {
     id: 'wgiRegulatoryQuality',
@@ -362,6 +508,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 214,
+    license: 'public-domain',
   },
   {
     id: 'wgiRuleOfLaw',
@@ -373,6 +522,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 214,
+    license: 'public-domain',
   },
   {
     id: 'wgiControlOfCorruption',
@@ -384,6 +536,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 214,
+    license: 'public-domain',
   },
 
   // ── socialCohesion (3 sub-metrics) ────────────────────────────────────────
@@ -397,6 +552,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    // GPI/IEP covers 163 economies, below the Phase 2 A4 Core gate of 180.
+    // Demoted to Enrichment so the overall public score is not driven by a
+    // signal that misses ~30 countries; PR 4 (T2.3) aggregation will respect
+    // this. The license is also non-commercial (IEP carve-out), which would
+    // independently disqualify Core. See parent plan, "Signal tiering" section.
+    tier: 'enrichment',
+    coverage: 163,
+    license: 'non-commercial',
   },
   {
     id: 'displacementTotal',
@@ -408,6 +571,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'displacement:summary:v1:{year}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 200,
+    license: 'open-data',
   },
   {
     id: 'unrestEvents',
@@ -419,6 +585,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'unrest:events:v1',
     scope: 'global',
     cadence: 'realtime',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
 
   // ── borderSecurity (2 sub-metrics) ────────────────────────────────────────
@@ -432,6 +601,13 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'conflict:ucdp-events:v1',
     scope: 'global',
     cadence: 'realtime',
+    // UCDP is global (193 countries) but the license is research-only
+    // (Uppsala). The parent plan keeps UCDP Core; the linter allowlist
+    // KNOWN_EXCEPTIONS in tests/resilience-indicator-tiering.test.mts holds
+    // the carve-out until Phase 2 A9 licensing review resolves it.
+    tier: 'core',
+    coverage: 193,
+    license: 'research-only',
   },
   {
     id: 'displacementHosted',
@@ -444,9 +620,16 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'global',
     cadence: 'annual',
     imputation: { type: 'absenceSignal', score: 85, certainty: 0.6 },
+    tier: 'core',
+    coverage: 200,
+    license: 'open-data',
   },
 
   // ── informationCognitive (3 sub-metrics) ──────────────────────────────────
+  // Promoted back to Core in T2.9 after language / source-density
+  // normalization landed (getLanguageCoverageFactor in _language-coverage.ts).
+  // Social velocity and news threat scores are now adjusted by the
+  // English-language coverage factor before normalization.
   {
     id: 'rsfPressFreedom',
     dimension: 'informationCognitive',
@@ -457,28 +640,37 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 180,
+    license: 'open-attribution',
   },
   {
     id: 'socialVelocity',
     dimension: 'informationCognitive',
-    description: 'Reddit social velocity score (log10(velocity+1)); viral narrative stress',
+    description: 'Reddit social velocity score (log10(velocity+1)); language-normalized viral narrative stress',
     direction: 'lowerBetter',
     goalposts: { worst: 3, best: 0 },
     weight: 0.15,
     sourceKey: 'intelligence:social:reddit:v1',
     scope: 'global',
     cadence: 'realtime',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
   {
     id: 'newsThreatScore',
     dimension: 'informationCognitive',
-    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x)',
+    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); language-normalized',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
     weight: 0.3,
     sourceKey: 'news:threat:summary:v1',
     scope: 'global',
     cadence: 'daily',
+    tier: 'core',
+    coverage: 195,
+    license: 'open-attribution',
   },
 
   // ── healthPublicService (3 sub-metrics) ───────────────────────────────────
@@ -492,6 +684,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 194,
+    license: 'public-domain',
   },
   {
     id: 'measlesCoverage',
@@ -503,6 +698,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 194,
+    license: 'public-domain',
   },
   {
     id: 'hospitalBeds',
@@ -514,6 +712,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 194,
+    license: 'public-domain',
   },
 
   // ── foodWater (3 sub-metrics) ─────────────────────────────────────────────
@@ -528,6 +729,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'global',
     cadence: 'annual',
     imputation: { type: 'absenceSignal', score: 88, certainty: 0.7 },
+    // IPC measured coverage is ~52 crisis-tracked countries; absence is a
+    // strong positive signal (stable-absence imputation, score 88), so the
+    // effective country coverage is global. Stays Core per the parent plan.
+    tier: 'core',
+    coverage: 195,
+    license: 'open-data',
   },
   {
     id: 'ipcPhase',
@@ -540,6 +747,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'global',
     cadence: 'annual',
     imputation: { type: 'absenceSignal', score: 88, certainty: 0.7 },
+    tier: 'core',
+    coverage: 195,
+    license: 'open-data',
   },
   {
     id: 'aquastatWaterStress',
@@ -551,6 +761,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
   },
   {
     id: 'aquastatWaterAvailability',
@@ -562,5 +775,160 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
+  },
+
+  // ── fiscalSpace (3 sub-metrics) ──────────────────────────────────────────
+  {
+    id: 'recoveryGovRevenue',
+    dimension: 'fiscalSpace',
+    description: 'Government revenue as % of GDP (IMF GGR_G01_GDP_PT); fiscal mobilization capacity for recovery',
+    direction: 'higherBetter',
+    goalposts: { worst: 5, best: 45 },
+    weight: 0.4,
+    sourceKey: 'resilience:recovery:fiscal-space:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 190,
+    license: 'open-data',
+  },
+  {
+    id: 'recoveryFiscalBalance',
+    dimension: 'fiscalSpace',
+    description: 'General government net lending/borrowing as % of GDP (IMF GGXCNL_G01_GDP_PT); deficit signals reduced recovery firepower',
+    direction: 'higherBetter',
+    goalposts: { worst: -15, best: 5 },
+    weight: 0.3,
+    sourceKey: 'resilience:recovery:fiscal-space:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 190,
+    license: 'open-data',
+  },
+  {
+    id: 'recoveryDebtToGdp',
+    dimension: 'fiscalSpace',
+    description: 'General government gross debt as % of GDP (IMF GGXWDG_NGDP_PT); high debt limits recovery borrowing capacity',
+    direction: 'lowerBetter',
+    goalposts: { worst: 150, best: 0 },
+    weight: 0.3,
+    sourceKey: 'resilience:recovery:fiscal-space:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 190,
+    license: 'open-data',
+  },
+
+  // ── reserveAdequacy (1 sub-metric) ───────────────────────────────────────
+  {
+    id: 'recoveryReserveMonths',
+    dimension: 'reserveAdequacy',
+    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO); recovery buffer against external shocks',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 18 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:reserve-adequacy:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
+  },
+
+  // ── externalDebtCoverage (1 sub-metric) ──────────────────────────────────
+  {
+    id: 'recoveryDebtToReserves',
+    dimension: 'externalDebtCoverage',
+    description: 'Short-term external debt to reserves ratio (World Bank DT.DOD.DSTC.CD / FI.RES.TOTL.CD); values above 1 signal reserve inadequacy for debt service',
+    direction: 'lowerBetter',
+    goalposts: { worst: 5, best: 0 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:external-debt:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 185,
+    license: 'open-data',
+  },
+
+  // ── importConcentration (1 sub-metric) ───────────────────────────────────
+  {
+    id: 'recoveryImportHhi',
+    dimension: 'importConcentration',
+    description: 'Herfindahl-Hirschman Index of import partner concentration (UN Comtrade HS2 bilateral); higher HHI = more dependent on fewer partners = slower recovery if a key partner is disrupted',
+    direction: 'lowerBetter',
+    goalposts: { worst: 5000, best: 0 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:import-hhi:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 190,
+    license: 'public-domain',
+  },
+
+  // ── stateContinuity (3 sub-metrics, derived from existing keys) ──────────
+  {
+    id: 'recoveryWgiContinuity',
+    dimension: 'stateContinuity',
+    description: 'Mean WGI score as institutional durability proxy; higher governance = better state continuity under shock',
+    direction: 'higherBetter',
+    goalposts: { worst: -2.5, best: 2.5 },
+    weight: 0.5,
+    sourceKey: 'resilience:static:{ISO2}',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 214,
+    license: 'public-domain',
+  },
+  {
+    id: 'recoveryConflictPressure',
+    dimension: 'stateContinuity',
+    description: 'UCDP conflict metric inverted to state continuity; active conflict directly undermines state continuity',
+    direction: 'lowerBetter',
+    goalposts: { worst: 30, best: 0 },
+    weight: 0.3,
+    sourceKey: 'conflict:ucdp-events:v1',
+    scope: 'global',
+    cadence: 'realtime',
+    tier: 'core',
+    coverage: 193,
+    license: 'research-only',
+  },
+  {
+    id: 'recoveryDisplacementVelocity',
+    dimension: 'stateContinuity',
+    description: 'UNHCR displacement as state continuity signal; mass displacement signals state function breakdown',
+    direction: 'lowerBetter',
+    goalposts: { worst: 7, best: 0 },
+    weight: 0.2,
+    sourceKey: 'displacement:summary:v1:{year}',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 200,
+    license: 'open-data',
+  },
+
+  // ── fuelStockDays (1 sub-metric) ─────────────────────────────────────────
+  {
+    id: 'recoveryFuelStockDays',
+    dimension: 'fuelStockDays',
+    description: 'Days of fuel stock cover (IEA Oil Stocks / EIA Weekly Petroleum Status); strategic buffer for energy-dependent recovery',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 120 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:fuel-stocks:v1',
+    scope: 'global',
+    cadence: 'monthly',
+    tier: 'enrichment',
+    coverage: 45,
+    license: 'open-data',
   },
 ];

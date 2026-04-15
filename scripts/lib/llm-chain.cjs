@@ -60,9 +60,11 @@ const LLM_PROVIDERS = [
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
 async function callLLM(systemPrompt, userPrompt, opts = {}) {
-  const { maxTokens = 500, temperature = 0.3, timeoutMs } = opts;
+  const { maxTokens = 500, temperature = 0.3, timeoutMs, skipProviders } = opts;
+  const skipSet = skipProviders ? new Set(skipProviders) : null;
 
   for (const provider of LLM_PROVIDERS) {
+    if (skipSet?.has(provider.name)) continue;
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
 

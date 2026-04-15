@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetHyperliquidFlowRequest {}
+
+message HyperliquidAssetFlow {
+  string symbol = 1;
+  string display = 2;
+  string asset_class = 3;     // "crypto" or "commodity"
+  string group = 4;           // "crypto" / "oil" / "metals" / "industrial" / "gas" / "fx"
+  // Raw metrics (nullable as strings to preserve precision; "" = unavailable)
+  string funding = 5;         // hourly funding rate
+  string open_interest = 6;
+  string mark_px = 7;
+  string oracle_px = 8;
+  string day_notional = 9;    // 24h notional volume in USD
+  // Component scores 0-100
+  double funding_score = 10;
+  double volume_score = 11;
+  double oi_score = 12;
+  double basis_score = 13;
+  double composite = 14;      // weighted composite 0-100
+  // Sparkline arrays (most recent last); up to 60 samples (5h @ 5min)
+  repeated double spark_funding = 15;
+  repeated double spark_oi = 16;
+  repeated double spark_score = 17;
+  // State flags
+  bool warmup = 18;           // true while baselines are being built (cold start)
+  bool stale = 19;            // upstream omitted this symbol; carrying forward
+  int64 stale_since = 20;     // epoch ms when stale flag first set; 0 if never stale
+  int32 missing_polls = 21;
+  repeated string alerts = 22;
+}
+
+message GetHyperliquidFlowResponse {
+  int64 ts = 1;               // snapshot timestamp (epoch ms)
+  string fetched_at = 2;      // ISO-8601 of `ts`
+  bool warmup = 3;             // true while any asset is in warmup state
+  int32 asset_count = 4;
+  repeated HyperliquidAssetFlow assets = 5;
+  bool unavailable = 6;        // true when seed key is empty/missing
+}

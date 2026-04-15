@@ -275,6 +275,10 @@ describe('Premium paths registration', () => {
   it('get-country-cost-shock is in PREMIUM_RPC_PATHS', () => {
     assert.match(src, /\/api\/supply-chain\/v1\/get-country-cost-shock/);
   });
+
+  it('get-sector-dependency is in PREMIUM_RPC_PATHS', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-sector-dependency/);
+  });
 });
 
 // ========================================================================

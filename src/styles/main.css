@@ -1,5 +1,6 @@
 @import './rtl-overrides.css';
 @import './panels.css';
+@import './route-explorer.css';
 
 /* ============================================================
    Theme Colors — overridden by [data-theme="light"] below
@@ -6160,6 +6161,42 @@ body.playback-mode .status-dot {
 
 .commodity-change.down {
   color: var(--red);
+}
+
+.liquidity-shifts-panel {
+  padding: 10px 14px;
+}
+
+.liquidity-shifts-panel__section-title {
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.liquidity-shifts-panel__section-title--gap {
+  margin-top: 10px;
+}
+
+.liquidity-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.liquidity-row__values {
+  text-align: right;
+}
+
+.liquidity-stock-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.liquidity-report-date {
+  margin-top: 8px;
+  text-align: right;
 }
 
 .commodity-item .mini-sparkline {
@@ -16839,6 +16876,44 @@ a.prediction-link:hover {
   padding: 4px 14px 10px;
 }
 
+/* ── Cloud Sync status ── */
+
+.wm-sync-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.wm-sync-status-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-primary, #e8eaed);
+}
+
+.wm-sync-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wm-sync-status-label {
+  font-weight: 600;
+}
+
+.wm-sync-status-time {
+  color: var(--text-faint, #888);
+  font-size: 11px;
+}
+
+.wm-sync-now-btn {
+  flex-shrink: 0;
+}
+
 /* ============ AI Flow Toggle Styles (shared) ============ */
 
 .ai-flow-section-label {
@@ -22651,3 +22726,183 @@ body.map-width-resizing {
 }
 
 .manage-billing-btn:hover { color: var(--text); }
+
+/* ---- Energy Crisis Panel ---- */
+
+.ecp-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ecp-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.ecp-summary-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+}
+
+.ecp-summary-conservation {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.ecp-summary-support {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.ecp-summary-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.ecp-summary-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.ecp-filters {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.ecp-filter-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ecp-filter-btn:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.ecp-filter-active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+.ecp-filter-active:hover {
+  color: var(--bg);
+}
+
+.ecp-policy-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px;
+}
+
+.ecp-policy-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.ecp-policy-row:first-child {
+  border-top: none;
+}
+
+.ecp-policy-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.ecp-country {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  margin-right: 4px;
+}
+
+.ecp-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 2px;
+}
+
+.ecp-cat-conservation {
+  background: rgba(34, 197, 94, 0.15);
+  color: rgb(34, 197, 94);
+}
+
+.ecp-cat-support {
+  background: rgba(59, 130, 246, 0.15);
+  color: rgb(59, 130, 246);
+}
+
+.ecp-pill-sector {
+  background: rgba(156, 163, 175, 0.15);
+  color: var(--text-dim);
+}
+
+.ecp-status-active {
+  background: rgba(34, 197, 94, 0.15);
+  color: rgb(34, 197, 94);
+}
+
+.ecp-status-planned {
+  background: rgba(245, 158, 11, 0.15);
+  color: rgb(245, 158, 11);
+}
+
+.ecp-status-ended {
+  background: rgba(156, 163, 175, 0.15);
+  color: var(--text-dim);
+}
+
+.ecp-measure {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.ecp-date {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.ecp-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.ecp-source-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 10px;
+}
+
+.ecp-source-link:hover {
+  text-decoration: underline;
+}

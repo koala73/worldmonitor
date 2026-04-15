@@ -40,6 +40,7 @@ describe('panel-config guardrails', () => {
     const allowedContexts = [
       /this\.ctx\.panels\[key\]\s*=/,             // createPanel helper
       /this\.ctx\.panels\['deduction'\]/,          // async-mounted PRO panel — gated via WEB_PREMIUM_PANELS
+      /this\.ctx\.panels\['regional-intelligence'\]/, // async-mounted PRO panel — gated via WEB_PREMIUM_PANELS
       /this\.ctx\.panels\['runtime-config'\]/,     // desktop-only, intentionally ungated
       /this\.ctx\.panels\['live-news'\]/,          // mountLiveNewsIfReady — has its own channel guard
       /panel as unknown as/,                       // lazyPanel generic cast

@@ -9,6 +9,7 @@ import {
   RESILIENCE_STATIC_META_KEY,
   RESILIENCE_STATIC_SOURCE_VERSION,
   buildFailureRefreshKeys,
+  buildFaoAggregate,
   buildManifest,
   buildTradeToGdpMap,
   countryRedisKey,
@@ -183,6 +184,77 @@ describe('resilience static seed CSV parsers', () => {
     it('throws when no usable rows parsed', () => {
       const csv = csvRows('Country (ISO3),Phase 3+ #', ['UNKNOWN,100']);
       assert.throws(() => parseFsinRows(csv), /no usable rows/);
+    });
+  });
+
+  describe('buildFaoAggregate', () => {
+    const seededAt = '2026-04-13T08:00:00.000Z';
+    const seedYear = 2026;
+
+    it('returns a detectFoodCrisis-compatible shape with countries keyed by ISO2', () => {
+      const faoMap = new Map([
+        ['SS', { source: 'hdx-ipc', year: 2025, peopleInCrisis: 7700000, phase: 'IPC Phase 4' }],
+        ['YE', { source: 'hdx-ipc', year: 2024, peopleInCrisis: 17000000, phase: 'IPC Phase 3' }],
+      ]);
+      const aggregate = buildFaoAggregate(faoMap, seedYear, seededAt);
+
+      assert.equal(aggregate.source, 'hdx-ipc');
+      assert.equal(aggregate.seedYear, 2026);
+      assert.equal(aggregate.fetchedAt, seededAt);
+      assert.equal(aggregate.count, 2);
+      assert.deepEqual(Object.keys(aggregate.countries).sort(), ['SS', 'YE']);
+      assert.equal(aggregate.countries.SS.ipcPhase, 4);
+      assert.equal(aggregate.countries.SS.phase, 'IPC Phase 4');
+      assert.equal(aggregate.countries.SS.peopleInCrisis, 7700000);
+      assert.equal(aggregate.countries.YE.ipcPhase, 3);
+    });
+
+    it('includes only Phase 3+ countries (IPC crisis threshold)', () => {
+      const faoMap = new Map([
+        ['SS', { source: 'hdx-ipc', peopleInCrisis: 7700000, phase: 'IPC Phase 4' }],
+        ['KE', { source: 'hdx-ipc', peopleInCrisis: 500000, phase: 'IPC Phase 2' }],
+      ]);
+      const aggregate = buildFaoAggregate(faoMap, seedYear, seededAt);
+      assert.equal(aggregate.count, 1);
+      assert.ok('SS' in aggregate.countries);
+      assert.ok(!('KE' in aggregate.countries), 'Phase 2 country must be excluded');
+    });
+
+    it('skips entries with unparseable phase strings', () => {
+      const faoMap = new Map([
+        ['SS', { source: 'hdx-ipc', phase: 'IPC Phase 3' }],
+        ['AA', { source: 'hdx-ipc', phase: null }],
+        ['BB', { source: 'hdx-ipc', phase: 'Unknown' }],
+      ]);
+      const aggregate = buildFaoAggregate(faoMap, seedYear, seededAt);
+      assert.equal(aggregate.count, 1);
+      assert.deepEqual(Object.keys(aggregate.countries), ['SS']);
+    });
+
+    it('returns an empty aggregate when the input map is empty', () => {
+      const aggregate = buildFaoAggregate(new Map(), seedYear, seededAt);
+      assert.equal(aggregate.count, 0);
+      assert.deepEqual(aggregate.countries, {});
+      assert.equal(aggregate.seedYear, 2026);
+    });
+
+    it('is readable by backtest-resilience-outcomes.mjs::detectFoodCrisis (contract)', async () => {
+      // Locks the contract between this seeder and the downstream validator.
+      // If detectFoodCrisis is refactored, or the aggregate shape drifts, this
+      // fails loudly instead of silently returning 0 positive events in the
+      // weekly validation cron.
+      const { detectFoodCrisis } = await import('../scripts/backtest-resilience-outcomes.mjs');
+      const faoMap = new Map([
+        ['SS', { source: 'hdx-ipc', year: 2025, peopleInCrisis: 7700000, phase: 'IPC Phase 4' }],
+        ['YE', { source: 'hdx-ipc', year: 2024, peopleInCrisis: 17000000, phase: 'IPC Phase 3' }],
+        ['KE', { source: 'hdx-ipc', peopleInCrisis: 500000, phase: 'IPC Phase 2' }],
+      ]);
+      const aggregate = buildFaoAggregate(faoMap, seedYear, seededAt);
+      const labels = detectFoodCrisis(aggregate, ['SS', 'YE', 'KE', 'NO']);
+      assert.equal(labels.get('SS'), true);
+      assert.equal(labels.get('YE'), true);
+      assert.equal(labels.get('KE'), undefined, 'Phase 2 must not be labeled crisis');
+      assert.equal(labels.get('NO'), undefined, 'non-IPC country must not be labeled');
     });
   });
 
@@ -535,6 +607,29 @@ describe('resilience static health registrations', () => {
   it('registers the manifest key and seed-meta in health.js', () => {
     assert.match(healthSrc, /resilienceStaticIndex:\s+'resilience:static:index:v1'/);
     assert.match(healthSrc, /seed-meta:resilience:static/);
+  });
+
+  it('registers the FAO aggregate key with empty-data tolerance in health.js', () => {
+    // buildFaoAggregate writes `resilience:static:fao` during the annual
+    // static seed. Health must know about the key (STANDALONE_KEYS) AND
+    // tolerate count=0 (EMPTY_DATA_OK_KEYS) — a year with no countries in
+    // IPC Phase 3+ is theoretically valid, not a paging event.
+    assert.match(healthSrc, /resilienceStaticFao:\s+'resilience:static:fao'/);
+    assert.match(healthSrc, /'resilienceStaticFao'/);
+  });
+
+  it('registers SEED_META for resilienceStaticFao so empty data degrades to STALE_SEED, not silent OK', () => {
+    // Without a SEED_META entry, the STANDALONE_KEYS health branch leaves
+    // seedStale=null and treats an empty/missing key in EMPTY_DATA_OK_KEYS
+    // as plain OK — which would mask the exact "nothing wrote the key"
+    // state this seeder is designed to fix. Must share the static seeder's
+    // heartbeat (seed-meta:resilience:static) since the aggregate is
+    // written in the same Redis pipeline.
+    assert.match(
+      healthSrc,
+      /resilienceStaticFao:\s*\{\s*key:\s*'seed-meta:resilience:static'/,
+      'resilienceStaticFao must appear in SEED_META pointing at seed-meta:resilience:static',
+    );
   });
 
   it('registers annual seed-health monitoring for resilience static', () => {

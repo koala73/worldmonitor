@@ -6,9 +6,11 @@ import type {
   ScoreInterval,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
+
 export type { ScoreInterval };
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
+import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { detectTrend, round } from '../../../_shared/resilience-stats';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
@@ -18,16 +20,31 @@ import {
   createMemoizedSeedReader,
   getResilienceDomainWeight,
   scoreAllDimensions,
+  type ImputationClass,
   type ResilienceDimensionId,
   type ResilienceDomainId,
   type ResilienceSeedReader,
 } from './_dimension-scorers';
+import { buildPillarList } from './_pillar-membership';
+
+// Phase 2 T2.1: feature flag for the three-pillar response shape.
+// When `true`, responses carry `schemaVersion: "2.0"` and a non-empty
+// `pillars` array (shaped but with score=0/coverage=0 until PR 4 wires
+// the real aggregation). When `false` (default), responses preserve the
+// Phase 1 shape: `schemaVersion: "1.0"` and `pillars: []`.
+//
+// The `overallScore`, `baselineScore`, `stressScore`, etc. top-level
+// fields remain populated in BOTH modes for one release cycle to
+// preserve backward compat for widget + map layer + Country Brief
+// consumers per the plan ("Schema changes (OpenAPI + proto)" section).
+export const RESILIENCE_SCHEMA_V2_ENABLED =
+  (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v7:';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v9:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v4:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v8';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v9';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -84,7 +101,17 @@ function classifyResilienceLevel(score: number): string {
 }
 
 function buildDimensionList(
-  scores: Record<ResilienceDimensionId, { score: number; coverage: number; observedWeight: number; imputedWeight: number }>,
+  scores: Record<
+    ResilienceDimensionId,
+    {
+      score: number;
+      coverage: number;
+      observedWeight: number;
+      imputedWeight: number;
+      imputationClass: ImputationClass | null;
+      freshness: { lastObservedAtMs: number; staleness: '' | 'fresh' | 'aging' | 'stale' };
+    }
+  >,
 ): ResilienceDimension[] {
   return RESILIENCE_DIMENSION_ORDER.map((dimensionId) => ({
     id: dimensionId,
@@ -92,6 +119,15 @@ function buildDimensionList(
     coverage: round(scores[dimensionId].coverage),
     observedWeight: round(scores[dimensionId].observedWeight, 4),
     imputedWeight: round(scores[dimensionId].imputedWeight, 4),
+    // T1.7 schema pass: empty string = dimension has any observed data.
+    imputationClass: scores[dimensionId].imputationClass ?? '',
+    // T1.5 propagation pass: proto `int64 last_observed_at_ms` comes through
+    // as `string` on the generated TS interface; stringify the number here
+    // so the response conforms to the generated type.
+    freshness: {
+      lastObservedAtMs: String(scores[dimensionId].freshness.lastObservedAtMs),
+      staleness: scores[dimensionId].freshness.staleness,
+    },
   }));
 }
 
@@ -99,6 +135,16 @@ function coverageWeightedMean(dimensions: ResilienceDimension[]): number {
   const totalCoverage = dimensions.reduce((sum, d) => sum + d.coverage, 0);
   if (!totalCoverage) return 0;
   return dimensions.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCoverage;
+}
+
+export const PENALTY_ALPHA = 0.50;
+
+export function penalizedPillarScore(pillars: { score: number; weight: number }[]): number {
+  if (pillars.length === 0) return 0;
+  const weighted = pillars.reduce((sum, p) => sum + p.score * p.weight, 0);
+  const minScore = Math.min(...pillars.map((p) => p.score));
+  const penalty = 1 - PENALTY_ALPHA * (1 - minScore / 100);
+  return Math.round(weighted * penalty * 100) / 100;
 }
 
 function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] {
@@ -178,10 +224,15 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       lowConfidence: true,
       imputationShare: 0,
       dataVersion: '',
+      // Phase 2 T2.1: fallback path always ships the v1 shape so the
+      // generated TS types stay satisfied without dragging the empty
+      // helper into a code path that has no domains to walk.
+      pillars: [],
+      schemaVersion: '1.0',
     };
   }
 
-  const cached = await cachedFetchJson<GetResilienceScoreResponse>(
+  let cached = await cachedFetchJson<GetResilienceScoreResponse>(
     scoreCacheKey(normalizedCountryCode),
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
     async () => {
@@ -193,6 +244,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
       const dimensions = buildDimensionList(scoreMap);
       const domains = buildDomainList(dimensions);
+      const pillars = buildPillarList(domains, true);
 
       const baselineDims: ResilienceDimension[] = [];
       const stressDims: ResilienceDimension[] = [];
@@ -232,6 +284,8 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         lowConfidence: computeLowConfidence(dimensions, imputationShare),
         imputationShare,
         dataVersion,
+        pillars,
+        schemaVersion: '2.0',
       };
     },
     300,
@@ -248,12 +302,25 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     lowConfidence: true,
     imputationShare: 0,
     dataVersion: '',
+    // Phase 2 T2.1: cachedFetchJson-null fallback. Stays on the v1 shape
+    // because there are no domains to wrap into pillars here.
+    pillars: [],
+    schemaVersion: '1.0',
   };
 
   const scoreInterval = await readScoreInterval(normalizedCountryCode);
   if (scoreInterval) {
-    return { ...cached, scoreInterval };
+    cached = { ...cached, scoreInterval };
   }
+
+  // P1 fix: the cache always stores the v2 superset (pillars + schemaVersion='2.0').
+  // When the flag is off, strip pillars and downgrade schemaVersion so consumers
+  // see the v1 shape. Flag flips take effect immediately, no 6h TTL wait.
+  if (!RESILIENCE_SCHEMA_V2_ENABLED) {
+    cached.pillars = [];
+    cached.schemaVersion = '1.0';
+  }
+
   return cached;
 }
 
@@ -278,7 +345,16 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
     const raw = results[index]?.result;
     if (typeof raw !== 'string') continue;
     try {
-      scores.set(countryCode, JSON.parse(raw) as GetResilienceScoreResponse);
+      // Envelope-aware: resilience score keys are written by seed-resilience-scores
+      // in contract mode (PR 2). unwrapEnvelope is a no-op on legacy bare-shape.
+      const parsed = unwrapEnvelope(JSON.parse(raw)).data as GetResilienceScoreResponse;
+      if (!parsed) continue;
+      // P1 fix: cached payload is always v2 superset. Gate on serve.
+      if (!RESILIENCE_SCHEMA_V2_ENABLED) {
+        parsed.pillars = [];
+        parsed.schemaVersion = '1.0';
+      }
+      scores.set(countryCode, parsed);
     } catch {
       // Ignore malformed cache entries and let the caller decide whether to warm them.
     }
@@ -339,5 +415,21 @@ export async function warmMissingResilienceScores(countryCodes: string[]): Promi
   // Share one memoized reader across all countries so global Redis keys (conflict events,
   // sanctions, unrest, etc.) are fetched only once instead of once per country.
   const sharedReader = createMemoizedSeedReader();
-  await Promise.allSettled(uniqueCodes.map((countryCode) => ensureResilienceScoreCached(countryCode, sharedReader)));
+  const results = await Promise.allSettled(
+    uniqueCodes.map((countryCode) => ensureResilienceScoreCached(countryCode, sharedReader)),
+  );
+  const failures: Array<{ countryCode: string; reason: string }> = [];
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result?.status === 'rejected') {
+      failures.push({
+        countryCode: uniqueCodes[i]!,
+        reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    }
+  }
+  if (failures.length > 0) {
+    const sample = failures.slice(0, 10).map((f) => `${f.countryCode}(${f.reason})`).join(', ');
+    console.warn(`[resilience] warm failed for ${failures.length}/${uniqueCodes.length} countries: ${sample}${failures.length > 10 ? '...' : ''}`);
+  }
 }

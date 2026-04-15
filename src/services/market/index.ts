@@ -30,7 +30,7 @@ const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Param
 const MARKET_QUOTES_CACHE_TTL_MS = 5 * 60 * 1000;
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const commodityBreaker = createCircuitBreaker<ListCommodityQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
-const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
+const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary v2', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes', persistCache: true });
 const cryptoSectorsBreaker = createCircuitBreaker<ListCryptoSectorsResponse>({ name: 'Crypto Sectors', persistCache: true });
 const defiBreaker = createCircuitBreaker<ListDefiTokensResponse>({ name: 'DeFi Tokens', persistCache: true });
@@ -168,7 +168,11 @@ export function warmCommodityCache(quotes: ListCommodityQuotesResponse): void {
   commodityBreaker.recordSuccess(quotes, cacheKey);
 }
 
-/** Pre-warm the sector circuit-breaker cache from bootstrap hydration data. */
+/**
+ * Pre-warm the sector circuit-breaker cache from bootstrap hydration data.
+ * Valuations are included in the sector summary payload; clients pick them up
+ * on the next breaker refresh (5-min TTL) without a separate cache-bust.
+ */
 export function warmSectorCache(resp: GetSectorSummaryResponse): void {
   sectorBreaker.recordSuccess(resp);
 }
@@ -205,14 +209,22 @@ export async function fetchCommodityQuotes(
 }
 
 // ========================================================================
-// Sectors -- uses getSectorSummary (reads market:sectors:v1)
+// Sectors -- uses getSectorSummary (reads market:sectors:v2)
 // ========================================================================
 
 export async function fetchSectors(): Promise<GetSectorSummaryResponse> {
   return sectorBreaker.execute(async () => {
     return client.getSectorSummary({ period: '' });
   }, emptySectorFallback, {
-    shouldCache: (r: GetSectorSummaryResponse) => r.sectors.length > 0,
+    // Require sectors AND the valuations field to be present (not missing) so
+    // pre-PR payloads that lack the valuations key are never cached/replayed
+    // as stale data for the session. Empty object {} is OK (API may legitimately
+    // return zero valuations after Yahoo failures) but the key must exist.
+    shouldCache: (r: GetSectorSummaryResponse) => {
+      if (r.sectors.length === 0) return false;
+      const withValuations = r as GetSectorSummaryResponse & { valuations?: unknown };
+      return Object.prototype.hasOwnProperty.call(withValuations, 'valuations');
+    },
   });
 }
 

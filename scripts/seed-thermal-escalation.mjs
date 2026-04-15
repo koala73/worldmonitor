@@ -35,6 +35,10 @@ async function fetchEscalations() {
   return result;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.clusters) ? data.clusters.length : 0;
+}
+
 async function main() {
   await runSeed('thermal', 'escalation', CANONICAL_KEY, async () => {
     const result = await fetchEscalations();
@@ -45,6 +49,9 @@ async function main() {
     lockTtlMs: 180_000,
     sourceVersion: SOURCE_VERSION,
     recordCount: (data) => data?.clusters?.length ?? 0,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 360,
     afterPublish: async () => {
       await writeExtraKeyWithMeta(
         HISTORY_KEY,

@@ -2,7 +2,7 @@ import type { CountryBriefSignals } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
-import type { GetCountryChokepointIndexResponse, SectorExposureSummary } from '@/services/supply-chain';
+import type { GetCountryChokepointIndexResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
 
 export interface CountryIntelData {
   brief: string;
@@ -192,6 +192,11 @@ export interface CountryBriefPanel {
   updateSanctionsPressure?(data: { entryCount: number; sanctionsActive?: boolean } | null): void;
   updateComtradeFlows?(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void;
   updateTariffTrends?(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void;
-  updateChokepointExposure?(data: { vulnerabilityIndex: number; exposures: Array<{ chokepointName: string; exposureScore: number }> } | null): void;
-  updateCostShock?(data: { supplyDeficitPct: number; coverageDays: number; warRiskTier: string } | null): void;
+  updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;
+  updateProductImports?(data: CountryProductsResponse | null): void;
+  updateHousingCycle?(data: {
+    residential?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    commercial?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    dsr?: { dsrPct: number; change: number | null; period: string } | null;
+  } | null): void;
 }

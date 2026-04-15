@@ -276,10 +276,17 @@ function validate(data) {
   return data != null && Array.isArray(data.events);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.events) ? data.events.length : 0;
+}
+
 runSeed('conflict', 'acled-intel', ACLED_CACHE_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: ACLED_TTL,
   sourceVersion: 'acled-hapi-pizzint',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 38,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

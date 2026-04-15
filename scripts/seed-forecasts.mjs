@@ -5,6 +5,7 @@
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
@@ -185,7 +186,7 @@ function getTheaterGeoGroup(marketRegion) {
 const MARKET_INPUT_KEYS = {
   stocks: 'market:stocks-bootstrap:v1',
   commodities: 'market:commodities-bootstrap:v1',
-  sectors: 'market:sectors:v1',
+  sectors: 'market:sectors:v2',
   gulfQuotes: 'market:gulf-quotes:v1',
   etfFlows: 'market:etf-flows:v1',
   crypto: 'market:crypto:v1',
@@ -616,7 +617,7 @@ async function redisGet(url, token, key) {
   if (!resp.ok) return null;
   const data = await resp.json();
   if (!data?.result) return null;
-  try { return JSON.parse(data.result); } catch { return null; }
+  try { return unwrapEnvelope(JSON.parse(data.result)).data; } catch { return null; }
 }
 
 async function redisDel(url, token, key) {
@@ -693,7 +694,26 @@ async function readInputKeys() {
     'conflict:ema-windows:v1',
     ...fredKeys,
   ];
-  const BATCH_SIZE = 10;
+  // Sized for Upstash REST /pipeline payload limits.
+  //
+  // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; top 5 keys
+  // (ucdp 657KB + chokepoints 500KB + cyber 390KB + commodities 192KB +
+  // gpsjam 174KB) = 90% of payload. Because BATCH_SIZE divides the keys
+  // array deterministically by index, the worst batch is fixed by array
+  // order — currently batch 2 (indices 5-9: chokepoints + iran + ucdp +
+  // unrest + outages) at **1.17 MB** verified live. Not random
+  // co-location — deterministic.
+  //
+  // The original 10s timeout deterministically failed every retry on this
+  // batch at Upstash REST's observed slow-spike floor of ~100 KB/s
+  // (Railway log 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts).
+  // At 100 KB/s, 1.17 MB takes ~12s. 45s gives ~3.7× headroom.
+  //
+  // Future improvement: interleave heavy keys (chokepoints + ucdp) with
+  // smalls in the keys array above. Would split the deterministic
+  // worst-case across two batches, halving the per-request payload.
+  // Tracked as follow-up; not in scope for this hotfix.
+  const BATCH_SIZE = 5;
   const results = [];
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
     const batchNum = i / BATCH_SIZE + 1;
@@ -703,7 +723,7 @@ async function readInputKeys() {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(batch),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(45_000),
       });
       if (!resp.ok) throw new Error(`Redis pipeline batch ${batchNum} failed: ${resp.status}`);
       return resp.json();
@@ -712,7 +732,13 @@ async function readInputKeys() {
   }
 
   const parse = (i) => {
-    try { return results[i]?.result ? JSON.parse(results[i].result) : null; } catch { return null; }
+    try {
+      const raw = results[i]?.result;
+      if (!raw) return null;
+      // Envelope-aware: pipeline batch reads must strip _seed for contract-mode
+      // writers. unwrapEnvelope is a no-op on legacy bare-shape values.
+      return unwrapEnvelope(JSON.parse(raw)).data;
+    } catch { return null; }
   };
   const parsedByKey = Object.fromEntries(keys.map((key, index) => [key, parse(index)]));
   const fredSeries = Object.fromEntries(
@@ -15995,6 +16021,10 @@ async function buildAndSeedMarketImplications(inputs) {
   console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.predictions) ? data.predictions.length : 0;
+}
+
 if (_isDirectRun) {
   const refreshRequest = await readForecastRefreshRequest();
   const triggerContext = buildForecastTriggerContext(refreshRequest);
@@ -16010,6 +16040,9 @@ if (_isDirectRun) {
     ttlSeconds: TTL_SECONDS,
     lockTtlMs: 180_000,
     validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 90,
     publishTransform: buildPublishedSeedPayload,
     afterPublish: async (data, meta) => {
       if (triggerContext.triggerRequest) {
@@ -16111,6 +16144,7 @@ if (_isDirectRun) {
           predictions: data.predictions.map(buildPriorForecastSnapshot),
         }),
         ttl: 7200,
+        declareRecords,
       },
     ],
   });

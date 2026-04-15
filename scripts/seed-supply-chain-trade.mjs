@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
-import { BUDGET_LAB_TARIFFS_URL, htmlToPlainText, toIsoDate, parseBudgetLabEffectiveTariffHtml } from './_trade-parse-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -15,8 +14,8 @@ const KEYS = {
   customsRevenue: 'trade:customs-revenue:v1',
 };
 
-const SHIPPING_TTL = 3600;
-const TRADE_TTL = 21600;
+const SHIPPING_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 1h = 5h expired gap)
+const TRADE_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 6h = 0 buffer)
 const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
@@ -26,7 +25,7 @@ import { readFileSync as _readFileSync } from 'node:fs';
 import { dirname as _dirname, join as _join } from 'node:path';
 import { fileURLToPath as _fileURLToPath } from 'node:url';
 const __dirname = _dirname(_fileURLToPath(import.meta.url));
-const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, '..', 'shared', 'un-to-iso2.json'), 'utf8'));
+const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, 'shared', 'un-to-iso2.json'), 'utf8'));
 
 // Populated by fetchWtoReporters() before any data fetches
 let ALL_REPORTERS = [];
@@ -265,28 +264,51 @@ async function wtoFetch(path, params) {
   return resp.json();
 }
 
-async function fetchBudgetLabEffectiveTariffRate() {
+// US effective tariff rate from FRED: customs duties / goods imports × 100
+// B235RC1Q027SBEA = customs duties (quarterly, SAAR billions)
+// IEAMGSN = goods imports (quarterly, SAAR billions)
+const FRED_CUSTOMS_SERIES = 'B235RC1Q027SBEA';
+const FRED_IMPORTS_SERIES = 'A255RC1Q027SBEA'; // Imports of goods, Billions, Quarterly, SAAR (matches customs units)
+
+function fredSeriesUrl(seriesId) {
+  const key = process.env.FRED_API_KEY;
+  if (!key) return null;
+  return `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${key}&file_type=json&sort_order=desc&limit=20`;
+}
+
+async function fetchEffectiveTariffRateFromFred() {
   try {
-    const resp = await fetch(BUDGET_LAB_TARIFFS_URL, {
-      headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      console.warn(`  Budget Lab tariffs: HTTP ${resp.status}`);
+    const customsUrl = fredSeriesUrl(FRED_CUSTOMS_SERIES);
+    const importsUrl = fredSeriesUrl(FRED_IMPORTS_SERIES);
+    if (!customsUrl || !importsUrl) { console.warn('  FRED tariff rate: FRED_API_KEY not set'); return null; }
+    const [customsResp, importsResp] = await Promise.all([
+      fredFetchJson(customsUrl, _proxyAuth),
+      fredFetchJson(importsUrl, _proxyAuth),
+    ]);
+    const customs = customsResp?.observations ?? [];
+    const imports = importsResp?.observations ?? [];
+    if (!customs?.length || !imports?.length) {
+      console.warn('  FRED tariff rate: no data from one or both series');
       return null;
     }
-    const html = await resp.text();
-    const parsed = parseBudgetLabEffectiveTariffHtml(html);
-    if (!parsed) {
-      const hasBody = html.length > 5000 && /<body/i.test(html);
-      const reason = hasBody ? 'page structure changed' : 'JS-rendered SPA (no static content)';
-      console.log(`  Budget Lab tariffs: skipped (${reason})`);
-      return null;
-    }
-    console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);
-    return parsed;
+    // Both series are quarterly; match by date
+    const importsMap = new Map(imports.map(o => [o.date, parseFloat(o.value)]));
+    const latest = customs
+      .map(o => ({ date: o.date, customs: parseFloat(o.value), imports: importsMap.get(o.date) }))
+      .filter(o => Number.isFinite(o.customs) && Number.isFinite(o.imports) && o.imports > 0)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!latest) { console.warn('  FRED tariff rate: no matching quarters'); return null; }
+    const rate = (latest.customs / latest.imports) * 100;
+    console.log(`  FRED effective tariff: ${rate.toFixed(1)}% (${latest.date})`);
+    return {
+      sourceName: 'FRED (BEA)',
+      sourceUrl: `https://fred.stlouisfed.org/series/${FRED_CUSTOMS_SERIES}`,
+      observationPeriod: latest.date,
+      updatedAt: latest.date,
+      tariffRate: Math.round(rate * 100) / 100,
+    };
   } catch (e) {
-    console.warn(`  Budget Lab tariffs: ${e.message}`);
+    console.warn(`  FRED tariff rate: ${e.message}`);
     return null;
   }
 }
@@ -503,7 +525,7 @@ async function fetchTradeRestrictions() {
 async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
-  const usEffectiveTariffRate = await fetchBudgetLabEffectiveTariffRate();
+  const usEffectiveTariffRate = await fetchEffectiveTariffRateFromFred();
 
   // Batch WTO requests in groups of 30 to avoid URL length limits
   const BATCH_SIZE = 30;
@@ -661,10 +683,18 @@ function validate(data) {
   return data?.indices?.length > 0;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.indices) ? data.indices.length : 0;
+}
+
 runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
   validateFn: validate,
   ttlSeconds: SHIPPING_TTL,
   sourceVersion: 'fred-wto-sse-bdi-budgetlab',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 420,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

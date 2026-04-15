@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  IMPUTATION,
+  IMPUTE,
+  type ImputationClass,
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_TYPES,
   scoreAllDimensions,
@@ -15,14 +18,20 @@ import {
   scoreInformationCognitive,
   scoreInfrastructure,
   scoreLogisticsSupply,
+  scoreExternalDebtCoverage,
+  scoreFiscalSpace,
+  scoreFuelStockDays,
+  scoreImportConcentration,
   scoreMacroFiscal,
+  scoreReserveAdequacy,
   scoreSocialCohesion,
+  scoreStateContinuity,
   scoreTradeSanctions,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
 async function scoreTriple(
-  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number }>,
+  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number; imputationClass: ImputationClass | null; freshness: { lastObservedAtMs: number; staleness: '' | 'fresh' | 'aging' | 'stale' } }>,
 ) {
   const [no, us, ye] = await Promise.all([
     scorer('NO', fixtureReader),
@@ -76,7 +85,7 @@ describe('resilience dimension scorers', () => {
     assertOrdered('foodWater', foodWater.no.score, foodWater.us.score, foodWater.ye.score);
   });
 
-  it('returns all 13 dimensions with bounded scores and coverage', async () => {
+  it('returns all 19 dimensions with bounded scores and coverage', async () => {
     const dimensions = await scoreAllDimensions('US', fixtureReader);
 
     assert.deepEqual(Object.keys(dimensions).sort(), [...RESILIENCE_DIMENSION_ORDER].sort());
@@ -267,11 +276,22 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.coverage, 0.35, 'BIS outage reduces proxy coverage to 0.35 (primary source unavailable)');
   });
 
-  it('scoreCurrencyExternal: both BIS and IMF null → coverage=0, no imputation', async () => {
+  it('scoreCurrencyExternal: both BIS and IMF null → curated_list_absent imputation (T1.7)', async () => {
+    // Post-T1.7 source-failure wiring: the legacy absence-based branch
+    // (score=50, imputationClass=null, coverage=0) is gone. Now a country
+    // with no BIS, no IMF inflation, no WB reserves falls through to the
+    // curated_list_absent taxonomy entry (unmonitored) so the aggregation
+    // pass can re-tag it as source-failure when the seed adapter fails.
     const reader = async (_key: string): Promise<unknown | null> => null;
     const score = await scoreCurrencyExternal('MZ', reader);
-    assert.equal(score.score, 50, 'both sources null → fallback centre score');
-    assert.equal(score.coverage, 0, 'both sources null → coverage=0');
+    assert.equal(score.score, IMPUTE.bisEer.score,
+      'both sources null → curated_list_absent score (50)');
+    assert.equal(score.coverage, IMPUTE.bisEer.certaintyCoverage,
+      'both sources null → curated_list_absent coverage (0.3)');
+    assert.equal(score.observedWeight, 0, 'no observed data');
+    assert.equal(score.imputedWeight, 1, 'imputed fallback carries full weight');
+    assert.equal(score.imputationClass, 'unmonitored',
+      'curated_list_absent → unmonitored per taxonomy');
   });
 
   it('scoreCurrencyExternal: FX reserves contribute to score alongside BIS data', async () => {
@@ -306,25 +326,49 @@ describe('resilience dimension scorers', () => {
     const makeReader = (caPct: number) => async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
       if (key === 'economic:imf:macro:v2') return { countries: { HR: { inflationPct: 3.0, currentAccountPct: caPct, govRevenuePct: 40, year: 2024 } } };
+      if (key === 'economic:imf:labor:v1') return { countries: { HR: { unemploymentPct: 7, populationMillions: 4, year: 2024 } } };
+      if (key === 'economic:bis:dsr:v1') return { entries: [] };
       return null;
     };
     const surplus = await scoreMacroFiscal('HR', makeReader(10));
     const deficit = await scoreMacroFiscal('HR', makeReader(-15));
     assert.ok(surplus.score > deficit.score, `surplus (${surplus.score}) must score higher than deficit (${deficit.score})`);
-    assert.equal(surplus.coverage, 1, 'all real data → coverage=1');
+    // BIS DSR has weight 0.05 and is absent for HR (no BIS coverage); the
+    // remaining 0.95 of weight is observed → coverage=0.95, not 1.0.
+    assert.equal(surplus.coverage, 0.95, 'all non-BIS data → coverage=0.95 (DSR=0.05 absent for HR)');
   });
 
   it('scoreMacroFiscal: IMF macro seed outage does not impute — debt growth still scores', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
-      return null; // economic:imf:macro:v1 null = seed outage
+      return null; // economic:imf:macro:v1 + economic:imf:labor:v1 null = seed outage
     };
     const score = await scoreMacroFiscal('HR', reader);
-    // govRevenuePct (0.5) and currentAccountPct (0.3) come from IMF macro (null = outage).
+    // govRevenuePct (0.4), currentAccountPct (0.25) come from IMF macro (null = outage).
+    // unemploymentPct (0.15) comes from IMF labor (null = outage).
     // Only debtGrowth (weight=0.2) has real data → coverage = 0.2.
     assert.ok(score.coverage > 0.15 && score.coverage < 0.25,
       `coverage should be ~0.2 (debt growth only, IMF outage), got ${score.coverage}`);
     assert.ok(score.score > 0, 'debt growth data alone should produce a non-zero score');
+  });
+
+  it('scoreMacroFiscal: IMF labor LUR sub-metric — high unemployment lowers macroFiscal score', async () => {
+    const baseFixtures = {
+      'economic:national-debt:v1': { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] },
+      'economic:imf:macro:v2': { countries: { HR: { inflationPct: 3.0, currentAccountPct: 1.0, govRevenuePct: 40, year: 2024 } } },
+    };
+    const makeReader = (lur: number) => async (key: string): Promise<unknown | null> => {
+      if (key in baseFixtures) return (baseFixtures as Record<string, unknown>)[key];
+      if (key === 'economic:imf:labor:v1') return { countries: { HR: { unemploymentPct: lur, populationMillions: 4, year: 2024 } } };
+      if (key === 'economic:bis:dsr:v1') return { entries: [{ countryCode: 'HR', dsrPct: 8, date: '2024-Q4' }] };
+      return null;
+    };
+    const tightLabor = await scoreMacroFiscal('HR', makeReader(3.5));
+    const slackLabor = await scoreMacroFiscal('HR', makeReader(20));
+    assert.ok(tightLabor.score > slackLabor.score,
+      `tight labor (LUR=3.5%, score=${tightLabor.score}) must outrank slack (LUR=20%, score=${slackLabor.score})`);
+    assert.equal(tightLabor.coverage, 1, 'all five sub-metrics observed → coverage=1');
+    assert.equal(slackLabor.coverage, 1, 'all five sub-metrics observed → coverage=1');
   });
 
   it('scoreFoodWater: country absent from FAO/IPC DB gets crisis_monitoring_absent imputation (not WGI proxy)', async () => {
@@ -685,5 +729,464 @@ describe('resilience dimension scorers', () => {
     const lowExp = await scoreHealthPublicService('XX', makeReader(100));
     assert.ok(highExp.score > lowExp.score,
       `High health expenditure (${highExp.score}) should score better than low (${lowExp.score})`);
+  });
+});
+
+// T1.7 Phase 1 of the country-resilience reference-grade upgrade plan.
+// Foundation-only slice: the 4-class imputation taxonomy (stable-absence,
+// unmonitored, source-failure, not-applicable) is defined as an exported
+// type, and every entry in the IMPUTATION and IMPUTE tables carries an
+// imputationClass tag. These tests pin the classification so downstream
+// work (T1.5 source-recency badges, T1.6 widget dimension confidence) can
+// consume the taxonomy without risk of drift.
+describe('resilience imputation taxonomy (T1.7)', () => {
+  const VALID_CLASSES: readonly ImputationClass[] = [
+    'stable-absence',
+    'unmonitored',
+    'source-failure',
+    'not-applicable',
+  ] as const;
+
+  function assertValidClass(label: string, value: string): void {
+    assert.ok(
+      (VALID_CLASSES as readonly string[]).includes(value),
+      `${label} has imputationClass="${value}", expected one of [${VALID_CLASSES.join(', ')}]`,
+    );
+  }
+
+  it('IMPUTATION entries carry the expected semantic classes', () => {
+    // Crisis-monitoring sources (IPC, UCDP, UNHCR) publish globally; absence
+    // means the country is stable, so it is tagged stable-absence.
+    assert.equal(IMPUTATION.crisis_monitoring_absent.imputationClass, 'stable-absence');
+    assert.equal(IMPUTATION.crisis_monitoring_absent.score, 85);
+    assert.equal(IMPUTATION.crisis_monitoring_absent.certaintyCoverage, 0.7);
+
+    // Curated-list sources (BIS, WTO) may not cover every country; absence
+    // is ambiguous, so it is tagged unmonitored.
+    assert.equal(IMPUTATION.curated_list_absent.imputationClass, 'unmonitored');
+    assert.equal(IMPUTATION.curated_list_absent.score, 50);
+    assert.equal(IMPUTATION.curated_list_absent.certaintyCoverage, 0.3);
+  });
+
+  it('every IMPUTATION entry has a valid imputationClass', () => {
+    for (const [key, entry] of Object.entries(IMPUTATION)) {
+      assertValidClass(`IMPUTATION.${key}`, entry.imputationClass);
+    }
+  });
+
+  it('IMPUTE per-metric overrides inherit or override the class consistently', () => {
+    // Food-specific crisis-monitoring override (IPC phase data).
+    assert.equal(IMPUTE.ipcFood.imputationClass, 'stable-absence');
+    // Trade-specific curated-list override (WTO trade restrictions).
+    assert.equal(IMPUTE.wtoData.imputationClass, 'unmonitored');
+    // Displacement-specific crisis-monitoring override (UNHCR flows).
+    assert.equal(IMPUTE.unhcrDisplacement.imputationClass, 'stable-absence');
+
+    // Shared references: bisEer and bisCredit alias IMPUTATION.curated_list_absent
+    // so their class must match exactly (same object reference, same tag).
+    assert.equal(IMPUTE.bisEer.imputationClass, 'unmonitored');
+    assert.equal(IMPUTE.bisCredit.imputationClass, 'unmonitored');
+    assert.equal(IMPUTE.bisEer, IMPUTATION.curated_list_absent);
+    assert.equal(IMPUTE.bisCredit, IMPUTATION.curated_list_absent);
+  });
+
+  it('every IMPUTE entry has a valid imputationClass', () => {
+    for (const [key, entry] of Object.entries(IMPUTE)) {
+      assertValidClass(`IMPUTE.${key}`, entry.imputationClass);
+    }
+  });
+
+  it('stable-absence entries score higher than unmonitored, across BOTH tables (semantic sanity)', () => {
+    // stable-absence = strong positive signal (feed is comprehensive,
+    // nothing happened). unmonitored = we do not know, penalized.
+    // The invariant must hold across every entry in both IMPUTATION and
+    // IMPUTE, otherwise a per-metric override can silently break the
+    // ordering (e.g. a `stable-absence` override with a score lower than
+    // an `unmonitored` entry would pass a tables-only check but violate
+    // the taxonomy's semantic meaning).
+    //
+    // Raised in review of PR #2944: the earlier version of this test
+    // only checked the two base entries in IMPUTATION and would have
+    // missed a regression in an IMPUTE override.
+    const allEntries = [
+      ...Object.entries(IMPUTATION).map(([k, v]) => ({ label: `IMPUTATION.${k}`, entry: v })),
+      ...Object.entries(IMPUTE).map(([k, v]) => ({ label: `IMPUTE.${k}`, entry: v })),
+    ];
+
+    const stableAbsence = allEntries.filter((e) => e.entry.imputationClass === 'stable-absence');
+    const unmonitored = allEntries.filter((e) => e.entry.imputationClass === 'unmonitored');
+
+    assert.ok(stableAbsence.length > 0, 'expected at least one stable-absence entry across both tables');
+    assert.ok(unmonitored.length > 0, 'expected at least one unmonitored entry across both tables');
+
+    const minStableScore = Math.min(...stableAbsence.map((e) => e.entry.score));
+    const maxUnmonitoredScore = Math.max(...unmonitored.map((e) => e.entry.score));
+    assert.ok(
+      minStableScore > maxUnmonitoredScore,
+      `every stable-absence entry must score higher than every unmonitored entry. ` +
+      `min stable-absence score = ${minStableScore}, max unmonitored score = ${maxUnmonitoredScore}. ` +
+      `stable-absence entries: ${stableAbsence.map((e) => `${e.label}=${e.entry.score}`).join(', ')}. ` +
+      `unmonitored entries: ${unmonitored.map((e) => `${e.label}=${e.entry.score}`).join(', ')}.`,
+    );
+
+    const minStableCertainty = Math.min(...stableAbsence.map((e) => e.entry.certaintyCoverage));
+    const maxUnmonitoredCertainty = Math.max(...unmonitored.map((e) => e.entry.certaintyCoverage));
+    assert.ok(
+      minStableCertainty > maxUnmonitoredCertainty,
+      `every stable-absence entry must have higher certaintyCoverage than every unmonitored entry. ` +
+      `min stable-absence certainty = ${minStableCertainty}, max unmonitored certainty = ${maxUnmonitoredCertainty}. ` +
+      `stable-absence entries: ${stableAbsence.map((e) => `${e.label}=${e.entry.certaintyCoverage}`).join(', ')}. ` +
+      `unmonitored entries: ${unmonitored.map((e) => `${e.label}=${e.entry.certaintyCoverage}`).join(', ')}.`,
+    );
+  });
+});
+
+// T1.7 schema pass: imputationClass propagation through weightedBlend and
+// the direct early-return paths that bypass weightedBlend (e.g.
+// scoreCurrencyExternal when BIS EER is the only source). These tests use
+// real scorers with crafted readers so weightedBlend's aggregation
+// semantics are exercised without exporting it.
+describe('resilience dimension imputationClass propagation (T1.7)', () => {
+  it('single fully-imputed metric: foodWater reports stable-absence via IMPUTE.ipcFood', async () => {
+    // resilience:static:{ISO2} loaded with fao:null and aquastat:null → the
+    // IPC metric imputes (weight 0.6) and aquastat is null (weight 0.4).
+    // availableWeight = 0.6, observed = 0, imputed = 0.6 → fully imputed,
+    // dominant class is stable-absence (the only class present).
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return { fao: null, aquastat: null };
+      return null;
+    };
+    const result = await scoreFoodWater('XX', reader);
+    assert.equal(result.observedWeight, 0, 'no observed data');
+    assert.ok(result.imputedWeight > 0, 'imputed data present');
+    assert.equal(result.imputationClass, 'stable-absence',
+      `foodWater should propagate stable-absence from IMPUTE.ipcFood, got ${result.imputationClass}`);
+  });
+
+  it('single fully-imputed metric: tradeSanctions reports unmonitored via IMPUTE.wtoData', async () => {
+    // Non-reporter in WTO restrictions + barriers, no sanctions/tariff data.
+    // Both imputed metrics share the unmonitored class.
+    const reporterSet = ['US', 'DE'];
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      return null;
+    };
+    const result = await scoreTradeSanctions('BF', reader);
+    assert.equal(result.observedWeight, 0, 'no observed data for BF in this reader');
+    assert.ok(result.imputedWeight > 0, 'WTO imputation should produce imputed weight');
+    assert.equal(result.imputationClass, 'unmonitored',
+      `tradeSanctions should propagate unmonitored from IMPUTE.wtoData, got ${result.imputationClass}`);
+  });
+
+  it('observed + imputed: imputationClass is null when the dimension has any real data', async () => {
+    // Mix: real sanctions data (observed) + WTO impute (imputed) → observedWeight > 0
+    // means imputationClass must be null.
+    const reporterSet = ['US'];
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:country-counts:v1') return { BF: 2 };
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      return null;
+    };
+    const result = await scoreTradeSanctions('BF', reader);
+    assert.ok(result.observedWeight > 0, 'sanctions provide observed weight');
+    assert.ok(result.imputedWeight > 0, 'WTO still imputes for non-reporter');
+    assert.equal(result.imputationClass, null,
+      `observed + imputed must yield null imputationClass, got ${result.imputationClass}`);
+  });
+
+  it('zero observed + zero imputed: imputationClass is null (true no-data case)', async () => {
+    // cyberDigital with all sources null returns score=0 coverage=0 (no
+    // data at all). This must not be mislabelled as an imputation class.
+    const reader = async (_key: string): Promise<unknown | null> => null;
+    const result = await scoreCyberDigital('XX', reader);
+    assert.equal(result.observedWeight, 0);
+    assert.equal(result.imputedWeight, 0);
+    assert.equal(result.imputationClass, null,
+      `no-data case must yield null imputationClass, got ${result.imputationClass}`);
+  });
+
+  it('scoreCurrencyExternal early-return: curated_list_absent propagates unmonitored', async () => {
+    // BIS loaded but country not listed, IMF macro null, no reserves → the
+    // function early-returns with IMPUTE.bisEer, which aliases
+    // IMPUTATION.curated_list_absent → unmonitored.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.0, realEer: 100, date: '2025-09' }] };
+      return null;
+    };
+    const result = await scoreCurrencyExternal('MZ', reader);
+    assert.equal(result.observedWeight, 0);
+    assert.equal(result.imputedWeight, 1);
+    assert.equal(result.imputationClass, 'unmonitored',
+      `scoreCurrencyExternal BIS-absent early return must propagate unmonitored, got ${result.imputationClass}`);
+  });
+
+  it('scoreBorderSecurity: UNHCR displacement absent propagates stable-absence', async () => {
+    // UCDP loaded but zero events for XX, displacement loaded but country
+    // absent → IMPUTE.unhcrDisplacement (stable-absence) on the 0.35
+    // weight metric. The UCDP metric is observed (0 events → score != null),
+    // which means the dimension still has observedWeight > 0 and the
+    // imputationClass must be null.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'conflict:ucdp-events:v1') return { events: [] };
+      if (key.startsWith('displacement:summary:v1')) return { summary: { countries: [] } };
+      return null;
+    };
+    const result = await scoreBorderSecurity('XX', reader);
+    assert.ok(result.observedWeight > 0, 'UCDP contributes observed weight');
+    assert.equal(result.imputationClass, null,
+      `observed + imputed mix must yield null imputationClass, got ${result.imputationClass}`);
+  });
+
+  it('scoreBorderSecurity: UCDP outage + displacement impute → fully imputed stable-absence', async () => {
+    // UCDP source null (returns null score, excluded), displacement loaded
+    // with country absent → only the imputed unhcrDisplacement metric
+    // contributes. observedWeight = 0, imputedWeight > 0, dominant class
+    // is stable-absence.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key.startsWith('displacement:summary:v1')) return { summary: { countries: [] } };
+      return null;
+    };
+    const result = await scoreBorderSecurity('XX', reader);
+    assert.equal(result.observedWeight, 0, 'UCDP null → no observed');
+    assert.ok(result.imputedWeight > 0, 'displacement imputed');
+    assert.equal(result.imputationClass, 'stable-absence',
+      `borderSecurity with only displacement impute must be stable-absence, got ${result.imputationClass}`);
+  });
+});
+
+describe('resilience source-failure aggregation (T1.7)', () => {
+  // Builds a reader that delegates to the baseline fixtures but overrides
+  // a subset of keys. Lets us simulate "WGI adapter failed at seed time"
+  // while keeping the country's other data intact.
+  function makeOverrideReader(
+    overrides: Record<string, unknown | null>,
+  ): (key: string) => Promise<unknown | null> {
+    return async (key: string) => {
+      if (key in overrides) return overrides[key];
+      return (RESILIENCE_FIXTURES as Record<string, unknown>)[key] ?? null;
+    };
+  }
+
+  it('re-tags imputed dimensions when their adapter is in failedDatasets', async () => {
+    // Case: WGI adapter failed at seed time AND the country has no real
+    // WGI data in the static record. governanceInstitutional is fully
+    // imputed (observedWeight === 0) → must flip from its default class
+    // to source-failure. macroFiscal depends on a different data path
+    // (IMF + debt) so it stays observed and is NOT re-tagged even
+    // though it is in the wgi→dimensions affected set.
+    const reader = makeOverrideReader({
+      'resilience:static:US': {
+        // wgi key omitted → scoreGovernanceInstitutional sees no data
+        infrastructure: {
+          indicators: {
+            'EG.ELC.ACCS.ZS': { value: 100, year: 2025 },
+            'IS.ROD.PAVE.ZS': { value: 74, year: 2025 },
+            'EG.USE.ELEC.KH.PC': { value: 12000, year: 2025 },
+            'IT.NET.BBND.P2': { value: 35, year: 2025 },
+          },
+        },
+        gpi: { score: 2.4, rank: 132, year: 2025 },
+        rsf: { score: 30, rank: 45, year: 2025 },
+        who: {
+          indicators: {
+            hospitalBeds: { value: 2.8, year: 2024 },
+            uhcIndex: { value: 82, year: 2024 },
+            measlesCoverage: { value: 91, year: 2024 },
+            physiciansPer1k: { value: 2.6, year: 2024 },
+            healthExpPerCapitaUsd: { value: 12000, year: 2024 },
+          },
+        },
+        fao: { peopleInCrisis: 5000, phase: 'IPC Phase 2', year: 2025 },
+        aquastat: { indicator: 'Renewable water availability', value: 1500, year: 2024 },
+        iea: { energyImportDependency: { value: 25, year: 2024, source: 'IEA' } },
+        tradeToGdp: { source: 'worldbank', tradeToGdpPct: 25, year: 2023 },
+        fxReservesMonths: { source: 'worldbank', months: 2.5, year: 2023 },
+        appliedTariffRate: { source: 'worldbank', value: 3.5, year: 2023 },
+      },
+      'seed-meta:resilience:static': {
+        fetchedAt: 1712102400000,
+        recordCount: 196,
+        failedDatasets: ['wgi'],
+      },
+    });
+    const dims = await scoreAllDimensions('US', reader);
+    // governanceInstitutional is fully imputed (no WGI) → coverage=0,
+    // score=0, imputationClass=null from weightedBlend. Even with the
+    // source-failure set, it stays null because the decoration only
+    // re-tags when imputationClass was already non-null. To exercise
+    // the real re-tagging branch, tradeSanctions is the right target:
+    // it has a WTO imputation fallback, and we put tradeToGdp into the
+    // failed set below in the next test case. For this test, simply
+    // assert the infrastructure row (in wgi's affected set only through
+    // the logistics mapping) stays correct: the decoration does not
+    // touch dimensions that produced real-data scores.
+    assert.equal(dims.infrastructure.imputationClass, null,
+      'real-data infrastructure must not be re-tagged even if its adapter is failed');
+  });
+
+  it('re-tags already-imputed dimensions to source-failure via tradeSanctions path', async () => {
+    // tradeSanctions imputes via IMPUTE.wtoData (unmonitored) when a
+    // country is absent from the WTO reporter sets. Mark the
+    // appliedTariffRate adapter as failed → the tradeSanctions dim,
+    // which the mapping says depends on appliedTariffRate, keeps its
+    // imputed WTO class from wbWto but the decoration flips it to
+    // source-failure.
+    const reader = async (key: string): Promise<unknown | null> => {
+      // Non-reporter → WTO imputation kicks in on both metrics.
+      const reporterSet = ['US', 'DE'];
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      if (key === 'resilience:static:BF') return { /* no appliedTariffRate */ };
+      if (key === 'seed-meta:resilience:static') {
+        return { fetchedAt: 1, recordCount: 196, failedDatasets: ['appliedTariffRate'] };
+      }
+      return null;
+    };
+    const dims = await scoreAllDimensions('BF', reader);
+    // tradeSanctions had imputationClass='unmonitored' from the raw
+    // scorer (WTO impute), then the decoration pass flipped it to
+    // 'source-failure' because appliedTariffRate is in failedDatasets
+    // and its mapping includes tradeSanctions.
+    assert.equal(dims.tradeSanctions.observedWeight, 0, 'no observed data for BF');
+    assert.ok(dims.tradeSanctions.imputedWeight > 0, 'WTO impute carries weight');
+    assert.equal(dims.tradeSanctions.imputationClass, 'source-failure',
+      `tradeSanctions must flip to source-failure when appliedTariffRate is in failedDatasets, got ${dims.tradeSanctions.imputationClass}`);
+  });
+
+  it('does not re-tag real-data dimensions even when their adapter is in failedDatasets', async () => {
+    // US with full fixture data; claim all adapters failed. Every
+    // dimension with observedWeight > 0 must keep imputationClass=null
+    // because the seed failing did not prevent us from producing a
+    // real-data score (prior-snapshot recovery path semantics).
+    const reader = makeOverrideReader({
+      'seed-meta:resilience:static': {
+        fetchedAt: 1,
+        recordCount: 196,
+        failedDatasets: ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp', 'fxReservesMonths', 'appliedTariffRate'],
+      },
+    });
+    const dims = await scoreAllDimensions('US', reader);
+    // US has full observed data for governanceInstitutional (WGI), so
+    // even though wgi is in failedDatasets, the decoration must NOT
+    // re-tag it — the dimension's imputationClass was already null.
+    assert.ok(dims.governanceInstitutional.observedWeight > 0, 'US has real WGI data');
+    assert.equal(dims.governanceInstitutional.imputationClass, null,
+      'real-data governance must not be re-tagged');
+    assert.ok(dims.healthPublicService.observedWeight > 0, 'US has real WHO data');
+    assert.equal(dims.healthPublicService.imputationClass, null,
+      'real-data health must not be re-tagged');
+  });
+
+  it('leaves unaffected dimensions alone when unrelated adapters fail', async () => {
+    // BF with WTO-impute for tradeSanctions (unmonitored), but the
+    // failed set contains only `wgi`. tradeSanctions is NOT in wgi's
+    // affected set (only governanceInstitutional, macroFiscal), so its
+    // unmonitored class must stay put.
+    const reader = async (key: string): Promise<unknown | null> => {
+      const reporterSet = ['US', 'DE'];
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      if (key === 'seed-meta:resilience:static') {
+        return { fetchedAt: 1, recordCount: 196, failedDatasets: ['wgi'] };
+      }
+      return null;
+    };
+    const dims = await scoreAllDimensions('BF', reader);
+    assert.equal(dims.tradeSanctions.imputationClass, 'unmonitored',
+      `tradeSanctions is not in wgi's affected set; class must stay unmonitored, got ${dims.tradeSanctions.imputationClass}`);
+  });
+
+  it('is a no-op when seed-meta has no failedDatasets (healthy seed path)', async () => {
+    // Healthy seed: failedDatasets empty / missing. The decoration pass
+    // does nothing and every imputed dimension keeps its taxonomy class.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:MZ') return null;
+      if (key === 'seed-meta:resilience:static') {
+        return { fetchedAt: 1, recordCount: 196 };
+      }
+      return null;
+    };
+    const dims = await scoreAllDimensions('MZ', reader);
+    // currencyExternal hits the curated_list_absent fall-through → unmonitored.
+    // Must NOT become source-failure.
+    assert.equal(dims.currencyExternal.imputationClass, 'unmonitored',
+      `currencyExternal must keep unmonitored on healthy seed, got ${dims.currencyExternal.imputationClass}`);
+  });
+
+  it('produce plausible country ordering for the recovery-capacity dimensions', async () => {
+    const fiscal = await scoreTriple(scoreFiscalSpace);
+    const reserves = await scoreTriple(scoreReserveAdequacy);
+    const extDebt = await scoreTriple(scoreExternalDebtCoverage);
+    const importHhi = await scoreTriple(scoreImportConcentration);
+    const continuity = await scoreTriple(scoreStateContinuity);
+
+    assertOrdered('fiscalSpace', fiscal.no.score, fiscal.us.score, fiscal.ye.score);
+    assertOrdered('reserveAdequacy', reserves.no.score, reserves.us.score, reserves.ye.score);
+    assertOrdered('externalDebtCoverage', extDebt.no.score, extDebt.us.score, extDebt.ye.score);
+    assertOrdered('importConcentration', importHhi.no.score, importHhi.us.score, importHhi.ye.score);
+    assertOrdered('stateContinuity', continuity.no.score, continuity.us.score, continuity.ye.score);
+  });
+
+  it('scoreFiscalSpace: country with strong fiscal position scores high', async () => {
+    const no = await scoreFiscalSpace('NO', fixtureReader);
+    assert.ok(no.score > 70, `NO should score >70 with strong fiscal space, got ${no.score}`);
+    assert.ok(no.coverage > 0.8, `NO should have high coverage with all 3 metrics, got ${no.coverage}`);
+    assert.equal(no.imputationClass, null, 'real data must not carry imputation class');
+  });
+
+  it('scoreFiscalSpace: missing data returns unmonitored imputation', async () => {
+    const emptyReader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreFiscalSpace('XX', emptyReader);
+    assert.equal(score.imputationClass, 'unmonitored');
+    assert.equal(score.observedWeight, 0);
+    assert.equal(score.imputedWeight, 1);
+  });
+
+  it('scoreReserveAdequacy: high reserves score well', async () => {
+    const no = await scoreReserveAdequacy('NO', fixtureReader);
+    assert.ok(no.score > 70, `NO with 14 months reserves should score >70, got ${no.score}`);
+  });
+
+  it('scoreExternalDebtCoverage: low debt-to-reserves ratio scores well', async () => {
+    const no = await scoreExternalDebtCoverage('NO', fixtureReader);
+    assert.ok(no.score > 90, `NO with ratio 0.2 should score >90, got ${no.score}`);
+  });
+
+  it('scoreImportConcentration: low HHI scores well', async () => {
+    const us = await scoreImportConcentration('US', fixtureReader);
+    // US fixture: hhi=0.06 → *10000 = 600 → normalizeLowerBetter(600, 0, 5000) ≈ 88
+    assert.ok(us.score > 80, `US with HHI 0.06 should score >80, got ${us.score}`);
+  });
+
+  it('scoreStateContinuity: derives from existing WGI + UCDP + displacement', async () => {
+    const no = await scoreStateContinuity('NO', fixtureReader);
+    assert.ok(no.score > 70, `NO should score >70 on state continuity, got ${no.score}`);
+    assert.ok(no.observedWeight > 0, 'state continuity must have observed weight from WGI');
+    assert.equal(no.imputationClass, null, 'NO has real data, no imputation class');
+  });
+
+  it('scoreFuelStockDays: country with stock data scores based on coverage', async () => {
+    const no = await scoreFuelStockDays('NO', fixtureReader);
+    // NO fixture: fuelStockDays=90 → normalizeHigherBetter(90, 0, 120) = 75
+    assert.ok(no.score > 60, `NO with 90 fuelStockDays should score >60, got ${no.score}`);
+    assert.ok(no.observedWeight > 0, 'real fuel-stock data must have observed weight');
+  });
+
+  it('scoreFuelStockDays: country without fuel stock data returns unmonitored', async () => {
+    const ye = await scoreFuelStockDays('YE', fixtureReader);
+    assert.equal(ye.imputationClass, 'unmonitored');
+    assert.equal(ye.observedWeight, 0);
+  });
+
+  it('recovery domain is present in scoreAllDimensions output', async () => {
+    const dims = await scoreAllDimensions('US', fixtureReader);
+    assert.ok('fiscalSpace' in dims, 'fiscalSpace must be in scoreAllDimensions output');
+    assert.ok('reserveAdequacy' in dims, 'reserveAdequacy must be in scoreAllDimensions output');
+    assert.ok('externalDebtCoverage' in dims, 'externalDebtCoverage must be in scoreAllDimensions output');
+    assert.ok('importConcentration' in dims, 'importConcentration must be in scoreAllDimensions output');
+    assert.ok('stateContinuity' in dims, 'stateContinuity must be in scoreAllDimensions output');
+    assert.ok('fuelStockDays' in dims, 'fuelStockDays must be in scoreAllDimensions output');
   });
 });

@@ -285,4 +285,43 @@ describe('existing beforeSend filters', () => {
     ]);
     assert.ok(beforeSend(event) !== null);
   });
+
+  // WORLDMONITOR-MK: Fireglass (Symantec/Broadcom CloudSOC) console-hook recursion.
+  it('suppresses Fireglass RangeError with FireglassUtils frame', () => {
+    const event = makeEvent('Maximum call stack size exceeded', 'RangeError', [
+      { filename: '<anonymous>', lineno: 1, function: 'FireglassUtils.logInternal' },
+      { filename: '<anonymous>', lineno: 1, function: 'Object.debug' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress non-RangeError that happens to have a FireglassUtils frame', () => {
+    const event = makeEvent('Something else entirely', 'TypeError', [
+      firstPartyFrame(),
+      { filename: '<anonymous>', lineno: 1, function: 'FireglassUtils.logInternal' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'RangeError gate must limit blast radius');
+  });
+
+  // WORLDMONITOR-MH: Chrome Mobile WebView 105+ duplex requirement, Dodo SDK path.
+  it('suppresses duplex error ONLY when checkout-*.js chunk is in the stack', () => {
+    const event = makeEvent(
+      "Failed to construct 'Request': The `duplex` member must be specified for a request with a streaming body",
+      'TypeError',
+      [
+        { filename: '/assets/panels-DvZJT691.js', lineno: 1, function: 'Mw.window.fetch' },
+        { filename: '/assets/checkout-BZBMtluV.js', lineno: 1, function: 'Module.cn' },
+      ],
+    );
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress duplex error when only first-party frames are present (runtime.ts regression must surface)', () => {
+    const event = makeEvent(
+      "Failed to construct 'Request': The `duplex` member must be specified for a request with a streaming body",
+      'TypeError',
+      [firstPartyFrame('src/services/runtime.ts', 'patchedFetch')],
+    );
+    assert.ok(beforeSend(event) !== null, 'first-party runtime regression must still surface');
+  });
 });

@@ -52,7 +52,13 @@ export class SupplyChainPanel extends Panel {
         }
         return;
       }
-      if ((e.target as HTMLElement).closest('.sc-scenario-trigger')) return;
+      const scenarioTrigger = (e.target as HTMLElement).closest('.sc-scenario-trigger') as HTMLElement | null;
+      if (scenarioTrigger) {
+        e.stopPropagation();
+        const btn = scenarioTrigger.querySelector<HTMLButtonElement>('.sc-scenario-btn');
+        if (btn && !btn.disabled) void this.runScenario(scenarioTrigger, btn);
+        return;
+      }
       const card = (e.target as HTMLElement).closest('.trade-restriction-card') as HTMLElement | null;
       if (card?.dataset.cpId) {
         const newId = this.expandedChokepoint === card.dataset.cpId ? null : card.dataset.cpId;
@@ -193,11 +199,6 @@ export class SupplyChainPanel extends Panel {
     // Re-insert scenario banner after setContent replaces inner content.
     if (this.activeScenarioState) {
       this.showScenarioSummary(this.activeScenarioState.scenarioId, this.activeScenarioState.result);
-    }
-
-    // Attach scenario trigger buttons for expanded chokepoint cards.
-    if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {
-      this.attachScenarioTriggers();
     }
   }
 
@@ -659,56 +660,50 @@ export class SupplyChainPanel extends Panel {
     this.onScenarioActivate = cb;
   }
 
-  private attachScenarioTriggers(): void {
-    this.content.querySelectorAll<HTMLElement>('.sc-scenario-trigger').forEach(el => {
-      el.querySelector('.sc-scenario-btn')?.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const btn = el.querySelector<HTMLButtonElement>('.sc-scenario-btn')!;
-        if (btn.dataset.gated === '1') {
-          trackGateHit('scenario-engine');
-          return;
-        }
-        this.scenarioPollController?.abort();
-        this.scenarioPollController = new AbortController();
-        const { signal } = this.scenarioPollController;
+  private async runScenario(trigger: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    if (btn.dataset.gated === '1') {
+      trackGateHit('scenario-engine');
+      return;
+    }
+    this.scenarioPollController?.abort();
+    this.scenarioPollController = new AbortController();
+    const { signal } = this.scenarioPollController;
 
-        const scenarioId = el.dataset.scenarioId!;
-        btn.disabled = true;
-        btn.textContent = 'Computing\u2026';
-        try {
-          const runResp = await premiumFetch('/api/scenario/v1/run', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scenarioId }),
-            signal,
-          });
-          if (!runResp.ok) throw new Error('Run failed');
-          const { jobId } = await runResp.json() as { jobId: string };
-          let result: ScenarioResult | null = null;
-          for (let i = 0; i < 30; i++) {
-            if (signal.aborted || !this.content.isConnected) return;
-            if (i > 0) await new Promise(r => setTimeout(r, 2000));
-            const statusResp = await premiumFetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`, { signal });
-            if (!statusResp.ok) throw new Error(`Status poll failed: ${statusResp.status}`);
-            const status = await statusResp.json() as { status: string; result?: ScenarioResult };
-            if (status.status === 'done') {
-              const r = status.result;
-              if (!r || !Array.isArray(r.topImpactCountries)) throw new Error('done without valid result');
-              result = r;
-              break;
-            }
-            if (status.status === 'failed') throw new Error('Scenario failed');
-          }
-          if (!result) throw new Error('Timeout');
-          if (signal.aborted || !this.content.isConnected) return;
-          this.onScenarioActivate?.(scenarioId, result);
-          btn.textContent = 'Active';
-        } catch (err) {
-          if (err instanceof Error && err.name === 'AbortError') return;
-          btn.textContent = 'Error \u2014 retry';
-          btn.disabled = false;
-        }
+    const scenarioId = trigger.dataset.scenarioId!;
+    btn.disabled = true;
+    btn.textContent = 'Computing\u2026';
+    try {
+      const runResp = await premiumFetch('/api/scenario/v1/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenarioId }),
+        signal,
       });
-    });
+      if (!runResp.ok) throw new Error('Run failed');
+      const { jobId } = await runResp.json() as { jobId: string };
+      let result: ScenarioResult | null = null;
+      for (let i = 0; i < 30; i++) {
+        if (signal.aborted || !this.content.isConnected) return;
+        if (i > 0) await new Promise(r => setTimeout(r, 2000));
+        const statusResp = await premiumFetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`, { signal });
+        if (!statusResp.ok) throw new Error(`Status poll failed: ${statusResp.status}`);
+        const status = await statusResp.json() as { status: string; result?: ScenarioResult };
+        if (status.status === 'done') {
+          const r = status.result;
+          if (!r || !Array.isArray(r.topImpactCountries)) throw new Error('done without valid result');
+          result = r;
+          break;
+        }
+        if (status.status === 'failed') throw new Error('Scenario failed');
+      }
+      if (!result) throw new Error('Timeout');
+      if (signal.aborted || !this.content.isConnected) return;
+      this.onScenarioActivate?.(scenarioId, result);
+      btn.textContent = 'Active';
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      btn.textContent = 'Error \u2014 retry';
+      btn.disabled = false;
+    }
   }
 }

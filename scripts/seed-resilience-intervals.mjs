@@ -11,7 +11,11 @@ import {
 loadEnvFile(import.meta.url);
 
 const API_BASE = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
-const WM_KEY = process.env.WORLDMONITOR_API_KEY || '';
+// Reuse WORLDMONITOR_VALID_KEYS when a dedicated WORLDMONITOR_API_KEY isn't set.
+// See seed-resilience-scores.mjs for the rationale.
+const WM_KEY = process.env.WORLDMONITOR_API_KEY
+  || (process.env.WORLDMONITOR_VALID_KEYS ?? '').split(',').map((k) => k.trim()).filter(Boolean)[0]
+  || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
 const INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';

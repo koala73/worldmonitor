@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
@@ -10,12 +10,12 @@ import {
 } from '../scripts/seed-resilience-scores.mjs';
 
 describe('exported constants', () => {
-  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v8)', () => {
-    assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v8');
+  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v9)', () => {
+    assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v9');
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v7)', () => {
-    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v7:');
+  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v9)', () => {
+    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v9:');
   });
 
   it('RESILIENCE_RANKING_CACHE_TTL_SECONDS is 6 hours', () => {
@@ -111,5 +111,56 @@ describe('script is self-contained .mjs', () => {
     for (const imp of imports) {
       assert.ok(imp.startsWith('./'), `Import "${imp}" must be a local ./ relative path`);
     }
+  });
+});
+
+describe('rebuilds ranking key on race-condition or laggards', () => {
+  // Locks in the defensive rebuild added after the bulk RPC. The bulk call's
+  // handler can suffer a read-after-write race in Vercel where its own
+  // re-read of the per-country cache returns empty even though writes
+  // landed; this leaves resilience:ranking:v9 null even with all 222 score
+  // keys present. The seeder must verify and re-call the RPC in that case.
+  let src;
+  before(async () => {
+    // Read once in a hook so all assertions get a meaningful failure if the
+    // file read itself breaks — instead of cascading TypeErrors from
+    // `assert.match(undefined, …)` in dependent tests.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+  });
+
+  it('probes the ranking key after bulk RPC and distinguishes absent from probe-failed', () => {
+    assert.match(
+      src,
+      /\$\{encodeURIComponent\(RESILIENCE_RANKING_CACHE_KEY\)\}/,
+      'must GET resilience:ranking:v9 after bulk warmup to verify it was written',
+    );
+    assert.match(
+      src,
+      /rankingProbeFailed\s*=\s*true/,
+      'must distinguish probe failure from genuinely-absent key for incident triage',
+    );
+  });
+
+  it('triggers rebuild when ranking is null OR laggards were warmed', () => {
+    assert.match(
+      src,
+      /if\s*\(laggardsWarmed\s*>\s*0\s*\|\|\s*rankingExists\s*==\s*null\)/,
+      'rebuild gate must fire on EITHER laggard warms OR null ranking key',
+    );
+  });
+
+  it('only DELs ranking when laggards were warmed (not on race-condition retry)', () => {
+    // On the race path, the key is already null — skipping DEL avoids a
+    // pointless extra Redis call. On the laggard path, DEL forces the
+    // handler to recompute fresh ranking with the now-warmed laggards.
+    assert.match(
+      src,
+      /if\s*\(laggardsWarmed\s*>\s*0\)\s*{\s*await\s+redisPipeline\([^)]+\['DEL',\s*RESILIENCE_RANKING_CACHE_KEY\]\]/,
+      'DEL must be guarded by laggardsWarmed > 0',
+    );
   });
 });

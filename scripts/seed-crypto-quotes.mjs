@@ -42,7 +42,11 @@ async function fetchFromCoinGecko() {
   const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
   if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
 
-  const resp = await fetchWithRateLimitRetry(url, 5, headers);
+  // Capped at 2 attempts (10+20=30s budget) so the fallback path itself
+  // cannot recreate the 150s>120s bundle-timeout overrun this PR fixes.
+  // CoinGecko's free-tier 429s are exactly why CoinPaprika is now primary;
+  // a long retry budget here would just defer the same failure mode.
+  const resp = await fetchWithRateLimitRetry(url, 2, headers);
   const data = await resp.json();
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error('CoinGecko returned no data');
@@ -51,7 +55,7 @@ async function fetchFromCoinGecko() {
 }
 
 async function fetchFromCoinPaprika() {
-  console.log('  [CoinPaprika] Falling back to CoinPaprika...');
+  console.log('  [CoinPaprika] Fetching tickers...');
   const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
@@ -73,12 +77,17 @@ async function fetchFromCoinPaprika() {
 }
 
 async function fetchCryptoQuotes() {
+  // CoinPaprika is the PRIMARY source — CoinGecko's free tier 429s frequently
+  // and its 5-step retry budget (10+20+30+40+50=150s) overruns the bundle's
+  // 120s timeout, killing the section before the fallback can fire (Railway
+  // bundle log 2026-04-14 07:17 UTC). CoinGecko is retained as fallback for
+  // its sparkline_in_7d data, which CoinPaprika does not provide.
   let data;
   try {
-    data = await fetchFromCoinGecko();
-  } catch (err) {
-    console.warn(`  [CoinGecko] Failed: ${err.message}`);
     data = await fetchFromCoinPaprika();
+  } catch (err) {
+    console.warn(`  [CoinPaprika] Failed: ${err.message} — falling back to CoinGecko`);
+    data = await fetchFromCoinGecko();
   }
 
   const byId = new Map(data.map((c) => [c.id, c]));
@@ -107,18 +116,40 @@ async function fetchCryptoQuotes() {
   return { quotes };
 }
 
+/**
+ * Require full coverage of the configured CRYPTO_IDS set with positive prices.
+ *
+ * On a fixed-cardinality top-N feed, accepting partial snapshots (e.g. 9/10)
+ * is silent data loss — health stays green while one tracked asset
+ * disappears from the panel. If CoinPaprika drops or renames a mapped
+ * ticker, this validator forces the seeder to fail loudly so the broken
+ * mapping is caught at the next cycle instead of weeks later.
+ */
 function validate(data) {
-  return (
-    Array.isArray(data?.quotes) &&
-    data.quotes.length >= 1 &&
-    data.quotes.some((q) => q.price > 0)
-  );
+  if (!Array.isArray(data?.quotes)) return false;
+  if (data.quotes.length !== CRYPTO_IDS.length) return false;
+  if (!data.quotes.every((q) => Number.isFinite(q?.price) && q.price > 0)) return false;
+  // Verify every configured ID is represented (defends against duplicate
+  // IDs masquerading as full coverage).
+  const expected = new Set(CRYPTO_IDS.map((id) => CRYPTO_META[id]?.symbol || id.toUpperCase()));
+  const actual = new Set(data.quotes.map((q) => q.symbol));
+  for (const sym of expected) {
+    if (!actual.has(sym)) return false;
+  }
+  return true;
+}
+
+export function declareRecords(data) {
+  return Array.isArray(data?.quotes) ? data.quotes.length : 0;
 }
 
 runSeed('market', 'crypto', CANONICAL_KEY, fetchCryptoQuotes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'coingecko-markets',
+  sourceVersion: 'coinpaprika-tickers+coingecko-fallback',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

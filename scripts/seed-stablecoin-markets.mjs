@@ -133,10 +133,18 @@ function validate(data) {
   );
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.stablecoins) ? data.stablecoins.length : 0;
+}
+
 runSeed('market', 'stablecoins', CANONICAL_KEY, fetchStablecoinMarkets, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'coingecko-stablecoins',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 60,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

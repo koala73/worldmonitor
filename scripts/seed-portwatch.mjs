@@ -134,12 +134,20 @@ export function validateFn(data) {
 }
 
 const isMain = process.argv[1]?.endsWith('seed-portwatch.mjs');
+export function declareRecords(data) {
+  return data && typeof data === "object" ? Object.keys(data).length : 0;
+}
+
 if (isMain) {
   runSeed('supply_chain', 'portwatch', CANONICAL_KEY, fetchAll, {
     validateFn,
     ttlSeconds: TTL,
     sourceVersion: 'imf-portwatch-arcgis-v1',
     recordCount: (data) => Object.keys(data).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 720,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

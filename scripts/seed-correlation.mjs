@@ -694,6 +694,10 @@ async function computeCorrelation() {
   return result;
 }
 
+export function declareRecords(data) {
+  return (data?.military?.length ?? 0) + (data?.escalation?.length ?? 0) + (data?.economic?.length ?? 0) + (data?.disaster?.length ?? 0);
+}
+
 if (process.argv[1]?.endsWith('seed-correlation.mjs')) {
   runSeed('correlation', 'cards', CANONICAL_KEY, computeCorrelation, {
     ttlSeconds: CACHE_TTL,
@@ -709,6 +713,10 @@ if (process.argv[1]?.endsWith('seed-correlation.mjs')) {
       ttl: ek.ttl,
       transform: (data) => data[ek.key.split(':')[1]],
     })),
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 15,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

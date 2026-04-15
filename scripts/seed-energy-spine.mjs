@@ -8,6 +8,7 @@ import {
   logSeedResult,
   releaseLock,
 } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -30,8 +31,8 @@ const ISO2_TO_COMTRADE = {
   CN: '156',
   RU: '643',
   IR: '364',
-  IN: '356',
-  TW: '158',
+  IN: '699',
+  TW: '490',
 };
 
 // Chokepoints supported by the shock model for comtrade-mapped countries.
@@ -65,7 +66,7 @@ async function redisGet(key) {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
 }
 
 async function redisMget(keys) {
@@ -89,7 +90,7 @@ async function redisMget(keys) {
   return results.map(r => {
     const raw = r?.result;
     if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return null; }
+    try { return unwrapEnvelope(JSON.parse(raw)).data; } catch { return null; }
   });
 }
 

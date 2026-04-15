@@ -67,6 +67,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/list-stablecoin-markets': 'medium',
   '/api/market/v1/get-sector-summary': 'medium',
   '/api/market/v1/get-fear-greed-index': 'slow',
+  '/api/market/v1/get-market-breadth-history': 'daily',
   '/api/market/v1/list-gulf-quotes': 'medium',
   '/api/market/v1/analyze-stock': 'slow',
   '/api/market/v1/get-stock-analysis-history': 'medium',
@@ -199,12 +200,17 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
 
   '/api/market/v1/list-earnings-calendar': 'slow',
   '/api/market/v1/get-cot-positioning': 'slow',
+  '/api/market/v1/get-gold-intelligence': 'slow',
+  '/api/market/v1/get-hyperliquid-flow': 'medium',
+  '/api/market/v1/get-insider-transactions': 'slow',
   '/api/economic/v1/get-economic-calendar': 'slow',
   '/api/intelligence/v1/list-market-implications': 'slow',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
   '/api/economic/v1/get-eurostat-country-data': 'slow',
   '/api/economic/v1/get-eu-gas-storage': 'slow',
   '/api/economic/v1/get-oil-stocks-analysis': 'static',
+  '/api/economic/v1/get-oil-inventories': 'slow',
+  '/api/economic/v1/get-energy-crisis-policies': 'static',
   '/api/economic/v1/get-eu-fsi': 'slow',
   '/api/economic/v1/get-economic-stress': 'slow',
   '/api/supply-chain/v1/get-shipping-stress': 'medium',
@@ -212,12 +218,26 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-bypass-options': 'slow-browser',
   '/api/supply-chain/v1/get-country-cost-shock': 'slow-browser',
   '/api/supply-chain/v1/get-sector-dependency': 'slow-browser',
+  '/api/supply-chain/v1/get-route-explorer-lane': 'slow-browser',
+  '/api/supply-chain/v1/get-route-impact': 'slow-browser',
   '/api/health/v1/list-disease-outbreaks': 'slow',
   '/api/health/v1/list-air-quality-alerts': 'fast',
   '/api/intelligence/v1/get-social-velocity': 'fast',
   '/api/intelligence/v1/get-country-energy-profile': 'slow',
   '/api/intelligence/v1/compute-energy-shock': 'fast',
   '/api/intelligence/v1/get-country-port-activity': 'slow',
+  // NOTE: get-regional-snapshot is premium-gated via PREMIUM_RPC_PATHS; the
+  // gateway short-circuits to 'slow-browser' before consulting this map. The
+  // entry below exists to satisfy the parity contract enforced by
+  // tests/route-cache-tier.test.mjs (every generated GET route needs a tier)
+  // and documents the intended tier if the endpoint ever becomes non-premium.
+  '/api/intelligence/v1/get-regional-snapshot': 'slow',
+  // get-regime-history is premium-gated same as get-regional-snapshot; this
+  // entry is required by tests/route-cache-tier.test.mjs even though the
+  // gateway short-circuits premium paths to slow-browser.
+  '/api/intelligence/v1/get-regime-history': 'slow',
+  // get-regional-brief is premium-gated; slow-browser in practice, slow entry for route-parity.
+  '/api/intelligence/v1/get-regional-brief': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
 };
