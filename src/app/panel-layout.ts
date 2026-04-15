@@ -827,38 +827,62 @@ export class PanelLayoutManager implements AppModule {
   private async createPanels(): Promise<void> {
     const panelsGrid = document.getElementById('panelsGrid')!;
 
+    // Defer MapLibre + deck.gl loading until map container enters viewport
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe';
-    // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl
-    // out of the entry chunk. Loads in parallel with paint, so the map mounts
-    // a beat after the panel grid renders instead of blocking it.
-    //
-    // Residual-risk watchpoint (canary): this await also serializes the
-    // ~700 lines of panel construction below behind the map chunk fetch.
-    // Failure mode is covered by the chunk-reload guard at src/main.ts:690-758
-    // (catches `Failed to fetch dynamically imported module` and reloads).
-    // The slow-fetch mode (chunk fetches that succeed but are very slow) is
-    // worth watching in production canaries — if it shows up, restructure to
-    // kick off the import early and run non-map panel construction before the
-    // await (the only direct ctx.map dereferences in this function are
-    // initEscalationGetters / getTimeRange right after construction, plus
-    // onTimeRangeChanged later — every other ctx.map use is `?.`-guarded).
-    const { MapContainer } = await import('@/components/MapContainer');
-    this.ctx.map = new MapContainer(mapContainer, {
-      zoom: this.ctx.isMobile ? 2.5 : 1.0,
-      pan: { x: 0, y: 0 },
-      view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
-      layers: this.ctx.mapLayers,
-      timeRange: '7d',
-    }, preferGlobe);
 
-    if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
-      this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
-      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-    }
+    // CSS-only placeholder while map libraries download
+    const mapPlaceholder = document.createElement('div');
+    mapPlaceholder.className = 'map-placeholder';
+    mapPlaceholder.style.cssText = `
+      width:100%;height:100%;
+      background: var(--surface, #0d1117);
+      background-image: radial-gradient(circle, var(--border, #30363d) 1px, transparent 1px);
+      background-size: 30px 30px;
+      display:flex;align-items:center;justify-content:center;
+    `;
+    mapPlaceholder.innerHTML = '<span style="color:var(--text-secondary,#8888aa);font-size:0.85rem;">Loading map...</span>';
+    mapContainer.appendChild(mapPlaceholder);
 
-    this.ctx.map.initEscalationGetters();
-    this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+    const mapObserver = new IntersectionObserver(
+      async ([entry]) => {
+        if (!entry.isIntersecting) return;
+        mapObserver.disconnect();
+
+        try {
+          // MapLibre CSS is injected automatically by Vite when DeckGLMap.ts
+          // (a static dependency of MapContainer) is dynamically imported.
+          const { MapContainer } = await import('@/components/MapContainer');
+
+          this.ctx.map = new MapContainer(mapContainer, {
+            zoom: this.ctx.isMobile ? 2.5 : 1.0,
+            pan: { x: 0, y: 0 },
+            view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
+            layers: this.ctx.mapLayers,
+            timeRange: '7d',
+          }, preferGlobe);
+
+          // Remove placeholder
+          mapPlaceholder.remove();
+
+          // Post-init setup
+          if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
+            this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
+            saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+          }
+
+          this.ctx.map.initEscalationGetters();
+          this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+
+          // Panels using this.ctx.map?.setCenter() already use optional chaining
+          // so they gracefully handle the map being null before this point.
+        } catch (err) {
+          console.error('[map] Failed to load map libraries:', err);
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    mapObserver.observe(mapContainer);
 
     this.lazyNewsPanel('politics', 'panels.politics');
     this.lazyNewsPanel('tech', 'panels.tech');
