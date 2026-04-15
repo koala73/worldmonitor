@@ -3,6 +3,7 @@ import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
+import { unwrapEnvelope } from './_seed-envelope.js';
 
 export const config = { runtime: 'edge' };
 
@@ -195,7 +196,11 @@ async function getCachedJsonBatch(keys) {
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
-        if (parsed !== NEG_SENTINEL) result.set(keys[i], parsed);
+        if (parsed === NEG_SENTINEL) continue;
+        // Envelope-aware: bootstrap is a public-boundary consumer — strip _seed
+        // from contract-mode canonical keys so clients never see envelope
+        // metadata. Legacy bare-shape values pass through unchanged.
+        result.set(keys[i], unwrapEnvelope(parsed).data);
       } catch { /* skip malformed */ }
     }
   }

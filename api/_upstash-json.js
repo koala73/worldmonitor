@@ -1,3 +1,5 @@
+import { unwrapEnvelope } from './_seed-envelope.js';
+
 export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -13,7 +15,11 @@ export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
   if (!data.result) return null;
 
   try {
-    return JSON.parse(data.result);
+    // Envelope-aware: contract-mode canonical keys are stored as {_seed, data}.
+    // MCP tool outputs and RPC consumers must see the bare payload only.
+    // unwrapEnvelope is a no-op on legacy bare-shape values and on seed-meta
+    // keys (which remain top-level {fetchedAt, recordCount, ...}).
+    return unwrapEnvelope(JSON.parse(data.result)).data;
   } catch {
     return null;
   }
