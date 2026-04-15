@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Bundle orchestrator: spawns multiple seed scripts sequentially
- * via child_process.execFile, with freshness-gated skipping.
- *
- * Pattern matches ais-relay.cjs:5645-5695 (ClimateNews/ChokepointFlows spawns).
+ * Bundle orchestrator: spawns multiple seed scripts sequentially via
+ * child_process.spawn, with line-streamed stdio, SIGTERM→SIGKILL escalation on
+ * timeout, and freshness-gated skipping. Streaming matters because a hanging
+ * section would otherwise buffer its logs until exit and look like a silent
+ * container crash (see PR that replaced execFile).
  *
  * Usage from a bundle script:
  *   import { runBundle } from './_bundle-runner.mjs';
@@ -114,8 +115,16 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
     streamLines(child.stdout, (line) => console.log(`  [${label}] ${line}`));
     streamLines(child.stderr, (line) => console.warn(`  [${label}] ${line}`));
 
+    let settled = false;
     let timedOut = false;
     let killTimer = null;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(softKill);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(value);
+    };
     const softKill = setTimeout(() => {
       timedOut = true;
       console.warn(`  [${label}] Timeout at ${Math.round(timeoutMs / 1000)}s — sending SIGTERM`);
@@ -127,22 +136,18 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
     }, timeoutMs);
 
     child.on('error', (err) => {
-      clearTimeout(softKill);
-      if (killTimer) clearTimeout(killTimer);
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      resolve({ elapsed, ok: false, reason: `spawn error: ${err.message}` });
+      settle({ elapsed, ok: false, reason: `spawn error: ${err.message}` });
     });
 
     child.on('close', (code, signal) => {
-      clearTimeout(softKill);
-      if (killTimer) clearTimeout(killTimer);
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       if (timedOut) {
-        resolve({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})` });
+        settle({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})` });
       } else if (code === 0) {
-        resolve({ elapsed, ok: true });
+        settle({ elapsed, ok: true });
       } else {
-        resolve({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
+        settle({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
       }
     });
   });
