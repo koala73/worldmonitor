@@ -58,7 +58,7 @@ test('streams child stdout live and reports Done on success', async () => {
   }
 });
 
-test('timeout escalates to SIGKILL when child ignores SIGTERM and logs reason', async () => {
+test('timeout emits terminal reason BEFORE SIGTERM/SIGKILL grace (survives container kill)', async () => {
   const cleanup = writeFixture(
     '_bundle-fixture-hang.mjs',
     // Ignore SIGTERM so the runner must SIGKILL.
@@ -73,11 +73,36 @@ test('timeout escalates to SIGKILL when child ignores SIGTERM and logs reason', 
     assert.equal(code, 1, 'bundle must exit non-zero on failure');
     const combined = stdout + stderr;
     assert.match(combined, /\[HANG\] hung/, 'child stdout should stream before kill');
-    assert.match(combined, /Timeout at 1s — sending SIGTERM/);
+    // Critical: terminal "Failed ... timeout" line must appear in-line with the
+    // SIGTERM send, not after SIGKILL — this is what survives a container kill
+    // landing inside the 10s grace window.
+    const failIdx = combined.indexOf('Failed after');
+    const sigkillIdx = combined.indexOf('SIGKILL');
+    assert.ok(failIdx >= 0, 'must emit Failed line');
+    assert.ok(sigkillIdx > failIdx, 'Failed line must precede SIGKILL escalation');
+    assert.match(combined, /Failed after .*s: timeout after 1s — sending SIGTERM/);
     assert.match(combined, /Did not exit on SIGTERM.*SIGKILL/);
-    assert.match(combined, /Failed after .*s: timeout after 1s/);
     // 1s timeout + 10s SIGTERM grace + overhead; cap well above that to avoid flake.
     assert.ok(elapsedMs < 20_000, `timeout escalation took ${elapsedMs}ms — too slow`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('budget check accounts for SIGKILL grace when deferring', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-sleep.mjs',
+    `console.log('ok');\n`,
+  );
+  try {
+    // timeoutMs (15s) + grace (10s) = 25s worst-case. Budget 20s must defer.
+    const { code, stdout } = await runBundleWith(
+      [{ label: 'GATED', script: '_bundle-fixture-sleep.mjs', intervalMs: 1, timeoutMs: 15_000 }],
+      { maxBundleMs: 20_000 },
+    );
+    assert.equal(code, 0, 'deferred sections are not failures');
+    assert.match(stdout, /\[GATED\] Deferred, needs 25s \(timeout\+grace\)/);
+    assert.match(stdout, /deferred:1/);
   } finally {
     cleanup();
   }

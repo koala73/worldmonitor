@@ -121,9 +121,15 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
     let settled = false;
     let timedOut = false;
     let killTimer = null;
+    // Fire the terminal "Failed ... timeout" log the moment we decide to kill,
+    // BEFORE the SIGTERM→SIGKILL grace window. This guarantees the reason
+    // reaches the log stream even if the container itself is killed during
+    // the grace period (Railway's ~10min cap can land inside the grace for
+    // sections whose timeoutMs is close to 10min).
     const softKill = setTimeout(() => {
       timedOut = true;
-      console.warn(`  [${label}] Timeout at ${Math.round(timeoutMs / 1000)}s — sending SIGTERM`);
+      const elapsedAtTimeout = ((Date.now() - t0) / 1000).toFixed(1);
+      console.error(`  [${label}] Failed after ${elapsedAtTimeout}s: timeout after ${Math.round(timeoutMs / 1000)}s — sending SIGTERM`);
       child.kill('SIGTERM');
       killTimer = setTimeout(() => {
         console.warn(`  [${label}] Did not exit on SIGTERM within ${KILL_GRACE_MS / 1000}s — sending SIGKILL`);
@@ -140,13 +146,15 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
 
     child.on('error', (err) => {
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      settle({ elapsed, ok: false, reason: `spawn error: ${err.message}` });
+      console.error(`  [${label}] Failed after ${elapsed}s: spawn error: ${err.message}`);
+      settle({ elapsed, ok: false, reason: `spawn error: ${err.message}`, alreadyLogged: true });
     });
 
     child.on('close', (code, signal) => {
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       if (timedOut) {
-        settle({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})` });
+        // Terminal reason already logged by softKill — just record the outcome.
+        settle({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})`, alreadyLogged: true });
       } else if (code === 0) {
         settle({ elapsed, ok: true });
       } else {
@@ -193,10 +201,13 @@ export async function runBundle(label, sections, opts = {}) {
     }
 
     const elapsedBundle = Date.now() - t0;
-    if (elapsedBundle + timeout > maxBundleMs) {
+    // Worst-case runtime is timeoutMs + KILL_GRACE_MS (child may ignore SIGTERM
+    // and need SIGKILL after grace). Admit only when the full worst-case fits.
+    const worstCase = timeout + KILL_GRACE_MS;
+    if (elapsedBundle + worstCase > maxBundleMs) {
       const remainingSec = Math.max(0, Math.round((maxBundleMs - elapsedBundle) / 1000));
-      const timeoutSec = Math.round(timeout / 1000);
-      console.log(`  [${section.label}] Deferred, needs ${timeoutSec}s but only ${remainingSec}s left in bundle budget`);
+      const needSec = Math.round(worstCase / 1000);
+      console.log(`  [${section.label}] Deferred, needs ${needSec}s (timeout+grace) but only ${remainingSec}s left in bundle budget`);
       deferred++;
       continue;
     }
@@ -206,7 +217,9 @@ export async function runBundle(label, sections, opts = {}) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);
       ran++;
     } else {
-      console.error(`  [${section.label}] Failed after ${result.elapsed}s: ${result.reason}`);
+      if (!result.alreadyLogged) {
+        console.error(`  [${section.label}] Failed after ${result.elapsed}s: ${result.reason}`);
+      }
       failed++;
     }
   }
