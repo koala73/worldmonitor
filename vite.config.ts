@@ -865,9 +865,8 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ['**/*.html'],
           globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
-          // core-panels chunk (shared infra + multi-variant panels) exceeds 4 MiB
-          // temporarily; Phase 20 dynamic imports will split it further.
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          // Only HTML entry points are precached now — 2 MiB is more than enough.
+          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -977,12 +976,12 @@ export default defineConfig(({ mode }) => {
           enabled: false,
         },
       }),
-      visualizer({
+      ...(process.env.ANALYZE === '1' ? [visualizer({
         filename: 'dist/bundle-report.html',
         template: 'treemap',
         gzipSize: true,
         brotliSize: true,
-      }) as PluginOption,
+      }) as PluginOption] : []),
     ],
     resolve: {
       alias: {
