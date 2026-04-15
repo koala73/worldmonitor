@@ -1,4 +1,5 @@
-import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin, type PluginOption } from 'vite';
+import { visualizer } from 'rollup-plugin-visualizer';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -976,6 +977,12 @@ export default defineConfig(({ mode }) => {
           enabled: false,
         },
       }),
+      visualizer({
+        filename: 'dist/bundle-report.html',
+        template: 'treemap',
+        gzipSize: true,
+        brotliSize: true,
+      }) as PluginOption,
     ],
     resolve: {
       alias: {
