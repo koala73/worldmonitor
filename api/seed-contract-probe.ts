@@ -68,9 +68,12 @@ export const DEFAULT_PROBES: ProbeSpec[] = [
 
   // Multi-panel canonical + extras — regression guard for publishTransform
   // shape-mismatch bug that previously skipped all 3 writes (token-panels).
+  // Every panel needs minRecords ≥ 1; without the floor, an extra-key
+  // declareRecords regressed to 0 would still pass this probe as long as
+  // `.tokens` existed on the payload.
   { key: 'market:defi-tokens:v1',      shape: 'envelope', dataHas: ['tokens'], minRecords: 1 },
-  { key: 'market:ai-tokens:v1',        shape: 'envelope', dataHas: ['tokens'] },
-  { key: 'market:other-tokens:v1',     shape: 'envelope', dataHas: ['tokens'] },
+  { key: 'market:ai-tokens:v1',        shape: 'envelope', dataHas: ['tokens'], minRecords: 1 },
+  { key: 'market:other-tokens:v1',     shape: 'envelope', dataHas: ['tokens'], minRecords: 1 },
 
   // Direct writers (ais-relay.cjs) — regression guard for envelope wrap.
   { key: 'product-catalog:v2',         shape: 'envelope', dataHas: ['tiers'] },
@@ -144,20 +147,44 @@ export async function checkProbe(spec: ProbeSpec): Promise<ProbeResult> {
   return { key: spec.key, shape: spec.shape, pass: true };
 }
 
+interface BoundaryCheck {
+  endpoint: string;
+  /** Optional: require a specific `X-*-Source` header value to prove the
+   *  intended code-path served the response (e.g. `'cache'` for product-catalog
+   *  so we know the enveloped-read path actually ran, not fallback). */
+  requireSourceHeader?: { name: string; value: string };
+}
+
+const BOUNDARY_CHECKS: BoundaryCheck[] = [
+  { endpoint: '/api/product-catalog', requireSourceHeader: { name: 'x-product-catalog-source', value: 'cache' } },
+  { endpoint: '/api/bootstrap' },
+];
+
 export async function checkPublicBoundary(origin: string): Promise<BoundaryResult[]> {
-  const endpoints = ['/api/product-catalog', '/api/bootstrap'];
-  return Promise.all(endpoints.map(async (endpoint): Promise<BoundaryResult> => {
+  return Promise.all(BOUNDARY_CHECKS.map(async ({ endpoint, requireSourceHeader }): Promise<BoundaryResult> => {
     try {
       const r = await fetch(`${origin}${endpoint}`, { signal: AbortSignal.timeout(5_000) });
       const text = await r.text();
       // Detect any envelope leak in the response body. A substring match on
       // the literal `"_seed":` is sufficient because `_seed` only appears on
       // our envelopes — no third-party API we consume emits that key.
-      const leaked = /"_seed"\s*:/.test(text);
-      return {
-        endpoint, pass: !leaked && r.ok, status: r.status,
-        reason: leaked ? 'seed-leak' : (!r.ok ? `status:${r.status}` : undefined),
-      };
+      if (/"_seed"\s*:/.test(text)) {
+        return { endpoint, pass: false, status: r.status, reason: 'seed-leak' };
+      }
+      if (!r.ok) return { endpoint, pass: false, status: r.status, reason: `status:${r.status}` };
+      if (requireSourceHeader) {
+        // Header names are ASCII case-insensitive per RFC 7230; Response.headers.get()
+        // handles that. Comparing values case-insensitively too so a casing drift
+        // in the handler doesn't mask a broken cache-hit path.
+        const actual = r.headers.get(requireSourceHeader.name);
+        if ((actual ?? '').toLowerCase() !== requireSourceHeader.value.toLowerCase()) {
+          return {
+            endpoint, pass: false, status: r.status,
+            reason: `source:${actual ?? 'missing'}!=${requireSourceHeader.value}`,
+          };
+        }
+      }
+      return { endpoint, pass: true, status: r.status };
     } catch (err) {
       return { endpoint, pass: false, reason: `fetch:${(err as Error).message}` };
     }

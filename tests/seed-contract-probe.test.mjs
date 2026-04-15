@@ -115,29 +115,74 @@ test('checkProbe: Redis non-2xx returns reason=redis:<code>', async () => {
 
 // ─── public boundary checks ─────────────────────────────────────────────
 
-test('checkPublicBoundary: response without _seed passes', async () => {
-  globalThis.fetch = async () => ({
-    ok: true, status: 200,
-    text: async () => JSON.stringify({ tiers: [{ id: 'pro' }], fetchedAt: 1 }),
-  });
+function mockBoundary(bodyByEndpoint, headersByEndpoint = {}) {
+  globalThis.fetch = async (url) => {
+    const path = new URL(url).pathname;
+    const body = bodyByEndpoint[path] ?? '{}';
+    const hdrs = new Headers(headersByEndpoint[path] || {});
+    return {
+      ok: true, status: 200,
+      text: async () => body,
+      headers: { get: (name) => hdrs.get(name) },
+    };
+  };
+}
+
+test('checkPublicBoundary: product-catalog served from cache + bootstrap no leak → pass', async () => {
+  mockBoundary(
+    {
+      '/api/product-catalog': JSON.stringify({ tiers: [{ id: 'pro' }], fetchedAt: 1 }),
+      '/api/bootstrap':       JSON.stringify({ market: { quotes: [] } }),
+    },
+    { '/api/product-catalog': { 'x-product-catalog-source': 'cache' } },
+  );
   const res = await checkPublicBoundary('https://example.test');
   assert.equal(res.every(r => r.pass), true, JSON.stringify(res));
 });
 
-test('checkPublicBoundary: response leaking _seed fails', async () => {
-  globalThis.fetch = async () => ({
-    ok: true, status: 200,
-    text: async () => JSON.stringify({
-      _seed: { fetchedAt: 1, recordCount: 1, state: 'OK' },
-      data: { tiers: [] },
-    }),
+test('checkPublicBoundary: product-catalog served from fallback fails source-header assert', async () => {
+  // This is the regression case — response has no _seed leak, but the cached
+  // reader path silently failed and we fell through to static fallback.
+  mockBoundary(
+    {
+      '/api/product-catalog': JSON.stringify({ tiers: [], priceSource: 'fallback' }),
+      '/api/bootstrap':       JSON.stringify({}),
+    },
+    { '/api/product-catalog': { 'x-product-catalog-source': 'fallback' } },
+  );
+  const res = await checkPublicBoundary('https://example.test');
+  const pc = res.find(r => r.endpoint === '/api/product-catalog');
+  assert.equal(pc.pass, false);
+  assert.match(pc.reason, /source:fallback!=cache/);
+});
+
+test('checkPublicBoundary: product-catalog missing source header fails', async () => {
+  mockBoundary({
+    '/api/product-catalog': JSON.stringify({ tiers: [] }),
+    '/api/bootstrap':       JSON.stringify({}),
   });
+  const res = await checkPublicBoundary('https://example.test');
+  const pc = res.find(r => r.endpoint === '/api/product-catalog');
+  assert.equal(pc.pass, false);
+  assert.match(pc.reason, /source:missing!=cache/);
+});
+
+test('checkPublicBoundary: response leaking _seed fails before source check', async () => {
+  mockBoundary(
+    {
+      '/api/product-catalog': JSON.stringify({ _seed: { fetchedAt: 1 }, data: { tiers: [] } }),
+      '/api/bootstrap':       JSON.stringify({}),
+    },
+    { '/api/product-catalog': { 'x-product-catalog-source': 'cache' } },
+  );
   const res = await checkPublicBoundary('https://example.test');
   assert.ok(res.some(r => !r.pass && r.reason === 'seed-leak'));
 });
 
 test('checkPublicBoundary: bad status fails', async () => {
-  globalThis.fetch = async () => ({ ok: false, status: 502, text: async () => '' });
+  globalThis.fetch = async () => ({
+    ok: false, status: 502, text: async () => '', headers: { get: () => null },
+  });
   const res = await checkPublicBoundary('https://example.test');
   assert.ok(res.every(r => !r.pass && r.reason.startsWith('status:')));
 });
@@ -150,9 +195,13 @@ test('DEFAULT_PROBES: enforces seed-meta:* bare invariant', () => {
   assert.ok(bare.every(p => p.shape === 'bare'), 'all seed-meta probes must be shape=bare');
 });
 
-test('DEFAULT_PROBES: token-panels regression guards present (minRecords on defi)', () => {
-  const defi = DEFAULT_PROBES.find(p => p.key === 'market:defi-tokens:v1');
-  assert.ok(defi);
-  assert.equal(defi.shape, 'envelope');
-  assert.equal(defi.minRecords, 1);
+test('DEFAULT_PROBES: token-panels regression guards present (minRecords on all 3 panels)', () => {
+  // Every panel needs the minRecords floor — without it, a regression where
+  // an extra-key declareRecords returns 0 would silently pass the probe.
+  for (const key of ['market:defi-tokens:v1', 'market:ai-tokens:v1', 'market:other-tokens:v1']) {
+    const p = DEFAULT_PROBES.find(x => x.key === key);
+    assert.ok(p, `missing probe for ${key}`);
+    assert.equal(p.shape, 'envelope');
+    assert.equal(p.minRecords, 1, `${key} must enforce minRecords≥1`);
+  }
 });
