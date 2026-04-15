@@ -20,7 +20,7 @@
  * broken by adopting the runner.
  */
 
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnvFile } from './_seed-utils.mjs';
@@ -83,30 +83,66 @@ async function readSectionFreshness(section) {
   return null;
 }
 
+// Stream child stdio line-by-line so hung sections surface progress instead of
+// looking like a silent crash. Escalate SIGTERM → SIGKILL on timeout so child
+// processes with in-flight HTTPS sockets can't outlive the deadline.
+const KILL_GRACE_MS = 10_000;
+
+function streamLines(stream, onLine) {
+  let buf = '';
+  stream.setEncoding('utf8');
+  stream.on('data', (chunk) => {
+    buf += chunk;
+    let idx;
+    while ((idx = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, idx);
+      buf = buf.slice(idx + 1);
+      if (line) onLine(line);
+    }
+  });
+  stream.on('end', () => { if (buf) onLine(buf); });
+}
+
 function spawnSeed(scriptPath, { timeoutMs, label }) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const t0 = Date.now();
-    execFile(process.execPath, [scriptPath], {
+    const child = spawn(process.execPath, [scriptPath], {
       env: process.env,
-      timeout: timeoutMs,
-      maxBuffer: 2 * 1024 * 1024,
-    }, (err, stdout, stderr) => {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    streamLines(child.stdout, (line) => console.log(`  [${label}] ${line}`));
+    streamLines(child.stderr, (line) => console.warn(`  [${label}] ${line}`));
+
+    let timedOut = false;
+    let killTimer = null;
+    const softKill = setTimeout(() => {
+      timedOut = true;
+      console.warn(`  [${label}] Timeout at ${Math.round(timeoutMs / 1000)}s — sending SIGTERM`);
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => {
+        console.warn(`  [${label}] Did not exit on SIGTERM within ${KILL_GRACE_MS / 1000}s — sending SIGKILL`);
+        child.kill('SIGKILL');
+      }, KILL_GRACE_MS);
+    }, timeoutMs);
+
+    child.on('error', (err) => {
+      clearTimeout(softKill);
+      if (killTimer) clearTimeout(killTimer);
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      if (stdout) {
-        for (const line of String(stdout).trim().split('\n')) {
-          if (line) console.log(`  [${label}] ${line}`);
-        }
-      }
-      if (stderr) {
-        for (const line of String(stderr).trim().split('\n')) {
-          if (line) console.warn(`  [${label}] ${line}`);
-        }
-      }
-      if (err) {
-        const reason = err.killed ? 'timeout' : (err.code || err.message);
-        reject(new Error(`${label} failed after ${elapsed}s: ${reason}`));
+      resolve({ elapsed, ok: false, reason: `spawn error: ${err.message}` });
+    });
+
+    child.on('close', (code, signal) => {
+      clearTimeout(softKill);
+      if (killTimer) clearTimeout(killTimer);
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      if (timedOut) {
+        resolve({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})` });
+      } else if (code === 0) {
+        resolve({ elapsed, ok: true });
       } else {
-        resolve({ elapsed });
+        resolve({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
       }
     });
   });
@@ -157,12 +193,12 @@ export async function runBundle(label, sections, opts = {}) {
       continue;
     }
 
-    try {
-      const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label });
+    const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label });
+    if (result.ok) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);
       ran++;
-    } catch (err) {
-      console.error(`  [${section.label}] ${err.message}`);
+    } else {
+      console.error(`  [${section.label}] Failed after ${result.elapsed}s: ${result.reason}`);
       failed++;
     }
   }
