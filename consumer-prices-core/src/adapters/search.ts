@@ -20,6 +20,8 @@ import type { RetailerConfig } from '../config/types.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
 import { MARKET_NAMES } from './market-names.js';
 import { parseSize } from '../normalizers/size.js';
+import { validateSearchHit, type ValidatorResult } from './validator.js';
+import type { BasketItem } from '../config/types.js';
 
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
@@ -93,12 +95,16 @@ interface ExtractedProduct {
   sizeText?: string;
 }
 
+type ItemConstraints = Pick<BasketItem, 'baseUnit' | 'minBaseQty' | 'maxBaseQty' | 'negativeTokens' | 'substitutionGroup'>;
+
 interface SearchPayload {
   extracted: ExtractedProduct;
   productUrl: string;
   canonicalName: string;
   basketSlug: string;
   itemCategory: string;
+  itemConstraints: ItemConstraints;
+  validator?: ValidatorResult;
   direct?: boolean;
   pinnedProductId?: string;
   matchId?: string;
@@ -127,6 +133,13 @@ export class SearchAdapter implements RetailerAdapter {
       for (const item of basket.items) {
         const pinKey = `${basket.slug}:${item.canonicalName}`;
         const pinned = ctx.pinnedUrls?.get(pinKey);
+        const itemConstraints: ItemConstraints = {
+          baseUnit: item.baseUnit,
+          minBaseQty: item.minBaseQty,
+          maxBaseQty: item.maxBaseQty,
+          negativeTokens: item.negativeTokens,
+          substitutionGroup: item.substitutionGroup,
+        };
 
         if (pinned && isAllowedHost(pinned.sourceUrl, domain)) {
           targets.push({
@@ -138,6 +151,7 @@ export class SearchAdapter implements RetailerAdapter {
               domain,
               basketSlug: basket.slug,
               currency: ctx.config.currencyCode,
+              itemConstraints,
               direct: true,
               pinnedProductId: pinned.productId,
               matchId: pinned.matchId,
@@ -156,6 +170,7 @@ export class SearchAdapter implements RetailerAdapter {
               domain,
               basketSlug: basket.slug,
               currency: ctx.config.currencyCode,
+              itemConstraints,
               direct: false,
             },
           });
@@ -171,7 +186,8 @@ export class SearchAdapter implements RetailerAdapter {
     url: string,
     canonicalName: string,
     currency: string,
-  ): Promise<ExtractedProduct | null> {
+    itemConstraints?: ItemConstraints,
+  ): Promise<{ extracted: ExtractedProduct; validator: ValidatorResult } | null> {
     const sizeHint = extractSizeHint(canonicalName);
     const sizeClause = sizeHint
       ? ` You are looking for "${canonicalName}". The product MUST be ${sizeHint}. If the page shows a different size, pack count, or bulk case, return null for price.`
@@ -195,7 +211,25 @@ export class SearchAdapter implements RetailerAdapter {
     if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
       return null;
     }
-    if (!isTitlePlausible(canonicalName, data.productName)) {
+    const legacyPass = isTitlePlausible(canonicalName, data.productName);
+    const validator = validateSearchHit({
+      canonicalName,
+      productName: data.productName,
+      sizeText: data.sizeText,
+      item: itemConstraints ?? { baseUnit: '' },
+    });
+
+    // Shadow-mode: the strict validator runs alongside the legacy boolean gate
+    // but does NOT block a hit on its own yet. When validator.ok=false and
+    // legacy would have accepted, log a wouldReject with reasons so the diff
+    // report can inform the rollout decision to flip the hard gate.
+    if (legacyPass && !validator.ok) {
+      ctx.logger.warn(
+        `  [search:shadow-reject] "${canonicalName}" would reject productName="${data.productName}" reasons=${validator.reasons.join(',')} score=${validator.score.toFixed(2)}`,
+      );
+    }
+
+    if (!legacyPass) {
       return null;
     }
 
@@ -206,15 +240,16 @@ export class SearchAdapter implements RetailerAdapter {
       data.inStock = true;
     }
 
-    return data;
+    return { extracted: data, validator };
   }
 
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
-    const { canonicalName, domain, currency, basketSlug, direct, pinnedProductId, matchId } = target.metadata as {
+    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, pinnedProductId, matchId } = target.metadata as {
       canonicalName: string;
       domain: string;
       currency: string;
       basketSlug: string;
+      itemConstraints: ItemConstraints;
       direct: boolean;
       pinnedProductId?: string;
       matchId?: string;
@@ -223,19 +258,21 @@ export class SearchAdapter implements RetailerAdapter {
     // Direct path: skip Exa, call Firecrawl on pinned URL
     if (direct) {
       try {
-        const extracted = await this._extractFromUrl(ctx, target.url, canonicalName, currency);
-        if (extracted) {
+        const result = await this._extractFromUrl(ctx, target.url, canonicalName, currency, itemConstraints);
+        if (result) {
           ctx.logger.info(
-            `  [search:pin] ${canonicalName}: price=${extracted.price} ${extracted.currency} from ${target.url}`,
+            `  [search:pin] ${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} from ${target.url}`,
           );
           return {
             url: target.url,
             html: JSON.stringify({
-              extracted,
+              extracted: result.extracted,
               productUrl: target.url,
               canonicalName,
               basketSlug,
               itemCategory: target.category,
+              itemConstraints,
+              validator: result.validator,
               direct: true,
               pinnedProductId,
               matchId,
@@ -286,15 +323,15 @@ export class SearchAdapter implements RetailerAdapter {
     }
 
     // Stage 2: Firecrawl structured extraction — iterate safe URLs until one yields a valid price
-    let extracted: ExtractedProduct | null = null;
+    let picked: { extracted: ExtractedProduct; validator: ValidatorResult } | null = null;
     let usedUrl = safeUrls[0];
     const lastErrors: string[] = [];
 
     for (const url of safeUrls) {
       try {
-        const result = await this._extractFromUrl(ctx, url, canonicalName, currency);
+        const result = await this._extractFromUrl(ctx, url, canonicalName, currency, itemConstraints);
         if (result) {
-          extracted = result;
+          picked = result;
           usedUrl = url;
           break;
         }
@@ -306,24 +343,26 @@ export class SearchAdapter implements RetailerAdapter {
       }
     }
 
-    if (extracted === null) {
+    if (picked === null) {
       throw new Error(
         `All ${safeUrls.length} URLs failed extraction for "${canonicalName}".${lastErrors.length ? ` Last: ${lastErrors.at(-1)}` : ''}`,
       );
     }
 
     ctx.logger.info(
-      `  [search:extract] ${canonicalName}: price=${extracted.price} ${extracted.currency} from ${usedUrl}`,
+      `  [search:extract] ${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} from ${usedUrl}`,
     );
 
     return {
       url: usedUrl,
       html: JSON.stringify({
-        extracted,
+        extracted: picked.extracted,
         productUrl: usedUrl,
         canonicalName,
         basketSlug,
         itemCategory: target.category,
+        itemConstraints,
+        validator: picked.validator,
         direct: false,
       } satisfies SearchPayload),
       statusCode: 200,
@@ -332,7 +371,7 @@ export class SearchAdapter implements RetailerAdapter {
   }
 
   async parseListing(ctx: AdapterContext, result: FetchResult): Promise<ParsedProduct[]> {
-    const { extracted, productUrl, canonicalName, basketSlug, itemCategory, direct, pinnedProductId, matchId } =
+    const { extracted, productUrl, canonicalName, basketSlug, itemCategory, itemConstraints, validator, direct, pinnedProductId, matchId } =
       JSON.parse(result.html) as SearchPayload;
 
     const priceResult = z.number().positive().finite().safeParse(extracted?.price);
@@ -371,7 +410,7 @@ export class SearchAdapter implements RetailerAdapter {
         // inStock defaults to true when Firecrawl does not return the field.
         // This is a conservative assumption — monitor for out-of-stock false positives.
         inStock: extracted.inStock ?? true,
-        rawPayload: { extracted, basketSlug, itemCategory, canonicalName, direct, pinnedProductId, matchId },
+        rawPayload: { extracted, basketSlug, itemCategory, canonicalName, itemConstraints, validator, direct, pinnedProductId, matchId },
       },
     ];
   }
