@@ -10,6 +10,62 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 // Env-dependent constants moved inside defineConfig function
 
 
+// Panel chunk assignment — derived from src/config/panels.ts variant definitions.
+// Panels in 3+ variants go to core-panels. Panels in 1-2 variants go to their
+// most specific variant chunk. Base components always go to core-panels.
+const CORE_PANEL_FILES = new Set([
+  // Base components and shared infrastructure
+  'Panel', 'VirtualList', 'Map', 'DeckGLMap', 'MapContainer', 'MapPopup',
+  'SignalModal', 'PlaybackControl', 'SearchModal', 'MobileWarningModal',
+  'PizzIntIndicator', 'LlmStatusIndicator', 'IntelligenceGapBadge',
+  'UnifiedSettings', 'BreakingNewsBanner', 'ResilienceWidget', 'StatusPanel',
+  'AviationCommandBar',
+  // Panels in 3+ variants (full, tech, finance, commodity share many)
+  'NewsPanel', 'MarketPanel', 'LiveNewsPanel', 'LiveWebcamsPanel',
+  'PinnedWebcamsPanel', 'InsightsPanel', 'PredictionPanel', 'MonitorPanel',
+  'EconomicPanel', 'MacroSignalsPanel', 'ETFFlowsPanel', 'StablecoinPanel',
+  'WorldClockPanel', 'AirlineIntelPanel',
+  // Shared across full + finance + commodity (3 variants)
+  'EnergyComplexPanel', 'OilInventoriesPanel', 'CommoditiesPanel',
+  'HeatmapPanel', 'TradePolicyPanel', 'SupplyChainPanel',
+  'SanctionsPressurePanel', 'GulfEconomiesPanel', 'ConsumerPricesPanel',
+  'LiquidityShiftsPanel', 'GoldIntelligencePanel',
+]);
+
+const HAPPY_PANEL_FILES = new Set([
+  'PositiveNewsFeedPanel', 'ProgressChartsPanel', 'CountersPanel',
+  'HeroSpotlightPanel', 'BreakthroughsTickerPanel', 'GoodThingsDigestPanel',
+  'SpeciesComebackPanel', 'RenewableEnergyPanel', 'GivingPanel',
+]);
+
+const FINANCE_PANEL_FILES = new Set([
+  'StockAnalysisPanel', 'StockBacktestPanel', 'DailyMarketBriefPanel',
+  'FearGreedPanel', 'AAIISentimentPanel', 'MarketBreadthPanel',
+  'MacroTilesPanel', 'FSIPanel', 'YieldCurvePanel',
+  'EarningsCalendarPanel', 'EconomicCalendarPanel', 'CotPositioningPanel',
+  'WsbTickerScannerPanel',
+  'GroceryBasketPanel', 'BigMacPanel', 'FuelPricesPanel', 'FaoFoodPriceIndexPanel',
+]);
+
+const FULL_PANEL_FILES = new Set([
+  'GdeltIntelPanel', 'CIIPanel', 'CascadePanel',
+  'StrategicRiskPanel', 'StrategicPosturePanel',
+  'CorrelationPanel', 'MilitaryCorrelationPanel', 'EscalationCorrelationPanel',
+  'EconomicCorrelationPanel', 'DisasterCorrelationPanel',
+  'DisplacementPanel', 'ClimateAnomalyPanel', 'PopulationExposurePanel',
+  'SecurityAdvisoriesPanel', 'DefensePatentsPanel',
+  'RadiationWatchPanel', 'ThermalEscalationPanel', 'OrefSirensPanel',
+  'TelegramIntelPanel', 'InvestmentsPanel', 'NationalDebtPanel',
+  'MarketImplicationsPanel', 'SatelliteFiresPanel', 'HormuzPanel',
+  'UcdpEventsPanel', 'ClimateNewsPanel', 'DiseaseOutbreaksPanel',
+  'SocialVelocityPanel', 'EnergyCrisisPanel',
+]);
+
+const TECH_PANEL_FILES = new Set([
+  'TechEventsPanel', 'ServiceStatusPanel', 'InternetDisruptionsPanel',
+  'TechReadinessPanel', 'RuntimeConfigPanel',
+]);
+
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
 
@@ -808,8 +864,9 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
           globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
-          // globe.gl + three.js grows main bundle past the 2 MiB default limit
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          // core-panels chunk (shared infra + multi-variant panels) exceeds 4 MiB
+          // temporarily; Phase 20 dynamic imports will split it further.
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -998,12 +1055,18 @@ export default defineConfig(({ mode }) => {
                 return 'sentry';
               }
             }
-            if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
-              // Cluster split (PANEL_CLUSTER) is staged but disabled: it exposes
-              // a systemic TDZ in panels with top-level `new XxxServiceClient(...)`
-              // singletons (~20+ panels). They each need lazy-init refactors
-              // before the cluster split can ship. See ce-doc-review followup.
-              return 'panels';
+            if (id.includes('/src/components/') && id.endsWith('.ts')) {
+              const match = id.match(/\/([^/]+)\.ts$/);
+              if (match) {
+                const fileName = match[1];
+                if (CORE_PANEL_FILES.has(fileName)) return 'core-panels';
+                if (HAPPY_PANEL_FILES.has(fileName)) return 'happy-panels';
+                if (FINANCE_PANEL_FILES.has(fileName)) return 'finance-panels';
+                if (FULL_PANEL_FILES.has(fileName)) return 'full-panels';
+                if (TECH_PANEL_FILES.has(fileName)) return 'tech-panels';
+                // Unassigned Panel files default to core-panels to avoid orphan chunks
+                if (fileName.endsWith('Panel') || fileName === 'Panel') return 'core-panels';
+              }
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is
