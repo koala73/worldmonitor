@@ -17,6 +17,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — generated JS module
 import { FALLBACK_PRICES } from './_product-fallback-prices.js';
+// @ts-expect-error — JS module
+import { unwrapEnvelope } from './_seed-envelope.js';
 
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
@@ -93,7 +95,12 @@ async function getFromCache() {
     });
     if (!res.ok) return null;
     const { result } = await res.json();
-    return result ? JSON.parse(result) : null;
+    if (!result) return null;
+    // Envelope-aware: ais-relay now writes `product-catalog:v2` as {_seed, data}
+    // (PR #3097). Return the bare payload so clients see the legacy
+    // {tiers, fetchedAt, cachedUntil, priceSource} shape. Pre-contract bare
+    // values pass through unchanged.
+    return unwrapEnvelope(JSON.parse(result)).data;
   } catch { return null; }
 }
 

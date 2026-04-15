@@ -182,8 +182,9 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   // When the seeder opts into the contract (options.envelopeMeta provided), wrap
   // the payload in the seed envelope before publishing so the data key and its
   // freshness metadata share one lifecycle. Legacy seeders pass no envelopeMeta
-  // and publish bare data, preserving pre-contract behavior.
-  const payloadValue = options.envelopeMeta
+  // and publish bare data, preserving pre-contract behavior. seed-meta:* keys
+  // are always kept bare (shouldEnvelopeKey invariant).
+  const payloadValue = options.envelopeMeta && shouldEnvelopeKey(canonicalKey)
     ? buildEnvelope({ ...options.envelopeMeta, data })
     : data;
   const payload = JSON.stringify(payloadValue);
@@ -273,9 +274,21 @@ export async function verifySeedKey(key) {
   return redisGet(url, token, key);
 }
 
+/**
+ * Invariant: `seed-meta:*` keys MUST be bare-shape `{fetchedAt, recordCount, ...}`.
+ * Health + bundle runner + every legacy reader parses them as top-level.
+ * Enveloping them turns every downstream read into `{_seed, data}` which breaks
+ * the whole freshness-registry flow. Enforced at the helper boundary so future
+ * callers can't regress this by passing an envelopeMeta that happens to target
+ * a seed-meta key (seed-iea-oil-stocks' ANALYSIS_META_EXTRA_KEY did exactly that).
+ */
+export function shouldEnvelopeKey(key) {
+  return typeof key === 'string' && !key.startsWith('seed-meta:');
+}
+
 export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   const { url, token } = getRedisCredentials();
-  const value = envelopeMeta ? buildEnvelope({ ...envelopeMeta, data }) : data;
+  const value = envelopeMeta && shouldEnvelopeKey(key) ? buildEnvelope({ ...envelopeMeta, data }) : data;
   const payload = JSON.stringify(value);
   const resp = await fetch(url, {
     method: 'POST',
