@@ -103,13 +103,16 @@ async function fetchTokenPanels() {
   return { defi, ai, other, total };
 }
 
-function validate(data) {
+// validate() runs on the POST-publishTransform payload (the canonical defi
+// panel itself, shape {tokens, ...}) — NOT the pre-transform {defi, ai, other}
+// shape. The prior body checked data.defi/.ai/.other and silently forced the
+// skipped-write path every run. AI/OTHER panels are validated implicitly by
+// their own extraKey declareRecords on write.
+export function validate(data) {
   return (
-    Array.isArray(data?.defi?.tokens) &&
-    data.defi.tokens.length >= 1 &&
-    (data.defi.tokens.some((t) => t.price > 0) ||
-      data.ai.tokens.some((t) => t.price > 0) ||
-      data.other.tokens.some((t) => t.price > 0))
+    Array.isArray(data?.tokens) &&
+    data.tokens.length >= 1 &&
+    data.tokens.some((t) => t.price > 0)
   );
 }
 
