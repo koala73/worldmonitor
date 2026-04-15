@@ -170,7 +170,10 @@ export async function checkPublicBoundary(origin: string): Promise<BoundaryResul
       // verification only.
       const r = await fetch(`${origin}${endpoint}`, {
         signal: AbortSignal.timeout(5_000),
-        headers: { Origin: 'https://worldmonitor.app' },
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          'User-Agent': 'WorldMonitor-SeedContractProbe/1.0',
+        },
       });
       const text = await r.text();
       // Detect any envelope leak in the response body. A substring match on
