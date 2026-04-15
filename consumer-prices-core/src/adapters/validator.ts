@@ -50,8 +50,19 @@ function tokens(s: string): string[] {
   return s.toLowerCase().split(/\W+/).filter(Boolean);
 }
 
+// Compact size tokens (e.g. "1kg", "500g", "250ml", "12pk") must be stripped
+// from identity tokens. The quantity-window check already handles size
+// fidelity. Carrying them here creates systematic false misses because
+// Firecrawl usually emits size spaced ("1 kg"), which tokenises to
+// ["1","kg"] — both below the length>2 floor — so the "1kg" token can
+// never match. For short canonical names like "Onions 1kg" that drops
+// overlap from 1.0 to 0.5 and pushes valid hits below AUTO_MATCH_THRESHOLD.
+const SIZE_LIKE = /^\d+(?:\.\d+)?[a-z]+$/;
+
 function identityTokens(canonicalName: string): string[] {
-  return tokens(canonicalName).filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w));
+  return tokens(canonicalName).filter(
+    (w) => w.length > 2 && !PACKAGING_WORDS.has(w) && !SIZE_LIKE.test(w),
+  );
 }
 
 function computeTokenOverlap(canonicalName: string, productName: string): number {

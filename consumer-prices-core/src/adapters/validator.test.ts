@@ -145,6 +145,28 @@ describe('validateSearchHit — positive counterparts must still pass', () => {
     expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
   });
 
+  // Regression: compact size tokens like "1kg" used to be kept as identity
+  // tokens, but Firecrawl often emits "1 kg" (spaced) which tokenises to
+  // ["1","kg"] — both below the length>2 floor — so "1kg" could never
+  // match. For short canonical names like "Onions 1kg", that dropped the
+  // token overlap from 1.0 to 0.5 and pushed valid hits below the
+  // AUTO_MATCH_THRESHOLD. Size fidelity is already enforced by the
+  // quantity-window check; identity tokens should ignore size.
+  it('overlap ignores compact size token so spaced-size extractions pass', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Onions 1kg',
+      productName: 'Fresh Red Onions 1 kg',
+      sizeText: '1 kg',
+      item: item({
+        baseUnit: 'g', minBaseQty: 900, maxBaseQty: 1100,
+        negativeTokens: ['powder', 'flakes'],
+      }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.signals.tokenOverlap).toBe(1);
+    expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
+  });
+
   it('accepts fresh tomatoes 1kg', () => {
     const r = validateSearchHit({
       canonicalName: 'Tomatoes Fresh 1kg',

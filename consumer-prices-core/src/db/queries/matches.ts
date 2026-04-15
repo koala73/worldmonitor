@@ -16,7 +16,14 @@ export async function upsertProductMatch(input: {
      DO UPDATE SET
        basket_item_id  = EXCLUDED.basket_item_id,
        match_score     = EXCLUDED.match_score,
-       match_status    = EXCLUDED.match_status,
+       -- Human-curated 'approved' rows are immutable via this path. Without
+       -- the CASE guard, a re-scrape whose validator scored the same URL
+       -- below AUTO_MATCH_THRESHOLD would demote an approved match to
+       -- 'candidate' and silently drop it from aggregate queries.
+       match_status    = CASE
+         WHEN product_matches.match_status = 'approved' THEN 'approved'
+         ELSE EXCLUDED.match_status
+       END,
        evidence_json   = EXCLUDED.evidence_json,
        pin_disabled_at = NULL`,
     [
