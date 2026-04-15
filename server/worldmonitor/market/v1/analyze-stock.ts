@@ -203,6 +203,29 @@ function inferDividendFrequency(paymentsPerYear: number): string {
   return '';
 }
 
+/**
+ * Implied payments-per-year from the median gap between dividends. More
+ * robust than counting payments inside a 365.25-day window: quarterly
+ * payers whose last-year-Q1 payment falls just outside the window (common
+ * after mid-April each year) were misclassified as Semi-annual.
+ */
+function paymentsPerYearFromInterval(sortedEntries: ReadonlyArray<{ date?: number }>): number {
+  if (sortedEntries.length < 2) return 0;
+  const gaps: number[] = [];
+  for (let i = 1; i < sortedEntries.length; i++) {
+    const prev = sortedEntries[i - 1]!.date;
+    const curr = sortedEntries[i]!.date;
+    if (typeof prev !== 'number' || typeof curr !== 'number') continue;
+    const gapDays = (curr - prev) / (24 * 3600);
+    if (gapDays > 0) gaps.push(gapDays);
+  }
+  if (gaps.length === 0) return 0;
+  gaps.sort((a, b) => a - b);
+  const medianGapDays = gaps[Math.floor(gaps.length / 2)]!;
+  if (medianGapDays <= 0) return 0;
+  return 365.25 / medianGapDays;
+}
+
 function computeDividendCagr(annualTotals: Map<number, number>): number {
   if (annualTotals.size < 2) return 0;
   const years = [...annualTotals.keys()].sort((a, b) => a - b);
@@ -261,7 +284,12 @@ export async function fetchDividendProfile(symbol: string, currentPrice: number)
     const recentDivs = entries.filter((d) => (d.date ?? 0) * 1000 >= oneYearAgo);
     const trailingAnnual = recentDivs.reduce((sum, d) => sum + (d.amount ?? 0), 0);
     const dividendYield = currentPrice > 0 ? (trailingAnnual / currentPrice) * 100 : 0;
-    const paymentsPerYear = recentDivs.length || (entries.length / Math.max(1, annualTotals.size));
+    // Prefer inter-payment-interval classification (robust to calendar drift);
+    // fall back to recentDivs count if entries are too sparse to compute gaps.
+    const byInterval = paymentsPerYearFromInterval(entries);
+    const paymentsPerYear = byInterval > 0
+      ? byInterval
+      : (recentDivs.length || (entries.length / Math.max(1, annualTotals.size)));
 
     const latestEntry = entries[entries.length - 1]!;
     const exDividendDate = (latestEntry.date ?? 0) * 1000;
