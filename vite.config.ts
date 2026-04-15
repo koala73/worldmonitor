@@ -27,10 +27,14 @@ const CORE_PANEL_FILES = new Set([
   'EconomicPanel', 'MacroSignalsPanel', 'ETFFlowsPanel', 'StablecoinPanel',
   'WorldClockPanel', 'AirlineIntelPanel',
   // Shared across full + finance + commodity (3 variants)
-  'EnergyComplexPanel', 'OilInventoriesPanel', 'CommoditiesPanel',
-  'HeatmapPanel', 'TradePolicyPanel', 'SupplyChainPanel',
+  // Note: CommoditiesPanel and HeatmapPanel are sub-exports of MarketPanel.ts, not standalone files
+  'EnergyComplexPanel', 'OilInventoriesPanel',
+  'TradePolicyPanel', 'SupplyChainPanel',
   'SanctionsPressurePanel', 'GulfEconomiesPanel', 'ConsumerPricesPanel',
   'LiquidityShiftsPanel', 'GoldIntelligencePanel',
+  // Programmatic / multi-variant panels (used dynamically or across 2+ variants)
+  'CustomWidgetPanel', 'McpDataPanel', 'CountryBriefPanel',
+  'CountryDeepDivePanel', 'TechHubsPanel', 'RegulationPanel',
 ]);
 
 const HAPPY_PANEL_FILES = new Set([
@@ -60,6 +64,9 @@ const FULL_PANEL_FILES = new Set([
   'MarketImplicationsPanel', 'SatelliteFiresPanel', 'HormuzPanel',
   'UcdpEventsPanel', 'ClimateNewsPanel', 'DiseaseOutbreaksPanel',
   'SocialVelocityPanel', 'EnergyCrisisPanel',
+  // Full-only panels
+  'ForecastPanel', 'ChatAnalystPanel', 'CrossSourceSignalsPanel',
+  'DeductionPanel', 'GeoHubsPanel',
 ]);
 
 const TECH_PANEL_FILES = new Set([
@@ -1080,8 +1087,14 @@ export default defineConfig(({ mode }) => {
                 if (FINANCE_PANEL_FILES.has(fileName)) return 'finance-panels';
                 if (FULL_PANEL_FILES.has(fileName)) return 'full-panels';
                 if (TECH_PANEL_FILES.has(fileName)) return 'tech-panels';
-                // Unassigned Panel files default to core-panels to avoid orphan chunks
-                if (fileName.endsWith('Panel') || fileName === 'Panel') return 'core-panels';
+                // Fail on unassigned panel files — add new panels to the correct set above
+                if (fileName.endsWith('Panel') || fileName === 'Panel') {
+                  throw new Error(
+                    `[manualChunks] Unassigned panel component: ${fileName}. ` +
+                    `Add it to CORE_PANEL_FILES, FULL_PANEL_FILES, HAPPY_PANEL_FILES, ` +
+                    `FINANCE_PANEL_FILES, or TECH_PANEL_FILES in vite.config.ts.`
+                  );
+                }
               }
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
