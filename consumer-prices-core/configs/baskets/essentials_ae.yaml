@@ -102,7 +102,7 @@ basket:
       substitutionGroup: sugar_white
       minBaseQty: 900
       maxBaseQty: 1100
-      negativeTokens: ["brown", "baby", "mascavo", "sachets", "cane", "powdered"]
+      negativeTokens: ["brown", "baby", "mascavo", "sachets", "powdered"]
 
     - id: cheese_processed_200g
       category: dairy

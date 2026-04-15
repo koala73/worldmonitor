@@ -105,11 +105,29 @@ describe('validateSearchHit — positive counterparts must still pass', () => {
       sizeText: '1 kg',
       item: item({
         baseUnit: 'g', minBaseQty: 900, maxBaseQty: 1100,
-        negativeTokens: ['brown', 'baby', 'mascavo', 'sachets'],
+        negativeTokens: ['brown', 'baby', 'mascavo', 'sachets', 'powdered'],
       }),
     });
     expect(r.ok).toBe(true);
     expect(r.signals.sizeWindow).toBe('pass');
+    expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
+  });
+
+  // Regression: "cane" is a legitimate descriptor for white cane sugar.
+  // An earlier iteration of negativeTokens included "cane" and would have
+  // downgraded real SKUs to candidate. Guard against any future edit that
+  // re-adds "cane" without considering this positive case.
+  it('accepts white cane sugar 1kg — cane is not a class error', () => {
+    const r = validateSearchHit({
+      canonicalName: 'White Sugar 1kg',
+      productName: 'Silver Spoon White Cane Sugar 1kg',
+      sizeText: '1 kg',
+      item: item({
+        baseUnit: 'g', minBaseQty: 900, maxBaseQty: 1100,
+        negativeTokens: ['brown', 'baby', 'mascavo', 'sachets', 'powdered'],
+      }),
+    });
+    expect(r.ok).toBe(true);
     expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
   });
 

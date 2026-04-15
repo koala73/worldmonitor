@@ -102,7 +102,7 @@ basket:
       substitutionGroup: sugar_white
       minBaseQty: 1600
       maxBaseQty: 2000
-      negativeTokens: ["brown", "baby", "mascavo", "sachets", "cane", "powdered"]
+      negativeTokens: ["brown", "baby", "mascavo", "sachets", "powdered"]
 
     - id: cheese_cheddar_200g
       category: dairy
