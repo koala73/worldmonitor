@@ -325,16 +325,16 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'first-party runtime regression must still surface');
   });
 
-  // WORLDMONITOR-MP: Chrome extension intercepting maplibre fetch.
-  it('suppresses any error with a chrome-extension:// frame in the stack', () => {
+  // WORLDMONITOR-MP: Chrome extension intercepting maplibre fetch — suppress only when no first-party frames.
+  it('suppresses chrome-extension-frame errors when no first-party frames are present', () => {
     const event = makeEvent('Failed to fetch (pub-x.r2.dev)', 'TypeError', [
-      firstPartyFrame('/assets/maplibre-WH5fAPRo.js', 'FetchSource.load'),
+      { filename: '/assets/maplibre-WH5fAPRo.js', lineno: 1, function: 'FetchSource.load' }, // vendor chunk → not first-party
       { filename: 'chrome-extension://abc/frame_ant.js', lineno: 1, function: 'window.fetch' },
     ]);
     assert.equal(beforeSend(event), null);
   });
 
-  it('suppresses errors with moz-extension and safari-web-extension frames', () => {
+  it('suppresses moz/safari-extension-frame errors when no first-party frames are present', () => {
     for (const url of ['moz-extension://abc/inj.js', 'safari-web-extension://abc/inj.js']) {
       const event = makeEvent('whatever', 'TypeError', [
         { filename: url, lineno: 1, function: 'inject' },
@@ -343,13 +343,28 @@ describe('existing beforeSend filters', () => {
     }
   });
 
-  // WORLDMONITOR-MQ: Sentry SDK DOM breadcrumb null.contains crash.
-  it("suppresses null 'contains' read when a sentry-*.js frame is in the stack", () => {
+  it('does NOT suppress extension-frame errors when a first-party frame is also present', () => {
+    const event = makeEvent('x is not defined', 'ReferenceError', [
+      firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadTab'),
+      { filename: 'chrome-extension://abc/inj.js', lineno: 1, function: 'inject' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party bug must surface even if an extension frame is on the stack');
+  });
+
+  // WORLDMONITOR-MQ: Sentry SDK DOM breadcrumb null.contains crash — suppress only when no first-party frames.
+  it("suppresses null 'contains' read on a sentry-*.js frame with no first-party frames", () => {
     const event = makeEvent("Cannot read properties of null (reading 'contains')", 'TypeError', [
       { filename: '/assets/sentry-C2sjIlLb.js', lineno: 1, function: 'HTMLDocument.r' },
-      { filename: '/assets/main-MURvZ_wC.js', lineno: 1, function: 'HTMLDocument.x' },
     ]);
     assert.equal(beforeSend(event), null);
+  });
+
+  it("does NOT suppress null 'contains' read when a first-party frame is also present (Sentry wraps handlers)", () => {
+    const event = makeEvent("Cannot read properties of null (reading 'contains')", 'TypeError', [
+      { filename: '/assets/sentry-C2sjIlLb.js', lineno: 1, function: 'HTMLDocument.r' },
+      firstPartyFrame('/assets/main-MURvZ_wC.js', 'handleClick'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party el.contains bug must surface even with sentry frame on stack');
   });
 
   it("does NOT suppress null 'contains' read when no sentry-*.js frame is present", () => {
