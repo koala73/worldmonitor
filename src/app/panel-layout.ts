@@ -187,6 +187,9 @@ export class PanelLayoutManager implements AppModule {
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
+  private lazyObserver!: IntersectionObserver;
+  private lazyLoaders = new Map<string, () => void>();
+  private loadingOrLoaded = new Set<string>();
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -321,6 +324,26 @@ export class PanelLayoutManager implements AppModule {
   }
 
   async init(): Promise<void> {
+    // Shared IntersectionObserver for viewport-gated panel loading.
+    // Panels start loading when their skeleton placeholder enters the viewport
+    // (or within 200px preload margin).
+    this.lazyObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const key = (entry.target as HTMLElement).dataset.panelLazy;
+          if (!key) continue;
+          this.lazyObserver.unobserve(entry.target);
+          const trigger = this.lazyLoaders.get(key);
+          if (trigger) {
+            this.lazyLoaders.delete(key);
+            trigger();
+          }
+        }
+      },
+      { rootMargin: '200px' },
+    );
+
     await this.renderLayout();
 
     // Subscribe to auth state for reactive panel gating on web
@@ -389,6 +412,11 @@ export class PanelLayoutManager implements AppModule {
 
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
+
+    // Clean up lazy panel observer
+    this.lazyObserver.disconnect();
+    this.lazyLoaders.clear();
+    this.loadingOrLoaded.clear();
 
     window.removeEventListener('resize', this.ensureCorrectZones);
   }
@@ -2022,6 +2050,46 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  /**
+   * Creates a skeleton placeholder element for a panel that hasn't loaded yet.
+   * The skeleton reserves grid space (using defaultRowSpan from config or saved user spans)
+   * and shows a shimmer animation while JS downloads.
+   */
+  private createSkeleton(key: string): HTMLElement {
+    const config = ALL_PANELS[key];
+    const el = document.createElement('div');
+    el.className = 'panel panel-skeleton';
+    el.dataset.panelLazy = key;
+    el.dataset.panel = key; // for drag ordering
+
+    // Size from saved user span > config defaultRowSpan > default 1
+    const savedSpans = loadFromStorage<Record<string, number>>('worldmonitor-panel-spans', {});
+    const rowSpan = savedSpans[key] || config?.defaultRowSpan || 1;
+    if (rowSpan > 1) {
+      el.style.gridRow = `span ${rowSpan}`;
+    }
+
+    const header = document.createElement('div');
+    header.className = 'skeleton-header';
+    header.textContent = config?.name || key;
+    el.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'skeleton-body';
+    const shimmer = document.createElement('div');
+    shimmer.className = 'skeleton-shimmer';
+    body.appendChild(shimmer);
+    el.appendChild(body);
+
+    return el;
+  }
+
+  /**
+   * Enhanced lazyPanel with IntersectionObserver viewport gating.
+   * Creates a skeleton placeholder in the grid, observes it for viewport intersection,
+   * and only triggers the dynamic import when the skeleton becomes visible (or within 200px).
+   * Disabled panels (toggled off in settings) do not register an observer or download JS.
+   */
   private lazyPanel<T extends { getElement(): HTMLElement }>(
     key: string,
     loader: () => Promise<T>,
@@ -2029,38 +2097,72 @@ export class PanelLayoutManager implements AppModule {
     lockedFeatures?: string[],
   ): void {
     if (!this.shouldCreatePanel(key)) return;
-    loader().then(async (panel) => {
-      this.ctx.panels[key] = panel as unknown as import('@/components/Panel').Panel;
-      if (lockedFeatures) {
-        (panel as unknown as import('@/components/Panel').Panel).showLocked(lockedFeatures);
-      } else {
-        // Re-apply auth gating for panels that loaded after the initial auth state fire
-        this.updatePanelGating(getAuthState());
-        await replayPendingCalls(key, panel);
-        if (setup) setup(panel);
-      }
-      const el = panel.getElement();
-      this.makeDraggable(el, key);
+    if (this.loadingOrLoaded.has(key)) return;
 
-      const bottomGrid = document.getElementById('mapBottomGrid');
-      if (bottomGrid && this.getEffectiveUltraWide() && this.bottomSetMemory.has(key)) {
-        this.insertByOrder(bottomGrid, el, key);
-      } else {
-        const grid = document.getElementById('panelsGrid');
-        if (!grid) return;
-        this.insertByOrder(grid, el, key);
-      }
+    const skeleton = this.createSkeleton(key);
 
-      // applyPanelSettings() already ran at startup before this lazy promise resolved.
-      // If the user had this panel disabled, it must be hidden immediately after insertion
-      // or it reappears until the next applyPanelSettings() call.
-      const savedConfig = this.ctx.panelSettings[key];
-      if (savedConfig && !savedConfig.enabled) {
-        this.ctx.panels[key]?.hide();
-      }
-    }).catch((err) => {
-      console.error(`[panel] failed to lazy-load "${key}"`, err);
-    });
+    // Insert skeleton into grid (preserving order)
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (bottomGrid && this.getEffectiveUltraWide() && this.bottomSetMemory.has(key)) {
+      this.insertByOrder(bottomGrid, skeleton, key);
+    } else {
+      const grid = document.getElementById('panelsGrid');
+      if (!grid) return;
+      this.insertByOrder(grid, skeleton, key);
+    }
+
+    // The actual load function — triggered by IntersectionObserver or triggerPanelLoad()
+    const triggerLoad = () => {
+      if (this.loadingOrLoaded.has(key)) return;
+      this.loadingOrLoaded.add(key);
+
+      loader().then(async (panel) => {
+        this.ctx.panels[key] = panel as unknown as Panel;
+        if (lockedFeatures) {
+          (panel as unknown as Panel).showLocked(lockedFeatures);
+        } else {
+          // Re-apply auth gating for panels that loaded after the initial auth state fire
+          this.updatePanelGating(getAuthState());
+          await replayPendingCalls(key, panel);
+          if (setup) setup(panel);
+        }
+        const el = panel.getElement();
+        this.makeDraggable(el, key);
+
+        // Replace skeleton with real panel element
+        skeleton.replaceWith(el);
+
+        // applyPanelSettings() already ran at startup before this lazy promise resolved.
+        // If the user had this panel disabled, it must be hidden immediately after insertion
+        // or it reappears until the next applyPanelSettings() call.
+        const savedConfig = this.ctx.panelSettings[key];
+        if (savedConfig && !savedConfig.enabled) {
+          this.ctx.panels[key]?.hide();
+        }
+      }).catch((err) => {
+        console.error(`[panel] failed to lazy-load "${key}"`, err);
+        skeleton.remove();
+      });
+    };
+
+    // Register for viewport-triggered loading
+    this.lazyLoaders.set(key, triggerLoad);
+    this.lazyObserver.observe(skeleton);
+  }
+
+  /**
+   * Immediately triggers loading of a lazy panel regardless of viewport position.
+   * Used when a user re-enables a previously disabled panel in settings (D-03).
+   */
+  triggerPanelLoad(key: string): void {
+    const trigger = this.lazyLoaders.get(key);
+    if (trigger) {
+      this.lazyLoaders.delete(key);
+      // Unobserve if skeleton still exists
+      const skeleton = document.querySelector(`[data-panel-lazy="${key}"]`);
+      if (skeleton) this.lazyObserver.unobserve(skeleton);
+      trigger();
+    }
   }
 
   private makeDraggable(el: HTMLElement, key: string): void {
