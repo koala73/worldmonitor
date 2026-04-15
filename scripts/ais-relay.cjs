@@ -369,6 +369,38 @@ function upstashDel(key) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────
+// Seed envelope — canonical { _seed, data } shape. Mirrored from
+// scripts/_seed-envelope-source.mjs (ESM; can't be require()'d from CJS).
+// Source of truth lives there + api/_seed-envelope.js + server/_shared/seed-envelope.ts.
+// Parity enforced by scripts/verify-seed-envelope-parity.mjs.
+// ─────────────────────────────────────────────────────────────
+function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, state, failedDatasets, errorReason, groupId, data }) {
+  const _seed = { fetchedAt, recordCount, sourceVersion, schemaVersion, state };
+  if (failedDatasets != null) _seed.failedDatasets = failedDatasets;
+  if (errorReason != null) _seed.errorReason = errorReason;
+  if (groupId != null) _seed.groupId = groupId;
+  return { _seed, data };
+}
+
+// Wrap `data` in a seed envelope and write to Redis at `key` with `ttlSeconds`.
+// meta: { recordCount, sourceVersion, schemaVersion?, state?, zeroOk? }
+//   - state: omit to derive ('OK_ZERO' when recordCount===0 && zeroOk, else 'OK')
+//   - schemaVersion: defaults to 1
+function envelopeWrite(key, data, ttlSeconds, meta) {
+  const recordCount = Number(meta?.recordCount ?? 0) || 0;
+  const state = meta?.state || (recordCount === 0 && meta?.zeroOk ? 'OK_ZERO' : 'OK');
+  const envelope = buildEnvelope({
+    fetchedAt: Date.now(),
+    recordCount,
+    sourceVersion: meta?.sourceVersion || 'ais-relay',
+    schemaVersion: meta?.schemaVersion ?? 1,
+    state,
+    data,
+  });
+  return upstashSet(key, envelope, ttlSeconds);
+}
+
 function notifySimpleHash(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
@@ -1083,7 +1115,7 @@ async function orefPersistHistory() {
       activeAlertCount: orefState.lastAlerts?.length || 0,
       persistedAt: new Date().toISOString(),
     };
-    const ok = await upstashSet(OREF_REDIS_KEY, payload, OREF_PERSIST_TTL_SECONDS);
+    const ok = await envelopeWrite(OREF_REDIS_KEY, payload, OREF_PERSIST_TTL_SECONDS, { recordCount: waves.length, sourceVersion: 'oref', zeroOk: true });
     if (ok) {
       orefState._lastPersistedVersion = versionAtStart;
     }
@@ -1364,7 +1396,7 @@ async function seedUcdpEvents() {
     }
 
     const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
-    const ok = await upstashSet(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS);
+    const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: mapped.length, sourceVersion: 'ucdp' });
     await upstashSet('seed-meta:conflict:ucdp-events', { fetchedAt: Date.now(), recordCount: mapped.length }, 604800);
     console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
     const newConflicts = mapped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
@@ -1506,7 +1538,7 @@ async function seedSatelliteTLEs() {
     }
 
     const payload = { satellites, fetchedAt: Date.now() };
-    const ok = await upstashSet('intelligence:satellites:tle:v1', payload, SAT_SEED_TTL);
+    const ok = await envelopeWrite('intelligence:satellites:tle:v1', payload, SAT_SEED_TTL, { recordCount: satellites.length, sourceVersion: 'celestrak' });
     await upstashSet('seed-meta:intelligence:satellites', { fetchedAt: Date.now(), recordCount: satellites.length }, 604800);
     console.log(`[Satellites] Seeded ${satellites.length} TLEs (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
@@ -1740,9 +1772,9 @@ async function seedMarketQuotes() {
   const skipped = !FINNHUB_API_KEY && !coveredByYahoo;
   const payload = { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
   const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
-  const ok = await upstashSet(redisKey, payload, MARKET_SEED_TTL);
+  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
-  const ok2 = await upstashSet('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL);
+  const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
   const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
   console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   const movingStocks = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
@@ -1789,14 +1821,14 @@ async function seedCommodityQuotes() {
 
   const payload = { quotes };
   const redisKey = `market:commodities:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
-  const ok = await upstashSet(redisKey, payload, MARKET_SEED_TTL);
+  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
   // Also write under market:quotes:v1: key — the frontend routes commodities through
   // listMarketQuotes RPC, which constructs this key pattern (not market:commodities:v1:)
   const quotesKey = `market:quotes:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesPayload = { quotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
-  const ok2 = await upstashSet(quotesKey, quotesPayload, MARKET_SEED_TTL);
+  const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
-  const ok3 = await upstashSet('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL);
+  const ok3 = await envelopeWrite('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
   const ok4 = await upstashSet('seed-meta:market:commodities', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
   console.log(`[Market] Seeded ${quotes.length}/${COMMODITY_SYMBOLS.length} commodities (redis: ${ok && ok2 && ok3 && ok4 ? 'OK' : 'PARTIAL'})`);
   const movingCommodities = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
@@ -1848,14 +1880,14 @@ async function seedSectorSummary() {
   }
 
   const payload = { sectors, valuations };
-  const ok = await upstashSet('market:sectors:v2', payload, MARKET_SEED_TTL);
+  const ok = await envelopeWrite('market:sectors:v2', payload, MARKET_SEED_TTL, { recordCount: sectors.length, sourceVersion: 'market-sectors' });
   const quotesKey = `market:quotes:v1:${[...SECTOR_SYMBOLS].sort().join(',')}`;
   const sectorQuotes = sectors.map((s) => ({
     symbol: s.symbol, name: s.name, display: s.name,
     price: 0, change: s.change, sparkline: [],
   }));
   const quotesPayload = { quotes: sectorQuotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
-  const ok2 = await upstashSet(quotesKey, quotesPayload, MARKET_SEED_TTL);
+  const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: sectorQuotes.length, sourceVersion: 'market-sectors' });
   const ok3 = await upstashSet('seed-meta:market:sectors', { fetchedAt: Date.now(), recordCount: sectors.length }, 604800);
   console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valCount} valuations (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
@@ -1895,7 +1927,7 @@ async function seedGulfQuotes() {
   }
   if (quotes.length === 0) { console.warn('[Gulf] No quotes fetched — skipping'); return 0; }
   const payload = { quotes, rateLimited: false };
-  const ok1 = await upstashSet('market:gulf-quotes:v1', payload, GULF_SEED_TTL);
+  const ok1 = await envelopeWrite('market:gulf-quotes:v1', payload, GULF_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-gulf' });
   const ok2 = await upstashSet('seed-meta:market:gulf-quotes', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
   console.log(`[Gulf] Seeded ${quotes.length}/${GULF_SYMBOLS.length} quotes (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'})`);
   return quotes.length;
@@ -1955,7 +1987,7 @@ async function seedEtfFlows() {
     summary: { etfCount: etfs.length, totalVolume, totalEstFlow, netDirection: totalEstFlow > 0 ? 'NET INFLOW' : totalEstFlow < 0 ? 'NET OUTFLOW' : 'NEUTRAL', inflowCount: etfs.filter((e) => e.direction === 'inflow').length, outflowCount: etfs.filter((e) => e.direction === 'outflow').length },
     etfs, rateLimited: false,
   };
-  const ok1 = await upstashSet('market:etf-flows:v1', payload, ETF_SEED_TTL);
+  const ok1 = await envelopeWrite('market:etf-flows:v1', payload, ETF_SEED_TTL, { recordCount: etfs.length, sourceVersion: 'market-etf-flows' });
   const ok2 = await upstashSet('seed-meta:market:etf-flows', { fetchedAt: Date.now(), recordCount: etfs.length }, 604800);
   console.log(`[ETF] Seeded ${etfs.length}/${ETF_LIST.length} ETFs (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'})`);
   return etfs.length;
@@ -2026,7 +2058,7 @@ async function seedCryptoQuotes() {
     quotes.push({ name: meta?.name || id, symbol: meta?.symbol || id.toUpperCase(), price: coin.current_price ?? 0, change: coin.price_change_percentage_24h ?? 0, sparkline: prices && prices.length > 24 ? prices.slice(-48) : (prices || []) });
   }
   if (quotes.length === 0 || quotes.every((q) => q.price === 0)) { console.warn('[Crypto] No valid quotes — skipping'); return 0; }
-  const ok1 = await upstashSet('market:crypto:v1', { quotes }, CRYPTO_SEED_TTL);
+  const ok1 = await envelopeWrite('market:crypto:v1', { quotes }, CRYPTO_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-crypto' });
   const ok2 = await upstashSet('seed-meta:market:crypto', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
   console.log(`[Crypto] Seeded ${quotes.length}/${CRYPTO_IDS.length} quotes (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'})`);
   const movingCrypto = quotes.filter(q => Math.abs(q.change ?? 0) >= 10).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));

@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
+import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import {
   GREY_OUT_COVERAGE_THRESHOLD,
   RESILIENCE_INTERVAL_KEY_PREFIX,
@@ -48,8 +49,9 @@ async function fetchIntervals(countryCodes: string[]): Promise<Map<string, Score
     const raw = results[i]?.result;
     if (typeof raw !== 'string') continue;
     try {
-      const parsed = JSON.parse(raw) as { p05?: number; p95?: number };
-      if (typeof parsed.p05 === 'number' && typeof parsed.p95 === 'number') {
+      // Envelope-aware: interval keys come through seed-resilience-scores' extra-key path.
+      const parsed = unwrapEnvelope(JSON.parse(raw)).data as { p05?: number; p95?: number } | null;
+      if (parsed && typeof parsed.p05 === 'number' && typeof parsed.p95 === 'number') {
         map.set(countryCodes[i]!, { p05: parsed.p05, p95: parsed.p95 });
       }
     } catch { /* ignore malformed interval entries */ }

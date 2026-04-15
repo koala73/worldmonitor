@@ -10,6 +10,7 @@ import type {
 export type { ScoreInterval };
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
+import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { detectTrend, round } from '../../../_shared/resilience-stats';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
@@ -344,7 +345,10 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
     const raw = results[index]?.result;
     if (typeof raw !== 'string') continue;
     try {
-      const parsed = JSON.parse(raw) as GetResilienceScoreResponse;
+      // Envelope-aware: resilience score keys are written by seed-resilience-scores
+      // in contract mode (PR 2). unwrapEnvelope is a no-op on legacy bare-shape.
+      const parsed = unwrapEnvelope(JSON.parse(raw)).data as GetResilienceScoreResponse;
+      if (!parsed) continue;
       // P1 fix: cached payload is always v2 superset. Gate on serve.
       if (!RESILIENCE_SCHEMA_V2_ENABLED) {
         parsed.pillars = [];
