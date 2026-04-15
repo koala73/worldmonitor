@@ -102,6 +102,9 @@ function streamLines(stream, onLine) {
     }
   });
   stream.on('end', () => { if (buf) onLine(buf); });
+  // Child-stdio `error` is rare (SIGKILL emits `end`), but Node throws on an
+  // unhandled `error` event. Log it instead of crashing the runner.
+  stream.on('error', (err) => onLine(`<stdio error: ${err.message}>`));
 }
 
 function spawnSeed(scriptPath, { timeoutMs, label }) {
@@ -118,13 +121,6 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
     let settled = false;
     let timedOut = false;
     let killTimer = null;
-    const settle = (value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(softKill);
-      if (killTimer) clearTimeout(killTimer);
-      resolve(value);
-    };
     const softKill = setTimeout(() => {
       timedOut = true;
       console.warn(`  [${label}] Timeout at ${Math.round(timeoutMs / 1000)}s — sending SIGTERM`);
@@ -134,6 +130,13 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
         child.kill('SIGKILL');
       }, KILL_GRACE_MS);
     }, timeoutMs);
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(softKill);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(value);
+    };
 
     child.on('error', (err) => {
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
