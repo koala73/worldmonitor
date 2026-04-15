@@ -233,7 +233,12 @@ function paymentsPerYearFromInterval(
   }
   if (gaps.length === 0) return 0;
   gaps.sort((a, b) => a - b);
-  const medianGapDays = gaps[Math.floor(gaps.length / 2)]!;
+  // True median (average of two middles for even-length arrays) — avoids
+  // upper-bias at thresholds when the trailing-year sample is small.
+  const mid = Math.floor(gaps.length / 2);
+  const medianGapDays = gaps.length % 2 === 1
+    ? gaps[mid]!
+    : (gaps[mid - 1]! + gaps[mid]!) / 2;
   if (medianGapDays <= 0) return 0;
   return 365.25 / medianGapDays;
 }
