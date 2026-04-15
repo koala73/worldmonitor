@@ -246,6 +246,7 @@ Sentry.init({
     /doesn't provide an export named/, // stale cached chunk after deploy references removed export
     /Possible side-effect in debug-evaluate/, // Chrome DevTools internal EvalError
     /ConvexError: CONFLICT/, // Expected OCC rejection on concurrent preference saves
+    /\[CONVEX [AQM]\(.+?\)\] Connection lost while action was in flight/, // Convex SDK transient WS disconnect
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -300,6 +301,12 @@ Sentry.init({
     if (/evaluating '(?:element|e)\.offset(?:Width|Height)'/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
     if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
+    // Suppress errors where any frame is a chrome/moz/safari extension intercepting fetch/XHR
+    if (frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? ''))) return null;
+    // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains
+    if (/Cannot read properties of null \(reading 'contains'\)|null is not an object \(evaluating '\w+\.contains'\)/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
+    // Suppress Convex WS onmessage JSON.parse truncation (intermittent WS frame splits on Ping/Updated control messages)
+    if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && frames.some(f => /onmessage/.test(f.function ?? ''))) return null;
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
     // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script)
@@ -347,7 +354,7 @@ Sentry.init({
       || /NotSupportedError/.test(msg)
       || /^Key not found$/.test(msg)
       || /^Element not found$/.test(msg)
-      || /^TypeError: Failed to fetch/.test(msg)
+      || /^(?:TypeError: )?Failed to fetch$/.test(msg)
       || /^TypeError: NetworkError/.test(msg)
       || /Could not connect to the server/.test(msg)
       || /(?:Failed to fetch|Importing a module script failed|error loading) dynamically imported module/i.test(msg)
