@@ -324,4 +324,58 @@ describe('existing beforeSend filters', () => {
     );
     assert.ok(beforeSend(event) !== null, 'first-party runtime regression must still surface');
   });
+
+  // WORLDMONITOR-MP: Chrome extension intercepting maplibre fetch.
+  it('suppresses any error with a chrome-extension:// frame in the stack', () => {
+    const event = makeEvent('Failed to fetch (pub-x.r2.dev)', 'TypeError', [
+      firstPartyFrame('/assets/maplibre-WH5fAPRo.js', 'FetchSource.load'),
+      { filename: 'chrome-extension://abc/frame_ant.js', lineno: 1, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('suppresses errors with moz-extension and safari-web-extension frames', () => {
+    for (const url of ['moz-extension://abc/inj.js', 'safari-web-extension://abc/inj.js']) {
+      const event = makeEvent('whatever', 'TypeError', [
+        { filename: url, lineno: 1, function: 'inject' },
+      ]);
+      assert.equal(beforeSend(event), null, `should suppress for ${url}`);
+    }
+  });
+
+  // WORLDMONITOR-MQ: Sentry SDK DOM breadcrumb null.contains crash.
+  it("suppresses null 'contains' read when a sentry-*.js frame is in the stack", () => {
+    const event = makeEvent("Cannot read properties of null (reading 'contains')", 'TypeError', [
+      { filename: '/assets/sentry-C2sjIlLb.js', lineno: 1, function: 'HTMLDocument.r' },
+      { filename: '/assets/main-MURvZ_wC.js', lineno: 1, function: 'HTMLDocument.x' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it("does NOT suppress null 'contains' read when no sentry-*.js frame is present", () => {
+    const event = makeEvent("Cannot read properties of null (reading 'contains')", 'TypeError', [
+      firstPartyFrame('src/components/SomePanel.ts', 'handleClick'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party null.contains must still surface');
+  });
+
+  // WORLDMONITOR-MV: Convex WS onmessage JSON.parse truncation — suppress only when stack has no first-party frames.
+  it('suppresses SyntaxError "is not valid JSON" with onmessage frame and no first-party frames', () => {
+    const event = makeEvent(
+      'Unexpected token \'p\', "pdated","Ping"}" is not valid JSON',
+      'SyntaxError',
+      [
+        { filename: '<anonymous>', lineno: 1, function: 'e.onmessage' },
+        { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+      ],
+    );
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress SyntaxError "is not valid JSON" when a first-party onmessage handler is present', () => {
+    const event = makeEvent('Unexpected token in JSON at position 0 is not valid JSON', 'SyntaxError', [
+      firstPartyFrame('src/services/stream.ts', 'onmessage'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party onmessage regression must surface');
+  });
 });

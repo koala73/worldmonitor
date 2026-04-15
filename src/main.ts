@@ -306,7 +306,7 @@ Sentry.init({
     // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains
     if (/Cannot read properties of null \(reading 'contains'\)|null is not an object \(evaluating '\w+\.contains'\)/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress Convex WS onmessage JSON.parse truncation (intermittent WS frame splits on Ping/Updated control messages)
-    if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && frames.some(f => /onmessage/.test(f.function ?? ''))) return null;
+    if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && !hasFirstParty && frames.some(f => /onmessage/.test(f.function ?? ''))) return null;
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
     // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script)
