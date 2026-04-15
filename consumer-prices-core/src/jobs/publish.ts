@@ -40,6 +40,29 @@ async function upstashCommand(url: string, token: string, command: unknown[]): P
   if (!resp.ok) throw new Error(`Upstash ${command[0]} failed: HTTP ${resp.status}`);
 }
 
+// Seed envelope shape — mirrored from scripts/_seed-envelope-source.mjs.
+// consumer-prices-core is a standalone package so we inline the tiny helper
+// rather than taking a cross-package dependency. Keep in lockstep with:
+//   - scripts/_seed-envelope-source.mjs
+//   - server/_shared/seed-envelope.ts
+//   - api/_seed-envelope.js
+// Any change to the envelope shape must update all four.
+const SOURCE_VERSION = 'consumer-prices-core-publish-v1';
+const SCHEMA_VERSION = 1;
+
+function buildEnvelope(data: unknown, count: number): { _seed: Record<string, unknown>; data: unknown } {
+  return {
+    _seed: {
+      fetchedAt: Date.now(),
+      recordCount: count,
+      sourceVersion: SOURCE_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+      state: count > 0 ? 'OK' : 'OK_ZERO',
+    },
+    data,
+  };
+}
+
 async function writeSnapshot(
   url: string,
   token: string,
@@ -48,18 +71,22 @@ async function writeSnapshot(
   ttlSeconds: number,
   advanceSeedMeta = true,
 ): Promise<void> {
-  const json = JSON.stringify(data);
+  const count = recordCount(data);
+  // Envelope the canonical payload. Legacy seed-meta:<key> is still written
+  // below so unmigrated readers keep working during dual-write.
+  const envelope = buildEnvelope(data, count);
+  const json = JSON.stringify(envelope);
   await upstashCommand(url, token, ['SET', key, json, 'EX', ttlSeconds]);
   if (advanceSeedMeta) {
     await upstashCommand(url, token, [
       'SET',
       makeKey(['seed-meta', key]),
-      JSON.stringify({ fetchedAt: Date.now(), recordCount: recordCount(data) }),
+      JSON.stringify({ fetchedAt: Date.now(), recordCount: count }),
       'EX',
       ttlSeconds * 2,
     ]);
   }
-  logger.info(`  wrote ${key} (${json.length} bytes, ttl=${ttlSeconds}s, meta=${advanceSeedMeta})`);
+  logger.info(`  wrote ${key} (${json.length} bytes, records=${count}, ttl=${ttlSeconds}s, meta=${advanceSeedMeta})`);
 }
 
 // 26h TTL — longer than the 24h cron cadence to survive scheduling drift
