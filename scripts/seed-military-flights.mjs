@@ -2,6 +2,7 @@
 
 import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl } from './_seed-utils.mjs';
 import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory } from './_military-surges.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -1178,7 +1179,7 @@ async function redisGet(url, token, key) {
   if (!resp.ok) return null;
   const data = await resp.json();
   if (!data?.result) return null;
-  try { return JSON.parse(data.result); } catch { return null; }
+  try { return unwrapEnvelope(JSON.parse(data.result)).data; } catch { return null; }
 }
 
 async function requestForecastRefreshIfEnabled(runId, assessedAt, source) {

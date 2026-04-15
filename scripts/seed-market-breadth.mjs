@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 loadEnvFile(import.meta.url);
 
 const BREADTH_KEY = 'market:breadth-history:v1';
@@ -49,7 +50,7 @@ async function readExistingHistory() {
     });
     if (!resp.ok) return null;
     const { result } = await resp.json();
-    return result ? JSON.parse(result) : null;
+    return result ? unwrapEnvelope(JSON.parse(result)).data : null;
   } catch {
     return null;
   }

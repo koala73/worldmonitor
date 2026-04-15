@@ -16,6 +16,7 @@
 import { pathToFileURL } from 'node:url';
 
 import { loadEnvFile, getRedisCredentials, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { REGIONS } from './shared/geography.js';
 import { generateWeeklyBrief } from './regional-snapshot/weekly-brief.mjs';
 
@@ -63,7 +64,7 @@ async function readLatestSnapshot(url, token, regionId) {
     });
     if (!snapResp.ok) return null;
     const snapData = await snapResp.json();
-    return snapData?.result ? JSON.parse(snapData.result) : null;
+    return snapData?.result ? unwrapEnvelope(JSON.parse(snapData.result)).data : null;
   } catch {
     return null;
   }

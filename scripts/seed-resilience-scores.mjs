@@ -5,6 +5,7 @@ import {
   logSeedResult,
   writeFreshnessMetadata,
 } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -67,7 +68,7 @@ async function redisGetJson(url, token, key) {
   if (!resp.ok) return null;
   const data = await resp.json();
   if (!data?.result) return null;
-  try { return JSON.parse(data.result); } catch { return null; }
+  try { return unwrapEnvelope(JSON.parse(data.result)).data; } catch { return null; }
 }
 
 async function redisPipeline(url, token, commands) {

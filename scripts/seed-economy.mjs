@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch, getRedisCredentials } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -120,7 +121,7 @@ async function fetchGscpiFromRedis() {
     if (!resp.ok) return null;
     const body = /** @type {{ result: string | null }} */ (await resp.json());
     if (!body.result) return null;
-    return extractGscpiObservations(JSON.parse(body.result));
+    return extractGscpiObservations(unwrapEnvelope(JSON.parse(body.result)).data);
   } catch {
     return null;
   }

@@ -8,6 +8,7 @@ import {
   logSeedResult,
   releaseLock,
 } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -65,7 +66,7 @@ async function redisGet(key) {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
 }
 
 async function redisMget(keys) {
@@ -89,7 +90,7 @@ async function redisMget(keys) {
   return results.map(r => {
     const raw = r?.result;
     if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return null; }
+    try { return unwrapEnvelope(JSON.parse(raw)).data; } catch { return null; }
   });
 }
 

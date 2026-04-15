@@ -26,6 +26,7 @@
  */
 
 import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { main as runSnapshots } from './seed-regional-snapshots.mjs';
 import { main as runBriefs } from './seed-regional-briefs.mjs';
 
@@ -49,7 +50,7 @@ async function shouldRunBriefs() {
     if (!resp.ok) return true; // Redis error → run defensively
     const data = await resp.json();
     if (!data?.result) return true; // key missing → first run
-    const meta = JSON.parse(data.result);
+    const meta = unwrapEnvelope(JSON.parse(data.result)).data;
     const lastRun = meta?.fetchedAt ?? 0;
     const age = Date.now() - lastRun;
     if (age >= BRIEF_COOLDOWN_MS) {

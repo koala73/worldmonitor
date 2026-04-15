@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
-import { buildEnvelope } from './_seed-envelope-source.mjs';
+import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
@@ -104,7 +104,12 @@ async function redisGet(url, token, key) {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  if (!data.result) return null;
+  // Envelope-aware: returns inner `data` for seeded keys written in contract
+  // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
+  // seed reads that were silently getting `{_seed, data}` after PR 2a enveloped
+  // the writer side of 91 canonical keys.
+  return unwrapEnvelope(JSON.parse(data.result)).data;
 }
 
 async function redisSet(url, token, key, value, ttlSeconds) {
@@ -247,10 +252,25 @@ export function logSeedResult(domain, count, durationMs, extra = {}) {
   }));
 }
 
-export async function verifySeedKey(key) {
+/**
+ * Shared envelope-aware reader for cross-seed consumers (e.g. seed-forecasts
+ * reading ~40 migrated input keys, seed-chokepoint-flows reading portwatch,
+ * seed-thermal-escalation reading wildfire:fires). Returns the inner `data`
+ * payload for contract-mode writes; passes legacy bare-shape values through
+ * unchanged. Callers MUST NOT parse the envelope themselves.
+ */
+export async function readCanonicalValue(key) {
   const { url, token } = getRedisCredentials();
-  const data = await redisGet(url, token, key);
-  return data;
+  return redisGet(url, token, key);
+}
+
+export async function verifySeedKey(key) {
+  // redisGet() now unwraps envelopes internally, so callers that read migrated
+  // canonical keys (e.g. seed-climate-anomalies reading climate:zone-normals:v1,
+  // seed-thermal-escalation reading wildfire:fires:v1) see bare legacy-shape
+  // payloads regardless of whether the writer has migrated to contract mode.
+  const { url, token } = getRedisCredentials();
+  return redisGet(url, token, key);
 }
 
 export async function writeExtraKey(key, data, ttl, envelopeMeta) {
@@ -681,7 +701,11 @@ export async function readSeedSnapshot(canonicalKey) {
     });
     if (!resp.ok) return null;
     const { result } = await resp.json();
-    return result ? JSON.parse(result) : null;
+    if (!result) return null;
+    // Envelope-aware: WoW/prev baselines (bigmac, grocery-basket, fear-greed)
+    // must see bare legacy-shape data whether the last write was pre- or post-
+    // contract-migration. unwrapEnvelope is a no-op on legacy values.
+    return unwrapEnvelope(JSON.parse(result)).data;
   } catch {
     return null;
   }
