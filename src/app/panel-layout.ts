@@ -6,86 +6,76 @@ import { effectivePubDateMs } from '@/services/feed-date';
 import type { ClusteredEvent } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
-import {
-  NewsPanel,
-  MarketPanel,
-  StockAnalysisPanel,
-  StockBacktestPanel,
-  HeatmapPanel,
-  CommoditiesPanel,
-  CryptoPanel,
-  CryptoHeatmapPanel,
-  DefiTokensPanel,
-  AiTokensPanel,
-  OtherTokensPanel,
-  PredictionPanel,
-  MonitorPanel,
-  LatestBriefPanel,
-  EconomicPanel,
-  ConsumerPricesPanel,
-  EnergyComplexPanel,
-  OilInventoriesPanel,
-  GdeltIntelPanel,
-  LiveNewsPanel,
-  getDefaultLiveChannels,
-  loadChannelsFromStorage,
-  LiveWebcamsPanel,
-  PinnedWebcamsPanel,
-  CIIPanel,
-  CascadePanel,
-  StrategicRiskPanel,
-  StrategicPosturePanel,
-  TechEventsPanel,
-  ServiceStatusPanel,
-  InternetDisruptionsPanel,
-  RuntimeConfigPanel,
-  InsightsPanel,
-  MacroSignalsPanel,
-  FearGreedPanel,
-  MarketBreadthPanel,
-  ETFFlowsPanel,
-  StablecoinPanel,
-  UcdpEventsPanel,
-  InvestmentsPanel,
-  TradePolicyPanel,
-  SupplyChainPanel,
-  SanctionsPressurePanel,
-  GulfEconomiesPanel,
-  GroceryBasketPanel,
-  BigMacPanel,
-  FuelPricesPanel,
-  FaoFoodPriceIndexPanel,
-  ClimateNewsPanel,
-  WorldClockPanel,
-  AirlineIntelPanel,
-  AviationCommandBar,
-  MilitaryCorrelationPanel,
-  EscalationCorrelationPanel,
-  EconomicCorrelationPanel,
-  DisasterCorrelationPanel,
-  DefensePatentsPanel,
-  HormuzPanel,
-  ChokepointStripPanel,
-  PipelineStatusPanel,
-  StorageFacilityMapPanel,
-  FuelShortagePanel,
-  EnergyDisruptionsPanel,
-  EnergyRiskOverviewPanel,
-  MacroTilesPanel,
-  FSIPanel,
-  YieldCurvePanel,
-  EarningsCalendarPanel,
-  EconomicCalendarPanel,
-  CotPositioningPanel,
-  LiquidityShiftsPanel,
-  PositioningPanel,
-  GoldIntelligencePanel,
-  DiseaseOutbreaksPanel,
-  SocialVelocityPanel,
-  WsbTickerScannerPanel,
-  AAIISentimentPanel,
-  EnergyCrisisPanel,
-} from '@/components';
+import { MapContainer } from '@/components/MapContainer';
+import { NewsPanel } from '@/components/NewsPanel';
+import { MarketPanel, HeatmapPanel, CommoditiesPanel, CryptoPanel, CryptoHeatmapPanel, DefiTokensPanel, AiTokensPanel, OtherTokensPanel } from '@/components/MarketPanel';
+import { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import { StockBacktestPanel } from '@/components/StockBacktestPanel';
+import { PredictionPanel } from '@/components/PredictionPanel';
+import { MonitorPanel } from '@/components/MonitorPanel';
+import { LatestBriefPanel } from '@/components/LatestBriefPanel';
+import { EconomicPanel } from '@/components/EconomicPanel';
+import { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
+import { EnergyComplexPanel } from '@/components/EnergyComplexPanel';
+import { OilInventoriesPanel } from '@/components/OilInventoriesPanel';
+import { GdeltIntelPanel } from '@/components/GdeltIntelPanel';
+import { LiveNewsPanel, getDefaultLiveChannels, loadChannelsFromStorage } from '@/components/LiveNewsPanel';
+import { LiveWebcamsPanel } from '@/components/LiveWebcamsPanel';
+import { PinnedWebcamsPanel } from '@/components/PinnedWebcamsPanel';
+import { CIIPanel } from '@/components/CIIPanel';
+import { CascadePanel } from '@/components/CascadePanel';
+import { StrategicRiskPanel } from '@/components/StrategicRiskPanel';
+import { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+import { TechEventsPanel } from '@/components/TechEventsPanel';
+import { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
+import { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
+import { RuntimeConfigPanel } from '@/components/RuntimeConfigPanel';
+import { InsightsPanel } from '@/components/InsightsPanel';
+import { MacroSignalsPanel } from '@/components/MacroSignalsPanel';
+import { FearGreedPanel } from '@/components/FearGreedPanel';
+import { MarketBreadthPanel } from '@/components/MarketBreadthPanel';
+import { ETFFlowsPanel } from '@/components/ETFFlowsPanel';
+import { StablecoinPanel } from '@/components/StablecoinPanel';
+import { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
+import { InvestmentsPanel } from '@/components/InvestmentsPanel';
+import { TradePolicyPanel } from '@/components/TradePolicyPanel';
+import { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import { SanctionsPressurePanel } from '@/components/SanctionsPressurePanel';
+import { GulfEconomiesPanel } from '@/components/GulfEconomiesPanel';
+import { GroceryBasketPanel } from '@/components/GroceryBasketPanel';
+import { BigMacPanel } from '@/components/BigMacPanel';
+import { FuelPricesPanel } from '@/components/FuelPricesPanel';
+import { FaoFoodPriceIndexPanel } from '@/components/FaoFoodPriceIndexPanel';
+import { ClimateNewsPanel } from '@/components/ClimateNewsPanel';
+import { WorldClockPanel } from '@/components/WorldClockPanel';
+import { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
+import { AviationCommandBar } from '@/components/AviationCommandBar';
+import { MilitaryCorrelationPanel } from '@/components/MilitaryCorrelationPanel';
+import { EscalationCorrelationPanel } from '@/components/EscalationCorrelationPanel';
+import { EconomicCorrelationPanel } from '@/components/EconomicCorrelationPanel';
+import { DisasterCorrelationPanel } from '@/components/DisasterCorrelationPanel';
+import { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
+import { HormuzPanel } from '@/components/HormuzPanel';
+import { ChokepointStripPanel } from '@/components/ChokepointStripPanel';
+import { PipelineStatusPanel } from '@/components/PipelineStatusPanel';
+import { StorageFacilityMapPanel } from '@/components/StorageFacilityMapPanel';
+import { FuelShortagePanel } from '@/components/FuelShortagePanel';
+import { EnergyDisruptionsPanel } from '@/components/EnergyDisruptionsPanel';
+import { EnergyRiskOverviewPanel } from '@/components/EnergyRiskOverviewPanel';
+import { MacroTilesPanel } from '@/components/MacroTilesPanel';
+import { FSIPanel } from '@/components/FSIPanel';
+import { YieldCurvePanel } from '@/components/YieldCurvePanel';
+import { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
+import { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
+import { CotPositioningPanel } from '@/components/CotPositioningPanel';
+import { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
+import { PositioningPanel } from '@/components/PositioningPanel';
+import { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
+import { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
+import { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
+import { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
+import { AAIISentimentPanel } from '@/components/AAIISentimentPanel';
+import { EnergyCrisisPanel } from '@/components/EnergyCrisisPanel';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { debounce, saveToStorage, loadFromStorage } from '@/utils';
@@ -1615,7 +1605,7 @@ export class PanelLayoutManager implements AppModule {
     });
   }
 
-  private filterItemsByTimeRange(items: import('@/types').NewsItem[], range: import('@/components').TimeRange = this.ctx.currentTimeRange): import('@/types').NewsItem[] {
+  private filterItemsByTimeRange(items: import('@/types').NewsItem[], range: import('@/components/MapContainer').TimeRange = this.ctx.currentTimeRange): import('@/types').NewsItem[] {
     if (range === 'all') return items;
     const ranges: Record<string, number> = {
       '1h': 60 * 60 * 1000, '6h': 6 * 60 * 60 * 1000,
