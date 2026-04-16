@@ -5678,8 +5678,12 @@ async function startShippingStressSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 
 const SOCIAL_VELOCITY_REDIS_KEY = 'intelligence:social:reddit:v1';
-const SOCIAL_VELOCITY_TTL = 1800; // 30min — seed runs every 10min (3× safety margin)
-const SOCIAL_VELOCITY_INTERVAL_MS = 10 * 60 * 1000;
+// Hourly cadence (bumped from 10min). Reddit rate-limits Railway datacenter IPs
+// after ~50min of 10-min polling (empirically observed 2026-04-16: both subs
+// returned HTTP 403 on every cycle after 16:26 UTC). Dropping the success-path
+// frequency to 1/hour reduces the traffic Reddit's behavioral heuristic flags on.
+const SOCIAL_VELOCITY_TTL = 10800; // 3h — 3× the 60min interval
+const SOCIAL_VELOCITY_INTERVAL_MS = 60 * 60 * 1000;
 const REDDIT_SUBREDDITS = ['worldnews', 'geopolitics'];
 
 let socialVelocityInFlight = false;
@@ -5770,8 +5774,10 @@ async function startSocialVelocitySeedLoop() {
 // ─────────────────────────────────────────────────────────────
 
 const WSB_TICKERS_REDIS_KEY = 'intelligence:wsb-tickers:v1';
-const WSB_TICKERS_TTL = 1800; // 30min — seed runs every 10min (3× safety margin)
-const WSB_TICKERS_INTERVAL_MS = 10 * 60 * 1000;
+// Hourly cadence (bumped from 10min). Same Reddit-datacenter-IP blocking
+// rationale as SocialVelocity — see comment above.
+const WSB_TICKERS_TTL = 10800; // 3h — 3× the 60min interval
+const WSB_TICKERS_INTERVAL_MS = 60 * 60 * 1000;
 const WSB_TICKERS_RETRY_MS = 20 * 60 * 1000;
 const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
 
