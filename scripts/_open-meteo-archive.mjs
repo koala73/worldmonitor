@@ -1,4 +1,4 @@
-import { CHROME_UA, sleep } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, resolveProxy, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 const MAX_RETRY_AFTER_MS = 60_000;
 const RETRYABLE_STATUSES = new Set([429, 503]);
@@ -85,7 +85,35 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
       continue;
     }
 
-    throw new Error(`Open-Meteo ${resp.status} for ${label}`);
+    // Direct attempt failed with non-retryable or after-final-retry status.
+    // Open-Meteo's free tier rate-limits per source IP; Railway containers
+    // share IP pools and hit 429 storms (logs.1776312819911 — every batch
+    // 429'd through 4 retries on 2026-04-16). Fall through to proxy fallback
+    // below before throwing.
+    break;
+  }
+
+  // Proxy fallback — same pattern as fredFetchJson / imfFetchJson in
+  // _seed-utils.mjs. Decodo gateway gets a different egress IP that is not
+  // (yet) on Open-Meteo's per-IP throttle. Skip silently if no proxy is
+  // configured (preserves existing behavior in non-Railway envs).
+  const proxyAuth = resolveProxy();
+  if (proxyAuth) {
+    try {
+      console.log(`  [OPEN_METEO] direct exhausted on ${label}; trying proxy`);
+      const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
+        accept: 'application/json',
+        timeoutMs,
+      });
+      const data = normalizeArchiveBatchResponse(JSON.parse(buffer.toString('utf8')));
+      if (data.length !== zones.length) {
+        throw new Error(`Open-Meteo proxy batch size mismatch for ${label}: expected ${zones.length}, got ${data.length}`);
+      }
+      console.log(`  [OPEN_METEO] proxy succeeded for ${label}`);
+      return data;
+    } catch (proxyErr) {
+      console.warn(`  [OPEN_METEO] proxy fallback failed for ${label}: ${proxyErr?.message ?? proxyErr}`);
+    }
   }
 
   throw new Error(`Open-Meteo retries exhausted for ${label}`);
