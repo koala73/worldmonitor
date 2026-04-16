@@ -371,6 +371,62 @@ test('proxy malformed JSON does NOT emit "succeeded" log before throwing', async
   assert.equal(succeededLogged, false, 'success log MUST NOT fire when JSON.parse throws');
 });
 
+// ─── Best-effort caller budgets (fast-fail) ────────────────────────────
+//
+// fetchTopicTimeline in seed-gdelt-intel is best-effort and discards the
+// result on failure. It MUST NOT inherit the helper's article-fetch
+// defaults (3 direct retries + 5 proxy attempts ≈ 90s worst case) because
+// it's called 2× per topic × 6 topics → up to 18 minutes blocking on
+// data the seeder throws away. Lock the fast-fail contract.
+
+test('maxRetries:0 + proxyMaxAttempts:0 → single direct attempt, no proxy, throws on first failure', async () => {
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+  let directCalls = 0;
+  let proxyCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    return { ok: false, status: 429, headers: { get: () => null }, json: async () => ({}) };
+  };
+  await assert.rejects(
+    () => fetchGdeltJson(URL, {
+      label: 'best-effort',
+      maxRetries: 0,
+      proxyMaxAttempts: 0,
+      _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+      _proxyCurlFetcher: () => { proxyCalls += 1; return JSON.stringify(VALID_PAYLOAD); },
+      _sleep: async () => {},
+    }),
+    /GDELT retries exhausted/,
+  );
+  assert.equal(directCalls, 1, 'maxRetries:0 → single direct attempt');
+  assert.equal(proxyCalls, 0, 'proxyMaxAttempts:0 → proxy loop must NOT execute even when curl resolver is configured');
+});
+
+test('proxyMaxAttempts:0 → no "trying proxy" log emitted (no misleading "up to 0×" line)', async () => {
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+  globalThis.fetch = async () => ({
+    ok: false, status: 429, headers: { get: () => null }, json: async () => ({}),
+  });
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (msg) => { logs.push(String(msg)); };
+  try {
+    await assert.rejects(
+      () => fetchGdeltJson(URL, {
+        label: 'best-effort',
+        maxRetries: 0,
+        proxyMaxAttempts: 0,
+        _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+        _proxyCurlFetcher: () => JSON.stringify(VALID_PAYLOAD),
+        _sleep: async () => {},
+      }),
+      /GDELT retries exhausted/,
+    );
+  } finally { console.log = originalLog; }
+  const tryingLogged = logs.some((l) => l.includes('trying proxy'));
+  assert.equal(tryingLogged, false, 'no "trying proxy (curl) up to 0×" line — would be both wrong and noisy');
+});
+
 // ─── parseRetryAfterMs unit ─────────────────────────────────────────────
 
 test('parseRetryAfterMs: seconds + HTTP-date + null cases', async () => {

@@ -133,7 +133,11 @@ export async function fetchGdeltJson(url, opts = {}) {
   const curlProxyAuth = _curlProxyResolver();
   let lastProxyError = null;
   let proxyAttemptsRun = 0;
-  if (curlProxyAuth) {
+  // Skip the proxy block entirely when the caller opted out via
+  // proxyMaxAttempts:0 (best-effort callers that want fast-fail —
+  // e.g. fetchTopicTimeline in seed-gdelt-intel which discards failures).
+  // Avoids both the wasted log line and the no-op for loop.
+  if (curlProxyAuth && proxyMaxAttempts > 0) {
     console.log(`  [GDELT] direct exhausted on ${label} (${lastDirectError?.message ?? 'unknown'}); trying proxy (curl) up to ${proxyMaxAttempts}× (Decodo session-rotates per call)`);
     for (let attempt = 1; attempt <= proxyMaxAttempts; attempt++) {
       proxyAttemptsRun = attempt;
