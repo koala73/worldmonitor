@@ -69,12 +69,18 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   const countryCodes = await listScorableCountries();
   if (countryCodes.length === 0) return { items: [], greyedOut: [] };
 
-  let cachedScores = await getCachedResilienceScores(countryCodes);
+  const cachedScores = await getCachedResilienceScores(countryCodes);
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
   if (missing.length > 0) {
     try {
-      await warmMissingResilienceScores(missing.slice(0, SYNC_WARM_LIMIT));
-      cachedScores = await getCachedResilienceScores(countryCodes);
+      // Merge warm results into cachedScores directly rather than re-reading
+      // from Redis. Upstash REST writes (/set) aren't always visible to an
+      // immediately-following /pipeline GET in the same Vercel invocation,
+      // which collapsed coverage to 0/N and silently dropped the ranking
+      // publish. The warmer already holds every score in memory — trust it.
+      // See `feedback_upstash_write_reread_race_in_handler.md`.
+      const warmed = await warmMissingResilienceScores(missing.slice(0, SYNC_WARM_LIMIT));
+      for (const [countryCode, score] of warmed) cachedScores.set(countryCode, score);
     } catch (err) {
       console.warn('[resilience] ranking warmup failed:', err);
     }

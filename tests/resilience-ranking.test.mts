@@ -160,6 +160,53 @@ describe('resilience ranking contracts', () => {
     assert.ok(redis.has('seed-meta:resilience:ranking'), 'seed-meta must be written alongside the ranking');
   });
 
+  it('publishes ranking via in-memory warm results even when Upstash pipeline-GET lags after /set writes (race regression)', async () => {
+    // Simulates the documented Upstash REST write→re-read lag inside a single
+    // Vercel invocation: /set calls succeed, but a pipeline GET immediately
+    // afterwards can return null for the same keys. Pre-fix, this collapsed
+    // coverage to 0 and silently dropped the ranking publish. Post-fix, the
+    // handler merges warm results from memory, so coverage reflects reality.
+    const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES });
+    // Override the static index: 2 countries, neither pre-cached — both must
+    // be warmed by the handler. Pre-fix, both pipeline-GETs post-warm would
+    // return null, coverage = 0% < 75%, handler skips the write. Post-fix,
+    // the in-memory merge carries both scores, coverage = 100%, write
+    // proceeds.
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+
+    // Stale pipeline-GETs for score keys: pretend Redis hasn't caught up with
+    // the /set writes yet. /set calls still mutate the underlying map so the
+    // final assertion on ranking presence can verify the SET happened.
+    const lagged = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const allScoreReads = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'GET' && typeof cmd[1] === 'string' && cmd[1].startsWith('resilience:score:v9:'),
+        );
+        if (allScoreReads) {
+          // Simulate visibility lag: pretend no scores are cached yet.
+          return new Response(
+            JSON.stringify(commands.map(() => ({ result: null }))),
+            { status: 200 },
+          );
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = lagged;
+
+    await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.ok(redis.has('resilience:ranking:v9'), 'ranking must be published despite pipeline-GET race');
+    assert.ok(redis.has('seed-meta:resilience:ranking'), 'seed-meta must be written despite pipeline-GET race');
+  });
+
   it('defaults rankStable=false when no interval data exists', () => {
     const item = buildRankingItem('ZZ', {
       countryCode: 'ZZ', overallScore: 50, level: 'medium',

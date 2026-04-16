@@ -410,7 +410,16 @@ export function sortRankingItems(items: ResilienceRankingItem[]): ResilienceRank
   });
 }
 
-export async function warmMissingResilienceScores(countryCodes: string[]): Promise<void> {
+// Returns the in-memory map of successfully warmed scores keyed by normalized
+// country code. Callers should merge this into their local cachedScores rather
+// than re-reading from Redis: Upstash REST has visible write→read lag within a
+// single Vercel invocation, so an immediate pipeline GET of freshly-written
+// keys can return 0 results even when every SET succeeded, which collapses the
+// ranking coverage gate and silently drops the ranking publish (PR that added
+// this note — see `feedback_upstash_write_reread_race_in_handler.md`).
+export async function warmMissingResilienceScores(
+  countryCodes: string[],
+): Promise<Map<string, GetResilienceScoreResponse>> {
   const uniqueCodes = [...new Set(countryCodes.map((countryCode) => normalizeCountryCode(countryCode)).filter(Boolean))];
   // Share one memoized reader across all countries so global Redis keys (conflict events,
   // sanctions, unrest, etc.) are fetched only once instead of once per country.
@@ -418,12 +427,16 @@ export async function warmMissingResilienceScores(countryCodes: string[]): Promi
   const results = await Promise.allSettled(
     uniqueCodes.map((countryCode) => ensureResilienceScoreCached(countryCode, sharedReader)),
   );
+  const warmed = new Map<string, GetResilienceScoreResponse>();
   const failures: Array<{ countryCode: string; reason: string }> = [];
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
-    if (result?.status === 'rejected') {
+    const countryCode = uniqueCodes[i]!;
+    if (result?.status === 'fulfilled' && result.value) {
+      warmed.set(countryCode, result.value);
+    } else if (result?.status === 'rejected') {
       failures.push({
-        countryCode: uniqueCodes[i]!,
+        countryCode,
         reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
       });
     }
@@ -432,4 +445,5 @@ export async function warmMissingResilienceScores(countryCodes: string[]): Promi
     const sample = failures.slice(0, 10).map((f) => `${f.countryCode}(${f.reason})`).join(', ');
     console.warn(`[resilience] warm failed for ${failures.length}/${uniqueCodes.length} countries: ${sample}${failures.length > 10 ? '...' : ''}`);
   }
+  return warmed;
 }
