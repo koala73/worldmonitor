@@ -25,6 +25,13 @@ function prefixKey(key: string): string {
   return `${cachedPrefix}${key}`;
 }
 
+// Test-only: invalidate the memoized key prefix so a test that mutates
+// process.env.VERCEL_ENV / VERCEL_GIT_COMMIT_SHA sees the new value on the
+// next read. No production caller should ever invoke this.
+export function __resetKeyPrefixCacheForTests(): void {
+  cachedPrefix = undefined;
+}
+
 /**
  * Like getCachedJson but throws on Redis/network failures instead of returning null.
  * Always uses the raw (unprefixed) key — callers that write via seed scripts (which bypass

@@ -207,6 +207,58 @@ describe('resilience ranking contracts', () => {
     assert.ok(redis.has('seed-meta:resilience:ranking'), 'seed-meta must be written despite pipeline-GET race');
   });
 
+  it('pipeline SETs apply env prefix so preview warms do not leak into production namespace', async () => {
+    // Reviewer regression: passing `raw=true` to runRedisPipeline bypasses the
+    // env-based key prefix (preview: / dev:) that isolates preview deploys
+    // from production. The symptom is asymmetric: preview reads hit
+    // `preview:<sha>:resilience:score:v9:XX` while preview writes landed at
+    // raw `resilience:score:v9:XX`, simultaneously (a) missing the preview
+    // cache forever and (b) poisoning production's shared cache. Simulate a
+    // preview deploy and assert the pipeline SET keys carry the prefix.
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'abcdef12ffff';
+    const { __resetKeyPrefixCacheForTests } = await import('../server/_shared/redis.ts');
+    __resetKeyPrefixCacheForTests();
+
+    try {
+      const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES }, { keepVercelEnv: true });
+      redis.set('resilience:static:index:v1', JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }));
+
+      const pipelineBodies: Array<Array<Array<unknown>>> = [];
+      const capturing = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+          pipelineBodies.push(JSON.parse(init.body) as Array<Array<unknown>>);
+        }
+        return fetchImpl(input, init);
+      }) as typeof fetch;
+      globalThis.fetch = capturing;
+
+      await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+      const scoreSetKeys = pipelineBodies
+        .flat()
+        .filter((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && (cmd[1] as string).includes('resilience:score:v9:'))
+        .map((cmd) => cmd[1] as string);
+      assert.ok(scoreSetKeys.length >= 2, `expected at least 2 score SETs, got ${scoreSetKeys.length}`);
+      for (const key of scoreSetKeys) {
+        assert.ok(
+          key.startsWith('preview:abcdef12:'),
+          `score SET key must carry preview prefix; got ${key} — writes would poison the production namespace`,
+        );
+      }
+    } finally {
+      delete process.env.VERCEL_ENV;
+      delete process.env.VERCEL_GIT_COMMIT_SHA;
+      __resetKeyPrefixCacheForTests();
+    }
+  });
+
   it('does NOT publish ranking when score-key /set writes silently fail (persistence guard)', async () => {
     // Reviewer regression: trusting in-memory warm results without verifying
     // persistence turned a read-lag fix into a write-failure false positive.

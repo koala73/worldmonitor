@@ -124,10 +124,10 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
   return { fetchImpl, redis, sortedSets, expires };
 }
 
-export function installRedis(fixtures: Record<string, unknown>): FakeRedisState {
+export function installRedis(fixtures: Record<string, unknown>, opts: { keepVercelEnv?: boolean } = {}): FakeRedisState {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
-  delete process.env.VERCEL_ENV;
+  if (!opts.keepVercelEnv) delete process.env.VERCEL_ENV;
   const state = createRedisFetch(fixtures);
   globalThis.fetch = state.fetchImpl;
   return state;

@@ -473,6 +473,12 @@ export async function warmMissingResilienceScores(
   }
   if (scores.length === 0) return warmed;
 
+  // Default `raw=false` so runRedisPipeline applies the env-based key prefix
+  // (`preview:<sha>:` on preview/dev, empty in production). The normal score
+  // reads (`getCachedResilienceScores`, `ensureResilienceScoreCached`) look in
+  // the prefixed namespace via setCachedJson/cachedFetchJson; writing raw here
+  // would (a) make preview warms invisible to subsequent preview reads and
+  // (b) leak preview writes into the production-visible unprefixed namespace.
   const setCommands = scores.map(({ cc, score }) => [
     'SET',
     scoreCacheKey(cc),
@@ -480,7 +486,7 @@ export async function warmMissingResilienceScores(
     'EX',
     String(RESILIENCE_SCORE_CACHE_TTL_SECONDS),
   ]);
-  const persistResults = await runRedisPipeline(setCommands, true);
+  const persistResults = await runRedisPipeline(setCommands);
   // runRedisPipeline returns [] on transport/HTTP failure. Without a
   // per-command OK signal we have no proof anything persisted — return an
   // empty map so the ranking coverage gate can't false-positive on a broken
