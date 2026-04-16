@@ -248,6 +248,7 @@ Sentry.init({
     /ConvexError: CONFLICT/, // Expected OCC rejection on concurrent preference saves
     /\[CONVEX [AQM]\(.+?\)\] Connection lost while action was in flight/, // Convex SDK transient WS disconnect
     /Response did not contain `success` or `data`/, // DuckDuckGo browser internal tracker/content-block response — never emitted by our code
+    /The media resource indicated by the src attribute or assigned media provider object was not suitable/, // Browser-native HTML5 video/audio codec rejection (Firefox Mobile unsupported formats) — WORLDMONITOR-N2
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
