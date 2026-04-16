@@ -15,6 +15,8 @@ const zlib = require('zlib');
 const path = require('path');
 const { readFileSync } = require('fs');
 const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
@@ -1672,6 +1674,8 @@ function fetchYahooQuoteSummary(symbol) {
   return new Promise((resolve) => {
     const modules = 'summaryDetail,defaultKeyStatistics';
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
+    let settled = false;
+    const settle = (value) => { if (settled) return; settled = true; resolve(value); };
     const req = https.get(url, {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       timeout: 12000,
@@ -1679,7 +1683,7 @@ function fetchYahooQuoteSummary(symbol) {
       if (resp.statusCode !== 200) {
         resp.resume();
         logThrottled('warn', `yahoo-summary-${resp.statusCode}:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} HTTP ${resp.statusCode}`);
-        return resolve(_yahooQuoteSummaryProxyFallback(symbol, url));
+        return settle(_yahooQuoteSummaryProxyFallback(symbol, url));
       }
       let body = '';
       resp.on('data', (chunk) => { body += chunk; });
@@ -1687,11 +1691,11 @@ function fetchYahooQuoteSummary(symbol) {
         try {
           const data = JSON.parse(body);
           const result = data?.quoteSummary?.result?.[0];
-          if (!result) return resolve(null); // app-level "no data" — proxy won't change it
+          if (!result) return settle(null); // app-level "no data" — proxy won't change it
           const sd = result.summaryDetail || {};
           const ks = result.defaultKeyStatistics || {};
           const raw = (obj) => typeof obj === 'object' && obj !== null ? (obj.raw ?? obj.fmt ?? null) : (typeof obj === 'number' ? obj : null);
-          resolve({
+          settle({
             trailingPE: raw(sd.trailingPE),
             forwardPE: raw(sd.forwardPE),
             beta: raw(sd.beta) ?? raw(ks.beta3Year),
@@ -1699,21 +1703,25 @@ function fetchYahooQuoteSummary(symbol) {
             threeYearReturn: raw(ks.threeYearAverageReturn),
             fiveYearReturn: raw(ks.fiveYearAverageReturn),
           });
-        } catch { resolve(_yahooQuoteSummaryProxyFallback(symbol, url)); }
+        } catch { settle(_yahooQuoteSummaryProxyFallback(symbol, url)); }
       });
     });
-    req.on('error', (err) => { logThrottled('warn', `yahoo-summary-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} error: ${err.message}`); resolve(_yahooQuoteSummaryProxyFallback(symbol, url)); });
-    req.on('timeout', () => { req.destroy(); logThrottled('warn', `yahoo-summary-timeout:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} timeout`); resolve(_yahooQuoteSummaryProxyFallback(symbol, url)); });
+    req.on('error', (err) => { if (settled) return; logThrottled('warn', `yahoo-summary-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} error: ${err.message}`); settle(_yahooQuoteSummaryProxyFallback(symbol, url)); });
+    req.on('timeout', () => { if (settled) return; req.destroy(); logThrottled('warn', `yahoo-summary-timeout:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} timeout`); settle(_yahooQuoteSummaryProxyFallback(symbol, url)); });
   });
 }
 
-function _yahooQuoteSummaryProxyFallback(symbol, url) {
+// Async so the curl call doesn't block the relay event loop. Returns a
+// Promise; resolve(promise) in the caller chains the Promise state through
+// to fetchYahooQuoteSummary's outer Promise, so awaiting fetchYahoo* in
+// seedSectorSummary yields the event loop during the curl round-trip.
+async function _yahooQuoteSummaryProxyFallback(symbol, url) {
   const proxyAuth = resolveProxyString();
   if (!proxyAuth) return null;
   if (Date.now() < _yahooCurlProxyCooldownUntil) return null;
   // Transport failures (timeout, proxy-connect refused, garbage body) must
   // tick the cooldown too — the failure mode this PR hardens against would
-  // otherwise thrash through N × 20s curl attempts per tick with no backoff.
+  // otherwise thrash through N curl attempts per tick with no backoff.
   const bumpCooldown = () => {
     _yahooCurlProxyFailCount++;
     if (_yahooCurlProxyFailCount >= 5) {
@@ -1723,7 +1731,6 @@ function _yahooQuoteSummaryProxyFallback(symbol, url) {
     }
   };
   try {
-    const { execFileSync } = require('child_process');
     const args = [
       '-sS', '--compressed', '--max-time', '15', '-L',
       '-x', `http://${proxyAuth}`,
@@ -1732,15 +1739,15 @@ function _yahooQuoteSummaryProxyFallback(symbol, url) {
       '-w', '\n%{http_code}',
       url,
     ];
-    const out = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
-    const nl = out.lastIndexOf('\n');
-    const status = parseInt(out.slice(nl + 1).trim(), 10);
+    const { stdout } = await execFileAsync('curl', args, { encoding: 'utf8', timeout: 20000 });
+    const nl = stdout.lastIndexOf('\n');
+    const status = parseInt(stdout.slice(nl + 1).trim(), 10);
     if (status < 200 || status >= 300) {
       bumpCooldown();
       logThrottled('warn', `sector-yahoo-proxy-${status}:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} proxy HTTP ${status}`);
       return null;
     }
-    const data = JSON.parse(out.slice(0, nl));
+    const data = JSON.parse(stdout.slice(0, nl));
     const result = data?.quoteSummary?.result?.[0];
     if (!result) {
       // Proxy reached Yahoo and got a valid 200 — route is healthy. Reset

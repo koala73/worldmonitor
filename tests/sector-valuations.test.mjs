@@ -98,7 +98,10 @@ describe('parseSectorValuation', () => {
 
 describe('fetchYahooQuoteSummary (static analysis)', () => {
   const fnStart = src.indexOf('function fetchYahooQuoteSummary(');
-  const fnChunk = src.slice(fnStart, fnStart + 1500);
+  // Window sized to cover the direct-fetch block (headers, timeout, field
+  // extraction). Grown to 2000 when proxy-fallback wiring (settled guard,
+  // curl helper reference) was added — field extraction must stay visible.
+  const fnChunk = src.slice(fnStart, fnStart + 2000);
 
   it('exists in ais-relay.cjs', () => {
     assert.ok(fnStart > -1, 'fetchYahooQuoteSummary function not found');
