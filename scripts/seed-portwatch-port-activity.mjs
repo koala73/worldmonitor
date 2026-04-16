@@ -33,7 +33,8 @@ const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 45_000;
 const HISTORY_DAYS = 90;
 const MAX_PORTS_PER_COUNTRY = 50;
-const CONCURRENCY = 4;
+const CONCURRENCY = 12;
+const BATCH_LOG_EVERY = 5;
 
 function epochToTimestamp(epochMs) {
   const d = new Date(epochMs);
@@ -61,14 +62,19 @@ async function fetchWithTimeout(url) {
   return body;
 }
 
-async function fetchPortRef(iso3) {
+// Fetch ALL ports globally in one paginated pass, grouped by ISO3.
+// Replaces 240× per-country queries with ~5 pages of 2000. Returns
+// Map<iso3, Map<portId, { lat, lon }>>.
+async function fetchAllPortRefs() {
+  const byIso3 = new Map();
   let offset = 0;
-  const refMap = new Map();
   let body;
+  let page = 0;
   do {
+    page++;
     const params = new URLSearchParams({
-      where: `ISO3='${iso3}'`,
-      outFields: 'portid,lat,lon',
+      where: '1=1',
+      outFields: 'portid,ISO3,lat,lon',
       returnGeometry: 'false',
       orderByFields: 'portid ASC',
       resultRecordCount: String(PAGE_SIZE),
@@ -77,15 +83,20 @@ async function fetchPortRef(iso3) {
       f: 'json',
     });
     body = await fetchWithTimeout(`${EP4_BASE}?${params}`);
-    for (const f of body.features ?? []) {
+    const features = body.features ?? [];
+    for (const f of features) {
       const a = f.attributes;
-      if (a?.portid != null) {
-        refMap.set(String(a.portid), { lat: Number(a.lat ?? 0), lon: Number(a.lon ?? 0) });
-      }
+      if (a?.portid == null || !a?.ISO3) continue;
+      const iso3 = String(a.ISO3);
+      const portId = String(a.portid);
+      let ports = byIso3.get(iso3);
+      if (!ports) { ports = new Map(); byIso3.set(iso3, ports); }
+      ports.set(portId, { lat: Number(a.lat ?? 0), lon: Number(a.lon ?? 0) });
     }
+    console.log(`  [port-activity]   ref page ${page}: +${features.length} ports (${byIso3.size} countries so far)`);
     offset += PAGE_SIZE;
   } while (body.exceededTransferLimit);
-  return refMap;
+  return byIso3;
 }
 
 async function fetchActivityRows(iso3, since) {
@@ -186,11 +197,8 @@ async function redisPipeline(commands) {
   return resp.json();
 }
 
-async function processCountry(iso3, iso2, since) {
-  const [refMap, rawRows] = await Promise.all([
-    fetchPortRef(iso3),
-    fetchActivityRows(iso3, since),
-  ]);
+async function processCountry(iso3, iso2, since, refMap) {
+  const rawRows = await fetchActivityRows(iso3, since);
   if (!rawRows.length) return null;
   const ports = computeCountryPorts(rawRows, refMap);
   if (!ports.length) return null;
@@ -201,18 +209,30 @@ async function processCountry(iso3, iso2, since) {
 // Returns { countries: string[], countryData: Map<iso2, payload>, fetchedAt: string }.
 export async function fetchAll() {
   const { iso3ToIso2 } = createCountryResolvers();
-  const ISO3_LIST = [...iso3ToIso2.keys()];
   const since = Date.now() - HISTORY_DAYS * 86400000;
+
+  console.log('  [port-activity] Fetching global port reference (EP4)...');
+  const t0 = Date.now();
+  const refsByIso3 = await fetchAllPortRefs();
+  console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+
+  // Only fetch activity for ISO3s that have at least one port AND exist in our iso3→iso2 map.
+  const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
+  const skipped = refsByIso3.size - eligibleIso3.length;
+  console.log(`  [port-activity] Activity queue: ${eligibleIso3.length} countries (skipping ${skipped} unmapped iso3, concurrency ${CONCURRENCY})`);
 
   const countryData = new Map();
   const errors = [];
+  const batches = Math.ceil(eligibleIso3.length / CONCURRENCY);
+  const activityStart = Date.now();
 
-  for (let i = 0; i < ISO3_LIST.length; i += CONCURRENCY) {
-    const batch = ISO3_LIST.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < eligibleIso3.length; i += CONCURRENCY) {
+    const batch = eligibleIso3.slice(i, i + CONCURRENCY);
+    const batchIdx = Math.floor(i / CONCURRENCY) + 1;
     const settled = await Promise.allSettled(
       batch.map(iso3 => {
         const iso2 = iso3ToIso2.get(iso3);
-        return processCountry(iso3, iso2, since);
+        return processCountry(iso3, iso2, since, refsByIso3.get(iso3));
       })
     );
     for (let j = 0; j < batch.length; j++) {
@@ -225,6 +245,10 @@ export async function fetchAll() {
       if (!outcome.value) continue;
       const { iso2, ports, fetchedAt } = outcome.value;
       countryData.set(iso2, { iso2, ports, fetchedAt });
+    }
+    if (batchIdx === 1 || batchIdx % BATCH_LOG_EVERY === 0 || batchIdx === batches) {
+      const elapsed = ((Date.now() - activityStart) / 1000).toFixed(1);
+      console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries seeded, ${errors.length} errors (${elapsed}s)`);
     }
   }
 
@@ -258,6 +282,23 @@ async function main() {
   // Hoist so the catch block can extend TTLs even when the error occurs before these are resolved.
   let prevCountryKeys = [];
   let prevCount = 0;
+
+  // Bundle-runner SIGKILLs via SIGTERM → SIGKILL on timeout. Release the lock
+  // and extend existing TTLs synchronously(ish) so the next cron tick isn't
+  // blocked for up to 30 min and the Redis snapshot doesn't evaporate.
+  let sigHandled = false;
+  const onSigterm = async () => {
+    if (sigHandled) return;
+    sigHandled = true;
+    console.error('  [port-activity] SIGTERM received — releasing lock + extending TTLs');
+    try {
+      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL);
+    } catch {}
+    try { await releaseLock(LOCK_DOMAIN, runId); } catch {}
+    process.exit(1);
+  };
+  process.on('SIGTERM', onSigterm);
+  process.on('SIGINT', onSigterm);
 
   try {
     // Read previous snapshot first — needed for both degradation guard and error TTL extension.
