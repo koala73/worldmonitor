@@ -41,6 +41,13 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
     maxRetries = 3,
     retryBaseMs = 2_000,
     label = zones.map((zone) => zone.name).join(', '),
+    // Test hooks. Production callers leave these unset; the helper uses the
+    // real proxy resolver + fetcher from _seed-utils.mjs. Tests inject mocks
+    // here to exercise the proxy fallback path without spinning up a real
+    // Decodo tunnel. Keep these undocumented in PR descriptions — they are
+    // implementation-only seams, not a public API surface.
+    _proxyResolver = resolveProxy,
+    _proxyFetcher = httpsProxyFetchRaw,
   } = opts;
 
   const params = new URLSearchParams({
@@ -53,6 +60,13 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   });
   const url = `https://archive-api.open-meteo.com/v1/archive?${params.toString()}`;
 
+  // Track the last direct-path failure so the eventual throw carries useful
+  // context if proxy fallback is also unavailable / fails. Without this the
+  // helper would throw a generic "retries exhausted" message and lose the
+  // upstream error (timeout, ECONNRESET, HTTP status code) that triggered
+  // the fallback path.
+  let lastDirectError = null;
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     let resp;
     try {
@@ -61,13 +75,18 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
+      lastDirectError = err;
       if (attempt < maxRetries) {
         const retryMs = retryBaseMs * 2 ** attempt;
         console.log(`  [OPEN_METEO] ${err?.message ?? err} for ${label}; retrying batch in ${Math.round(retryMs / 1000)}s`);
         await sleep(retryMs);
         continue;
       }
-      throw err;
+      // Final direct attempt threw (timeout, ECONNRESET, DNS, etc.). Fall
+      // through to the proxy fallback below — the previous version threw
+      // here, which silently bypassed the proxy path for thrown-error cases
+      // and only ran fallback for non-OK HTTP responses.
+      break;
     }
 
     if (resp.ok) {
@@ -77,6 +96,8 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
       }
       return data;
     }
+
+    lastDirectError = new Error(`HTTP ${resp.status}`);
 
     if (RETRYABLE_STATUSES.has(resp.status) && attempt < maxRetries) {
       const retryMs = parseRetryAfterMs(resp.headers.get('retry-after')) ?? (retryBaseMs * 2 ** attempt);
@@ -97,11 +118,11 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   // _seed-utils.mjs. Decodo gateway gets a different egress IP that is not
   // (yet) on Open-Meteo's per-IP throttle. Skip silently if no proxy is
   // configured (preserves existing behavior in non-Railway envs).
-  const proxyAuth = resolveProxy();
+  const proxyAuth = _proxyResolver();
   if (proxyAuth) {
     try {
-      console.log(`  [OPEN_METEO] direct exhausted on ${label}; trying proxy`);
-      const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
+      console.log(`  [OPEN_METEO] direct exhausted on ${label} (${lastDirectError?.message ?? 'unknown'}); trying proxy`);
+      const { buffer } = await _proxyFetcher(url, proxyAuth, {
         accept: 'application/json',
         timeoutMs,
       });
@@ -116,5 +137,8 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
     }
   }
 
-  throw new Error(`Open-Meteo retries exhausted for ${label}`);
+  throw new Error(
+    `Open-Meteo retries exhausted for ${label}${lastDirectError ? ` (last direct: ${lastDirectError.message})` : ''}`,
+    lastDirectError ? { cause: lastDirectError } : undefined,
+  );
 }

@@ -47,15 +47,10 @@ afterEach(() => {
   delete process.env.SEED_PROXY_AUTH;
 });
 
-// Setting any of the proxy envs the project recognizes makes resolveProxy()
-// return a usable string. We patch httpsProxyFetchRaw via dynamic-import-time
-// module replacement: instead of true module mocking (heavy), we mock the
-// underlying `fetch` AND set proxy creds — fetchOpenMeteoArchiveBatch tries
-// direct first (mocked to 429), then calls httpsProxyFetchRaw which itself
-// uses a child fetch through _proxy-utils.cjs. To avoid the complexity, we
-// instead test the wiring by setting NO proxy env and asserting the existing
-// "no proxy → throw" behavior holds, plus a separate test that the helper
-// detects proxy presence.
+// The helper accepts `_proxyResolver` and `_proxyFetcher` opt overrides
+// specifically for tests — production callers leave them unset and get the
+// real Decodo path from _seed-utils.mjs. This lets us exercise the proxy
+// branch without spinning up a real CONNECT tunnel.
 
 test('429 with no proxy configured: throws after exhausting retries (preserves pre-fix behavior)', async () => {
   // Re-import per-test so module-level state (none currently) is fresh.
@@ -127,4 +122,112 @@ test('non-retryable status (500): falls through to proxy attempt without extra r
   // first attempt, then the proxy-fallback block runs (no proxy env →
   // skipped) → throws exhausted.
   assert.equal(calls, 1);
+});
+
+// ─── Proxy fallback path — actually exercised via _proxyResolver/_proxyFetcher ───
+
+test('429 + proxy configured + proxy succeeds: returns proxy data, never throws', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  globalThis.fetch = async () => ({
+    ok: false, status: 429,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  let proxyCalls = 0;
+  let receivedProxyAuth = null;
+  const result = await fetchOpenMeteoArchiveBatch(ZONES, {
+    ...ARCHIVE_OPTS,
+    _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _proxyFetcher: async (url, proxyAuth, _opts) => {
+      proxyCalls += 1;
+      receivedProxyAuth = proxyAuth;
+      assert.match(url, /archive-api\.open-meteo\.com\/v1\/archive\?/);
+      return { buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'), contentType: 'application/json' };
+    },
+  });
+
+  assert.equal(proxyCalls, 1);
+  assert.equal(receivedProxyAuth, 'user:pass@gate.decodo.com:7000');
+  assert.equal(result.length, 2);
+  assert.equal(result[1].latitude, 80);
+});
+
+test('thrown fetch error (timeout/ECONNRESET) on final direct attempt → proxy fallback runs (P1 fix)', async () => {
+  // Pre-fix bug: the catch block did `throw err` after the final direct retry,
+  // which silently bypassed proxy fallback for thrown-error cases (timeout,
+  // ECONNRESET, DNS). Lock the new control flow: thrown error → break →
+  // proxy fallback runs.
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  let directCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    throw Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT' });
+  };
+
+  let proxyCalls = 0;
+  const result = await fetchOpenMeteoArchiveBatch(ZONES, {
+    ...ARCHIVE_OPTS,
+    _proxyResolver: () => 'user:pass@proxy.test:8000',
+    _proxyFetcher: async () => {
+      proxyCalls += 1;
+      return { buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'), contentType: 'application/json' };
+    },
+  });
+
+  assert.equal(directCalls, 2, 'direct attempts should exhaust retries before proxy');
+  assert.equal(proxyCalls, 1, 'proxy fallback MUST run on thrown-error path (regression guard)');
+  assert.equal(result.length, 2);
+});
+
+test('429 + proxy configured + proxy ALSO fails: throws exhausted with last direct error in cause', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  globalThis.fetch = async () => ({
+    ok: false, status: 429,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  let proxyCalls = 0;
+  await assert.rejects(
+    () => fetchOpenMeteoArchiveBatch(ZONES, {
+      ...ARCHIVE_OPTS,
+      _proxyResolver: () => 'user:pass@proxy.test:8000',
+      _proxyFetcher: async () => {
+        proxyCalls += 1;
+        throw new Error('proxy 502');
+      },
+    }),
+    (err) => {
+      assert.match(err.message, /Open-Meteo retries exhausted/);
+      assert.match(err.message, /HTTP 429/);
+      return true;
+    },
+  );
+  assert.equal(proxyCalls, 1);
+});
+
+test('proxy fallback returns wrong batch size: caught + warns, throws exhausted', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  globalThis.fetch = async () => ({
+    ok: false, status: 429,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  await assert.rejects(
+    () => fetchOpenMeteoArchiveBatch(ZONES, {
+      ...ARCHIVE_OPTS,
+      _proxyResolver: () => 'user:pass@proxy.test:8000',
+      _proxyFetcher: async () => ({
+        buffer: Buffer.from(JSON.stringify([VALID_PAYLOAD[0]]), 'utf8'),  // 1 instead of 2
+        contentType: 'application/json',
+      }),
+    }),
+    /Open-Meteo retries exhausted/,
+  );
 });
