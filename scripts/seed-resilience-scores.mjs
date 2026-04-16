@@ -165,9 +165,16 @@ async function seedResilienceScores() {
   if (missing > 0) {
     console.log(`[resilience-scores] Warming ${missing} missing via ranking endpoint...`);
     try {
+      // ?refresh=1 MUST be set here. The ranking aggregate (12h TTL) routinely
+      // outlives the per-country score keys (6h TTL), so in the post-6h /
+      // pre-12h window the handler's cache-hit early-return would fire and
+      // skip the whole warm path — scores would stay missing, coverage would
+      // degrade, and only the per-country laggard fallback (or nothing, if
+      // WM_KEY is absent) would recover. Forcing a recompute routes the call
+      // through warmMissingResilienceScores and its chunked pipeline SET.
       const headers = { 'User-Agent': SEED_UA, 'Accept': 'application/json' };
       if (WM_KEY) headers['X-WorldMonitor-Key'] = WM_KEY;
-      const resp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking`, {
+      const resp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking?refresh=1`, {
         headers,
         signal: AbortSignal.timeout(60_000),
       });

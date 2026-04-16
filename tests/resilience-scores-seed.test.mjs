@@ -179,11 +179,19 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
       /\['DEL',\s*RESILIENCE_RANKING_CACHE_KEY\]/,
       'seeder must not DEL the ranking key — ?refresh=1 is the atomic replacement path',
     );
-    assert.match(
-      src,
-      /get-resilience-ranking\?refresh=1/,
-      'rebuild HTTP call must include ?refresh=1 to force handler recompute',
-    );
+    // ALL seeder-initiated calls to get-resilience-ranking must carry
+    // ?refresh=1. The bulk-warm path (inside `if (missing > 0)`) also needs
+    // it — the ranking TTL (12h) exceeds the score TTL (6h), so in the 6h-12h
+    // window the handler would hit its cache and skip the warm entirely,
+    // leaving per-country scores absent and coverage degraded.
+    const rankingEndpointCalls = [...src.matchAll(/\/api\/resilience\/v1\/get-resilience-ranking(\?[^\s'`"]*)?/g)];
+    assert.ok(rankingEndpointCalls.length >= 2, `expected at least 2 ranking-endpoint calls (bulk-warm + refresh), got ${rankingEndpointCalls.length}`);
+    for (const [full, query] of rankingEndpointCalls) {
+      assert.ok(
+        (query || '').includes('refresh=1'),
+        `ranking endpoint call must include ?refresh=1 — found: ${full}`,
+      );
+    }
   });
 
   it('seeder does NOT write seed-meta:resilience:ranking (handler is sole writer)', () => {
