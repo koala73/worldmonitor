@@ -60,11 +60,22 @@ async function fetchIntervals(countryCodes: string[]): Promise<Map<string, Score
 }
 
 export const getResilienceRanking: ResilienceServiceHandler['getResilienceRanking'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: GetResilienceRankingRequest,
 ): Promise<GetResilienceRankingResponse> => {
-  const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as GetResilienceRankingResponse | null;
-  if (cached != null && (cached.items.length > 0 || (cached.greyedOut?.length ?? 0) > 0)) return cached;
+  // ?refresh=1 forces a full recompute-and-publish instead of returning the
+  // existing cache. Used by the seed-resilience-scores cron to refresh the
+  // aggregate every tick without having to DEL the current key first (which
+  // would nuke usable data on rebuild failure). Safe because the endpoint is
+  // gated at the gateway level — only trusted callers can trigger a rebuild.
+  const forceRefresh = (() => {
+    try { return new URL(ctx.request.url).searchParams.get('refresh') === '1'; }
+    catch { return false; }
+  })();
+  if (!forceRefresh) {
+    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as GetResilienceRankingResponse | null;
+    if (cached != null && (cached.items.length > 0 || (cached.greyedOut?.length ?? 0) > 0)) return cached;
+  }
 
   const countryCodes = await listScorableCountries();
   if (countryCodes.length === 0) return { items: [], greyedOut: [] };

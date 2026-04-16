@@ -501,10 +501,20 @@ export async function warmMissingResilienceScores(
     'EX',
     String(RESILIENCE_SCORE_CACHE_TTL_SECONDS),
   ]);
-  const persistResults: Array<{ result?: unknown }> = [];
+  // Fire all batches concurrently. Serial awaits would add 7 extra Upstash
+  // round-trips for a 222-country warm (~100-500ms each on Edge). Each batch
+  // is independent, so Promise.all collapses them into a single wall-clock
+  // window bounded by the slowest batch. Failed batches still pad with empty
+  // entries to preserve per-command index alignment downstream.
+  const batches: Array<Array<Array<string>>> = [];
   for (let i = 0; i < allSetCommands.length; i += SET_BATCH) {
-    const batch = allSetCommands.slice(i, i + SET_BATCH);
-    const batchResults = await runRedisPipeline(batch);
+    batches.push(allSetCommands.slice(i, i + SET_BATCH));
+  }
+  const batchOutcomes = await Promise.all(batches.map((batch) => runRedisPipeline(batch)));
+  const persistResults: Array<{ result?: unknown }> = [];
+  for (let b = 0; b < batches.length; b++) {
+    const batch = batches[b]!;
+    const batchResults = batchOutcomes[b]!;
     if (batchResults.length !== batch.length) {
       // runRedisPipeline returns [] on transport/HTTP failure. Pad with
       // empty entries so the per-command index alignment downstream stays

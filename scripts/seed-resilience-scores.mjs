@@ -253,15 +253,13 @@ async function seedResilienceScores() {
 async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
   const reason = laggardsWarmed > 0 ? `${laggardsWarmed} laggard warms` : 'scheduled cron refresh';
   try {
-    if (laggardsWarmed > 0) {
-      // Laggard path: force handler to recompute from the now-warm laggards.
-      // Non-laggard path: leave the existing key so a rebuild failure doesn't
-      // nuke usable data during the brief write window.
-      await redisPipeline(url, token, [['DEL', RESILIENCE_RANKING_CACHE_KEY]]);
-    }
+    // ?refresh=1 tells the handler to skip its cache-hit early-return and
+    // recompute-then-SET atomically. Avoids the earlier "DEL then rebuild"
+    // flow where a failed rebuild would leave the ranking absent instead of
+    // stale-but-present.
     const rebuildHeaders = { 'User-Agent': SEED_UA, 'Accept': 'application/json' };
     if (WM_KEY) rebuildHeaders['X-WorldMonitor-Key'] = WM_KEY;
-    const rebuildResp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking`, {
+    const rebuildResp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking?refresh=1`, {
       headers: rebuildHeaders,
       signal: AbortSignal.timeout(60_000),
     });

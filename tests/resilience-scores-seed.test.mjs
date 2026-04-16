@@ -168,14 +168,21 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
     );
   });
 
-  it('only DELs ranking when laggards were warmed (not on race-condition retry)', () => {
-    // Permit comments/whitespace between the if-condition and the DEL call —
-    // the property that matters is that the DEL is inside an if-block gated
-    // on laggardsWarmed > 0.
+  it('does NOT DEL the ranking before rebuild — uses ?refresh=1 instead', () => {
+    // The old flow (DEL + rebuild HTTP) created a brief absence window: if
+    // the rebuild request failed transiently, the ranking stayed absent
+    // until the next cron. We now send ?refresh=1 so the handler bypasses
+    // its cache-hit early-return and recomputes+SETs atomically. On failure,
+    // the existing (possibly stale) ranking remains.
+    assert.doesNotMatch(
+      src,
+      /\['DEL',\s*RESILIENCE_RANKING_CACHE_KEY\]/,
+      'seeder must not DEL the ranking key — ?refresh=1 is the atomic replacement path',
+    );
     assert.match(
       src,
-      /if\s*\(laggardsWarmed\s*>\s*0\)\s*\{[\s\S]{0,400}\['DEL',\s*RESILIENCE_RANKING_CACHE_KEY\]/,
-      'DEL must be guarded by laggardsWarmed > 0',
+      /get-resilience-ranking\?refresh=1/,
+      'rebuild HTTP call must include ?refresh=1 to force handler recompute',
     );
   });
 

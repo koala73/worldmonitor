@@ -263,6 +263,33 @@ describe('resilience ranking contracts', () => {
     }
   });
 
+  it('?refresh=1 bypasses the cache-hit early-return and recomputes the ranking', async () => {
+    // Seeder uses ?refresh=1 on the unconditional per-cron rebuild. Without
+    // this bypass, the seeder would have to DEL the ranking before rebuild
+    // (the old flow) — a failed rebuild would then leave the key absent
+    // instead of stale-but-present.
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+    // Seed a pre-existing ranking so the cache-hit early-return would
+    // normally fire. ?refresh=1 must ignore it.
+    const stale = { items: [{ countryCode: 'ZZ', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [] };
+    redis.set('resilience:ranking:v9', JSON.stringify(stale));
+
+    const request = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1');
+    const response = await getResilienceRanking({ request } as never, {});
+
+    // A real recompute returns the scorable countries from the manifest, not
+    // the stale ZZ stub.
+    const returnedCountries = response.items.concat(response.greyedOut ?? []).map((i) => i.countryCode);
+    assert.ok(!returnedCountries.includes('ZZ'), 'refresh=1 must recompute, not return the stale cached ZZ entry');
+    assert.ok(returnedCountries.includes('NO') || returnedCountries.includes('US'), 'recomputed ranking must reflect the current static index');
+  });
+
   it('warms via batched pipeline SETs (avoids 600KB single-pipeline timeout)', async () => {
     // The 5s pipeline timeout would fail on a 222-SET pipeline (~600KB body)
     // and the persistence guard would correctly return empty → no ranking.
