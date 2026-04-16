@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
 import { buildRankingItem, sortRankingItems } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
@@ -10,6 +11,7 @@ const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
+const originalVercelSha = process.env.VERCEL_GIT_COMMIT_SHA;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -19,6 +21,12 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
   if (originalVercelEnv == null) delete process.env.VERCEL_ENV;
   else process.env.VERCEL_ENV = originalVercelEnv;
+  if (originalVercelSha == null) delete process.env.VERCEL_GIT_COMMIT_SHA;
+  else process.env.VERCEL_GIT_COMMIT_SHA = originalVercelSha;
+  // Any test that touched VERCEL_ENV / VERCEL_GIT_COMMIT_SHA must invalidate
+  // the memoized key prefix so the next test recomputes it against the
+  // restored env — otherwise preview/dev tests would leak a stale prefix.
+  __resetKeyPrefixCacheForTests();
 });
 
 describe('resilience ranking contracts', () => {
@@ -215,47 +223,43 @@ describe('resilience ranking contracts', () => {
     // raw `resilience:score:v9:XX`, simultaneously (a) missing the preview
     // cache forever and (b) poisoning production's shared cache. Simulate a
     // preview deploy and assert the pipeline SET keys carry the prefix.
+    // Shared afterEach snapshots/restores VERCEL_ENV + VERCEL_GIT_COMMIT_SHA
+    // and invalidates the memoized key prefix, so this test just mutates them
+    // freely without a finally block.
     process.env.VERCEL_ENV = 'preview';
     process.env.VERCEL_GIT_COMMIT_SHA = 'abcdef12ffff';
-    const { __resetKeyPrefixCacheForTests } = await import('../server/_shared/redis.ts');
     __resetKeyPrefixCacheForTests();
 
-    try {
-      const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES }, { keepVercelEnv: true });
-      redis.set('resilience:static:index:v1', JSON.stringify({
-        countries: ['NO', 'US'],
-        recordCount: 2,
-        failedDatasets: [],
-        seedYear: 2026,
-      }));
+    const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES }, { keepVercelEnv: true });
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
 
-      const pipelineBodies: Array<Array<Array<unknown>>> = [];
-      const capturing = (async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-        if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
-          pipelineBodies.push(JSON.parse(init.body) as Array<Array<unknown>>);
-        }
-        return fetchImpl(input, init);
-      }) as typeof fetch;
-      globalThis.fetch = capturing;
-
-      await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
-
-      const scoreSetKeys = pipelineBodies
-        .flat()
-        .filter((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && (cmd[1] as string).includes('resilience:score:v9:'))
-        .map((cmd) => cmd[1] as string);
-      assert.ok(scoreSetKeys.length >= 2, `expected at least 2 score SETs, got ${scoreSetKeys.length}`);
-      for (const key of scoreSetKeys) {
-        assert.ok(
-          key.startsWith('preview:abcdef12:'),
-          `score SET key must carry preview prefix; got ${key} — writes would poison the production namespace`,
-        );
+    const pipelineBodies: Array<Array<Array<unknown>>> = [];
+    const capturing = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        pipelineBodies.push(JSON.parse(init.body) as Array<Array<unknown>>);
       }
-    } finally {
-      delete process.env.VERCEL_ENV;
-      delete process.env.VERCEL_GIT_COMMIT_SHA;
-      __resetKeyPrefixCacheForTests();
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = capturing;
+
+    await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    const scoreSetKeys = pipelineBodies
+      .flat()
+      .filter((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && (cmd[1] as string).includes('resilience:score:v9:'))
+      .map((cmd) => cmd[1] as string);
+    assert.ok(scoreSetKeys.length >= 2, `expected at least 2 score SETs, got ${scoreSetKeys.length}`);
+    for (const key of scoreSetKeys) {
+      assert.ok(
+        key.startsWith('preview:abcdef12:'),
+        `score SET key must carry preview prefix; got ${key} — writes would poison the production namespace`,
+      );
     }
   });
 
