@@ -67,6 +67,7 @@ const SEED_DOMAINS = {
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // 420min maxStaleMin / 2 — aligned with health.js (6h cron + 1h grace)
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
+  'intelligence:social-reddit': { key: 'seed-meta:intelligence:social-reddit', intervalMin: 90 }, // 60min relay loop (hourly, bumped from 10min to reduce Reddit IP blocking); intervalMin = maxStaleMin / 2 (180 / 2)
   'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 90 }, // 60min relay loop (hourly, bumped from 10min); intervalMin = maxStaleMin / 2 (180 / 2)
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
   'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
