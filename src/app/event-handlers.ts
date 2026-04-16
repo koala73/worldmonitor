@@ -8,18 +8,16 @@ import type { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
-import type { MapView } from '@/components';
+import type { MapView } from '@/components/MapContainer';
 import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
-import {
-  PlaybackControl,
-  StatusPanel,
-  PizzIntIndicator,
-  LlmStatusIndicator,
-  CIIPanel,
-  PredictionPanel,
-} from '@/components';
+import { PlaybackControl } from '@/components/PlaybackControl';
+import { StatusPanel } from '@/components/StatusPanel';
+import { PizzIntIndicator } from '@/components/PizzIntIndicator';
+import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
+import { CIIPanel } from '@/components/CIIPanel';
+import { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,

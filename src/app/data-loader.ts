@@ -3,7 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
 import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
 import type { MarketData } from '@/types';
-import type { TimeRange } from '@/components';
+import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
   INTEL_SOURCES,
@@ -135,35 +135,26 @@ import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQ
 import type { SectorValuation } from '@/components/MarketPanel';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
-import {
-  MarketPanel,
-  StockAnalysisPanel,
-  StockBacktestPanel,
-  HeatmapPanel,
-  CommoditiesPanel,
-  CryptoPanel,
-  CryptoHeatmapPanel,
-  DefiTokensPanel,
-  AiTokensPanel,
-  OtherTokensPanel,
-  PredictionPanel,
-  MonitorPanel,
-  InsightsPanel,
-  CIIPanel,
-  InternetDisruptionsPanel,
-  StrategicPosturePanel,
-  EconomicPanel,
-  EnergyComplexPanel,
-  TechReadinessPanel,
-  UcdpEventsPanel,
-  TradePolicyPanel,
-  SupplyChainPanel,
-  DiseaseOutbreaksPanel,
-  SocialVelocityPanel,
-  WsbTickerScannerPanel,
-  AAIISentimentPanel,
-  MarketBreadthPanel,
-} from '@/components';
+import { MarketPanel, HeatmapPanel, CommoditiesPanel, CryptoPanel, CryptoHeatmapPanel, DefiTokensPanel, AiTokensPanel, OtherTokensPanel } from '@/components/MarketPanel';
+import { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import { StockBacktestPanel } from '@/components/StockBacktestPanel';
+import { PredictionPanel } from '@/components/PredictionPanel';
+import { MonitorPanel } from '@/components/MonitorPanel';
+import { InsightsPanel } from '@/components/InsightsPanel';
+import { CIIPanel } from '@/components/CIIPanel';
+import { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
+import { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+import { EconomicPanel } from '@/components/EconomicPanel';
+import { EnergyComplexPanel } from '@/components/EnergyComplexPanel';
+import { TechReadinessPanel } from '@/components/TechReadinessPanel';
+import { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
+import { TradePolicyPanel } from '@/components/TradePolicyPanel';
+import { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
+import { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
+import { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
+import { AAIISentimentPanel } from '@/components/AAIISentimentPanel';
+import { MarketBreadthPanel } from '@/components/MarketBreadthPanel';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';

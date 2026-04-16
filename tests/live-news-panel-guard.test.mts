@@ -75,7 +75,8 @@ describe('LiveNewsPanel instantiation guard', () => {
 
   it('panel-layout.ts live-news guard checks getDefaultLiveChannels()', () => {
     const layout = src('src/app/panel-layout.ts');
-    const guardBlock = layout.match(/shouldCreatePanel\('live-news'\)[^}]*getDefaultLiveChannels\(\)\.length/s);
+    // Guard may be inside a lazyPanel callback or after shouldCreatePanel — match either pattern
+    const guardBlock = layout.match(/['"]live-news['"][^}]*getDefaultLiveChannels\(\)\.length/s);
     assert.ok(
       guardBlock,
       "panel-layout.ts must guard 'live-news' with getDefaultLiveChannels().length > 0",
@@ -84,7 +85,8 @@ describe('LiveNewsPanel instantiation guard', () => {
 
   it('panel-layout.ts live-news guard also checks loadChannelsFromStorage()', () => {
     const layout = src('src/app/panel-layout.ts');
-    const guardBlock = layout.match(/shouldCreatePanel\('live-news'\)[^}]*loadChannelsFromStorage\(\)\.length/s);
+    // Guard may be inside a lazyPanel callback or after shouldCreatePanel — match either pattern
+    const guardBlock = layout.match(/['"]live-news['"][^}]*loadChannelsFromStorage\(\)\.length/s);
     assert.ok(
       guardBlock,
       "panel-layout.ts must also check loadChannelsFromStorage().length > 0 so users with saved channels can use the panel on happy variant",

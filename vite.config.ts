@@ -1,4 +1,5 @@
-import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin, type PluginOption } from 'vite';
+import { visualizer } from 'rollup-plugin-visualizer';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -9,6 +10,69 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 
 // Env-dependent constants moved inside defineConfig function
 
+
+// Panel chunk assignment — derived from src/config/panels.ts variant definitions.
+// Panels in 3+ variants go to core-panels. Panels in 1-2 variants go to their
+// most specific variant chunk. Base components always go to core-panels.
+const CORE_PANEL_FILES = new Set([
+  // Base components and shared infrastructure
+  'Panel', 'VirtualList', 'Map', 'DeckGLMap', 'MapContainer', 'MapPopup',
+  'SignalModal', 'PlaybackControl', 'SearchModal', 'MobileWarningModal',
+  'PizzIntIndicator', 'LlmStatusIndicator', 'IntelligenceGapBadge',
+  'UnifiedSettings', 'BreakingNewsBanner', 'ResilienceWidget', 'StatusPanel',
+  'AviationCommandBar',
+  // Panels in 3+ variants (full, tech, finance, commodity share many)
+  'NewsPanel', 'MarketPanel', 'LiveNewsPanel', 'LiveWebcamsPanel',
+  'PinnedWebcamsPanel', 'InsightsPanel', 'PredictionPanel', 'MonitorPanel',
+  'EconomicPanel', 'MacroSignalsPanel', 'ETFFlowsPanel', 'StablecoinPanel',
+  'WorldClockPanel', 'AirlineIntelPanel',
+  // Shared across full + finance + commodity (3 variants)
+  // Note: CommoditiesPanel and HeatmapPanel are sub-exports of MarketPanel.ts, not standalone files
+  'EnergyComplexPanel', 'OilInventoriesPanel',
+  'TradePolicyPanel', 'SupplyChainPanel',
+  'SanctionsPressurePanel', 'GulfEconomiesPanel', 'ConsumerPricesPanel',
+  'LiquidityShiftsPanel', 'GoldIntelligencePanel',
+  // Programmatic / multi-variant panels (used dynamically or across 2+ variants)
+  'CustomWidgetPanel', 'McpDataPanel', 'CountryBriefPanel',
+  'CountryDeepDivePanel', 'TechHubsPanel', 'RegulationPanel',
+]);
+
+const HAPPY_PANEL_FILES = new Set([
+  'PositiveNewsFeedPanel', 'ProgressChartsPanel', 'CountersPanel',
+  'HeroSpotlightPanel', 'BreakthroughsTickerPanel', 'GoodThingsDigestPanel',
+  'SpeciesComebackPanel', 'RenewableEnergyPanel', 'GivingPanel',
+]);
+
+const FINANCE_PANEL_FILES = new Set([
+  'StockAnalysisPanel', 'StockBacktestPanel', 'DailyMarketBriefPanel',
+  'FearGreedPanel', 'AAIISentimentPanel', 'MarketBreadthPanel',
+  'MacroTilesPanel', 'FSIPanel', 'YieldCurvePanel',
+  'EarningsCalendarPanel', 'EconomicCalendarPanel', 'CotPositioningPanel',
+  'WsbTickerScannerPanel',
+  'GroceryBasketPanel', 'BigMacPanel', 'FuelPricesPanel', 'FaoFoodPriceIndexPanel',
+]);
+
+const FULL_PANEL_FILES = new Set([
+  'GdeltIntelPanel', 'CIIPanel', 'CascadePanel',
+  'StrategicRiskPanel', 'StrategicPosturePanel',
+  'CorrelationPanel', 'MilitaryCorrelationPanel', 'EscalationCorrelationPanel',
+  'EconomicCorrelationPanel', 'DisasterCorrelationPanel',
+  'DisplacementPanel', 'ClimateAnomalyPanel', 'PopulationExposurePanel',
+  'SecurityAdvisoriesPanel', 'DefensePatentsPanel',
+  'RadiationWatchPanel', 'ThermalEscalationPanel', 'OrefSirensPanel',
+  'TelegramIntelPanel', 'InvestmentsPanel', 'NationalDebtPanel',
+  'MarketImplicationsPanel', 'SatelliteFiresPanel', 'HormuzPanel',
+  'UcdpEventsPanel', 'ClimateNewsPanel', 'DiseaseOutbreaksPanel',
+  'SocialVelocityPanel', 'EnergyCrisisPanel',
+  // Full-only panels
+  'ForecastPanel', 'ChatAnalystPanel', 'CrossSourceSignalsPanel',
+  'DeductionPanel', 'GeoHubsPanel',
+]);
+
+const TECH_PANEL_FILES = new Set([
+  'TechEventsPanel', 'ServiceStatusPanel', 'InternetDisruptionsPanel',
+  'TechReadinessPanel', 'RuntimeConfigPanel',
+]);
 
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
@@ -654,10 +718,10 @@ export default defineConfig(({ mode }) => {
         },
 
         workbox: {
-          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+          globPatterns: ['**/*.html'],
           globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
-          // globe.gl + three.js grows main bundle past the 2 MiB default limit
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          // Only HTML entry points are precached now — 2 MiB is more than enough.
+          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -746,6 +810,16 @@ export default defineConfig(({ mode }) => {
                 expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
               },
             },
+            {
+              urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+                sameOrigin && /^\/assets\/.*\.(js|css)$/.test(url.pathname),
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'app-assets',
+                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
           ],
         },
 
@@ -753,6 +827,12 @@ export default defineConfig(({ mode }) => {
           enabled: false,
         },
       }),
+      ...(process.env.ANALYZE === '1' ? [visualizer({
+        filename: 'dist/bundle-report.html',
+        template: 'treemap',
+        gzipSize: true,
+        brotliSize: true,
+      }) as PluginOption] : []),
     ],
     resolve: {
       alias: {
@@ -825,8 +905,24 @@ export default defineConfig(({ mode }) => {
                 return 'sentry';
               }
             }
-            if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
-              return 'panels';
+            if (id.includes('/src/components/') && id.endsWith('.ts')) {
+              const match = id.match(/\/([^/]+)\.ts$/);
+              if (match) {
+                const fileName = match[1];
+                if (CORE_PANEL_FILES.has(fileName)) return 'core-panels';
+                if (HAPPY_PANEL_FILES.has(fileName)) return 'happy-panels';
+                if (FINANCE_PANEL_FILES.has(fileName)) return 'finance-panels';
+                if (FULL_PANEL_FILES.has(fileName)) return 'full-panels';
+                if (TECH_PANEL_FILES.has(fileName)) return 'tech-panels';
+                // Fail on unassigned panel files — add new panels to the correct set above
+                if (fileName.endsWith('Panel') || fileName === 'Panel') {
+                  throw new Error(
+                    `[manualChunks] Unassigned panel component: ${fileName}. ` +
+                    `Add it to CORE_PANEL_FILES, FULL_PANEL_FILES, HAPPY_PANEL_FILES, ` +
+                    `FINANCE_PANEL_FILES, or TECH_PANEL_FILES in vite.config.ts.`
+                  );
+                }
+              }
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is

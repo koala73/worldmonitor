@@ -27,12 +27,12 @@ describe('deploy/cache configuration guardrails', () => {
     );
   });
 
-  it('keeps PWA precache glob free of HTML files', () => {
+  it('restricts PWA precache to HTML entry points only', () => {
     assert.match(
       viteConfigSource,
-      /globPatterns:\s*\['\*\*\/\*\.\{js,css,ico,png,svg,woff2\}'\]/
+      /globPatterns:\s*\['\*\*\/\*\.html'\]/
     );
-    assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
+    assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css/);
   });
 
   it('explicitly disables navigateFallback when HTML is not precached', () => {

@@ -598,6 +598,7 @@ export interface PanelConfig {
   enabled: boolean;
   priority?: number;
   premium?: 'locked' | 'enhanced';
+  defaultRowSpan?: number; // Grid row span for skeleton sizing (default: 1)
 }
 
 export interface MapLayers {

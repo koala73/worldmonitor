@@ -10,22 +10,38 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // We parse it as a standalone function to avoid importing Sentry/App bootstrap.
 const mainSrc = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8');
 
-// Extract everything between `beforeSend(event) {` and the matching closing `},`
-const bsStart = mainSrc.indexOf('beforeSend(event) {');
-assert.ok(bsStart !== -1, 'beforeSend must exist in src/main.ts');
+// Extract the beforeSend function body from main.ts source.
+// Supports both inline `beforeSend(event) {` and extracted `function _sentryBeforeSend(event: any): any {`.
+const MARKERS = ['function _sentryBeforeSend(event', 'beforeSend(event) {'];
+let bsStart = -1;
+let markerEnd = '';
+for (const marker of MARKERS) {
+  bsStart = mainSrc.indexOf(marker);
+  if (bsStart !== -1) {
+    // Find the opening brace after the marker
+    markerEnd = marker;
+    break;
+  }
+}
+assert.ok(bsStart !== -1, 'beforeSend / _sentryBeforeSend must exist in src/main.ts');
+// Find the opening brace
+const braceStart = mainSrc.indexOf('{', bsStart + markerEnd.length);
+assert.ok(braceStart !== -1, 'Failed to find opening brace');
 let braceDepth = 0;
 let bsEnd = -1;
-for (let i = bsStart + 'beforeSend(event) '.length; i < mainSrc.length; i++) {
+for (let i = braceStart; i < mainSrc.length; i++) {
   if (mainSrc[i] === '{') braceDepth++;
   if (mainSrc[i] === '}') {
     braceDepth--;
     if (braceDepth === 0) { bsEnd = i + 1; break; }
   }
 }
-assert.ok(bsEnd > bsStart, 'Failed to find beforeSend closing brace');
+assert.ok(bsEnd > braceStart, 'Failed to find beforeSend closing brace');
 // Strip TypeScript type annotations so the body can be eval'd as plain JS.
-const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
+const fnBody = mainSrc.slice(braceStart, bsEnd)
   .replace(/:\s*string\b/g, '')           // parameter type annotations
+  .replace(/:\s*any\b/g, '')              // any type annotations
+  .replace(/:\s*_SentryFrame\[\]/g, '')   // custom type annotations
   .replace(/as\s+\w+(\[\])?/g, '')        // type assertions
   .replace(/<[A-Z]\w*>/g, '');            // generic type params
 

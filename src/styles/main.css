@@ -22906,3 +22906,47 @@ body.map-width-resizing {
 .ecp-source-link:hover {
   text-decoration: underline;
 }
+
+/* === Lazy panel skeleton placeholders === */
+.panel-skeleton {
+  background: var(--surface, #1a1a2e);
+  border: 1px solid var(--border, #2a2a3e);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-skeleton .skeleton-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #2a2a3e);
+  font-size: 0.85rem;
+  color: var(--text-secondary, #8888aa);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-skeleton .skeleton-body {
+  flex: 1;
+  position: relative;
+  min-height: 80px;
+}
+
+.skeleton-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--overlay-subtle, rgba(255, 255, 255, 0.03)) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
