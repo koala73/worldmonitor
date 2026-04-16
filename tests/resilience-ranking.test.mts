@@ -207,6 +207,46 @@ describe('resilience ranking contracts', () => {
     assert.ok(redis.has('seed-meta:resilience:ranking'), 'seed-meta must be written despite pipeline-GET race');
   });
 
+  it('does NOT publish ranking when score-key /set writes silently fail (persistence guard)', async () => {
+    // Reviewer regression: trusting in-memory warm results without verifying
+    // persistence turned a read-lag fix into a write-failure false positive.
+    // With writes broken at the Upstash layer, coverage should NOT pass the
+    // gate and neither the ranking nor its meta should be published.
+    const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+
+    // Intercept any pipeline SET to resilience:score:v9:* and reply with
+    // non-OK results (persisted but authoritative signal says no). /set and
+    // other paths pass through normally so history/interval writes succeed.
+    const blockedScoreWrites = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const allScoreSets = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith('resilience:score:v9:'),
+        );
+        if (allScoreSets) {
+          return new Response(
+            JSON.stringify(commands.map(() => ({ error: 'simulated write failure' }))),
+            { status: 200 },
+          );
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = blockedScoreWrites;
+
+    await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.ok(!redis.has('resilience:ranking:v9'), 'ranking must NOT be published when score writes failed');
+    assert.ok(!redis.has('seed-meta:resilience:ranking'), 'seed-meta must NOT be written when score writes failed');
+  });
+
   it('defaults rankStable=false when no interval data exists', () => {
     const item = buildRankingItem('ZZ', {
       countryCode: 'ZZ', overallScore: 50, level: 'medium',
