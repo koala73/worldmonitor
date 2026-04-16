@@ -405,6 +405,16 @@ const ON_DEMAND_KEYS = new Set([
   'hyperliquidFlow', // TRANSITIONAL: seed-hyperliquid-flow runs inside seed-bundle-market-backup on
                      // Railway; gate as on-demand so initial deploy-order race or first cold-start
                      // snapshot doesn't CRIT. Remove after ~7 days of clean production cron runs.
+  'chokepointFlowsRelayHeartbeat', // TRANSITIONAL (PR #3133): ais-relay.cjs writes this on the
+                                   // first successful child exit after a deploy. Vercel deploys
+                                   // api/health.js instantly, but Railway rebuild + 6h initial
+                                   // loop interval means the key is absent for up to ~6h post-merge.
+                                   // Gate as on-demand so the deploy window doesn't CRIT. Remove
+                                   // after ~7 days of clean production runs (verify via
+                                   // `relay:heartbeat:chokepoint-flows.fetchedAt`).
+  'climateNewsRelayHeartbeat',     // TRANSITIONAL (PR #3133): same deploy-order rationale.
+                                   // 30min initial loop, so window is shorter but still present.
+                                   // Remove after ~7 days alongside the chokepoint-flows entry.
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
