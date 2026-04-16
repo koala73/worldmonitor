@@ -67,7 +67,7 @@ export function parseRetryAfterMs(value) {
  * @param {number} [opts.maxRetries]         - Direct retries (default 3 → 4 attempts total).
  * @param {number} [opts.retryBaseMs]        - Linear direct backoff base (default 10_000 — GDELT throttle window is wider than Yahoo's).
  * @param {number} [opts.proxyMaxAttempts]   - Curl proxy attempts (default 5 — Decodo rotates session per call).
- * @param {number} [opts.proxyRetryBaseMs]   - Linear proxy backoff base (default 5_000).
+ * @param {number} [opts.proxyRetryBaseMs]   - Fixed (constant, NOT linear) backoff between proxy attempts (default 5_000). Constant because Decodo rotates the session IP per call — exponential growth wouldn't help; the next attempt's success is independent of the previous attempt's wait.
  * @returns {Promise<unknown>} Parsed JSON. Throws on exhaustion.
  */
 export async function fetchGdeltJson(url, opts = {}) {
@@ -109,7 +109,19 @@ export async function fetchGdeltJson(url, opts = {}) {
       break;
     }
 
-    if (resp.ok) return await resp.json();
+    if (resp.ok) {
+      // Guard the parse: a 200 OK with HTML/garbage body (WAF challenge,
+      // partial response, gzip mismatch) would otherwise throw SyntaxError
+      // and escape the helper entirely, bypassing the proxy fallback. The
+      // proxy leg already parses inside its own catch — make the direct
+      // leg symmetric.
+      try {
+        return await resp.json();
+      } catch (parseErr) {
+        lastDirectError = parseErr;
+        break;
+      }
+    }
 
     lastDirectError = new Error(`HTTP ${resp.status}`);
 

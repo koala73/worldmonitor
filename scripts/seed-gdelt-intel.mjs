@@ -83,16 +83,19 @@ async function fetchTopicTimeline(topic, mode) {
 
   try {
     // Best-effort: timelines degrade silently to [] on any failure.
-    // Pre-helper code did a single direct fetch with no retry; preserve that
-    // behavior with maxRetries:0 + proxyMaxAttempts:0. Inheriting the helper's
-    // article-fetch defaults (3 direct retries + 5 proxy attempts) would burn
-    // up to ~90s per timeline call × 12 calls (2 modes × 6 topics) = up to
-    // ~18 min blocking on data we throw away on failure — exactly the wrong
-    // tradeoff under the "GDELT 429 storm" conditions this PR addresses.
+    // Pre-helper code did a single direct fetch with no retry. The
+    // article-fetch defaults (3 direct retries + 5 proxy attempts ≈ 90s)
+    // are too aggressive for discarded-on-failure data — would burn up to
+    // ~18 min/seed-run across 12 timeline calls under GDELT 429 storms.
+    //
+    // Compromise: 1 direct + 2 proxy (Decodo session rotation) attempts.
+    // Worst case ~25s per call × 12 = ~5 min ceiling. Gives timelines a
+    // realistic chance to succeed via proxy without blocking the seeder
+    // for the full article-fetch budget.
     const data = await fetchGdeltJson(url.toString(), {
       label: `${topic.id}/${mode}`,
       maxRetries: 0,
-      proxyMaxAttempts: 0,
+      proxyMaxAttempts: 2,
     });
     return normalizeTimeline(data, mode === 'TimelineTone' ? 'tone' : 'value');
   } catch {

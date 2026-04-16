@@ -371,6 +371,40 @@ test('proxy malformed JSON does NOT emit "succeeded" log before throwing', async
   assert.equal(succeededLogged, false, 'success log MUST NOT fire when JSON.parse throws');
 });
 
+// ─── Direct-leg parse-failure must reach proxy (P2 from PR #3122 review) ──
+//
+// Previously `resp.json()` was called outside the try/catch that guards
+// fetch(), so a 200 OK with HTML/garbage body (WAF challenge, partial
+// response, gzip mismatch) would throw SyntaxError and escape the helper
+// — the proxy fallback never ran. The proxy leg already parsed inside
+// its own catch; the direct leg is now symmetric.
+
+test('direct 200 OK with malformed JSON: proxy fallback runs (P2 regression guard)', async () => {
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+
+  let directCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    return {
+      ok: true, status: 200,
+      headers: { get: () => null },
+      json: async () => { throw new SyntaxError('Unexpected token < in JSON'); },
+    };
+  };
+
+  let proxyCalls = 0;
+  const result = await fetchGdeltJson(URL, {
+    ...COMMON_OPTS,
+    maxRetries: 0,           // single direct attempt is enough to prove the path
+    _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+    _proxyCurlFetcher: () => { proxyCalls += 1; return JSON.stringify(VALID_PAYLOAD); },
+  });
+
+  assert.equal(directCalls, 1);
+  assert.equal(proxyCalls, 1, 'direct parse-failure MUST reach the proxy fallback');
+  assert.deepEqual(result, VALID_PAYLOAD);
+});
+
 // ─── Best-effort caller budgets (fast-fail) ────────────────────────────
 //
 // fetchTopicTimeline in seed-gdelt-intel is best-effort and discards the
