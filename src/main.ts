@@ -248,6 +248,7 @@ Sentry.init({
     /ConvexError: CONFLICT/, // Expected OCC rejection on concurrent preference saves
     /\[CONVEX [AQM]\(.+?\)\] Connection lost while action was in flight/, // Convex SDK transient WS disconnect
     /Response did not contain `success` or `data`/, // DuckDuckGo browser internal tracker/content-block response — never emitted by our code
+    /Cannot set properties of undefined \(setting 'bodyTouched'\)/, // Quark browser (Alibaba mobile) touch-tracking script injection (WORLDMONITOR-N1)
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
