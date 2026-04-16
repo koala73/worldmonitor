@@ -150,17 +150,46 @@ export async function fetchGdeltJson(url, opts = {}) {
         return parsed;
       } catch (curlErr) {
         lastProxyError = curlErr;
-        const m = String(curlErr?.message ?? '').match(/HTTP (\d+)/);
-        const isRetryableStatus = m && RETRYABLE_STATUSES.has(Number(m[1]));
-        if (attempt < proxyMaxAttempts && isRetryableStatus) {
+        // Decide whether retrying this proxy call is worthwhile.
+        //
+        // Probed Decodo curl egress against GDELT (2026-04-16) gave
+        // 200 / 200 / 429 / TIMEOUT / 429 over 5 attempts. The TIMEOUT
+        // is part of the normal transient mix — rotating to another
+        // Decodo session usually clears it. The pre-fix logic only
+        // retried on `HTTP 429`/`503` substring matches, so a timeout
+        // bailed on the first attempt and defeated the multi-retry
+        // design. Reframed:
+        //
+        //   curlErr.status = number      → retry only if 429/503
+        //   curlErr instanceof SyntaxError → bail (parse failure is
+        //                                    structural, not transient)
+        //   otherwise (timeout, ECONNRESET, DNS, curl exec failure,
+        //              CONNECT tunnel failure)  → RETRY (next Decodo
+        //                                        session likely different)
+        //
+        // curlFetch attaches `.status` only when curl succeeded but the
+        // upstream returned non-2xx, so this property reliably
+        // discriminates the HTTP-status case from network/timeout cases.
+        const status = curlErr?.status;
+        const isParseFailure = curlErr instanceof SyntaxError;
+        let isRetryable;
+        if (typeof status === 'number') {
+          isRetryable = RETRYABLE_STATUSES.has(status);
+        } else if (isParseFailure) {
+          isRetryable = false;
+        } else {
+          // Network / timeout / curl exec error — assume transient.
+          isRetryable = true;
+        }
+        if (attempt < proxyMaxAttempts && isRetryable) {
           const retryMs = proxyRetryBaseMs;
           console.warn(`  [GDELT] proxy (curl) attempt ${attempt}/${proxyMaxAttempts} failed: ${curlErr?.message ?? curlErr}; retrying in ${Math.round(retryMs / 1000)}s`);
           await _sleep(retryMs);
           continue;
         }
-        // Non-retryable proxy error (parse failure, auth, network) OR last
+        // Non-retryable (parse failure, HTTP 4xx other than 429) OR last
         // attempt — give up, throw exhausted with both errors.
-        console.warn(`  [GDELT] proxy (curl) attempt ${attempt}/${proxyMaxAttempts} failed${isRetryableStatus ? ' (last attempt)' : ' (non-retryable)'}: ${curlErr?.message ?? curlErr}`);
+        console.warn(`  [GDELT] proxy (curl) attempt ${attempt}/${proxyMaxAttempts} failed${isRetryable ? ' (last attempt)' : ' (non-retryable)'}: ${curlErr?.message ?? curlErr}`);
         break;
       }
     }

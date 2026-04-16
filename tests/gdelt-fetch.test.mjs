@@ -196,6 +196,86 @@ test('proxy non-retryable error (parse failure) bails immediately, does NOT burn
   assert.equal(proxyCalls, 1, 'parse failure must bail after first attempt');
 });
 
+test('proxy timeout (no .status, not SyntaxError) RETRIES — Decodo session rotation may clear it', async () => {
+  // P1 from PR #3122 review: probed Decodo egress gave
+  // 200/200/429/TIMEOUT/429. Pre-fix logic only retried on HTTP 429/503
+  // substring, so a curl timeout bailed on the first attempt and
+  // defeated the multi-retry design. Lock that timeouts trigger the
+  // same retry behavior as 429s.
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+  globalThis.fetch = async () => ({
+    ok: false, status: 429, headers: { get: () => null }, json: async () => ({}),
+  });
+
+  let proxyCalls = 0;
+  const result = await fetchGdeltJson(URL, {
+    ...COMMON_OPTS,
+    proxyMaxAttempts: 3,
+    _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+    _proxyCurlFetcher: () => {
+      proxyCalls += 1;
+      if (proxyCalls === 1) {
+        // Mimic a curl exec timeout: Node Error with no .status, not a
+        // SyntaxError. Real shape from execFileSync timeout:
+        // "Command failed: curl ..." or ETIMEDOUT.
+        throw Object.assign(new Error('Command failed: curl ... timed out'), { code: 'ETIMEDOUT' });
+      }
+      return JSON.stringify(VALID_PAYLOAD);
+    },
+  });
+  assert.equal(proxyCalls, 2, 'timeout MUST trigger retry — Decodo session rotates per call');
+  assert.deepEqual(result, VALID_PAYLOAD);
+});
+
+test('proxy ECONNRESET (no .status) RETRIES', async () => {
+  // Same logic — any non-status non-parse error is treated as transient.
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+  globalThis.fetch = async () => ({
+    ok: false, status: 429, headers: { get: () => null }, json: async () => ({}),
+  });
+
+  let proxyCalls = 0;
+  const result = await fetchGdeltJson(URL, {
+    ...COMMON_OPTS,
+    proxyMaxAttempts: 3,
+    _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+    _proxyCurlFetcher: () => {
+      proxyCalls += 1;
+      if (proxyCalls === 1) {
+        throw Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+      }
+      return JSON.stringify(VALID_PAYLOAD);
+    },
+  });
+  assert.equal(proxyCalls, 2);
+  assert.deepEqual(result, VALID_PAYLOAD);
+});
+
+test('proxy HTTP 4xx (non-429, e.g. 401 auth) does NOT retry', async () => {
+  // 401/403/404 from upstream are structural — not transient. Retrying
+  // wastes attempts. Locks the bail-on-non-retryable-status branch.
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+  globalThis.fetch = async () => ({
+    ok: false, status: 429, headers: { get: () => null }, json: async () => ({}),
+  });
+
+  let proxyCalls = 0;
+  await assert.rejects(
+    () => fetchGdeltJson(URL, {
+      ...COMMON_OPTS,
+      proxyMaxAttempts: 5,
+      _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+      _proxyCurlFetcher: () => {
+        proxyCalls += 1;
+        // curlFetch attaches .status when curl returned a clean HTTP status.
+        throw Object.assign(new Error('HTTP 401'), { status: 401 });
+      },
+    }),
+    /GDELT retries exhausted/,
+  );
+  assert.equal(proxyCalls, 1, 'HTTP 401 is non-retryable — must bail after 1 attempt');
+});
+
 test('proxy retryable + non-retryable mix: retries on 429, bails on parse failure', async () => {
   // First two attempts 429 (retryable, keep going), third returns garbage
   // (non-retryable, bail). Locks the distinction.
