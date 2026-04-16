@@ -191,14 +191,22 @@ test('429 + proxy configured + proxy ALSO fails: throws exhausted with last dire
     json: async () => ({}),
   });
 
-  let proxyCalls = 0;
+  let connectCalls = 0;
+  let curlCalls = 0;
   await assert.rejects(
     () => fetchOpenMeteoArchiveBatch(ZONES, {
       ...ARCHIVE_OPTS,
       _proxyResolver: () => 'user:pass@proxy.test:8000',
       _proxyFetcher: async () => {
-        proxyCalls += 1;
+        connectCalls += 1;
         throw new Error('proxy 502');
+      },
+      // Stub curl path too (CONNECT failure now cascades to curl). Without
+      // this stub the test would shell out to real curl since the helper's
+      // default is the production curlFetch.
+      _proxyCurlFetcher: () => {
+        curlCalls += 1;
+        throw new Error('proxy curl 502');
       },
     }),
     (err) => {
@@ -207,7 +215,113 @@ test('429 + proxy configured + proxy ALSO fails: throws exhausted with last dire
       return true;
     },
   );
-  assert.equal(proxyCalls, 1);
+  assert.equal(connectCalls, 1);
+  assert.equal(curlCalls, 1);
+});
+
+// ─── Second-choice curl proxy fallback ──────────────────────────────────
+//
+// Decodo's CONNECT and curl egress reach DIFFERENT IP pools (per
+// scripts/_proxy-utils.cjs:67). Some hosts only accept one path — Yahoo
+// Finance returns 404 to Decodo's CONNECT egress but 200 to curl. Probed
+// 2026-04-16: Open-Meteo works through both today, but pinning to one path
+// is a single point of failure if Decodo rebalances pools. The helper
+// tries CONNECT first, falls through to curl only when CONNECT errors.
+
+test('CONNECT proxy fails → curl proxy succeeds: returns curl data, never throws', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  globalThis.fetch = async () => ({
+    ok: false, status: 429,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  let connectCalls = 0;
+  let curlCalls = 0;
+  const result = await fetchOpenMeteoArchiveBatch(ZONES, {
+    ...ARCHIVE_OPTS,
+    _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _proxyFetcher: async () => { connectCalls += 1; throw new Error('HTTP 404'); },
+    _proxyCurlFetcher: (url, _proxyAuth, _headers) => {
+      curlCalls += 1;
+      assert.match(url, /open-meteo/);
+      return JSON.stringify(VALID_PAYLOAD);
+    },
+  });
+
+  assert.equal(connectCalls, 1, 'CONNECT path attempted exactly once');
+  assert.equal(curlCalls, 1, 'curl path attempted as second choice');
+  assert.equal(result.length, 2);
+});
+
+test('CONNECT succeeds: curl never invoked', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  globalThis.fetch = async () => ({
+    ok: false, status: 429,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  let curlCalls = 0;
+  const result = await fetchOpenMeteoArchiveBatch(ZONES, {
+    ...ARCHIVE_OPTS,
+    _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _proxyFetcher: async () => ({
+      buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'),
+      contentType: 'application/json',
+    }),
+    _proxyCurlFetcher: () => { curlCalls += 1; throw new Error('should not be called'); },
+  });
+
+  assert.equal(curlCalls, 0, 'CONNECT succeeded — curl path must be skipped');
+  assert.equal(result.length, 2);
+});
+
+test('CONNECT fails AND curl fails: throws exhausted with both errors visible', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  globalThis.fetch = async () => ({
+    ok: false, status: 429,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  await assert.rejects(
+    () => fetchOpenMeteoArchiveBatch(ZONES, {
+      ...ARCHIVE_OPTS,
+      _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+      _proxyFetcher: async () => { throw new Error('CONNECT 404'); },
+      _proxyCurlFetcher: () => { throw new Error('curl 502'); },
+    }),
+    (err) => {
+      assert.match(err.message, /Open-Meteo retries exhausted/);
+      assert.match(err.message, /HTTP 429/);     // direct error in cause-chain
+      assert.match(err.message, /curl 502/);     // last proxy error appended
+      return true;
+    },
+  );
+});
+
+test('curl returns malformed JSON: caught + warns, throws exhausted', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  globalThis.fetch = async () => ({
+    ok: false, status: 429,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  await assert.rejects(
+    () => fetchOpenMeteoArchiveBatch(ZONES, {
+      ...ARCHIVE_OPTS,
+      _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+      _proxyFetcher: async () => { throw new Error('CONNECT failed'); },
+      _proxyCurlFetcher: () => 'not-valid-json',
+    }),
+    /Open-Meteo retries exhausted/,
+  );
 });
 
 test('proxy fallback returns wrong batch size: caught + warns, throws exhausted', async () => {
@@ -227,6 +341,10 @@ test('proxy fallback returns wrong batch size: caught + warns, throws exhausted'
         buffer: Buffer.from(JSON.stringify([VALID_PAYLOAD[0]]), 'utf8'),  // 1 instead of 2
         contentType: 'application/json',
       }),
+      // CONNECT fails with mismatched batch size → cascades to curl;
+      // stub curl so it also fails so the test deterministically hits the
+      // final exhausted-throw branch.
+      _proxyCurlFetcher: () => JSON.stringify([VALID_PAYLOAD[0]]),
     }),
     /Open-Meteo retries exhausted/,
   );

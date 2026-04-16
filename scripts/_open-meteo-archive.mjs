@@ -1,4 +1,4 @@
-import { CHROME_UA, sleep, resolveProxy, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, resolveProxy, httpsProxyFetchRaw, curlFetch } from './_seed-utils.mjs';
 
 const MAX_RETRY_AFTER_MS = 60_000;
 const RETRYABLE_STATUSES = new Set([429, 503]);
@@ -42,12 +42,13 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
     retryBaseMs = 2_000,
     label = zones.map((zone) => zone.name).join(', '),
     // Test hooks. Production callers leave these unset; the helper uses the
-    // real proxy resolver + fetcher from _seed-utils.mjs. Tests inject mocks
-    // here to exercise the proxy fallback path without spinning up a real
+    // real proxy resolver + fetchers from _seed-utils.mjs. Tests inject mocks
+    // here to exercise the proxy fallback paths without spinning up a real
     // Decodo tunnel. Keep these undocumented in PR descriptions — they are
     // implementation-only seams, not a public API surface.
     _proxyResolver = resolveProxy,
     _proxyFetcher = httpsProxyFetchRaw,
+    _proxyCurlFetcher = curlFetch,
   } = opts;
 
   const params = new URLSearchParams({
@@ -118,10 +119,21 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   // _seed-utils.mjs. Decodo gateway gets a different egress IP that is not
   // (yet) on Open-Meteo's per-IP throttle. Skip silently if no proxy is
   // configured (preserves existing behavior in non-Railway envs).
+  //
+  // Two-attempt cascade: CONNECT path first (pure-Node, faster, no curl
+  // dependency), curl fallback second. Decodo's CONNECT and curl egress
+  // reach DIFFERENT IP pools (per scripts/_proxy-utils.cjs:67), and some
+  // hosts only accept one path — Yahoo Finance returns 404 to Decodo's
+  // CONNECT egress but 200 to the curl egress (probed 2026-04-16). For
+  // Open-Meteo both paths work today, but pinning the helper to one would
+  // be a single point of failure if Decodo rebalances pools. The curl
+  // attempt costs an exec only when CONNECT also failed, so steady-state
+  // overhead is zero.
   const proxyAuth = _proxyResolver();
+  let lastProxyError = null;
   if (proxyAuth) {
     try {
-      console.log(`  [OPEN_METEO] direct exhausted on ${label} (${lastDirectError?.message ?? 'unknown'}); trying proxy`);
+      console.log(`  [OPEN_METEO] direct exhausted on ${label} (${lastDirectError?.message ?? 'unknown'}); trying proxy (CONNECT)`);
       const { buffer } = await _proxyFetcher(url, proxyAuth, {
         accept: 'application/json',
         timeoutMs,
@@ -130,15 +142,35 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
       if (data.length !== zones.length) {
         throw new Error(`Open-Meteo proxy batch size mismatch for ${label}: expected ${zones.length}, got ${data.length}`);
       }
-      console.log(`  [OPEN_METEO] proxy succeeded for ${label}`);
+      console.log(`  [OPEN_METEO] proxy (CONNECT) succeeded for ${label}`);
       return data;
     } catch (proxyErr) {
-      console.warn(`  [OPEN_METEO] proxy fallback failed for ${label}: ${proxyErr?.message ?? proxyErr}`);
+      lastProxyError = proxyErr;
+      console.warn(`  [OPEN_METEO] proxy (CONNECT) failed for ${label}: ${proxyErr?.message ?? proxyErr}; trying proxy (curl)`);
+    }
+
+    // Second-choice proxy attempt via curl. Different egress pool —
+    // succeeds against hosts that 404 the CONNECT path.
+    try {
+      const text = _proxyCurlFetcher(url, proxyAuth, { 'User-Agent': CHROME_UA, Accept: 'application/json' });
+      const data = normalizeArchiveBatchResponse(JSON.parse(text));
+      if (data.length !== zones.length) {
+        throw new Error(`Open-Meteo proxy (curl) batch size mismatch for ${label}: expected ${zones.length}, got ${data.length}`);
+      }
+      console.log(`  [OPEN_METEO] proxy (curl) succeeded for ${label}`);
+      return data;
+    } catch (curlErr) {
+      lastProxyError = curlErr;
+      console.warn(`  [OPEN_METEO] proxy (curl) failed for ${label}: ${curlErr?.message ?? curlErr}`);
     }
   }
 
-  throw new Error(
-    `Open-Meteo retries exhausted for ${label}${lastDirectError ? ` (last direct: ${lastDirectError.message})` : ''}`,
+  // Surface the most relevant upstream signal. Direct error usually wins
+  // (it's why we tried the proxy in the first place). Proxy error is in
+  // cause-chain for deeper inspection.
+  const finalErr = new Error(
+    `Open-Meteo retries exhausted for ${label}${lastDirectError ? ` (last direct: ${lastDirectError.message})` : ''}${lastProxyError ? ` (last proxy: ${lastProxyError.message})` : ''}`,
     lastDirectError ? { cause: lastDirectError } : undefined,
   );
+  throw finalErr;
 }
