@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, loadSharedConfig, runSeed } from './_seed-utils.mjs';
+import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const etfConfig = loadSharedConfig('etfs.json');
@@ -15,28 +16,6 @@ const ETF_LIST = etfConfig.btcSpot;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-async function fetchYahooWithRetry(url, label, maxAttempts = 4) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (resp.status === 429) {
-      const wait = 5000 * (i + 1);
-      console.warn(`  [Yahoo] ${label} 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) {
-      console.warn(`  [Yahoo] ${label} HTTP ${resp.status}`);
-      return null;
-    }
-    return resp;
-  }
-  console.warn(`  [Yahoo] ${label} rate limited after ${maxAttempts} attempts`);
-  return null;
 }
 
 function parseEtfChartData(chart, ticker, issuer) {
@@ -112,9 +91,13 @@ async function fetchEtfFlows() {
 
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=5d&interval=1d`;
-      const resp = await fetchYahooWithRetry(url, ticker);
-      if (!resp) { misses++; continue; }
-      const chart = await resp.json();
+      let chart;
+      try {
+        chart = await fetchYahooJson(url, { label: ticker });
+      } catch {
+        misses++;
+        continue;
+      }
       const parsed = parseEtfChartData(chart, ticker, issuer);
       if (parsed) {
         etfs.push(parsed);

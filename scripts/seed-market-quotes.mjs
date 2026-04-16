@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
@@ -32,34 +33,11 @@ async function fetchFinnhubQuote(symbol, apiKey) {
   }
 }
 
-async function fetchYahooWithRetry(url, label, maxAttempts = 4) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (resp.status === 429) {
-      const wait = 5000 * (i + 1);
-      console.warn(`  [Yahoo] ${label} 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) {
-      console.warn(`  [Yahoo] ${label} HTTP ${resp.status}`);
-      return null;
-    }
-    return resp;
-  }
-  console.warn(`  [Yahoo] ${label} rate limited after ${maxAttempts} attempts`);
-  return null;
-}
-
 async function fetchYahooQuote(symbol) {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-    const resp = await fetchYahooWithRetry(url, symbol);
-    if (!resp) return null;
-    return parseYahooChart(await resp.json(), symbol);
+    const chart = await fetchYahooJson(url, { label: symbol });
+    return parseYahooChart(chart, symbol);
   } catch (err) {
     console.warn(`  [Yahoo] ${symbol} error: ${err.message}`);
     return null;

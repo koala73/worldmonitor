@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey, writeExtraKeyWithMeta, CHROME_UA } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { AV_PHYSICAL_MAP, fetchAvPhysicalCommodity, fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const commodityConfig = loadSharedConfig('commodities.json');
@@ -20,30 +21,29 @@ const GOLD_DRIVER_SYMBOLS = [
 
 async function fetchYahooChart1y(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`;
+  let json;
   try {
-    const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15_000) });
-    if (!resp.ok) return null;
-    const json = await resp.json();
-    const r = json?.chart?.result?.[0];
-    if (!r) return null;
-    const meta = r.meta;
-    const ts = r.timestamp || [];
-    const closes = r.indicators?.quote?.[0]?.close || [];
-    const history = ts.map((t, i) => ({ d: new Date(t * 1000).toISOString().slice(0, 10), c: closes[i] }))
-      .filter(p => p.c != null && Number.isFinite(p.c));
-    return {
-      symbol,
-      price: meta?.regularMarketPrice ?? null,
-      dayHigh: meta?.regularMarketDayHigh ?? null,
-      dayLow: meta?.regularMarketDayLow ?? null,
-      prevClose: meta?.chartPreviousClose ?? meta?.previousClose ?? null,
-      fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh ?? null,
-      fiftyTwoWeekLow: meta?.fiftyTwoWeekLow ?? null,
-      history,
-    };
+    json = await fetchYahooJson(url, { label: symbol, timeoutMs: 15_000 });
   } catch {
     return null;
   }
+  const r = json?.chart?.result?.[0];
+  if (!r) return null;
+  const meta = r.meta;
+  const ts = r.timestamp || [];
+  const closes = r.indicators?.quote?.[0]?.close || [];
+  const history = ts.map((t, i) => ({ d: new Date(t * 1000).toISOString().slice(0, 10), c: closes[i] }))
+    .filter(p => p.c != null && Number.isFinite(p.c));
+  return {
+    symbol,
+    price: meta?.regularMarketPrice ?? null,
+    dayHigh: meta?.regularMarketDayHigh ?? null,
+    dayLow: meta?.regularMarketDayLow ?? null,
+    prevClose: meta?.chartPreviousClose ?? meta?.previousClose ?? null,
+    fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh ?? null,
+    fiftyTwoWeekLow: meta?.fiftyTwoWeekLow ?? null,
+    history,
+  };
 }
 
 function computeReturns(history, currentPrice) {
@@ -153,28 +153,6 @@ async function fetchGoldExtended() {
   };
 }
 
-async function fetchYahooWithRetry(url, label, maxAttempts = 4) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (resp.status === 429) {
-      const wait = 5000 * (i + 1);
-      console.warn(`  [Yahoo] ${label} 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) {
-      console.warn(`  [Yahoo] ${label} HTTP ${resp.status}`);
-      return null;
-    }
-    return resp;
-  }
-  console.warn(`  [Yahoo] ${label} rate limited after ${maxAttempts} attempts`);
-  return null;
-}
-
 const COMMODITY_SYMBOLS = commodityConfig.commodities.map(c => c.symbol);
 
 async function fetchCommodityQuotes() {
@@ -217,9 +195,14 @@ async function fetchCommodityQuotes() {
 
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-      const resp = await fetchYahooWithRetry(url, symbol);
-      if (!resp) { misses++; continue; }
-      const parsed = parseYahooChart(await resp.json(), symbol);
+      let chart;
+      try {
+        chart = await fetchYahooJson(url, { label: symbol });
+      } catch {
+        misses++;
+        continue;
+      }
+      const parsed = parseYahooChart(chart, symbol);
       if (parsed) {
         quotes.push(parsed);
         covered.add(symbol);
