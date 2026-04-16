@@ -6,6 +6,8 @@
  *
  * Authentication: Clerk Bearer token (any signed-in user).
  * Body: { keyHash: string }
+ *
+ * Ownership is verified via Convex — the keyHash must belong to the caller.
  */
 
 export const config = { runtime: 'edge' };
@@ -53,6 +55,32 @@ export default async function handler(req: Request): Promise<Response> {
   const { keyHash } = body;
   if (typeof keyHash !== 'string' || !/^[a-f0-9]{64}$/.test(keyHash)) {
     return jsonResponse({ error: 'Invalid keyHash' }, 422, cors);
+  }
+
+  // Verify the keyHash belongs to the calling user (tenancy boundary).
+  const convexSiteUrl = process.env.CONVEX_SITE_URL;
+  const convexSharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  if (convexSiteUrl && convexSharedSecret) {
+    try {
+      const ownerResp = await fetch(`${convexSiteUrl}/api/internal-get-key-owner`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-convex-shared-secret': convexSharedSecret,
+        },
+        body: JSON.stringify({ keyHash }),
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (ownerResp.ok) {
+        const ownerData = await ownerResp.json() as { userId?: string } | null;
+        if (ownerData && ownerData.userId !== session.userId) {
+          return jsonResponse({ error: 'FORBIDDEN' }, 403, cors);
+        }
+      }
+    } catch {
+      // Fail-open: if ownership check fails, still allow invalidation.
+      // Worst case is an evicted cache entry forcing one Convex refetch.
+    }
   }
 
   await invalidateApiKeyCache(keyHash);

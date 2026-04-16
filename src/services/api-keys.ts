@@ -85,15 +85,19 @@ export async function revokeApiKey(keyId: string): Promise<void> {
 
   const result = await client.mutation((api as any).apiKeys.revokeApiKey, { keyId });
 
-  // Best-effort cache bust so the gateway stops accepting the revoked key immediately.
+  // Await cache bust so the gateway stops accepting the revoked key immediately.
+  // If this fails, the 60s cache TTL limits the staleness window.
   if (result?.keyHash) {
     const token = await getClerkToken();
     if (token) {
-      fetch('/api/invalidate-user-api-key-cache', {
+      const resp = await fetch('/api/invalidate-user-api-key-cache', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ keyHash: result.keyHash }),
-      }).catch(() => { /* fire-and-forget */ });
+      });
+      if (!resp.ok) {
+        console.warn('[api-keys] cache invalidation failed:', resp.status);
+      }
     }
   }
 }

@@ -305,9 +305,49 @@ export function createDomainGateway(
 
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
-    const keyCheck = validateApiKey(request, {
+    let keyCheck = validateApiKey(request, {
       forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
-    });
+    }) as { valid: boolean; required: boolean; error?: string };
+
+    // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
+    // check fails, try async Convex-backed validation for user-issued keys.
+    let isUserApiKey = false;
+    const wmKey = request.headers.get('X-WorldMonitor-Key') ?? '';
+    if (keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_')) {
+      const { validateUserApiKey } = await import('./_shared/user-api-key');
+      const userKeyResult = await validateUserApiKey(wmKey);
+      if (userKeyResult) {
+        isUserApiKey = true;
+        keyCheck = { valid: true, required: true };
+        // Inject x-user-id for downstream entitlement checks
+        if (!sessionUserId) {
+          sessionUserId = userKeyResult.userId;
+          request = new Request(request.url, {
+            method: request.method,
+            headers: (() => {
+              const h = new Headers(request.headers);
+              h.set('x-user-id', sessionUserId);
+              return h;
+            })(),
+            body: request.body,
+          });
+        }
+      }
+    }
+
+    // User API keys on PREMIUM_RPC_PATHS need verified pro-tier entitlement.
+    // Admin keys (WORLDMONITOR_VALID_KEYS) bypass this since they are operator-issued.
+    if (isUserApiKey && needsLegacyProBearerGate && sessionUserId) {
+      const { getEntitlements } = await import('./_shared/entitlement-check');
+      const ent = await getEntitlements(sessionUserId);
+      if (!ent || ent.features.tier < 1) {
+        return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+    }
+
     if (keyCheck.required && !keyCheck.valid) {
       if (needsLegacyProBearerGate) {
         const authHeader = request.headers.get('Authorization');
@@ -358,9 +398,9 @@ export function createDomainGateway(
     }
 
     // Entitlement check — blocks tier-gated endpoints for users below required tier.
-    // Valid API-key holders bypass entitlement checks (they have full access by virtue
-    // of possessing a key). Only bearer-token users go through the tier gate.
-    if (!(keyCheck.valid && request.headers.get('X-WorldMonitor-Key'))) {
+    // Admin API-key holders (WORLDMONITOR_VALID_KEYS) bypass entitlement checks.
+    // User API keys do NOT bypass — the key owner's tier is checked normally.
+    if (!(keyCheck.valid && wmKey && !isUserApiKey)) {
       const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
       if (entitlementResponse) return entitlementResponse;
     }

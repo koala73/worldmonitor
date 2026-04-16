@@ -719,6 +719,8 @@ export class UnifiedSettings {
       const msg = err instanceof Error ? err.message : 'Failed to create key';
       this.apiKeysError = msg.includes('KEY_LIMIT_REACHED')
         ? 'Maximum of 5 active keys reached. Revoke an existing key first.'
+        : msg.includes('PRO_REQUIRED')
+        ? 'API keys require a Pro subscription.'
         : msg;
       this.renderApiKeysError();
     } finally {

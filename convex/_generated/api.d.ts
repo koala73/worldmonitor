@@ -9,6 +9,7 @@
  */
 
 import type * as alertRules from "../alertRules.js";
+import type * as apiKeys from "../apiKeys.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
@@ -43,6 +44,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   alertRules: typeof alertRules;
+  apiKeys: typeof apiKeys;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
   contactMessages: typeof contactMessages;

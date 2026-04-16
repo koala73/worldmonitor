@@ -5,6 +5,9 @@ import { requireUserId } from "./lib/auth";
 /** Maximum number of active (non-revoked) API keys per user. */
 const MAX_KEYS_PER_USER = 5;
 
+/** Minimum entitlement tier required to create API keys (1 = pro). */
+const REQUIRED_TIER = 1;
+
 // ---------------------------------------------------------------------------
 // Public mutations & queries (require Clerk JWT via ctx.auth)
 // ---------------------------------------------------------------------------
@@ -15,6 +18,8 @@ const MAX_KEYS_PER_USER = 5;
  * The caller must generate the random key client-side (or in the HTTP action)
  * and pass the SHA-256 hex hash + the first 8 chars (prefix) here.
  * The plaintext key is NEVER stored in Convex.
+ *
+ * Requires an active pro (tier >= 1) entitlement. Free-tier users are blocked.
  */
 export const createApiKey = mutation({
   args: {
@@ -25,10 +30,22 @@ export const createApiKey = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
 
+    // Entitlement gate: only pro+ users may create API keys
+    const entitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    const tier = (entitlement && entitlement.validUntil >= Date.now())
+      ? entitlement.features.tier
+      : 0;
+    if (tier < REQUIRED_TIER) {
+      throw new ConvexError("PRO_REQUIRED");
+    }
+
     if (!args.name.trim()) {
       throw new ConvexError("INVALID_NAME");
     }
-    if (!/^wm_[a-f0-9]{5,9}$/.test(args.keyPrefix)) {
+    if (!/^wm_[a-f0-9]{5}$/.test(args.keyPrefix)) {
       throw new ConvexError("INVALID_PREFIX");
     }
     if (!/^[a-f0-9]{64}$/.test(args.keyHash)) {
@@ -134,14 +151,33 @@ export const validateKeyByHash = internalQuery({
 });
 
 /**
- * Bump lastUsedAt for a key (fire-and-forget from the gateway).
+ * Look up the owner of a key by its hash, regardless of revoked status.
+ * Used by the cache-invalidation endpoint to verify tenancy.
  */
+export const getKeyOwner = internalQuery({
+  args: { keyHash: v.string() },
+  handler: async (ctx, args) => {
+    const key = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
+      .first();
+    return key ? { userId: key.userId } : null;
+  },
+});
+
+/**
+ * Bump lastUsedAt for a key (fire-and-forget from the gateway).
+ * Skips the write if lastUsedAt was updated within the last 5 minutes
+ * to reduce Convex write load for hot keys.
+ */
+const TOUCH_DEBOUNCE_MS = 5 * 60 * 1000;
+
 export const touchKeyLastUsed = internalMutation({
   args: { keyId: v.id("userApiKeys") },
   handler: async (ctx, args) => {
     const key = await ctx.db.get(args.keyId);
-    if (key && !key.revokedAt) {
-      await ctx.db.patch(args.keyId, { lastUsedAt: Date.now() });
-    }
+    if (!key || key.revokedAt) return;
+    if (key.lastUsedAt && key.lastUsedAt > Date.now() - TOUCH_DEBOUNCE_MS) return;
+    await ctx.db.patch(args.keyId, { lastUsedAt: Date.now() });
   },
 });

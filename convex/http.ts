@@ -635,122 +635,8 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
-// User API key management (Clerk JWT required)
+// User API key validation (service-to-service only)
 // ---------------------------------------------------------------------------
-
-http.route({
-  path: "/api/api-keys",
-  method: "OPTIONS",
-  handler: httpAction(async (_ctx, request) => {
-    const headers = corsHeaders(request.headers.get("Origin"));
-    return new Response(null, { status: 204, headers });
-  }),
-});
-
-http.route({
-  path: "/api/api-keys",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const headers = corsHeaders(request.headers.get("Origin"));
-    headers.set("Content-Type", "application/json");
-
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return new Response(JSON.stringify({ error: "UNAUTHENTICATED" }), {
-        status: 401,
-        headers,
-      });
-    }
-
-    let body: { action?: string; name?: string; keyId?: string };
-    try {
-      body = (await request.json()) as typeof body;
-    } catch {
-      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
-        status: 400,
-        headers,
-      });
-    }
-
-    const action = body.action ?? "create";
-
-    try {
-      // --- CREATE ---
-      if (action === "create") {
-        if (typeof body.name !== "string" || !body.name.trim()) {
-          return new Response(
-            JSON.stringify({ error: "MISSING_FIELDS", required: ["name"] }),
-            { status: 400, headers },
-          );
-        }
-
-        // Generate a cryptographically random key in the HTTP action layer.
-        // Format: wm_<40 hex chars>  (20 random bytes → 160 bits of entropy)
-        const raw = new Uint8Array(20);
-        crypto.getRandomValues(raw);
-        const hex = Array.from(raw, (b) => b.toString(16).padStart(2, "0")).join("");
-        const plaintext = `wm_${hex}`;
-        const keyPrefix = plaintext.slice(0, 8); // "wm_XXXXX"
-
-        // Hash for storage (SHA-256, hex-encoded)
-        const hashBuf = await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(plaintext),
-        );
-        const keyHash = Array.from(new Uint8Array(hashBuf), (b) =>
-          b.toString(16).padStart(2, "0"),
-        ).join("");
-
-        const result = await ctx.runMutation(
-          anyApi.apiKeys!.createApiKey as any,
-          { name: body.name.trim(), keyPrefix, keyHash },
-        );
-
-        // Return the plaintext key ONCE — it can never be retrieved again.
-        return new Response(
-          JSON.stringify({ ...result, key: plaintext }),
-          { status: 201, headers },
-        );
-      }
-
-      // --- LIST ---
-      if (action === "list") {
-        const keys = await ctx.runQuery(
-          anyApi.apiKeys!.listApiKeys as any,
-          {},
-        );
-        return new Response(JSON.stringify({ keys }), { status: 200, headers });
-      }
-
-      // --- REVOKE ---
-      if (action === "revoke") {
-        if (typeof body.keyId !== "string" || !body.keyId) {
-          return new Response(
-            JSON.stringify({ error: "MISSING_FIELDS", required: ["keyId"] }),
-            { status: 400, headers },
-          );
-        }
-        const result = await ctx.runMutation(
-          anyApi.apiKeys!.revokeApiKey as any,
-          { keyId: body.keyId },
-        );
-        return new Response(JSON.stringify(result), { status: 200, headers });
-      }
-
-      return new Response(
-        JSON.stringify({ error: "UNKNOWN_ACTION" }),
-        { status: 400, headers },
-      );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const status = msg.includes("KEY_LIMIT_REACHED") ? 429
-        : msg.includes("NOT_FOUND") ? 404
-        : msg.includes("ALREADY_REVOKED") ? 409
-        : 500;
-      return new Response(JSON.stringify({ error: msg }), { status, headers });
-    }
-  }),
-});
 
 // Service-to-service: validate a user API key by its SHA-256 hash.
 // Called by the Vercel edge gateway to look up user-owned keys.
@@ -793,6 +679,50 @@ http.route({
       // Fire-and-forget: update lastUsedAt (don't await, don't block response)
       void ctx.runMutation((internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
     }
+
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// Service-to-service: look up the owner of a key by hash (regardless of revoked status).
+// Used by the cache-invalidation endpoint to verify tenancy boundaries.
+http.route({
+  path: "/api/internal-get-key-owner",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { keyHash?: unknown };
+    try {
+      body = await request.json() as { keyHash?: unknown };
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.keyHash !== "string" || !/^[a-f0-9]{64}$/.test(body.keyHash)) {
+      return new Response(JSON.stringify({ error: "INVALID_KEY_HASH" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const result = await ctx.runQuery(
+      (internal as any).apiKeys.getKeyOwner,
+      { keyHash: body.keyHash },
+    );
 
     return new Response(JSON.stringify(result), {
       status: 200,
