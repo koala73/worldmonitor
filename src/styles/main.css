@@ -20232,6 +20232,131 @@ body.map-width-resizing {
 
 /* telegram-intel-tabs: now uses shared .panel-tabs / .panel-tab */
 
+.telegram-intel-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    var(--surface);
+}
+
+.telegram-intel-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.telegram-intel-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
+.telegram-intel-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.telegram-intel-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.telegram-intel-preview {
+  min-height: 0;
+}
+
+.telegram-intel-preview-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.telegram-intel-preview-card.is-loading,
+.telegram-intel-preview-card.is-error {
+  justify-content: flex-start;
+}
+
+.telegram-intel-preview-card.is-error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+}
+
+.telegram-intel-preview-copy {
+  min-width: 0;
+}
+
+.telegram-intel-preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telegram-intel-preview-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.telegram-intel-preview-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.telegram-intel-watchlist-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.telegram-intel-watchlist-pills.is-empty {
+  display: none;
+}
+
+.telegram-intel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.telegram-intel-pill:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.telegram-intel-pill-remove {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
 .telegram-intel-items {
   display: flex;
   flex-direction: column;
@@ -20282,6 +20407,18 @@ body.map-width-resizing {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.telegram-intel-custom-tag {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: color-mix(in srgb, var(--accent) 82%, black);
+  border-radius: 4px;
+  padding: 2px 4px;
+  line-height: 1;
 }
 
 .live-indicator {
