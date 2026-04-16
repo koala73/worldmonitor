@@ -31,8 +31,16 @@ function collectRelativeImports(filePath) {
   const src = readFileSync(filePath, 'utf-8');
   const imports = new Set();
   // ESM: import ... from './x.mjs'   |  export ... from './x.mjs'
-  const re = /(?:^|\s|;)(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?['"](\.[^'"]+)['"]/g;
-  for (const m of src.matchAll(re)) imports.add(m[1]);
+  const esmRe = /(?:^|\s|;)(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?['"](\.[^'"]+)['"]/g;
+  for (const m of src.matchAll(esmRe)) imports.add(m[1]);
+  // CJS direct: require('./x.cjs')
+  const cjsRe = /(?:^|[^a-zA-Z0-9_$])require\s*\(\s*['"](\.[^'"]+)['"]/g;
+  for (const m of src.matchAll(cjsRe)) imports.add(m[1]);
+  // CJS chained: createRequire(import.meta.url)('./x.cjs')
+  //  — the final `('./x')` argument is applied to createRequire's return,
+  //    not to a `require(` token, so the cjsRe above misses it.
+  const createRequireRe = /createRequire\s*\([^)]*\)\s*\(\s*['"](\.[^'"]+)['"]/g;
+  for (const m of src.matchAll(createRequireRe)) imports.add(m[1]);
   return imports;
 }
 
@@ -52,6 +60,23 @@ describe('Dockerfile.relay — transitive-import closure', () => {
 
   it('COPY list is non-empty (sanity)', () => {
     assert.ok(copied.size > 0, 'Dockerfile.relay has no COPY scripts/*.mjs|cjs lines');
+  });
+
+  it('scanner catches both ESM imports and CJS require/createRequire', () => {
+    // Regression guard for the scanner itself: _seed-utils.mjs has both
+    // `import { ... } from './_seed-envelope-source.mjs'` (ESM) AND
+    // `createRequire(import.meta.url)('./_proxy-utils.cjs')` (CJS). If
+    // collectRelativeImports ever stops picking up either, a future
+    // createRequire/require pointing at a new uncopied helper would slip
+    // past the BFS test below without anyone noticing.
+    const seedUtils = resolve(root, 'scripts/_seed-utils.mjs');
+    const imports = collectRelativeImports(seedUtils);
+    assert.ok(imports.has('./_seed-envelope-source.mjs'), 'ESM import not detected');
+    assert.ok(imports.has('./_proxy-utils.cjs'), 'CJS createRequire not detected');
+
+    const relayCjs = resolve(root, 'scripts/ais-relay.cjs');
+    const relayImports = collectRelativeImports(relayCjs);
+    assert.ok(relayImports.has('./_proxy-utils.cjs'), 'CJS require not detected');
   });
 
   // BFS the import graph from each COPY'd entrypoint. Every .mjs/.cjs reached
