@@ -106,6 +106,7 @@ const BOOTSTRAP_KEYS = {
 
 const STANDALONE_KEYS = {
   serviceStatuses:       'infra:service-statuses:v1',
+  submarineCables:       'infrastructure:submarine-cables:v1',
   macroSignals:          'economic:macro-signals:v1',
   bisPolicy:             'economic:bis:policy:v1',
   bisExchange:           'economic:bis:eer:v1',
@@ -137,6 +138,7 @@ const STANDALONE_KEYS = {
   cableHealth:           'cable-health-v1',
   cyberThreatsRpc:       'cyber:threats:v2',
   militaryBases:         'military:bases:active',
+  defensePatents:        'patents:defense:latest',
   militaryFlights:       'military:flights:v1',
   militaryFlightsStale:  'military:flights:stale:v1',
   temporalAnomalies:     'temporal:anomalies:v1',
@@ -145,6 +147,7 @@ const STANDALONE_KEYS = {
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',
   portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
+  portwatchDisruptions:  'portwatch:disruptions:active:v1',
   corridorrisk:          'supply_chain:corridorrisk:v1',
   chokepointTransits:    'supply_chain:chokepoint_transits:v1',
   transitSummaries:      'supply_chain:transit-summaries:v1',
@@ -190,6 +193,7 @@ const STANDALONE_KEYS = {
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
   goldCbReserves:           'market:gold-cb-reserves:v1',
+  sharedFxRates:            'shared:fx-rates:v1',
 };
 
 const SEED_META = {
@@ -221,6 +225,7 @@ const SEED_META = {
   goldCbReserves:   { key: 'seed-meta:market:gold-cb-reserves', maxStaleMin: 44640 }, // IMF IFS is monthly w/ ~2-3mo lag; 31d tolerance
   // RPC/warm-ping keys — seed-meta written by relay loops or handlers
   // serviceStatuses: moved to ON_DEMAND — RPC-populated, no dedicated seed, goes stale when no users visit
+  submarineCables: { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 20160 }, // weekly cron; 20160min = 14d = 2x interval
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 20 },
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
@@ -250,6 +255,7 @@ const SEED_META = {
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
+  defensePatents:   { key: 'seed-meta:military:defense-patents',   maxStaleMin: 20160 }, // weekly cron; 20160min = 14d = 2x interval
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 420 }, // 6h cron + 1h grace; CACHE_TTL is 24h so per-topic merge always has a prior snapshot
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
@@ -262,6 +268,7 @@ const SEED_META = {
   correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 15 },
   portwatch:           { key: 'seed-meta:supply_chain:portwatch',            maxStaleMin: 720 },
   portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160 }, // 12h cron; 2160min = 36h = 3x interval
+  portwatchDisruptions: { key: 'seed-meta:portwatch:disruptions',            maxStaleMin: 120 }, // hourly cron; 120min = 2x interval
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
@@ -311,6 +318,7 @@ const SEED_META = {
   spr:               { key: 'seed-meta:economic:spr',                 maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   refineryInputs:    { key: 'seed-meta:economic:refinery-inputs',     maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   ecbFxRates:        { key: 'seed-meta:economic:ecb-fx-rates',        maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap
+  sharedFxRates:     { key: 'seed-meta:shared:fx-rates',              maxStaleMin: 1500 }, // daily seed; 1500min = 25h = 24h cadence + 1h drift buffer
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   eurostatHousePrices: { key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }, // weekly cron, annual data; 50d threshold = 35d TTL + 15d buffer
   eurostatGovDebtQ:    { key: 'seed-meta:economic:eurostat-gov-debt-q',   maxStaleMin: 60 * 24 * 14 }, // 2d cron, quarterly data; 14d threshold matches TTL + quarterly release drift

@@ -28,6 +28,7 @@
 - [ ] Tested on [worldmonitor.app](https://worldmonitor.app) variant
 - [ ] Tested on [tech.worldmonitor.app](https://tech.worldmonitor.app) variant (if applicable)
 - [ ] New RSS feed domains added to `api/rss-proxy.js` allowlist (if adding feeds)
+- [ ] New canonical seed data is exposed via MCP in `api/mcp.ts` (or intentionally covered by an existing MCP tool)
 - [ ] No API keys or secrets committed
 - [ ] TypeScript compiles without errors (`npm run typecheck`)
 

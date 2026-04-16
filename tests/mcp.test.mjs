@@ -27,8 +27,66 @@ function initBody(id = 1) {
   };
 }
 
+const MCP_TOOL_NAMES = [
+  'get_market_data',
+  'get_conflict_events',
+  'get_aviation_status',
+  'get_news_intelligence',
+  'get_natural_disasters',
+  'get_military_posture',
+  'get_cyber_threats',
+  'get_economic_data',
+  'get_country_macro',
+  'get_eu_housing_cycle',
+  'get_eu_quarterly_gov_debt',
+  'get_eu_industrial_production',
+  'get_prediction_markets',
+  'get_sanctions_data',
+  'get_climate_data',
+  'get_infrastructure_status',
+  'get_supply_chain_data',
+  'get_resilience_recovery',
+  'get_energy_security',
+  'get_positive_events',
+  'get_radiation_data',
+  'get_research_signals',
+  'get_health_data',
+  'get_regulatory_actions',
+  'get_correlation_signals',
+  'get_forecast_predictions',
+  'get_social_velocity',
+  'get_world_brief',
+  'get_country_brief',
+  'get_country_risk',
+  'get_airspace',
+  'get_maritime_activity',
+  'analyze_situation',
+  'generate_forecasts',
+  'search_flights',
+  'search_flight_prices_by_date',
+  'get_commodity_geo',
+];
+
+const CACHE_TOOL_SMOKE_CASES = [
+  { name: 'get_market_data', expectedKeys: ['fear-greed', 'gulf-quotes', 'crypto_sectors', 'stablecoins', 'fx_rates'] },
+  { name: 'get_news_intelligence', expectedKeys: ['advisories-bootstrap', 'security_advisories'] },
+  { name: 'get_natural_disasters', expectedKeys: ['fires', 'events', 'thermal_escalation'] },
+  { name: 'get_cyber_threats', expectedKeys: ['threats-bootstrap', 'threats'] },
+  { name: 'get_economic_data', expectedKeys: ['FEDFUNDS', 'econ-calendar', 'tech_readiness', 'worldbank_progress', 'renewable_energy', 'national_debt', 'bigmac_index', 'grocery_basket', 'fao_food_price_index', 'eurostat_country_data', 'bls_series'] },
+  { name: 'get_country_macro', expectedKeys: ['macro', 'growth', 'labor', 'external'] },
+  { name: 'get_infrastructure_status', expectedKeys: ['outages', 'service_statuses', 'submarine_cables'] },
+  { name: 'get_supply_chain_data', expectedKeys: ['customs-revenue', 'flows', 'hormuz_tracker', 'port_activity_by_country', 'portwatch_chokepoints', 'portwatch_disruptions'] },
+  { name: 'get_research_signals', expectedKeys: ['tech-events-bootstrap', 'defense_patents'] },
+  { name: 'get_resilience_recovery', expectedKeys: ['fiscal_space', 'reserve_adequacy', 'external_debt', 'import_hhi', 'fuel_stocks'] },
+  { name: 'get_energy_security', expectedKeys: ['eu_gas_storage', 'chokepoint_baselines', 'chokepoint_flows', 'iea_oil_stocks', 'jodi_gas_countries', 'jodi_oil_countries', 'spr_policies'] },
+  { name: 'get_health_data', expectedKeys: ['disease_outbreaks', 'vpd_realtime', 'vpd_historical'] },
+  { name: 'get_regulatory_actions', expectedKeys: ['regulatory_actions'] },
+  { name: 'get_correlation_signals', expectedKeys: ['correlation_cards'] },
+];
+
 let handler;
 let evaluateFreshness;
+let toolRegistry;
 
 describe('api/mcp.ts — PRO MCP Server', () => {
   beforeEach(async () => {
@@ -40,6 +98,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
     handler = mod.default;
     evaluateFreshness = mod.evaluateFreshness;
+    toolRegistry = mod.TOOL_REGISTRY;
   });
 
   afterEach(() => {
@@ -118,12 +177,17 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 32 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 37 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 32, `Expected 32 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 37, `Expected 37 tools, got ${body.result.tools.length}`);
+    assert.deepEqual(
+      body.result.tools.map((tool) => tool.name),
+      MCP_TOOL_NAMES,
+      'tools/list names drifted unexpectedly',
+    );
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -131,6 +195,13 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(!('_cacheKeys' in tool), 'Internal _cacheKeys must not be exposed in tools/list');
       assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
     }
+  });
+
+  it('get_military_posture freshness is tied to theater-posture heartbeat', () => {
+    const tool = toolRegistry.find((entry) => entry.name === 'get_military_posture');
+    assert.ok(tool, 'get_military_posture must exist');
+    assert.equal(tool._seedMetaKey, 'seed-meta:theater-posture');
+    assert.equal(tool._maxStaleMin, 60);
   });
 
   // --- tools/call ---
@@ -159,6 +230,22 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(data.stale, true, 'stale must be true when cache is empty');
     assert.equal(data.cached_at, null, 'cached_at must be null when no seed-meta');
     assert.ok('data' in data, 'data field must be present');
+  });
+
+  it('expanded cache tools expose the expected data labels when Redis is empty', async () => {
+    for (const { name, expectedKeys } of CACHE_TOOL_SMOKE_CASES) {
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0', id: name, method: 'tools/call',
+        params: { name, arguments: {} },
+      }));
+      assert.equal(res.status, 200, `${name}: expected HTTP 200`);
+      const body = await res.json();
+      const payload = JSON.parse(body.result.content[0].text);
+      assert.equal(payload.stale, true, `${name}: cache-empty tool must report stale=true`);
+      for (const key of expectedKeys) {
+        assert.ok(key in payload.data, `${name}: missing expected MCP label '${key}'`);
+      }
+    }
   });
 
   it('evaluateFreshness marks bundled data stale when any required source meta is missing', () => {
