@@ -281,17 +281,33 @@ async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
     console.warn(`[resilience-scores] Failed to refresh ranking cache: ${err.message}`);
   }
 
-  try {
-    const verifyResp = await fetch(`${url}/strlen/${encodeURIComponent(RESILIENCE_RANKING_CACHE_KEY)}`, {
+  // Verify BOTH the ranking data key AND the seed-meta key. Upstash REST
+  // pipeline is non-transactional: the handler's atomic SET could land the
+  // ranking but miss the meta, leaving /api/health reading stale meta over a
+  // fresh ranking. If the meta didn't land within ~5 minutes, log a warning
+  // so ops can grep for it — next cron will retry (ranking SET is
+  // idempotent).
+  const [rankingLen, metaFresh] = await Promise.all([
+    fetch(`${url}/strlen/${encodeURIComponent(RESILIENCE_RANKING_CACHE_KEY)}`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
-    });
-    if (!verifyResp.ok) return false;
-    const data = await verifyResp.json();
-    return Number(data?.result || 0) > 0;
-  } catch {
-    return false;
+    }).then((r) => r.ok ? r.json() : null).then((d) => Number(d?.result || 0)).catch(() => 0),
+    fetch(`${url}/get/seed-meta:resilience:ranking`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    }).then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d?.result) return false;
+      try {
+        const meta = JSON.parse(d.result);
+        return typeof meta?.fetchedAt === 'number' && (Date.now() - meta.fetchedAt) < 5 * 60 * 1000;
+      } catch { return false; }
+    }).catch(() => false),
+  ]);
+  const rankingPresent = rankingLen > 0;
+  if (rankingPresent && !metaFresh) {
+    console.warn(`[resilience-scores] Partial publish: ranking:v9 present but seed-meta not fresh — next cron will retry (handler SET is idempotent)`);
   }
+  return rankingPresent;
 }
 
 // The seeder does NOT write seed-meta:resilience:ranking. Previously it did,

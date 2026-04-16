@@ -64,13 +64,28 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   _req: GetResilienceRankingRequest,
 ): Promise<GetResilienceRankingResponse> => {
   // ?refresh=1 forces a full recompute-and-publish instead of returning the
-  // existing cache. Used by the seed-resilience-scores cron to refresh the
-  // aggregate every tick without having to DEL the current key first (which
-  // would nuke usable data on rebuild failure). Safe because the endpoint is
-  // gated at the gateway level — only trusted callers can trigger a rebuild.
+  // existing cache. It is seed-service-only: a full warm is expensive (~222
+  // score computations + chunked pipeline SETs) and an unauthenticated or
+  // Pro-bearer caller looping on refresh=1 could DoS Upstash quota and Edge
+  // budget. Gated on a valid seed API key in X-WorldMonitor-Key (the same
+  // WORLDMONITOR_VALID_KEYS list the cron uses). Pro bearer tokens do NOT
+  // grant refresh — they get the standard cache-first path.
   const forceRefresh = (() => {
-    try { return new URL(ctx.request.url).searchParams.get('refresh') === '1'; }
-    catch { return false; }
+    try {
+      if (new URL(ctx.request.url).searchParams.get('refresh') !== '1') return false;
+    } catch { return false; }
+    const wmKey = ctx.request.headers.get('X-WorldMonitor-Key') ?? '';
+    if (!wmKey) return false;
+    const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
+      .split(',').map((k) => k.trim()).filter(Boolean);
+    const apiKey = process.env.WORLDMONITOR_API_KEY ?? '';
+    const allowed = new Set(validKeys);
+    if (apiKey) allowed.add(apiKey);
+    if (!allowed.has(wmKey)) {
+      console.warn('[resilience] refresh=1 rejected: X-WorldMonitor-Key not in seed allowlist');
+      return false;
+    }
+    return true;
   })();
   if (!forceRefresh) {
     const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as GetResilienceRankingResponse | null;
@@ -111,7 +126,13 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   // `greyedOut` with coverage 0, so the response is correct for partial states.
   const coverageRatio = cachedScores.size / countryCodes.length;
   if (coverageRatio >= RANKING_CACHE_MIN_COVERAGE) {
-    await runRedisPipeline([
+    // Upstash REST /pipeline is not transactional: each SET can succeed or
+    // fail independently. A partial write (ranking OK, meta missed) would
+    // leave health.js reading a stale meta over a fresh ranking — the seeder
+    // self-heal here ensures we at least log it, and the seeder also verifies
+    // BOTH keys post-refresh. If either SET didn't return OK we log a warning
+    // that ops can grep for, rather than silently succeeding.
+    const pipelineResult = await runRedisPipeline([
       ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(response), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
       ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({
         fetchedAt: Date.now(),
@@ -120,6 +141,11 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
         total: countryCodes.length,
       }), 'EX', RESILIENCE_RANKING_META_TTL_SECONDS],
     ]);
+    const rankingOk = pipelineResult[0]?.result === 'OK';
+    const metaOk = pipelineResult[1]?.result === 'OK';
+    if (!rankingOk || !metaOk) {
+      console.warn(`[resilience] ranking publish partial: ranking=${rankingOk ? 'OK' : 'FAIL'} meta=${metaOk ? 'OK' : 'FAIL'}`);
+    }
   } else {
     console.warn(`[resilience] ranking not cached — coverage ${cachedScores.size}/${countryCodes.length} below ${RANKING_CACHE_MIN_COVERAGE * 100}% threshold`);
   }
