@@ -97,21 +97,56 @@ test('429 with no proxy configured: throws after exhausting retries (HTTP 429 in
   assert.equal(calls, 2, 'maxRetries=1 → 2 direct attempts');
 });
 
-test('Retry-After header parsed: backoff respects upstream hint', async () => {
+test('Retry-After header parsed: backoff respects upstream hint (DI _sleep capture)', async () => {
+  // Pre-fix bug: this test used Retry-After: '0', but parseRetryAfterMs()
+  // treats non-positive seconds as null → helper falls back to default
+  // backoff. So the test was named "Retry-After parsed" but actually
+  // exercised the default-backoff branch. Fix: use a positive header value
+  // that's distinctly different from `retryBaseMs * (attempt+1)`, AND
+  // capture the _sleep call so we can assert which branch ran.
   const { fetchYahooJson } = await import('../scripts/_yahoo-fetch.mjs');
   let calls = 0;
   globalThis.fetch = async () => {
     calls += 1;
     return {
-      ok: calls > 1,  // succeed on 2nd
+      ok: calls > 1,
       status: calls > 1 ? 200 : 429,
-      headers: { get: (name) => name.toLowerCase() === 'retry-after' ? '0' : null },
+      headers: { get: (name) => name.toLowerCase() === 'retry-after' ? '7' : null },
       json: async () => VALID_PAYLOAD,
     };
   };
-  const result = await fetchYahooJson(URL, { ...COMMON_OPTS, _curlProxyResolver: () => null });
+  const sleepDurations = [];
+  const result = await fetchYahooJson(URL, {
+    ...COMMON_OPTS,
+    _curlProxyResolver: () => null,
+    _sleep: async (ms) => { sleepDurations.push(ms); },  // capture, never actually sleep
+  });
   assert.deepEqual(result, VALID_PAYLOAD);
   assert.equal(calls, 2);
+  assert.deepEqual(sleepDurations, [7000], 'Retry-After: 7 must produce a 7000ms sleep, not retryBaseMs default (10ms)');
+});
+
+test('Retry-After absent: falls back to linear backoff retryBaseMs * (attempt+1)', async () => {
+  // Companion to the test above — locks the OTHER branch of the if so
+  // they're not collapsed into one path silently.
+  const { fetchYahooJson } = await import('../scripts/_yahoo-fetch.mjs');
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return {
+      ok: calls > 1,
+      status: calls > 1 ? 200 : 429,
+      headers: { get: () => null },  // no Retry-After
+      json: async () => VALID_PAYLOAD,
+    };
+  };
+  const sleepDurations = [];
+  await fetchYahooJson(URL, {
+    ...COMMON_OPTS,                             // retryBaseMs: 10
+    _curlProxyResolver: () => null,
+    _sleep: async (ms) => { sleepDurations.push(ms); },
+  });
+  assert.deepEqual(sleepDurations, [10], 'no Retry-After → retryBaseMs * 1 = 10ms');
 });
 
 // ─── Curl proxy fallback path ───────────────────────────────────────────
@@ -201,6 +236,39 @@ test('proxy returns malformed JSON: throws exhausted', async () => {
     }),
     /Yahoo retries exhausted/,
   );
+});
+
+test('proxy malformed JSON does NOT emit "succeeded" log before throwing (P2 log ordering)', async () => {
+  // Pre-fix bug class: success log was emitted before JSON.parse, so a
+  // malformed proxy response produced contradictory Railway logs:
+  //   [YAHOO] proxy (curl) succeeded for AAPL
+  //   throw: Yahoo retries exhausted ...
+  // Post-fix: parse runs first; success log only fires when parse succeeds.
+  // This breaks the log-grep used by the post-deploy verification in the
+  // PR description (`look for [YAHOO] proxy (curl) succeeded`).
+  const { fetchYahooJson } = await import('../scripts/_yahoo-fetch.mjs');
+  globalThis.fetch = async () => ({
+    ok: false, status: 429, headers: { get: () => null }, json: async () => ({}),
+  });
+
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (msg) => { logs.push(String(msg)); };
+  try {
+    await assert.rejects(
+      () => fetchYahooJson(URL, {
+        ...COMMON_OPTS,
+        _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+        _proxyCurlFetcher: () => 'not-valid-json',
+      }),
+      /Yahoo retries exhausted/,
+    );
+  } finally {
+    console.log = originalLog;
+  }
+
+  const succeededLogged = logs.some((l) => l.includes('proxy (curl) succeeded'));
+  assert.equal(succeededLogged, false, 'success log MUST NOT fire when JSON.parse throws');
 });
 
 test('non-retryable status (500): no extra direct retry, falls to proxy', async () => {

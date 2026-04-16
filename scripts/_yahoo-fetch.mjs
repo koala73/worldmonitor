@@ -86,9 +86,12 @@ export async function fetchYahooJson(url, opts = {}) {
     retryBaseMs = 5_000,
     // Test hooks. Production callers leave these unset and get
     // _PROXY_DEFAULTS. Tests inject mocks to exercise the proxy path
-    // without spinning up real curl execs.
+    // without spinning up real curl execs. `_sleep` lets tests assert
+    // the actual backoff durations (e.g. Retry-After parsing) without
+    // sleeping in real time.
     _curlProxyResolver = _PROXY_DEFAULTS.curlProxyResolver,
     _proxyCurlFetcher = _PROXY_DEFAULTS.curlFetcher,
+    _sleep = sleep,
   } = opts;
 
   // Track the last direct-path failure so the eventual throw carries
@@ -109,7 +112,7 @@ export async function fetchYahooJson(url, opts = {}) {
       if (attempt < maxRetries) {
         const retryMs = retryBaseMs * (attempt + 1);
         console.warn(`  [YAHOO] ${label} ${err?.message ?? err}; retrying in ${Math.round(retryMs / 1000)}s (${attempt + 1}/${maxRetries})`);
-        await sleep(retryMs);
+        await _sleep(retryMs);
         continue;
       }
       // Final direct attempt threw (timeout, ECONNRESET, DNS, etc.).
@@ -127,7 +130,7 @@ export async function fetchYahooJson(url, opts = {}) {
       const retryAfter = parseRetryAfterMs(resp.headers.get('retry-after'));
       const retryMs = retryAfter ?? retryBaseMs * (attempt + 1);
       console.warn(`  [YAHOO] ${label} ${resp.status} — waiting ${Math.round(retryMs / 1000)}s (${attempt + 1}/${maxRetries})`);
-      await sleep(retryMs);
+      await _sleep(retryMs);
       continue;
     }
 
@@ -145,8 +148,14 @@ export async function fetchYahooJson(url, opts = {}) {
       // curlFetch silently keeps working instead of handing a Promise
       // to JSON.parse (Greptile P2 from PR #3119).
       const text = await Promise.resolve(_proxyCurlFetcher(url, curlProxyAuth, { 'User-Agent': CHROME_UA, Accept: 'application/json' }));
+      // Parse BEFORE logging success. If JSON.parse throws, the catch block
+      // below records lastProxyError and we throw exhausted — no contradictory
+      // "succeeded" log line followed by an "exhausted" throw. The post-deploy
+      // verification in the PR description relies on this success log being
+      // a true success signal.
+      const parsed = JSON.parse(text);
       console.log(`  [YAHOO] proxy (curl) succeeded for ${label}`);
-      return JSON.parse(text);
+      return parsed;
     } catch (curlErr) {
       throw new Error(
         `Yahoo retries exhausted for ${label} (last direct: ${lastDirectError?.message ?? 'unknown'}; last proxy: ${curlErr?.message ?? curlErr})`,
