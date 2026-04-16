@@ -2,6 +2,7 @@
 import { validateApiKey } from '../../api/_api-key.js';
 import { validateBearerToken } from '../auth-session';
 import { getEntitlements } from './entitlement-check';
+import { validateUserApiKey } from './user-api-key';
 
 /**
  * Returns true when the caller has a valid API key OR a PRO bearer token.
@@ -16,6 +17,10 @@ export async function isCallerPremium(request: Request): Promise<boolean> {
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
       .split(',').map((k) => k.trim()).filter(Boolean);
     if (validKeys.length > 0 && validKeys.includes(wmKey)) return true;
+
+    // Check user-owned API keys (wm_ prefix) via Convex lookup
+    const userKey = await validateUserApiKey(wmKey);
+    if (userKey) return true;
   }
 
   const keyCheck = validateApiKey(request, {}) as { valid: boolean; required: boolean };

@@ -12,6 +12,7 @@ import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled } from '@/services/entitlements';
 import { getSubscription, openBillingPortal } from '@/services/billing';
+import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 
 function showToast(msg: string): void {
   document.querySelector('.toast-notification')?.remove();
@@ -38,7 +39,7 @@ export interface UnifiedSettingsConfig {
   onMapProviderChange?: (provider: MapProvider) => void;
 }
 
-type TabId = 'settings' | 'panels' | 'sources';
+type TabId = 'settings' | 'panels' | 'sources' | 'api-keys';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -53,6 +54,10 @@ export class UnifiedSettings {
   private draftPanelSettings: Record<string, PanelConfig> = {};
   private panelsJustSaved = false;
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
+  private apiKeys: ApiKeyInfo[] = [];
+  private apiKeysLoading = false;
+  private apiKeysError = '';
+  private newlyCreatedKey: string | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -164,6 +169,28 @@ export class UnifiedSettings {
         this.updateSourcesCounter();
         return;
       }
+
+      if (target.closest('.api-keys-create-btn')) {
+        void this.handleCreateApiKey();
+        return;
+      }
+
+      const revokeBtn = target.closest<HTMLElement>('.api-keys-revoke-btn');
+      if (revokeBtn?.dataset.keyId) {
+        void this.handleRevokeApiKey(revokeBtn.dataset.keyId);
+        return;
+      }
+
+      if (target.closest('.api-keys-copy-btn')) {
+        const key = this.newlyCreatedKey;
+        if (key) {
+          void navigator.clipboard.writeText(key).then(() => {
+            const btn = this.overlay.querySelector<HTMLElement>('.api-keys-copy-btn');
+            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
+          });
+        }
+        return;
+      }
     });
 
     this.overlay.addEventListener('input', (e) => {
@@ -246,6 +273,7 @@ export class UnifiedSettings {
           <button class="${tabClass('settings')}" data-tab="settings" role="tab" aria-selected="${this.activeTab === 'settings'}" id="us-tab-settings" aria-controls="us-tab-panel-settings">${t('header.tabSettings')}</button>
           <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
+          ${getAuthState().user ? `<button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys</button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
@@ -279,6 +307,24 @@ export class UnifiedSettings {
             <button class="sources-select-none">${t('common.selectNone')}</button>
           </div>
         </div>
+        ${getAuthState().user ? `
+        <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
+          <div class="api-keys-section">
+            <div class="api-keys-header">
+              <p class="api-keys-desc">Create API keys to access WorldMonitor data programmatically. Keys are shown once on creation — store them securely.</p>
+            </div>
+            <div class="api-keys-create-form">
+              <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" maxlength="64" />
+              <button class="btn btn-primary api-keys-create-btn">Create Key</button>
+            </div>
+            <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>
+            <div class="api-keys-error" id="usApiKeysError" style="display:none;"></div>
+            <div class="api-keys-list" id="usApiKeysList">
+              <div class="api-keys-loading">Loading...</div>
+            </div>
+          </div>
+        </div>
+        ` : ''}
       </div>
     `;
 
@@ -300,6 +346,18 @@ export class UnifiedSettings {
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
+
+    // API keys: Enter to submit
+    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    if (apiKeyInput) {
+      apiKeyInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void this.handleCreateApiKey();
+      });
+    }
+
+    if (this.activeTab === 'api-keys') {
+      void this.loadApiKeys();
+    }
   }
 
   private switchTab(tab: TabId): void {
@@ -314,6 +372,10 @@ export class UnifiedSettings {
     this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
     });
+
+    if (tab === 'api-keys') {
+      void this.loadApiKeys();
+    }
   }
 
   private renderUpgradeSection(): string {
@@ -614,5 +676,145 @@ export class UnifiedSettings {
     const enabledTotal = allSources.length - disabled.size;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
+  }
+
+  // ---------------------------------------------------------------------------
+  // API Keys tab
+  // ---------------------------------------------------------------------------
+
+  private async loadApiKeys(): Promise<void> {
+    this.apiKeysLoading = true;
+    this.apiKeysError = '';
+    this.renderApiKeysList();
+
+    try {
+      this.apiKeys = await listApiKeys();
+    } catch (err) {
+      this.apiKeysError = err instanceof Error ? err.message : 'Failed to load keys';
+    } finally {
+      this.apiKeysLoading = false;
+      this.renderApiKeysList();
+    }
+  }
+
+  private async handleCreateApiKey(): Promise<void> {
+    const input = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    const btn = this.overlay.querySelector<HTMLButtonElement>('.api-keys-create-btn');
+    const name = input?.value.trim();
+    if (!name || !input || !btn) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    this.apiKeysError = '';
+    this.newlyCreatedKey = null;
+    this.hideBanner();
+
+    try {
+      const result = await createApiKey(name);
+      this.newlyCreatedKey = result.key;
+      input.value = '';
+      this.showCreatedBanner(result.key);
+      await this.loadApiKeys();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create key';
+      this.apiKeysError = msg.includes('KEY_LIMIT_REACHED')
+        ? 'Maximum of 5 active keys reached. Revoke an existing key first.'
+        : msg;
+      this.renderApiKeysError();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Key';
+    }
+  }
+
+  private async handleRevokeApiKey(keyId: string): Promise<void> {
+    const keyInfo = this.apiKeys.find(k => k.id === keyId);
+    const keyName = keyInfo?.name ?? 'this key';
+    if (!confirm(`Revoke "${keyName}"? This cannot be undone. Any applications using this key will stop working.`)) return;
+
+    try {
+      await revokeApiKey(keyId);
+      await this.loadApiKeys();
+    } catch (err) {
+      this.apiKeysError = err instanceof Error ? err.message : 'Failed to revoke key';
+      this.renderApiKeysError();
+    }
+  }
+
+  private showCreatedBanner(key: string): void {
+    const banner = this.overlay.querySelector<HTMLElement>('#usApiKeysBanner');
+    if (!banner) return;
+
+    banner.style.display = 'block';
+    banner.innerHTML = `
+      <div class="api-keys-banner-title">Key created — copy it now, it won't be shown again</div>
+      <div class="api-keys-banner-key">
+        <code class="api-keys-key-value">${escapeHtml(key)}</code>
+        <button class="btn btn-secondary api-keys-copy-btn">Copy</button>
+      </div>
+    `;
+  }
+
+  private hideBanner(): void {
+    const banner = this.overlay.querySelector<HTMLElement>('#usApiKeysBanner');
+    if (banner) {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+    }
+  }
+
+  private renderApiKeysError(): void {
+    const el = this.overlay.querySelector<HTMLElement>('#usApiKeysError');
+    if (!el) return;
+    if (this.apiKeysError) {
+      el.style.display = 'block';
+      el.textContent = this.apiKeysError;
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+  }
+
+  private renderApiKeysList(): void {
+    const container = this.overlay.querySelector('#usApiKeysList');
+    if (!container) return;
+
+    if (this.apiKeysLoading && this.apiKeys.length === 0) {
+      container.innerHTML = '<div class="api-keys-loading">Loading...</div>';
+      return;
+    }
+
+    this.renderApiKeysError();
+
+    const active = this.apiKeys.filter(k => !k.revokedAt);
+    const revoked = this.apiKeys.filter(k => k.revokedAt);
+
+    if (active.length === 0 && revoked.length === 0) {
+      container.innerHTML = '<div class="api-keys-empty">No API keys yet. Create one above to get started.</div>';
+      return;
+    }
+
+    const formatDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
+    const renderKey = (k: ApiKeyInfo) => {
+      const isRevoked = !!k.revokedAt;
+      return `
+        <div class="api-keys-item${isRevoked ? ' revoked' : ''}">
+          <div class="api-keys-item-main">
+            <span class="api-keys-item-name">${escapeHtml(k.name)}</span>
+            <code class="api-keys-item-prefix">${escapeHtml(k.keyPrefix)}${'*'.repeat(8)}</code>
+          </div>
+          <div class="api-keys-item-meta">
+            <span>Created ${formatDate(k.createdAt)}</span>
+            ${k.lastUsedAt ? `<span>Last used ${formatDate(k.lastUsedAt)}</span>` : ''}
+            ${isRevoked ? `<span class="api-keys-item-revoked-badge">Revoked ${formatDate(k.revokedAt!)}</span>` : ''}
+          </div>
+          ${!isRevoked ? `<button class="btn btn-ghost api-keys-revoke-btn" data-key-id="${escapeHtml(k.id)}">Revoke</button>` : ''}
+        </div>
+      `;
+    };
+
+    container.innerHTML = active.map(renderKey).join('')
+      + (revoked.length > 0 ? `<div class="api-keys-revoked-section"><div class="api-keys-revoked-label">Revoked</div>${revoked.map(renderKey).join('')}</div>` : '');
   }
 }

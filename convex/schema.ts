@@ -215,6 +215,18 @@ export default defineSchema({
     .index("by_dodoProductId", ["dodoProductId"])
     .index("by_planKey", ["planKey"]),
 
+  userApiKeys: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    keyPrefix: v.string(),        // first 8 chars of plaintext key, for display
+    keyHash: v.string(),          // SHA-256 hex digest — never store plaintext
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_keyHash", ["keyHash"]),
+
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
     reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
