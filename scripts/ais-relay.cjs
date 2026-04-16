@@ -6010,7 +6010,12 @@ async function seedClimateNews() {
   const t0 = Date.now();
   try {
     await runClimateNewsSeedScript();
-    console.log(`[ClimateNewsSeed] Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const durMs = Date.now() - t0;
+    console.log(`[ClimateNewsSeed] Completed in ${(durMs / 1000).toFixed(1)}s`);
+    // Heartbeat: success-only write so the health endpoint can alarm on a
+    // stalled loop before the 90min seed-meta threshold fires. TTL=3x interval
+    // (90min) lets two consecutive cycles miss before the key evaporates.
+    upstashSet('relay:heartbeat:climate-news', { fetchedAt: Date.now(), recordCount: 1, durMs }, 90 * 60).catch(() => {});
   } catch (e) {
     const message = e?.killed ? 'timeout' : (e?.message || e);
     console.warn('[ClimateNewsSeed] Seed error:', message);
@@ -6076,7 +6081,13 @@ async function seedChokepointFlows() {
   const t0 = Date.now();
   try {
     await runChokepointFlowsSeedScript();
-    console.log(`[ChokepointFlows] Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const durMs = Date.now() - t0;
+    console.log(`[ChokepointFlows] Completed in ${(durMs / 1000).toFixed(1)}s`);
+    // Heartbeat: success-only write so the health endpoint can alarm at +8h
+    // instead of +12h (seed-meta threshold). This catches the failure mode
+    // where the child process dies at import (ERR_MODULE_NOT_FOUND) and
+    // never refreshes seed-meta.energy:chokepoint-flows. TTL=3x interval.
+    upstashSet('relay:heartbeat:chokepoint-flows', { fetchedAt: Date.now(), recordCount: 1, durMs }, 18 * 3600).catch(() => {});
   } catch (e) {
     const message = e?.killed ? 'timeout' : (e?.message || e);
     console.warn('[ChokepointFlows] Seed error:', message);
