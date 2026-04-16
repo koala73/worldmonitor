@@ -41,7 +41,13 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
   (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
-export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
+// Ranking TTL must exceed the cron interval (6h) by enough to tolerate one
+// missed/slow cron tick. With TTL==cron_interval, writing near the end of a
+// run and firing the next cron near the start of the next interval left a
+// gap of multiple hours once the key expired between refreshes. 12h gives a
+// full cron-cycle of headroom — ensureRankingPresent() still refreshes on
+// every cron, so under normal operation the key stays well above TTL=0.
+export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v9:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v4:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v9';

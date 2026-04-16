@@ -18,8 +18,10 @@ describe('exported constants', () => {
     assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v9:');
   });
 
-  it('RESILIENCE_RANKING_CACHE_TTL_SECONDS is 6 hours', () => {
-    assert.equal(RESILIENCE_RANKING_CACHE_TTL_SECONDS, 6 * 60 * 60);
+  it('RESILIENCE_RANKING_CACHE_TTL_SECONDS is 12 hours (2x cron interval)', () => {
+    // TTL must exceed cron interval (6h) so a missed/slow cron doesn't create
+    // an EMPTY_ON_DEMAND gap. Seeder and handler must agree on the TTL.
+    assert.equal(RESILIENCE_RANKING_CACHE_TTL_SECONDS, 12 * 60 * 60);
   });
 
   it('RESILIENCE_STATIC_INDEX_KEY matches expected key', () => {
@@ -131,27 +133,48 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
     src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
   });
 
-  it('extracts ensureRankingPresent helper used by both warm and skip-warm branches', () => {
-    assert.match(src, /async function ensureRankingPresent\b/, 'helper must be defined');
-    const calls = [...src.matchAll(/await\s+ensureRankingPresent\s*\(/g)];
+  it('extracts refreshRankingAggregate helper used by both warm and skip-warm branches', () => {
+    assert.match(src, /async function refreshRankingAggregate\b/, 'helper must be defined');
+    const calls = [...src.matchAll(/await\s+refreshRankingAggregate\s*\(/g)];
     assert.ok(
       calls.length >= 2,
-      `ensureRankingPresent must be called from both branches (missing>0 and missing===0); found ${calls.length} call sites`,
+      `refreshRankingAggregate must be called from both branches (missing>0 and missing===0); found ${calls.length} call sites`,
     );
   });
 
-  it('probes the ranking key after rebuild attempt to verify it actually landed', () => {
+  it('always triggers the rebuild HTTP call — never short-circuits on "key still present"', () => {
+    // Skipping rebuild when the key exists recreates a timing hole: the key
+    // can be alive at probe time but expire a few minutes later, leaving a
+    // multi-hour gap until the NEXT cron where the key happens to be gone at
+    // probe time. Always rebuilding is one cheap HTTP per cron.
+    assert.doesNotMatch(
+      src,
+      /if\s*\(\s*rankingExists\s*!=\s*null[^)]*\)\s*return\s+true/,
+      'refreshRankingAggregate must not early-return when the ranking key is still present',
+    );
+    // The HTTP rebuild call itself must be unconditional (not gated on a probe).
+    assert.match(
+      src,
+      /async function refreshRankingAggregate[\s\S]*?\/api\/resilience\/v1\/get-resilience-ranking/,
+      'rebuild HTTP call must be in the body of refreshRankingAggregate unconditionally',
+    );
+  });
+
+  it('verifies the ranking key after the rebuild attempt for observability', () => {
     assert.match(
       src,
       /\/strlen\/\$\{encodeURIComponent\(RESILIENCE_RANKING_CACHE_KEY\)\}/,
-      'must STRLEN-verify resilience:ranking:v9 after rebuild — rebuild HTTP can return 200 without writing',
+      'STRLEN verify after rebuild surfaces when handler skipped the SET (coverage gate or partial pipeline)',
     );
   });
 
   it('only DELs ranking when laggards were warmed (not on race-condition retry)', () => {
+    // Permit comments/whitespace between the if-condition and the DEL call —
+    // the property that matters is that the DEL is inside an if-block gated
+    // on laggardsWarmed > 0.
     assert.match(
       src,
-      /if\s*\(laggardsWarmed\s*>\s*0\)\s*{\s*await\s+redisPipeline\([^)]+\['DEL',\s*RESILIENCE_RANKING_CACHE_KEY\]\]/,
+      /if\s*\(laggardsWarmed\s*>\s*0\)\s*\{[\s\S]{0,400}\['DEL',\s*RESILIENCE_RANKING_CACHE_KEY\]/,
       'DEL must be guarded by laggardsWarmed > 0',
     );
   });

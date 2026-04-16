@@ -330,7 +330,7 @@ const SEED_META = {
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
   resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
   resilienceStaticFao:   { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // same seeder + same heartbeat as resilienceStaticIndex; required so EMPTY_DATA_OK + missing data degrades to STALE_SEED instead of silent OK
-  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 720 }, // on-demand RPC cache (6h TTL); 12h threshold catches stale rankings without paging on cold start
+  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 720 }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron via refreshRankingAggregate); 12h staleness threshold = 2 missed cron ticks
   resilienceIntervals: { key: 'seed-meta:resilience:intervals',        maxStaleMin: 20160 }, // weekly cron; 20160min = 14d = 2x interval
   energyExposure:       { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // monthly cron on 1st; 50400min = 35d = TTL matches cron cadence + 5d buffer
   energyMixAll:         { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // same seed run as energyExposure; shares seed-meta key
