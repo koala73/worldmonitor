@@ -63,8 +63,13 @@ async function fetchWithTimeout(url) {
 }
 
 // Fetch ALL ports globally in one paginated pass, grouped by ISO3.
-// Replaces 240× per-country queries with ~5 pages of 2000. Returns
+// Replaces 240× per-country queries with a handful of pages. Returns
 // Map<iso3, Map<portId, { lat, lon }>>.
+//
+// IMPORTANT: ArcGIS FeatureServer can cap responses below the requested
+// resultRecordCount (PortWatch_ports_database caps at 1000 despite
+// PAGE_SIZE=2000). Advancing by PAGE_SIZE silently skips the rows between
+// the server cap and PAGE_SIZE. Advance by the actual features.length.
 async function fetchAllPortRefs() {
   const byIso3 = new Map();
   let offset = 0;
@@ -94,7 +99,8 @@ async function fetchAllPortRefs() {
       ports.set(portId, { lat: Number(a.lat ?? 0), lon: Number(a.lon ?? 0) });
     }
     console.log(`  [port-activity]   ref page ${page}: +${features.length} ports (${byIso3.size} countries so far)`);
-    offset += PAGE_SIZE;
+    if (features.length === 0) break; // defensive: ETL=true + 0 features would infinite-loop
+    offset += features.length;
   } while (body.exceededTransferLimit);
   return byIso3;
 }
@@ -114,8 +120,12 @@ async function fetchActivityRows(iso3, since) {
       f: 'json',
     });
     body = await fetchWithTimeout(`${EP3_BASE}?${params}`);
-    if (body.features?.length) allRows.push(...body.features);
-    offset += PAGE_SIZE;
+    const features = body.features ?? [];
+    if (features.length) allRows.push(...features);
+    // Advance by actual returned count, not PAGE_SIZE. ArcGIS can cap below
+    // the requested size (see fetchAllPortRefs for the same issue on EP4).
+    if (features.length === 0) break;
+    offset += features.length;
   } while (body.exceededTransferLimit);
   return allRows;
 }
