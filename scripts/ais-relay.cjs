@@ -1682,7 +1682,7 @@ function fetchYahooQuoteSummary(symbol) {
         try {
           const data = JSON.parse(body);
           const result = data?.quoteSummary?.result?.[0];
-          if (!result) return resolve(_yahooQuoteSummaryProxyFallback(symbol, url));
+          if (!result) return resolve(null); // app-level "no data" — proxy won't change it
           const sd = result.summaryDetail || {};
           const ks = result.defaultKeyStatistics || {};
           const raw = (obj) => typeof obj === 'object' && obj !== null ? (obj.raw ?? obj.fmt ?? null) : (typeof obj === 'number' ? obj : null);
