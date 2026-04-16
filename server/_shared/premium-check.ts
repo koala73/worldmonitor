@@ -23,7 +23,7 @@ export async function isCallerPremium(request: Request): Promise<boolean> {
     const userKey = await validateUserApiKey(wmKey);
     if (userKey) {
       const ent = await getEntitlements(userKey.userId);
-      if (ent && ent.features.tier >= 1) return true;
+      if (ent && ent.features.apiAccess === true) return true;
       return false;
     }
   }

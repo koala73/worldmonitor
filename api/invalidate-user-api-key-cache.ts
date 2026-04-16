@@ -58,29 +58,40 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Verify the keyHash belongs to the calling user (tenancy boundary).
+  // Fail-closed: if ownership cannot be verified, reject the request.
   const convexSiteUrl = process.env.CONVEX_SITE_URL;
   const convexSharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
-  if (convexSiteUrl && convexSharedSecret) {
-    try {
-      const ownerResp = await fetch(`${convexSiteUrl}/api/internal-get-key-owner`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-convex-shared-secret': convexSharedSecret,
-        },
-        body: JSON.stringify({ keyHash }),
-        signal: AbortSignal.timeout(3_000),
-      });
-      if (ownerResp.ok) {
-        const ownerData = await ownerResp.json() as { userId?: string } | null;
-        if (ownerData && ownerData.userId !== session.userId) {
-          return jsonResponse({ error: 'FORBIDDEN' }, 403, cors);
-        }
-      }
-    } catch {
-      // Fail-open: if ownership check fails, still allow invalidation.
-      // Worst case is an evicted cache entry forcing one Convex refetch.
+  if (!convexSiteUrl || !convexSharedSecret) {
+    console.warn('[invalidate-cache] Missing CONVEX_SITE_URL or CONVEX_SERVER_SHARED_SECRET');
+    return jsonResponse({ error: 'Service unavailable' }, 503, cors);
+  }
+
+  try {
+    const ownerResp = await fetch(`${convexSiteUrl}/api/internal-get-key-owner`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-convex-shared-secret': convexSharedSecret,
+      },
+      body: JSON.stringify({ keyHash }),
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!ownerResp.ok) {
+      console.warn(`[invalidate-cache] Convex ownership check HTTP ${ownerResp.status}`);
+      return jsonResponse({ error: 'Service unavailable' }, 503, cors);
     }
+    const ownerData = await ownerResp.json() as { userId?: string } | null;
+    if (!ownerData) {
+      // Hash not in DB — nothing to invalidate, but not an error
+      return jsonResponse({ ok: true }, 200, cors);
+    }
+    if (ownerData.userId !== session.userId) {
+      return jsonResponse({ error: 'FORBIDDEN' }, 403, cors);
+    }
+  } catch (err) {
+    // Fail-closed: ownership check failed — reject to surface the issue
+    console.warn('[invalidate-cache] Ownership check failed:', err instanceof Error ? err.message : String(err));
+    return jsonResponse({ error: 'Service unavailable' }, 503, cors);
   }
 
   await invalidateApiKeyCache(keyHash);

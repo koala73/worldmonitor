@@ -340,8 +340,8 @@ export function createDomainGateway(
     if (isUserApiKey && needsLegacyProBearerGate && sessionUserId) {
       const { getEntitlements } = await import('./_shared/entitlement-check');
       const ent = await getEntitlements(sessionUserId);
-      if (!ent || ent.features.tier < 1) {
-        return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
+      if (!ent || !ent.features.apiAccess) {
+        return new Response(JSON.stringify({ error: 'API access subscription required' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         });

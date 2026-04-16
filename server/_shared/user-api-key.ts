@@ -37,12 +37,19 @@ export async function validateUserApiKey(key: string): Promise<UserKeyResult | n
   const keyHash = await sha256Hex(key);
   const cacheKey = `${CACHE_KEY_PREFIX}${keyHash}`;
 
-  return cachedFetchJson<UserKeyResult>(
-    cacheKey,
-    CACHE_TTL_SECONDS,
-    () => fetchFromConvex(keyHash),
-    NEG_TTL_SECONDS,
-  );
+  try {
+    return await cachedFetchJson<UserKeyResult>(
+      cacheKey,
+      CACHE_TTL_SECONDS,
+      () => fetchFromConvex(keyHash),
+      NEG_TTL_SECONDS,
+    );
+  } catch (err) {
+    // Fail-soft: transient Convex/network errors degrade to unauthorized
+    // rather than bubbling a 500 through the gateway or isCallerPremium.
+    console.warn('[user-api-key] validateUserApiKey failed:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
 }
 
 /** Fetch key validation from Convex internal endpoint. */
