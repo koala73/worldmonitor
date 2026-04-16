@@ -217,6 +217,33 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
   });
 });
 
+describe('seed-bundle-resilience section interval keeps refresh alive', () => {
+  // The bundle runner skips a section when its seed-meta is younger than
+  // intervalMs * 0.8. If intervalMs is too long (e.g. 6h), most Railway cron
+  // fires hit the skip branch → refreshRankingAggregate() never runs →
+  // ranking can expire between actual runs and create EMPTY_ON_DEMAND gaps.
+  // 2h is the tested trade-off: frequent enough for the 12h ranking TTL to
+  // stay well-refreshed, cheap enough per warm-path run (~5-10s).
+  it('Resilience-Scores section has intervalMs ≤ 2 hours', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      join(dir, '..', 'scripts', 'seed-bundle-resilience.mjs'),
+      'utf8',
+    );
+    // Match the label + section line, then extract the intervalMs value.
+    const m = src.match(/label:\s*'Resilience-Scores'[\s\S]{0,400}?intervalMs:\s*(\d+)\s*\*\s*HOUR/);
+    assert.ok(m, 'Resilience-Scores section must set intervalMs in HOUR units');
+    const hours = Number(m[1]);
+    assert.ok(
+      hours > 0 && hours <= 2,
+      `intervalMs must be ≤ 2 hours (found ${hours}) so refreshRankingAggregate runs frequently enough to keep the ranking key alive before its 12h TTL`,
+    );
+  });
+});
+
 describe('handler warm pipeline is chunked', () => {
   // The 222-country pipeline SET payload (~600KB) exceeds the 5s pipeline
   // timeout on Vercel Edge → handler reports 0 persisted, ranking skipped.
