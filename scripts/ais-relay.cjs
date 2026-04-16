@@ -18,7 +18,7 @@ const { execFile } = require('child_process');
 const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
-const { parseProxyConfig } = require('./_proxy-utils.cjs');
+const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -1658,6 +1658,11 @@ function fetchYahooChartDirect(symbol) {
   });
 }
 
+// Yahoo's /v10 quoteSummary 401s on Railway container IPs (seen 2026-04-16
+// logs — all 12 sector ETFs failing). Direct first, then curl via Decodo
+// us.decodo.com. Must be curl (NOT CONNECT): Yahoo's edge blocks Decodo's
+// CONNECT egress (gate.decodo.com) but accepts the curl egress — probed
+// 2026-04-16, see scripts/_yahoo-fetch.mjs header.
 function fetchYahooQuoteSummary(symbol) {
   return new Promise((resolve) => {
     const modules = 'summaryDetail,defaultKeyStatistics';
@@ -1669,7 +1674,7 @@ function fetchYahooQuoteSummary(symbol) {
       if (resp.statusCode !== 200) {
         resp.resume();
         logThrottled('warn', `yahoo-summary-${resp.statusCode}:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} HTTP ${resp.statusCode}`);
-        return resolve(null);
+        return resolve(_yahooQuoteSummaryProxyFallback(symbol, url));
       }
       let body = '';
       resp.on('data', (chunk) => { body += chunk; });
@@ -1677,7 +1682,7 @@ function fetchYahooQuoteSummary(symbol) {
         try {
           const data = JSON.parse(body);
           const result = data?.quoteSummary?.result?.[0];
-          if (!result) return resolve(null);
+          if (!result) return resolve(_yahooQuoteSummaryProxyFallback(symbol, url));
           const sd = result.summaryDetail || {};
           const ks = result.defaultKeyStatistics || {};
           const raw = (obj) => typeof obj === 'object' && obj !== null ? (obj.raw ?? obj.fmt ?? null) : (typeof obj === 'number' ? obj : null);
@@ -1689,12 +1694,60 @@ function fetchYahooQuoteSummary(symbol) {
             threeYearReturn: raw(ks.threeYearAverageReturn),
             fiveYearReturn: raw(ks.fiveYearAverageReturn),
           });
-        } catch { resolve(null); }
+        } catch { resolve(_yahooQuoteSummaryProxyFallback(symbol, url)); }
       });
     });
-    req.on('error', (err) => { logThrottled('warn', `yahoo-summary-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} error: ${err.message}`); resolve(null); });
-    req.on('timeout', () => { req.destroy(); logThrottled('warn', `yahoo-summary-timeout:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} timeout`); resolve(null); });
+    req.on('error', (err) => { logThrottled('warn', `yahoo-summary-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} error: ${err.message}`); resolve(_yahooQuoteSummaryProxyFallback(symbol, url)); });
+    req.on('timeout', () => { req.destroy(); logThrottled('warn', `yahoo-summary-timeout:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} timeout`); resolve(_yahooQuoteSummaryProxyFallback(symbol, url)); });
   });
+}
+
+function _yahooQuoteSummaryProxyFallback(symbol, url) {
+  const proxyAuth = resolveProxyString();
+  if (!proxyAuth) return null;
+  if (Date.now() < _yahooProxyCooldownUntil) return null;
+  try {
+    const { execFileSync } = require('child_process');
+    const args = [
+      '-sS', '--compressed', '--max-time', '15', '-L',
+      '-x', `http://${proxyAuth}`,
+      '-H', `User-Agent: ${CHROME_UA}`,
+      '-H', 'Accept: application/json',
+      '-w', '\n%{http_code}',
+      url,
+    ];
+    const out = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+    const nl = out.lastIndexOf('\n');
+    const status = parseInt(out.slice(nl + 1).trim(), 10);
+    if (status < 200 || status >= 300) {
+      _yahooProxyFailCount++;
+      if (_yahooProxyFailCount >= 5) {
+        _yahooProxyCooldownUntil = Date.now() + _YAHOO_PROXY_COOLDOWN_MS;
+        _yahooProxyFailCount = 0;
+        logThrottled('warn', 'sector-yahoo-proxy-cooldown', '[Sector] Yahoo proxy cooldown 5min after 5 failures');
+      }
+      logThrottled('warn', `sector-yahoo-proxy-${status}:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} proxy HTTP ${status}`);
+      return null;
+    }
+    _yahooProxyFailCount = 0;
+    const data = JSON.parse(out.slice(0, nl));
+    const result = data?.quoteSummary?.result?.[0];
+    if (!result) return null;
+    const sd = result.summaryDetail || {};
+    const ks = result.defaultKeyStatistics || {};
+    const raw = (obj) => typeof obj === 'object' && obj !== null ? (obj.raw ?? obj.fmt ?? null) : (typeof obj === 'number' ? obj : null);
+    return {
+      trailingPE: raw(sd.trailingPE),
+      forwardPE: raw(sd.forwardPE),
+      beta: raw(sd.beta) ?? raw(ks.beta3Year),
+      ytdReturn: raw(ks.ytdReturn),
+      threeYearReturn: raw(ks.threeYearAverageReturn),
+      fiveYearReturn: raw(ks.fiveYearAverageReturn),
+    };
+  } catch (err) {
+    logThrottled('warn', `sector-yahoo-proxy-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} proxy error: ${err.message}`);
+    return null;
+  }
 }
 
 function parseSectorValuation(raw) {
