@@ -47,10 +47,16 @@ afterEach(() => {
   delete process.env.SEED_PROXY_AUTH;
 });
 
-// The helper accepts `_proxyResolver` and `_proxyFetcher` opt overrides
-// specifically for tests — production callers leave them unset and get the
-// real Decodo path from _seed-utils.mjs. This lets us exercise the proxy
-// branch without spinning up a real CONNECT tunnel.
+// The helper accepts `_connectProxyResolver` / `_curlProxyResolver` /
+// `_proxyFetcher` / `_proxyCurlFetcher` opt overrides specifically for tests
+// — production callers leave them unset and get the real Decodo paths from
+// _seed-utils.mjs. This lets us exercise the cascade without spinning up
+// real CONNECT tunnels or curl execs.
+//
+// IMPORTANT: every test that exercises the proxy cascade injects BOTH
+// resolvers, because production defaults route the two legs through
+// DIFFERENT Decodo endpoints (gate.decodo.com vs us.decodo.com). The
+// "production defaults" test below locks that wiring at the helper level.
 
 test('429 with no proxy configured: throws after exhausting retries (preserves pre-fix behavior)', async () => {
   // Re-import per-test so module-level state (none currently) is fresh.
@@ -139,7 +145,8 @@ test('429 + proxy configured + proxy succeeds: returns proxy data, never throws'
   let receivedProxyAuth = null;
   const result = await fetchOpenMeteoArchiveBatch(ZONES, {
     ...ARCHIVE_OPTS,
-    _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _curlProxyResolver:    () => 'user:pass@us.decodo.com:10001',
     _proxyFetcher: async (url, proxyAuth, _opts) => {
       proxyCalls += 1;
       receivedProxyAuth = proxyAuth;
@@ -170,7 +177,8 @@ test('thrown fetch error (timeout/ECONNRESET) on final direct attempt → proxy 
   let proxyCalls = 0;
   const result = await fetchOpenMeteoArchiveBatch(ZONES, {
     ...ARCHIVE_OPTS,
-    _proxyResolver: () => 'user:pass@proxy.test:8000',
+    _connectProxyResolver: () => 'user:pass@proxy.test:8000',
+    _curlProxyResolver:    () => 'user:pass@proxy-curl.test:8000',
     _proxyFetcher: async () => {
       proxyCalls += 1;
       return { buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'), contentType: 'application/json' };
@@ -196,7 +204,8 @@ test('429 + proxy configured + proxy ALSO fails: throws exhausted with last dire
   await assert.rejects(
     () => fetchOpenMeteoArchiveBatch(ZONES, {
       ...ARCHIVE_OPTS,
-      _proxyResolver: () => 'user:pass@proxy.test:8000',
+      _connectProxyResolver: () => 'user:pass@proxy.test:8000',
+    _curlProxyResolver:    () => 'user:pass@proxy-curl.test:8000',
       _proxyFetcher: async () => {
         connectCalls += 1;
         throw new Error('proxy 502');
@@ -217,6 +226,38 @@ test('429 + proxy configured + proxy ALSO fails: throws exhausted with last dire
   );
   assert.equal(connectCalls, 1);
   assert.equal(curlCalls, 1);
+});
+
+// ─── Production defaults: lock the resolver wiring ──────────────────────
+//
+// Without this test, the proxy-cascade tests would all pass even if the
+// helper accidentally routed BOTH legs through the same resolver
+// (collapsing the gate.decodo.com vs us.decodo.com pool redundancy this
+// helper exists to provide). The defaults are exported via _PROXY_DEFAULTS
+// for exactly this lock.
+
+test('production defaults: CONNECT leg uses resolveProxyForConnect, curl leg uses resolveProxy', async () => {
+  // No `?t=` cache-buster on these two imports — reference equality across
+  // modules requires both imports to resolve to the SAME module instance.
+  // Cache-busting forces re-evaluation and breaks the reference comparison.
+  const { _PROXY_DEFAULTS } = await import('../scripts/_open-meteo-archive.mjs');
+  const { resolveProxy, resolveProxyForConnect, httpsProxyFetchRaw, curlFetch } = await import('../scripts/_seed-utils.mjs');
+
+  // Reference equality: the helper must wire the EXACT functions from
+  // _seed-utils.mjs. Anything else (a wrapper, a different resolver, the
+  // wrong direction) means the cascade is misconfigured.
+  assert.equal(_PROXY_DEFAULTS.connectProxyResolver, resolveProxyForConnect, 'CONNECT leg MUST use resolveProxyForConnect (gate.decodo.com pool)');
+  assert.equal(_PROXY_DEFAULTS.curlProxyResolver,    resolveProxy,            'curl leg MUST use resolveProxy (us.decodo.com pool)');
+  assert.equal(_PROXY_DEFAULTS.connectFetcher,       httpsProxyFetchRaw,      'CONNECT leg MUST use httpsProxyFetchRaw');
+  assert.equal(_PROXY_DEFAULTS.curlFetcher,          curlFetch,               'curl leg MUST use curlFetch');
+});
+
+test('production defaults: connect/curl resolvers are different functions (no single point of failure)', async () => {
+  const { _PROXY_DEFAULTS } = await import('../scripts/_open-meteo-archive.mjs');
+  assert.notEqual(_PROXY_DEFAULTS.connectProxyResolver, _PROXY_DEFAULTS.curlProxyResolver,
+    'Same resolver for both legs would collapse the cascade into one Decodo egress pool');
+  assert.notEqual(_PROXY_DEFAULTS.connectFetcher, _PROXY_DEFAULTS.curlFetcher,
+    'Same fetcher for both legs is incoherent (CONNECT vs curl-x are different transport mechanisms)');
 });
 
 // ─── Second-choice curl proxy fallback ──────────────────────────────────
@@ -241,7 +282,8 @@ test('CONNECT proxy fails → curl proxy succeeds: returns curl data, never thro
   let curlCalls = 0;
   const result = await fetchOpenMeteoArchiveBatch(ZONES, {
     ...ARCHIVE_OPTS,
-    _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _curlProxyResolver:    () => 'user:pass@us.decodo.com:10001',
     _proxyFetcher: async () => { connectCalls += 1; throw new Error('HTTP 404'); },
     _proxyCurlFetcher: (url, _proxyAuth, _headers) => {
       curlCalls += 1;
@@ -267,7 +309,8 @@ test('CONNECT succeeds: curl never invoked', async () => {
   let curlCalls = 0;
   const result = await fetchOpenMeteoArchiveBatch(ZONES, {
     ...ARCHIVE_OPTS,
-    _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _curlProxyResolver:    () => 'user:pass@us.decodo.com:10001',
     _proxyFetcher: async () => ({
       buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'),
       contentType: 'application/json',
@@ -291,7 +334,8 @@ test('CONNECT fails AND curl fails: throws exhausted with both errors visible', 
   await assert.rejects(
     () => fetchOpenMeteoArchiveBatch(ZONES, {
       ...ARCHIVE_OPTS,
-      _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+      _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _curlProxyResolver:    () => 'user:pass@us.decodo.com:10001',
       _proxyFetcher: async () => { throw new Error('CONNECT 404'); },
       _proxyCurlFetcher: () => { throw new Error('curl 502'); },
     }),
@@ -316,7 +360,8 @@ test('curl returns malformed JSON: caught + warns, throws exhausted', async () =
   await assert.rejects(
     () => fetchOpenMeteoArchiveBatch(ZONES, {
       ...ARCHIVE_OPTS,
-      _proxyResolver: () => 'user:pass@gate.decodo.com:7000',
+      _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _curlProxyResolver:    () => 'user:pass@us.decodo.com:10001',
       _proxyFetcher: async () => { throw new Error('CONNECT failed'); },
       _proxyCurlFetcher: () => 'not-valid-json',
     }),
@@ -336,7 +381,8 @@ test('proxy fallback returns wrong batch size: caught + warns, throws exhausted'
   await assert.rejects(
     () => fetchOpenMeteoArchiveBatch(ZONES, {
       ...ARCHIVE_OPTS,
-      _proxyResolver: () => 'user:pass@proxy.test:8000',
+      _connectProxyResolver: () => 'user:pass@proxy.test:8000',
+    _curlProxyResolver:    () => 'user:pass@proxy-curl.test:8000',
       _proxyFetcher: async () => ({
         buffer: Buffer.from(JSON.stringify([VALID_PAYLOAD[0]]), 'utf8'),  // 1 instead of 2
         contentType: 'application/json',
