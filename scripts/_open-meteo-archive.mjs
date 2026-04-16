@@ -184,7 +184,12 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   // this path. Only runs when CONNECT also failed.
   if (curlProxyAuth) {
     try {
-      const text = _proxyCurlFetcher(url, curlProxyAuth, { 'User-Agent': CHROME_UA, Accept: 'application/json' });
+      // _proxyCurlFetcher (curlFetch / execFileSync) is intentionally
+      // synchronous today, so plain invocation works. Wrapping with
+      // Promise.resolve + await keeps the call future-safe: if curlFetch is
+      // ever refactored to async, this line silently keeps working instead
+      // of returning an unhandled Promise to JSON.parse.
+      const text = await Promise.resolve(_proxyCurlFetcher(url, curlProxyAuth, { 'User-Agent': CHROME_UA, Accept: 'application/json' }));
       const data = normalizeArchiveBatchResponse(JSON.parse(text));
       if (data.length !== zones.length) {
         throw new Error(`Open-Meteo proxy (curl) batch size mismatch for ${label}: expected ${zones.length}, got ${data.length}`);
