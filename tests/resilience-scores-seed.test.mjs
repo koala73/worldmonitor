@@ -156,11 +156,25 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
     );
   });
 
-  it('seed-meta write is gated on post-rebuild ranking verification (no lying meta)', () => {
-    assert.match(
+  it('seeder does NOT write seed-meta:resilience:ranking (handler is sole writer)', () => {
+    // A seeder-written meta can only attest to per-country score count, not
+    // to whether the ranking aggregate was actually published. Handler gates
+    // its SET on 75% coverage; if the gate trips, an older ranking survives
+    // and seeder meta would lie about freshness. Remove the seeder write —
+    // handler writes ranking + meta atomically, ensureRankingPresent()
+    // triggers the handler every cron so meta stays fresh during quiet Pro
+    // usage without the seeder needing to heartbeat.
+    assert.doesNotMatch(
       src,
-      /result\.rankingPresent[\s\S]{0,200}writeRankingSeedMeta/,
-      'writeRankingSeedMeta must only fire when result.rankingPresent === true',
+      /writeRankingSeedMeta\s*\(/,
+      'seed-resilience-scores.mjs must NOT define or call writeRankingSeedMeta',
+    );
+    // Assert no SET command targets the meta key — comments that reference
+    // the key name are fine and useful for future maintainers.
+    assert.doesNotMatch(
+      src,
+      /\[\s*['"]SET['"]\s*,\s*['"]seed-meta:resilience:ranking['"]/,
+      'seeder must not issue SET seed-meta:resilience:ranking (handler is sole writer)',
     );
   });
 });

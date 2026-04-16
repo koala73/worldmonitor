@@ -302,34 +302,18 @@ async function ensureRankingPresent({ url, token, laggardsWarmed }) {
   }
 }
 
-// Write seed-meta:resilience:ranking so api/health.js can track data freshness.
-// Without this, the meta key is only written by the get-resilience-ranking RPC
-// handler when a user hits it, and goes silently stale during quiet Pro usage —
-// firing a misleading "7× stale" alarm in the health endpoint even while the
-// underlying scores are fresh. Non-fatal on Redis failure; seed itself still
-// completed successfully.
-async function writeRankingSeedMeta(recordCount) {
-  try {
-    const { url, token } = getRedisCredentials();
-    const meta = { fetchedAt: Date.now(), recordCount };
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(['SET', 'seed-meta:resilience:ranking', JSON.stringify(meta), 'EX', 86400 * 7]),
-      signal: AbortSignal.timeout(5_000),
-    });
-    // fetch() doesn't throw on non-2xx — we must check resp.ok explicitly.
-    // Otherwise a 401/429/500 from Upstash silently looks like success, the
-    // seed-meta stays stale, and /api/health keeps alerting without ops
-    // knowing the write ever failed.
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '<unreadable>');
-      console.warn(`[resilience-scores] seed-meta:resilience:ranking write failed: HTTP ${resp.status} — ${body.slice(0, 200)}`);
-    }
-  } catch (err) {
-    console.warn('[resilience-scores] seed-meta:resilience:ranking write failed:', err?.message || err);
-  }
-}
+// The seeder does NOT write seed-meta:resilience:ranking. Previously it did,
+// as a "heartbeat" when Pro traffic was quiet — but it could only attest to
+// "recordCount of per-country scores", not to whether `resilience:ranking:v9`
+// was actually published this cron. The ranking handler gates its SET on a
+// 75% coverage threshold and skips both the ranking and its meta when the
+// gate fails; a stale-but-present ranking key combined with a fresh seeder
+// meta write was exactly the "meta says fresh, data is stale" failure mode
+// this PR exists to eliminate. The handler is now the sole writer of meta,
+// and it writes both keys atomically via the same pipeline only when coverage
+// passes. ensureRankingPresent() triggers the handler every cron so meta
+// never goes silently stale during quiet Pro usage — which was the original
+// reason the seeder meta write existed.
 
 async function main() {
   const startedAt = Date.now();
@@ -340,15 +324,10 @@ async function main() {
     ...(result.reason != null && { reason: result.reason }),
     ...(result.intervalsWritten != null && { intervalsWritten: result.intervalsWritten }),
   });
-  // Truthful meta: only mark the ranking as freshly published when the
-  // canonical data key is actually present in Redis. Otherwise health.js
-  // would report `status: OK, recordCount: 222` while `resilience:ranking:v9`
-  // is missing — exactly the EMPTY_ON_DEMAND-with-fresh-meta lie that
-  // motivated this PR.
-  if (!result.skipped && (result.recordCount ?? 0) > 0 && result.rankingPresent) {
-    await writeRankingSeedMeta(result.recordCount);
-  } else if (!result.skipped && (result.recordCount ?? 0) > 0 && !result.rankingPresent) {
-    console.warn('[resilience-scores] Skipping seed-meta write: scores warmed but resilience:ranking:v9 still absent (rebuild failed); next cron will retry');
+  if (!result.skipped && (result.recordCount ?? 0) > 0 && !result.rankingPresent) {
+    // Observability only — seeder never writes seed-meta. Health will flag the
+    // stale meta on its own if this persists across multiple cron ticks.
+    console.warn('[resilience-scores] resilience:ranking:v9 absent after rebuild attempt; handler-side coverage gate likely tripped. Next cron will retry.');
   }
 }
 
