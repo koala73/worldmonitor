@@ -28,7 +28,7 @@ export const createApiKey = mutation({
     if (!args.name.trim()) {
       throw new ConvexError("INVALID_NAME");
     }
-    if (args.keyPrefix.length < 4 || args.keyPrefix.length > 12) {
+    if (!/^wm_[a-f0-9]{5,9}$/.test(args.keyPrefix)) {
       throw new ConvexError("INVALID_PREFIX");
     }
     if (!/^[a-f0-9]{64}$/.test(args.keyHash)) {
@@ -102,7 +102,7 @@ export const revokeApiKey = mutation({
     }
 
     await ctx.db.patch(args.keyId, { revokedAt: Date.now() });
-    return { ok: true };
+    return { ok: true, keyHash: key.keyHash };
   },
 });
 
@@ -140,7 +140,7 @@ export const touchKeyLastUsed = internalMutation({
   args: { keyId: v.id("userApiKeys") },
   handler: async (ctx, args) => {
     const key = await ctx.db.get(args.keyId);
-    if (key) {
+    if (key && !key.revokedAt) {
       await ctx.db.patch(args.keyId, { lastUsedAt: Date.now() });
     }
   },

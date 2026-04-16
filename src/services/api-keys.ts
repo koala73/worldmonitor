@@ -8,6 +8,7 @@
  */
 
 import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-client';
+import { getClerkToken } from './clerk';
 
 export interface ApiKeyInfo {
   id: string;
@@ -82,5 +83,17 @@ export async function revokeApiKey(keyId: string): Promise<void> {
 
   await waitForConvexAuth();
 
-  await client.mutation((api as any).apiKeys.revokeApiKey, { keyId });
+  const result = await client.mutation((api as any).apiKeys.revokeApiKey, { keyId });
+
+  // Best-effort cache bust so the gateway stops accepting the revoked key immediately.
+  if (result?.keyHash) {
+    const token = await getClerkToken();
+    if (token) {
+      fetch('/api/invalidate-user-api-key-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ keyHash: result.keyHash }),
+      }).catch(() => { /* fire-and-forget */ });
+    }
+  }
 }

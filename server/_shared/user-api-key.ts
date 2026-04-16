@@ -6,7 +6,7 @@
  * Cache entries are keyed by the SHA-256 hash of the API key (never the plaintext).
  */
 
-import { getCachedJson, setCachedJson } from './redis';
+import { getCachedJson, setCachedJson, deleteRedisKey } from './redis';
 
 interface UserKeyResult {
   userId: string;
@@ -15,6 +15,7 @@ interface UserKeyResult {
 }
 
 const CACHE_TTL_SECONDS = 300; // 5 min
+const CACHE_KEY_PREFIX = 'user-api-key:';
 
 /** SHA-256 hex digest (Web Crypto API — works in Edge Runtime). */
 async function sha256Hex(input: string): Promise<string> {
@@ -32,7 +33,7 @@ export async function validateUserApiKey(key: string): Promise<UserKeyResult | n
   if (!key || !key.startsWith('wm_')) return null;
 
   const keyHash = await sha256Hex(key);
-  const cacheKey = `user-api-key:${keyHash}`;
+  const cacheKey = `${CACHE_KEY_PREFIX}${keyHash}`;
 
   // Check Redis cache
   const cached = await getCachedJson(cacheKey, true);
@@ -72,4 +73,12 @@ export async function validateUserApiKey(key: string): Promise<UserKeyResult | n
     console.warn('[user-api-key] validation failed:', err instanceof Error ? err.message : String(err));
     return null;
   }
+}
+
+/**
+ * Delete the Redis cache entry for a specific API key hash.
+ * Called after revocation to ensure the key cannot be used during the TTL window.
+ */
+export async function invalidateApiKeyCache(keyHash: string): Promise<void> {
+  await deleteRedisKey(`${CACHE_KEY_PREFIX}${keyHash}`, true);
 }
