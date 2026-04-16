@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey, writeExtraKey, extendExistingTtl } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, sleep, verifySeedKey, writeExtraKey, extendExistingTtl } from './_seed-utils.mjs';
+import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -50,14 +51,10 @@ async function fetchTopicArticles(topic) {
   url.searchParams.set('sort', 'date');
   url.searchParams.set('timespan', '24h');
 
-  const resp = await fetch(url.toString(), {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!resp.ok) throw new Error(`GDELT ${topic.id}: HTTP ${resp.status}`);
-
-  const data = await resp.json();
+  // fetchGdeltJson does direct retry + curl proxy multi-retry internally.
+  // Throws on exhaustion with HTTP 429 in message — outer fetchWithRetry's
+  // is429 substring match still works against the new error format.
+  const data = await fetchGdeltJson(url.toString(), { label: topic.id });
   const articles = (data.articles || [])
     .map(normalizeArticle)
     .filter(Boolean);
@@ -85,34 +82,31 @@ async function fetchTopicTimeline(topic, mode) {
   url.searchParams.set('timespan', '14d');
 
   try {
-    const resp = await fetch(url.toString(), {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) return [];
-    const data = await resp.json();
+    // Best-effort: timelines degrade silently to [] on any failure.
+    // Helper still attempts proxy fallback before throwing.
+    const data = await fetchGdeltJson(url.toString(), { label: `${topic.id}/${mode}` });
     return normalizeTimeline(data, mode === 'TimelineTone' ? 'tone' : 'value');
   } catch {
     return [];
   }
 }
 
-async function fetchWithRetry(topic, maxRetries = 3) {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fetchTopicArticles(topic);
-    } catch (err) {
-      const is429 = err.message?.includes('429');
-      if (!is429 || attempt === maxRetries) {
-        console.warn(`    ${topic.id}: giving up after ${attempt + 1} attempts (${err.message})`);
-        // exhausted:true only when 429 was the reason — post-exhaust cooldown is only relevant for rate-limit windows
-        return { id: topic.id, articles: [], fetchedAt: new Date().toISOString(), exhausted: is429 };
-      }
-      // Exponential backoff: 60s, 120s, 240s — GDELT rate limit windows exceed 50s
-      const backoff = 60_000 * Math.pow(2, attempt);
-      console.log(`    429 rate-limited, waiting ${backoff / 1000}s... (attempt ${attempt + 1}/${maxRetries + 1})`);
-      await sleep(backoff);
-    }
+async function fetchWithRetry(topic) {
+  // Pre-helper: this function did 3 outer retries with 60/120/240s backoff
+  // on top of fetchTopicArticles. Now fetchGdeltJson handles ALL retry +
+  // proxy multi-retry internally (3 direct retries + 5 curl proxy attempts
+  // per call), so the outer loop is gone. This function's only remaining
+  // job is to translate thrown exhaustion into the {exhausted, articles:[]}
+  // shape that fetchAllTopics expects (used to drive POST_EXHAUST_DELAY_MS
+  // cooldown decisions).
+  try {
+    return await fetchTopicArticles(topic);
+  } catch (err) {
+    // Helper's exhausted-throw includes "HTTP 429" in the message when
+    // 429 was the upstream signal — substring match preserved.
+    const is429 = err.message?.includes('429');
+    console.warn(`    ${topic.id}: giving up (${err.message})`);
+    return { id: topic.id, articles: [], fetchedAt: new Date().toISOString(), exhausted: is429 };
   }
 }
 
