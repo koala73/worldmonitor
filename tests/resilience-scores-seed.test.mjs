@@ -114,17 +114,16 @@ describe('script is self-contained .mjs', () => {
   });
 });
 
-describe('rebuilds ranking key on race-condition or laggards', () => {
-  // Locks in the defensive rebuild added after the bulk RPC. The bulk call's
-  // handler can suffer a read-after-write race in Vercel where its own
-  // re-read of the per-country cache returns empty even though writes
-  // landed; this leaves resilience:ranking:v9 null even with all 222 score
-  // keys present. The seeder must verify and re-call the RPC in that case.
+describe('ensures ranking aggregate is present every cron, with truthful meta', () => {
+  // The ranking aggregate has the same 6h TTL as the per-country scores. If we
+  // only check + rebuild it inside the missing-scores branch, a cron tick that
+  // finds all scores still warm will skip the probe entirely — and the ranking
+  // can expire mid-cycle without anyone noticing until the NEXT cold-start
+  // cron. The probe + rebuild path must run on every cron, regardless of
+  // whether per-country warm was needed. The seed-meta write must be gated on
+  // post-rebuild verification so it never claims freshness over a missing key.
   let src;
   before(async () => {
-    // Read once in a hook so all assertions get a meaningful failure if the
-    // file read itself breaks — instead of cascading TypeErrors from
-    // `assert.match(undefined, …)` in dependent tests.
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
@@ -132,35 +131,64 @@ describe('rebuilds ranking key on race-condition or laggards', () => {
     src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
   });
 
-  it('probes the ranking key after bulk RPC and distinguishes absent from probe-failed', () => {
-    assert.match(
-      src,
-      /\$\{encodeURIComponent\(RESILIENCE_RANKING_CACHE_KEY\)\}/,
-      'must GET resilience:ranking:v9 after bulk warmup to verify it was written',
-    );
-    assert.match(
-      src,
-      /rankingProbeFailed\s*=\s*true/,
-      'must distinguish probe failure from genuinely-absent key for incident triage',
+  it('extracts ensureRankingPresent helper used by both warm and skip-warm branches', () => {
+    assert.match(src, /async function ensureRankingPresent\b/, 'helper must be defined');
+    const calls = [...src.matchAll(/await\s+ensureRankingPresent\s*\(/g)];
+    assert.ok(
+      calls.length >= 2,
+      `ensureRankingPresent must be called from both branches (missing>0 and missing===0); found ${calls.length} call sites`,
     );
   });
 
-  it('triggers rebuild when ranking is null OR laggards were warmed', () => {
+  it('probes the ranking key after rebuild attempt to verify it actually landed', () => {
     assert.match(
       src,
-      /if\s*\(laggardsWarmed\s*>\s*0\s*\|\|\s*rankingExists\s*==\s*null\)/,
-      'rebuild gate must fire on EITHER laggard warms OR null ranking key',
+      /\/strlen\/\$\{encodeURIComponent\(RESILIENCE_RANKING_CACHE_KEY\)\}/,
+      'must STRLEN-verify resilience:ranking:v9 after rebuild — rebuild HTTP can return 200 without writing',
     );
   });
 
   it('only DELs ranking when laggards were warmed (not on race-condition retry)', () => {
-    // On the race path, the key is already null — skipping DEL avoids a
-    // pointless extra Redis call. On the laggard path, DEL forces the
-    // handler to recompute fresh ranking with the now-warmed laggards.
     assert.match(
       src,
       /if\s*\(laggardsWarmed\s*>\s*0\)\s*{\s*await\s+redisPipeline\([^)]+\['DEL',\s*RESILIENCE_RANKING_CACHE_KEY\]\]/,
       'DEL must be guarded by laggardsWarmed > 0',
+    );
+  });
+
+  it('seed-meta write is gated on post-rebuild ranking verification (no lying meta)', () => {
+    assert.match(
+      src,
+      /result\.rankingPresent[\s\S]{0,200}writeRankingSeedMeta/,
+      'writeRankingSeedMeta must only fire when result.rankingPresent === true',
+    );
+  });
+});
+
+describe('handler warm pipeline is chunked', () => {
+  // The 222-country pipeline SET payload (~600KB) exceeds the 5s pipeline
+  // timeout on Vercel Edge → handler reports 0 persisted, ranking skipped.
+  // The fix is to chunk into smaller pipelines that comfortably fit. Static
+  // assertion because behavioral tests can't easily synthesize 222 countries
+  // through the full scoring pipeline.
+  it('warmMissingResilienceScores splits SETs into batches', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      join(dir, '..', 'server', 'worldmonitor', 'resilience', 'v1', '_shared.ts'),
+      'utf8',
+    );
+    assert.match(
+      src,
+      /const\s+SET_BATCH\s*=\s*\d+/,
+      'SET_BATCH constant must be defined',
+    );
+    assert.match(
+      src,
+      /for\s*\([^)]*i\s*\+=\s*SET_BATCH/,
+      'pipeline SETs must be issued in SET_BATCH-sized chunks',
     );
   });
 });

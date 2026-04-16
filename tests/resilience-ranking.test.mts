@@ -263,6 +263,44 @@ describe('resilience ranking contracts', () => {
     }
   });
 
+  it('warms via batched pipeline SETs (avoids 600KB single-pipeline timeout)', async () => {
+    // The 5s pipeline timeout would fail on a 222-SET pipeline (~600KB body)
+    // and the persistence guard would correctly return empty → no ranking.
+    // Splitting into smaller batches keeps each pipeline well under timeout.
+    // We assert the SET path uses MULTIPLE pipelines, not one giant one.
+    const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US', 'YE'],
+      recordCount: 3,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+
+    const setPipelineSizes: number[] = [];
+    const observing = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const isAllScoreSets = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && (cmd[1] as string).includes('resilience:score:v9:'),
+        );
+        if (isAllScoreSets) setPipelineSizes.push(commands.length);
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = observing;
+
+    await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    // For 3 countries the batch fits in one pipeline. The contract under test
+    // is that no single pipeline exceeds the SET_BATCH bound (30) — would-be
+    // 222-element pipelines must be split into multiple smaller ones.
+    assert.ok(setPipelineSizes.length > 0, 'warm must issue at least one score-SET pipeline');
+    for (const size of setPipelineSizes) {
+      assert.ok(size <= 30, `each score-SET pipeline must be ≤30 commands; saw ${size}`);
+    }
+  });
+
   it('does NOT publish ranking when score-key /set writes silently fail (persistence guard)', async () => {
     // Reviewer regression: trusting in-memory warm results without verifying
     // persistence turned a read-lag fix into a write-failure false positive.

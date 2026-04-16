@@ -479,21 +479,35 @@ export async function warmMissingResilienceScores(
   // the prefixed namespace via setCachedJson/cachedFetchJson; writing raw here
   // would (a) make preview warms invisible to subsequent preview reads and
   // (b) leak preview writes into the production-visible unprefixed namespace.
-  const setCommands = scores.map(({ cc, score }) => [
+  //
+  // Chunk size: a single 222-SET pipeline pushes ~600KB of body and routinely
+  // exceeds REDIS_PIPELINE_TIMEOUT_MS (5s) on Vercel Edge → the runRedisPipeline
+  // call returns `[]`, the persistence guard correctly returns an empty map,
+  // and ranking publish gets dropped even though Upstash usually finishes the
+  // writes a moment later. Splitting into ~30-command batches keeps each
+  // pipeline body small enough to land well under the timeout while still
+  // making one round-trip per batch.
+  const SET_BATCH = 30;
+  const allSetCommands = scores.map(({ cc, score }) => [
     'SET',
     scoreCacheKey(cc),
     JSON.stringify(score),
     'EX',
     String(RESILIENCE_SCORE_CACHE_TTL_SECONDS),
   ]);
-  const persistResults = await runRedisPipeline(setCommands);
-  // runRedisPipeline returns [] on transport/HTTP failure. Without a
-  // per-command OK signal we have no proof anything persisted — return an
-  // empty map so the ranking coverage gate can't false-positive on a broken
-  // write path.
-  if (persistResults.length !== scores.length) {
-    console.warn(`[resilience] warm pipeline returned ${persistResults.length}/${scores.length} results — treating all as unpersisted`);
-    return warmed;
+  const persistResults: Array<{ result?: unknown }> = [];
+  for (let i = 0; i < allSetCommands.length; i += SET_BATCH) {
+    const batch = allSetCommands.slice(i, i + SET_BATCH);
+    const batchResults = await runRedisPipeline(batch);
+    if (batchResults.length !== batch.length) {
+      // runRedisPipeline returns [] on transport/HTTP failure. Pad with
+      // empty entries so the per-command index alignment downstream stays
+      // correct — those entries will fail the OK check and be excluded
+      // from `warmed`, which is the safe behavior (no proof = no claim).
+      for (let j = 0; j < batch.length; j++) persistResults.push({});
+    } else {
+      for (const result of batchResults) persistResults.push(result);
+    }
   }
 
   let persistFailures = 0;
