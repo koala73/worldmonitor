@@ -380,7 +380,7 @@ export class PanelLayoutManager implements AppModule {
             <span>${t('header.live')}</span>
           </div>
           <div class="region-selector">
-            <select id="regionSelect" class="region-select">
+            <select id="regionSelect" class="region-select" aria-label="${t('header.selectRegion')}">
               <option value="global">${t('components.deckgl.views.global')}</option>
               <option value="america">${t('components.deckgl.views.americas')}</option>
               <option value="mena">${t('components.deckgl.views.mena')}</option>
