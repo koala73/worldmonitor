@@ -405,13 +405,18 @@ test('direct 200 OK with malformed JSON: proxy fallback runs (P2 regression guar
   assert.deepEqual(result, VALID_PAYLOAD);
 });
 
-// ─── Best-effort caller budgets (fast-fail) ────────────────────────────
+// ─── Helper API: caller-supplied budgets (knob behavior) ───────────────
 //
-// fetchTopicTimeline in seed-gdelt-intel is best-effort and discards the
-// result on failure. It MUST NOT inherit the helper's article-fetch
-// defaults (3 direct retries + 5 proxy attempts ≈ 90s worst case) because
-// it's called 2× per topic × 6 topics → up to 18 minutes blocking on
-// data the seeder throws away. Lock the fast-fail contract.
+// These tests lock the HELPER'S contract for arbitrary callers — they
+// assert the helper correctly honors caller-supplied budget overrides,
+// independent of any specific seeder's choice. Useful as documentation
+// of the helper API and as guard against future regressions where the
+// helper accidentally ignores a budget knob.
+//
+// NOTE: seed-gdelt-intel.mjs's fetchTopicTimeline currently uses 0/2
+// (1 direct + 2 proxy attempts). The 0/0 tests below cover the
+// minimal-budget extreme — they do NOT lock seed-gdelt-intel's choice.
+// A separate test below mirrors the seeder's actual 0/2 choice.
 
 test('maxRetries:0 + proxyMaxAttempts:0 → single direct attempt, no proxy, throws on first failure', async () => {
   const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
@@ -459,6 +464,68 @@ test('proxyMaxAttempts:0 → no "trying proxy" log emitted (no misleading "up to
   } finally { console.log = originalLog; }
   const tryingLogged = logs.some((l) => l.includes('trying proxy'));
   assert.equal(tryingLogged, false, 'no "trying proxy (curl) up to 0×" line — would be both wrong and noisy');
+});
+
+// ─── Seeder-mirror: 0/2 (matches seed-gdelt-intel:fetchTopicTimeline) ─
+
+test('maxRetries:0 + proxyMaxAttempts:2 (timeline budget): 1 direct + up to 2 proxy attempts, returns on first proxy success', async () => {
+  // Mirrors the budget seed-gdelt-intel.mjs:fetchTopicTimeline currently
+  // uses for best-effort timeline calls. Locks that 0/2 actually gives
+  // the timeline path a real recovery chance via proxy session rotation
+  // (which 0/0 would not).
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+  let directCalls = 0;
+  let proxyCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    return { ok: false, status: 429, headers: { get: () => null }, json: async () => ({}) };
+  };
+  const result = await fetchGdeltJson(URL, {
+    label: 'climate/TimelineTone',
+    maxRetries: 0,
+    proxyMaxAttempts: 2,
+    proxyRetryBaseMs: 10,
+    timeoutMs: 1000,
+    _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+    _proxyCurlFetcher: () => {
+      proxyCalls += 1;
+      if (proxyCalls === 1) throw new Error('HTTP 429');
+      return JSON.stringify(VALID_PAYLOAD);
+    },
+    _sleep: async () => {},
+  });
+  assert.equal(directCalls, 1, '0 direct retries → 1 direct attempt only');
+  assert.equal(proxyCalls, 2, '2 proxy attempts: 1st 429, 2nd succeeds');
+  assert.deepEqual(result, VALID_PAYLOAD);
+});
+
+test('maxRetries:0 + proxyMaxAttempts:2: both proxy attempts fail → exhausted (no extra direct retries)', async () => {
+  const { fetchGdeltJson } = await import('../scripts/_gdelt-fetch.mjs');
+  let directCalls = 0;
+  let proxyCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    return { ok: false, status: 429, headers: { get: () => null }, json: async () => ({}) };
+  };
+  await assert.rejects(
+    () => fetchGdeltJson(URL, {
+      label: 'climate/TimelineVol',
+      maxRetries: 0,
+      proxyMaxAttempts: 2,
+      proxyRetryBaseMs: 10,
+      timeoutMs: 1000,
+      _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+      _proxyCurlFetcher: () => { proxyCalls += 1; throw new Error('HTTP 429'); },
+      _sleep: async () => {},
+    }),
+    (err) => {
+      assert.match(err.message, /GDELT retries exhausted/);
+      assert.match(err.message, /2\/2 attempts/, 'attempt count in message reflects the budget');
+      return true;
+    },
+  );
+  assert.equal(directCalls, 1, '0 direct retries → 1 direct attempt only');
+  assert.equal(proxyCalls, 2, 'proxy budget exhausted at 2');
 });
 
 // ─── parseRetryAfterMs unit ─────────────────────────────────────────────
