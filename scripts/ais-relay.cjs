@@ -799,15 +799,20 @@ async function pollTelegramOnce() {
 
   if (channelsPolled > 0) {
     const rc = telegramState.items.length;
+    // Data key TTL must outlive maxStaleMin (10 min = 600s) by enough
+    // buffer so health sees hasData=true + stale seed-meta → STALE_SEED.
+    // If both keys expire together, health jumps straight to EMPTY and
+    // the stale window is never visible. 1800s (30 min) data vs 900s
+    // (15 min) meta gives a 15-min STALE_SEED window before EMPTY.
     upstashSet('intelligence:telegram-feed:v1', {
       count: rc,
       updatedAt: new Date().toISOString(),
       enabled: true,
-    }, 600).catch(() => {});
+    }, 1800).catch(() => {});
     upstashSet('seed-meta:intelligence:telegram-feed:v1', {
       fetchedAt: Date.now(),
       recordCount: rc,
-    }, 600).catch(() => {});
+    }, 900).catch(() => {});
   }
 }
 
