@@ -501,7 +501,7 @@ function matchesSensitivity(ruleSensitivity, eventSeverity) {
  *
  * Shadow mode (default, flag OFF): computes score decision but always falls
  * back to the legacy result so real notifications are unaffected. Logs to
- * shadow:score-log:v1 for tuning.
+ * shadow:score-log (currently v3) for tuning.
  */
 function shouldNotify(rule, event) {
   const passesLegacy = matchesSensitivity(rule.sensitivity, event.severity ?? 'high');
