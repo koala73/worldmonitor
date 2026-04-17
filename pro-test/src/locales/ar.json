@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "المؤسسات",
-    "joinWaitlist": "انضم لقائمة الانتظار"
+    "joinWaitlist": "انضم لقائمة الانتظار",
+    "signIn": "تسجيل الدخول",
+    "upgradeToPro": "الترقية إلى Pro"
   },
   "hero": {
     "noiseWord": "ضوضاء",
@@ -14,7 +16,9 @@
     "launchingDate": "الإطلاق في مارس 2026",
     "tryFreeDashboard": "جرّب لوحة المعلومات المجانية",
     "emailPlaceholder": "أدخل بريدك الإلكتروني",
-    "emailAriaLabel": "البريد الإلكتروني لقائمة الانتظار"
+    "emailAriaLabel": "البريد الإلكتروني لقائمة الانتظار",
+    "choosePlan": "اختر خطتك",
+    "signIn": "تسجيل الدخول"
   },
   "wired": {
     "asFeaturedIn": "كما ظهر في"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "انضم إلى قائمة انتظار World Monitor Pro:",
     "youreIn": "أنت مسجّل!",
     "invitedBanner": "تمت دعوتك — انضم إلى قائمة الانتظار"
+  },
+  "twoPath": {
+    "choosePlan": "اختر خطتك"
   }
 }

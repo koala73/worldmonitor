@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Корпоративный",
-    "joinWaitlist": "Записаться в лист ожидания"
+    "joinWaitlist": "Записаться в лист ожидания",
+    "signIn": "Войти",
+    "upgradeToPro": "Перейти на Pro"
   },
   "hero": {
     "noiseWord": "Шум",
@@ -14,7 +16,9 @@
     "launchingDate": "Запуск в марте 2026",
     "tryFreeDashboard": "Попробовать бесплатный дашборд",
     "emailPlaceholder": "Введите email",
-    "emailAriaLabel": "Email для листа ожидания"
+    "emailAriaLabel": "Email для листа ожидания",
+    "choosePlan": "Выберите план",
+    "signIn": "Войти"
   },
   "wired": {
     "asFeaturedIn": "Как опубликовано в"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Запишитесь в лист ожидания World Monitor Pro:",
     "youreIn": "Вы в списке!",
     "invitedBanner": "Вас пригласили — присоединяйтесь к списку"
+  },
+  "twoPath": {
+    "choosePlan": "Выберите план"
   }
 }

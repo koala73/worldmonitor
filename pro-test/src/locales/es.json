@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Unirse a la lista"
+    "joinWaitlist": "Unirse a la lista",
+    "signIn": "Iniciar sesión",
+    "upgradeToPro": "Actualizar a Pro"
   },
   "hero": {
     "noiseWord": "Ruido",
@@ -14,7 +16,9 @@
     "launchingDate": "Lanzamiento en marzo de 2026",
     "tryFreeDashboard": "Probar el panel gratuito",
     "emailPlaceholder": "Introduce tu email",
-    "emailAriaLabel": "Dirección de email para la lista de espera"
+    "emailAriaLabel": "Dirección de email para la lista de espera",
+    "choosePlan": "Elige tu plan",
+    "signIn": "Iniciar sesión"
   },
   "wired": {
     "asFeaturedIn": "Publicado en"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Únete a la lista de espera de World Monitor Pro:",
     "youreIn": "¡Estás dentro!",
     "invitedBanner": "Te han invitado — únete a la lista de espera"
+  },
+  "twoPath": {
+    "choosePlan": "Elige tu plan"
   }
 }

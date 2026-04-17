@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Запиши се"
+    "joinWaitlist": "Запиши се",
+    "signIn": "Вход",
+    "upgradeToPro": "Надстрой до Pro"
   },
   "hero": {
     "noiseWord": "Шум",
@@ -14,7 +16,9 @@
     "launchingDate": "Стартира март 2026",
     "tryFreeDashboard": "Пробвайте безплатното табло",
     "emailPlaceholder": "Въведете имейл",
-    "emailAriaLabel": "Имейл адрес за списъка на чакащите"
+    "emailAriaLabel": "Имейл адрес за списъка на чакащите",
+    "choosePlan": "Изберете вашия план",
+    "signIn": "Вход"
   },
   "wired": {
     "asFeaturedIn": "Както беше представено в"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Запиши се в списъка на чакащите за World Monitor Pro:",
     "youreIn": "Вие сте вътре!",
     "invitedBanner": "Поканени сте — присъединете се към списъка"
+  },
+  "twoPath": {
+    "choosePlan": "Изберете вашия план"
   }
 }

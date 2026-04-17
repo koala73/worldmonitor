@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "เข้าร่วมรายชื่อรอ"
+    "joinWaitlist": "เข้าร่วมรายชื่อรอ",
+    "signIn": "เข้าสู่ระบบ",
+    "upgradeToPro": "อัปเกรดเป็น Pro"
   },
   "hero": {
     "noiseWord": "สัญญาณรบกวน",
@@ -14,7 +16,9 @@
     "launchingDate": "เปิดตัวมีนาคม 2026",
     "tryFreeDashboard": "ลองใช้แดชบอร์ดฟรี",
     "emailPlaceholder": "กรอกอีเมลของคุณ",
-    "emailAriaLabel": "ที่อยู่อีเมลสำหรับรายชื่อรอ"
+    "emailAriaLabel": "ที่อยู่อีเมลสำหรับรายชื่อรอ",
+    "choosePlan": "เลือกแผนของคุณ",
+    "signIn": "เข้าสู่ระบบ"
   },
   "wired": {
     "asFeaturedIn": "ตามที่ปรากฏใน"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "เข้าร่วมรายชื่อรอ World Monitor Pro:",
     "youreIn": "ลงทะเบียนแล้ว!",
     "invitedBanner": "คุณได้รับเชิญ — เข้าร่วมรายชื่อรอ"
+  },
+  "twoPath": {
+    "choosePlan": "เลือกแผนของคุณ"
   }
 }

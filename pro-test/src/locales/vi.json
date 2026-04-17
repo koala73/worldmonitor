@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Tham gia danh sách chờ"
+    "joinWaitlist": "Tham gia danh sách chờ",
+    "signIn": "Đăng nhập",
+    "upgradeToPro": "Nâng cấp lên Pro"
   },
   "hero": {
     "noiseWord": "Nhiễu",
@@ -14,7 +16,9 @@
     "launchingDate": "Ra mắt tháng 3 năm 2026",
     "tryFreeDashboard": "Dùng thử bảng điều khiển miễn phí",
     "emailPlaceholder": "Nhập email của bạn",
-    "emailAriaLabel": "Địa chỉ email cho danh sách chờ"
+    "emailAriaLabel": "Địa chỉ email cho danh sách chờ",
+    "choosePlan": "Chọn gói của bạn",
+    "signIn": "Đăng nhập"
   },
   "wired": {
     "asFeaturedIn": "Được giới thiệu trên"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Tham gia danh sách chờ World Monitor Pro:",
     "youreIn": "Bạn đã đăng ký!",
     "invitedBanner": "Bạn được mời — tham gia danh sách chờ"
+  },
+  "twoPath": {
+    "choosePlan": "Chọn gói của bạn"
   }
 }

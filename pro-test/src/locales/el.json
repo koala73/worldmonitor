@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Εγγραφή στη λίστα αναμονής"
+    "joinWaitlist": "Εγγραφή στη λίστα αναμονής",
+    "signIn": "Σύνδεση",
+    "upgradeToPro": "Αναβάθμιση σε Pro"
   },
   "hero": {
     "noiseWord": "Θόρυβος",
@@ -14,7 +16,9 @@
     "launchingDate": "Κυκλοφορία Μάρτιος 2026",
     "tryFreeDashboard": "Δοκιμάστε τον δωρεάν πίνακα ελέγχου",
     "emailPlaceholder": "Εισάγετε το email σας",
-    "emailAriaLabel": "Διεύθυνση email για τη λίστα αναμονής"
+    "emailAriaLabel": "Διεύθυνση email για τη λίστα αναμονής",
+    "choosePlan": "Επιλέξτε το πλάνο σας",
+    "signIn": "Σύνδεση"
   },
   "wired": {
     "asFeaturedIn": "Όπως παρουσιάστηκε στο"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Εγγραφείτε στη λίστα αναμονής του World Monitor Pro:",
     "youreIn": "Είστε μέσα!",
     "invitedBanner": "Έχετε προσκληθεί — εγγραφείτε στη λίστα"
+  },
+  "twoPath": {
+    "choosePlan": "Επιλέξτε το πλάνο σας"
   }
 }

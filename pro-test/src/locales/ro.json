@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Înscrie-te pe listă"
+    "joinWaitlist": "Înscrie-te pe listă",
+    "signIn": "Autentificare",
+    "upgradeToPro": "Treci la Pro"
   },
   "hero": {
     "noiseWord": "Zgomot",
@@ -14,7 +16,9 @@
     "launchingDate": "Lansare martie 2026",
     "tryFreeDashboard": "Încearcă panoul gratuit",
     "emailPlaceholder": "Introdu adresa de e-mail",
-    "emailAriaLabel": "Adresă de e-mail pentru lista de așteptare"
+    "emailAriaLabel": "Adresă de e-mail pentru lista de așteptare",
+    "choosePlan": "Alege-ți planul",
+    "signIn": "Autentificare"
   },
   "wired": {
     "asFeaturedIn": "Așa cum a apărut în"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Înscrie-te pe lista de așteptare World Monitor Pro:",
     "youreIn": "Ești înscris!",
     "invitedBanner": "Ai fost invitat — alătură-te listei de așteptare"
+  },
+  "twoPath": {
+    "choosePlan": "Alege-ți planul"
   }
 }

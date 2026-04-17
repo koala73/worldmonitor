@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "エンタープライズ",
-    "joinWaitlist": "ウェイトリストに登録"
+    "joinWaitlist": "ウェイトリストに登録",
+    "signIn": "サインイン",
+    "upgradeToPro": "Proにアップグレード"
   },
   "hero": {
     "noiseWord": "ノイズ",
@@ -14,7 +16,9 @@
     "launchingDate": "2026年3月ローンチ",
     "tryFreeDashboard": "無料ダッシュボードを試す",
     "emailPlaceholder": "メールアドレスを入力",
-    "emailAriaLabel": "ウェイトリスト用メールアドレス"
+    "emailAriaLabel": "ウェイトリスト用メールアドレス",
+    "choosePlan": "プランを選択",
+    "signIn": "サインイン"
   },
   "wired": {
     "asFeaturedIn": "掲載メディア"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "World Monitor Pro ウェイトリストに登録：",
     "youreIn": "登録完了！",
     "invitedBanner": "招待されました — ウェイトリストに参加"
+  },
+  "twoPath": {
+    "choosePlan": "プランを選択"
   }
 }

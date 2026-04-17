@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Schrijf je in"
+    "joinWaitlist": "Schrijf je in",
+    "signIn": "Inloggen",
+    "upgradeToPro": "Upgraden naar Pro"
   },
   "hero": {
     "noiseWord": "Ruis",
@@ -14,7 +16,9 @@
     "launchingDate": "Lancering maart 2026",
     "tryFreeDashboard": "Probeer het gratis dashboard",
     "emailPlaceholder": "Vul je e-mailadres in",
-    "emailAriaLabel": "E-mailadres voor wachtlijst"
+    "emailAriaLabel": "E-mailadres voor wachtlijst",
+    "choosePlan": "Kies je plan",
+    "signIn": "Inloggen"
   },
   "wired": {
     "asFeaturedIn": "Zoals verschenen in"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Schrijf je in voor de World Monitor Pro-wachtlijst:",
     "youreIn": "Je bent erbij!",
     "invitedBanner": "Je bent uitgenodigd — schrijf je in op de wachtlijst"
+  },
+  "twoPath": {
+    "choosePlan": "Kies je plan"
   }
 }

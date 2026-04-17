@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Zapsat se do pořadníku"
+    "joinWaitlist": "Zapsat se do pořadníku",
+    "signIn": "Přihlásit se",
+    "upgradeToPro": "Přejít na Pro"
   },
   "hero": {
     "noiseWord": "Šum",
@@ -14,7 +16,9 @@
     "launchingDate": "Spuštění březen 2026",
     "tryFreeDashboard": "Vyzkoušejte bezplatný dashboard",
     "emailPlaceholder": "Zadejte svůj e-mail",
-    "emailAriaLabel": "E-mailová adresa pro pořadník"
+    "emailAriaLabel": "E-mailová adresa pro pořadník",
+    "choosePlan": "Vyberte si plán",
+    "signIn": "Přihlásit se"
   },
   "wired": {
     "asFeaturedIn": "Jak bylo uvedeno v"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Zapište se do pořadníku World Monitor Pro:",
     "youreIn": "Jste přihlášeni!",
     "invitedBanner": "Byli jste pozváni — přidejte se na seznam"
+  },
+  "twoPath": {
+    "choosePlan": "Vyberte si plán"
   }
 }

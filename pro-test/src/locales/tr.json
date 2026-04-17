@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Bekleme listesine katıl"
+    "joinWaitlist": "Bekleme listesine katıl",
+    "signIn": "Giriş Yap",
+    "upgradeToPro": "Pro'ya Yükselt"
   },
   "hero": {
     "noiseWord": "Gürültü",
@@ -14,7 +16,9 @@
     "launchingDate": "Mart 2026'da yayında",
     "tryFreeDashboard": "Ücretsiz paneli deneyin",
     "emailPlaceholder": "E-postanızı girin",
-    "emailAriaLabel": "Bekleme listesi için e-posta adresi"
+    "emailAriaLabel": "Bekleme listesi için e-posta adresi",
+    "choosePlan": "Planınızı Seçin",
+    "signIn": "Giriş Yap"
   },
   "wired": {
     "asFeaturedIn": "Yayınlandığı yer"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "World Monitor Pro bekleme listesine katılın:",
     "youreIn": "Kayıt oldunuz!",
     "invitedBanner": "Davet edildiniz — bekleme listesine katılın"
+  },
+  "twoPath": {
+    "choosePlan": "Planınızı Seçin"
   }
 }

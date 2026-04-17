@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "企业版",
-    "joinWaitlist": "加入等候名单"
+    "joinWaitlist": "加入等候名单",
+    "signIn": "登录",
+    "upgradeToPro": "升级到 Pro"
   },
   "hero": {
     "noiseWord": "噪音",
@@ -14,7 +16,9 @@
     "launchingDate": "2026 年 3 月上线",
     "tryFreeDashboard": "试用免费仪表盘",
     "emailPlaceholder": "输入你的邮箱",
-    "emailAriaLabel": "等候名单邮箱地址"
+    "emailAriaLabel": "等候名单邮箱地址",
+    "choosePlan": "选择您的方案",
+    "signIn": "登录"
   },
   "wired": {
     "asFeaturedIn": "曾刊登于"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "加入 World Monitor Pro 等候名单：",
     "youreIn": "注册成功！",
     "invitedBanner": "你被邀请了 — 加入等待名单"
+  },
+  "twoPath": {
+    "choosePlan": "选择您的方案"
   }
 }

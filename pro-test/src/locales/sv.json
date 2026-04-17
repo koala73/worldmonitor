@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "joinWaitlist": "Ställ dig i kö"
+    "joinWaitlist": "Ställ dig i kö",
+    "signIn": "Logga in",
+    "upgradeToPro": "Uppgradera till Pro"
   },
   "hero": {
     "noiseWord": "Brus",
@@ -14,7 +16,9 @@
     "launchingDate": "Lansering mars 2026",
     "tryFreeDashboard": "Testa den gratis instrumentpanelen",
     "emailPlaceholder": "Ange din e-postadress",
-    "emailAriaLabel": "E-postadress för väntelistan"
+    "emailAriaLabel": "E-postadress för väntelistan",
+    "choosePlan": "Välj din plan",
+    "signIn": "Logga in"
   },
   "wired": {
     "asFeaturedIn": "Som omnämnts i"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "Gå med i World Monitor Pro-väntelistan:",
     "youreIn": "Du är med!",
     "invitedBanner": "Du har blivit inbjuden — gå med i väntelistan"
+  },
+  "twoPath": {
+    "choosePlan": "Välj din plan"
   }
 }

@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "엔터프라이즈",
-    "joinWaitlist": "대기 목록 등록"
+    "joinWaitlist": "대기 목록 등록",
+    "signIn": "로그인",
+    "upgradeToPro": "Pro로 업그레이드"
   },
   "hero": {
     "noiseWord": "노이즈",
@@ -14,7 +16,9 @@
     "launchingDate": "2026년 3월 출시",
     "tryFreeDashboard": "무료 대시보드 사용해 보기",
     "emailPlaceholder": "이메일을 입력하세요",
-    "emailAriaLabel": "대기 목록용 이메일 주소"
+    "emailAriaLabel": "대기 목록용 이메일 주소",
+    "choosePlan": "플랜 선택",
+    "signIn": "로그인"
   },
   "wired": {
     "asFeaturedIn": "게재 매체"
@@ -243,5 +247,8 @@
     "joinWaitlistShare": "World Monitor Pro 대기 목록에 등록하세요:",
     "youreIn": "등록되었습니다!",
     "invitedBanner": "초대받았습니다 — 대기 목록에 참여하세요"
+  },
+  "twoPath": {
+    "choosePlan": "플랜 선택"
   }
 }
