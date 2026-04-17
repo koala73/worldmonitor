@@ -29,7 +29,6 @@ import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
 import type { EnergyCrisisPanel } from '@/components/EnergyCrisisPanel';
 import type { ETFFlowsPanel } from '@/components/ETFFlowsPanel';
-import type { CommoditiesPanel } from '@/components/MarketPanel';
 import type { MacroSignalsPanel } from '@/components/MacroSignalsPanel';
 import type { FearGreedPanel } from '@/components/FearGreedPanel';
 import type { HormuzPanel } from '@/components/HormuzPanel';
@@ -51,6 +50,7 @@ import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
 import type { CotPositioningPanel } from '@/components/CotPositioningPanel';
 import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
+import type { PositioningPanel } from '@/components/PositioningPanel';
 import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -267,10 +267,6 @@ export class App {
       const panel = this.state.panels['hormuz-tracker'] as HormuzPanel | undefined;
       if (panel) primeTask('hormuz-tracker', () => panel.fetchData());
     }
-    if (shouldPrime('commodities')) {
-      const panel = this.state.panels['commodities'] as CommoditiesPanel | undefined;
-      if (panel) primeTask('commodities-hyperliquid-flow', () => panel.fetchHyperliquidFlow());
-    }
     if (shouldPrime('etf-flows')) {
       const panel = this.state.panels['etf-flows'] as ETFFlowsPanel | undefined;
       if (panel) primeTask('etf-flows', () => panel.fetchData());
@@ -349,6 +345,10 @@ export class App {
     if (shouldPrime('liquidity-shifts')) {
       const panel = this.state.panels['liquidity-shifts'] as LiquidityShiftsPanel | undefined;
       if (panel) primeTask('liquidity-shifts', () => panel.fetchData());
+    }
+    if (shouldPrime('positioning-247')) {
+      const panel = this.state.panels['positioning-247'] as PositioningPanel | undefined;
+      if (panel) primeTask('positioning-247', () => panel.fetchData());
     }
     if (shouldPrime('gold-intelligence')) {
       const panel = this.state.panels['gold-intelligence'] as GoldIntelligencePanel | undefined;
@@ -1306,10 +1306,10 @@ export class App {
       () => this.isPanelNearViewport('hormuz-tracker')
     );
     this.refreshScheduler.scheduleRefresh(
-      'commodities-hyperliquid-flow',
-      () => (this.state.panels['commodities'] as CommoditiesPanel).fetchHyperliquidFlow(),
+      'positioning-247',
+      () => (this.state.panels['positioning-247'] as PositioningPanel).fetchData(),
       REFRESH_INTERVALS.hyperliquidFlow,
-      () => this.isPanelNearViewport('commodities')
+      () => this.isPanelNearViewport('positioning-247')
     );
     this.refreshScheduler.scheduleRefresh(
       'strategic-posture',

@@ -6205,6 +6205,114 @@ body.playback-mode .status-dot {
   opacity: 0.8;
 }
 
+/* 24/7 Positioning Panel */
+.pos-panel {
+  padding: 10px 14px;
+}
+
+.pos-section {
+  margin-bottom: 10px;
+}
+
+.pos-section__header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.pos-card {
+  background: var(--border);
+  border-radius: 4px;
+  padding: 8px 6px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.pos-card--elevated {
+  border-color: color-mix(in srgb, var(--pos-glow-color, #2ecc71) 40%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--pos-glow-color, #2ecc71) 25%, transparent);
+}
+
+.pos-card--clickable {
+  cursor: pointer;
+}
+
+.pos-card--clickable:hover {
+  border-color: color-mix(in srgb, var(--pos-glow-color, var(--text-dim)) 60%, transparent);
+}
+
+.pos-card__name {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pos-gauge {
+  display: block;
+  margin: 0 auto;
+}
+
+.pos-card__metrics {
+  display: flex;
+  gap: 6px;
+  font-size: 9px;
+  margin-top: 2px;
+}
+
+.pos-badge {
+  font-size: 8px;
+  vertical-align: super;
+}
+
+.pos-badge--stale {
+  color: #e67e22;
+}
+
+.pos-badge--warmup {
+  color: #888;
+}
+
+.pos-warmup {
+  padding: 6px 8px;
+  background: rgba(230, 126, 34, 0.10);
+  color: #e67e22;
+  border-radius: 4px;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+
+.pos-footer {
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+@media (max-width: 600px) {
+  .pos-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Predictions */
 .prediction-item {
   padding: 14px 16px;

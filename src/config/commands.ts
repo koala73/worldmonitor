@@ -178,6 +178,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:economic-calendar', keywords: ['economic calendar', 'macro events', 'nonfarm payrolls', 'gdp release', 'fomc'], label: 'Panel: Economic Calendar', icon: '\u{1F4C6}', category: 'panels' },
   { id: 'panel:cot-positioning', keywords: ['cot', 'cot positioning', 'commitments of traders', 'futures positioning', 'cftc'], label: 'Panel: CFTC COT Positioning', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:liquidity-shifts', keywords: ['liquidity', 'liquidity shifts', 'oil gold silver', 'top stocks', 'positioning'], label: 'Panel: Liquidity Shifts', icon: '\u{1F4B0}', category: 'panels' },
+  { id: 'panel:positioning-247', keywords: ['positioning', '24/7', 'perp', 'perpetual', 'hyperliquid', 'funding rate', 'open interest', 'derivatives stress'], label: 'Panel: 24/7 Positioning', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:macro-tiles', keywords: ['macro tiles', 'macro indicators', 'macro overview'], label: 'Panel: Macro Indicators', icon: '\u{1F9E9}', category: 'panels' },
   { id: 'panel:defense-patents', keywords: ['defense patents', 'r&d signal', 'military research', 'defense r&d'], label: 'Panel: R&D Signal', icon: '\u{1F9EA}', category: 'panels' },
   { id: 'panel:climate-news', keywords: ['climate news', 'climate headlines', 'environment news', 'climate intelligence', 'carbon brief', 'copernicus'], label: 'Panel: Climate News', icon: '\u{1F30D}', category: 'panels' },

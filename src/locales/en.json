@@ -2100,6 +2100,16 @@
       "unavailable": "Liquidity data unavailable",
       "failed": "Failed to load"
     },
+    "positioning247": {
+      "title": "24/7 Positioning",
+      "infoTooltip": "<strong>24/7 Positioning</strong> Perpetual contract positioning stress from Hyperliquid. Trades around the clock, showing what's building when traditional markets are closed. Composite score (0-100) from funding rate, volume, open interest, and spot-perp basis. Green = longs crowded (bullish lean), red = shorts crowded (bearish lean).",
+      "commodities": "COMMODITIES",
+      "crypto": "CRYPTO",
+      "fx": "FX",
+      "warmup": "Building baselines. Volume and OI history populates over the next hour.",
+      "unavailable": "Positioning data unavailable",
+      "footer": "5min \u00b7 Hyperliquid perps \u00b7 24/7"
+    },
     "goldIntelligence": {
       "infoTooltip": "<strong>Gold Intelligence</strong> Gold spot price, gold/silver ratio, gold vs platinum premium, cross-currency XAU prices (EUR, GBP, JPY, CNY, INR, CHF), and CFTC managed money positioning. Sources: Yahoo Finance, CFTC COT."
     },

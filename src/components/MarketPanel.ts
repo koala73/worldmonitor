@@ -5,7 +5,6 @@ import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/ut
 import { escapeHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
-import { getHydratedData } from '@/services/bootstrap';
 import {
   getMarketWatchlistEntries,
   parseMarketWatchlistInput,
@@ -344,7 +343,7 @@ interface EcbFxRateItem {
   change1d?: number | null;
 }
 
-type CommoditiesTab = 'commodities' | 'fx' | 'xau' | 'flow';
+type CommoditiesTab = 'commodities' | 'fx' | 'xau';
 
 // Use the generated types directly — never hand-roll a subset, which silently
 // drifts when the proto gains fields.
@@ -474,8 +473,6 @@ export class CommoditiesPanel extends Panel {
   private _tab: CommoditiesTab = 'commodities';
   private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[]; symbol?: string }> = [];
   private _fxRates: EcbFxRateItem[] = [];
-  private _flow: HyperliquidFlowView | null = null;
-  private _flowLoading = false;
 
   constructor() {
     super({ id: 'commodities', title: t('panels.commodities'), infoTooltip: t('components.commodities.infoTooltip') });
@@ -486,58 +483,12 @@ export class CommoditiesPanel extends Panel {
       if (
         tab === 'commodities' ||
         tab === 'fx' ||
-        tab === 'flow' ||
         (tab === 'xau' && SITE_VARIANT === 'commodity')
       ) {
         this._tab = tab as CommoditiesTab;
         this._render();
       }
     });
-  }
-
-  /**
-   * Fetch Hyperliquid perp positioning flow snapshot.
-   * Called from App.ts primeVisiblePanelData() and refreshScheduler.
-   * Uses bootstrap-hydrated data on first render if available (AGENTS.md mandates
-   * bootstrap hydration for new data sources), then refreshes from RPC.
-   */
-  public async fetchHyperliquidFlow(): Promise<boolean> {
-    if (this._flowLoading) return false;
-    this._flowLoading = true;
-    try {
-      if (!this._flow) {
-        const hydrated = getHydratedData('hyperliquidFlow') as Record<string, unknown> | undefined;
-        if (hydrated && !hydrated.unavailable) {
-          const mapped = mapHyperliquidFlowSeed(hydrated);
-          if (mapped) {
-            this._flow = mapped;
-            if (this._tab === 'flow') this._render();
-          }
-        }
-      }
-
-      const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
-      const { getRpcBaseUrl } = await import('@/services/rpc-client');
-      const client = new MarketServiceClient(getRpcBaseUrl(), {
-        fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-      });
-      const resp = await client.getHyperliquidFlow({});
-      if (resp.unavailable || !resp.assets || resp.assets.length === 0) {
-        if (!this._flow) this._flow = { ts: 0, warmup: true, fxAssets: [], commodityAssets: [], unavailable: true };
-      } else {
-        this._flow = mapHyperliquidFlowResponse(resp);
-      }
-      if (this._tab === 'flow') this._render();
-      return true;
-    } catch (err) {
-      console.error('[CommoditiesPanel.fetchHyperliquidFlow] RPC failed:', err instanceof Error ? err.message : err);
-      // Don't blow away an existing flow snapshot on transient fetch errors.
-      if (!this._flow) this._flow = { ts: 0, warmup: true, fxAssets: [], commodityAssets: [], unavailable: true };
-      if (this._tab === 'flow') this._render();
-      return false;
-    } finally {
-      this._flowLoading = false;
-    }
   }
 
   public renderCommodities(data: Array<{ symbol?: string; display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
@@ -550,61 +501,14 @@ export class CommoditiesPanel extends Panel {
     this._render();
   }
 
-  private _buildTabBar(hasFx: boolean, hasXau: boolean, hasFlow: boolean): string {
+  private _buildTabBar(hasFx: boolean, hasXau: boolean): string {
     const firstTabLabel = 'Commodities';
     const tabs: string[] = [
       `<button class="panel-tab${this._tab === 'commodities' ? ' active' : ''}" data-tab="commodities" style="font-size:11px;padding:3px 10px">${firstTabLabel}</button>`,
     ];
     if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:11px;padding:3px 10px">EUR FX</button>`);
     if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:11px;padding:3px 10px">XAU/FX</button>`);
-    if (hasFlow) tabs.push(`<button class="panel-tab${this._tab === 'flow' ? ' active' : ''}" data-tab="flow" style="font-size:11px;padding:3px 10px" title="Hyperliquid perp positioning stress (24/7 leading indicator)">Perp Flow</button>`);
     return tabs.length > 1 ? `<div style="display:flex;gap:4px;margin-bottom:8px">${tabs.join('')}</div>` : '';
-  }
-
-  private _renderFlow(): string {
-    if (!this._flow) {
-      return `<div style="padding:8px;color:var(--text-dim);font-size:12px">Loading perp flow…</div>`;
-    }
-    if (this._flow.unavailable) {
-      return `<div style="padding:8px;color:var(--text-dim);font-size:12px">Perp flow snapshot unavailable. Warming up — first samples populate within 5–10 minutes.</div>`;
-    }
-    const sections: string[] = [];
-    if (this._flow.warmup) {
-      sections.push(`<div style="padding:6px 8px;background:rgba(230,126,34,0.10);color:#e67e22;border-radius:4px;font-size:10px;margin-bottom:6px">Warming up — volume/OI baselines build over the next ~12 polls (1h).</div>`);
-    }
-    if (this._flow.commodityAssets.length > 0) {
-      sections.push(`<div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin:4px 0 2px">Commodities</div>`);
-      sections.push(this._renderFlowGrid(this._flow.commodityAssets));
-    }
-    if (this._flow.fxAssets.length > 0) {
-      sections.push(`<div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 2px">FX (Crypto-Native)</div>`);
-      sections.push(this._renderFlowGrid(this._flow.fxAssets));
-    }
-    sections.push(`<div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Composite 0–100 from funding × volume × OI × basis · Hyperliquid /info · 5min cron</div>`);
-    return sections.join('');
-  }
-
-  private _renderFlowGrid(assets: HyperliquidAssetView[]): string {
-    return '<div class="commodities-grid">' + assets.map((a) => {
-      const score = Math.round(a.composite);
-      const scoreColor = score >= 60 ? '#e74c3c' : score >= 40 ? '#e67e22' : score >= 20 ? '#f1c40f' : 'var(--text-dim)';
-      const fundingStr = a.funding != null ? `${(a.funding * 100).toFixed(3)}%` : '—';
-      const fundingColor = a.funding != null && a.funding < 0 ? 'change-negative' : 'change-positive';
-      const oiStr = a.oiDelta1h != null ? `${a.oiDelta1h >= 0 ? '+' : ''}${(a.oiDelta1h * 100).toFixed(1)}%` : '—';
-      const oiColor = a.oiDelta1h != null && a.oiDelta1h < 0 ? 'change-negative' : 'change-positive';
-      const staleBadge = a.stale ? ` <span style="color:#e67e22;font-size:9px">stale</span>` : '';
-      const warmupBadge = a.warmup ? ` <span style="color:#888;font-size:9px">warm</span>` : '';
-      return `
-        <div class="commodity-item" title="${escapeHtml(a.symbol)} · score ${score}/100${a.warmup ? ' · warming up' : ''}${a.stale ? ' · upstream stale' : ''}">
-          <div class="commodity-name">${escapeHtml(a.display)}${staleBadge}${warmupBadge}</div>
-          ${miniSparkline(a.sparkScore, score - 50, 60, 18)}
-          <div class="commodity-price" style="color:${scoreColor};font-weight:600">${score}</div>
-          <div style="display:flex;gap:6px;font-size:10px">
-            <span class="${fundingColor}" title="hourly funding">${escapeHtml(fundingStr)}</span>
-            <span class="${oiColor}" title="OI Δ1h">${escapeHtml(oiStr)}</span>
-          </div>
-        </div>`;
-    }).join('') + '</div>';
   }
 
   private _renderXau(): string {
@@ -641,15 +545,8 @@ export class CommoditiesPanel extends Panel {
   private _render(): void {
     const hasFx = this._fxRates.length > 0;
     const hasXau = SITE_VARIANT === 'commodity' && this._commodityData.some(d => d.symbol === 'GC=F' && d.price !== null);
-    const hasFlow = !!this._flow && (!this._flow.unavailable || this._flow.warmup);
     if (this._tab === 'xau' && !hasXau) this._tab = 'commodities';
-    if (this._tab === 'flow' && !hasFlow) this._tab = 'commodities';
-    const tabBar = this._buildTabBar(hasFx, hasXau, hasFlow);
-
-    if (this._tab === 'flow') {
-      this.setContent(tabBar + this._renderFlow());
-      return;
-    }
+    const tabBar = this._buildTabBar(hasFx, hasXau);
 
     if (this._tab === 'fx' && hasFx) {
       const items = this._fxRates.map(r => {

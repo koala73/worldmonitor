@@ -71,6 +71,7 @@ import {
   EconomicCalendarPanel,
   CotPositioningPanel,
   LiquidityShiftsPanel,
+  PositioningPanel,
   GoldIntelligencePanel,
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
@@ -1113,6 +1114,7 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('economic-calendar', () => new EconomicCalendarPanel());
     this.createPanel('cot-positioning', () => new CotPositioningPanel());
     this.createPanel('liquidity-shifts', () => new LiquidityShiftsPanel());
+    this.createPanel('positioning-247', () => new PositioningPanel());
     this.createPanel('gold-intelligence', () => new GoldIntelligencePanel());
     this.createPanel('hormuz-tracker', () => new HormuzPanel());
     this.createPanel('etf-flows', () => new ETFFlowsPanel());
