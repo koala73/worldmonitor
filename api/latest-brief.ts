@@ -31,13 +31,16 @@ import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
 
+const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 function todayInUtc(): string {
-  // Composer is the source of truth for the per-user issue date (it
-  // may roll on the user's tz). This UTC default exists only to pick
-  // a probable slot during the preview-call window; expect it to
-  // diverge from the composer's slot occasionally and fall back to
-  // the `composing` branch when that happens.
   return new Date().toISOString().slice(0, 10);
+}
+
+function yesterdayInUtc(): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 async function readBriefPreview(
@@ -129,11 +132,44 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  const issueDate = todayInUtc();
-  const preview = await readBriefPreview(session.userId, issueDate);
+  // Determine which issue slot to probe.
+  //  - If the client passes ?date=YYYY-MM-DD, use that verbatim. This
+  //    is the path the dashboard panel should use: it knows its own
+  //    local tz and computes the user's local date.
+  //  - Otherwise fall back to today UTC, then yesterday UTC. A user
+  //    in a non-UTC tz will often see their most recent brief sit
+  //    under the composer's per-user slot while UTC has already
+  //    rolled over; the walk-back covers that window without needing
+  //    a tz library.
+  const url = new URL(req.url);
+  const dateParam = url.searchParams.get('date');
+  if (dateParam !== null && !ISSUE_DATE_RE.test(dateParam)) {
+    return jsonResponse({ error: 'invalid_date_shape' }, 400, cors);
+  }
+  const todayUtc = todayInUtc();
+  const candidates = dateParam ? [dateParam] : [todayUtc, yesterdayInUtc()];
 
-  if (!preview) {
-    return jsonResponse({ status: 'composing', issueDate }, 200, cors);
+  let issueDate: string | null = null;
+  let preview: { dateLong: string; greeting: string; threadCount: number } | null = null;
+  try {
+    for (const slot of candidates) {
+      const hit = await readBriefPreview(session.userId, slot);
+      if (hit) {
+        issueDate = slot;
+        preview = hit;
+        break;
+      }
+    }
+  } catch (err) {
+    // Upstash outage / config break / corrupt value — do NOT collapse
+    // this into "composing", which would falsely signal empty state
+    // to the dashboard panel. 503 lets the client show a retry path.
+    console.error('[api/latest-brief] Upstash read failed:', (err as Error).message);
+    return jsonResponse({ error: 'service_unavailable' }, 503, cors);
+  }
+
+  if (!preview || !issueDate) {
+    return jsonResponse({ status: 'composing', issueDate: todayUtc }, 200, cors);
   }
 
   let magazineUrl: string;

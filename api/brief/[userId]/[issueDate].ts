@@ -137,14 +137,28 @@ export default async function handler(req: Request): Promise<Response> {
     return htmlResponse(req, 403, FORBIDDEN_PAGE);
   }
 
-  const envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);
+  // The helper throws on infrastructure failure (Upstash down, config
+  // missing, parse failure). Only a genuine miss returns null. We must
+  // distinguish those two — a reader with a valid brief deserves a
+  // "service unavailable" state during outages, not a misleading
+  // "expired" page.
+  let envelope: unknown;
+  try {
+    envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);
+  } catch (err) {
+    console.error('[api/brief] Upstash read failed:', (err as Error).message);
+    return htmlResponse(req, 503, UNAVAILABLE_PAGE);
+  }
   if (!envelope) {
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
 
+  // Cast to BriefEnvelope; renderBriefMagazine runs its own
+  // assertBriefEnvelope at the top and will throw on any shape
+  // mismatch, which we catch below.
   let html: string;
   try {
-    html = renderBriefMagazine(envelope);
+    html = renderBriefMagazine(envelope as Parameters<typeof renderBriefMagazine>[0]);
   } catch (err) {
     // Malformed envelope in Redis (composer bug, version drift, etc.)
     // We treat this as an expired brief from the reader's perspective
