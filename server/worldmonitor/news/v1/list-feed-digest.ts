@@ -60,9 +60,9 @@ const SEVERITY_SCORES: Record<ThreatLevel, number> = {
  * Source tier boosts confidence. Recency is a minor tiebreaker.
  */
 const SCORE_WEIGHTS = {
-  severity: 0.4,
+  severity: 0.55,
   sourceTier: 0.2,
-  corroboration: 0.3,
+  corroboration: 0.15,
   recency: 0.1,
 } as const;
 

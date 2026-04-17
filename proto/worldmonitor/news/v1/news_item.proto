@@ -30,7 +30,7 @@ message NewsItem {
   worldmonitor.core.v1.GeoCoordinates location = 7;
   // Human-readable location name.
   string location_name = 8;
-  // Composite importance score (0-100): severity × 40% + source tier × 20% + corroboration × 30% + recency × 10%.
+  // Composite importance score (0-100): severity × 55% + source tier × 20% + corroboration × 15% + recency × 10%.
   int32 importance_score = 9;
   // Number of distinct sources that reported the same story in this digest cycle.
   int32 corroboration_count = 10;

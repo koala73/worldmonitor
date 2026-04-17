@@ -3413,7 +3413,7 @@ const RELAY_TIER4_SOURCES = new Set(
   Object.entries(RELAY_SOURCE_TIERS).filter(([, t]) => t === 4).map(([s]) => s),
 );
 
-const RELAY_SCORE_WEIGHTS = { severity: 0.4, sourceTier: 0.2, corroboration: 0.3, recency: 0.1 };
+const RELAY_SCORE_WEIGHTS = { severity: 0.55, sourceTier: 0.2, corroboration: 0.15, recency: 0.1 };
 const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, info: 0 };
 
 // Mirrors computeImportanceScore() in list-feed-digest.ts with ONE intentional

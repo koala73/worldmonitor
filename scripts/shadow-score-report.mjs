@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 
 // v2 is the post-fix key (JSON members). v1 is the legacy key (compact strings).
 // Override with SHADOW_SCORE_KEY=shadow:score-log:v1 to read pre-fix data.
-const KEY = process.env.SHADOW_SCORE_KEY || 'shadow:score-log:v2';
+const KEY = process.env.SHADOW_SCORE_KEY || 'shadow:score-log:v3';
 const OUT = resolve(process.cwd(), 'shadow-score-report');
 const GATE_MIN = 40;     // current IMPORTANCE_SCORE_MIN default
 const HIGH = 65;         // current shouldNotify "high" sensitivity threshold
