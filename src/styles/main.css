@@ -21135,7 +21135,9 @@ body.map-width-resizing {
   border: 1px solid var(--green);
   border-radius: 6px;
   background: var(--green);
-  color: var(--bg);
+  /* Pinned dark, not var(--bg). In light theme var(--bg) is near-white and
+     falls to ~3.13:1 on var(--green), failing WCAG AA for 13px text. */
+  color: #0a0a0a;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
