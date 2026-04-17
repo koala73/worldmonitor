@@ -4,7 +4,9 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Reserve Your Early Access"
+    "reserveAccess": "Reserve Your Early Access",
+    "signIn": "Sign In",
+    "upgradeToPro": "Upgrade to Pro"
   },
   "hero": {
     "noiseWord": "Noise",
@@ -14,7 +16,9 @@
     "launchingDate": "Launching March 2026",
     "tryFreeDashboard": "Try the free dashboard",
     "emailPlaceholder": "Enter your email",
-    "emailAriaLabel": "Email address for waitlist"
+    "emailAriaLabel": "Email address for waitlist",
+    "choosePlan": "Choose Your Plan",
+    "signIn": "Sign In"
   },
   "wired": {
     "asFeaturedIn": "As featured in"
@@ -32,6 +36,7 @@
     "proF8": "Saved watchlists, custom views & configurable alert rules",
     "proF9": "Premium map layers, longer history & desktop app workflows",
     "proCta": "Reserve Your Early Access",
+    "choosePlan": "Choose Your Plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "For teams that need shared monitoring, API access, deployment options, TV apps, and direct support.",
     "entF1": "Everything in Pro, plus:",

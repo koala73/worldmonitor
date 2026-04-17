@@ -2,7 +2,6 @@ import { trackGateHit } from '@/services/analytics';
 
 let bannerEl: HTMLElement | null = null;
 
-/* TODO: re-enable dismiss after pro launch promotion period
 const DISMISS_KEY = 'wm-pro-banner-dismissed';
 const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -25,11 +24,11 @@ function dismiss(): void {
   }, 300);
   localStorage.setItem(DISMISS_KEY, String(Date.now()));
 }
-*/
 
 export function showProBanner(container: HTMLElement): void {
   if (bannerEl) return;
   if (window.self !== window.top) return;
+  if (isDismissed()) return;
 
   trackGateHit('pro-banner');
 
@@ -38,18 +37,16 @@ export function showProBanner(container: HTMLElement): void {
   banner.innerHTML = `
     <span class="pro-banner-badge">PRO</span>
     <span class="pro-banner-text">
-      <strong>Pro is coming</strong> — More Signal, Less Noise. More AI Briefings. A Geopolitical &amp; Equity Researcher just for you.
+      <strong>Pro is launched</strong> — More Signal, Less Noise. More AI Briefings. A Geopolitical &amp; Equity Researcher just for you.
     </span>
-    <a class="pro-banner-cta" href="/pro">Reserve your spot →</a>
+    <a class="pro-banner-cta" href="/pro#pricing">Upgrade to Pro →</a>
+    <button class="pro-banner-close" aria-label="Dismiss">×</button>
   `;
 
-  /* TODO: re-enable close button after pro launch promotion period
-  banner.innerHTML += `<button class="pro-banner-close" aria-label="Dismiss">×</button>`;
   banner.querySelector('.pro-banner-close')!.addEventListener('click', (e) => {
     e.preventDefault();
     dismiss();
   });
-  */
 
   const header = container.querySelector('.header');
   if (header) {
