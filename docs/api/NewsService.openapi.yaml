@@ -296,7 +296,7 @@ components:
                 importanceScore:
                     type: integer
                     format: int32
-                    description: 'Composite importance score (0-100): severity × 40% + source tier × 20% + corroboration × 30% + recency × 10%.'
+                    description: 'Composite importance score (0-100): severity × 55% + source tier × 20% + corroboration × 15% + recency × 10%.'
                 corroborationCount:
                     type: integer
                     format: int32
