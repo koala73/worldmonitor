@@ -668,11 +668,12 @@ async function initTelegramClientIfNeeded() {
 
   if (!apiId || !apiHash || !sessionStr) return false;
 
+  let client;
   try {
     const { TelegramClient } = await import('telegram');
     const { StringSession } = await import('telegram/sessions/index.js');
 
-    const client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
+    client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
       connectionRetries: 3,
     });
 
@@ -689,11 +690,17 @@ async function initTelegramClientIfNeeded() {
       console.warn('[Relay] Telegram package not installed — disabling permanently for this session');
       return false;
     }
+    // Destroy the locally-created client directly — telegramState.client
+    // is still null because connect() failed before the assignment. Without
+    // this, the MTProto sender's autonomous reconnect loop keeps running.
+    if (client) {
+      telegramState.client = client;
+      destroyTelegramClient();
+    }
     if (/AUTH_KEY_DUPLICATED/.test(em)) {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
       console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
-      destroyTelegramClient();
       return false;
     }
     telegramState.lastError = `telegram init failed: ${em}`;
