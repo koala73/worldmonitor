@@ -687,9 +687,12 @@ async function processEvent(event) {
   // short-circuit, but we still pay the promise/microtask cost unless gated here.
   if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
 
-  // Score gate — only for rss_alert; other event types (oref_siren, conflict_escalation,
-  // notam_closure, etc.) never attach importanceScore so they must never be gated here.
-  if (IMPORTANCE_SCORE_LIVE && event.eventType === 'rss_alert') {
+  // Score gate — only for relay-emitted rss_alert (no userId). Browser-submitted
+  // events (with userId) have importanceScore stripped at ingestion and no server-
+  // computed score; gating them would drop every browser notification once
+  // IMPORTANCE_SCORE_LIVE=1 is activated. Other event types (oref_siren,
+  // conflict_escalation, notam_closure) never attach importanceScore.
+  if (IMPORTANCE_SCORE_LIVE && event.eventType === 'rss_alert' && !event.userId) {
     const score = event.payload?.importanceScore ?? 0;
     if (score < IMPORTANCE_SCORE_MIN) {
       console.log(`[relay] Score gate: dropped ${event.eventType} score=${score} < ${IMPORTANCE_SCORE_MIN}`);

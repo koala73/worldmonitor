@@ -16,6 +16,9 @@ import { jsonResponse } from './_json-response.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
+const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
+const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome']);
+
 export default async function handler(req: Request): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
@@ -62,7 +65,6 @@ export default async function handler(req: Request): Promise<Response> {
   // cron scripts (seed-digest-notifications, quiet-hours) and must never be
   // user-submittable. flush_quiet_held would let a Pro user force-drain their
   // held queue on demand, bypassing batch_on_wake behaviour.
-  const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome']);
   if (INTERNAL_EVENT_TYPES.has(body.eventType)) {
     return jsonResponse({ error: 'Reserved event type' }, 403, cors);
   }
@@ -88,7 +90,6 @@ export default async function handler(req: Request): Promise<Response> {
   delete payload.importanceScore;
   delete payload.corroborationCount;
 
-  const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
   const rawSeverity = typeof body.severity === 'string' ? body.severity : 'high';
   const severity = VALID_SEVERITIES.has(rawSeverity) ? rawSeverity : 'high';
   const variant = typeof body.variant === 'string' ? body.variant : undefined;
