@@ -58,6 +58,15 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'eventType required (string, max 64 chars)' }, 400, cors);
   }
 
+  // Reject internal relay control events. These are dispatched by Railway
+  // cron scripts (seed-digest-notifications, quiet-hours) and must never be
+  // user-submittable. flush_quiet_held would let a Pro user force-drain their
+  // held queue on demand, bypassing batch_on_wake behaviour.
+  const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome']);
+  if (INTERNAL_EVENT_TYPES.has(body.eventType)) {
+    return jsonResponse({ error: 'Reserved event type' }, 403, cors);
+  }
+
   if (typeof body.payload !== 'object' || body.payload === null || Array.isArray(body.payload)) {
     return jsonResponse({ error: 'payload must be an object' }, 400, cors);
   }
