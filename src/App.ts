@@ -50,6 +50,7 @@ import type { YieldCurvePanel } from '@/components/YieldCurvePanel';
 import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
 import type { CotPositioningPanel } from '@/components/CotPositioningPanel';
+import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
 import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -344,6 +345,10 @@ export class App {
     if (shouldPrime('cot-positioning')) {
       const panel = this.state.panels['cot-positioning'] as CotPositioningPanel | undefined;
       if (panel) primeTask('cot-positioning', () => panel.fetchData());
+    }
+    if (shouldPrime('liquidity-shifts')) {
+      const panel = this.state.panels['liquidity-shifts'] as LiquidityShiftsPanel | undefined;
+      if (panel) primeTask('liquidity-shifts', () => panel.fetchData());
     }
     if (shouldPrime('gold-intelligence')) {
       const panel = this.state.panels['gold-intelligence'] as GoldIntelligencePanel | undefined;
