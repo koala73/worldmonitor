@@ -25,11 +25,18 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { readRawJsonFromUpstash } from './_upstash-json.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
 
 function todayInUtc(): string {
+  // Composer is the source of truth for the per-user issue date (it
+  // may roll on the user's tz). This UTC default exists only to pick
+  // a probable slot during the preview-call window; expect it to
+  // diverge from the composer's slot occasionally and fall back to
+  // the `composing` branch when that happens.
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -37,51 +44,44 @@ async function readBriefPreview(
   userId: string,
   issueDate: string,
 ): Promise<{ dateLong: string; greeting: string; threadCount: number } | null> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-
-  const key = `brief:${userId}:${issueDate}`;
-  try {
-    const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!resp.ok) return null;
-    const body = (await resp.json()) as { result?: string | null };
-    if (!body.result) return null;
-    const envelope = JSON.parse(body.result) as {
-      data?: {
-        dateLong?: unknown;
-        digest?: { greeting?: unknown };
-        stories?: unknown[];
-      };
-    };
-    const data = envelope?.data;
-    if (
-      !data
-      || typeof data.dateLong !== 'string'
-      || !data.digest
-      || typeof data.digest.greeting !== 'string'
-      || !Array.isArray(data.stories)
-    ) {
-      return null;
-    }
-    return {
-      dateLong: data.dateLong,
-      greeting: data.digest.greeting,
-      threadCount: data.stories.length,
-    };
-  } catch {
+  const envelope = (await readRawJsonFromUpstash(
+    `brief:${userId}:${issueDate}`,
+  )) as
+    | {
+        data?: {
+          dateLong?: unknown;
+          digest?: { greeting?: unknown };
+          stories?: unknown[];
+        };
+      }
+    | null;
+  const data = envelope?.data;
+  if (
+    !data
+    || typeof data.dateLong !== 'string'
+    || !data.digest
+    || typeof data.digest.greeting !== 'string'
+    || !Array.isArray(data.stories)
+  ) {
     return null;
   }
+  return {
+    dateLong: data.dateLong,
+    greeting: data.digest.greeting,
+    threadCount: data.stories.length,
+  };
 }
 
+/**
+ * Public base URL for signed magazine links. Pinned to
+ * WORLDMONITOR_PUBLIC_BASE_URL in production to prevent host-header
+ * reflection from minting URLs pointing at preview deploys or other
+ * non-canonical origins. Falls back to the request origin only in
+ * dev-ish contexts where the env var is absent.
+ */
 function publicBaseUrl(req: Request): string {
-  const forwardedHost = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
-  const forwardedProto = req.headers.get('x-forwarded-proto') ?? 'https';
-  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
-  // Fallback to the request URL's origin if headers are missing.
+  const pinned = process.env.WORLDMONITOR_PUBLIC_BASE_URL;
+  if (pinned) return pinned.replace(/\/+$/, '');
   return new URL(req.url).origin;
 }
 

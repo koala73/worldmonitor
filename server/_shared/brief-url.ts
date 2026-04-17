@@ -13,6 +13,16 @@
  * accept a token signed with either, so producers can roll the primary
  * secret without invalidating in-flight notifications.
  *
+ * Rotation runbook:
+ *   - Normal roll: set PREV = current, then replace SECRET with a
+ *     fresh value. Keep PREV set for at least the envelope TTL
+ *     (7 days) plus the push/email-delivery window so in-flight
+ *     notifications remain valid.
+ *   - Emergency kill switch (suspected secret leak): rotate SECRET
+ *     and do NOT set PREV. This invalidates every outstanding token
+ *     immediately. Accept the breakage of in-flight notifications
+ *     as the cost of containment.
+ *
  * All crypto goes through Web Crypto (`crypto.subtle`) so this module
  * runs unchanged in Vercel Edge, Node 18+, and Tauri.
  */
@@ -22,7 +32,7 @@ const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/; // base64url(sha256) = 43 chars, no padding
 
 export class BriefUrlError extends Error {
-  readonly code: 'invalid_user_id' | 'invalid_issue_date' | 'invalid_token_shape' | 'missing_secret';
+  readonly code: 'invalid_user_id' | 'invalid_issue_date' | 'missing_secret';
 
   constructor(code: BriefUrlError['code'], message: string) {
     super(message);

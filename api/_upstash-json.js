@@ -25,6 +25,36 @@ export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
   }
 }
 
+/**
+ * Raw GET on a Redis key. Returns the parsed JSON value (or bare
+ * string for non-JSON) without applying seed-envelope unwrap. Use
+ * this for caches whose stored shape is NOT `{_seed, data}` — e.g.
+ * the per-user brief envelope `{version, issuedAt, data}` whose
+ * outer frame must reach the consumer.
+ *
+ * @param {string} key
+ * @param {number} [timeoutMs=3000]
+ * @returns {Promise<unknown | null>}
+ */
+export async function readRawJsonFromUpstash(key, timeoutMs = 3_000) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+
+  try {
+    const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data.result) return null;
+    return JSON.parse(data.result);
+  } catch {
+    return null;
+  }
+}
+
 /** Returns Redis credentials or null if not configured. */
 export function getRedisCredentials() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
