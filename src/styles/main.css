@@ -21132,17 +21132,26 @@ body.map-width-resizing {
 
 .auth-signin-btn {
   padding: 6px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--green);
   border-radius: 6px;
-  background: transparent;
-  color: var(--text);
+  background: var(--green);
+  /* Pinned dark, not var(--bg). In light theme var(--bg) is near-white and
+     falls to ~3.13:1 on var(--green), failing WCAG AA for 13px text. */
+  color: #0a0a0a;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, box-shadow 0.15s;
 }
-.auth-signin-btn:hover { opacity: 0.85; }
+.auth-signin-btn:hover {
+  opacity: 0.9;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 35%, transparent);
+}
+.auth-signin-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 55%, transparent);
+}
 
 .auth-avatar-btn {
   width: 32px;
