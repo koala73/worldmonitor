@@ -640,6 +640,23 @@ function normalizeTelegramMessage(msg, channel) {
 
 let telegramPermanentlyDisabled = false;
 
+function destroyTelegramClient() {
+  const client = telegramState.client;
+  telegramState.client = null;
+  if (!client) return;
+  try { client.disconnect(); } catch {}
+  try {
+    if (client._sender) {
+      client._sender._reconnecting = false;
+      client._sender._autoReconnect = false;
+      if (client._sender._connection) {
+        try { client._sender._connection.socket?.destroy?.(); } catch {}
+        try { client._sender._connection.close?.(); } catch {}
+      }
+    }
+  } catch {}
+}
+
 async function initTelegramClientIfNeeded() {
   if (!TELEGRAM_ENABLED) return false;
   if (telegramState.client) return true;
@@ -676,6 +693,7 @@ async function initTelegramClientIfNeeded() {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
       console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
+      destroyTelegramClient();
       return false;
     }
     telegramState.lastError = `telegram init failed: ${em}`;
@@ -752,8 +770,7 @@ async function pollTelegramOnce() {
         telegramPermanentlyDisabled = true;
         telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
         console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
-        try { telegramState.client?.disconnect(); } catch {}
-        telegramState.client = null;
+        destroyTelegramClient();
         break;
       }
       if (/FLOOD_WAIT/.test(em)) {
@@ -779,6 +796,19 @@ async function pollTelegramOnce() {
   telegramState.lastPollAt = Date.now();
   const elapsed = ((Date.now() - pollStart) / 1000).toFixed(1);
   console.log(`[Relay] Telegram poll: ${channelsPolled}/${channels.length} channels, ${newItems.length} new msgs, ${telegramState.items.length} total, ${channelsFailed} errors, ${mediaSkipped} media-only skipped (${elapsed}s)`);
+
+  if (channelsPolled > 0) {
+    const rc = telegramState.items.length;
+    upstashSet('intelligence:telegram-feed:v1', {
+      count: rc,
+      updatedAt: new Date().toISOString(),
+      enabled: true,
+    }, 600).catch(() => {});
+    upstashSet('seed-meta:intelligence:telegram-feed:v1', {
+      fetchedAt: Date.now(),
+      recordCount: rc,
+    }, 600).catch(() => {});
+  }
 }
 
 let telegramPollInFlight = false;
@@ -801,7 +831,7 @@ function guardedTelegramPoll() {
     .finally(() => { telegramPollInFlight = false; });
 }
 
-const TELEGRAM_STARTUP_DELAY_MS = Math.max(0, Number(process.env.TELEGRAM_STARTUP_DELAY_MS || 60_000));
+const TELEGRAM_STARTUP_DELAY_MS = Math.max(0, Number(process.env.TELEGRAM_STARTUP_DELAY_MS || 120_000));
 
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
@@ -10986,16 +11016,19 @@ async function gracefulShutdown(signal) {
     try {
       await Promise.race([
         telegramState.client.disconnect(),
-        new Promise(r => setTimeout(r, 3000)),
+        new Promise(r => setTimeout(r, 10_000)),
       ]);
-    } catch {}
-    telegramState.client = null;
+      console.log('[Relay] Telegram client disconnected cleanly');
+    } catch (e) {
+      console.warn('[Relay] Telegram disconnect error (non-fatal):', e?.message || e);
+    }
+    destroyTelegramClient();
   }
   if (upstreamSocket) {
     try { upstreamSocket.close(); } catch {}
   }
   server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 5000);
+  setTimeout(() => process.exit(0), 12_000);
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));

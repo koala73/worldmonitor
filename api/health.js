@@ -197,6 +197,7 @@ const STANDALONE_KEYS = {
   // and alarms earlier than the underlying seed-meta staleness window.
   chokepointFlowsRelayHeartbeat: 'relay:heartbeat:chokepoint-flows',
   climateNewsRelayHeartbeat:     'relay:heartbeat:climate-news',
+  telegramFeed:                  'intelligence:telegram-feed:v1',
 };
 
 const SEED_META = {
@@ -258,6 +259,7 @@ const SEED_META = {
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 420 }, // 6h cron + 1h grace; CACHE_TTL is 24h so per-topic merge always has a prior snapshot
+  telegramFeed:     { key: 'seed-meta:intelligence:telegram-feed:v1', maxStaleMin: 10 }, // 60s poll interval; 10min grace catches poll failures before they go stale in the panel
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
