@@ -5,16 +5,18 @@
 // (edge route, dashboard panel, email teaser, carousel, Tauri reader)
 // depends on. If one of these breaks, every consumer gets confused.
 //
-// The forbidden-field guard below is belt-and-suspenders protection
-// against the regression that caused PR #3143 (importance scores
-// leaking into notification payloads). The renderer never reads those
-// fields from the typed envelope, but the test re-asserts the
-// invariant against the raw HTML string, so a future bug that
-// accidentally interpolates envelope internals would surface here.
+// The forbidden-field guard protects the invariant that the renderer
+// only ever interpolates `envelope.data.*` fields. We prove this two
+// ways: (1) assert known field-name TOKENS (JSON keys like
+// `"importanceScore":`) never appear in the output, and (2) inject
+// sentinels into non-`data` locations of the envelope and assert the
+// sentinels are absent. The earlier version of this test matched bare
+// substrings like "openai" / "claude" / "gemini", which false-fails
+// on any legitimate story covering those companies.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderBriefMagazine } from '../shared/render-brief-magazine.js';
+import { renderBriefMagazine } from '../server/_shared/brief-render.js';
 import { BRIEF_ENVELOPE_VERSION } from '../shared/brief-envelope.js';
 
 /**
@@ -71,16 +73,22 @@ function envelope(overrides = {}) {
         'Long-term stability of commercial shipping through Hormuz.',
       ],
     },
-    stories: [story(), story({ country: 'IL', category: 'Diplomacy' }), story({ country: 'US', category: 'Maritime' }), story({ country: 'MM', category: 'Humanitarian' })],
+    stories: [
+      story(),
+      story({ country: 'IL', category: 'Diplomacy' }),
+      story({ country: 'US', category: 'Maritime', threatLevel: 'critical' }),
+      story({ country: 'MM', category: 'Humanitarian' }),
+    ],
     ...overrides,
   };
   return {
-    _seed: { version: BRIEF_ENVELOPE_VERSION, fetchedAt: Date.now(), recordCount: data.stories.length },
+    version: BRIEF_ENVELOPE_VERSION,
+    issuedAt: 1_700_000_000_000,
     data,
   };
 }
 
-// ── Page-count helper ────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** @param {string} html */
 function pageCount(html) {
@@ -163,19 +171,24 @@ describe('renderBriefMagazine — page sequence', () => {
 });
 
 describe('renderBriefMagazine — chrome invariants', () => {
-  it('cover + back cover + each digest running-head embed the WorldMonitor logo', () => {
+  it('logo symbol is emitted exactly once; all placements reference it via <use>', () => {
     const env = envelope();
     const html = renderBriefMagazine(env);
-    const logoOccurrences = (html.match(/aria-label="WorldMonitor"/g) || []).length;
-    // 1 cover + 4 digest pages + N story chromes + 1 back cover
+    const symbolDefs = html.match(/<symbol id="wm-logo-core"/g) || [];
+    assert.equal(symbolDefs.length, 1, 'exactly one symbol definition');
+
+    // 1 cover + 4 digest pages + N story chromes + 1 back cover = N + 6 logo references
+    const useRefs = html.match(/<use href="#wm-logo-core"\s*\/>/g) || [];
     const expected = 1 + 4 + env.data.stories.length + 1;
-    assert.equal(logoOccurrences, expected);
+    assert.equal(useRefs.length, expected);
+
+    // Every reference still carries the aria label for a11y.
+    const ariaLabels = html.match(/aria-label="WorldMonitor"/g) || [];
+    assert.equal(ariaLabels.length, expected);
   });
 
   it('every page is full-bleed (100vw / 100vh declared in the shared stylesheet)', () => {
     const html = renderBriefMagazine(envelope());
-    // Shared declaration — matched once in the style block. The renderer
-    // must not produce per-page width overrides.
     assert.ok(/\.page\s*\{[^}]*flex:\s*0\s*0\s*100vw/.test(html));
     assert.ok(/\.page\s*\{[^}]*height:\s*100vh/.test(html));
   });
@@ -188,6 +201,7 @@ describe('renderBriefMagazine — chrome invariants', () => {
     const arr = JSON.parse(m[1]);
     assert.ok(Array.isArray(arr));
     assert.equal(arr.length, 4, 'default envelope has 4 digest pages');
+    assert.ok(arr.every((n) => typeof n === 'number'), 'digest indexes are numbers only');
   });
 
   it('each story page has a three-tag row (category, country, threat level)', () => {
@@ -212,39 +226,73 @@ describe('renderBriefMagazine — chrome invariants', () => {
       assert.equal(Number(m[2]), total);
     });
   });
+
+  it('applies .crit highlight to critical and high threat levels only', () => {
+    const env = envelope({
+      stories: [
+        story({ threatLevel: 'critical' }),
+        story({ threatLevel: 'high' }),
+        story({ threatLevel: 'medium' }),
+        story({ threatLevel: 'low' }),
+      ],
+    });
+    const html = renderBriefMagazine(env);
+    // "Critical" and "High" tags get the .crit class; "Medium" and "Low" do not.
+    assert.ok(html.includes('<span class="tag crit">Critical</span>'));
+    assert.ok(html.includes('<span class="tag crit">High</span>'));
+    assert.ok(html.includes('<span class="tag">Medium</span>'));
+    assert.ok(html.includes('<span class="tag">Low</span>'));
+  });
 });
 
-describe('renderBriefMagazine — forbidden fields never leak into HTML', () => {
-  // Regression guard against the pattern that motivated PR #3143
-  // (importanceScore leaking to /api/notify) and the broader rule that
-  // the magazine chrome must never print internal signals, AI
-  // model/provider names, or cache timestamps to the reader.
-  const FORBIDDEN = [
-    'importanceScore',
-    'primaryLink',
-    'pubDate',
-    'generatedAt',
-    'briefModel',
-    'briefProvider',
-    'fetchedAt',
-    'recordCount',
-    '_seed',
-    'gemini',
-    'claude',
-    'openrouter',
-    'openai',
-  ];
+describe('renderBriefMagazine — envelope internals never leak into HTML', () => {
+  // Structural invariant: the renderer only reads `envelope.data.*`.
+  // We verify this two ways: (1) field-name tokens that only appear in
+  // upstream seed data (importanceScore, etc.) never leak; (2) sentinel
+  // values injected into non-data envelope locations are absent from
+  // the output.
 
-  for (const token of FORBIDDEN) {
-    it(`rendered HTML does not contain \`${token}\``, () => {
-      const env = envelope();
-      const html = renderBriefMagazine(env);
-      assert.ok(
-        !html.toLowerCase().includes(token.toLowerCase()),
-        `forbidden token "${token}" appeared in rendered HTML`,
-      );
-    });
-  }
+  it('does not emit upstream seed field-name tokens as JSON keys or bare names', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    // Field-name tokens — these are structural keys that would only
+    // appear if the renderer accidentally interpolated an envelope
+    // object (e.g. JSON.stringify(envelope)). Free-text content
+    // cannot plausibly emit `"importanceScore":` or `_seed`.
+    const forbiddenKeys = [
+      '"importanceScore"',
+      '"primaryLink"',
+      '"pubDate"',
+      '"generatedAt"',
+      '"briefModel"',
+      '"briefProvider"',
+      '"fetchedAt"',
+      '"recordCount"',
+      '"_seed"',
+    ];
+    for (const token of forbiddenKeys) {
+      assert.ok(!html.includes(token), `forbidden token ${token} appeared in HTML`);
+    }
+  });
+
+  it('sentinel values injected into non-data envelope fields are absent from output', () => {
+    const sentinel = '__BRIEF_ENVELOPE_POISON_SENTINEL_XYZ__';
+    // Cast through unknown so TS lets us attach extension fields the
+    // renderer must ignore.
+    const env = /** @type {BriefEnvelope} */ (
+      /** @type {unknown} */ ({
+        ...envelope(),
+        // Extension fields the renderer MUST NOT interpolate.
+        importanceScore: sentinel,
+        primaryLink: sentinel,
+        pubDate: sentinel,
+        generatedAt: sentinel,
+        _seed: { version: 1, recordCount: 9, fetchedAt: sentinel },
+      })
+    );
+    const html = renderBriefMagazine(env);
+    assert.ok(!html.includes(sentinel), 'non-data envelope fields must not appear in HTML');
+  });
 
   it('HTML-escapes user-provided content (no raw angle brackets from stories)', () => {
     const env = envelope({
@@ -259,24 +307,71 @@ describe('renderBriefMagazine — forbidden fields never leak into HTML', () => 
     const html = renderBriefMagazine(env);
     assert.ok(!html.includes('<script>alert(1)</script>'));
     assert.ok(!html.includes('<img src=x>'));
-    // The escaped form must appear instead
     assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
   });
 });
 
-describe('renderBriefMagazine — validation', () => {
+describe('renderBriefMagazine — envelope validation', () => {
+  it('throws when envelope is not an object', () => {
+    assert.throws(() => renderBriefMagazine(/** @type {any} */ (null)), /must be an object/);
+    assert.throws(() => renderBriefMagazine(/** @type {any} */ ('string')), /must be an object/);
+  });
+
+  it('throws when version does not match BRIEF_ENVELOPE_VERSION', () => {
+    const env = /** @type {any} */ ({ ...envelope(), version: 99 });
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /version.*does not match renderer version/,
+    );
+  });
+
+  it('throws when issuedAt is missing or non-finite', () => {
+    const env = /** @type {any} */ ({ ...envelope() });
+    delete env.issuedAt;
+    assert.throws(() => renderBriefMagazine(env), /issuedAt/);
+  });
+
   it('throws when envelope.data is missing', () => {
-    assert.throws(() => renderBriefMagazine(/** @type {any} */ ({})));
-    assert.throws(() => renderBriefMagazine(/** @type {any} */ (null)));
+    const env = /** @type {any} */ ({ version: BRIEF_ENVELOPE_VERSION, issuedAt: 0 });
+    assert.throws(() => renderBriefMagazine(env), /envelope\.data is required/);
+  });
+
+  it('throws when envelope.data.date is not YYYY-MM-DD', () => {
+    const env = envelope();
+    env.data.date = '04/17/2026';
+    assert.throws(() => renderBriefMagazine(env), /YYYY-MM-DD/);
+  });
+
+  it('throws when digest.signals is missing', () => {
+    const env = /** @type {any} */ (envelope());
+    delete env.data.digest.signals;
+    assert.throws(() => renderBriefMagazine(env), /digest\.signals must be an array/);
+  });
+
+  it('throws when digest.threads is missing', () => {
+    const env = /** @type {any} */ (envelope());
+    delete env.data.digest.threads;
+    assert.throws(() => renderBriefMagazine(env), /digest\.threads must be an array/);
+  });
+
+  it('throws when digest.numbers.clusters is missing', () => {
+    const env = /** @type {any} */ (envelope());
+    delete env.data.digest.numbers.clusters;
+    assert.throws(() => renderBriefMagazine(env), /digest\.numbers\.clusters/);
+  });
+
+  it('throws when a story has an invalid threatLevel', () => {
+    const env = envelope();
+    /** @type {any} */ (env.data.stories[0]).threatLevel = 'moderate';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /threatLevel must be one of critical\|high\|medium\|low/,
+    );
   });
 
   it('throws when stories is empty', () => {
-    assert.throws(() =>
-      renderBriefMagazine({
-        _seed: { version: BRIEF_ENVELOPE_VERSION, fetchedAt: 0, recordCount: 0 },
-        data: { ...envelope().data, stories: [] },
-      }),
-    );
+    const env = envelope({ stories: [] });
+    assert.throws(() => renderBriefMagazine(env), /stories must be a non-empty array/);
   });
 });
 

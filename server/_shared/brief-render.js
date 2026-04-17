@@ -21,18 +21,39 @@
 //   - Brainstorm: docs/brainstorms/2026-04-17-worldmonitor-brief-magazine-requirements.md
 //   - Plan: docs/plans/2026-04-17-003-feat-worldmonitor-brief-magazine-plan.md
 
+import { BRIEF_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
+
 /**
- * @typedef {import('./brief-envelope.js').BriefEnvelope} BriefEnvelope
- * @typedef {import('./brief-envelope.js').BriefStory} BriefStory
- * @typedef {import('./brief-envelope.js').BriefThread} BriefThread
+ * @typedef {import('../../shared/brief-envelope.js').BriefEnvelope} BriefEnvelope
+ * @typedef {import('../../shared/brief-envelope.js').BriefData} BriefData
+ * @typedef {import('../../shared/brief-envelope.js').BriefStory} BriefStory
+ * @typedef {import('../../shared/brief-envelope.js').BriefThread} BriefThread
+ * @typedef {import('../../shared/brief-envelope.js').BriefThreatLevel} BriefThreatLevel
  */
 
-// ── Chrome constants ─────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const FONTS_HREF =
   'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap';
 
 const MAX_THREADS_PER_PAGE = 6;
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/** @type {Record<BriefThreatLevel, string>} */
+const THREAT_LABELS = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+};
+
+/** @type {Set<BriefThreatLevel>} */
+const HIGHLIGHTED_LEVELS = new Set(['critical', 'high']);
+
+const VALID_THREAT_LEVELS = new Set(
+  /** @type {BriefThreatLevel[]} */ (['critical', 'high', 'medium', 'low']),
+);
 
 // ── HTML escaping ────────────────────────────────────────────────────────────
 
@@ -44,9 +65,18 @@ const HTML_ESCAPE_MAP = {
   "'": '&#39;',
 };
 
-/** @param {string} str */
+const HTML_ESCAPE_RE = /[&<>"']/;
+const HTML_ESCAPE_RE_G = /[&<>"']/g;
+
+/**
+ * Text-context HTML escape. Do not use for raw attribute-value
+ * interpolation without extending the map.
+ * @param {string} str
+ */
 function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (ch) => HTML_ESCAPE_MAP[ch]);
+  const s = String(str);
+  if (!HTML_ESCAPE_RE.test(s)) return s;
+  return s.replace(HTML_ESCAPE_RE_G, (ch) => HTML_ESCAPE_MAP[ch]);
 }
 
 /** @param {number} n */
@@ -54,26 +84,155 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
-// ── Logo (inline SVG, coloured via currentColor) ─────────────────────────────
+// ── Envelope validation ──────────────────────────────────────────────────────
+
+/** @param {unknown} v */
+function isObject(v) {
+  return typeof v === 'object' && v !== null;
+}
+
+/** @param {unknown} v */
+function isNonEmptyString(v) {
+  return typeof v === 'string' && v.length > 0;
+}
+
+/** @param {unknown} v */
+function isFiniteNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v);
+}
 
 /**
- * @param {{ size: number; stroke: number; color?: string }} opts
+ * Throws a descriptive error on the first missing or mis-typed field.
+ * Runs before any HTML interpolation so the renderer can assume the
+ * typed shape after this returns. The renderer is a shared module with
+ * multiple independent producers (Railway composer, tests, future
+ * dev-only fixtures) — a strict runtime contract matters more than the
+ * declaration-file types alone.
+ *
+ * @param {unknown} envelope
+ * @returns {asserts envelope is BriefEnvelope}
  */
-function logoSvg({ size, stroke, color }) {
-  const ekgStroke = (stroke + 0.6).toFixed(2);
+function assertBriefEnvelope(envelope) {
+  if (!isObject(envelope)) {
+    throw new Error('renderBriefMagazine: envelope must be an object');
+  }
+  const env = /** @type {Record<string, unknown>} */ (envelope);
+
+  if (env.version !== BRIEF_ENVELOPE_VERSION) {
+    throw new Error(
+      `renderBriefMagazine: envelope.version=${JSON.stringify(env.version)} does not match renderer version=${BRIEF_ENVELOPE_VERSION}. Deploy a matching renderer before producing envelopes at this version.`,
+    );
+  }
+  if (!isFiniteNumber(env.issuedAt)) {
+    throw new Error('renderBriefMagazine: envelope.issuedAt must be a finite number');
+  }
+  if (!isObject(env.data)) {
+    throw new Error('renderBriefMagazine: envelope.data is required');
+  }
+  const data = /** @type {Record<string, unknown>} */ (env.data);
+
+  if (!isObject(data.user)) throw new Error('envelope.data.user is required');
+  const user = /** @type {Record<string, unknown>} */ (data.user);
+  if (!isNonEmptyString(user.name)) throw new Error('envelope.data.user.name must be a non-empty string');
+  if (!isNonEmptyString(user.tz)) throw new Error('envelope.data.user.tz must be a non-empty string');
+
+  if (!isNonEmptyString(data.issue)) throw new Error('envelope.data.issue must be a non-empty string');
+  if (!isNonEmptyString(data.date)) throw new Error('envelope.data.date must be a non-empty string');
+  if (!DATE_REGEX.test(/** @type {string} */ (data.date))) {
+    throw new Error('envelope.data.date must match YYYY-MM-DD');
+  }
+  if (!isNonEmptyString(data.dateLong)) throw new Error('envelope.data.dateLong must be a non-empty string');
+
+  if (!isObject(data.digest)) throw new Error('envelope.data.digest is required');
+  const digest = /** @type {Record<string, unknown>} */ (data.digest);
+  if (!isNonEmptyString(digest.greeting)) throw new Error('envelope.data.digest.greeting must be a non-empty string');
+  if (!isNonEmptyString(digest.lead)) throw new Error('envelope.data.digest.lead must be a non-empty string');
+
+  if (!isObject(digest.numbers)) throw new Error('envelope.data.digest.numbers is required');
+  const numbers = /** @type {Record<string, unknown>} */ (digest.numbers);
+  for (const key of /** @type {const} */ (['clusters', 'multiSource', 'surfaced'])) {
+    if (!isFiniteNumber(numbers[key])) {
+      throw new Error(`envelope.data.digest.numbers.${key} must be a finite number`);
+    }
+  }
+
+  if (!Array.isArray(digest.threads)) {
+    throw new Error('envelope.data.digest.threads must be an array');
+  }
+  digest.threads.forEach((t, i) => {
+    if (!isObject(t)) throw new Error(`envelope.data.digest.threads[${i}] must be an object`);
+    const th = /** @type {Record<string, unknown>} */ (t);
+    if (!isNonEmptyString(th.tag)) throw new Error(`envelope.data.digest.threads[${i}].tag must be a non-empty string`);
+    if (!isNonEmptyString(th.teaser)) throw new Error(`envelope.data.digest.threads[${i}].teaser must be a non-empty string`);
+  });
+
+  if (!Array.isArray(digest.signals)) {
+    throw new Error('envelope.data.digest.signals must be an array');
+  }
+  digest.signals.forEach((s, i) => {
+    if (!isNonEmptyString(s)) throw new Error(`envelope.data.digest.signals[${i}] must be a non-empty string`);
+  });
+
+  if (!Array.isArray(data.stories) || data.stories.length === 0) {
+    throw new Error('envelope.data.stories must be a non-empty array');
+  }
+  data.stories.forEach((s, i) => {
+    if (!isObject(s)) throw new Error(`envelope.data.stories[${i}] must be an object`);
+    const st = /** @type {Record<string, unknown>} */ (s);
+    for (const field of /** @type {const} */ (['category', 'country', 'headline', 'description', 'source', 'whyMatters'])) {
+      if (!isNonEmptyString(st[field])) {
+        throw new Error(`envelope.data.stories[${i}].${field} must be a non-empty string`);
+      }
+    }
+    if (typeof st.threatLevel !== 'string' || !VALID_THREAT_LEVELS.has(/** @type {BriefThreatLevel} */ (st.threatLevel))) {
+      throw new Error(
+        `envelope.data.stories[${i}].threatLevel must be one of critical|high|medium|low (got ${JSON.stringify(st.threatLevel)})`,
+      );
+    }
+  });
+}
+
+// ── Logo symbol + references ─────────────────────────────────────────────────
+
+/**
+ * The full logo SVG is emitted ONCE per document inside an invisible
+ * <svg><defs><symbol id="wm-logo-core"> block. Every placement then
+ * references the symbol via `<use>` at the desired size. Saves ~7 KB on
+ * a 12-story brief vs. repeating the full SVG per placement.
+ *
+ * Stroke width is baked into the symbol (medium weight). Visual variance
+ * across placements (cover 48px vs story 28px) reads identically at
+ * display size; sub-pixel stroke differences are not perceptible.
+ */
+const LOGO_SYMBOL = (
+  '<svg aria-hidden="true" style="display:none;position:absolute;width:0;height:0" focusable="false">' +
+  '<defs>' +
+  '<symbol id="wm-logo-core" viewBox="0 0 64 64">' +
+  '<circle cx="32" cy="32" r="28"/>' +
+  '<ellipse cx="32" cy="32" rx="5" ry="28"/>' +
+  '<ellipse cx="32" cy="32" rx="14" ry="28"/>' +
+  '<ellipse cx="32" cy="32" rx="22" ry="28"/>' +
+  '<ellipse cx="32" cy="32" rx="28" ry="5"/>' +
+  '<ellipse cx="32" cy="32" rx="28" ry="14"/>' +
+  '<path class="wm-ekg" d="M 6 32 L 20 32 L 24 24 L 30 40 L 36 22 L 42 38 L 46 32 L 56 32"/>' +
+  '<circle class="wm-ekg-dot" cx="57" cy="32" r="1.8"/>' +
+  '</symbol>' +
+  '</defs>' +
+  '</svg>'
+);
+
+/**
+ * @param {{ size: number; color?: string }} opts
+ */
+function logoRef({ size, color }) {
+  // color is sourced ONLY from a closed enum of theme strings at the
+  // call sites in this file. Never interpolate envelope-derived content
+  // into a style= attribute via this helper.
   const styleAttr = color ? ` style="color: ${color};"` : '';
   return (
     `<svg class="wm-logo" width="${size}" height="${size}" viewBox="0 0 64 64" ` +
-    `fill="none" stroke="currentColor" stroke-width="${stroke}" ` +
-    `stroke-linecap="round" aria-label="WorldMonitor"${styleAttr}>` +
-    '<circle cx="32" cy="32" r="28"/>' +
-    '<ellipse cx="32" cy="32" rx="5" ry="28"/>' +
-    '<ellipse cx="32" cy="32" rx="14" ry="28"/>' +
-    '<ellipse cx="32" cy="32" rx="22" ry="28"/>' +
-    '<ellipse cx="32" cy="32" rx="28" ry="5"/>' +
-    '<ellipse cx="32" cy="32" rx="28" ry="14"/>' +
-    `<path d="M 6 32 L 20 32 L 24 24 L 30 40 L 36 22 L 42 38 L 46 32 L 56 32" stroke-width="${ekgStroke}"/>` +
-    '<circle cx="57" cy="32" r="1.8" fill="currentColor" stroke="none"/>' +
+    `aria-label="WorldMonitor"${styleAttr}>` +
+    '<use href="#wm-logo-core"/>' +
     '</svg>'
   );
 }
@@ -85,7 +244,7 @@ function digestRunningHead(dateShort, label) {
   return (
     '<div class="running-head">' +
     '<span class="mono left">' +
-    logoSvg({ size: 22, stroke: 1.8 }) +
+    logoRef({ size: 22 }) +
     ` · WorldMonitor Brief · ${escapeHtml(dateShort)} ·` +
     '</span>' +
     `<span class="mono">${escapeHtml(label)}</span>` +
@@ -96,7 +255,7 @@ function digestRunningHead(dateShort, label) {
 // ── Page renderers ───────────────────────────────────────────────────────────
 
 /**
- * @param {{ dateLong: string; dateShort: string; issue: string; storyCount: number; pageIndex: number; totalPages: number }} opts
+ * @param {{ dateLong: string; issue: string; storyCount: number; pageIndex: number; totalPages: number }} opts
  */
 function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages }) {
   const blurb =
@@ -107,7 +266,7 @@ function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages }) {
     '<section class="page cover">' +
     '<div class="meta-top">' +
     '<span class="brand">' +
-    logoSvg({ size: 48, stroke: 2 }) +
+    logoRef({ size: 48 }) +
     '<span class="mono">WorldMonitor</span>' +
     '</span>' +
     `<span class="mono">Issue № ${escapeHtml(issue)}</span>` +
@@ -145,7 +304,7 @@ function renderDigestGreeting({ greeting, lead, dateShort, pageIndex, totalPages
 }
 
 /**
- * @param {{ numbers: import('./brief-envelope.js').BriefNumbers; date: string; dateShort: string; pageIndex: number; totalPages: number }} opts
+ * @param {{ numbers: import('../../shared/brief-envelope.js').BriefNumbers; date: string; dateShort: string; pageIndex: number; totalPages: number }} opts
  */
 function renderDigestNumbers({ numbers, date, dateShort, pageIndex, totalPages }) {
   const rows = [
@@ -237,9 +396,8 @@ function renderDigestSignals({ signals, dateShort, pageIndex, totalPages }) {
  * @param {{ story: BriefStory; rank: number; palette: 'light' | 'dark'; pageIndex: number; totalPages: number }} opts
  */
 function renderStoryPage({ story, rank, palette, pageIndex, totalPages }) {
-  const threatClass = story.threatLevel === 'critical' || story.threatLevel === 'high' ? ' crit' : '';
-  const threatLabel =
-    story.threatLevel.charAt(0).toUpperCase() + story.threatLevel.slice(1);
+  const threatClass = HIGHLIGHTED_LEVELS.has(story.threatLevel) ? ' crit' : '';
+  const threatLabel = THREAT_LABELS[story.threatLevel];
   return (
     `<section class="page story ${palette}">` +
     '<div class="left">' +
@@ -262,7 +420,7 @@ function renderStoryPage({ story, rank, palette, pageIndex, totalPages }) {
     '</div>' +
     '</div>' +
     '<div class="logo-chrome">' +
-    logoSvg({ size: 28, stroke: 1.8 }) +
+    logoRef({ size: 28 }) +
     '<span class="mono">WorldMonitor Brief</span>' +
     '</div>' +
     `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
@@ -276,7 +434,7 @@ function renderBackCover({ tz, pageIndex, totalPages }) {
     '<section class="page cover back">' +
     '<div class="hero">' +
     '<div class="centered-logo">' +
-    logoSvg({ size: 80, stroke: 2.4, color: 'var(--bone)' }) +
+    logoRef({ size: 80, color: 'var(--bone)' }) +
     '</div>' +
     '<div class="kicker">Thank you for reading</div>' +
     '<h1>End of<br/>Transmission.</h1>' +
@@ -325,7 +483,9 @@ const STYLE_BLOCK = `<style>
     font-weight: 500; letter-spacing: 0.18em;
     text-transform: uppercase; font-size: max(11px, 0.85vw);
   }
-  .wm-logo { display: block; }
+  .wm-logo { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .wm-logo .wm-ekg { stroke-width: 2.4; }
+  .wm-logo .wm-ekg-dot { fill: currentColor; stroke: none; }
   .logo-chrome {
     position: absolute; bottom: 5vh; left: 6vw;
     display: flex; align-items: center; gap: 0.8vw; opacity: 0.7;
@@ -538,6 +698,7 @@ const NAV_SCRIPT = `<script>
   var current = 0;
   var wheelLock = false;
   var touchStartX = 0;
+  // digest-indexes attribute is a server-built JSON number array.
   var digestIndexes = new Set(JSON.parse(deck.dataset.digestIndexes || '[]'));
   for (var i = 0; i < total; i++) {
     var b = document.createElement('button');
@@ -588,130 +749,117 @@ const NAV_SCRIPT = `<script>
  * @returns {string}
  */
 export function renderBriefMagazine(envelope) {
-  if (!envelope?.data) {
-    throw new Error('renderBriefMagazine: envelope.data is required');
-  }
+  assertBriefEnvelope(envelope);
   const { user, issue, date, dateLong, digest, stories } = envelope.data;
-  if (!Array.isArray(stories) || stories.length === 0) {
-    throw new Error('renderBriefMagazine: envelope.data.stories must be a non-empty array');
-  }
-  const dateShort = date.split('-').reverse().slice(0, 2).join('.'); // "2026-04-17" -> "17.04"
+  const [, month, day] = date.split('-');
+  const dateShort = `${day}.${month}`;
 
-  // Build page order first — we need totals up front for page-number chrome.
-  const pageBuilders = [];
+  const threads = digest.threads;
+  const hasSignals = digest.signals.length > 0;
+  const splitThreads = threads.length > MAX_THREADS_PER_PAGE;
+
+  // Total page count is fully data-derived, computed up front, so every
+  // page renderer knows its position without a two-pass build.
+  const totalPages =
+    1 // cover
+    + 1 // digest 01 greeting
+    + 1 // digest 02 numbers
+    + (splitThreads ? 2 : 1) // digest 03 on the desk (split if needed)
+    + (hasSignals ? 1 : 0) // digest 04 signals (conditional)
+    + stories.length
+    + 1; // back cover
+
+  /** @type {string[]} */
+  const pagesHtml = [];
+  /** @type {number[]} */
   const digestIndexes = [];
+  let p = 0;
 
-  pageBuilders.push(({ pageIndex, totalPages }) =>
+  pagesHtml.push(
     renderCover({
       dateLong,
-      dateShort,
       issue,
       storyCount: stories.length,
-      pageIndex,
+      pageIndex: ++p,
       totalPages,
     }),
   );
 
-  digestIndexes.push(pageBuilders.length);
-  pageBuilders.push(({ pageIndex, totalPages }) =>
+  digestIndexes.push(p);
+  pagesHtml.push(
     renderDigestGreeting({
       greeting: digest.greeting,
       lead: digest.lead,
       dateShort,
-      pageIndex,
+      pageIndex: ++p,
       totalPages,
     }),
   );
 
-  digestIndexes.push(pageBuilders.length);
-  pageBuilders.push(({ pageIndex, totalPages }) =>
+  digestIndexes.push(p);
+  pagesHtml.push(
     renderDigestNumbers({
       numbers: digest.numbers,
       date,
       dateShort,
-      pageIndex,
+      pageIndex: ++p,
       totalPages,
     }),
   );
 
-  const threads = digest.threads || [];
-  if (threads.length <= MAX_THREADS_PER_PAGE) {
-    digestIndexes.push(pageBuilders.length);
-    pageBuilders.push(({ pageIndex, totalPages }) =>
+  const threadsPages = splitThreads
+    ? [threads.slice(0, Math.ceil(threads.length / 2)), threads.slice(Math.ceil(threads.length / 2))]
+    : [threads];
+  threadsPages.forEach((slice, i) => {
+    const label = threadsPages.length === 1
+      ? 'Digest / 03 — On The Desk'
+      : `Digest / 03${i === 0 ? 'a' : 'b'} — On The Desk`;
+    const heading = i === 0 ? 'What the desk is watching.' : '\u2026 continued.';
+    digestIndexes.push(p);
+    pagesHtml.push(
       renderDigestThreadsPage({
-        threads,
+        threads: slice,
         dateShort,
-        label: 'Digest / 03 — On The Desk',
-        heading: 'What the desk is watching.',
-        includeEndMarker: digest.signals.length === 0,
-        pageIndex,
+        label,
+        heading,
+        includeEndMarker: i === threadsPages.length - 1 && !hasSignals,
+        pageIndex: ++p,
         totalPages,
       }),
     );
-  } else {
-    const mid = Math.ceil(threads.length / 2);
-    digestIndexes.push(pageBuilders.length);
-    pageBuilders.push(({ pageIndex, totalPages }) =>
-      renderDigestThreadsPage({
-        threads: threads.slice(0, mid),
-        dateShort,
-        label: 'Digest / 03a — On The Desk',
-        heading: 'What the desk is watching.',
-        includeEndMarker: false,
-        pageIndex,
-        totalPages,
-      }),
-    );
-    digestIndexes.push(pageBuilders.length);
-    pageBuilders.push(({ pageIndex, totalPages }) =>
-      renderDigestThreadsPage({
-        threads: threads.slice(mid),
-        dateShort,
-        label: 'Digest / 03b — On The Desk',
-        heading: '\u2026 continued.',
-        includeEndMarker: digest.signals.length === 0,
-        pageIndex,
-        totalPages,
-      }),
-    );
-  }
+  });
 
-  if (digest.signals.length > 0) {
-    digestIndexes.push(pageBuilders.length);
-    pageBuilders.push(({ pageIndex, totalPages }) =>
+  if (hasSignals) {
+    digestIndexes.push(p);
+    pagesHtml.push(
       renderDigestSignals({
         signals: digest.signals,
         dateShort,
-        pageIndex,
+        pageIndex: ++p,
         totalPages,
       }),
     );
   }
 
   stories.forEach((story, i) => {
-    pageBuilders.push(({ pageIndex, totalPages }) =>
+    pagesHtml.push(
       renderStoryPage({
         story,
         rank: i + 1,
         palette: i % 2 === 0 ? 'light' : 'dark',
-        pageIndex,
+        pageIndex: ++p,
         totalPages,
       }),
     );
   });
 
-  pageBuilders.push(({ pageIndex, totalPages }) =>
+  pagesHtml.push(
     renderBackCover({
       tz: user.tz,
-      pageIndex,
+      pageIndex: ++p,
       totalPages,
     }),
   );
-
-  const totalPages = pageBuilders.length;
-  const pagesHtml = pageBuilders
-    .map((build, i) => build({ pageIndex: i + 1, totalPages }))
-    .join('');
 
   const title = `WorldMonitor Brief · ${escapeHtml(dateLong)}`;
 
@@ -728,8 +876,9 @@ export function renderBriefMagazine(envelope) {
     STYLE_BLOCK +
     '</head>' +
     '<body>' +
+    LOGO_SYMBOL +
     `<div class="deck" id="deck" data-digest-indexes='${JSON.stringify(digestIndexes)}'>` +
-    pagesHtml +
+    pagesHtml.join('') +
     '</div>' +
     '<div class="nav-dots" id="navDots"></div>' +
     '<div class="hint">← → / swipe / scroll</div>' +

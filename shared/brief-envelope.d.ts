@@ -7,6 +7,12 @@
 // reader. All consumers read the same brief:{userId}:{issueDate} Redis
 // key and bind to this contract.
 //
+// Intentionally NOT wrapped in the seed-envelope `_seed` frame. A brief
+// is 1 producer -> 1 user -> 1 read (7-day TTL), not a global public
+// seed; reusing `_seed` here invites code that mis-applies seed
+// invariants (staleness gating, api/health.js SEED_META pairing, etc.)
+// to per-user keys. The version constant lives on the envelope root.
+//
 // Forbidden fields: importanceScore, primaryLink, pubDate, and any AI
 // model / provider / cache timestamp strings must NOT appear in
 // BriefEnvelope.data. They exist upstream in news:insights:v1 but are
@@ -15,12 +21,12 @@
 
 export const BRIEF_ENVELOPE_VERSION: 1;
 
-export type BriefThreatLevel =
-  | 'critical'
-  | 'high'
-  | 'medium'
-  | 'moderate'
-  | 'low';
+/**
+ * Severity ladder. Four values, no synonyms. `critical` and `high`
+ * render with the highlight treatment; `medium` and `low` render
+ * plain. See HIGHLIGHTED_LEVELS in the renderer.
+ */
+export type BriefThreatLevel = 'critical' | 'high' | 'medium' | 'low';
 
 export interface BriefUser {
   /** Display name used in the greeting and back-cover chrome. */
@@ -84,16 +90,14 @@ export interface BriefData {
 }
 
 /**
- * Canonical envelope stored at brief:{userId}:{issueDate} in Redis. The
- * `_seed` frame matches the global seed-envelope convention (see
- * shared/seed-envelope.js) so existing unwrapEnvelope/wrapEnvelope helpers
- * work unchanged.
+ * Canonical envelope stored at brief:{userId}:{issueDate} in Redis.
+ * Renderer + future composer + future consumers must all pin to
+ * `version === BRIEF_ENVELOPE_VERSION` at runtime — see the consumer
+ * drift incident (PR #3139) for why.
  */
 export interface BriefEnvelope {
-  _seed: {
-    version: typeof BRIEF_ENVELOPE_VERSION;
-    fetchedAt: number;
-    recordCount: number;
-  };
+  version: typeof BRIEF_ENVELOPE_VERSION;
+  /** Unix ms when the envelope was composed. Informational only. */
+  issuedAt: number;
   data: BriefData;
 }
