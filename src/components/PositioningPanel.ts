@@ -166,10 +166,16 @@ const CLICK_TARGETS: Record<string, string> = {
   'xyz:COPPER': 'commodities', 'xyz:NATGAS': 'commodities',
 };
 
+function resolveClickTarget(symbol: string): string | null {
+  const panelId = CLICK_TARGETS[symbol];
+  if (!panelId) return null;
+  return document.querySelector(`[data-panel="${panelId}"]`) ? panelId : null;
+}
+
 function renderSection(header: string, assets: AssetView[]): string {
   if (assets.length === 0) return '';
   const sorted = [...assets].sort((a, b) => b.composite - a.composite);
-  const cards = sorted.map((a) => renderAssetCard(a, CLICK_TARGETS[a.symbol] ?? null)).join('');
+  const cards = sorted.map((a) => renderAssetCard(a, resolveClickTarget(a.symbol))).join('');
   return `<div class="pos-section">
     <div class="pos-section__header">${escapeHtml(header)}</div>
     <div class="pos-grid">${cards}</div>
@@ -191,7 +197,7 @@ export class PositioningPanel extends Panel {
     this.content.addEventListener('click', (e) => {
       const card = (e.target as HTMLElement).closest<HTMLElement>('[data-pos-navigate]');
       if (card?.dataset.posNavigate) {
-        const panelEl = document.getElementById(`panel-${card.dataset.posNavigate}`);
+        const panelEl = document.querySelector<HTMLElement>(`[data-panel="${card.dataset.posNavigate}"]`);
         if (panelEl) {
           panelEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           panelEl.classList.add('panel-highlight');
