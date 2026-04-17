@@ -37,11 +37,14 @@ interface FlowSnapshot {
 
 const ELEVATED_THRESHOLD = 40;
 
+// 12 samples back = 1 hour at 5min cadence. Matches the original
+// MarketPanel.ts implementation. Using 2 samples would report a
+// 5-minute delta mislabeled as "OI delta 1h".
 function oiDelta1h(sparkOi: number[] | undefined): number | null {
-  if (!Array.isArray(sparkOi) || sparkOi.length < 2) return null;
+  if (!Array.isArray(sparkOi) || sparkOi.length < 13) return null;
   const last = sparkOi[sparkOi.length - 1]!;
-  const lookback = sparkOi[sparkOi.length - 2]!;
-  if (lookback <= 0 || !Number.isFinite(last)) return null;
+  const lookback = sparkOi[sparkOi.length - 13]!;
+  if (!(lookback > 0) || !Number.isFinite(last)) return null;
   return (last - lookback) / lookback;
 }
 
@@ -152,10 +155,15 @@ function renderAssetCard(asset: AssetView, clickTarget: string | null): string {
   </div>`;
 }
 
+// Keys must match the seeded symbol field from seed-hyperliquid-flow.mjs,
+// NOT display names. Commodity perps use xyz: prefixed Hyperliquid names.
 const CLICK_TARGETS: Record<string, string> = {
   BTC: 'crypto', ETH: 'crypto', SOL: 'crypto',
-  GOLD: 'commodities', SILVER: 'commodities', PLATINUM: 'commodities',
-  PAXG: 'commodities', WTI: 'commodities', BRENT: 'commodities',
+  PAXG: 'commodities',
+  'xyz:CL': 'commodities', 'xyz:BRENTOIL': 'commodities',
+  'xyz:GOLD': 'commodities', 'xyz:SILVER': 'commodities',
+  'xyz:PLATINUM': 'commodities', 'xyz:PALLADIUM': 'commodities',
+  'xyz:COPPER': 'commodities', 'xyz:NATGAS': 'commodities',
 };
 
 function renderSection(header: string, assets: AssetView[]): string {
@@ -240,7 +248,9 @@ export class PositioningPanel extends Panel {
       return;
     }
     if (this._flow.unavailable) {
-      this.showError(t('components.positioning247.unavailable'), () => void this.fetchData());
+      // Empty snapshots on fresh deploy / cold seed are normal warmup, not errors.
+      // Show guidance that samples populate over the next few minutes.
+      this.setContent(`<div class="pos-panel"><div class="pos-warmup">${escapeHtml(t('components.positioning247.warmup'))}</div></div>`);
       return;
     }
 
