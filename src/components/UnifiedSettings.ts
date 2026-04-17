@@ -8,7 +8,7 @@ import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
 import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
-import { renderNotificationsSettings } from '@/services/notifications-settings';
+import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled } from '@/services/entitlements';
@@ -53,6 +53,7 @@ export class UnifiedSettings {
   private escapeHandler: (e: KeyboardEvent) => void;
   private prefsCleanup: (() => void) | null = null;
   private notifCleanup: (() => void) | null = null;
+  private pendingNotifs: NotificationsSettingsResult | null = null;
   private draftPanelSettings: Record<string, PanelConfig> = {};
   private panelsJustSaved = false;
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -228,6 +229,7 @@ export class UnifiedSettings {
     this.prefsCleanup = null;
     this.notifCleanup?.();
     this.notifCleanup = null;
+    this.pendingNotifs = null;
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -254,6 +256,7 @@ export class UnifiedSettings {
     this.prefsCleanup = null;
     this.notifCleanup?.();
     this.notifCleanup = null;
+    this.pendingNotifs = null;
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
   }
@@ -263,6 +266,7 @@ export class UnifiedSettings {
     this.prefsCleanup = null;
     this.notifCleanup?.();
     this.notifCleanup = null;
+    this.pendingNotifs = null;
 
     const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
     const isSignedIn = !this.config.isDesktopApp && (getAuthState().user !== null);
@@ -352,12 +356,11 @@ export class UnifiedSettings {
       this.prefsCleanup = prefs.attach(settingsPanel as HTMLElement);
     }
 
-    if (notifs) {
-      const notifPanel = this.overlay.querySelector('#us-tab-panel-notifications');
-      if (notifPanel) {
-        this.notifCleanup = notifs.attach(notifPanel as HTMLElement);
-      }
-    }
+    // Defer notifications attach until the tab is first activated —
+    // otherwise Pro users pay a getChannelsData() fetch on every modal
+    // open even if they never visit this tab.
+    this.pendingNotifs = notifs;
+    if (this.activeTab === 'notifications') this.attachNotificationsTab();
 
     const closeBtn = this.overlay.querySelector<HTMLButtonElement>('.unified-settings-close');
     if (closeBtn) {
@@ -401,6 +404,18 @@ export class UnifiedSettings {
 
     if (tab === 'api-keys') {
       void this.loadApiKeys();
+    }
+
+    if (tab === 'notifications') {
+      this.attachNotificationsTab();
+    }
+  }
+
+  private attachNotificationsTab(): void {
+    if (this.notifCleanup || !this.pendingNotifs) return;
+    const notifPanel = this.overlay.querySelector('#us-tab-panel-notifications');
+    if (notifPanel) {
+      this.notifCleanup = this.pendingNotifs.attach(notifPanel as HTMLElement);
     }
   }
 
