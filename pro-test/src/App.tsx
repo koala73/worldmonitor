@@ -14,6 +14,7 @@ import {
 import { t } from './i18n';
 import { initOverlay, ensureClerk } from './services/checkout';
 import { PricingSection } from './components/PricingSection';
+import { SoonBadge } from './components/SoonBadge';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
 
@@ -308,6 +309,52 @@ const WhyUpgrade = () => {
   );
 };
 
+/* ─── Three Flagship Pillars (new) ─── */
+const Pillars = () => {
+  const items = [
+    { icon: <Brain className="w-7 h-7" aria-hidden="true" />, title: t('pillars.askIt'), desc: t('pillars.askItDesc') },
+    { icon: <Bell className="w-7 h-7" aria-hidden="true" />, title: t('pillars.subscribeIt'), desc: t('pillars.subscribeItDesc') },
+    { icon: <Plug className="w-7 h-7" aria-hidden="true" />, title: t('pillars.buildOnIt'), desc: t('pillars.buildOnItDesc') },
+  ];
+
+  return (
+    <section className="py-20 px-6 border-t border-wm-border">
+      <div className="max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-6">
+          {items.map((item, i) => (
+            <div key={i} className="bg-wm-card border border-wm-border p-6 hover:border-wm-green/30 transition-colors">
+              <div className="text-wm-green mb-4">{item.icon}</div>
+              <h3 className="font-display text-xl font-bold mb-2">{item.title}</h3>
+              <p className="text-sm text-wm-muted leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+/* ─── Delivery Desk (new) ─── */
+const DeliveryDesk = () => (
+  <section className="py-24 px-6 border-t border-wm-border bg-wm-card/20">
+    <div className="max-w-4xl mx-auto text-center">
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wm-green/30 bg-wm-green/10 text-wm-green text-xs font-mono mb-6">
+        {t('deliveryDesk.eyebrow')}
+      </div>
+      <h2 className="text-3xl md:text-5xl font-display font-bold mb-6">{t('deliveryDesk.title')}</h2>
+      <p className="text-lg text-wm-muted leading-relaxed mb-6">
+        {t('deliveryDesk.body')}
+      </p>
+      <p className="text-xl md:text-2xl font-display font-bold text-wm-green mb-8">
+        {t('deliveryDesk.closer')}
+      </p>
+      <p className="font-mono text-xs text-wm-muted uppercase tracking-widest">
+        {t('deliveryDesk.channels')}
+      </p>
+    </div>
+  </section>
+);
+
 /* ─── 5. Live Dashboard Embed (current) ─── */
 const LivePreview = () => (
   <section className="px-6 py-16">
@@ -430,8 +477,11 @@ const ProShowcase = () => (
           <div className="flex gap-4">
             <Telescope className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
             <div>
-              <h4 className="font-bold mb-1">{t('proShowcase.orbitalSurveillance')}</h4>
-              <p className="text-sm text-wm-muted">{t('proShowcase.orbitalSurveillanceDesc')}</p>
+              <h4 className="font-bold mb-1">
+                {t('proShowcase.orbitalSurveillance')}
+                <SoonBadge />
+              </h4>
+              <p className="text-sm text-wm-muted">{t('proShowcase.orbitalSurveillanceDesc').replace(/^\(Soon\)\s*/, '')}</p>
             </div>
           </div>
           <div className="flex gap-4">
@@ -768,6 +818,11 @@ const FAQ = () => {
     { q: t('faq.q6'), a: t('faq.a6') },
     { q: t('faq.q7'), a: t('faq.a7') },
     { q: t('faq.q8'), a: t('faq.a8') },
+    { q: t('faq.q9'), a: t('faq.a9') },
+    { q: t('faq.q10'), a: t('faq.a10') },
+    { q: t('faq.q11'), a: t('faq.a11') },
+    { q: t('faq.q12'), a: t('faq.a12') },
+    { q: t('faq.q13'), a: t('faq.a13') },
   ];
 
   return (
@@ -1071,17 +1126,19 @@ export default function App() {
       <Navbar />
       <main>
         <Hero />
-        <SocialProof />
-        <TwoPathSplit />
-        <AudiencePersonas />
-        <WhyUpgrade />
-        <LivePreview />
         <SourceMarquee />
+        <Pillars />
+        <WhyUpgrade />
+        <TwoPathSplit />
         <ProShowcase />
-        <ApiSection />
-        <EnterpriseShowcase />
+        <DeliveryDesk />
+        <AudiencePersonas />
+        <SocialProof />
+        <LivePreview />
         <PricingSection refCode={getRefCode()} />
         <PricingTable />
+        <ApiSection />
+        <EnterpriseShowcase />
         <FAQ />
       </main>
       <Footer />
