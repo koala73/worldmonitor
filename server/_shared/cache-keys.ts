@@ -34,7 +34,7 @@ export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest
 // NOTE: notification-relay.cjs owns the live value (shadow:score-log:v3 since weight rebalance).
 // This export is documentation/discoverability; changing it here does NOT affect the relay.
 // If you modify the key, also update scripts/notification-relay.cjs SHADOW_SCORE_LOG_KEY.
-export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v2';
+export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v3';
 export const STORY_TTL = 604800;           // 7 days — enough for sustained multi-day stories
 export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for digest content
 
