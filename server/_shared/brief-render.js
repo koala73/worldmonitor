@@ -101,13 +101,59 @@ function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+// Closed key sets for each object in the contract. The validator
+// rejects extra keys at every level — a producer cannot smuggle
+// importanceScore, primaryLink, pubDate, briefModel, fetchedAt or any
+// other forbidden upstream field into a persisted envelope. The
+// renderer already refuses to interpolate unknown fields (and that is
+// covered by the sentinel-poisoning test), but unknown fields resident
+// in Redis still pollute every future consumer (edge route, dashboard
+// panel preview, carousel, email teaser). Locking the contract at
+// write time is the only place this invariant can live.
+const ALLOWED_ENVELOPE_KEYS = new Set(['version', 'issuedAt', 'data']);
+const ALLOWED_DATA_KEYS = new Set(['user', 'issue', 'date', 'dateLong', 'digest', 'stories']);
+const ALLOWED_USER_KEYS = new Set(['name', 'tz']);
+const ALLOWED_DIGEST_KEYS = new Set(['greeting', 'lead', 'numbers', 'threads', 'signals']);
+const ALLOWED_NUMBERS_KEYS = new Set(['clusters', 'multiSource', 'surfaced']);
+const ALLOWED_THREAD_KEYS = new Set(['tag', 'teaser']);
+const ALLOWED_STORY_KEYS = new Set([
+  'category',
+  'country',
+  'threatLevel',
+  'headline',
+  'description',
+  'source',
+  'whyMatters',
+]);
+
 /**
- * Throws a descriptive error on the first missing or mis-typed field.
- * Runs before any HTML interpolation so the renderer can assume the
- * typed shape after this returns. The renderer is a shared module with
- * multiple independent producers (Railway composer, tests, future
- * dev-only fixtures) — a strict runtime contract matters more than the
- * declaration-file types alone.
+ * @param {Record<string, unknown>} obj
+ * @param {Set<string>} allowed
+ * @param {string} path
+ */
+function assertNoExtraKeys(obj, allowed, path) {
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) {
+      throw new Error(
+        `${path} has unexpected key ${JSON.stringify(key)}; allowed keys: ${[...allowed].join(', ')}`,
+      );
+    }
+  }
+}
+
+/**
+ * Throws a descriptive error on the first missing, mis-typed, or
+ * unexpected field. Runs before any HTML interpolation so the renderer
+ * can assume the typed shape after this returns. The renderer is a
+ * shared module with multiple independent producers (Railway composer,
+ * tests, future dev-only fixtures) — a strict runtime contract matters
+ * more than the declaration-file types alone.
+ *
+ * Also enforces the cross-field invariant that
+ * `digest.numbers.surfaced === stories.length`. The renderer uses both
+ * values (surfaced prints on the "at a glance" page; stories.length
+ * drives cover blurb and page count) — allowing them to disagree would
+ * produce a self-contradictory brief.
  *
  * @param {unknown} envelope
  * @returns {asserts envelope is BriefEnvelope}
@@ -117,6 +163,7 @@ function assertBriefEnvelope(envelope) {
     throw new Error('renderBriefMagazine: envelope must be an object');
   }
   const env = /** @type {Record<string, unknown>} */ (envelope);
+  assertNoExtraKeys(env, ALLOWED_ENVELOPE_KEYS, 'envelope');
 
   if (env.version !== BRIEF_ENVELOPE_VERSION) {
     throw new Error(
@@ -130,9 +177,11 @@ function assertBriefEnvelope(envelope) {
     throw new Error('renderBriefMagazine: envelope.data is required');
   }
   const data = /** @type {Record<string, unknown>} */ (env.data);
+  assertNoExtraKeys(data, ALLOWED_DATA_KEYS, 'envelope.data');
 
   if (!isObject(data.user)) throw new Error('envelope.data.user is required');
   const user = /** @type {Record<string, unknown>} */ (data.user);
+  assertNoExtraKeys(user, ALLOWED_USER_KEYS, 'envelope.data.user');
   if (!isNonEmptyString(user.name)) throw new Error('envelope.data.user.name must be a non-empty string');
   if (!isNonEmptyString(user.tz)) throw new Error('envelope.data.user.tz must be a non-empty string');
 
@@ -145,11 +194,13 @@ function assertBriefEnvelope(envelope) {
 
   if (!isObject(data.digest)) throw new Error('envelope.data.digest is required');
   const digest = /** @type {Record<string, unknown>} */ (data.digest);
+  assertNoExtraKeys(digest, ALLOWED_DIGEST_KEYS, 'envelope.data.digest');
   if (!isNonEmptyString(digest.greeting)) throw new Error('envelope.data.digest.greeting must be a non-empty string');
   if (!isNonEmptyString(digest.lead)) throw new Error('envelope.data.digest.lead must be a non-empty string');
 
   if (!isObject(digest.numbers)) throw new Error('envelope.data.digest.numbers is required');
   const numbers = /** @type {Record<string, unknown>} */ (digest.numbers);
+  assertNoExtraKeys(numbers, ALLOWED_NUMBERS_KEYS, 'envelope.data.digest.numbers');
   for (const key of /** @type {const} */ (['clusters', 'multiSource', 'surfaced'])) {
     if (!isFiniteNumber(numbers[key])) {
       throw new Error(`envelope.data.digest.numbers.${key} must be a finite number`);
@@ -162,6 +213,7 @@ function assertBriefEnvelope(envelope) {
   digest.threads.forEach((t, i) => {
     if (!isObject(t)) throw new Error(`envelope.data.digest.threads[${i}] must be an object`);
     const th = /** @type {Record<string, unknown>} */ (t);
+    assertNoExtraKeys(th, ALLOWED_THREAD_KEYS, `envelope.data.digest.threads[${i}]`);
     if (!isNonEmptyString(th.tag)) throw new Error(`envelope.data.digest.threads[${i}].tag must be a non-empty string`);
     if (!isNonEmptyString(th.teaser)) throw new Error(`envelope.data.digest.threads[${i}].teaser must be a non-empty string`);
   });
@@ -179,6 +231,7 @@ function assertBriefEnvelope(envelope) {
   data.stories.forEach((s, i) => {
     if (!isObject(s)) throw new Error(`envelope.data.stories[${i}] must be an object`);
     const st = /** @type {Record<string, unknown>} */ (s);
+    assertNoExtraKeys(st, ALLOWED_STORY_KEYS, `envelope.data.stories[${i}]`);
     for (const field of /** @type {const} */ (['category', 'country', 'headline', 'description', 'source', 'whyMatters'])) {
       if (!isNonEmptyString(st[field])) {
         throw new Error(`envelope.data.stories[${i}].${field} must be a non-empty string`);
@@ -190,6 +243,15 @@ function assertBriefEnvelope(envelope) {
       );
     }
   });
+
+  // Cross-field invariant: surfaced count must match the actual number
+  // of stories surfaced to this reader. Enforced here so cover copy
+  // ("N threads") and the at-a-glance stat can never disagree.
+  if (numbers.surfaced !== data.stories.length) {
+    throw new Error(
+      `envelope.data.digest.numbers.surfaced=${numbers.surfaced} must equal envelope.data.stories.length=${data.stories.length}`,
+    );
+  }
 }
 
 // ── Logo symbol + references ─────────────────────────────────────────────────

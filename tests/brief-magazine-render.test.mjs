@@ -275,23 +275,20 @@ describe('renderBriefMagazine — envelope internals never leak into HTML', () =
     }
   });
 
-  it('sentinel values injected into non-data envelope fields are absent from output', () => {
-    const sentinel = '__BRIEF_ENVELOPE_POISON_SENTINEL_XYZ__';
-    // Cast through unknown so TS lets us attach extension fields the
-    // renderer must ignore.
-    const env = /** @type {BriefEnvelope} */ (
-      /** @type {unknown} */ ({
-        ...envelope(),
-        // Extension fields the renderer MUST NOT interpolate.
-        importanceScore: sentinel,
-        primaryLink: sentinel,
-        pubDate: sentinel,
-        generatedAt: sentinel,
-        _seed: { version: 1, recordCount: 9, fetchedAt: sentinel },
-      })
-    );
-    const html = renderBriefMagazine(env);
-    assert.ok(!html.includes(sentinel), 'non-data envelope fields must not appear in HTML');
+  it('validator rejects extension fields on envelope root (importanceScore, _seed, etc.)', () => {
+    // Stricter than "renderer does not interpolate them". Forbidden
+    // fields must be impossible to PERSIST in the envelope at all —
+    // the renderer runs after they are already written to Redis, so
+    // the only place the invariant can live is the validator at
+    // write + read time.
+    const env = /** @type {any} */ ({
+      ...envelope(),
+      importanceScore: 999,
+      primaryLink: 'https://example.com',
+      pubDate: 123,
+      _seed: { version: 1, fetchedAt: 0 },
+    });
+    assert.throws(() => renderBriefMagazine(env), /envelope has unexpected key/);
   });
 
   it('HTML-escapes user-provided content (no raw angle brackets from stories)', () => {
@@ -372,6 +369,46 @@ describe('renderBriefMagazine — envelope validation', () => {
   it('throws when stories is empty', () => {
     const env = envelope({ stories: [] });
     assert.throws(() => renderBriefMagazine(env), /stories must be a non-empty array/);
+  });
+
+  it('throws when a story carries an extension field (importanceScore, etc.)', () => {
+    const env = envelope();
+    /** @type {any} */ (env.data.stories[0]).importanceScore = 999;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\] has unexpected key "importanceScore"/,
+    );
+  });
+
+  it('throws when envelope.data carries an extra key', () => {
+    const env = /** @type {any} */ (envelope());
+    env.data.primaryLink = 'https://leak.example/story';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data has unexpected key "primaryLink"/,
+    );
+  });
+
+  it('throws when digest.numbers carries an extra key', () => {
+    const env = /** @type {any} */ (envelope());
+    env.data.digest.numbers.fetchedAt = Date.now();
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.digest\.numbers has unexpected key "fetchedAt"/,
+    );
+  });
+
+  it('throws when digest.numbers.surfaced does not equal stories.length', () => {
+    // Cover copy ("N threads that shaped the world today") and the
+    // at-a-glance stat both surface this count; the validator must
+    // keep them in lockstep so no brief can ship a self-contradictory
+    // number.
+    const env = envelope();
+    env.data.digest.numbers.surfaced = 99;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /surfaced=99 must equal.*stories\.length=4/,
+    );
   });
 });
 
