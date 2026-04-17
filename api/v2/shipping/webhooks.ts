@@ -138,16 +138,7 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: cors });
   }
 
-  let apiKeyResult = validateApiKey(req, { forceKey: true });
-  // Fallback: wm_ user keys are validated async via Convex, not in the static key list
-  const wmKey = req.headers.get('X-WorldMonitor-Key') ?? '';
-  if (apiKeyResult.required && !apiKeyResult.valid && wmKey.startsWith('wm_')) {
-    const { validateUserApiKey } = await import('../../../server/_shared/user-api-key');
-    const userKeyResult = await validateUserApiKey(wmKey);
-    if (userKeyResult) {
-      apiKeyResult = { valid: true, required: true };
-    }
-  }
+  const apiKeyResult = validateApiKey(req, { forceKey: true });
   if (apiKeyResult.required && !apiKeyResult.valid) {
     return new Response(JSON.stringify({ error: apiKeyResult.error ?? 'API key required' }), {
       status: 401,
