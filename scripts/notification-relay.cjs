@@ -705,11 +705,17 @@ async function processEvent(event) {
     return;
   }
 
+  // If the event carries a userId (browser-submitted via /api/notify), scope
+  // delivery to ONLY that user's own rules. Relay-emitted events (ais-relay,
+  // regional-snapshot) have no userId and fan out to all matching Pro users.
+  // Without this guard, a Pro user can POST arbitrary rss_alert events that
+  // fan out to every other Pro subscriber — see todo #196.
   const matching = enabledRules.filter(r =>
-    (!r.digestMode || r.digestMode === 'realtime') &&   // skip digest-mode rules — handled by seed-digest-notifications cron
+    (!r.digestMode || r.digestMode === 'realtime') &&
     (r.eventTypes.length === 0 || r.eventTypes.includes(event.eventType)) &&
     shouldNotify(r, event) &&
-    (!event.variant || !r.variant || r.variant === event.variant)
+    (!event.variant || !r.variant || r.variant === event.variant) &&
+    (!event.userId || r.userId === event.userId)
   );
 
   if (matching.length === 0) return;

@@ -69,8 +69,19 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'Service unavailable' }, 503, cors);
   }
 
-  const { eventType, payload } = body;
-  const severity = typeof body.severity === 'string' ? body.severity : 'high';
+  const { eventType } = body;
+
+  // Strip relay-internal scoring fields from user-supplied payload. These are
+  // computed server-side by the relay's importanceScore pipeline; allowing
+  // user-supplied values would let a Pro user bypass the IMPORTANCE_SCORE_MIN
+  // gate and fan out arbitrary alerts to every subscriber.
+  const payload = { ...(body.payload as Record<string, unknown>) };
+  delete payload.importanceScore;
+  delete payload.corroborationCount;
+
+  const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
+  const rawSeverity = typeof body.severity === 'string' ? body.severity : 'high';
+  const severity = VALID_SEVERITIES.has(rawSeverity) ? rawSeverity : 'high';
   const variant = typeof body.variant === 'string' ? body.variant : undefined;
 
   const msg = JSON.stringify({
