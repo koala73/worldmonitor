@@ -505,10 +505,10 @@ const ProShowcase = () => (
           <div className="flex gap-6">
             {[
               { icon: <SlackIcon />, label: "Slack" },
-              { icon: <Send className="w-5 h-5" aria-hidden="true" />, label: "Telegram" },
-              { icon: <MessageCircle className="w-5 h-5" aria-hidden="true" />, label: "WhatsApp" },
-              { icon: <Mail className="w-5 h-5" aria-hidden="true" />, label: "Email" },
               { icon: <MessageSquare className="w-5 h-5" aria-hidden="true" />, label: "Discord" },
+              { icon: <Send className="w-5 h-5" aria-hidden="true" />, label: "Telegram" },
+              { icon: <Mail className="w-5 h-5" aria-hidden="true" />, label: "Email" },
+              { icon: <Plug className="w-5 h-5" aria-hidden="true" />, label: "Webhook" },
             ].map((ch, i) => (
               <div key={i} className="flex flex-col items-center gap-1.5 text-wm-muted hover:text-wm-text transition-colors cursor-pointer">
                 {ch.icon}

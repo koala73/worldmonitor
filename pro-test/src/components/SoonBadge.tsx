@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 export function SoonBadge() {
   return (
     <span
@@ -16,7 +18,7 @@ export function SoonBadge() {
         verticalAlign: 'middle',
       }}
     >
-      Soon
+      {t('soonBadge')}
     </span>
   );
 }

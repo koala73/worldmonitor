@@ -276,7 +276,7 @@
     "fAgentsPersonas": "Agenți + personalități",
     "fDailyFlash": "Zilnic + flash",
     "fTeamDist": "Distribuție echipă",
-    "fSlackTgWa": "Slack/TG/WA/Email",
+    "fSlackTgWa": "Slack/Discord/TG/Email/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "Alătură-te listei de așteptare World Monitor Pro:",
     "youreIn": "Ești înăuntru!",
     "invitedBanner": "Ai fost invitat — alătură-te listei de așteptare"
-  }
+  },
+  "soonBadge": "În curând"
 }

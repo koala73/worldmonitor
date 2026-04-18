@@ -276,7 +276,7 @@
     "fAgentsPersonas": "Agenti + persony",
     "fDailyFlash": "Denní + flash",
     "fTeamDist": "Týmová distribuce",
-    "fSlackTgWa": "Slack/TG/WA/E-mail",
+    "fSlackTgWa": "Slack/Discord/TG/E-mail/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "Připojte se k čekací listině World Monitor Pro:",
     "youreIn": "Jste uvnitř!",
     "invitedBanner": "Byli jste pozváni — připojte se k čekací listině"
-  }
+  },
+  "soonBadge": "Brzy"
 }

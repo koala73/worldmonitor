@@ -276,7 +276,7 @@
     "fAgentsPersonas": "وكلاء + شخصيات",
     "fDailyFlash": "يومي + عاجل",
     "fTeamDist": "توزيع الفريق",
-    "fSlackTgWa": "Slack/TG/WA/بريد",
+    "fSlackTgWa": "Slack/Discord/TG/بريد/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "انضم إلى قائمة انتظار World Monitor Pro:",
     "youreIn": "أنت ضمن القائمة!",
     "invitedBanner": "لقد تمت دعوتك — انضم إلى قائمة الانتظار"
-  }
+  },
+  "soonBadge": "قريباً"
 }

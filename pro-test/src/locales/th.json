@@ -276,7 +276,7 @@
     "fAgentsPersonas": "agents + บุคลิก",
     "fDailyFlash": "รายวัน + แฟลช",
     "fTeamDist": "การกระจายทีม",
-    "fSlackTgWa": "Slack/TG/WA/อีเมล",
+    "fSlackTgWa": "Slack/Discord/TG/อีเมล/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "เข้าร่วมรายชื่อรอ World Monitor Pro:",
     "youreIn": "คุณเข้าร่วมแล้ว!",
     "invitedBanner": "คุณได้รับเชิญ — เข้าร่วมรายชื่อรอ"
-  }
+  },
+  "soonBadge": "เร็วๆ นี้"
 }

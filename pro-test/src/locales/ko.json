@@ -276,7 +276,7 @@
     "fAgentsPersonas": "에이전트 + 페르소나",
     "fDailyFlash": "일일 + 속보",
     "fTeamDist": "팀 배포",
-    "fSlackTgWa": "Slack/TG/WA/이메일",
+    "fSlackTgWa": "Slack/Discord/TG/이메일/Webhook",
     "fWebhook": "웹훅",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + 웹훅",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "World Monitor Pro 대기자 명단에 참여:",
     "youreIn": "참여 완료!",
     "invitedBanner": "초대되었습니다 — 대기자 명단에 참여"
-  }
+  },
+  "soonBadge": "출시 예정"
 }

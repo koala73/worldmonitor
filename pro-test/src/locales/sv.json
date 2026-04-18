@@ -276,7 +276,7 @@
     "fAgentsPersonas": "Agenter + personas",
     "fDailyFlash": "Daglig + flash",
     "fTeamDist": "Teamdistribution",
-    "fSlackTgWa": "Slack/TG/WA/E-post",
+    "fSlackTgWa": "Slack/Discord/TG/E-post/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "Gå med i World Monitor Pro-väntelistan:",
     "youreIn": "Du är med!",
     "invitedBanner": "Du har bjudits in — gå med i väntelistan"
-  }
+  },
+  "soonBadge": "Snart"
 }

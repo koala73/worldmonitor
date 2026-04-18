@@ -276,7 +276,7 @@
     "fAgentsPersonas": "代理 + 人设",
     "fDailyFlash": "每日 + 快讯",
     "fTeamDist": "团队分发",
-    "fSlackTgWa": "Slack/TG/WA/邮件",
+    "fSlackTgWa": "Slack/Discord/TG/邮件/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "加入 World Monitor Pro 等候名单:",
     "youreIn": "您已入列!",
     "invitedBanner": "您已被邀请 — 加入等候名单"
-  }
+  },
+  "soonBadge": "即将推出"
 }

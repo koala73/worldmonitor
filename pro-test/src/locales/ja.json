@@ -276,7 +276,7 @@
     "fAgentsPersonas": "エージェント + ペルソナ",
     "fDailyFlash": "デイリー + フラッシュ",
     "fTeamDist": "チーム配信",
-    "fSlackTgWa": "Slack/TG/WA/メール",
+    "fSlackTgWa": "Slack/Discord/TG/メール/Webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -353,5 +353,6 @@
     "joinWaitlistShare": "World Monitor Pro のウェイトリストに参加:",
     "youreIn": "参加完了!",
     "invitedBanner": "招待されました — ウェイトリストに参加"
-  }
+  },
+  "soonBadge": "近日公開"
 }
