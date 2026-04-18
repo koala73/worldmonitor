@@ -2,22 +2,28 @@
  * Brief carousel image endpoint (Phase 8).
  *
  * GET /api/brief/carousel/{userId}/{issueDate}/{page}?t={token}
- *   -> 200 image/png  (cover | threads | story page of the brief)
+ *   -> 200 image/png   cover | threads | story page. Cached 7d
+ *                      immutable (CDN + Telegram) — safe because the
+ *                      underlying envelope is immutable for the life
+ *                      of the brief key.
  *   -> 403 on bad token (shared signer with the magazine route)
  *   -> 404 on Redis miss (no brief composed for that user/date)
  *   -> 404 on invalid page (must be one of 0, 1, 2)
- *   -> 503 if BRIEF_URL_SIGNING_SECRET is not configured
+ *   -> 503 on any renderer/runtime/font failure, with
+ *      Cache-Control: no-store. NEVER returns a placeholder PNG —
+ *      a 1x1 blank cached 7d immutable by Telegram + CDN is worse
+ *      than a clean 503 that sendMediaGroup skips. The digest cron
+ *      treats carousel failure as best-effort and still sends the
+ *      long-form text message, and the next cron tick re-renders
+ *      with a fresh cold start.
  *
  * The HMAC-signed `?t=` token is the sole credential — same token
  * pattern as the magazine HTML route, same signer secret, same
  * per-(userId, issueDate) binding. URLs go out over already-authed
  * channels (Telegram, Slack, Discord, email, push).
  *
- * Node runtime is used rather than Edge because @resvg/resvg-wasm
- * needs a real Uint8Array buffer for the Noto Serif font fetch, and
- * Vercel Edge's fetch response buffer semantics around WASM init are
- * fussier than Node's. Cold start is ~700ms, warm ~40ms — carousel
- * images aren't latency-critical.
+ * Runtime: edge. Satori + @resvg/resvg-wasm both claim edge
+ * compatibility; the WASM asset ships via the `?url` import below.
  */
 
 export const config = { runtime: 'edge' };
@@ -33,27 +39,23 @@ const PAGE_CACHE_TTL = 60 * 60 * 24 * 7; // 7 days — matches brief key TTL
 
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function errorPng(): Uint8Array {
-  // 1×1 transparent PNG — placeholder so the channel's preview
-  // collapses gracefully on any unrecoverable error. Avoids
-  // "broken image" icons while we log and alert server-side.
-  return new Uint8Array([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-    0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
-    0x54, 0x78, 0x9c, 0x62, 0x00, 0x01, 0x00, 0x00,
-    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
-    0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
-    0x42, 0x60, 0x82,
-  ]);
-}
-
-function jsonError(msg: string, status: number, cors: Record<string, string>): Response {
+function jsonError(
+  msg: string,
+  status: number,
+  cors: Record<string, string>,
+  { noStore = false }: { noStore?: boolean } = {},
+): Response {
   return new Response(JSON.stringify({ error: msg }), {
     status,
-    headers: { 'Content-Type': 'application/json', ...cors },
+    headers: {
+      'Content-Type': 'application/json',
+      // On server-side errors we explicitly suppress caching so a
+      // transient Google-Fonts / WASM-init / render glitch doesn't
+      // get cached by Vercel's CDN or Telegram's media fetcher for
+      // the life of the brief. Next request re-renders.
+      ...(noStore ? { 'Cache-Control': 'no-store' } : {}),
+      ...cors,
+    },
   });
 }
 
@@ -117,11 +119,19 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     png = await renderCarouselPng(envelope, page);
   } catch (err) {
-    console.error(`[api/brief/carousel] render failed for ${userId}/${issueDate}/${page}:`, (err as Error).message);
-    // Serve a 1x1 transparent PNG so Telegram's sendMediaGroup call
-    // doesn't choke on an HTML error body. 503 is still wrong here —
-    // the client channel can't retry a push anyway. Log and move on.
-    png = errorPng();
+    // Render failures (WASM init, Satori, Google Fonts fetch, etc.)
+    // MUST NOT return a placeholder 200. A 1x1 blank cached 7d
+    // immutable by Telegram's media fetcher + Vercel's CDN would
+    // lock in a broken preview for the full brief TTL per chat
+    // message. sendMediaGroup will drop the whole carousel on a
+    // non-2xx, but the digest cron's best-effort path continues
+    // with the long-form text message, and the next cron tick
+    // re-renders with a fresh cold start.
+    console.error(
+      `[api/brief/carousel] render failed for ${userId}/${issueDate}/${page}:`,
+      (err as Error).message,
+    );
+    return jsonError('render_failed', 503, cors, { noStore: true });
   }
 
   const headers: Record<string, string> = {

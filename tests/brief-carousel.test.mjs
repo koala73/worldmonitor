@@ -91,10 +91,55 @@ describe('carouselUrlsFrom — contract parity with seed-digest-notifications.mj
     const { dirname, resolve } = await import('node:path');
     const __d = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(resolve(__d, '../scripts/seed-digest-notifications.mjs'), 'utf-8');
-    // Lock the function signature + the key line that builds the
-    // carousel path. If either drifts, move the impl into a shared
-    // .mjs and import it from both the cron and this test.
     assert.match(src, /function carouselUrlsFrom\(magazineUrl\)/, 'cron must export carouselUrlsFrom');
     assert.match(src, /\/api\/brief\/carousel\/\$\{userId\}\/\$\{issueDate\}\/\$\{p\}\?t=\$\{token\}/, 'cron path template must match test fixture');
+  });
+});
+
+// REGRESSION: PR #3174 review P1. The edge route MUST NOT return
+// a 200 placeholder PNG on render failure. A 1x1 blank cached 7d
+// immutable by Telegram/CDN would lock in a broken preview for
+// the life of the brief. Only 200s serve PNG bytes; every failure
+// path is a non-2xx JSON with no-cache.
+describe('carousel route — no placeholder PNG on failure', () => {
+  it('the route source never serves image/png on the render-failed path', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const __d = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      resolve(__d, '../api/brief/carousel/[userId]/[issueDate]/[page].ts'),
+      'utf-8',
+    );
+    // Old impl had errorPng() returning a 1x1 transparent PNG at 200 +
+    // 7d cache. If that pattern ever comes back, this test fails.
+    assert.doesNotMatch(src, /\berrorPng\b/, 'errorPng helper must not be reintroduced');
+    // Render-failed branch must return 503 with noStore.
+    assert.match(
+      src,
+      /render_failed.{0,200}503.{0,400}noStore:\s*true/s,
+      'render failure must 503 with no-store',
+    );
+  });
+
+  it('the renderer honestly declares Google Fonts as a runtime dependency', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const __d = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      resolve(__d, '../server/_shared/brief-carousel-render.ts'),
+      'utf-8',
+    );
+    // Earlier comment lied about a "safe embedded/fallback path" that
+    // didn't exist. The corrected comment must either honestly declare
+    // the CDN dependency OR actually ship an embedded fallback font.
+    const hasHonestDependency =
+      /RUNTIME DEPENDENCY/i.test(src) || /hard runtime dependency/i.test(src);
+    const hasEmbeddedFallback = /const EMBEDDED_FONT_BASE64/.test(src);
+    assert.ok(
+      hasHonestDependency || hasEmbeddedFallback,
+      'font loading must EITHER declare the CDN dependency OR ship an embedded fallback',
+    );
   });
 });

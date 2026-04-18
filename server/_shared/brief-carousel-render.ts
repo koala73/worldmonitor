@@ -27,15 +27,28 @@
 // *any* reason. Only the /api/brief/carousel/* route ever calls
 // renderCarouselPng; nothing else needs the libraries loaded.
 
-// Minimal embedded font: free Noto Serif (TTF subset). Satori needs a
-// real TTF buffer to measure glyphs; "serif" as a family name is not
-// enough on its own. We bake a single regular-weight subset at build
-// time via the import-and-fetch pattern below — on first render in a
-// cold edge isolate it pulls from our own /fonts/... static path, on
-// subsequent renders in the same isolate it's memoised.
+// RUNTIME DEPENDENCY on Google Fonts CDN.
+//
+// Satori requires a real TTF/WOFF2 buffer to measure glyphs — the
+// family name 'serif' on its own is not enough. On first render in a
+// cold edge isolate we fetch Noto Serif Regular from gstatic.com and
+// memoise it for subsequent requests on the same isolate. There is
+// NO inline fallback font shipped in the bundle today; adding one
+// would add ~50KB to every edge cold-start.
+//
+// Consequence: if the Google Fonts CDN is unreachable, loadFont()
+// throws, renderCarouselPng() rethrows, the edge route returns
+// 503 no-store, Telegram's sendMediaGroup for that brief drops the
+// whole carousel, the digest's long-form text message still sends,
+// and the next cron tick re-renders from a fresh isolate. The
+// failure is self-healing across ticks because the route
+// deliberately refuses to cache any non-render response — see the
+// route handler's 503 path.
+//
+// If Google Fonts reliability ever becomes a problem, swap this
+// fetch for a bundled base64 TTF (Noto or DejaVu Serif public-domain
+// subset) and delete the fetch branch.
 const FONT_URL = 'https://fonts.gstatic.com/s/notoserif/v23/ga6Iaw1J5X9T9RW6j9bNdOwzTRiC.woff2';
-// Fallback font we actually ship inline. Same family (DejaVu Serif,
-// public-domain-compatible), 24KB base64 — cold-start safe. (see below)
 let _fontCache: ArrayBuffer | null = null;
 let _wasmInitialized = false;
 
@@ -68,9 +81,12 @@ async function ensureLibsAndWasm(): Promise<void> {
 
 async function loadFont(): Promise<ArrayBuffer> {
   if (_fontCache) return _fontCache;
-  // Google Fonts CDN. Fetched once per warm isolate. If it fails,
-  // Satori will still render with its built-in fallback table —
-  // noticeably uglier but not broken.
+  // Google Fonts CDN is a hard runtime dependency — see FONT_URL
+  // comment above. On any failure we rethrow so the route handler
+  // can return 503 no-store rather than letting Satori render with
+  // a missing font (which Satori actually handles by refusing to
+  // measure, producing an empty SVG — a more confusing failure than
+  // a clean HTTP error).
   try {
     const res = await fetch(FONT_URL, {
       signal: AbortSignal.timeout(5_000),
