@@ -826,6 +826,62 @@ http.route({
   }),
 });
 
+// Service-to-service: Vercel edge gateway creates Dodo customer portal sessions.
+// Authenticated via RELAY_SHARED_SECRET; edge endpoint validates Clerk JWT
+// and forwards the verified userId.
+http.route({
+  path: "/relay/customer-portal",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(
+      /^Bearer\s+/,
+      "",
+    );
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { userId?: string };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!body.userId) {
+      return new Response(
+        JSON.stringify({ error: "MISSING_FIELDS", required: ["userId"] }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    try {
+      const result = await ctx.runAction(
+        internal.payments.billing.internalGetCustomerPortalUrl,
+        { userId: body.userId },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Customer portal creation failed";
+      const status = msg === "No Dodo customer found for this user" ? 404 : 500;
+      return new Response(JSON.stringify({ error: msg }), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
 // Resend webhook: captures bounce/complaint events and suppresses emails.
 // Signature verification + internal mutation, same pattern as Dodo webhook.
 http.route({

@@ -38,26 +38,33 @@ interface UserInfo {
 interface BlockingSubscriptionInfo {
   planKey: string;
   displayName: string;
-  status: "active" | "on_hold" | "cancelled" | "expired";
+  status: "active" | "on_hold" | "cancelled";
   currentPeriodEnd: number;
   dodoSubscriptionId: string;
 }
 
-interface BlockedCheckoutResponse {
-  blocked: true;
-  code: typeof ACTIVE_SUBSCRIPTION_EXISTS;
-  message: string;
-  subscription: BlockingSubscriptionInfo;
+function buildBlockedCheckoutPayload(
+  subscription: BlockingSubscriptionInfo,
+){
+  return {
+    code: ACTIVE_SUBSCRIPTION_EXISTS,
+    message: `A ${subscription.displayName} subscription already exists for this account. Use Manage Billing to update it instead of purchasing again.`,
+    subscription: {
+      planKey: subscription.planKey,
+      displayName: subscription.displayName,
+      status: subscription.status,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      dodoSubscriptionId: subscription.dodoSubscriptionId,
+    },
+  };
 }
 
 function buildBlockedCheckoutResponse(
   subscription: BlockingSubscriptionInfo,
-): BlockedCheckoutResponse {
+){
   return {
     blocked: true,
-    code: ACTIVE_SUBSCRIPTION_EXISTS,
-    message: `A ${subscription.displayName} subscription already exists for this account. Use Manage Billing to update it instead of purchasing again.`,
-    subscription,
+    ...buildBlockedCheckoutPayload(subscription),
   };
 }
 
@@ -66,10 +73,20 @@ async function getCheckoutBlockingSubscription(
   userId: string,
   productId: string,
 ): Promise<BlockingSubscriptionInfo | null> {
-  return await ctx.runQuery(
+  const result = await ctx.runQuery(
     internal.payments.billing.getCheckoutBlockingSubscription,
     { userId, productId },
   );
+  if (!result || result.status === "expired") {
+    return null;
+  }
+  return {
+    planKey: result.planKey,
+    displayName: result.displayName,
+    status: result.status,
+    currentPeriodEnd: result.currentPeriodEnd,
+    dodoSubscriptionId: result.dodoSubscriptionId,
+  };
 }
 
 async function _createCheckoutSession(
@@ -158,7 +175,7 @@ export const createCheckout = action({
     const identity = await resolveUserIdentity(ctx);
     const blocking = await getCheckoutBlockingSubscription(ctx, userId, args.productId);
     if (blocking) {
-      throw new ConvexError(buildBlockedCheckoutResponse(blocking).message);
+      throw new ConvexError(buildBlockedCheckoutPayload(blocking));
     }
 
     const customerName = identity

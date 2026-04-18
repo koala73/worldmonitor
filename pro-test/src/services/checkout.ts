@@ -116,14 +116,7 @@ async function doCheckout(
   checkoutInFlight = true;
 
   try {
-    // Get Clerk token with retry
-    let token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
-      ?? await clerk?.session?.getToken().catch(() => null);
-    if (!token) {
-      await new Promise((r) => setTimeout(r, 2000));
-      token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
-        ?? await clerk?.session?.getToken().catch(() => null);
-    }
+    const token = await getAuthToken();
     if (!token) {
       console.error('[checkout] No auth token after retry');
       return false;
@@ -148,7 +141,7 @@ async function doCheckout(
       const err = await resp.json().catch(() => ({}));
       console.error('[checkout] Edge error:', resp.status, err);
       if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
-        window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
+        await openBillingPortal(token, err?.message);
       }
       return false;
     }
@@ -196,5 +189,46 @@ async function doCheckout(
     return false;
   } finally {
     checkoutInFlight = false;
+  }
+}
+
+async function getAuthToken(): Promise<string | null> {
+  let token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
+    ?? await clerk?.session?.getToken().catch(() => null);
+  if (!token) {
+    await new Promise((r) => setTimeout(r, 2000));
+    token = await clerk?.session?.getToken({ template: 'convex' }).catch(() => null)
+      ?? await clerk?.session?.getToken().catch(() => null);
+  }
+  return token;
+}
+
+async function openBillingPortal(token: string, message?: string): Promise<void> {
+  if (message) {
+    console.warn('[checkout] Redirecting to billing portal:', message);
+  }
+
+  try {
+    const resp = await fetch(`${API_BASE}/customer-portal`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    const result = await resp.json().catch(() => ({}));
+    const url = typeof result?.portal_url === 'string'
+      ? result.portal_url
+      : DODO_PORTAL_FALLBACK_URL;
+
+    if (!resp.ok) {
+      console.error('[checkout] Customer portal error:', resp.status, result);
+    }
+
+    window.location.assign(url);
+  } catch (err) {
+    console.error('[checkout] Failed to open billing portal:', err);
+    window.location.assign(DODO_PORTAL_FALLBACK_URL);
   }
 }

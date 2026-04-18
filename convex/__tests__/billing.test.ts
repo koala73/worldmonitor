@@ -36,6 +36,20 @@ async function seedSubscription(
 }
 
 describe("payments billing duplicate-checkout guard", () => {
+  test("does not block checkout when the user has no subscriptions", async () => {
+    const t = convexTest(schema, modules);
+
+    const result = await t.query(
+      internal.payments.billing.getCheckoutBlockingSubscription,
+      {
+        userId: TEST_USER_ID,
+        productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
   test("blocks checkout when an active subscription exists in the same tier group", async () => {
     const t = convexTest(schema, modules);
 

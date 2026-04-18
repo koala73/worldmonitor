@@ -10,7 +10,7 @@
  */
 
 import { v } from "convex/values";
-import { action, mutation, query, internalQuery } from "../_generated/server";
+import { action, mutation, query, internalAction, internalQuery, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
@@ -45,6 +45,41 @@ function getDodoClient(): DodoPayments {
     bearerToken: apiKey,
     ...(isLive ? {} : { environment: "test_mode" as const }),
   });
+}
+
+async function createCustomerPortalUrlForUser(
+  ctx: Pick<ActionCtx, "runQuery">,
+  userId: string,
+): Promise<{ portal_url: string }> {
+  const customer = await ctx.runQuery(
+    internal.payments.billing.getCustomerByUserId,
+    { userId },
+  );
+
+  if (!customer || !customer.dodoCustomerId) {
+    throw new Error("No Dodo customer found for this user");
+  }
+
+  const client = getDodoClient();
+  const session = await client.customers.customerPortal.create(
+    customer.dodoCustomerId,
+    { send_email: false },
+  );
+
+  return { portal_url: session.link };
+}
+
+function getSubscriptionStatusPriority(status: string): number {
+  switch (status) {
+    case "active":
+      return 0;
+    case "on_hold":
+      return 1;
+    case "cancelled":
+      return 2;
+    default:
+      return 3;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +174,9 @@ export const getActiveSubscription = internalQuery({
  *
  * Blocks new checkout sessions when the user already has an active/on_hold
  * subscription in the same tier group, or a cancelled subscription that
- * still has time remaining in the current billing period.
+ * still has time remaining in the current billing period. This is an app-side
+ * guard only; Dodo's "Allow Multiple Subscriptions" setting is still the
+ * provider-side backstop for races before webhook ingestion updates Convex.
  */
 export const getCheckoutBlockingSubscription = internalQuery({
   args: {
@@ -154,11 +191,10 @@ export const getCheckoutBlockingSubscription = internalQuery({
     if (!targetCatalogEntry) return null;
 
     const now = Date.now();
-    const priorityOrder = ["active", "on_hold", "cancelled", "expired"];
     const blockingSubs = (await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .take(50))
+      .collect())
       .filter((sub) => {
         const existingCatalogEntry = PRODUCT_CATALOG[sub.planKey];
         if (!existingCatalogEntry) return false;
@@ -167,8 +203,8 @@ export const getCheckoutBlockingSubscription = internalQuery({
         return sub.status === "cancelled" && sub.currentPeriodEnd > now;
       })
       .sort((a, b) => {
-        const pa = priorityOrder.indexOf(a.status);
-        const pb = priorityOrder.indexOf(b.status);
+        const pa = getSubscriptionStatusPriority(a.status);
+        const pb = getSubscriptionStatusPriority(b.status);
         if (pa !== pb) return pa - pb;
         if (a.currentPeriodEnd !== b.currentPeriodEnd) {
           return b.currentPeriodEnd - a.currentPeriodEnd;
@@ -202,23 +238,21 @@ export const getCustomerPortalUrl = action({
   args: {},
   handler: async (ctx, _args) => {
     const userId = await requireUserId(ctx);
+    return createCustomerPortalUrlForUser(ctx, userId);
+  },
+});
 
-    const customer = await ctx.runQuery(
-      internal.payments.billing.getCustomerByUserId,
-      { userId },
-    );
-
-    if (!customer || !customer.dodoCustomerId) {
-      throw new Error("No Dodo customer found for this user");
+/**
+ * Internal action callable from the edge gateway to create a user-scoped
+ * Dodo Customer Portal session after the Clerk JWT has been verified there.
+ */
+export const internalGetCustomerPortalUrl = internalAction({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    if (!args.userId) {
+      throw new Error("userId is required");
     }
-
-    const client = getDodoClient();
-    const session = await client.customers.customerPortal.create(
-      customer.dodoCustomerId,
-      { send_email: false },
-    );
-
-    return { portal_url: session.link };
+    return createCustomerPortalUrlForUser(ctx, args.userId);
   },
 });
 
