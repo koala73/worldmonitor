@@ -267,9 +267,11 @@ Sentry.init({
     if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter)"[,] ?\w+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
+    // Suppress any TypeError / RangeError that happens entirely within maplibre or deck.gl internals.
+    // RangeError: "Invalid array length" during deck.gl bindVertexArray / _updateCache on large
+    // GL layer updates (vertex-buffer allocation failure in vendor code — WORLDMONITOR-N4).
     const excType = event.exception?.values?.[0]?.type ?? '';
-    if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0) {
+    if ((excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg)) && frames.length > 0) {
       if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
