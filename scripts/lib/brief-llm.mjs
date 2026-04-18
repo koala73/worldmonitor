@@ -31,6 +31,7 @@ import { createHash } from 'node:crypto';
 
 const WHY_MATTERS_TTL_SEC = 24 * 60 * 60;
 const DIGEST_PROSE_TTL_SEC = 4 * 60 * 60;
+const STORY_DESCRIPTION_TTL_SEC = 24 * 60 * 60;
 const WHY_MATTERS_CONCURRENCY = 5;
 
 // Pin to openrouter (google/gemini-2.5-flash). Ollama isn't deployed
@@ -149,6 +150,125 @@ export async function generateWhyMatters(story, deps) {
   try {
     await deps.cacheSet(key, parsed, WHY_MATTERS_TTL_SEC);
   } catch { /* cache write failures don't matter here */ }
+  return parsed;
+}
+
+// ── Per-story description (replaces title-verbatim fallback) ──────────────
+
+const STORY_DESCRIPTION_SYSTEM =
+  'You are the editor of WorldMonitor Brief, a geopolitical intelligence magazine. ' +
+  'Given the story attributes below, write ONE concise sentence (16–30 words) that ' +
+  'describes the development itself — not why it matters, not the reader reaction. ' +
+  'Editorial, serious, past/present tense, named actors where possible. Do NOT ' +
+  'repeat the headline verbatim. No preamble, no quotes, no questions, no markdown, ' +
+  'no hedging. One sentence only.';
+
+/**
+ * @param {{ headline: string; source: string; category: string; country: string; threatLevel: string }} story
+ * @returns {{ system: string; user: string }}
+ */
+export function buildStoryDescriptionPrompt(story) {
+  const user = [
+    `Headline: ${story.headline}`,
+    `Source: ${story.source}`,
+    `Severity: ${story.threatLevel}`,
+    `Category: ${story.category}`,
+    `Country: ${story.country}`,
+    '',
+    'One editorial sentence describing what happened (not why it matters):',
+  ].join('\n');
+  return { system: STORY_DESCRIPTION_SYSTEM, user };
+}
+
+/**
+ * Parse + validate the LLM story-description output. Rejects empty
+ * responses, boilerplate preambles that slipped through the system
+ * prompt, outputs that trivially echo the headline (sanity guard
+ * against models that default to copying the prompt), and lengths
+ * that drift far outside the prompted range.
+ *
+ * @param {unknown} text
+ * @param {string} [headline]  used to detect headline-echo drift
+ * @returns {string | null}
+ */
+export function parseStoryDescription(text, headline) {
+  if (typeof text !== 'string') return null;
+  let s = text.trim();
+  if (!s) return null;
+  s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
+  const match = s.match(/^[^.!?]+[.!?]/);
+  const sentence = match ? match[0].trim() : s;
+  if (sentence.length < 40 || sentence.length > 400) return null;
+  if (typeof headline === 'string') {
+    const normalise = /** @param {string} x */ (x) => x.trim().toLowerCase().replace(/\s+/g, ' ');
+    // Reject outputs that are a verbatim echo of the headline — that
+    // is exactly the fallback we're replacing, shipping it as
+    // "LLM enrichment" would be dishonest about cache spend.
+    if (normalise(sentence) === normalise(headline)) return null;
+  }
+  return sentence;
+}
+
+/**
+ * Cache key for per-story description. Keyed on the same attributes
+ * the prompt sees (the headline carries the bulk of signal but
+ * category + country can materially change tone). Description is
+ * editorial + story-global (not user-specific), so cache is shared
+ * across readers. v1 — first prose-description key space.
+ *
+ * @param {{ headline: string; source: string; category: string; country: string; threatLevel: string }} story
+ */
+function hashStoryDescription(story) {
+  const material = [
+    story.headline ?? '',
+    story.source ?? '',
+    story.threatLevel ?? '',
+    story.category ?? '',
+    story.country ?? '',
+  ].join('||');
+  return createHash('sha256').update(material).digest('hex').slice(0, 16);
+}
+
+/**
+ * Resolve a description sentence for one story via cache → LLM.
+ * Returns null on any failure; caller falls back to the composer's
+ * baseline (cleaned headline) rather than shipping with a placeholder.
+ *
+ * @param {object} story
+ * @param {{
+ *   callLLM: (system: string, user: string, opts: object) => Promise<string|null>;
+ *   cacheGet: (key: string) => Promise<unknown>;
+ *   cacheSet: (key: string, value: unknown, ttlSec: number) => Promise<void>;
+ * }} deps
+ */
+export async function generateStoryDescription(story, deps) {
+  const key = `brief:llm:description:v1:${hashStoryDescription(story)}`;
+  try {
+    const hit = await deps.cacheGet(key);
+    if (typeof hit === 'string') {
+      // Revalidate on cache hit so a pre-fix bad row (short, echo,
+      // malformed) can't flow into the envelope unchecked.
+      const valid = parseStoryDescription(hit, story.headline);
+      if (valid) return valid;
+    }
+  } catch { /* cache miss is fine */ }
+  const { system, user } = buildStoryDescriptionPrompt(story);
+  let text = null;
+  try {
+    text = await deps.callLLM(system, user, {
+      maxTokens: 140,
+      temperature: 0.4,
+      timeoutMs: 10_000,
+      skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
+    });
+  } catch {
+    return null;
+  }
+  const parsed = parseStoryDescription(text, story.headline);
+  if (!parsed) return null;
+  try {
+    await deps.cacheSet(key, parsed, STORY_DESCRIPTION_TTL_SEC);
+  } catch { /* ignore */ }
   return parsed;
 }
 
@@ -378,11 +498,19 @@ export async function enrichBriefEnvelopeWithLLM(envelope, rule, deps) {
   const stories = envelope.data.stories;
   const sensitivity = rule?.sensitivity ?? 'all';
 
-  // Per-story whyMatters — parallel but bounded.
+  // Per-story enrichment — whyMatters AND description in parallel
+  // per story (two LLM calls) but bounded across stories.
   const enrichedStories = await mapLimit(stories, WHY_MATTERS_CONCURRENCY, async (story) => {
-    const why = await generateWhyMatters(story, deps);
-    if (!why) return story;
-    return { ...story, whyMatters: why };
+    const [why, desc] = await Promise.all([
+      generateWhyMatters(story, deps),
+      generateStoryDescription(story, deps),
+    ]);
+    if (!why && !desc) return story;
+    return {
+      ...story,
+      ...(why ? { whyMatters: why } : {}),
+      ...(desc ? { description: desc } : {}),
+    };
   });
 
   // Per-user digest prose — one call.

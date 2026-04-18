@@ -179,7 +179,7 @@ describe('assertBriefEnvelope is shared between renderer and preview', () => {
     // digest.numbers entirely — the renderer must reject it so the
     // preview RPC rejects it too.
     const partial = {
-      version: 1,
+      version: 2,
       issuedAt: Date.now(),
       data: {
         user: { name: 'Elie', tz: 'UTC' },
@@ -201,6 +201,7 @@ describe('assertBriefEnvelope is shared between renderer and preview', () => {
             headline: 'Headline',
             description: 'Description',
             source: 'Wires',
+            sourceUrl: 'https://example.com/story',
             whyMatters: 'Why',
           },
         ],

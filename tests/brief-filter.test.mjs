@@ -18,6 +18,7 @@ function upstreamStory(overrides = {}) {
   return {
     primaryTitle: 'Iran declares Strait of Hormuz open. Oil drops more than 9%.',
     primarySource: 'Reuters',
+    primaryLink: 'https://example.com/hormuz',
     description: 'Tehran publicly reopened the Strait of Hormuz to commercial shipping today.',
     threatLevel: 'high',
     category: 'Energy',
@@ -131,6 +132,31 @@ describe('filterTopStories', () => {
       }),
       [],
     );
+  });
+
+  it('emits BriefStory.sourceUrl from primaryLink (v2)', () => {
+    const out = filterTopStories({
+      stories: [upstreamStory({ primaryLink: 'https://example.com/story?x=1' })],
+      sensitivity: 'all',
+    });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].sourceUrl, 'https://example.com/story?x=1');
+  });
+
+  it('drops stories without a valid primaryLink (v2 requires sourceUrl)', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({ primaryLink: undefined }),
+        upstreamStory({ primaryLink: '' }),
+        upstreamStory({ primaryLink: 'not a url' }),
+        upstreamStory({ primaryLink: 'javascript:alert(1)' }),
+        upstreamStory({ primaryLink: 'https://user:pw@example.com/x' }),
+        upstreamStory({ primaryLink: 'https://example.com/keep' }),
+      ],
+      sensitivity: 'all',
+    });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].sourceUrl, 'https://example.com/keep');
   });
 });
 

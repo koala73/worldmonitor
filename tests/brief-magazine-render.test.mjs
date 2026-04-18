@@ -37,6 +37,7 @@ function story(overrides = {}) {
     description:
       'Tehran publicly reopened the Strait of Hormuz to commercial shipping today.',
     source: 'Multiple wires',
+    sourceUrl: 'https://example.com/hormuz-open',
     whyMatters:
       'Hormuz is roughly a fifth of global seaborne oil — a 9% move in a single session is a repricing, not a wobble.',
     ...overrides,
@@ -413,7 +414,96 @@ describe('renderBriefMagazine — envelope validation', () => {
 });
 
 describe('BRIEF_ENVELOPE_VERSION', () => {
-  it('is the literal 1 (bump requires cross-producer coordination)', () => {
-    assert.equal(BRIEF_ENVELOPE_VERSION, 1);
+  it('is the literal 2 (bump requires cross-producer coordination)', () => {
+    assert.equal(BRIEF_ENVELOPE_VERSION, 2);
+  });
+});
+
+describe('renderBriefMagazine — source link (v2)', () => {
+  it('wraps every story source in an outgoing anchor with UTM params', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    // N stories → N source anchors.
+    const anchorCount = (html.match(/<a class="source-link"/g) ?? []).length;
+    assert.equal(anchorCount, env.data.stories.length);
+    // target=_blank + rel=noopener noreferrer are both present on each
+    // anchor. We match the literal attribute string the renderer emits.
+    assert.ok(html.includes('target="_blank" rel="noopener noreferrer"'));
+    // UTM params on every tracked href — check by presence of the
+    // four params at least once, plus the issueDate as utm_campaign.
+    assert.ok(html.includes('utm_source=worldmonitor'));
+    assert.ok(html.includes('utm_medium=brief'));
+    assert.ok(html.includes(`utm_campaign=${env.data.date}`));
+    assert.ok(html.includes('utm_content=story-01'));
+    assert.ok(html.includes('utm_content=story-02'));
+  });
+
+  it('escapes ampersands inside source URL query strings', () => {
+    // A real URL with multiple query params contains raw "&" characters
+    // that MUST be escaped to "&amp;" when interpolated into an href
+    // attribute — otherwise the HTML parser can terminate the href
+    // early on certain entity-like sequences (e.g. &copy=...).
+    const env = envelope({
+      stories: [
+        story({ sourceUrl: 'https://example.com/path?a=1&copy=2&b=3' }),
+        ...envelope().data.stories.slice(1),
+      ],
+    });
+    const html = renderBriefMagazine(env);
+    // The emitted href must contain escaped ampersands.
+    assert.ok(html.includes('?a=1&amp;copy=2&amp;b=3'), 'href ampersands must be escaped');
+    // Raw ampersand sequences (without the &amp;) must NOT appear in
+    // the emitted href for this story.
+    assert.ok(!/href="[^"]*?a=1&copy=/.test(html), 'raw ampersand leaked into href');
+  });
+
+  it('preserves pre-existing UTM tags on the upstream URL', () => {
+    const env = envelope({
+      stories: [
+        story({ sourceUrl: 'https://example.com/path?utm_source=publisher&utm_campaign=oem' }),
+        ...envelope().data.stories.slice(1),
+      ],
+    });
+    const html = renderBriefMagazine(env);
+    assert.ok(html.includes('utm_source=publisher'), 'publisher utm_source kept');
+    assert.ok(html.includes('utm_campaign=oem'), 'publisher utm_campaign kept');
+    // Ours still appended for the fields the publisher didn't set.
+    assert.ok(html.includes('utm_medium=brief'));
+  });
+
+  it('throws when sourceUrl is missing', () => {
+    const env = envelope();
+    /** @type {any} */ (env.data.stories[0]).sourceUrl = '';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.sourceUrl must be a non-empty string/,
+    );
+  });
+
+  it('throws when sourceUrl is not a parseable URL', () => {
+    const env = envelope();
+    /** @type {any} */ (env.data.stories[0]).sourceUrl = 'not a url';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /sourceUrl must be a parseable absolute URL/,
+    );
+  });
+
+  it('throws when sourceUrl uses a disallowed scheme', () => {
+    const env = envelope();
+    /** @type {any} */ (env.data.stories[0]).sourceUrl = 'javascript:alert(1)';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /sourceUrl .* is not allowed \(http\/https only\)/,
+    );
+  });
+
+  it('throws when sourceUrl carries userinfo credentials', () => {
+    const env = envelope();
+    /** @type {any} */ (env.data.stories[0]).sourceUrl = 'https://user:pass@example.com/x';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /sourceUrl must not include userinfo credentials/,
+    );
   });
 });

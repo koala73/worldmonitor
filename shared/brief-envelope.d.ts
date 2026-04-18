@@ -19,7 +19,7 @@
 // stripped at compose time. See PR #3143 for the notify-endpoint fix
 // that established this rule.
 
-export const BRIEF_ENVELOPE_VERSION: 1;
+export const BRIEF_ENVELOPE_VERSION: 2;
 
 /**
  * Severity ladder. Four values, no synonyms. `critical` and `high`
@@ -71,8 +71,16 @@ export interface BriefStory {
   threatLevel: BriefThreatLevel;
   headline: string;
   description: string;
-  /** Publication/wire attribution only (no importance score, no URL). */
+  /** Publication/wire attribution (rendered as the anchor text). */
   source: string;
+  /**
+   * Outgoing link to the original article. Required, must parse as an
+   * absolute https URL. The renderer appends UTM parameters at render
+   * time (never stored in the envelope so we can change attribution
+   * without rewriting Redis). No importanceScore / pubDate / briefModel
+   * — those upstream fields remain banned in `data`.
+   */
+  sourceUrl: string;
   /** Per-user LLM-generated rationale. */
   whyMatters: string;
 }

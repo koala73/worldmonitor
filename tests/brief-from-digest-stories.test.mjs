@@ -12,7 +12,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { composeBriefFromDigestStories } from '../scripts/lib/brief-compose.mjs';
+import { composeBriefFromDigestStories, stripHeadlineSuffix } from '../scripts/lib/brief-compose.mjs';
 
 const NOW = 1_745_000_000_000; // 2026-04-18 ish, deterministic
 
@@ -61,10 +61,86 @@ describe('composeBriefFromDigestStories', () => {
     assert.equal(env.data.stories.length, 1);
     const s = env.data.stories[0];
     assert.equal(s.headline, 'Iran threatens to close Strait of Hormuz');
-    // Description is stubbed from the title until Phase 3b wires in
-    // an LLM-generated body.
+    // Baseline description is the (cleaned) headline — the LLM
+    // enrichBriefEnvelopeWithLLM pass substitutes a proper
+    // generate-story-description sentence on top of this.
     assert.equal(s.description, 'Iran threatens to close Strait of Hormuz');
   });
+
+  it('plumbs digest story link through as BriefStory.sourceUrl', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ link: 'https://example.com/hormuz?ref=rss' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env, 'expected an envelope');
+    assert.equal(env.data.stories[0].sourceUrl, 'https://example.com/hormuz?ref=rss');
+  });
+
+  it('drops stories that have no valid link (envelope v2 requires sourceUrl)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [
+        digestStory({ link: '', title: 'A' }),
+        digestStory({ link: 'javascript:alert(1)', title: 'B', hash: 'b' }),
+        digestStory({ link: 'https://example.com/c', title: 'C', hash: 'c' }),
+      ],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.equal(env.data.stories.length, 1);
+    assert.equal(env.data.stories[0].headline, 'C');
+  });
+
+  it('strips a trailing " - <publisher>" suffix from RSS headlines', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({
+        title: 'Iranian gunboats fire on tanker in Strait of Hormuz - AP News',
+        sources: ['AP News'],
+      })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.equal(
+      env.data.stories[0].headline,
+      'Iranian gunboats fire on tanker in Strait of Hormuz',
+    );
+  });
+});
+
+describe('stripHeadlineSuffix', () => {
+  it('strips " - Publisher" when the publisher matches the source', () => {
+    assert.equal(stripHeadlineSuffix('Story body - AP News', 'AP News'), 'Story body');
+  });
+  it('strips " | Publisher" and " — Publisher" variants', () => {
+    assert.equal(stripHeadlineSuffix('Story body | Reuters', 'Reuters'), 'Story body');
+    assert.equal(stripHeadlineSuffix('Story body \u2014 BBC', 'BBC'), 'Story body');
+    assert.equal(stripHeadlineSuffix('Story body \u2013 BBC', 'BBC'), 'Story body');
+  });
+  it('is case-insensitive on the publisher match', () => {
+    assert.equal(stripHeadlineSuffix('Story body - ap news', 'AP News'), 'Story body');
+  });
+  it('leaves the title alone when the tail is not just the publisher', () => {
+    assert.equal(
+      stripHeadlineSuffix('Story - AP News analysis', 'AP News'),
+      'Story - AP News analysis',
+    );
+  });
+  it('leaves the title alone when there is no matching separator', () => {
+    const title = 'Headline with no suffix';
+    assert.equal(stripHeadlineSuffix(title, 'AP News'), title);
+  });
+  it('handles missing / empty inputs without throwing', () => {
+    assert.equal(stripHeadlineSuffix('', 'AP News'), '');
+    assert.equal(stripHeadlineSuffix('Headline', ''), 'Headline');
+    // @ts-expect-error testing unexpected input
+    assert.equal(stripHeadlineSuffix(undefined, 'AP News'), '');
+  });
+});
+
+describe('composeBriefFromDigestStories — continued', () => {
 
   it('uses first sources[] entry as the brief source', () => {
     const env = composeBriefFromDigestStories(

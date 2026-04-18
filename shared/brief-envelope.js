@@ -21,6 +21,12 @@
  * this pipeline (see the seed-envelope-consumer-drift incident, PR
  * #3139) — coordinate every producer + consumer update in the same PR.
  *
- * @type {1}
+ * v2 (2026-04): BriefStory.sourceUrl added. A source without a URL is
+ * no longer a valid story — the renderer wraps the `.source` line in an
+ * anchor with UTM tracking, and v1 envelopes in Redis are quietly
+ * ignored (`assertBriefEnvelope` throws on version mismatch; the edge
+ * route 404s, composer writes a fresh v2 on the next cron tick).
+ *
+ * @type {2}
  */
-export const BRIEF_ENVELOPE_VERSION = 1;
+export const BRIEF_ENVELOPE_VERSION = 2;

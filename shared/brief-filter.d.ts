@@ -61,6 +61,13 @@ export function issueDateInTz(nowMs: number, timezone: string): string;
 export interface UpstreamTopStory {
   primaryTitle?: unknown;
   primarySource?: unknown;
+  /**
+   * Outgoing article link as read from story:track:v1.link. The filter
+   * validates + normalises this into `BriefStory.sourceUrl`; stories
+   * without a valid https/http URL are dropped (v2 requires every
+   * surfaced story to have a working source link).
+   */
+  primaryLink?: unknown;
   description?: unknown;
   threatLevel?: unknown;
   category?: unknown;

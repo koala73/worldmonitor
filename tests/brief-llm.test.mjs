@@ -21,6 +21,9 @@ import {
   validateDigestProseShape,
   generateDigestProse,
   enrichBriefEnvelopeWithLLM,
+  buildStoryDescriptionPrompt,
+  parseStoryDescription,
+  generateStoryDescription,
 } from '../scripts/lib/brief-llm.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { composeBriefFromDigestStories } from '../scripts/lib/brief-compose.mjs';
@@ -35,6 +38,7 @@ function story(overrides = {}) {
     headline: 'Iran threatens to close Strait of Hormuz if US blockade continues',
     description: 'Iran threatens to close Strait of Hormuz if US blockade continues',
     source: 'Guardian',
+    sourceUrl: 'https://example.com/hormuz',
     whyMatters: 'Story flagged by your sensitivity settings. Open for context.',
     ...overrides,
   };
@@ -42,7 +46,7 @@ function story(overrides = {}) {
 
 function envelope(overrides = {}) {
   return {
-    version: 1,
+    version: 2,
     issuedAt: 1_745_000_000_000,
     data: {
       user: { name: 'Reader', tz: 'UTC' },
@@ -56,7 +60,7 @@ function envelope(overrides = {}) {
         threads: [{ tag: 'Diplomacy', teaser: '2 threads on the desk today.' }],
         signals: [],
       },
-      stories: [story(), story({ headline: 'UNICEF outraged by Gaza water truck killings', country: 'PS', source: 'UN News' })],
+      stories: [story(), story({ headline: 'UNICEF outraged by Gaza water truck killings', country: 'PS', source: 'UN News', sourceUrl: 'https://example.com/unicef' })],
     },
     ...overrides,
   };
@@ -436,6 +440,137 @@ describe('validateDigestProseShape', () => {
     assert.equal(validateDigestProseShape(undefined), null);
     assert.equal(validateDigestProseShape([good]), null);
     assert.equal(validateDigestProseShape('string'), null);
+  });
+});
+
+describe('buildStoryDescriptionPrompt', () => {
+  it('includes all story fields, distinct from whyMatters instruction', () => {
+    const { system, user } = buildStoryDescriptionPrompt(story());
+    assert.match(system, /describes the development itself/);
+    assert.match(system, /One sentence only/);
+    assert.match(user, /Headline: Iran threatens/);
+    assert.match(user, /Severity: critical/);
+  });
+});
+
+describe('parseStoryDescription', () => {
+  it('returns null for empty / non-string input', () => {
+    assert.equal(parseStoryDescription(null), null);
+    assert.equal(parseStoryDescription(''), null);
+    assert.equal(parseStoryDescription('   '), null);
+  });
+
+  it('returns null for a short fragment (<40 chars)', () => {
+    assert.equal(parseStoryDescription('Short.'), null);
+  });
+
+  it('returns null for a >400-char blob', () => {
+    const big = `${'x'.repeat(420)}.`;
+    assert.equal(parseStoryDescription(big), null);
+  });
+
+  it('strips leading/trailing smart quotes and keeps first sentence', () => {
+    const raw = '"Tehran reopened the Strait of Hormuz to commercial shipping today, easing market pressure on crude." Additional sentence here.';
+    const out = parseStoryDescription(raw);
+    assert.equal(
+      out,
+      'Tehran reopened the Strait of Hormuz to commercial shipping today, easing market pressure on crude.',
+    );
+  });
+
+  it('rejects output that is a verbatim echo of the headline', () => {
+    const headline = 'Iran threatens to close Strait of Hormuz if US blockade continues';
+    assert.equal(parseStoryDescription(headline, headline), null);
+    // Whitespace / case variation still counts as an echo.
+    assert.equal(parseStoryDescription(`  ${headline.toUpperCase()}  `, headline), null);
+  });
+
+  it('accepts a clearly distinct sentence even if it shares noun phrases with the headline', () => {
+    const headline = 'Iran threatens to close Strait of Hormuz';
+    const out = parseStoryDescription(
+      'Tehran issued a rare public warning to tanker traffic, citing Western naval pressure.',
+      headline,
+    );
+    assert.ok(out && out.length > 0);
+  });
+});
+
+describe('generateStoryDescription', () => {
+  it('cache hit: returns cached value, skips the LLM', async () => {
+    const good = 'Tehran issued a rare public warning to tanker traffic, citing Western naval pressure on tanker transit.';
+    const cache = makeCache();
+    // Pre-seed cache with a value under the v1 key (use same hash
+    // inputs as story()).
+    const llm = makeLLM(() => { throw new Error('should not be called'); });
+    await generateStoryDescription(story(), { ...cache, callLLM: llm.callLLM });
+    // First call populates cache via the real codepath; re-call uses cache.
+    // Reset LLM responder to something that would be rejected:
+    const llm2 = makeLLM(() => 'bad');
+    cache.store.clear();
+    cache.store.set(
+      // The real key is private to the module — we can't reconstruct
+      // it from the outside. Instead, prime by calling with a working
+      // responder first:
+      null, null,
+    );
+    // Simpler, clearer cache-hit assertion:
+    const cache2 = makeCache();
+    let llm2calls = 0;
+    const okLLM = makeLLM((_s, _u, _o) => { llm2calls++; return good; });
+    await generateStoryDescription(story(), { ...cache2, callLLM: okLLM.callLLM });
+    assert.equal(llm2calls, 1);
+    const second = await generateStoryDescription(story(), { ...cache2, callLLM: okLLM.callLLM });
+    assert.equal(llm2calls, 1, 'cache hit must NOT re-call LLM');
+    assert.equal(second, good);
+  });
+
+  it('returns null when LLM throws', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(() => { throw new Error('provider down'); });
+    const out = await generateStoryDescription(story(), { ...cache, callLLM: llm.callLLM });
+    assert.equal(out, null);
+  });
+
+  it('returns null when LLM output is invalid (too short, echo, etc.)', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(() => 'no');
+    const out = await generateStoryDescription(story(), { ...cache, callLLM: llm.callLLM });
+    assert.equal(out, null);
+    // Invalid output was NOT cached (we'd otherwise serve it on next call).
+    assert.equal(cache.store.size, 0);
+  });
+
+  it('revalidates cache hits — a pre-fix bad row is re-LLMd, not served', async () => {
+    const cache = makeCache();
+    // Compute the key by running a good call first, then tamper with it.
+    const good = 'Tehran reopened the Strait of Hormuz to commercial shipping, easing pressure on crude markets today.';
+    const okLLM = makeLLM(() => good);
+    await generateStoryDescription(story(), { ...cache, callLLM: okLLM.callLLM });
+    const keys = [...cache.store.keys()];
+    assert.equal(keys.length, 1, 'good call should have written one cache entry');
+    // Overwrite with a too-short value (shouldn't pass validator).
+    cache.store.set(keys[0], 'too short');
+    // Next call should detect the bad cache, re-LLM, overwrite.
+    const better = 'The Strait of Hormuz reopened to commercial shipping under Tehran\'s revised guidance, calming tanker traffic.';
+    const retryLLM = makeLLM(() => better);
+    const out = await generateStoryDescription(story(), { ...cache, callLLM: retryLLM.callLLM });
+    assert.equal(out, better);
+    assert.equal(cache.store.get(keys[0]), better);
+  });
+
+  it('writes to cache with 24h TTL on success', async () => {
+    const setCalls = [];
+    const cache = {
+      async cacheGet() { return null; },
+      async cacheSet(key, value, ttlSec) { setCalls.push({ key, value, ttlSec }); },
+    };
+    const good = 'Tehran issued new guidance to tanker traffic, easing concerns that had spiked Brent intraday.';
+    const llm = makeLLM(() => good);
+    await generateStoryDescription(story(), { ...cache, callLLM: llm.callLLM });
+    assert.equal(setCalls.length, 1);
+    assert.equal(setCalls[0].ttlSec, 24 * 60 * 60);
+    assert.equal(setCalls[0].value, good);
+    assert.match(setCalls[0].key, /^brief:llm:description:v1:/);
   });
 });
 

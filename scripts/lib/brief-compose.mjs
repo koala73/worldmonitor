@@ -187,26 +187,63 @@ export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {})
 
 // ── Compose from digest-accumulator stories (the live path) ─────────────────
 
+// RSS titles routinely end with " - <Publisher>" / " | <Publisher>" /
+// " — <Publisher>" (Google News normalised form + most major wires).
+// Leaving the suffix in place means the brief headline reads like
+// "... as Iran reimposes restrictions - AP News" instead of "... as
+// Iran reimposes restrictions", and the source attribution underneath
+// ends up duplicated. We strip the suffix ONLY when it matches the
+// primarySource we're about to attribute anyway — so we never strip
+// a real subtitle that happens to look like "foo - bar".
+const HEADLINE_SUFFIX_RE_PART = /\s+[-\u2013\u2014|]\s+([^\s].*)$/;
+
+/**
+ * @param {string} title
+ * @param {string} publisher
+ * @returns {string}
+ */
+export function stripHeadlineSuffix(title, publisher) {
+  if (typeof title !== 'string' || title.length === 0) return '';
+  if (typeof publisher !== 'string' || publisher.length === 0) return title.trim();
+  const trimmed = title.trim();
+  const m = trimmed.match(HEADLINE_SUFFIX_RE_PART);
+  if (!m) return trimmed;
+  const tail = m[1].trim();
+  // Case-insensitive full-string match. We're conservative: only strip
+  // when the tail EQUALS the publisher — a tail that merely contains
+  // it (e.g. "- AP News analysis") is editorial content and stays.
+  if (tail.toLowerCase() !== publisher.toLowerCase()) return trimmed;
+  return trimmed.slice(0, m.index).trimEnd();
+}
+
 /**
  * Adapter: the digest accumulator hydrates stories from
- * story:track:v1:{hash} (title / severity / lang / score /
+ * story:track:v1:{hash} (title / link / severity / lang / score /
  * mentionCount) + story:sources:v1:{hash} SMEMBERS. It does NOT carry
  * a category or country-code — those fields are optional in the
  * upstream brief-filter shape and default cleanly.
+ *
+ * Since envelope v2, the story's `link` field is carried through as
+ * `primaryLink` so filterTopStories can emit a BriefStory.sourceUrl.
+ * Stories without a valid link are still passed through here — the
+ * filter drops them at the validation boundary rather than this adapter.
  *
  * @param {object} s — digest-shaped story from buildDigest()
  */
 function digestStoryToUpstreamTopStory(s) {
   const sources = Array.isArray(s?.sources) ? s.sources : [];
   const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
+  const rawTitle = typeof s?.title === 'string' ? s.title : '';
+  const cleanTitle = stripHeadlineSuffix(rawTitle, primarySource);
   return {
-    primaryTitle: typeof s?.title === 'string' ? s.title : '',
-    // Digest track hash has no separate body; the title *is* the
-    // headline AND the one-line description. The magazine renderer
-    // treats identical headline/description gracefully (stacks them).
-    // Phase 3b will swap this for an LLM-generated description.
-    description: typeof s?.title === 'string' ? s.title : '',
+    primaryTitle: cleanTitle,
+    // Digest track hash has no separate body; baseline description is
+    // the cleaned headline. Phase 3b's LLM enrichment substitutes a
+    // one-sentence synthesis on top of this via
+    // enrichBriefEnvelopeWithLLM.
+    description: cleanTitle,
     primarySource,
+    primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
     // story:track:v1 carries neither field, so the brief falls back
     // to 'General' / 'Global' via filterTopStories defaults.

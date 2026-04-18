@@ -54,6 +54,32 @@ const ALLOWED_LEVELS_BY_SENSITIVITY = {
 const MAX_HEADLINE_LEN = 200;
 const MAX_DESCRIPTION_LEN = 400;
 const MAX_SOURCE_LEN = 120;
+const MAX_SOURCE_URL_LEN = 2000;
+
+/**
+ * Validate + normalise the upstream story link into an outgoing
+ * https/http URL. Returns the normalised URL on success, null when the
+ * link is missing / malformed / uses an unsafe scheme. Mirrors the
+ * renderer's validateSourceUrl so a story that clears the composer's
+ * gate will always clear the renderer's gate too.
+ *
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+function normaliseSourceUrl(raw) {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > MAX_SOURCE_URL_LEN) return null;
+  let u;
+  try {
+    u = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (u.username || u.password) return null;
+  return u.toString();
+}
 
 /** @param {unknown} v */
 function asTrimmedString(v) {
@@ -87,6 +113,16 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
     const headline = clip(asTrimmedString(raw.primaryTitle), MAX_HEADLINE_LEN);
     if (!headline) continue;
 
+    // v2: every surfaced story must have a working outgoing link so
+    // the magazine can wrap the source line in a UTM anchor. A story
+    // that reaches this point without a valid link is a composer /
+    // upstream bug, not something to paper over — drop rather than
+    // ship a broken attribution. In practice story:track:v1.link is
+    // populated on every ingested item; the check exists so one bad
+    // row can't slip through.
+    const sourceUrl = normaliseSourceUrl(raw.primaryLink);
+    if (!sourceUrl) continue;
+
     const description = clip(
       asTrimmedString(raw.description) || headline,
       MAX_DESCRIPTION_LEN,
@@ -105,6 +141,7 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
       headline,
       description,
       source,
+      sourceUrl,
       // Stubbed at Phase 3a. Phase 3b replaces this with an LLM-
       // generated per-user rationale. The renderer requires a non-
       // empty string, so we emit a generic fallback rather than
