@@ -285,14 +285,21 @@ export class MapPopup {
         if (cached && cached.length) {
           this.transitChart = new TransitChart();
           this.transitChart.mount(chartEl, cached);
-        } else if (!cached && !MapPopup.historyInflight.has(cpId)) {
+        } else if (!MapPopup.historyInflight.has(cpId)) {
+          // We cache ONLY non-empty successful responses. An empty-array result
+          // or error is not cached, so re-opening the popup retries. Caching []
+          // would poison the chokepoint for the session — empty-array is
+          // truthy in JS, so `cached && cached.length` is false AND
+          // `!cached` is also false → neither branch fires, popup stuck on
+          // "Loading…". The /get-chokepoint-history gateway tier is "slow"
+          // (5-min CF edge cache) so retries stay cheap.
           MapPopup.historyInflight.add(cpId);
           void fetchChokepointHistory(cpId).then(resp => {
             MapPopup.historyInflight.delete(cpId);
-            MapPopup.historyCache.set(cpId, resp.history);
             const liveEl = this.popup?.querySelector<HTMLElement>('[data-transit-chart]');
             if (!liveEl) return;
             if (resp.history.length) {
+              MapPopup.historyCache.set(cpId, resp.history);
               liveEl.textContent = '';
               this.transitChart = new TransitChart();
               this.transitChart.mount(liveEl, resp.history);
@@ -301,7 +308,6 @@ export class MapPopup {
             }
           }).catch(() => {
             MapPopup.historyInflight.delete(cpId);
-            MapPopup.historyCache.set(cpId, []);
             const liveEl = this.popup?.querySelector<HTMLElement>('[data-transit-chart]');
             if (liveEl) liveEl.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable';
           });

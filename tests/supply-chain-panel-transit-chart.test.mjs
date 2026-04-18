@@ -104,6 +104,23 @@ describe('SupplyChainPanel transit chart mount contract', () => {
     );
   });
 
+  it('does NOT cache empty/error results — session-sticky regression guard', () => {
+    // Caching [] or on error would poison the chokepoint for the whole
+    // session (transient miss → never retries). Only cache on non-empty
+    // success. Empty/error show the "unavailable" placeholder but leave
+    // the cache untouched so the next re-expand retries.
+    assert.ok(
+      !panelSrc.match(/historyCache\.set\([^,]+,\s*\[\]\)/),
+      'panel must NOT cache empty arrays'
+    );
+    // The success branch gates the set() on resp.history.length — match the
+    // conditional-set pattern inside the .then() block.
+    assert.ok(
+      /if\s*\(resp\.history\.length\)\s*\{[\s\S]*?historyCache\.set\(/.test(panelSrc),
+      'panel must only cache on resp.history.length > 0'
+    );
+  });
+
   it('tab switch clears transit chart before re-rendering', () => {
     // Clicking a different tab should clear chart state before rendering new tab
     const tabHandler = panelSrc.match(/if\s*\(tab\)\s*\{([\s\S]*?)\n\s{8}return/);

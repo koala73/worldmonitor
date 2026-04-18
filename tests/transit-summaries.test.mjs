@@ -72,6 +72,27 @@ describe('seedTransitSummaries (relay)', () => {
     assert.match(relaySrc, /chokepointId:\s*cpId,\s*history,\s*fetchedAt:\s*now/);
   });
 
+  it('iterates the canonical chokepoint ID set (not Object.entries(pw))', () => {
+    // Partial-coverage regression guard: iterating over whatever pw carries
+    // silently drops missing chokepoints. RPC sees a partial summaries shape
+    // and caches zero-state rows for 5 min since upstreamUnavailable only
+    // fires on fully-empty. Writer must emit all 13 canonical IDs with
+    // zero-state fill for missing upstream data.
+    assert.match(relaySrc, /CANONICAL_IDS\s*=\s*Object\.keys\(CHOKEPOINT_THREAT_LEVELS\)/);
+    assert.match(relaySrc, /for\s*\(const cpId of CANONICAL_IDS\)/);
+    assert.doesNotMatch(relaySrc, /for\s*\(const \[cpId, cpData\] of Object\.entries\(pw\)\)/);
+  });
+
+  it('records actual upstream coverage (pwCovered) in seed-meta + envelope', () => {
+    // seed-meta recordCount must reflect pwCovered, not the always-13 canonical
+    // shape size — otherwise health.js can't distinguish healthy 13/13 from
+    // partial-upstream 10/13.
+    assert.match(relaySrc, /let\s+pwCovered\s*=\s*0/);
+    assert.match(relaySrc, /if\s*\(cpData\)\s*pwCovered\+\+/);
+    assert.match(relaySrc, /recordCount:\s*pwCovered/);
+    assert.match(relaySrc, /coverage shortfall/);
+  });
+
   it('reads latestCorridorRiskData for riskLevel/incidentCount7d/disruptionPct', () => {
     assert.match(relaySrc, /latestCorridorRiskData\?\.\[cpId\]/);
     assert.match(relaySrc, /cr\?\.riskLevel/);
@@ -80,12 +101,19 @@ describe('seedTransitSummaries (relay)', () => {
   });
 
   it('reads pw from Redis for history and wowChangePct', () => {
-    assert.match(relaySrc, /cpData\.history/);
-    assert.match(relaySrc, /cpData\.wowChangePct/);
+    // After canonical-coverage refactor, cpData is nullable (missing upstream),
+    // so access is `cpData?.history` / `cpData?.wowChangePct` with zero-state
+    // fallback for missing IDs.
+    assert.match(relaySrc, /cpData\?\.history/);
+    assert.match(relaySrc, /cpData\?\.wowChangePct/);
   });
 
-  it('calls detectTrafficAnomalyRelay with history and threat level', () => {
-    assert.match(relaySrc, /detectTrafficAnomalyRelay\(cpData\.history,\s*threatLevel\)/);
+  it('calls detectTrafficAnomalyRelay with local history binding', () => {
+    // history is bound from `cpData?.history ?? []` before the anomaly call,
+    // so detectTrafficAnomalyRelay runs on a concrete array even when the
+    // canonical chokepoint is missing from this cycle's portwatch payload.
+    assert.match(relaySrc, /const history = cpData\?\.history \?\? \[\]/);
+    assert.match(relaySrc, /detectTrafficAnomalyRelay\(history,\s*threatLevel\)/);
   });
 
   it('wraps summaries in { summaries, fetchedAt } envelope', () => {

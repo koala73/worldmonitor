@@ -178,20 +178,20 @@ export class SupplyChainPanel extends Panel {
           return true;
         }
 
-        if (cached && !cached.length) {
-          el.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable';
-          return true;
-        }
+        // NOTE: we do NOT cache empty/error results — a transient deploy-window
+        // miss or a brief Redis error would otherwise poison the chokepoint for
+        // the entire session. Each re-expand retries; the /get-chokepoint-history
+        // gateway tier is "slow" (5-min CF edge cache) so retries stay cheap.
 
         if (this.historyInflight.has(cpId)) return true;
         this.historyInflight.add(cpId);
         void fetchChokepointHistory(cpId).then(resp => {
           this.historyInflight.delete(cpId);
-          this.historyCache.set(cpId, resp.history);
           // Still mounted? Re-query — DOM may have re-rendered since fetch started.
           const liveEl = this.content.querySelector(`[data-chart-cp-id="${cpId}"]`) as HTMLElement | null;
           if (!liveEl) return;
           if (resp.history.length) {
+            this.historyCache.set(cpId, resp.history);
             liveEl.removeAttribute('style');
             liveEl.style.marginTop = '8px';
             liveEl.style.minHeight = '200px';
@@ -202,7 +202,6 @@ export class SupplyChainPanel extends Panel {
           }
         }).catch(() => {
           this.historyInflight.delete(cpId);
-          this.historyCache.set(cpId, []);
           const liveEl = this.content.querySelector(`[data-chart-cp-id="${cpId}"]`) as HTMLElement | null;
           if (liveEl) liveEl.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable';
         });
