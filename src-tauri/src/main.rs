@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -11,12 +11,21 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use keyring::Entry;
+use rand::RngCore;
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+const FALLBACK_SECRETS_FILE: &str = "secrets.vault";
+const FALLBACK_KEY_FILE: &str = "secrets.key";
 
 const DEFAULT_LOCAL_API_PORT: u16 = 46123;
 const KEYRING_SERVICE: &str = "world-monitor";
@@ -57,6 +66,173 @@ const SUPPORTED_SECRET_KEYS: [&str; 28] = [
     "AVIATIONSTACK_API",
     "ICAO_API_KEY",
 ];
+
+// --- Fallback encrypted file storage for Linux without keyring ---
+
+fn fallback_secrets_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create app data directory {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+fn fallback_key_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(fallback_secrets_dir(app)?.join(FALLBACK_KEY_FILE))
+}
+
+fn fallback_secrets_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(fallback_secrets_dir(app)?.join(FALLBACK_SECRETS_FILE))
+}
+
+/// Derive a 256-bit key from machine-specific data. On Linux, reads /etc/machine-id
+/// and combines it with a stored random salt. Creates the salt on first run.
+fn derive_encryption_key(app: &AppHandle) -> Result<[u8; 32], String> {
+    let key_path = fallback_key_path(app)?;
+
+    // Load or create salt
+    let salt = if key_path.exists() {
+        std::fs::read(&key_path).map_err(|e| format!("Failed to read key file: {e}"))?
+    } else {
+        let mut salt = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut salt);
+        // Create file with restricted permissions (owner read/write only)
+        #[cfg(unix)]
+        {
+            let dir = fallback_secrets_dir(app)?;
+            std::fs::create_dir_all(&dir)?;
+            let mut file = File::create(&key_path)
+                .map_err(|e| format!("Failed to create key file: {e}"))?;
+            file.write_all(&salt)
+                .map_err(|e| format!("Failed to write key file: {e}"))?;
+            // Set permissions to 0600
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = file.metadata()
+                .map_err(|e| format!("Failed to get file metadata: {e}"))?
+                .permissions();
+            perms.set_mode(0o600);
+            file.set_permissions(perms)
+                .map_err(|e| format!("Failed to set file permissions: {e}"))?;
+        }
+        #[cfg(not(unix))]
+        std::fs::write(&key_path, &salt)
+            .map_err(|e| format!("Failed to write key file: {e}"))?;
+        salt.to_vec()
+    };
+
+    // Get machine ID (linux-specific)
+    let machine_id = if cfg!(target_os = "linux") {
+        std::fs::read_to_string("/etc/machine-id")
+            .or_else(|_| std::fs::read_to_string("/var/lib/dbus/machine-id"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "worldmonitor-fallback".to_string())
+    } else {
+        "worldmonitor-fallback".to_string()
+    };
+
+    // Simple KDF: hash(machine_id || salt)
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    machine_id.hash(&mut hasher);
+    for byte in salt.iter() {
+        byte.hash(&mut hasher);
+    }
+    let hash = hasher.finish();
+
+    // Expand to 32 bytes using simple mixing
+    let mut key = [0u8; 32];
+    for i in 0..32 {
+        key[i] = ((hash >> (i % 8)) ^ (salt[i % salt.len()])) as u8;
+    }
+
+    Ok(key)
+}
+
+/// Encrypt secrets JSON using AES-256-GCM.
+fn encrypt_secrets(secrets_json: &str, key: &[u8; 32]) -> Result<String, String> {
+    let cipher = Aes256Gcm::new_from_slice(key)
+        .map_err(|e| format!("Failed to create cipher: {e}"))?;
+
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, secrets_json.as_bytes())
+        .map_err(|e| format!("Encryption failed: {e}"))?;
+
+    // Format: base64(nonce || ciphertext)
+    let mut combined = nonce_bytes.to_vec();
+    combined.extend(ciphertext);
+    Ok(BASE64.encode(&combined))
+}
+
+/// Decrypt secrets JSON from base64(nonce || ciphertext).
+fn decrypt_secrets(encrypted: &str, key: &[u8; 32]) -> Result<HashMap<String, String>, String> {
+    let combined = BASE64
+        .decode(encrypted)
+        .map_err(|e| format!("Failed to decode secrets: {e}"))?;
+
+    if combined.len() < 12 {
+        return Err("Invalid encrypted data: too short".to_string());
+    }
+
+    let (nonce_bytes, ciphertext) = combined.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let cipher = Aes256Gcm::new_from_slice(key)
+        .map_err(|e| format!("Failed to create cipher: {e}"))?;
+
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("Decryption failed: {e}"))?;
+
+    let secrets_json = String::from_utf8(plaintext)
+        .map_err(|e| format!("Invalid UTF-8 in secrets: {e}"))?;
+
+    serde_json::from_str(&secrets_json)
+        .map_err(|e| format!("Failed to parse secrets JSON: {e}"))
+}
+
+/// Save secrets to fallback encrypted file.
+fn save_secrets_to_fallback(app: &AppHandle, secrets: &HashMap<String, String>) -> Result<(), String> {
+    let json = serde_json::to_string(secrets)
+        .map_err(|e| format!("Failed to serialize secrets: {e}"))?;
+    let key = derive_encryption_key(app)?;
+    let encrypted = encrypt_secrets(&json, &key)?;
+    let path = fallback_secrets_path(app)?;
+    std::fs::write(&path, &encrypted)
+        .map_err(|e| format!("Failed to write secrets file: {e}"))?;
+    // Set permissions to 0600 on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&path)
+            .map_err(|e| format!("Failed to get file metadata: {e}"))?
+            .permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(&path, perms)
+            .map_err(|e| format!("Failed to set file permissions: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Load secrets from fallback encrypted file.
+fn load_secrets_from_fallback(app: &AppHandle) -> Result<Option<HashMap<String, String>>, String> {
+    let path = fallback_secrets_path(app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let encrypted = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read secrets file: {e}"))?;
+    let key = derive_encryption_key(app)?;
+    let secrets = decrypt_secrets(&encrypted, &key)?;
+    Ok(Some(secrets))
+}
 
 struct LocalApiState {
     child: Mutex<Option<Child>>,
@@ -150,6 +326,32 @@ impl SecretsCache {
             secrets: Mutex::new(secrets),
         }
     }
+
+    /// Sync from fallback encrypted file storage. Called lazily when keyring
+    /// returns empty and we want to check if there are secrets saved in the
+    /// fallback file (e.g., on Linux without keyring daemon).
+    fn sync_from_fallback(&self, app: &AppHandle) {
+        // Only sync if cache is empty
+        let is_empty = {
+            let secrets = self.secrets.lock().unwrap_or_else(|e| e.into_inner());
+            secrets.is_empty()
+        };
+
+        if !is_empty {
+            return;
+        }
+
+        // Try to load from fallback file
+        if let Ok(Some(fallback_secrets)) = load_secrets_from_fallback(app) {
+            if !fallback_secrets.is_empty() {
+                let mut secrets = self.secrets.lock().unwrap_or_else(|e| e.into_inner());
+                // Only populate from fallback if cache is still empty (avoid race)
+                if secrets.is_empty() {
+                    *secrets = fallback_secrets;
+                }
+            }
+        }
+    }
 }
 
 impl PersistentCache {
@@ -214,15 +416,20 @@ struct DesktopRuntimeInfo {
     local_api_port: Option<u16>,
 }
 
-fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
+fn save_vault(cache: &HashMap<String, String>, app: &AppHandle) -> Result<(), String> {
     let json =
         serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
-    let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
-        .map_err(|e| format!("Keyring init failed: {e}"))?;
-    entry
-        .set_password(&json)
-        .map_err(|e| format!("Failed to write vault: {e}"))?;
-    Ok(())
+
+    // Try keyring first (works on macOS, Windows, and Linux with keyring daemon)
+    if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+        if entry.set_password(&json).is_ok() {
+            return Ok(());
+        }
+    }
+
+    // Keyring unavailable (e.g., Linux without GNOME Keyring/KDE Wallet on Wayland).
+    // Fall back to encrypted file storage.
+    save_secrets_to_fallback(app, cache)
 }
 
 fn generate_local_token() -> String {
@@ -288,6 +495,10 @@ fn get_secret(
     if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
         return Err(format!("Unsupported secret key: {key}"));
     }
+
+    // Sync from fallback file if cache is empty (e.g., Linux without keyring)
+    cache.sync_from_fallback(webview.app_handle());
+
     let secrets = cache
         .secrets
         .lock()
@@ -298,6 +509,10 @@ fn get_secret(
 #[tauri::command]
 fn get_all_secrets(webview: Webview, cache: tauri::State<'_, SecretsCache>) -> Result<HashMap<String, String>, String> {
     require_trusted_window(webview.label())?;
+
+    // Sync from fallback file if cache is empty
+    cache.sync_from_fallback(webview.app_handle());
+
     Ok(cache
         .secrets
         .lock()
@@ -328,7 +543,7 @@ fn set_secret(
     } else {
         proposed.insert(key, trimmed);
     }
-    save_vault(&proposed)?;
+    save_vault(&proposed, webview.app_handle())?;
     *secrets = proposed;
     Ok(())
 }
@@ -345,7 +560,7 @@ fn delete_secret(webview: Webview, key: String, cache: tauri::State<'_, SecretsC
         .map_err(|_| "Lock poisoned".to_string())?;
     let mut proposed = secrets.clone();
     proposed.remove(&key);
-    save_vault(&proposed)?;
+    save_vault(&proposed, webview.app_handle())?;
     *secrets = proposed;
     Ok(())
 }
