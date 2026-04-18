@@ -225,3 +225,58 @@ describe('security header guardrails', () => {
     assert.match(secTxt, /^Expires:/m, 'security.txt must have an Expires field');
   });
 });
+
+// Per-route CSP override for the hosted brief magazine. The renderer
+// emits an inline <script> (swipe/arrow/wheel/touch nav IIFE) whose
+// hash is NOT on the global script-src allowlist, so the catch-all
+// CSP silently blocks it. This rule relaxes script-src to
+// 'unsafe-inline' for /api/brief/* only. All Redis-sourced content
+// flows through escapeHtml() in brief-render.js before interpolation,
+// so unsafe-inline doesn't open an XSS surface.
+const getBriefSecurityHeaders = () => {
+  const rule = vercelConfig.headers.find((entry) => entry.source === '/api/brief/(.*)');
+  return rule?.headers ?? [];
+};
+
+const getBriefCspValue = () => {
+  const headers = getBriefSecurityHeaders();
+  const header = headers.find((h) => h.key.toLowerCase() === 'content-security-policy');
+  return header?.value ?? null;
+};
+
+describe('brief magazine CSP override', () => {
+  it('rule exists for /api/brief/(.*) with a Content-Security-Policy header', () => {
+    const csp = getBriefCspValue();
+    assert.ok(csp, 'Missing per-route CSP override for /api/brief/(.*) — the magazine nav IIFE will be blocked');
+  });
+
+  it('script-src includes unsafe-inline so the nav IIFE can execute', () => {
+    const csp = getBriefCspValue();
+    const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      scriptSrc.includes("'unsafe-inline'"),
+      "brief CSP script-src must include 'unsafe-inline' — without it swipe/arrow nav is silently blocked",
+    );
+  });
+
+  it('connect-src allows Cloudflare Insights analytics beacon to POST', () => {
+    const csp = getBriefCspValue();
+    const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      connectSrc.includes('https://cloudflareinsights.com'),
+      'brief CSP connect-src must allow cloudflareinsights.com so the CF beacon can POST to /cdn-cgi/rum',
+    );
+  });
+
+  it('keeps tight defaults for non-script directives', () => {
+    const csp = getBriefCspValue();
+    for (const directive of [
+      "default-src 'self'",
+      "object-src 'none'",
+      "form-action 'none'",
+      "base-uri 'self'",
+    ]) {
+      assert.ok(csp.includes(directive), `brief CSP missing tight directive: ${directive}`);
+    }
+  });
+});
