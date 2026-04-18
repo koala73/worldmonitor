@@ -100,7 +100,7 @@ import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
@@ -310,15 +310,23 @@ export class PanelLayoutManager implements AppModule {
       const isPremium = WEB_PREMIUM_PANELS.has(key);
       let reason = getPanelGateReason(state, isPremium);
 
-      // Clerk-pro-only panels: even when hasPremiumAccess() returns true
-      // via API/tester key, these panels cannot function without a Clerk
-      // userId bound to a PRO plan. Downgrade the gate reason so the user
-      // sees the correct CTA (sign-in or upgrade) instead of an unlocked
-      // panel that then fails to fetch.
+      // Clerk-pro-only panels: even when hasPremiumAccess() returns
+      // true via API/tester key, these panels need a Clerk userId
+      // bound to a PRO entitlement. Downgrade the gate reason so the
+      // user sees the correct CTA (sign-in or upgrade) instead of an
+      // unlocked panel that then fails to fetch.
+      //
+      // Source of truth for "is this user PRO" is the Convex
+      // entitlements table (hasTier(1) — same check hasPremiumAccess
+      // consults after PR #3167). `state.user.role` is derived from
+      // Clerk's publicMetadata.plan which is NOT kept in sync with
+      // the entitlement for many users — reading it here was the bug
+      // that locked Pro users out of Latest Brief despite every
+      // other premium panel rendering correctly.
       if (
         reason === PanelGateReason.NONE &&
         WEB_CLERK_PRO_ONLY_PANELS.has(key) &&
-        state.user?.role !== 'pro'
+        !hasTier(1)
       ) {
         reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
       }
