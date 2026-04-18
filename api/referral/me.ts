@@ -130,9 +130,13 @@ export default async function handler(
   // request retries.
   ctx.waitUntil(
     registerReferralCodeInConvex(session.userId, code).catch((err: unknown) => {
+      // Narrow rather than cast — a future path that throws a
+      // non-Error value must not turn this warning into "failed:
+      // undefined". The helper today only throws Error instances,
+      // so the instanceof branch is the common path.
       console.warn(
         '[api/referral/me] binding failed (non-blocking):',
-        (err as Error).message,
+        err instanceof Error ? err.message : String(err),
       );
     }),
   );
