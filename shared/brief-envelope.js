@@ -21,12 +21,25 @@
  * this pipeline (see the seed-envelope-consumer-drift incident, PR
  * #3139) — coordinate every producer + consumer update in the same PR.
  *
- * v2 (2026-04): BriefStory.sourceUrl added. A source without a URL is
- * no longer a valid story — the renderer wraps the `.source` line in an
- * anchor with UTM tracking, and v1 envelopes in Redis are quietly
- * ignored (`assertBriefEnvelope` throws on version mismatch; the edge
- * route 404s, composer writes a fresh v2 on the next cron tick).
+ * v2 (2026-04): BriefStory.sourceUrl added. The renderer wraps the
+ * `.source` line in an anchor with UTM tracking on v2 stories. Older
+ * v1 envelopes already in Redis at rollout still render (anchor
+ * omitted, matching pre-v2 appearance) so links issued in the
+ * preceding 7-day TTL window don't regress to "expired" the moment
+ * the renderer deploys. Once that window passes,
+ * SUPPORTED_ENVELOPE_VERSIONS can shrink to [2] in a follow-up.
  *
  * @type {2}
  */
 export const BRIEF_ENVELOPE_VERSION = 2;
+
+/**
+ * Versions the renderer still accepts from Redis on READ. Must always
+ * contain the current BRIEF_ENVELOPE_VERSION plus any versions that
+ * may still be live in the 7-day brief TTL window. The composer only
+ * ever writes the current version — this set is a read-side
+ * compatibility shim, not a producer-side choice.
+ *
+ * @type {ReadonlySet<number>}
+ */
+export const SUPPORTED_ENVELOPE_VERSIONS = new Set([1, 2]);

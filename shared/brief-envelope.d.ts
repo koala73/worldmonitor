@@ -22,6 +22,14 @@
 export const BRIEF_ENVELOPE_VERSION: 2;
 
 /**
+ * Versions the renderer accepts from Redis on READ. Always contains
+ * the current BRIEF_ENVELOPE_VERSION plus any versions still live in
+ * the 7-day TTL window. Composer writes ONLY the current version —
+ * this is a read-side compatibility shim.
+ */
+export const SUPPORTED_ENVELOPE_VERSIONS: ReadonlySet<number>;
+
+/**
  * Severity ladder. Four values, no synonyms. `critical` and `high`
  * render with the highlight treatment; `medium` and `low` render
  * plain. See HIGHLIGHTED_LEVELS in the renderer.
@@ -74,13 +82,14 @@ export interface BriefStory {
   /** Publication/wire attribution (rendered as the anchor text). */
   source: string;
   /**
-   * Outgoing link to the original article. Required, must parse as an
-   * absolute https URL. The renderer appends UTM parameters at render
-   * time (never stored in the envelope so we can change attribution
-   * without rewriting Redis). No importanceScore / pubDate / briefModel
-   * — those upstream fields remain banned in `data`.
+   * Outgoing link to the original article. Required on v2 envelopes
+   * and must parse as an absolute https/http URL. Absent on v1
+   * envelopes still living in the 7-day TTL window; the renderer
+   * degrades to a plain (unlinked) source line for those. No
+   * importanceScore / pubDate / briefModel — those upstream fields
+   * remain banned in `data`.
    */
-  sourceUrl: string;
+  sourceUrl?: string;
   /** Per-user LLM-generated rationale. */
   whyMatters: string;
 }

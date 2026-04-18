@@ -315,11 +315,11 @@ describe('renderBriefMagazine — envelope validation', () => {
     assert.throws(() => renderBriefMagazine(/** @type {any} */ ('string')), /must be an object/);
   });
 
-  it('throws when version does not match BRIEF_ENVELOPE_VERSION', () => {
+  it('throws when version is outside the supported set', () => {
     const env = /** @type {any} */ ({ ...envelope(), version: 99 });
     assert.throws(
       () => renderBriefMagazine(env),
-      /version.*does not match renderer version/,
+      /is not in supported set/,
     );
   });
 
@@ -416,6 +416,48 @@ describe('renderBriefMagazine — envelope validation', () => {
 describe('BRIEF_ENVELOPE_VERSION', () => {
   it('is the literal 2 (bump requires cross-producer coordination)', () => {
     assert.equal(BRIEF_ENVELOPE_VERSION, 2);
+  });
+});
+
+describe('renderBriefMagazine — v1 envelopes (back-compat window)', () => {
+  /**
+   * Build a v1-shaped envelope: version=1 and stories carry no
+   * sourceUrl. Emulates what's still resident in Redis under the 7-day
+   * TTL at the moment the v2 renderer deploys — the renderer must
+   * degrade gracefully instead of 404ing the still-live link.
+   */
+  function v1Envelope() {
+    const v2 = envelope();
+    const stories = v2.data.stories.map(({ sourceUrl: _ignore, ...rest }) => rest);
+    return /** @type {any} */ ({ ...v2, version: 1, data: { ...v2.data, stories } });
+  }
+
+  it('accepts version=1 without sourceUrl and renders plain source line (no anchor)', () => {
+    const env = v1Envelope();
+    const html = renderBriefMagazine(env);
+    // No source-link anchors at all — v1 degrades to plain text.
+    assert.equal((html.match(/<a class="source-link"/g) ?? []).length, 0);
+    // The source label itself is still emitted for every story.
+    const labelCount = (html.match(/<div class="source">Source · /g) ?? []).length;
+    assert.equal(labelCount, env.data.stories.length);
+  });
+
+  it('still validates every v1 story field except sourceUrl', () => {
+    const env = v1Envelope();
+    env.data.stories[0].headline = '';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.headline must be a non-empty string/,
+    );
+  });
+
+  it('does not accept v1 with a malformed sourceUrl (defence-in-depth)', () => {
+    const env = v1Envelope();
+    env.data.stories[0].sourceUrl = 'javascript:alert(1)';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /sourceUrl .* is not allowed \(http\/https only\)/,
+    );
   });
 });
 

@@ -21,7 +21,7 @@
 //   - Brainstorm: docs/brainstorms/2026-04-17-worldmonitor-brief-magazine-requirements.md
 //   - Plan: docs/plans/2026-04-17-003-feat-worldmonitor-brief-magazine-plan.md
 
-import { BRIEF_ENVELOPE_VERSION } from '../../shared/brief-envelope.js';
+import { BRIEF_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
 
 /**
  * @typedef {import('../../shared/brief-envelope.js').BriefEnvelope} BriefEnvelope
@@ -205,9 +205,15 @@ export function assertBriefEnvelope(envelope) {
   const env = /** @type {Record<string, unknown>} */ (envelope);
   assertNoExtraKeys(env, ALLOWED_ENVELOPE_KEYS, 'envelope');
 
-  if (env.version !== BRIEF_ENVELOPE_VERSION) {
+  // Accept any version in SUPPORTED_ENVELOPE_VERSIONS. The composer
+  // only ever writes the current BRIEF_ENVELOPE_VERSION; older
+  // versions are tolerated on READ so links issued in the 7-day TTL
+  // window survive a renderer rollout. Unknown versions are still
+  // rejected — an unexpected shape would lead the renderer to
+  // interpolate garbage.
+  if (typeof env.version !== 'number' || !SUPPORTED_ENVELOPE_VERSIONS.has(env.version)) {
     throw new Error(
-      `renderBriefMagazine: envelope.version=${JSON.stringify(env.version)} does not match renderer version=${BRIEF_ENVELOPE_VERSION}. Deploy a matching renderer before producing envelopes at this version.`,
+      `renderBriefMagazine: envelope.version=${JSON.stringify(env.version)} is not in supported set [${[...SUPPORTED_ENVELOPE_VERSIONS].join(', ')}]. Deploy a matching renderer before producing envelopes at this version.`,
     );
   }
   if (!isFiniteNumber(env.issuedAt)) {
@@ -282,12 +288,19 @@ export function assertBriefEnvelope(envelope) {
         `envelope.data.stories[${i}].threatLevel must be one of critical|high|medium|low (got ${JSON.stringify(st.threatLevel)})`,
       );
     }
-    try {
-      validateSourceUrl(st.sourceUrl);
-    } catch (err) {
-      throw new Error(
-        `envelope.data.stories[${i}].sourceUrl ${/** @type {Error} */ (err).message}`,
-      );
+    // sourceUrl is required on v2 and absent on v1. When present on
+    // either version, it must parse cleanly — a malformed URL would
+    // break the href. On v1 it's expected to be absent; a v1 envelope
+    // that somehow carries a sourceUrl is still validated (cheap
+    // defence against composer regressions).
+    if (env.version === BRIEF_ENVELOPE_VERSION || st.sourceUrl !== undefined) {
+      try {
+        validateSourceUrl(st.sourceUrl);
+      } catch (err) {
+        throw new Error(
+          `envelope.data.stories[${i}].sourceUrl ${/** @type {Error} */ (err).message}`,
+        );
+      }
     }
   });
 
@@ -534,7 +547,12 @@ function buildTrackedSourceUrl(raw, issueDate, rank) {
 function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDate }) {
   const threatClass = HIGHLIGHTED_LEVELS.has(story.threatLevel) ? ' crit' : '';
   const threatLabel = THREAT_LABELS[story.threatLevel];
-  const trackedHref = buildTrackedSourceUrl(story.sourceUrl, issueDate, rank);
+  // v1 envelopes don't carry sourceUrl — render the source as plain
+  // text (matching pre-v2 appearance). v2 envelopes always have a
+  // validated URL, so we wrap in a UTM-tracked anchor.
+  const sourceBlock = story.sourceUrl
+    ? `<a class="source-link" href="${escapeHtml(buildTrackedSourceUrl(story.sourceUrl, issueDate, rank))}" target="_blank" rel="noopener noreferrer">${escapeHtml(story.source)}</a>`
+    : escapeHtml(story.source);
   return (
     `<section class="page story ${palette}">` +
     '<div class="left">' +
@@ -547,9 +565,7 @@ function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDat
     '</div>' +
     `<h3>${escapeHtml(story.headline)}</h3>` +
     `<p class="desc">${escapeHtml(story.description)}</p>` +
-    '<div class="source">Source · ' +
-    `<a class="source-link" href="${escapeHtml(trackedHref)}" target="_blank" rel="noopener noreferrer">` +
-    `${escapeHtml(story.source)}</a></div>` +
+    `<div class="source">Source · ${sourceBlock}</div>` +
     '</div>' +
     '</div>' +
     '<div class="right">' +

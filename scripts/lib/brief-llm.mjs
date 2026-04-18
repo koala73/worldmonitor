@@ -49,20 +49,26 @@ const WHY_MATTERS_SYSTEM =
   'no quotes. One sentence only.';
 
 /**
- * Deterministic hash of every field that flows into buildWhyMattersPrompt.
+ * Deterministic 16-char hex hash of the five story fields that flow
+ * into both buildWhyMattersPrompt and buildStoryDescriptionPrompt.
  *
  * Keying only on headline/source/severity (as an earlier draft did)
  * leaves `category` and `country` out of the cache identity, which is
  * wrong: those fields appear in the user prompt, and if a story's
  * classification or geocoding is corrected upstream we must re-LLM
- * rather than serve the pre-correction prose. Bumped key version to
- * v2 so any pre-fix cached entries (on the v1 hash) are ignored
- * rather than reused — a one-off recompute is cheaper than serving
- * stale editorial content.
+ * rather than serve the pre-correction prose. whyMatters bumped to v2
+ * cache prefix when this was tightened; description launched on v1
+ * with the same hash material.
+ *
+ * The two prompts share the same hash because they cover the same
+ * inputs — cache separation is enforced via the distinct key prefixes
+ * (`brief:llm:whymatters:v2:` vs `brief:llm:description:v1:`). Keeping
+ * a single helper prevents silent drift if a future field is added to
+ * one prompt and forgotten in the other.
  *
  * @param {{ headline: string; source: string; threatLevel: string; category: string; country: string }} story
  */
-function hashStory(story) {
+function hashBriefStory(story) {
   const material = [
     story.headline ?? '',
     story.source ?? '',
@@ -127,8 +133,8 @@ export function parseWhyMatters(text) {
  */
 export async function generateWhyMatters(story, deps) {
   // v2: hash now covers the full prompt (headline/source/severity/
-  // category/country) — see hashStory() comment.
-  const key = `brief:llm:whymatters:v2:${hashStory(story)}`;
+  // category/country) — see hashBriefStory() comment.
+  const key = `brief:llm:whymatters:v2:${hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
@@ -210,26 +216,6 @@ export function parseStoryDescription(text, headline) {
 }
 
 /**
- * Cache key for per-story description. Keyed on the same attributes
- * the prompt sees (the headline carries the bulk of signal but
- * category + country can materially change tone). Description is
- * editorial + story-global (not user-specific), so cache is shared
- * across readers. v1 — first prose-description key space.
- *
- * @param {{ headline: string; source: string; category: string; country: string; threatLevel: string }} story
- */
-function hashStoryDescription(story) {
-  const material = [
-    story.headline ?? '',
-    story.source ?? '',
-    story.threatLevel ?? '',
-    story.category ?? '',
-    story.country ?? '',
-  ].join('||');
-  return createHash('sha256').update(material).digest('hex').slice(0, 16);
-}
-
-/**
  * Resolve a description sentence for one story via cache → LLM.
  * Returns null on any failure; caller falls back to the composer's
  * baseline (cleaned headline) rather than shipping with a placeholder.
@@ -242,7 +228,10 @@ function hashStoryDescription(story) {
  * }} deps
  */
 export async function generateStoryDescription(story, deps) {
-  const key = `brief:llm:description:v1:${hashStoryDescription(story)}`;
+  // Shares hashBriefStory() with whyMatters — the key prefix
+  // (`brief:llm:description:v1:`) is what separates the two cache
+  // namespaces; the material is the same five fields.
+  const key = `brief:llm:description:v1:${hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string') {
