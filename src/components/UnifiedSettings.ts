@@ -291,7 +291,7 @@ export class UnifiedSettings {
           <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
           ${showNotificationsTab ? `<button class="${tabClass('notifications')}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
-          ${getAuthState().user ? `<button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys</button>` : ''}
+          <button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
@@ -330,24 +330,9 @@ export class UnifiedSettings {
           ${notifs.html}
         </div>
         ` : ''}
-        ${getAuthState().user ? `
         <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
-          <div class="api-keys-section">
-            <div class="api-keys-header">
-              <p class="api-keys-desc">Create API keys to access WorldMonitor data programmatically. Keys are shown once on creation — store them securely.</p>
-            </div>
-            <div class="api-keys-create-form">
-              <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" maxlength="64" />
-              <button class="btn btn-primary api-keys-create-btn">Create Key</button>
-            </div>
-            <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>
-            <div class="api-keys-error" id="usApiKeysError" style="display:none;"></div>
-            <div class="api-keys-list" id="usApiKeysList">
-              <div class="api-keys-loading">Loading...</div>
-            </div>
-          </div>
+          ${this.renderApiKeysContent()}
         </div>
-        ` : ''}
       </div>
     `;
 
@@ -376,7 +361,7 @@ export class UnifiedSettings {
     this.renderSourcesGrid();
     this.updateSourcesCounter();
 
-    // API keys: Enter to submit
+    // API keys: Enter to submit (only exists when PRO user sees full UI)
     const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
     if (apiKeyInput) {
       apiKeyInput.addEventListener('keydown', (e) => {
@@ -384,7 +369,20 @@ export class UnifiedSettings {
       });
     }
 
-    if (this.activeTab === 'api-keys') {
+    // API keys gate CTA click
+    const gateBtn = this.overlay.querySelector<HTMLElement>('.api-keys-gate-btn');
+    if (gateBtn) {
+      gateBtn.addEventListener('click', () => {
+        if (!getAuthState().user) {
+          this.close();
+          import('@/services/clerk').then(m => m.openSignIn()).catch(() => {});
+        } else {
+          this.handleUpgradeClick();
+        }
+      });
+    }
+
+    if (this.activeTab === 'api-keys' && isProUser()) {
       void this.loadApiKeys();
     }
   }
@@ -402,7 +400,7 @@ export class UnifiedSettings {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
     });
 
-    if (tab === 'api-keys') {
+    if (tab === 'api-keys' && isProUser()) {
       void this.loadApiKeys();
     }
 
@@ -722,6 +720,46 @@ export class UnifiedSettings {
   // ---------------------------------------------------------------------------
   // API Keys tab
   // ---------------------------------------------------------------------------
+
+  private renderApiKeysContent(): string {
+    const authState = getAuthState();
+
+    if (!authState.user) {
+      const lockIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
+      return `
+        <div class="panel-locked-state">
+          <div class="panel-locked-icon">${lockIcon}</div>
+          <div class="panel-locked-desc">Sign in to unlock API Keys</div>
+          <button class="panel-locked-cta api-keys-gate-btn">Sign In</button>
+        </div>`;
+    }
+
+    if (!isProUser()) {
+      const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
+      return `
+        <div class="panel-locked-state">
+          <div class="panel-locked-icon">${upgradeIcon}</div>
+          <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
+          <button class="panel-locked-cta api-keys-gate-btn">Upgrade to Pro</button>
+        </div>`;
+    }
+
+    return `
+      <div class="api-keys-section">
+        <div class="api-keys-header">
+          <p class="api-keys-desc">Create API keys to access WorldMonitor data programmatically. Keys are shown once on creation — store them securely.</p>
+        </div>
+        <div class="api-keys-create-form">
+          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" maxlength="64" />
+          <button class="btn btn-primary api-keys-create-btn">Create Key</button>
+        </div>
+        <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>
+        <div class="api-keys-error" id="usApiKeysError" style="display:none;"></div>
+        <div class="api-keys-list" id="usApiKeysList">
+          <div class="api-keys-loading">Loading...</div>
+        </div>
+      </div>`;
+  }
 
   private async loadApiKeys(): Promise<void> {
     this.apiKeysLoading = true;
