@@ -111,7 +111,10 @@ function ownerIndexKey(ownerHash: string): string {
 
 /** SHA-256 hash of the caller's API key — used as ownerTag and owner index key. Never secret. */
 async function callerFingerprint(req: Request): Promise<string> {
-  const key = req.headers.get('X-WorldMonitor-Key') ?? '';
+  const key =
+    req.headers.get('X-WorldMonitor-Key') ??
+    req.headers.get('X-Api-Key') ??
+    '';
   if (!key) return 'anon';
   const encoded = new TextEncoder().encode(key);
   const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);

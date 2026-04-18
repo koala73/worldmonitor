@@ -51,7 +51,7 @@ export default async function handler(req: Request): Promise<Response> {
       headers: {
         ...corsHeaders,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Widget-Key, X-Pro-Key',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key',
       },
     });
   }
@@ -59,7 +59,10 @@ export default async function handler(req: Request): Promise<Response> {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let isPro = false;
 
-  const worldMonitorKey = req.headers.get('X-WorldMonitor-Key') ?? '';
+  const worldMonitorKey =
+    req.headers.get('X-WorldMonitor-Key') ??
+    req.headers.get('X-Api-Key') ??
+    '';
   if (hasValidWorldMonitorKey(worldMonitorKey)) {
     isPro = true;
   } else {
