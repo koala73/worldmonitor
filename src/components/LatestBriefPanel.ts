@@ -21,6 +21,8 @@
 
 import { Panel } from './Panel';
 import { premiumFetch } from '@/services/premium-fetch';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { getAuthState } from '@/services/auth-state';
 import { h, replaceChildren, clearChildren } from '@/utils/dom-utils';
 
 interface LatestBriefReady {
@@ -74,12 +76,24 @@ export class LatestBriefPanel extends Panel {
     });
 
     this.renderLoading();
+    // Defer the self-fetch until updatePanelGating() (called on mount
+    // + on auth state changes) has either unlocked us or rendered
+    // the gated CTA. If we fetch first, anonymous/free users would
+    // hit 401/403 and see raw error UI for a moment before the gate
+    // repaints over us. refresh() also short-circuits when the user
+    // has no premium access, so a mid-session downgrade stops
+    // hitting the endpoint immediately.
     void this.refresh();
   }
 
   /** Called by the dashboard when the panel first mounts or is revisited. */
   public async refresh(): Promise<void> {
     if (this.refreshing) return;
+    // Belt-and-suspenders against race conditions where the panel
+    // mounts before updatePanelGating() runs, or where a user
+    // downgrades mid-session. hasPremiumAccess is the single source
+    // of truth the PRO panel system uses; never fetch without it.
+    if (!hasPremiumAccess(getAuthState())) return;
     this.refreshing = true;
     try {
       const data = await this.fetchLatest();

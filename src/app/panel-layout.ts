@@ -124,6 +124,7 @@ const WEB_PREMIUM_PANELS = new Set([
   'deduction',
   'chat-analyst',
   'wsb-ticker-scanner',
+  'latest-brief',
 ]);
 
 export interface PanelLayoutManagerCallbacks {
