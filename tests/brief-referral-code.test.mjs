@@ -114,14 +114,42 @@ describe('referral attribution resolves Clerk codes (waitlist path)', () => {
     assert.match(src, /\.index\("by_referrer_email",\s*\["referrerUserId",\s*"refereeEmail"\]\)/);
   });
 
-  it('/api/referral/me registers the (userId, code) binding via waitUntil so attribution can resolve', async () => {
+  it('/api/referral/me blocks on the binding + returns 503 on failure (not a dead share link)', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const { dirname, resolve } = await import('node:path');
     const __d = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(resolve(__d, '../api/referral/me.ts'), 'utf-8');
     assert.match(src, /registerReferralCodeInConvex/, 'helper must exist');
-    assert.match(src, /ctx\.waitUntil\(registerReferralCodeInConvex/, 'must be called via waitUntil');
+    // REGRESSION: the earlier head used ctx.waitUntil(...) which
+    // returned a 200 + share link to the user even if the binding
+    // silently failed (missing env, non-2xx, network). That handed
+    // users dead links. Binding must block the response.
+    assert.match(src, /await registerReferralCodeInConvex/, 'binding must be awaited, not fire-and-forget');
+    assert.doesNotMatch(src, /ctx\.waitUntil\(registerReferralCodeInConvex/, 'must NOT use waitUntil for the binding');
+    // Failure path must return 503 rather than a 200 with a dead link.
+    assert.match(src, /binding failed[\s\S]{0,200}service_unavailable[\s\S]{0,50}503/, 'binding failure returns 503');
     assert.match(src, /\/relay\/register-referral-code/, 'must POST to the Convex HTTP action');
+  });
+
+  it('subscriptionHelpers credits the sharer on the /pro?ref= checkout path via metadata.affonso_referral', async () => {
+    // REGRESSION: the earlier head only wired the waitlist path
+    // (/api/register-interest), so anyone who landed on /pro?ref=
+    // and went straight to Dodo checkout never credited the sharer.
+    // The webhook now reads metadata.affonso_referral on
+    // subscription.active, resolves it to a userId via
+    // userReferralCodes, and inserts a userReferralCredits row.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const __d = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(resolve(__d, '../convex/payments/subscriptionHelpers.ts'), 'utf-8');
+    assert.match(src, /affonso_referral/, 'webhook must read the Dodo referral metadata key');
+    assert.match(src, /\.query\("userReferralCodes"\)[\s\S]+?\.withIndex\("by_code"/, 'webhook must resolve the code to a userId');
+    assert.match(src, /ctx\.db\.insert\("userReferralCredits"/, 'webhook must insert a credit row on conversion');
+    // Double-credit guard: the credit insertion must be gated by a
+    // by_referrer_email existence check so replay webhooks don't
+    // create duplicate rows for the same (referrer, referee) pair.
+    assert.match(src, /by_referrer_email[\s\S]+?ctx\.db\.insert\("userReferralCredits"/, 'credit insertion must dedupe by (referrer, email)');
   });
 });

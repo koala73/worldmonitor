@@ -35,41 +35,39 @@ const PUBLIC_BASE =
 /**
  * Bind the Clerk-derived share code to the userId in Convex so that
  * future /pro?ref=<code> signups can actually credit the sharer.
- * Fire-and-forget from the handler — it's idempotent (the Convex
- * mutation keeps the first (code, userId) binding and ignores
- * repeats) and a failure here only means the NEXT call to /api/
- * referral/me will re-register, not that the user's share link
- * doesn't work.
+ *
+ * BLOCKING (no longer fire-and-forget). If the binding can't be
+ * persisted the endpoint returns 503 instead of a dead share link —
+ * handing a user a code the waitlist mutation will never resolve is
+ * worse than a retryable error. The Convex mutation is idempotent,
+ * so client retries are safe.
+ *
+ * Throws on any failure; caller translates to 503.
  */
 async function registerReferralCodeInConvex(userId: string, code: string): Promise<void> {
   const convexSite =
     process.env.CONVEX_SITE_URL ??
     (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
   const relaySecret = process.env.RELAY_SHARED_SECRET ?? '';
-  if (!convexSite || !relaySecret) return;
-  try {
-    const res = await fetch(`${convexSite}/relay/register-referral-code`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${relaySecret}`,
-        'User-Agent': 'worldmonitor-edge/1.0',
-      },
-      body: JSON.stringify({ userId, code }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) {
-      console.warn('[api/referral/me] register-referral-code non-2xx:', res.status);
-    }
-  } catch (err) {
-    console.warn('[api/referral/me] register-referral-code failed:', (err as Error).message);
+  if (!convexSite || !relaySecret) {
+    throw new Error('convex_relay_not_configured');
+  }
+  const res = await fetch(`${convexSite}/relay/register-referral-code`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${relaySecret}`,
+      'User-Agent': 'worldmonitor-edge/1.0',
+    },
+    body: JSON.stringify({ userId, code }),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) {
+    throw new Error(`register_referral_code_${res.status}`);
   }
 }
 
-export default async function handler(
-  req: Request,
-  ctx: { waitUntil: (p: Promise<unknown>) => void },
-): Promise<Response> {
+export default async function handler(req: Request): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
   }
@@ -111,12 +109,18 @@ export default async function handler(
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  // Bind the code to the userId in Convex so future waitlist signups
-  // from /pro?ref=<code> can be credited back to this user via the
-  // userReferralCredits path. Fire-and-forget — the mutation is
-  // idempotent and a failure here just means the NEXT call to this
-  // endpoint will re-register.
-  ctx.waitUntil(registerReferralCodeInConvex(session.userId, code));
+  // Bind the code to the userId in Convex BEFORE returning the share
+  // URL. If the binding can't be persisted (Convex outage, missing
+  // env, non-2xx) we must NOT hand the user a link that the waitlist
+  // mutation can never resolve — a dead share link is worse than a
+  // retryable error. The mutation is idempotent so client retries
+  // are safe.
+  try {
+    await registerReferralCodeInConvex(session.userId, code);
+  } catch (err) {
+    console.error('[api/referral/me] binding failed:', (err as Error).message);
+    return jsonResponse({ error: 'service_unavailable' }, 503, cors);
+  }
 
   // No invite/conversion count is returned on the response. The
   // waitlist path (userReferralCredits) now credits correctly, but
