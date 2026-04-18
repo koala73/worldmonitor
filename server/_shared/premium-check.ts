@@ -12,7 +12,10 @@ import { validateUserApiKey } from './user-api-key';
 export async function isCallerPremium(request: Request): Promise<boolean> {
   // Browser tester keys — validateApiKey returns required:false for trusted origins
   // even when a valid key is present, so we check the header directly first.
-  const wmKey = request.headers.get('X-WorldMonitor-Key') ?? '';
+  const wmKey =
+    request.headers.get('X-WorldMonitor-Key') ??
+    request.headers.get('X-Api-Key') ??
+    '';
   if (wmKey) {
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
       .split(',').map((k) => k.trim()).filter(Boolean);

@@ -312,7 +312,10 @@ export function createDomainGateway(
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
     // check fails, try async Convex-backed validation for user-issued keys.
     let isUserApiKey = false;
-    const wmKey = request.headers.get('X-WorldMonitor-Key') ?? '';
+    const wmKey =
+      request.headers.get('X-WorldMonitor-Key') ??
+      request.headers.get('X-Api-Key') ??
+      '';
     if (keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_')) {
       const { validateUserApiKey } = await import('./_shared/user-api-key');
       const userKeyResult = await validateUserApiKey(wmKey);

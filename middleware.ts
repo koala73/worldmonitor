@@ -126,6 +126,18 @@ export default function middleware(request: Request) {
     return;
   }
 
+  // Authenticated Pro API clients bypass UA filtering. Real key validation
+  // still runs downstream in server/gateway.ts (Convex userApiKeys hash
+  // lookup); invalid keys still get 401. Accept both header names so clients
+  // using the common `x-api-key` convention aren't blocked at the edge.
+  const apiKey =
+    request.headers.get('x-worldmonitor-key') ??
+    request.headers.get('x-api-key') ??
+    '';
+  if (apiKey.startsWith('wm_')) {
+    return;
+  }
+
   // Block bots from all API routes
   if (BOT_UA.test(ua)) {
     return new Response('{"error":"Forbidden"}', {

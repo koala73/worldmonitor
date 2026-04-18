@@ -33,7 +33,7 @@ function extractOriginFromReferer(referer) {
 
 export function validateApiKey(req, options = {}) {
   const forceKey = options.forceKey === true;
-  const key = req.headers.get('X-WorldMonitor-Key');
+  const key = req.headers.get('X-WorldMonitor-Key') || req.headers.get('X-Api-Key');
   // Same-origin browser requests don't send Origin (per CORS spec).
   // Fall back to Referer to identify trusted same-origin callers.
   const origin = req.headers.get('Origin') || extractOriginFromReferer(req.headers.get('Referer')) || '';
