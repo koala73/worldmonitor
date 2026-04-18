@@ -116,6 +116,11 @@ interface PostBody {
   eventTypes?: string[];
   sensitivity?: string;
   channels?: string[];
+  // web_push subscription triple (Phase 6)
+  endpoint?: string;
+  p256dh?: string;
+  auth?: string;
+  userAgent?: string;
   quietHoursEnabled?: boolean;
   quietHoursStart?: number;
   quietHoursEnd?: number;
@@ -237,6 +242,40 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         console.log(`[notification-channels] set-channel ${channelType}: isNew=${setResult.isNew}`);
         // Only send welcome on first connect, not re-links; use waitUntil so the edge isolate doesn't terminate early
         if (setResult.isNew) ctx.waitUntil(publishWelcome(session.userId, channelType));
+        return json({ ok: true }, 200, corsHeaders);
+      }
+
+      if (action === 'set-web-push') {
+        const { endpoint, p256dh, auth, userAgent } = body;
+        if (!endpoint || !p256dh || !auth) {
+          return json({ error: 'endpoint, p256dh, auth required' }, 400, corsHeaders);
+        }
+        // Basic shape guards — browsers always produce https:// endpoints
+        // at the platform's push service. Reject anything else before it
+        // can poison the channel row.
+        try {
+          const u = new URL(endpoint);
+          if (u.protocol !== 'https:') {
+            return json({ error: 'endpoint must be https' }, 400, corsHeaders);
+          }
+        } catch {
+          return json({ error: 'invalid endpoint' }, 400, corsHeaders);
+        }
+        const resp = await convexRelay({
+          action: 'set-web-push',
+          userId: session.userId,
+          endpoint,
+          p256dh,
+          auth,
+          // Trim user agent; it's cosmetic for the settings UI, not identity.
+          userAgent: typeof userAgent === 'string' ? userAgent.slice(0, 200) : undefined,
+        });
+        if (!resp.ok) {
+          console.error('[notification-channels] POST set-web-push relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
+        const wpResult = await resp.json() as { ok: boolean; isNew?: boolean };
+        if (wpResult.isNew) ctx.waitUntil(publishWelcome(session.userId, 'web_push'));
         return json({ ok: true }, 200, corsHeaders);
       }
 

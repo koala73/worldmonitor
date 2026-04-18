@@ -54,6 +54,46 @@ export const setChannelForUser = internalMutation({
   },
 });
 
+// Web Push (Phase 6). Stored as its own internal mutation because the
+// payload shape is incompatible with setChannelForUser (three required
+// identity fields, no chatId/webhookEnvelope/email). Replaces any
+// prior subscription for this user — one subscription per user until
+// per-device fan-out is needed.
+export const setWebPushChannelForUser = internalMutation({
+  args: {
+    userId: v.string(),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    userAgent: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("notificationChannels")
+      .withIndex("by_user_channel", (q) =>
+        q.eq("userId", args.userId).eq("channelType", "web_push"),
+      )
+      .unique();
+    const isNew = !existing;
+    const doc = {
+      userId: args.userId,
+      channelType: "web_push" as const,
+      endpoint: args.endpoint,
+      p256dh: args.p256dh,
+      auth: args.auth,
+      verified: true,
+      linkedAt: Date.now(),
+      userAgent: args.userAgent,
+    };
+    if (existing) {
+      await ctx.db.replace(existing._id, doc);
+    } else {
+      await ctx.db.insert("notificationChannels", doc);
+    }
+    return { isNew };
+  },
+});
+
 export const setSlackOAuthChannelForUser = internalMutation({
   args: {
     userId: v.string(),

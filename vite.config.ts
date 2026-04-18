@@ -662,6 +662,10 @@ export default defineConfig(({ mode }) => {
           skipWaiting: true,
           clientsClaim: true,
           cleanupOutdatedCaches: true,
+          // Web Push handler (Phase 6). importScripts runs in the SW
+          // context; /push-handler.js is a static file copied from
+          // public/ and attaches 'push' + 'notificationclick' listeners.
+          importScripts: ['/push-handler.js'],
 
           runtimeCaching: [
             {

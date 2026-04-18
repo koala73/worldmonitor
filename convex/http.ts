@@ -272,7 +272,7 @@ http.route({
 
     if (
       typeof body.userId !== "string" || !body.userId ||
-      (body.channelType !== "telegram" && body.channelType !== "slack" && body.channelType !== "email" && body.channelType !== "discord")
+      (body.channelType !== "telegram" && body.channelType !== "slack" && body.channelType !== "email" && body.channelType !== "discord" && body.channelType !== "web_push")
     ) {
       return new Response(JSON.stringify({ error: "MISSING_FIELDS" }), {
         status: 400,
@@ -367,6 +367,10 @@ http.route({
       slackConfigurationUrl?: string;
       discordGuildId?: string;
       discordChannelId?: string;
+      endpoint?: string;
+      p256dh?: string;
+      auth?: string;
+      userAgent?: string;
       quietHoursEnabled?: boolean;
       quietHoursStart?: number;
       quietHoursEnd?: number;
@@ -454,6 +458,20 @@ http.route({
           discordChannelId: body.discordChannelId,
         });
         return new Response(JSON.stringify({ ok: true, isNew: discordResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (action === "set-web-push") {
+        if (!body.endpoint || !body.p256dh || !body.auth) {
+          return new Response(JSON.stringify({ error: "endpoint, p256dh, auth required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        const webPushResult = await ctx.runMutation((internal as any).notificationChannels.setWebPushChannelForUser, {
+          userId,
+          endpoint: body.endpoint,
+          p256dh: body.p256dh,
+          auth: body.auth,
+          userAgent: body.userAgent,
+        });
+        return new Response(JSON.stringify({ ok: true, isNew: webPushResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "delete-channel") {

@@ -74,6 +74,23 @@ export default defineSchema({
         webhookLabel: v.optional(v.string()),
         webhookSecret: v.optional(v.string()),
       }),
+      // Web Push (Phase 6). endpoint+p256dh+auth are the standard
+      // PushSubscription identity triple — not secrets, just per-device
+      // pairing material (they identify the browser's push endpoint at
+      // Mozilla/Google/Apple). Stored plaintext to match the rest of
+      // this table. userAgent is cosmetic: lets the settings UI show
+      // "Chrome · MacOS" next to the Remove button so users can tell
+      // which device a subscription belongs to.
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("web_push"),
+        endpoint: v.string(),
+        p256dh: v.string(),
+        auth: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+        userAgent: v.optional(v.string()),
+      }),
     ),
   )
     .index("by_user", ["userId"])
