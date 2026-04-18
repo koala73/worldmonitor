@@ -218,11 +218,22 @@ export function validateDigestProseShape(obj) {
     .slice(0, 6);
   if (threads.length < 1) return null;
 
+  // The prompt instructs the model to produce signals of "<=14 words,
+  // forward-looking imperative phrase". Enforce both a word cap (with
+  // a small margin of 4 words for model drift and compound phrases)
+  // and a byte cap — a 30-word "signal" would render as a second
+  // paragraph on the signals page, breaking visual rhythm. Previously
+  // only the byte cap was enforced, allowing ~40-word signals to
+  // sneak through when the model ignored the word count.
   const rawSignals = Array.isArray(obj.signals) ? obj.signals : [];
   const signals = rawSignals
     .filter((x) => typeof x === 'string')
     .map((x) => x.trim())
-    .filter((x) => x.length > 0 && x.length < 220)
+    .filter((x) => {
+      if (x.length === 0 || x.length >= 220) return false;
+      const words = x.split(/\s+/).filter(Boolean).length;
+      return words <= 18;
+    })
     .slice(0, 6);
 
   return { lead, threads, signals };

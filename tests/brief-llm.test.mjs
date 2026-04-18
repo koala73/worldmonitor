@@ -283,6 +283,22 @@ describe('parseDigestProse', () => {
     assert.equal(out.signals.length, 6);
   });
 
+  it('drops signals that exceed the prompt\'s 14-word cap (with small margin)', () => {
+    // REGRESSION: previously the validator only capped by byte length
+    // (< 220 chars), so a 30+ word signal paragraph could slip through
+    // despite the prompt explicitly saying "<=14 words, forward-looking
+    // imperative phrase". Validator now checks word count too.
+    const obj = JSON.parse(good);
+    obj.signals = [
+      'Watch for US naval redeployment.',                        // 5 words — keep
+      Array.from({ length: 22 }, (_, i) => `w${i}`).join(' '),    // 22 words — drop
+      Array.from({ length: 30 }, (_, i) => `w${i}`).join(' '),    // 30 words — drop
+    ];
+    const out = parseDigestProse(JSON.stringify(obj));
+    assert.equal(out.signals.length, 1);
+    assert.match(out.signals[0], /naval redeployment/);
+  });
+
   it('filters out malformed thread entries without rejecting the whole payload', () => {
     const obj = JSON.parse(good);
     obj.threads = [
@@ -327,11 +343,16 @@ describe('generateDigestProse', () => {
     assert.equal(cache.store.size, 0);
   });
 
-  it('different users share the cache when the story pool is identical', async () => {
+  it('different users do NOT share the digest cache even when the story pool is identical', async () => {
+    // The cache key is {userId}:{sensitivity}:{poolHash} — userId is
+    // part of the key precisely because the digest prose addresses
+    // the reader directly ("your brief surfaces ...") and we never
+    // want one user's prose showing up in another user's envelope.
+    // Assertion: user_a's fresh fetch doesn't prevent user_b from
+    // hitting the LLM.
     const cache = makeCache();
     const llm1 = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm1.callLLM });
-    // user_b with same stories+sensitivity — different cache key (user is part of key)
     const llm2 = makeLLM(validJson);
     await generateDigestProse('user_b', stories, 'all', { ...cache, callLLM: llm2.callLLM });
     assert.equal(llm1.calls.length, 1);
