@@ -1,6 +1,6 @@
 interface VisibleElementLike {
   checkVisibility?: () => boolean;
-  offsetParent?: Element | null;
+  getClientRects?: () => { length: number };
 }
 
 interface DocumentLike {
@@ -53,18 +53,30 @@ export const OPEN_MODAL_SELECTOR =
 
 /**
  * Any candidate that's actually visible → a real open modal.
- * `checkVisibility()` is the modern spec (Chrome 105+, Safari 17.4+, FF 125+);
- * `offsetParent === null` is the universal fallback for `display: none`
- * (which is exactly how `.modal-overlay` hides when `.active` is absent —
- * see main.css `.modal-overlay { display: none }` / `.active { display: flex }`).
+ *
+ * Preferred: `element.checkVisibility()` (Chrome 105+, Safari 17.4+, FF 125+).
+ *
+ * Fallback for older engines: `getClientRects().length > 0`. This returns 0
+ * when the element has `display: none` (exactly how persistent overlays
+ * hide — see main.css `.modal-overlay { display: none }` /
+ * `.active { display: flex }`) and non-zero for rendered elements,
+ * including `position: fixed` overlays. We cannot use `offsetParent` here:
+ * MDN specifies it returns `null` for every `position: fixed` element
+ * regardless of visibility, so it would false-negative on the Story overlay
+ * (main.css:3442), the active Country Intel overlay (main.css:18415), and
+ * `.modal-overlay` itself — all of which are fixed-positioned.
  */
 function isModalOpen(doc: DocumentLike): boolean {
   for (const el of doc.querySelectorAll(OPEN_MODAL_SELECTOR)) {
     const checkVisibility = el.checkVisibility;
-    const visible = typeof checkVisibility === 'function'
-      ? checkVisibility.call(el)
-      : el.offsetParent !== null;
-    if (visible) return true;
+    if (typeof checkVisibility === 'function') {
+      if (checkVisibility.call(el)) return true;
+      continue;
+    }
+    const getClientRects = el.getClientRects;
+    if (typeof getClientRects === 'function' && getClientRects.call(el).length > 0) {
+      return true;
+    }
   }
   return false;
 }

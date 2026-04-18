@@ -18,7 +18,7 @@ interface FakeElement {
   addEventListener(type: string, cb: (e: unknown) => void): void;
   closest(sel: string): { dataset: Record<string, string> } | null;
   checkVisibility?: () => boolean;
-  offsetParent?: unknown;
+  getClientRects?: () => { length: number };
 }
 
 interface FakeEnv {
@@ -26,15 +26,23 @@ interface FakeEnv {
     visibilityState: string;
     setVisibilityState(v: string): void;
     /**
-     * Test helpers modeling the two states a modal element can be in:
+     * Test helpers modeling modal state. Overlays in this app are always
+     * `position: fixed`, so `offsetParent` would always be null — the
+     * visibility check must use `checkVisibility()` or `getClientRects()`.
+     *
      * - modalMounted: element exists in DOM (matches OPEN_MODAL_SELECTOR
-     *   on query), but may be hidden via CSS. Matches UnifiedSettings,
-     *   SignalModal, etc. that mount in their constructor.
+     *   on query). Maps to UnifiedSettings, SignalModal, etc. — mounted in
+     *   their constructor at app startup and left in the DOM for the whole
+     *   session.
      * - modalVisible: the mounted element is actually rendered
-     *   (checkVisibility() returns true / offsetParent non-null).
+     *   (checkVisibility() returns true / getClientRects().length > 0).
+     * - supportsCheckVisibility: test knob. When false, the fake element
+     *   omits `checkVisibility` so the code path exercises the
+     *   `getClientRects` fallback (simulates Firefox <125 / Safari <17.4).
      */
     modalMounted: boolean;
     modalVisible: boolean;
+    supportsCheckVisibility: boolean;
     _removedListeners: Array<() => void>;
     querySelector(sel: string): FakeElement | null;
     querySelectorAll(sel: string): Iterable<FakeElement>;
@@ -71,6 +79,7 @@ function makeEnv(): FakeEnv {
     setVisibilityState(v: string) { _visibilityState = v; },
     modalMounted: false,
     modalVisible: false,
+    supportsCheckVisibility: true,
     _removedListeners: [],
 
     querySelector(sel: string): FakeElement | null {
@@ -81,7 +90,6 @@ function makeEnv(): FakeEnv {
     querySelectorAll(sel: string): Iterable<FakeElement> {
       if (sel !== OPEN_MODAL_SELECTOR) return [];
       if (!this.modalMounted && !this.modalVisible) return [];
-      // One fake candidate whose visibility reflects the `modalVisible` flag.
       const isVisible = this.modalVisible;
       const el: FakeElement = {
         tagName: 'DIV',
@@ -97,10 +105,14 @@ function makeEnv(): FakeEnv {
         remove() {},
         addEventListener() {},
         closest() { return null; },
-        checkVisibility: () => isVisible,
-        // offsetParent fallback mirrors checkVisibility for engines missing the API.
-        offsetParent: isVisible ? {} : null,
+        // getClientRects is always available in real DOM; mirrors `display: none`
+        // semantics (empty list when hidden, non-empty when rendered — including
+        // `position: fixed` elements, unlike offsetParent).
+        getClientRects: () => ({ length: isVisible ? 1 : 0 }),
       };
+      if (this.supportsCheckVisibility) {
+        el.checkVisibility = () => isVisible;
+      }
       return [el];
     },
 
@@ -577,6 +589,43 @@ describe('installSwUpdateHandler', () => {
     env.doc.modalVisible = true;
     clickToastButton(env, 'reload');
     assert.equal(env.reloadCalls.length, 1, 'explicit click bypasses modal guard');
+  });
+
+  // --- fallback path (engines without Element.checkVisibility) ---------------
+
+  it('uses getClientRects() fallback to detect visible position:fixed modals', () => {
+    // Regression for the reviewer-flagged fallback bug: offsetParent would
+    // return null for every `position: fixed` overlay even when visible, so
+    // on Firefox <125 / Safari <17.4 the modal guard would false-negative
+    // and auto-reload would wipe the Clerk sign-in. getClientRects() does
+    // not have this flaw.
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    env.doc.supportsCheckVisibility = false;   // simulate older engine
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;                // fixed-position overlay, visible
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 0, 'reload suppressed via getClientRects fallback');
+  });
+
+  it('fallback path still allows reload when a mounted modal is hidden', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    env.doc.supportsCheckVisibility = false;
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = false;               // display:none → getClientRects().length === 0
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 1, 'reload fires when fallback reports not-rendered');
   });
 
   // --- listener leak regression -----------------------------------------------
