@@ -20,7 +20,37 @@ const CHECKOUT_PRODUCT_PARAM = 'checkoutProduct';
 const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
 const CHECKOUT_DISCOUNT_PARAM = 'checkoutDiscount';
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
+const POST_CHECKOUT_FLAG_KEY = 'wm-post-checkout';
 const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
+
+/**
+ * Session flag set just before the post-overlay reload. Lets panel-layout
+ * detect "we just returned from an overlay checkout" on the reloaded page —
+ * the overlay uses manualRedirect:true so there are no subscription_id URL
+ * params to key off, unlike the full-page redirect return handled by
+ * handleCheckoutReturn. Exported as a pair (consume+mark) to keep the key
+ * centralized with the rest of the checkout storage constants.
+ */
+export function consumePostCheckoutFlag(): boolean {
+  try {
+    if (sessionStorage.getItem(POST_CHECKOUT_FLAG_KEY) === '1') {
+      sessionStorage.removeItem(POST_CHECKOUT_FLAG_KEY);
+      return true;
+    }
+  } catch {
+    // Private browsing / storage disabled — fall through to false.
+  }
+  return false;
+}
+
+function markPostCheckout(): void {
+  try {
+    sessionStorage.setItem(POST_CHECKOUT_FLAG_KEY, '1');
+  } catch {
+    // Storage denied — the reload will still run; transition detector will
+    // fall back to its null baseline, matching the pre-flag behavior.
+  }
+}
 
 interface PendingCheckoutIntent {
   productId: string;
@@ -53,9 +83,13 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
           if (event.data?.status === 'succeeded') {
             onSuccessCallback?.();
             // Belt-and-braces: reload after the webhook is likely to have
-            // landed (median <5s). This guarantees the post-payment state is
-            // fresh even if the Convex WS subscription was slow to deliver the
-            // pro snapshot or the free→pro transition detector missed it.
+            // landed (median <5s). Mark a session flag so the reloaded page
+            // can seed the entitlement transition detector as post-checkout
+            // — the overlay uses manualRedirect:true so the reload lands at
+            // the original URL without subscription_id params, and the
+            // detector would otherwise treat the first pro snapshot as the
+            // legacy-pro baseline and swallow it.
+            markPostCheckout();
             setTimeout(() => window.location.reload(), 3_000);
           }
           break;

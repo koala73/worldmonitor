@@ -105,7 +105,7 @@ import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/bill
 import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess } from '@/services/checkout';
+import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag } from '@/services/checkout';
 import { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
@@ -161,7 +161,15 @@ export class PanelLayoutManager implements AppModule {
     // Free users need the subscription active so they receive real-time
     // entitlement updates after purchasing (P1: newly upgraded users must
     // see their premium access without a manual page reload).
-    const returnedFromCheckout = handleCheckoutReturn();
+    //
+    // Two return paths need to seed the transition detector as post-checkout:
+    //   1. Full-page Dodo redirect — handleCheckoutReturn() reads
+    //      subscription_id/status URL params and cleans them.
+    //   2. Dodo overlay success — setTimeout(reload) with no URL params;
+    //      we stash a session flag before the reload and consume it here.
+    const returnedFromCheckoutUrl = handleCheckoutReturn();
+    const returnedFromOverlay = consumePostCheckoutFlag();
+    const returnedFromCheckout = returnedFromCheckoutUrl || returnedFromOverlay;
     if (returnedFromCheckout) {
       showCheckoutSuccess();
     }
