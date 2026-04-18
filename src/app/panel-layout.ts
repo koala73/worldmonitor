@@ -312,26 +312,22 @@ export class PanelLayoutManager implements AppModule {
 
       // Clerk-pro-only panels: even when hasPremiumAccess() returns
       // true via API/tester key, these panels need a Clerk userId
-      // bound to a PRO entitlement. Downgrade the gate reason so the
-      // user sees the correct CTA (sign-in or upgrade) instead of an
-      // unlocked panel that then fails to fetch.
+      // bound to a PRO entitlement. We DO NOT trust client-side
+      // entitlement state as an authoritative gate — the server-side
+      // /api/latest-brief check is authoritative. We only downgrade
+      // the gate reason here as AFFIRMATIVE DENIAL: when we KNOW
+      // (snapshot loaded AND tier < 1) the user is free. In every
+      // other case — snapshot not yet loaded, Convex subscription
+      // skipped, transient failure — we leave the panel unlocked
+      // and let the server 403 path drive the upgrade CTA inside
+      // the panel's refresh() catch block.
       //
-      // Source of truth for "is this user PRO" is the Convex
-      // entitlements table (hasTier(1) — same check hasPremiumAccess
-      // consults after PR #3167). `state.user.role` is derived from
-      // Clerk's publicMetadata.plan which is NOT kept in sync with
-      // the entitlement for many users — reading it here was the bug
-      // that locked Pro users out of Latest Brief despite every
-      // other premium panel rendering correctly.
-      //
-      // Defer-if-unknown: when the entitlement snapshot hasn't
-      // arrived yet (getEntitlementState() === null), skip the
-      // downgrade. The auth-state subscription can fire before the
-      // Convex snapshot, and without this guard a Pro user would
-      // see a brief "Upgrade to Pro" flash before onEntitlementChange
-      // re-ran this loop with the real snapshot. Leaving reason as
-      // NONE during the unknown window keeps the panel in whatever
-      // loading state it draws itself — no flash.
+      // Prior iterations of this code tried the opposite — gating
+      // positively on hasTier(1) — and locked legitimate Pro users
+      // out whenever the Convex snapshot was late, skipped, or
+      // failed. Affirmative-denial-only is the right shape: never
+      // over-gate, accept the one-doomed-fetch-per-session cost
+      // for API-key-only + free-Clerk users as the lesser harm.
       if (
         reason === PanelGateReason.NONE &&
         WEB_CLERK_PRO_ONLY_PANELS.has(key) &&

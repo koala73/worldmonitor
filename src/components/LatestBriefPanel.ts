@@ -180,30 +180,24 @@ export class LatestBriefPanel extends Panel {
       this.renderSignInRequired();
       return;
     }
-    // Mixed-auth edge case: desktop/tester keys open the panel even
-    // when the signed-in Clerk account is FREE. /api/latest-brief
-    // verifies entitlement from the JWT's userId and returns 403
-    // for free accounts. Render the upgrade CTA locally instead of
-    // bouncing through a doomed fetch.
+    // Client-side entitlement is NOT authoritative. /api/latest-brief
+    // does its own server-side entitlement check against the Clerk
+    // JWT — that IS the source of truth. We only use the client
+    // snapshot for AFFIRMATIVE DENIAL: skip the doomed fetch when
+    // we KNOW the user is free. If the snapshot is missing, stale,
+    // or the Convex subscription failed to establish, we fall
+    // through and let the server decide. The server's 403 response
+    // is translated to renderUpgradeRequired() in the catch block
+    // below (via BriefAccessError).
     //
-    // MUST use the Convex entitlement check (hasTier) — reading
-    // authState.user.role here reads Clerk publicMetadata.plan,
-    // which is not kept in sync with the paying entitlement (same
-    // bug the layout gate had in PR #3166). hasTier() consults the
-    // Convex snapshot — that IS the source of truth.
-    //
-    // Defer-if-unknown: when the snapshot hasn't arrived yet
-    // (getEntitlementState() === null), hasTier(1) returns false
-    // by default, which would render the upgrade CTA for a Pro
-    // user who's still waiting on the first snapshot. Fall through
-    // to renderLoading() instead — the entitlement listener in
-    // panel-layout.ts will re-run this refresh once the snapshot
-    // lands and either unlock or gate correctly.
-    if (getEntitlementState() === null) {
-      this.renderLoading();
-      return;
-    }
-    if (!hasTier(1)) {
+    // Consequence: an API-key-only user with a free Clerk account
+    // will fire one doomed fetch per refresh and see the upgrade
+    // CTA a beat later than they would with a client-side gate.
+    // Accepted — the alternative (trusting the client snapshot as
+    // a gate) locked legitimate Pro users out whenever the Convex
+    // entitlement subscription was skipped or failed, which is a
+    // worse failure mode.
+    if (getEntitlementState() !== null && !hasTier(1)) {
       this.renderUpgradeRequired();
       return;
     }
