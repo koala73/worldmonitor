@@ -1,0 +1,49 @@
+# =============================================================================
+# WorldMonitor Brief Composer (Phase 3a)
+# =============================================================================
+# Runs scripts/seed-brief-composer.mjs as a standalone Railway cron.
+# Reads news:insights:v1 from Upstash, queries Convex for enabled
+# alert rules, writes brief:{userId}:{issueDate} back to Upstash.
+#
+# Required env (set in Railway service vars):
+#   UPSTASH_REDIS_REST_URL
+#   UPSTASH_REDIS_REST_TOKEN
+#   CONVEX_URL            (or CONVEX_SITE_URL)
+#   RELAY_SHARED_SECRET
+# Optional:
+#   BRIEF_COMPOSER_ENABLED=0   (kill switch during incidents)
+#
+# Runtime characteristics: ~1 Upstash GET + N SETEX. N ≈ enabled PRO
+# users. No LLM calls (Phase 3b adds those); no outbound fan-out
+# (Phase 3c). CPU-cheap; memory bound by topStories payload size.
+# =============================================================================
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Install scripts/ runtime dependencies (undici for Intl, etc.). The
+# composer itself uses only built-ins + the repo's own modules, but
+# tsx is needed to execute .mjs with explicit type-stripping when
+# shared/ imports traverse into server/_shared/brief-render.js
+# (which does not use TS).
+COPY scripts/package.json scripts/package-lock.json ./scripts/
+RUN npm ci --prefix scripts --omit=dev
+
+# Composer script
+COPY scripts/seed-brief-composer.mjs ./scripts/seed-brief-composer.mjs
+
+# Shared contract + renderer validator (assembly step calls
+# assertBriefEnvelope to refuse to write a malformed envelope).
+COPY shared/brief-envelope.js ./shared/brief-envelope.js
+COPY shared/brief-envelope.d.ts ./shared/brief-envelope.d.ts
+COPY shared/brief-filter.js ./shared/brief-filter.js
+COPY shared/brief-filter.d.ts ./shared/brief-filter.d.ts
+COPY server/_shared/brief-render.js ./server/_shared/brief-render.js
+COPY server/_shared/brief-render.d.ts ./server/_shared/brief-render.d.ts
+
+# Upstash REST helper (reused from api/_upstash-json.js)
+COPY api/_upstash-json.js ./api/_upstash-json.js
+COPY api/_seed-envelope.js ./api/_seed-envelope.js
+
+CMD ["node", "scripts/seed-brief-composer.mjs"]
