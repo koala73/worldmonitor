@@ -23,7 +23,7 @@ import { Panel } from './Panel';
 import { getClerkToken, clearClerkTokenCache } from '@/services/clerk';
 import { PanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { hasTier } from '@/services/entitlements';
+import { hasTier, getEntitlementState } from '@/services/entitlements';
 import { h, rawHtml, replaceChildren, clearChildren } from '@/utils/dom-utils';
 
 interface LatestBriefReady {
@@ -191,6 +191,18 @@ export class LatestBriefPanel extends Panel {
     // which is not kept in sync with the paying entitlement (same
     // bug the layout gate had in PR #3166). hasTier() consults the
     // Convex snapshot — that IS the source of truth.
+    //
+    // Defer-if-unknown: when the snapshot hasn't arrived yet
+    // (getEntitlementState() === null), hasTier(1) returns false
+    // by default, which would render the upgrade CTA for a Pro
+    // user who's still waiting on the first snapshot. Fall through
+    // to renderLoading() instead — the entitlement listener in
+    // panel-layout.ts will re-run this refresh once the snapshot
+    // lands and either unlock or gate correctly.
+    if (getEntitlementState() === null) {
+      this.renderLoading();
+      return;
+    }
     if (!hasTier(1)) {
       this.renderUpgradeRequired();
       return;

@@ -100,7 +100,7 @@ import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
@@ -323,9 +323,19 @@ export class PanelLayoutManager implements AppModule {
       // the entitlement for many users — reading it here was the bug
       // that locked Pro users out of Latest Brief despite every
       // other premium panel rendering correctly.
+      //
+      // Defer-if-unknown: when the entitlement snapshot hasn't
+      // arrived yet (getEntitlementState() === null), skip the
+      // downgrade. The auth-state subscription can fire before the
+      // Convex snapshot, and without this guard a Pro user would
+      // see a brief "Upgrade to Pro" flash before onEntitlementChange
+      // re-ran this loop with the real snapshot. Leaving reason as
+      // NONE during the unknown window keeps the panel in whatever
+      // loading state it draws itself — no flash.
       if (
         reason === PanelGateReason.NONE &&
         WEB_CLERK_PRO_ONLY_PANELS.has(key) &&
+        getEntitlementState() !== null &&
         !hasTier(1)
       ) {
         reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
