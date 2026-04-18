@@ -21,7 +21,7 @@
 
 import { Panel } from './Panel';
 import { premiumFetch } from '@/services/premium-fetch';
-import { hasPremiumAccess } from '@/services/panel-gating';
+import { PanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
 import { h, rawHtml, replaceChildren, clearChildren } from '@/utils/dom-utils';
 
@@ -60,6 +60,15 @@ const WM_LOGO_SVG = (
 export class LatestBriefPanel extends Panel {
   private refreshing = false;
   private refreshQueued = false;
+  /**
+   * Local mirror of Panel base `_locked`. The base doesn't expose a
+   * getter, so we track transitions by overriding showGatedCta() +
+   * unlockPanel() below. The flag lets renderReady/renderComposing
+   * detect a downgrade-while-fetching race and abort the render
+   * even if abort() on the fetch signal was too late.
+   */
+  private gateLocked = false;
+  private inflightAbort: AbortController | null = null;
 
   constructor() {
     super({
@@ -93,30 +102,43 @@ export class LatestBriefPanel extends Panel {
    * single follow-up pass instead of being silently dropped — the
    * user-facing state always reflects the most recent intent
    * (e.g. retry after error, fresh fetch after a visibility change).
+   *
+   * Entitlement is checked THREE times to close the downgrade-
+   * mid-fetch leak: before starting, on AbortController signal, and
+   * again after the response resolves. All three are required — a
+   * user can sign out between any two of them.
    */
   public async refresh(): Promise<void> {
     if (this.refreshing) {
       this.refreshQueued = true;
       return;
     }
-    // Belt-and-suspenders against race conditions where the panel
-    // mounts before updatePanelGating() runs, or where a user
-    // downgrades mid-session. hasPremiumAccess is the single source
-    // of truth the PRO panel system uses; never fetch without it.
-    if (!hasPremiumAccess(getAuthState())) return;
+    // Check #1: gate before starting.
+    if (this.gateLocked || !hasPremiumAccess(getAuthState())) return;
     this.refreshing = true;
+    const controller = new AbortController();
+    this.inflightAbort = controller;
     try {
-      const data = await this.fetchLatest();
+      const data = await this.fetchLatest(controller.signal);
+      // Check #3 (post-response): auth may have flipped during the
+      // await. If the gate was flipped by updatePanelGating, it has
+      // already replaced `this.content` with the locked CTA — we
+      // must NOT overwrite that with brief content.
+      if (this.gateLocked || !hasPremiumAccess(getAuthState())) return;
       if (data.status === 'ready') {
         this.renderReady(data);
       } else {
         this.renderComposing(data);
       }
     } catch (err) {
+      // AbortError comes from showGatedCta's abort() → render nothing.
+      if ((err as { name?: string } | null)?.name === 'AbortError') return;
+      if (this.gateLocked || !hasPremiumAccess(getAuthState())) return;
       const message = err instanceof Error ? err.message : 'Brief unavailable — try again shortly.';
       this.showError(message, () => { void this.refresh(); });
     } finally {
       this.refreshing = false;
+      this.inflightAbort = null;
       if (this.refreshQueued) {
         this.refreshQueued = false;
         void this.refresh();
@@ -124,8 +146,37 @@ export class LatestBriefPanel extends Panel {
     }
   }
 
-  private async fetchLatest(): Promise<LatestBriefResponse> {
-    const res = await premiumFetch(LATEST_BRIEF_ENDPOINT);
+  /**
+   * Override to abort any in-flight fetch so the response can't
+   * overwrite the locked CTA after it's painted. Check #2 in the
+   * three-gate sequence above.
+   */
+  public override showGatedCta(reason: PanelGateReason, onAction: () => void): void {
+    this.gateLocked = true;
+    this.inflightAbort?.abort();
+    this.inflightAbort = null;
+    super.showGatedCta(reason, onAction);
+  }
+
+  /**
+   * Override to catch the unlock transition. `updatePanelGating`
+   * calls this when a user upgrades (free/anon → PRO). The base
+   * clears locked content but leaves us empty — without this
+   * override the panel stays blank until page reload. Trigger a
+   * fresh fetch on transition.
+   */
+  public override unlockPanel(): void {
+    const wasLocked = this.gateLocked;
+    this.gateLocked = false;
+    super.unlockPanel();
+    if (wasLocked) {
+      this.renderLoading();
+      void this.refresh();
+    }
+  }
+
+  private async fetchLatest(signal: AbortSignal): Promise<LatestBriefResponse> {
+    const res = await premiumFetch(LATEST_BRIEF_ENDPOINT, { signal });
     if (res.status === 401) {
       throw new Error('Sign in to view your brief.');
     }
