@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "محللك المدعوم بالذكاء الاصطناعي. مكتب استخبارات شخصي. منصة تُبنى فوقها. مفتاح واحد إلى 22 خدمة حية.",
     "proF1": "محادثة WM Analyst — استعلم عن 22 خدمة حوارياً",
-    "proF2": "موجز ذكاء اصطناعي من 30 عنصراً كل 30 دقيقة — Slack، Discord، Telegram، WhatsApp، بريد إلكتروني",
+    "proF2": "موجز ذكاء اصطناعي — يومياً، مرتين يومياً أو أسبوعياً — إلى Slack، Discord، Telegram، البريد الإلكتروني أو webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS مع تعديل بمساعدة الذكاء الاصطناعي",
     "proF4": "موصلات MCP — اربط WorldMonitor بـ Claude أو GPT أو نماذج LLM خاصة بك",
     "proF5": "Equity research، تحليل الأسهم وBacktesting",
@@ -67,16 +67,16 @@
     "askIt": "اسألها",
     "askItDesc": "محادثة WM Analyst. جميع الخدمات الـ 22 قابلة للاستعلام باللغة الطبيعية.",
     "subscribeIt": "اشترك",
-    "subscribeItDesc": "موجز ذكاء اصطناعي من 30 عنصراً كل 30 دقيقة. Slack، Discord، Telegram، WhatsApp، بريد إلكتروني.",
+    "subscribeItDesc": "موجز ذكاء اصطناعي بإيقاعك: يومياً، مرتين يومياً أو أسبوعياً. Slack، Discord، Telegram، بريد إلكتروني، webhook.",
     "buildOnIt": "ابنِ فوقها",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + ذكاء اصطناعي) وMCP لـ Claude وGPT ونماذج LLM خاصة بك."
   },
   "deliveryDesk": {
     "eyebrow": "مكتب التسليم",
     "title": "مكتب الاستخبارات الشخصي الخاص بك",
-    "body": "كل 30 دقيقة نعيد تسجيل نقاط كل قصة متتبَّعة مقابل قائمة مراقبتك، ونزيل المكررات عبر أكثر من 400 مصدر، ونرسل فقط ما تحرك. حتى 30 عنصراً مصنفاً — Critical، High، Medium — مع Assessment للذكاء الاصطناعي وSignals to watch، تُسلَّم إلى Slack وDiscord وTelegram وWhatsApp أو البريد الإلكتروني.",
+    "body": "حتى 30 عنصراً مصنفاً لكل إرسال، مع إزالة المكررات عبر أكثر من 400 مصدر، ومُقيَّماً وفق قائمة مراقبتك. اختر إيقاعك — يومياً، مرتين يومياً أو أسبوعياً — مع Assessment للذكاء الاصطناعي وSignals to watch تُسلَّم إلى Slack وDiscord وTelegram والبريد الإلكتروني أو webhook.",
     "closer": "ليست نشرة إخبارية. بل محلل.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · بريد إلكتروني · مشفر AES-256 · ساعات صمت"
+    "channels": "Slack · Discord · Telegram · بريد إلكتروني · Webhook · مشفر AES-256 · ساعات صمت"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — لوحة مباشرة",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "المراقبة المدارية",
     "orbitalSurveillanceDesc": "(قريباً) توقعات مرور الأقمار، تحليل تواتر الزيارة، وتنبيهات نافذة التصوير. اعرف متى تراقب أقمار الاستخبارات مناطق اهتمامك.",
     "morningBriefs": "مكتب الاستخبارات الشخصي",
-    "morningBriefsDesc": "حتى 30 قصة مصنفة كل 30 دقيقة، مع إزالة التكرار عبر أكثر من 400 مصدر، مع Assessment للذكاء الاصطناعي وSignals to watch تُسلَّم إلى Slack وDiscord وTelegram وWhatsApp أو البريد الإلكتروني. ليست نشرة إخبارية — بل محلل.",
+    "morningBriefsDesc": "حتى 30 قصة مصنفة لكل موجز، مع إزالة المكررات عبر أكثر من 400 مصدر. اختر إيقاعاً يومياً، مرتين يومياً أو أسبوعياً — أو تنبيهات في الوقت الفعلي للأحداث الحرجة. Assessment للذكاء الاصطناعي وSignals to watch تُسلَّم إلى Slack وDiscord وTelegram والبريد الإلكتروني أو webhook. ليست نشرة إخبارية — بل محلل.",
     "oneKey": "22 خدمة، مفتاح واحد",
     "oneKeyDesc": "Finnhub، FRED، ACLED، UCDP، NASA FIRMS، AISStream، OpenSky والمزيد — كلها نشطة، دون تسجيلات منفصلة.",
     "deliveryLabel": "اختر كيف تجدك الاستخبارات"
@@ -317,7 +317,7 @@
     "q10": "هل يمكنني ربط Claude أو GPT بـ WorldMonitor؟",
     "a10": "نعم. MCP مُضمَّن في Pro — اربط WorldMonitor بـ Claude أو GPT أو أي LLM متوافق مع MCP كأداة حية.",
     "q11": "ما مدى تخصيص الموجز؟",
-    "a11": "كل 30 دقيقة، نعيد تسجيل نقاط كل قصة متتبَّعة مقابل قواعد التنبيه وقائمة مراقبتك، ونزيل المكررات عبر أكثر من 400 مصدر، ونرسل حتى 30 عنصراً مصنفاً مع Assessment للذكاء الاصطناعي وSignals to watch مكتوبة لسياقك.",
+    "a11": "اختر إيقاعك: يومياً، مرتين يومياً أو أسبوعياً. نُعيد تسجيل نقاط كل قصة متتبَّعة مقابل قواعد التنبيه لديك وقائمة مراقبتك، ونُزيل المكررات عبر أكثر من 400 مصدر، ونُرسل حتى 30 عنصراً مصنفاً مع Assessment للذكاء الاصطناعي وSignals to watch مكتوبة لسياقك. التنبيهات في الوقت الفعلي متوفرة أيضاً للأحداث الحرجة.",
     "q12": "ما هو معدل التحديث؟",
     "a12": "شبه فوري لـ Pro. 5–15 دقيقة على Free.",
     "q13": "إلى أين تذهب بياناتي؟",

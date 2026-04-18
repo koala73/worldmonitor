@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Analistul tău IA. Un birou personal de intelligence. O platformă pe care să construiești. O cheie pentru 22 de servicii live.",
     "proF1": "Chat WM Analyst — interoghează cele 22 de servicii conversațional",
-    "proF2": "Digest IA cu 30 de elemente la 30 min — Slack, Discord, Telegram, WhatsApp, Email",
+    "proF2": "Digest IA — zilnic, de două ori pe zi sau săptămânal — pe Slack, Discord, Telegram, Email sau webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS cu modificare asistată de IA",
     "proF4": "Conectori MCP — conectează WorldMonitor la Claude, GPT sau LLM-uri proprii",
     "proF5": "Equity research, analiză de acțiuni și backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Întreabă-l",
     "askItDesc": "Chat WM Analyst. Toate cele 22 de servicii interogabile în limbaj natural.",
     "subscribeIt": "Abonează-te",
-    "subscribeItDesc": "Digest IA cu 30 de elemente la 30 min. Slack, Discord, Telegram, WhatsApp, Email.",
+    "subscribeItDesc": "Digest IA în ritmul tău: zilnic, de două ori pe zi sau săptămânal. Slack, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Construiește deasupra",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + IA) și MCP pentru Claude, GPT, LLM-uri proprii."
   },
   "deliveryDesk": {
     "eyebrow": "BIROU DE LIVRARE",
     "title": "Biroul tău personal de intelligence",
-    "body": "La fiecare 30 de minute re-evaluăm fiecare poveste urmărită față de watchlist-ul tău, deduplicăm peste 400 de surse și trimitem doar ce s-a mișcat. Până la 30 de elemente clasificate — Critical, High, Medium — cu un Assessment IA și Signals to watch, livrate pe Slack, Discord, Telegram, WhatsApp sau Email.",
+    "body": "Până la 30 de elemente clasificate pe livrare, deduplicate peste 400+ surse, evaluate față de watchlist-ul tău. Alege-ți ritmul — zilnic, de două ori pe zi sau săptămânal — cu un Assessment IA și Signals to watch livrate pe Slack, Discord, Telegram, Email sau webhook.",
     "closer": "Nu un newsletter. Un analist.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · Email · Criptare AES-256 · Ore silențioase"
+    "channels": "Slack · Discord · Telegram · Email · Webhook · Criptare AES-256 · Ore silențioase"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Panou live",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Supraveghere orbitală",
     "orbitalSurveillanceDesc": "(În curând) Predicții de treceri orbitale, analiză a frecvenței de revizitare și alerte de fereastră de captare. Află când sateliții de intelligence observă zonele tale de interes.",
     "morningBriefs": "Birou personal de intelligence",
-    "morningBriefsDesc": "Până la 30 de povești clasificate la fiecare 30 de minute, deduplicate peste 400+ surse, cu un Assessment IA și Signals to watch livrate pe Slack, Discord, Telegram, WhatsApp sau Email. Nu un newsletter — un analist.",
+    "morningBriefsDesc": "Până la 30 de povești clasificate pe digest, deduplicate peste 400+ surse. Alege zilnic, de două ori pe zi sau săptămânal — sau alerte în timp real pentru evenimente critice. Assessment IA și Signals to watch livrate pe Slack, Discord, Telegram, Email sau webhook. Nu un newsletter — un analist.",
     "oneKey": "22 servicii, 1 cheie",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky și mai mult — toate active, fără înregistrări separate.",
     "deliveryLabel": "Alege cum te găsește intelligence-ul"
@@ -317,7 +317,7 @@
     "q10": "Pot conecta Claude sau GPT la WorldMonitor?",
     "a10": "Da. MCP este inclus în Pro — conectează WorldMonitor la Claude, GPT sau orice LLM compatibil MCP ca instrument live.",
     "q11": "Cât de personalizat este digest-ul?",
-    "a11": "La fiecare 30 de minute, re-evaluăm fiecare poveste urmărită față de regulile tale de alertă și watchlist, deduplicăm peste 400+ surse și trimitem până la 30 de elemente clasificate cu un Assessment IA și Signals to watch scrise pentru contextul tău.",
+    "a11": "Alege-ți ritmul: zilnic, de două ori pe zi sau săptămânal. Re-evaluăm fiecare poveste urmărită față de regulile tale de alertă și watchlist, deduplicăm peste 400+ surse și trimitem până la 30 de elemente clasificate cu un Assessment IA și Signals to watch scrise pentru contextul tău. Alerte în timp real disponibile și pentru evenimente critice.",
     "q12": "Care este rata de refresh?",
     "a12": "Aproape în timp real pentru Pro. 5–15 minute pe Free.",
     "q13": "Unde ajung datele mele?",

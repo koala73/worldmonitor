@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "您的 AI 分析师。个人情报工作台。一个可以在其之上构建的平台。一把密钥通向 22 个实时服务。",
     "proF1": "WM Analyst 对话 — 以对话方式查询 22 个服务",
-    "proF2": "每 30 分钟 30 条 AI 摘要 — Slack、Discord、Telegram、WhatsApp、邮件",
+    "proF2": "AI 摘要 — 每日、每日两次或每周 — 至 Slack、Discord、Telegram、邮件或 webhook",
     "proF3": "自定义小组件构建器 — HTML/CSS/JS,AI 辅助修改",
     "proF4": "MCP 连接器 — 将 WorldMonitor 接入 Claude、GPT 或自定义 LLM",
     "proF5": "股票研究、股票分析与回测",
@@ -67,16 +67,16 @@
     "askIt": "问它",
     "askItDesc": "WM Analyst 对话。22 个服务皆可用自然语言查询。",
     "subscribeIt": "订阅它",
-    "subscribeItDesc": "每 30 分钟 30 条 AI 摘要。Slack、Discord、Telegram、WhatsApp、邮件。",
+    "subscribeItDesc": "AI 摘要按您的频率: 每日、每日两次或每周。Slack、Discord、Telegram、邮件、webhook。",
     "buildOnIt": "在其上构建",
     "buildOnItDesc": "自定义小组件构建器(HTML/CSS/JS + AI)与 MCP,适用于 Claude、GPT 与自定义 LLM。"
   },
   "deliveryDesk": {
     "eyebrow": "交付工作台",
     "title": "您的个人情报工作台",
-    "body": "我们每 30 分钟根据您的观察列表为每个被追踪的事件重新打分,在 400+ 来源间去重,仅发送有变化的部分。多达 30 条按级别排序的条目 — Critical、High、Medium — 附带 AI Assessment 与 Signals to watch,推送至 Slack、Discord、Telegram、WhatsApp 或邮件。",
+    "body": "每次发送最多 30 条按级别排序的条目,在 400+ 来源间去重,基于您的观察列表评分。选择频率 — 每日、每日两次或每周 — 附带 AI Assessment 与 Signals to watch,推送至 Slack、Discord、Telegram、邮件或 webhook。",
     "closer": "不是邮件通讯。是分析师。",
-    "channels": "Slack · Discord · Telegram · WhatsApp · 邮件 · AES-256 加密 · 静音时段"
+    "channels": "Slack · Discord · Telegram · 邮件 · Webhook · AES-256 加密 · 静音时段"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — 实时仪表板",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "轨道监视",
     "orbitalSurveillanceDesc": "(即将推出)过顶预测、重访频率分析与成像窗口告警。得知情报卫星何时正在观察您关注的区域。",
     "morningBriefs": "个人情报工作台",
-    "morningBriefsDesc": "每 30 分钟最多 30 条按级别排序的事件,在 400+ 来源间去重,附带 AI Assessment 与 Signals to watch,推送至 Slack、Discord、Telegram、WhatsApp 或邮件。不是邮件通讯 — 是分析师。",
+    "morningBriefsDesc": "每个摘要最多 30 条按级别排序的事件,在 400+ 来源间去重。选择每日、每日两次或每周频率 — 或对关键事件启用实时告警。AI Assessment 与 Signals to watch 推送至 Slack、Discord、Telegram、邮件或 webhook。不是邮件通讯 — 是分析师。",
     "oneKey": "22 个服务,一把密钥",
     "oneKeyDesc": "Finnhub、FRED、ACLED、UCDP、NASA FIRMS、AISStream、OpenSky 等 — 全部开启,无需单独注册。",
     "deliveryLabel": "选择情报如何找到您"
@@ -317,7 +317,7 @@
     "q10": "我可以把 Claude 或 GPT 接入 WorldMonitor 吗?",
     "a10": "可以。MCP 已包含在 Pro 中 — 将 WorldMonitor 作为实时工具接入 Claude、GPT 或任何兼容 MCP 的 LLM。",
     "q11": "摘要的个性化程度如何?",
-    "a11": "我们每 30 分钟根据您的告警规则和观察列表为每个被追踪的事件重新打分,在 400+ 来源间去重,并发送最多 30 条按级别排序的条目,附带为您上下文撰写的 AI Assessment 与 Signals to watch。",
+    "a11": "选择您的频率: 每日、每日两次或每周。我们根据您的告警规则与观察列表为每个被追踪事件重新打分,在 400+ 来源间去重,并发送最多 30 条按级别排序的条目,附带为您上下文撰写的 AI Assessment 与 Signals to watch。关键事件还可启用实时告警。",
     "q12": "刷新率是多少?",
     "a12": "Pro 近实时。Free 为 5–15 分钟。",
     "q13": "我的数据会去向哪里?",

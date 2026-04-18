@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "あなたの AI アナリスト。パーソナル・インテリジェンス・デスク。その上に構築できるプラットフォーム。22 のライブサービスに 1 本の鍵。",
     "proF1": "WM Analyst チャット — 22 のサービスを会話形式で照会",
-    "proF2": "30 分ごとに 30 件の AI ダイジェスト — Slack、Discord、Telegram、WhatsApp、メール",
+    "proF2": "AI ダイジェスト — 日次、1日2回、または週次 — Slack、Discord、Telegram、メール、Webhook へ",
     "proF3": "カスタムウィジェットビルダー — HTML/CSS/JS を AI 支援で編集",
     "proF4": "MCP コネクタ — WorldMonitor を Claude、GPT、独自 LLM に接続",
     "proF5": "エクイティリサーチ、株式分析、バックテスト",
@@ -67,16 +67,16 @@
     "askIt": "尋ねる",
     "askItDesc": "WM Analyst チャット。22 のサービスすべてを自然言語で照会。",
     "subscribeIt": "購読する",
-    "subscribeItDesc": "30 分ごとに 30 件の AI ダイジェスト。Slack、Discord、Telegram、WhatsApp、メール。",
+    "subscribeItDesc": "AI ダイジェストをご希望のリズムで: 日次、1日2回、または週次。Slack、Discord、Telegram、メール、Webhook。",
     "buildOnIt": "その上に構築",
     "buildOnItDesc": "カスタムウィジェットビルダー(HTML/CSS/JS + AI)と、Claude・GPT・独自 LLM 向け MCP。"
   },
   "deliveryDesk": {
     "eyebrow": "デリバリーデスク",
     "title": "あなたのパーソナル・インテリジェンス・デスク",
-    "body": "30 分ごとに追跡中のすべてのストーリーをあなたのウォッチリストに照らして再スコアリングし、400 以上のソースで重複を除き、動きのあったものだけを送ります。最大 30 件のランク付け — Critical、High、Medium — に AI Assessment と Signals to watch を添え、Slack、Discord、Telegram、WhatsApp、メールに配信。",
+    "body": "1 配信あたり最大 30 件のランク付き項目、400 以上のソースで重複排除、ウォッチリストに照らしてスコアリング。リズムをお選びください — 日次、1日2回、または週次 — AI Assessment と Signals to watch を Slack、Discord、Telegram、メール、Webhook に配信。",
     "closer": "ニュースレターではない。アナリストだ。",
-    "channels": "Slack · Discord · Telegram · WhatsApp · メール · AES-256 暗号化 · サイレント時間"
+    "channels": "Slack · Discord · Telegram · メール · Webhook · AES-256 暗号化 · サイレント時間"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — ライブダッシュボード",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "軌道監視",
     "orbitalSurveillanceDesc": "(近日公開)衛星通過予測、再訪頻度分析、撮影ウィンドウアラート。情報衛星があなたの関心領域を見ているタイミングを把握。",
     "morningBriefs": "パーソナル・インテリジェンス・デスク",
-    "morningBriefsDesc": "30 分ごとに最大 30 件のランク付きストーリーを 400 以上のソースで重複排除し、AI Assessment と Signals to watch とともに Slack、Discord、Telegram、WhatsApp、メールへ配信。ニュースレターではなく、アナリスト。",
+    "morningBriefsDesc": "ダイジェストごとに最大 30 件のランク付きストーリー、400 以上のソースで重複排除。日次、1日2回、または週次のリズム — または重要イベントのリアルタイム通知を選択。AI Assessment と Signals to watch を Slack、Discord、Telegram、メール、Webhook に配信。ニュースレターではなく、アナリスト。",
     "oneKey": "22 のサービス、1 本の鍵",
     "oneKeyDesc": "Finnhub、FRED、ACLED、UCDP、NASA FIRMS、AISStream、OpenSky など — すべて有効、個別登録不要。",
     "deliveryLabel": "インテリジェンスがあなたを見つける方法を選ぶ"
@@ -317,7 +317,7 @@
     "q10": "Claude または GPT を WorldMonitor に接続できますか?",
     "a10": "はい。MCP は Pro に含まれます — WorldMonitor をライブツールとして Claude、GPT、または MCP 互換の任意の LLM に接続します。",
     "q11": "ダイジェストはどれほどパーソナライズされていますか?",
-    "a11": "30 分ごとに、追跡中の各ストーリーをあなたのアラートルールとウォッチリストに照らして再スコアリングし、400 以上のソースで重複排除を行い、あなたのコンテキストに合わせて書かれた AI Assessment と Signals to watch を添えて最大 30 件のランク付きアイテムを送信します。",
+    "a11": "リズムをお選びください: 日次、1日2回、または週次。追跡中の各ストーリーをアラートルールとウォッチリストに照らして再スコアリングし、400 以上のソースで重複排除し、お客様のコンテキストに合わせて書かれた AI Assessment と Signals to watch を添えて最大 30 件のランク付きアイテムを送信します。重要イベントにはリアルタイム通知もご利用いただけます。",
     "q12": "更新頻度は?",
     "a12": "Pro はほぼリアルタイム。Free は 5–15 分。",
     "q13": "データはどこへ行きますか?",

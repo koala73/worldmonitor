@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Váš AI analytik. Osobní zpravodajské pracoviště. Platforma, na které můžete stavět. Jeden klíč k 22 živým službám.",
     "proF1": "Chat WM Analyst — dotazujte se všech 22 služeb konverzačně",
-    "proF2": "30položkový AI digest každých 30 min — Slack, Discord, Telegram, WhatsApp, E-mail",
+    "proF2": "AI digest — denně, dvakrát denně nebo týdně — na Slack, Discord, Telegram, E-mail nebo webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS s úpravami pomocí AI",
     "proF4": "MCP konektory — připojte WorldMonitor ke Claude, GPT nebo vlastním LLM",
     "proF5": "Equity research, analýza akcií a backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Zeptejte se",
     "askItDesc": "Chat WM Analyst. Všech 22 služeb dotazovatelných přirozeným jazykem.",
     "subscribeIt": "Odebírejte",
-    "subscribeItDesc": "30položkový AI digest každých 30 min. Slack, Discord, Telegram, WhatsApp, E-mail.",
+    "subscribeItDesc": "AI digest ve vašem tempu: denně, dvakrát denně nebo týdně. Slack, Discord, Telegram, E-mail, webhook.",
     "buildOnIt": "Stavte na tom",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) a MCP pro Claude, GPT, vlastní LLM."
   },
   "deliveryDesk": {
     "eyebrow": "DORUČOVACÍ PULT",
     "title": "Vaše osobní zpravodajské pracoviště",
-    "body": "Každých 30 minut přehodnocujeme každý sledovaný příběh vůči vašemu watchlistu, deduplikujeme napříč 400+ zdroji a posíláme pouze to, co se pohnulo. Až 30 seřazených položek — Critical, High, Medium — s AI Assessment a Signals to watch, doručených na Slack, Discord, Telegram, WhatsApp nebo E-mail.",
+    "body": "Až 30 seřazených položek na zaslání, deduplikovaných napříč 400+ zdroji, ohodnocených vůči vašemu watchlistu. Vyberte si tempo — denně, dvakrát denně nebo týdně — s AI Assessment a Signals to watch doručovanými na Slack, Discord, Telegram, E-mail nebo webhook.",
     "closer": "Žádný newsletter. Analytik.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · E-mail · AES-256 šifrované · Tiché hodiny"
+    "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 šifrované · Tiché hodiny"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Živý dashboard",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Orbitální dohled",
     "orbitalSurveillanceDesc": "(Brzy) Předpovědi přeletů satelitů, analýza frekvence návratů a alerty oken pořizování snímků. Vězte, kdy zpravodajské satelity pozorují vaše oblasti zájmu.",
     "morningBriefs": "Osobní zpravodajské pracoviště",
-    "morningBriefsDesc": "Až 30 seřazených příběhů každých 30 minut, deduplikovaných napříč 400+ zdroji, s AI Assessment a Signals to watch doručovanými na Slack, Discord, Telegram, WhatsApp nebo E-mail. Žádný newsletter — analytik.",
+    "morningBriefsDesc": "Až 30 seřazených příběhů na digest, deduplikovaných napříč 400+ zdroji. Vyberte denně, dvakrát denně nebo týdně — nebo upozornění v reálném čase u kritických událostí. AI Assessment a Signals to watch doručované na Slack, Discord, Telegram, E-mail nebo webhook. Žádný newsletter — analytik.",
     "oneKey": "22 služeb, 1 klíč",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky a další — všechny aktivní, bez samostatných registrací.",
     "deliveryLabel": "Zvolte, jak vás zpravodajství najde"
@@ -317,7 +317,7 @@
     "q10": "Mohu připojit Claude nebo GPT k WorldMonitor?",
     "a10": "Ano. MCP je v ceně Pro — připojte WorldMonitor ke Claude, GPT nebo jakémukoliv LLM kompatibilnímu s MCP jako živý nástroj.",
     "q11": "Jak personalizovaný je digest?",
-    "a11": "Každých 30 minut přehodnocujeme každý sledovaný příběh vůči vašim pravidlům alertů a watchlistu, deduplikujeme napříč 400+ zdroji a posíláme až 30 seřazených položek s AI Assessment a Signals to watch psanými pro váš kontext.",
+    "a11": "Vyberte si tempo: denně, dvakrát denně nebo týdně. Přehodnocujeme každý sledovaný příběh vůči vašim pravidlům alertů a watchlistu, deduplikujeme napříč 400+ zdroji a posíláme až 30 seřazených položek s AI Assessment a Signals to watch psanými pro váš kontext. Upozornění v reálném čase jsou k dispozici i pro kritické události.",
     "q12": "Jaká je frekvence obnovování?",
     "a12": "Téměř v reálném čase pro Pro. 5–15 minut na Free.",
     "q13": "Kam jdou má data?",

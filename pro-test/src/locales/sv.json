@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Din AI-analytiker. Ett personligt intelligence-skrivbord. En plattform att bygga på. En nyckel till 22 live-tjänster.",
     "proF1": "WM Analyst-chatt — fråga alla 22 tjänster konversationellt",
-    "proF2": "30-posters AI-digest var 30:e min — Slack, Discord, Telegram, WhatsApp, E-post",
+    "proF2": "AI-digest — dagligen, två gånger om dagen eller veckovis — till Slack, Discord, Telegram, E-post eller webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS med AI-assisterad modifiering",
     "proF4": "MCP-konnektorer — koppla WorldMonitor till Claude, GPT, egna LLM:er",
     "proF5": "Aktieanalys, equity research och backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Fråga det",
     "askItDesc": "WM Analyst-chatt. Alla 22 tjänster frågbara på naturligt språk.",
     "subscribeIt": "Prenumerera",
-    "subscribeItDesc": "30-posters AI-digest var 30:e min. Slack, Discord, Telegram, WhatsApp, E-post.",
+    "subscribeItDesc": "AI-digest i din takt: dagligen, två gånger om dagen eller veckovis. Slack, Discord, Telegram, E-post, webhook.",
     "buildOnIt": "Bygg på det",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) och MCP för Claude, GPT, egna LLM:er."
   },
   "deliveryDesk": {
     "eyebrow": "LEVERANSSKRIVBORD",
     "title": "Ditt personliga intelligence-skrivbord",
-    "body": "Var 30:e minut omvärderar vi varje spårad story mot din watchlist, deduplicerar över 400+ källor och skickar bara det som rört sig. Upp till 30 rankade poster — Critical, High, Medium — med en AI-Assessment och Signals to watch, levererade till Slack, Discord, Telegram, WhatsApp eller E-post.",
+    "body": "Upp till 30 rankade poster per sändning, deduplicerade över 400+ källor, poängsatta mot din watchlist. Välj takt — dagligen, två gånger om dagen eller veckovis — med AI-Assessment och Signals to watch levererade till Slack, Discord, Telegram, E-post eller webhook.",
     "closer": "Inte ett nyhetsbrev. En analytiker.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · E-post · AES-256-krypterat · Tysta timmar"
+    "channels": "Slack · Discord · Telegram · E-post · Webhook · AES-256-krypterat · Tysta timmar"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live-dashboard",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Orbital övervakning",
     "orbitalSurveillanceDesc": "(Snart) Prognoser för satellitpassager, revisit-frekvensanalys och fönstervarning för bildtagning. Vet när underrättelsesatelliter observerar dina intresseområden.",
     "morningBriefs": "Personligt intelligence-skrivbord",
-    "morningBriefsDesc": "Upp till 30 rankade stories var 30:e minut, deduplicerade över 400+ källor, med en AI-Assessment och Signals to watch levererade till Slack, Discord, Telegram, WhatsApp eller E-post. Inte ett nyhetsbrev — en analytiker.",
+    "morningBriefsDesc": "Upp till 30 rankade stories per digest, deduplicerade över 400+ källor. Välj dagligen, två gånger om dagen eller veckovis — eller realtidslarm vid kritiska händelser. AI-Assessment och Signals to watch levererade till Slack, Discord, Telegram, E-post eller webhook. Inte ett nyhetsbrev — en analytiker.",
     "oneKey": "22 tjänster, 1 nyckel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky och fler — alla aktiva, inga separata registreringar.",
     "deliveryLabel": "Välj hur intelligence hittar dig"
@@ -317,7 +317,7 @@
     "q10": "Kan jag koppla Claude eller GPT till WorldMonitor?",
     "a10": "Ja. MCP ingår i Pro — koppla WorldMonitor till Claude, GPT eller vilken MCP-kompatibel LLM som helst som live-verktyg.",
     "q11": "Hur personlig är digesten?",
-    "a11": "Var 30:e minut omvärderar vi varje spårad story mot dina larm-regler och watchlist, deduplicerar över 400+ källor och skickar upp till 30 rankade poster med en AI-Assessment och Signals to watch skrivna för din kontext.",
+    "a11": "Välj takt: dagligen, två gånger om dagen eller veckovis. Vi omvärderar varje spårad story mot dina larm-regler och watchlist, deduplicerar över 400+ källor och skickar upp till 30 rankade poster med AI-Assessment och Signals to watch skrivna för din kontext. Realtidslarm finns också för kritiska händelser.",
     "q12": "Vad är uppdateringsfrekvensen?",
     "a12": "Nästan realtid för Pro. 5–15 minuter på Free.",
     "q13": "Vart tar min data vägen?",

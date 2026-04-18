@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Ihr KI-Analyst. Ein persönlicher Intelligence-Desk. Eine Plattform, auf der Sie aufbauen können. Ein Schlüssel für 22 Live-Dienste.",
     "proF1": "WM Analyst Chat — alle 22 Dienste im Dialog abfragen",
-    "proF2": "30-Item KI-Digest alle 30 Min — Slack, Discord, Telegram, WhatsApp, E-Mail",
+    "proF2": "KI-Digest — täglich, zweimal täglich oder wöchentlich — an Slack, Discord, Telegram, E-Mail oder Webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS mit KI-unterstützter Anpassung",
     "proF4": "MCP-Konnektoren — verbinden Sie WorldMonitor mit Claude, GPT, eigenen LLMs",
     "proF5": "Aktienanalyse, Equity Research und Backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Fragen Sie sie",
     "askItDesc": "WM Analyst Chat. Alle 22 Dienste in natürlicher Sprache abfragbar.",
     "subscribeIt": "Abonnieren Sie sie",
-    "subscribeItDesc": "30-Item KI-Digest alle 30 Min. Slack, Discord, Telegram, WhatsApp, E-Mail.",
+    "subscribeItDesc": "KI-Digest in Ihrem Takt: täglich, zweimal täglich oder wöchentlich. Slack, Discord, Telegram, E-Mail, Webhook.",
     "buildOnIt": "Bauen Sie darauf auf",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + KI) und MCP für Claude, GPT, eigene LLMs."
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "Ihr persönlicher Intelligence-Desk",
-    "body": "Alle 30 Minuten bewerten wir jede verfolgte Story gegen Ihre Watchlist neu, dedupen über 400+ Quellen und senden nur, was sich bewegt hat. Bis zu 30 gerankte Items — Critical, High, Medium — mit KI-Assessment und Signals to watch, geliefert an Slack, Discord, Telegram, WhatsApp oder E-Mail.",
+    "body": "Bis zu 30 gerankte Items pro Sendung, dedupliziert über 400+ Quellen, gegen Ihre Watchlist gescort. Wählen Sie Ihren Takt — täglich, zweimal täglich oder wöchentlich — mit KI-Assessment und Signals to watch, geliefert an Slack, Discord, Telegram, E-Mail oder Webhook.",
     "closer": "Kein Newsletter. Ein Analyst.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · E-Mail · AES-256 verschlüsselt · Ruhezeiten"
+    "channels": "Slack · Discord · Telegram · E-Mail · Webhook · AES-256 verschlüsselt · Ruhezeiten"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live-Dashboard",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Orbitale Überwachung",
     "orbitalSurveillanceDesc": "(Bald) Vorhersagen von Überflugzeiten, Revisit-Frequenzanalyse und Aufnahmefenster-Alerts. Wissen Sie, wann Aufklärungssatelliten Ihre Interessenbereiche beobachten.",
     "morningBriefs": "Persönlicher Intelligence-Desk",
-    "morningBriefsDesc": "Bis zu 30 gerankte Stories alle 30 Minuten, dedupliziert über 400+ Quellen, mit einem KI-Assessment und Signals to watch, geliefert an Slack, Discord, Telegram, WhatsApp oder E-Mail. Kein Newsletter — ein Analyst.",
+    "morningBriefsDesc": "Bis zu 30 gerankte Stories pro Digest, dedupliziert über 400+ Quellen. Wählen Sie täglich, zweimal täglich oder wöchentlich — oder Echtzeit-Alerts bei kritischen Ereignissen. KI-Assessment und Signals to watch, geliefert an Slack, Discord, Telegram, E-Mail oder Webhook. Kein Newsletter — ein Analyst.",
     "oneKey": "22 Dienste, 1 Schlüssel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky und mehr — alle aktiv, keine separaten Registrierungen.",
     "deliveryLabel": "Wählen Sie, wie Intelligence Sie findet"
@@ -317,7 +317,7 @@
     "q10": "Kann ich Claude oder GPT an WorldMonitor anbinden?",
     "a10": "Ja. MCP ist in Pro enthalten — verbinden Sie WorldMonitor mit Claude, GPT oder jedem MCP-kompatiblen LLM als Live-Tool.",
     "q11": "Wie personalisiert ist der Digest?",
-    "a11": "Alle 30 Minuten bewerten wir jede verfolgte Story gegen Ihre Alert-Regeln und Watchlist neu, dedupen über 400+ Quellen und senden bis zu 30 gerankte Items mit KI-Assessment und Signals to watch, geschrieben für Ihren Kontext.",
+    "a11": "Wählen Sie Ihren Takt: täglich, zweimal täglich oder wöchentlich. Wir bewerten jede verfolgte Story gegen Ihre Alert-Regeln und Watchlist neu, deduplizieren über 400+ Quellen und senden bis zu 30 gerankte Items mit KI-Assessment und Signals to watch, geschrieben für Ihren Kontext. Echtzeit-Alerts sind ebenfalls für kritische Ereignisse verfügbar.",
     "q12": "Wie hoch ist die Refresh-Rate?",
     "a12": "Nahezu Echtzeit für Pro. 5–15 Minuten bei Free.",
     "q13": "Wohin gehen meine Daten?",

@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "당신의 AI 애널리스트. 개인 인텔리전스 데스크. 그 위에 쌓을 수 있는 플랫폼. 22개 실시간 서비스를 하나의 키로.",
     "proF1": "WM Analyst 채팅 — 22개 서비스 대화형 질의",
-    "proF2": "30분마다 30개 항목 AI 다이제스트 — Slack, Discord, Telegram, WhatsApp, 이메일",
+    "proF2": "AI 다이제스트 — 매일, 하루 두 번 또는 매주 — Slack, Discord, Telegram, 이메일 또는 웹훅으로",
     "proF3": "커스텀 위젯 빌더 — HTML/CSS/JS에 AI 보조 수정",
     "proF4": "MCP 커넥터 — WorldMonitor를 Claude, GPT, 자체 LLM에 연결",
     "proF5": "Equity research, 주식 분석과 백테스팅",
@@ -67,16 +67,16 @@
     "askIt": "질문",
     "askItDesc": "WM Analyst 채팅. 22개 서비스 모두 자연어로 질의.",
     "subscribeIt": "구독",
-    "subscribeItDesc": "30분마다 30개 항목 AI 다이제스트. Slack, Discord, Telegram, WhatsApp, 이메일.",
+    "subscribeItDesc": "AI 다이제스트를 원하는 주기로: 매일, 하루 두 번 또는 매주. Slack, Discord, Telegram, 이메일, 웹훅.",
     "buildOnIt": "그 위에 쌓기",
     "buildOnItDesc": "커스텀 위젯 빌더 (HTML/CSS/JS + AI)와 Claude, GPT, 자체 LLM용 MCP."
   },
   "deliveryDesk": {
     "eyebrow": "딜리버리 데스크",
     "title": "당신의 개인 인텔리전스 데스크",
-    "body": "30분마다 추적 중인 모든 스토리를 관심 목록에 대해 재점수화하고, 400개 이상의 소스에서 중복을 제거한 뒤 움직인 것만 전송합니다. 최대 30개 정렬 항목 — Critical, High, Medium — AI Assessment와 Signals to watch를 담아 Slack, Discord, Telegram, WhatsApp, 이메일로 전달.",
+    "body": "발송당 최대 30개 정렬 항목, 400개 이상의 소스에서 중복 제거, 관심 목록에 대해 점수화. 주기를 선택하세요 — 매일, 하루 두 번 또는 매주 — AI Assessment와 Signals to watch를 Slack, Discord, Telegram, 이메일 또는 웹훅으로 전달.",
     "closer": "뉴스레터가 아닙니다. 애널리스트입니다.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · 이메일 · AES-256 암호화 · 무음 시간"
+    "channels": "Slack · Discord · Telegram · 이메일 · 웹훅 · AES-256 암호화 · 무음 시간"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — 라이브 대시보드",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "궤도 감시",
     "orbitalSurveillanceDesc": "(출시 예정) 궤도 통과 예측, 재방문 주기 분석, 촬영 창 알림. 정보 위성이 당신의 관심 구역을 관찰하는 시점을 파악하세요.",
     "morningBriefs": "개인 인텔리전스 데스크",
-    "morningBriefsDesc": "30분마다 최대 30개 정렬 스토리, 400개 이상의 소스에서 중복 제거, AI Assessment와 Signals to watch를 Slack, Discord, Telegram, WhatsApp, 이메일로 전달. 뉴스레터가 아닌 — 애널리스트.",
+    "morningBriefsDesc": "다이제스트당 최대 30개 정렬 스토리, 400개 이상의 소스에서 중복 제거. 매일, 하루 두 번 또는 매주 주기 선택 — 또는 중요 이벤트에 대한 실시간 알림. AI Assessment와 Signals to watch를 Slack, Discord, Telegram, 이메일 또는 웹훅으로 전달. 뉴스레터가 아닌 — 애널리스트.",
     "oneKey": "22개 서비스, 1개 키",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky 등 — 모두 활성, 별도 등록 불필요.",
     "deliveryLabel": "인텔리전스가 당신을 찾는 방법 선택"
@@ -317,7 +317,7 @@
     "q10": "Claude나 GPT를 WorldMonitor에 연결할 수 있나요?",
     "a10": "네. MCP는 Pro에 포함되어 있습니다 — WorldMonitor를 Claude, GPT, 또는 MCP 호환 LLM에 라이브 도구로 연결하세요.",
     "q11": "다이제스트는 얼마나 개인화되나요?",
-    "a11": "30분마다 추적 중인 모든 스토리를 알림 규칙과 관심 목록에 대해 재점수화하고, 400개 이상의 소스에서 중복 제거한 뒤, 당신의 맥락을 위해 작성된 AI Assessment와 Signals to watch와 함께 최대 30개의 정렬 항목을 전송합니다.",
+    "a11": "주기를 선택하세요: 매일, 하루 두 번 또는 매주. 추적 중인 모든 스토리를 알림 규칙과 관심 목록에 대해 재점수화하고, 400개 이상의 소스에서 중복 제거한 뒤, 당신의 맥락에 맞춰 작성된 AI Assessment와 Signals to watch와 함께 최대 30개의 정렬 항목을 전송합니다. 중요 이벤트에 대한 실시간 알림도 이용 가능합니다.",
     "q12": "갱신 주기는 어떻게 되나요?",
     "a12": "Pro는 거의 실시간. Free는 5–15분.",
     "q13": "내 데이터는 어디로 가나요?",

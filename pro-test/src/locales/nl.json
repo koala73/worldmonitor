@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Jouw AI-analist. Een persoonlijk intelligence desk. Een platform om op te bouwen. Eén sleutel voor 22 live diensten.",
     "proF1": "WM Analyst chat — bevraag alle 22 diensten conversationeel",
-    "proF2": "30-item AI digest elke 30 min — Slack, Discord, Telegram, WhatsApp, E-mail",
+    "proF2": "AI digest — dagelijks, tweemaal daags of wekelijks — naar Slack, Discord, Telegram, E-mail of webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS met AI-ondersteunde aanpassing",
     "proF4": "MCP-connectoren — koppel WorldMonitor aan Claude, GPT of eigen LLM's",
     "proF5": "Equity research, aandelenanalyse en backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Vraag het",
     "askItDesc": "WM Analyst chat. Alle 22 diensten in natuurlijke taal bevraagbaar.",
     "subscribeIt": "Abonneer je",
-    "subscribeItDesc": "30-item AI digest elke 30 min. Slack, Discord, Telegram, WhatsApp, E-mail.",
+    "subscribeItDesc": "AI digest op jouw cadans: dagelijks, tweemaal daags of wekelijks. Slack, Discord, Telegram, E-mail, webhook.",
     "buildOnIt": "Bouw erop voort",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) en MCP voor Claude, GPT, eigen LLM's."
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "Jouw persoonlijk intelligence desk",
-    "body": "Elke 30 minuten hernieuwen we de score van elk gevolgd verhaal tegen jouw watchlist, dedupliceren we over 400+ bronnen en sturen we alleen wat is bewogen. Tot 30 gerankte items — Critical, High, Medium — met een AI Assessment en Signals to watch, geleverd aan Slack, Discord, Telegram, WhatsApp of E-mail.",
+    "body": "Tot 30 gerankte items per zending, gededupliceerd over 400+ bronnen, gescoord tegen jouw watchlist. Kies je cadans — dagelijks, tweemaal daags of wekelijks — met een AI Assessment en Signals to watch geleverd aan Slack, Discord, Telegram, E-mail of webhook.",
     "closer": "Geen nieuwsbrief. Een analist.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · E-mail · AES-256 versleuteld · Stille uren"
+    "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 versleuteld · Stille uren"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live dashboard",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Orbitale surveillance",
     "orbitalSurveillanceDesc": "(Binnenkort) Voorspellingen van satellietpassages, analyse van revisit-frequentie en opname-venster-alerts. Weet wanneer inlichtingensatellieten jouw interessegebieden bekijken.",
     "morningBriefs": "Persoonlijk intelligence desk",
-    "morningBriefsDesc": "Tot 30 gerankte verhalen elke 30 minuten, gededupliceerd over 400+ bronnen, met een AI Assessment en Signals to watch geleverd aan Slack, Discord, Telegram, WhatsApp of E-mail. Geen nieuwsbrief — een analist.",
+    "morningBriefsDesc": "Tot 30 gerankte verhalen per digest, gededupliceerd over 400+ bronnen. Kies dagelijks, tweemaal daags of wekelijks — of realtime alerts bij kritieke gebeurtenissen. AI Assessment en Signals to watch geleverd aan Slack, Discord, Telegram, E-mail of webhook. Geen nieuwsbrief — een analist.",
     "oneKey": "22 diensten, 1 sleutel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky en meer — alles actief, geen aparte registraties.",
     "deliveryLabel": "Kies hoe intelligence jou vindt"
@@ -317,7 +317,7 @@
     "q10": "Kan ik Claude of GPT aan WorldMonitor koppelen?",
     "a10": "Ja. MCP is inbegrepen in Pro — koppel WorldMonitor aan Claude, GPT of elke MCP-compatibele LLM als live tool.",
     "q11": "Hoe gepersonaliseerd is de digest?",
-    "a11": "Elke 30 minuten hernieuwen we de score van elk gevolgd verhaal tegen jouw alert rules en watchlist, dedupliceren we over 400+ bronnen en sturen we tot 30 gerankte items met een AI Assessment en Signals to watch geschreven voor jouw context.",
+    "a11": "Kies je cadans: dagelijks, tweemaal daags of wekelijks. We hernieuwen de score van elk gevolgd verhaal tegen jouw alert rules en watchlist, dedupliceren over 400+ bronnen en sturen tot 30 gerankte items met een AI Assessment en Signals to watch geschreven voor jouw context. Realtime alerts zijn ook beschikbaar voor kritieke gebeurtenissen.",
     "q12": "Wat is de refresh-snelheid?",
     "a12": "Bijna realtime voor Pro. 5–15 minuten op Free.",
     "q13": "Waar gaat mijn data naartoe?",

@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "นักวิเคราะห์ AI ของคุณ โต๊ะข่าวกรองส่วนตัว แพลตฟอร์มที่คุณสร้างต่อได้ หนึ่งกุญแจเข้าถึง 22 บริการสดๆ",
     "proF1": "WM Analyst chat — สอบถาม 22 บริการแบบสนทนา",
-    "proF2": "AI digest 30 รายการทุก 30 นาที — Slack, Discord, Telegram, WhatsApp, อีเมล",
+    "proF2": "AI digest — รายวัน วันละสองครั้ง หรือรายสัปดาห์ — ไปยัง Slack, Discord, Telegram, อีเมล หรือ webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS พร้อมการแก้ไขด้วย AI",
     "proF4": "ตัวเชื่อม MCP — เชื่อม WorldMonitor เข้ากับ Claude, GPT หรือ LLM ของคุณ",
     "proF5": "Equity research, วิเคราะห์หุ้นและ backtesting",
@@ -67,16 +67,16 @@
     "askIt": "ถาม",
     "askItDesc": "WM Analyst chat 22 บริการสอบถามได้ด้วยภาษาธรรมชาติ",
     "subscribeIt": "สมัครรับ",
-    "subscribeItDesc": "AI digest 30 รายการทุก 30 นาที Slack, Discord, Telegram, WhatsApp, อีเมล",
+    "subscribeItDesc": "AI digest ในจังหวะของคุณ: รายวัน วันละสองครั้ง หรือรายสัปดาห์ Slack, Discord, Telegram, อีเมล, webhook",
     "buildOnIt": "สร้างต่อยอด",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) และ MCP สำหรับ Claude, GPT, LLM ของคุณ"
   },
   "deliveryDesk": {
     "eyebrow": "โต๊ะส่งมอบ",
     "title": "โต๊ะข่าวกรองส่วนตัวของคุณ",
-    "body": "ทุก 30 นาทีเราให้คะแนนใหม่กับทุกเรื่องที่ติดตามเทียบกับ watchlist ของคุณ กำจัดซ้ำซ้อนจาก 400+ แหล่ง และส่งเฉพาะสิ่งที่เคลื่อนไหว สูงสุด 30 รายการที่จัดลำดับ — Critical, High, Medium — พร้อม AI Assessment และ Signals to watch ส่งไปยัง Slack, Discord, Telegram, WhatsApp หรืออีเมล",
+    "body": "สูงสุด 30 รายการที่จัดลำดับต่อการส่ง กำจัดซ้ำซ้อนจาก 400+ แหล่ง ให้คะแนนเทียบกับ watchlist ของคุณ เลือกจังหวะ — รายวัน วันละสองครั้ง หรือรายสัปดาห์ — พร้อม AI Assessment และ Signals to watch ส่งไปยัง Slack, Discord, Telegram, อีเมล หรือ webhook",
     "closer": "ไม่ใช่นิวสเลตเตอร์ แต่เป็นนักวิเคราะห์",
-    "channels": "Slack · Discord · Telegram · WhatsApp · อีเมล · เข้ารหัส AES-256 · ช่วงเงียบ"
+    "channels": "Slack · Discord · Telegram · อีเมล · Webhook · เข้ารหัส AES-256 · ช่วงเงียบ"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — แดชบอร์ดสด",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "การเฝ้าระวังวงโคจร",
     "orbitalSurveillanceDesc": "(เร็วๆ นี้) การพยากรณ์การผ่านของวงโคจร การวิเคราะห์ความถี่การเยี่ยมชมซ้ำ และการแจ้งเตือนหน้าต่างการถ่ายภาพ รู้ว่าดาวเทียมข่าวกรองกำลังเฝ้าดูพื้นที่ที่คุณสนใจเมื่อไหร่",
     "morningBriefs": "โต๊ะข่าวกรองส่วนตัว",
-    "morningBriefsDesc": "สูงสุด 30 เรื่องที่จัดลำดับทุก 30 นาที ถูกกำจัดซ้ำจาก 400+ แหล่ง พร้อม AI Assessment และ Signals to watch ส่งไปยัง Slack, Discord, Telegram, WhatsApp หรืออีเมล ไม่ใช่นิวสเลตเตอร์ — แต่เป็นนักวิเคราะห์",
+    "morningBriefsDesc": "สูงสุด 30 เรื่องที่จัดลำดับต่อ digest กำจัดซ้ำซ้อนจาก 400+ แหล่ง เลือกจังหวะรายวัน วันละสองครั้ง หรือรายสัปดาห์ — หรือการแจ้งเตือนแบบเรียลไทม์สำหรับเหตุการณ์สำคัญ AI Assessment และ Signals to watch ส่งไปยัง Slack, Discord, Telegram, อีเมล หรือ webhook ไม่ใช่นิวสเลตเตอร์ — แต่เป็นนักวิเคราะห์",
     "oneKey": "22 บริการ, 1 คีย์",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky และอื่นๆ — ทั้งหมดเปิดใช้งาน ไม่ต้องลงทะเบียนแยก",
     "deliveryLabel": "เลือกวิธีที่ข่าวกรองหาคุณ"
@@ -317,7 +317,7 @@
     "q10": "เชื่อม Claude หรือ GPT กับ WorldMonitor ได้ไหม?",
     "a10": "ได้ MCP รวมอยู่ใน Pro — เชื่อม WorldMonitor ไปยัง Claude, GPT หรือ LLM ใดก็ตามที่รองรับ MCP เป็นเครื่องมือสด",
     "q11": "digest ปรับแต่งได้แค่ไหน?",
-    "a11": "ทุก 30 นาทีเราให้คะแนนใหม่กับทุกเรื่องที่ติดตามเทียบกับกฎการแจ้งเตือนและ watchlist ของคุณ กำจัดซ้ำจาก 400+ แหล่ง และส่งสูงสุด 30 รายการที่จัดลำดับพร้อม AI Assessment และ Signals to watch ที่เขียนสำหรับบริบทของคุณ",
+    "a11": "เลือกจังหวะของคุณ: รายวัน วันละสองครั้ง หรือรายสัปดาห์ เราให้คะแนนใหม่กับทุกเรื่องที่ติดตามเทียบกับกฎการแจ้งเตือนและ watchlist ของคุณ กำจัดซ้ำซ้อนจาก 400+ แหล่ง และส่งสูงสุด 30 รายการที่จัดลำดับพร้อม AI Assessment และ Signals to watch ที่เขียนสำหรับบริบทของคุณ การแจ้งเตือนแบบเรียลไทม์ก็มีให้สำหรับเหตุการณ์สำคัญด้วย",
     "q12": "อัตราการรีเฟรชเป็นเท่าไหร่?",
     "a12": "เกือบเรียลไทม์สำหรับ Pro 5–15 นาทีสำหรับ Free",
     "q13": "ข้อมูลของผมไปที่ไหน?",

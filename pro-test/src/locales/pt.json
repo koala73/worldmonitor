@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "O seu analista de IA. Uma mesa de inteligência pessoal. Uma plataforma sobre a qual construir. Uma chave para 22 serviços ao vivo.",
     "proF1": "Chat WM Analyst — consulte os 22 serviços de forma conversacional",
-    "proF2": "Digest de IA com 30 itens a cada 30 min — Slack, Discord, Telegram, WhatsApp, E-mail",
+    "proF2": "Digest de IA — diário, duas vezes ao dia ou semanal — para Slack, Discord, Telegram, E-mail ou webhook",
     "proF3": "Construtor de widgets personalizados — HTML/CSS/JS com modificação assistida por IA",
     "proF4": "Conectores MCP — ligue o WorldMonitor ao Claude, GPT, LLMs personalizados",
     "proF5": "Pesquisa de ações, análise de equity e backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Pergunte-lhe",
     "askItDesc": "Chat WM Analyst. Todos os 22 serviços consultáveis em linguagem natural.",
     "subscribeIt": "Assine",
-    "subscribeItDesc": "Digest de IA com 30 itens a cada 30 min. Slack, Discord, Telegram, WhatsApp, E-mail.",
+    "subscribeItDesc": "Digest de IA na sua cadência: diário, duas vezes ao dia ou semanal. Slack, Discord, Telegram, E-mail, webhook.",
     "buildOnIt": "Construa sobre ela",
     "buildOnItDesc": "Construtor de widgets personalizados (HTML/CSS/JS + IA) e MCP para Claude, GPT, LLMs personalizados."
   },
   "deliveryDesk": {
     "eyebrow": "MESA DE ENTREGA",
     "title": "A sua mesa de inteligência pessoal",
-    "body": "A cada 30 minutos re-pontuamos cada história seguida contra a sua watchlist, deduplicamos em mais de 400 fontes e enviamos apenas o que se moveu. Até 30 itens ordenados — Critical, High, Medium — com um Assessment de IA e Signals to watch, entregues no Slack, Discord, Telegram, WhatsApp ou E-mail.",
+    "body": "Até 30 itens ordenados por envio, deduplicados em mais de 400 fontes, pontuados contra a sua watchlist. Escolha a cadência — diária, duas vezes ao dia ou semanal — com um Assessment de IA e Signals to watch entregues no Slack, Discord, Telegram, E-mail ou webhook.",
     "closer": "Não é uma newsletter. É um analista.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · E-mail · Cifrado AES-256 · Horas de silêncio"
+    "channels": "Slack · Discord · Telegram · E-mail · Webhook · Cifrado AES-256 · Horas de silêncio"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Painel ao vivo",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Vigilância orbital",
     "orbitalSurveillanceDesc": "(Em breve) Previsões de passagens orbitais, análise de frequência de revisita e alertas de janela de captura. Saiba quando os satélites de inteligência observam as suas áreas de interesse.",
     "morningBriefs": "Mesa de inteligência pessoal",
-    "morningBriefsDesc": "Até 30 histórias ordenadas a cada 30 minutos, deduplicadas em mais de 400 fontes, com um Assessment de IA e Signals to watch entregues no Slack, Discord, Telegram, WhatsApp ou E-mail. Não é uma newsletter — é um analista.",
+    "morningBriefsDesc": "Até 30 histórias ordenadas por digest, deduplicadas em mais de 400 fontes. Cadência à escolha — diária, duas vezes ao dia ou semanal — ou alertas em tempo real para eventos críticos. Assessment de IA e Signals to watch entregues no Slack, Discord, Telegram, E-mail ou webhook. Não é uma newsletter — é um analista.",
     "oneKey": "22 serviços, 1 chave",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky e mais — todos ativos, sem registos separados.",
     "deliveryLabel": "Escolha como a inteligência o encontra"
@@ -317,7 +317,7 @@
     "q10": "Posso ligar o Claude ou o GPT ao WorldMonitor?",
     "a10": "Sim. O MCP está incluído no Pro — ligue o WorldMonitor ao Claude, GPT ou qualquer LLM compatível com MCP como ferramenta ao vivo.",
     "q11": "Quão personalizado é o digest?",
-    "a11": "A cada 30 minutos, re-pontuamos cada história seguida contra as suas regras de alerta e a sua watchlist, deduplicamos em mais de 400 fontes e enviamos até 30 itens ordenados com um Assessment de IA e Signals to watch escritos para o seu contexto.",
+    "a11": "Escolha a cadência: diária, duas vezes ao dia ou semanal. Re-pontuamos cada história seguida contra as suas regras de alerta e watchlist, deduplicamos em mais de 400 fontes e enviamos até 30 itens ordenados com um Assessment de IA e Signals to watch escritos para o seu contexto. Alertas em tempo real também disponíveis para eventos críticos.",
     "q12": "Qual é a taxa de atualização?",
     "a12": "Quase tempo real para Pro. 5–15 minutos no Free.",
     "q13": "Para onde vão os meus dados?",

@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Your AI analyst. A personal intelligence desk. A platform you can build on. One key across 22 live services.",
     "proF1": "WM Analyst chat — query all 22 services conversationally",
-    "proF2": "30-item AI digest every 30 min — Slack, Discord, Telegram, WhatsApp, Email",
+    "proF2": "AI digest — daily, twice-daily, or weekly — to Slack, Discord, Telegram, Email, or webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS with AI-assisted modification",
     "proF4": "MCP connectors — plug WorldMonitor into Claude, GPT, custom LLMs",
     "proF5": "Equity research, stock analysis & backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Ask it",
     "askItDesc": "WM Analyst chat. All 22 services queryable in plain English.",
     "subscribeIt": "Subscribe to it",
-    "subscribeItDesc": "30-item AI digest every 30 min. Slack, Discord, Telegram, WhatsApp, Email.",
+    "subscribeItDesc": "AI digest on your schedule — daily, twice-daily, or weekly. Slack, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Build on it",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) and MCP for Claude, GPT, custom LLMs."
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "Your personal intelligence desk",
-    "body": "Every 30 minutes we re-score every tracked story against your watchlist, dedupe across 400+ sources, and send only what moved. Up to 30 ranked items — Critical, High, Medium — with an AI Assessment and Signals to watch, delivered to Slack, Discord, Telegram, WhatsApp, or Email.",
+    "body": "Up to 30 ranked items per send, deduped across 400+ sources, scored against your watchlist. Choose your cadence — daily, twice-daily, or weekly — with an AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook.",
     "closer": "Not a newsletter. An analyst.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · Email · AES-256 encrypted · Quiet hours"
+    "channels": "Slack · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Live Dashboard",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Orbital Surveillance",
     "orbitalSurveillanceDesc": "(Soon) Overhead pass predictions, revisit frequency analysis, and imaging window alerts. Know when intelligence satellites are watching your areas of interest.",
     "morningBriefs": "Personal Intelligence Desk",
-    "morningBriefsDesc": "Up to 30 ranked stories every 30 minutes, deduped across 400+ sources, with an AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, WhatsApp, or Email. Not a newsletter — an analyst.",
+    "morningBriefsDesc": "Up to 30 ranked stories per digest, deduped across 400+ sources. Pick daily, twice-daily, or weekly cadence — or real-time alerts for critical events. AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook. Not a newsletter — an analyst.",
     "oneKey": "22 Services, 1 Key",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
     "deliveryLabel": "Choose how intelligence finds you"
@@ -317,7 +317,7 @@
     "q10": "Can I connect Claude or GPT to WorldMonitor?",
     "a10": "Yes. MCP is included in Pro — plug WorldMonitor into Claude, GPT, or any MCP-compatible LLM as a live tool.",
     "q11": "How personalized is the digest?",
-    "a11": "Every 30 minutes, we re-score every tracked story against your alert rules and watchlist, dedupe across 400+ sources, and send up to 30 ranked items with an AI Assessment and Signals to watch written to your context.",
+    "a11": "Pick your cadence — daily, twice-daily, or weekly. We re-score every tracked story against your alert rules and watchlist, dedupe across 400+ sources, and send up to 30 ranked items with an AI Assessment and Signals to watch written to your context. Real-time alerts are also available for critical events.",
     "q12": "What's the refresh rate?",
     "a12": "Near real time for Pro. 5–15 minutes on Free.",
     "q13": "Where does my data go?",

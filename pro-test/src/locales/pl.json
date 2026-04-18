@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Twój analityk AI. Osobiste stanowisko wywiadowcze. Platforma, na której można budować. Jeden klucz do 22 usług na żywo.",
     "proF1": "Chat WM Analyst — odpytuj 22 usługi w rozmowie",
-    "proF2": "30-elementowy digest AI co 30 min — Slack, Discord, Telegram, WhatsApp, Email",
+    "proF2": "Digest AI — codziennie, dwa razy dziennie lub tygodniowo — na Slack, Discord, Telegram, Email lub webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS ze wsparciem AI",
     "proF4": "Konektory MCP — podłącz WorldMonitor do Claude, GPT lub własnych LLM-ów",
     "proF5": "Equity research, analiza akcji i backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Zapytaj",
     "askItDesc": "Chat WM Analyst. Wszystkie 22 usługi odpytywalne w języku naturalnym.",
     "subscribeIt": "Subskrybuj",
-    "subscribeItDesc": "30-elementowy digest AI co 30 min. Slack, Discord, Telegram, WhatsApp, Email.",
+    "subscribeItDesc": "Digest AI w Twojej kadencji: codziennie, dwa razy dziennie lub tygodniowo. Slack, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Buduj na tym",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) i MCP dla Claude, GPT, własnych LLM-ów."
   },
   "deliveryDesk": {
     "eyebrow": "STANOWISKO DOSTAW",
     "title": "Twoje osobiste stanowisko wywiadowcze",
-    "body": "Co 30 minut przeliczamy każdą śledzoną historię względem Twojej watchlisty, deduplikujemy ponad 400 źródeł i wysyłamy tylko to, co się ruszyło. Do 30 rankowanych pozycji — Critical, High, Medium — z AI Assessment i Signals to watch, dostarczane na Slack, Discord, Telegram, WhatsApp lub Email.",
+    "body": "Do 30 rankowanych pozycji na wysyłkę, deduplikowanych w ponad 400 źródłach, ocenianych względem Twojej watchlisty. Wybierz kadencję — codziennie, dwa razy dziennie lub tygodniowo — z AI Assessment i Signals to watch dostarczanymi na Slack, Discord, Telegram, Email lub webhook.",
     "closer": "To nie newsletter. To analityk.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · Email · Szyfrowane AES-256 · Ciche godziny"
+    "channels": "Slack · Discord · Telegram · Email · Webhook · Szyfrowane AES-256 · Ciche godziny"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Panel na żywo",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Obserwacja orbitalna",
     "orbitalSurveillanceDesc": "(Wkrótce) Prognozy przelotów, analiza częstotliwości powrotów i alerty okna obrazowania. Wiedz, kiedy satelity wywiadowcze obserwują Twoje obszary zainteresowania.",
     "morningBriefs": "Osobiste stanowisko wywiadowcze",
-    "morningBriefsDesc": "Do 30 rankowanych historii co 30 minut, deduplikowanych w ponad 400 źródłach, z AI Assessment i Signals to watch dostarczanych na Slack, Discord, Telegram, WhatsApp lub Email. To nie newsletter — to analityk.",
+    "morningBriefsDesc": "Do 30 rankowanych historii na digest, deduplikowanych w ponad 400 źródłach. Wybierz codziennie, dwa razy dziennie lub tygodniowo — lub alerty w czasie rzeczywistym przy zdarzeniach krytycznych. AI Assessment i Signals to watch dostarczane na Slack, Discord, Telegram, Email lub webhook. To nie newsletter — to analityk.",
     "oneKey": "22 usługi, 1 klucz",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky i więcej — wszystkie aktywne, bez osobnych rejestracji.",
     "deliveryLabel": "Wybierz, jak wywiad Cię znajdzie"
@@ -317,7 +317,7 @@
     "q10": "Czy mogę podłączyć Claude lub GPT do WorldMonitor?",
     "a10": "Tak. MCP jest zawarte w Pro — podłącz WorldMonitor do Claude, GPT lub dowolnego LLM kompatybilnego z MCP jako narzędzie na żywo.",
     "q11": "Jak spersonalizowany jest digest?",
-    "a11": "Co 30 minut przeliczamy każdą śledzoną historię względem Twoich reguł alertów i watchlisty, deduplikujemy ponad 400 źródeł i wysyłamy do 30 rankowanych pozycji z AI Assessment i Signals to watch napisanymi dla Twojego kontekstu.",
+    "a11": "Wybierz kadencję: codziennie, dwa razy dziennie lub tygodniowo. Przeliczamy każdą śledzoną historię względem Twoich reguł alertów i watchlisty, deduplikujemy w ponad 400 źródłach i wysyłamy do 30 rankowanych pozycji z AI Assessment i Signals to watch napisanymi dla Twojego kontekstu. Alerty w czasie rzeczywistym dostępne także dla zdarzeń krytycznych.",
     "q12": "Jakie jest tempo odświeżania?",
     "a12": "Niemal w czasie rzeczywistym dla Pro. 5–15 minut na Free.",
     "q13": "Gdzie trafiają moje dane?",

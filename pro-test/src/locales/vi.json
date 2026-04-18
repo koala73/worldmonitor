@@ -27,7 +27,7 @@
     "proTitle": "World Monitor Pro",
     "proDesc": "Nhà phân tích AI của bạn. Bàn tình báo cá nhân. Một nền tảng để xây dựng trên đó. Một khóa cho 22 dịch vụ trực tiếp.",
     "proF1": "Chat WM Analyst — truy vấn 22 dịch vụ theo hội thoại",
-    "proF2": "AI digest 30 mục mỗi 30 phút — Slack, Discord, Telegram, WhatsApp, Email",
+    "proF2": "AI digest — hàng ngày, hai lần mỗi ngày hoặc hàng tuần — đến Slack, Discord, Telegram, Email hoặc webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS với chỉnh sửa hỗ trợ AI",
     "proF4": "Bộ kết nối MCP — cắm WorldMonitor vào Claude, GPT hoặc LLM tùy chỉnh",
     "proF5": "Equity research, phân tích cổ phiếu và backtesting",
@@ -67,16 +67,16 @@
     "askIt": "Hỏi nó",
     "askItDesc": "Chat WM Analyst. Cả 22 dịch vụ có thể truy vấn bằng ngôn ngữ tự nhiên.",
     "subscribeIt": "Đăng ký",
-    "subscribeItDesc": "AI digest 30 mục mỗi 30 phút. Slack, Discord, Telegram, WhatsApp, Email.",
+    "subscribeItDesc": "AI digest theo nhịp của bạn: hàng ngày, hai lần mỗi ngày hoặc hàng tuần. Slack, Discord, Telegram, Email, webhook.",
     "buildOnIt": "Xây dựng trên đó",
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) và MCP cho Claude, GPT, LLM tùy chỉnh."
   },
   "deliveryDesk": {
     "eyebrow": "BÀN GIAO HÀNG",
     "title": "Bàn tình báo cá nhân của bạn",
-    "body": "Mỗi 30 phút chúng tôi ghi điểm lại mọi câu chuyện được theo dõi so với watchlist của bạn, loại bỏ trùng lặp trên 400+ nguồn và chỉ gửi những gì đã thay đổi. Tối đa 30 mục được xếp hạng — Critical, High, Medium — với AI Assessment và Signals to watch, được giao đến Slack, Discord, Telegram, WhatsApp hoặc Email.",
+    "body": "Tối đa 30 mục được xếp hạng mỗi lần gửi, loại bỏ trùng lặp trên 400+ nguồn, chấm điểm theo watchlist của bạn. Chọn nhịp của bạn — hàng ngày, hai lần mỗi ngày hoặc hàng tuần — với AI Assessment và Signals to watch được giao đến Slack, Discord, Telegram, Email hoặc webhook.",
     "closer": "Không phải bản tin. Là nhà phân tích.",
-    "channels": "Slack · Discord · Telegram · WhatsApp · Email · Mã hóa AES-256 · Giờ yên lặng"
+    "channels": "Slack · Discord · Telegram · Email · Webhook · Mã hóa AES-256 · Giờ yên lặng"
   },
   "livePreview": {
     "windowTitle": "worldmonitor.app — Bảng điều khiển trực tiếp",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Giám sát quỹ đạo",
     "orbitalSurveillanceDesc": "(Sắp ra mắt) Dự báo đi qua quỹ đạo, phân tích tần suất ghé thăm lại và cảnh báo cửa sổ chụp ảnh. Biết khi nào các vệ tinh tình báo quan sát các khu vực quan tâm của bạn.",
     "morningBriefs": "Bàn tình báo cá nhân",
-    "morningBriefsDesc": "Tối đa 30 câu chuyện được xếp hạng mỗi 30 phút, loại bỏ trùng lặp trên 400+ nguồn, với AI Assessment và Signals to watch được giao đến Slack, Discord, Telegram, WhatsApp hoặc Email. Không phải bản tin — là nhà phân tích.",
+    "morningBriefsDesc": "Tối đa 30 câu chuyện được xếp hạng mỗi digest, loại bỏ trùng lặp trên 400+ nguồn. Chọn nhịp hàng ngày, hai lần mỗi ngày hoặc hàng tuần — hoặc cảnh báo theo thời gian thực cho các sự kiện quan trọng. AI Assessment và Signals to watch được giao đến Slack, Discord, Telegram, Email hoặc webhook. Không phải bản tin — là nhà phân tích.",
     "oneKey": "22 dịch vụ, 1 khóa",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky và nhiều hơn nữa — tất cả đang hoạt động, không cần đăng ký riêng.",
     "deliveryLabel": "Chọn cách tình báo tìm đến bạn"
@@ -317,7 +317,7 @@
     "q10": "Tôi có thể kết nối Claude hoặc GPT với WorldMonitor không?",
     "a10": "Có. MCP được bao gồm trong Pro — kết nối WorldMonitor với Claude, GPT hoặc bất kỳ LLM nào tương thích MCP như một công cụ trực tiếp.",
     "q11": "Digest được cá nhân hóa như thế nào?",
-    "a11": "Mỗi 30 phút, chúng tôi ghi điểm lại mọi câu chuyện được theo dõi so với quy tắc cảnh báo và watchlist của bạn, loại bỏ trùng lặp trên 400+ nguồn, và gửi tối đa 30 mục được xếp hạng với AI Assessment và Signals to watch được viết cho bối cảnh của bạn.",
+    "a11": "Chọn nhịp của bạn: hàng ngày, hai lần mỗi ngày hoặc hàng tuần. Chúng tôi ghi điểm lại mọi câu chuyện được theo dõi so với quy tắc cảnh báo và watchlist của bạn, loại bỏ trùng lặp trên 400+ nguồn và gửi tối đa 30 mục được xếp hạng với AI Assessment và Signals to watch được viết cho bối cảnh của bạn. Cảnh báo theo thời gian thực cũng có sẵn cho các sự kiện quan trọng.",
     "q12": "Tốc độ làm mới là bao nhiêu?",
     "a12": "Gần thời gian thực cho Pro. 5–15 phút trên Free.",
     "q13": "Dữ liệu của tôi đi đâu?",
