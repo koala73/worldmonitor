@@ -125,6 +125,32 @@ export default defineSchema({
     .index("by_normalized_email", ["normalizedEmail"])
     .index("by_referral_code", ["referralCode"]),
 
+  // Phase 9 / Todo #223 — Clerk-user referral codes.
+  // The `registrations.referralCode` column uses a 6-char hash of
+  // the registering email; share-button codes are an 8-char HMAC
+  // of the Clerk userId. Distinct spaces — this table resolves the
+  // Clerk-code space back to a userId so the register mutation can
+  // credit the right sharer when their code is used.
+  userReferralCodes: defineTable({
+    userId: v.string(),
+    code: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_code", ["code"]),
+
+  // Attribution rows written when a /pro?ref=<clerkCode> visitor
+  // signs up for the waitlist. One row per (referrer, referee email)
+  // pair. Kept separate from `registrations.referralCount` because
+  // the referrer has no registrations row to increment.
+  userReferralCredits: defineTable({
+    referrerUserId: v.string(),
+    refereeEmail: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_referrer", ["referrerUserId"])
+    .index("by_referrer_email", ["referrerUserId", "refereeEmail"]),
+
   contactMessages: defineTable({
     name: v.string(),
     email: v.string(),

@@ -32,7 +32,44 @@ import { getReferralCodeForUser, buildShareUrl } from '../../server/_shared/refe
 const PUBLIC_BASE =
   process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://worldmonitor.app';
 
-export default async function handler(req: Request): Promise<Response> {
+/**
+ * Bind the Clerk-derived share code to the userId in Convex so that
+ * future /pro?ref=<code> signups can actually credit the sharer.
+ * Fire-and-forget from the handler — it's idempotent (the Convex
+ * mutation keeps the first (code, userId) binding and ignores
+ * repeats) and a failure here only means the NEXT call to /api/
+ * referral/me will re-register, not that the user's share link
+ * doesn't work.
+ */
+async function registerReferralCodeInConvex(userId: string, code: string): Promise<void> {
+  const convexSite =
+    process.env.CONVEX_SITE_URL ??
+    (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+  const relaySecret = process.env.RELAY_SHARED_SECRET ?? '';
+  if (!convexSite || !relaySecret) return;
+  try {
+    const res = await fetch(`${convexSite}/relay/register-referral-code`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${relaySecret}`,
+        'User-Agent': 'worldmonitor-edge/1.0',
+      },
+      body: JSON.stringify({ userId, code }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      console.warn('[api/referral/me] register-referral-code non-2xx:', res.status);
+    }
+  } catch (err) {
+    console.warn('[api/referral/me] register-referral-code failed:', (err as Error).message);
+  }
+}
+
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
   }
@@ -74,15 +111,19 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  // No invite/conversion count is returned. The earlier draft of
-  // this endpoint read `registrations.referredBy`, but the live
-  // `/pro?ref=<code>` flow feeds the ref into Dodopayments checkout
-  // metadata (`affonso_referral`), NOT into registrations — so that
-  // count would stay at 0 for anyone who converted direct-to-checkout
-  // without filling the waitlist form. Rather than ship a misleading
-  // "N invited" display, the count is deliberately omitted until the
-  // two attribution paths (waitlist + Dodo metadata) are unified in
-  // a follow-up. The share button itself works without metrics.
+  // Bind the code to the userId in Convex so future waitlist signups
+  // from /pro?ref=<code> can be credited back to this user via the
+  // userReferralCredits path. Fire-and-forget — the mutation is
+  // idempotent and a failure here just means the NEXT call to this
+  // endpoint will re-register.
+  ctx.waitUntil(registerReferralCodeInConvex(session.userId, code));
+
+  // No invite/conversion count is returned on the response. The
+  // waitlist path (userReferralCredits) now credits correctly, but
+  // the Dodopayments checkout path (affonso_referral) still doesn't
+  // flow into Convex. Counting only one of the two attribution
+  // paths would mislead. Metrics will surface in a follow-up that
+  // unifies both.
   return jsonResponse(
     {
       code,

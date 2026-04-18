@@ -76,3 +76,52 @@ describe('buildShareUrl', () => {
     );
   });
 });
+
+// REGRESSION: PR #3175 P1 — share codes didn't resolve to a sharer.
+// The earlier head generated 8-char Clerk HMAC codes but the waitlist
+// register mutation only looked up `registrations.by_referral_code`
+// (6-char email codes). Codes from the share button never credited
+// anyone. These tests lock the attribution path into the codebase.
+describe('referral attribution resolves Clerk codes (waitlist path)', () => {
+  it('convex/registerInterest.ts extends register to look up userReferralCodes when registrations miss', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const __d = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(resolve(__d, '../convex/registerInterest.ts'), 'utf-8');
+    // Must still credit the registrations-path referrer first.
+    assert.match(src, /referralCount:\s*\(registrationReferrer\.referralCount\s*\?\?\s*0\)\s*\+\s*1/);
+    // Must fall through to the userReferralCodes lookup when no
+    // registrations row matches (the actual fix).
+    assert.match(src, /\.query\("userReferralCodes"\)[\s\S]+?\.withIndex\("by_code"/);
+    // Must insert a credit row, not try to increment a non-existent
+    // registrations.referralCount for the Clerk user.
+    assert.match(src, /ctx\.db\.insert\("userReferralCredits"/);
+    // Must dedupe by (referrer, refereeEmail) so returning visitors
+    // re-submitting the waitlist don't double-credit.
+    assert.match(src, /by_referrer_email/);
+  });
+
+  it('convex/schema.ts declares userReferralCodes + userReferralCredits with the right indexes', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const __d = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(resolve(__d, '../convex/schema.ts'), 'utf-8');
+    assert.match(src, /userReferralCodes:\s*defineTable/);
+    assert.match(src, /userReferralCredits:\s*defineTable/);
+    assert.match(src, /\.index\("by_code",\s*\["code"\]\)/);
+    assert.match(src, /\.index\("by_referrer_email",\s*\["referrerUserId",\s*"refereeEmail"\]\)/);
+  });
+
+  it('/api/referral/me registers the (userId, code) binding via waitUntil so attribution can resolve', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const __d = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(resolve(__d, '../api/referral/me.ts'), 'utf-8');
+    assert.match(src, /registerReferralCodeInConvex/, 'helper must exist');
+    assert.match(src, /ctx\.waitUntil\(registerReferralCodeInConvex/, 'must be called via waitUntil');
+    assert.match(src, /\/relay\/register-referral-code/, 'must POST to the Convex HTTP action');
+  });
+});

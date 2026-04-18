@@ -635,6 +635,56 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
+// Referral code registration (Phase 9 / Todo #223)
+// ---------------------------------------------------------------------------
+
+// Edge-route companion for /api/referral/me. Binds a Clerk-derived
+// 8-char share code to the signed-in user's Clerk userId so future
+// /pro?ref=<code> signups can credit the sharer via the
+// userReferralCredits path in registerInterest:register. Auth is
+// server-to-server via RELAY_SHARED_SECRET — the edge route already
+// validated the caller's Clerk bearer before hitting this.
+http.route({
+  path: "/relay/register-referral-code",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    let body: { userId?: string; code?: string };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+    const code = typeof body.code === "string" ? body.code.trim() : "";
+    if (!userId || !code || code.length < 4 || code.length > 32) {
+      return new Response(JSON.stringify({ error: "userId + code required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const result = await ctx.runMutation(
+      (internal as any).registerInterest.registerUserReferralCode,
+      { userId, code },
+    );
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// ---------------------------------------------------------------------------
 // User API key validation (service-to-service only)
 // ---------------------------------------------------------------------------
 
