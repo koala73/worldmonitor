@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installSwUpdateHandler } from '../src/bootstrap/sw-update.ts';
+import { installSwUpdateHandler, OPEN_MODAL_SELECTOR } from '../src/bootstrap/sw-update.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -23,6 +23,8 @@ interface FakeEnv {
   doc: {
     visibilityState: string;
     setVisibilityState(v: string): void;
+    /** Test helper: flip to simulate any selector in OPEN_MODAL_SELECTOR matching. */
+    modalOpen: boolean;
     _removedListeners: Array<() => void>;
     querySelector(sel: string): FakeElement | null;
     createElement(tag: string): FakeElement;
@@ -56,10 +58,14 @@ function makeEnv(): FakeEnv {
   const doc: FakeEnv['doc'] = {
     get visibilityState() { return _visibilityState; },
     setVisibilityState(v: string) { _visibilityState = v; },
+    modalOpen: false,
     _removedListeners: [],
 
     querySelector(sel: string): FakeElement | null {
       if (sel === '.update-toast') return appendedToasts.at(-1) ?? null;
+      if (sel === OPEN_MODAL_SELECTOR) {
+        return this.modalOpen ? ({} as FakeElement) : null;
+      }
       return null;
     },
 
@@ -467,6 +473,53 @@ describe('installSwUpdateHandler', () => {
     env.doc.setVisibilityState('hidden');
     fireVisibility(env);
     assert.equal(env.reloadCalls.length, 1, 'reload fires when user switches away after seeing toast');
+  });
+
+  // --- modal-open guard (preserves Clerk sign-in, Settings, etc.) ------------
+
+  it('does NOT auto-reload when a modal is open while the tab goes hidden', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env); // autoReloadAllowed = true
+
+    // Simulate e.g. Clerk sign-in modal open
+    env.doc.modalOpen = true;
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 0, 'reload suppressed while modal is open');
+  });
+
+  it('auto-reloads on the NEXT tab-hide after the modal closes', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    // First hide with modal open — suppressed
+    env.doc.modalOpen = true;
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 0);
+
+    // User returns, closes modal, then switches tabs again
+    env.doc.setVisibilityState('visible');
+    fireVisibility(env);
+    env.doc.modalOpen = false;
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 1, 'reload fires on next hide after modal closes');
+  });
+
+  it('manual Reload button click still works while a modal is open', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+
+    env.doc.modalOpen = true;
+    clickToastButton(env, 'reload');
+    assert.equal(env.reloadCalls.length, 1, 'explicit click bypasses modal guard');
   });
 
   // --- listener leak regression -----------------------------------------------

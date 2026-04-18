@@ -37,6 +37,15 @@ export interface SwUpdateHandlerOptions {
 export const SW_DEBUG_LOG_KEY = 'wm-sw-debug-log';
 const SW_DEBUG_LOG_MAX = 30;
 
+// Selectors that identify an open modal/dialog. Auto-reload on tab-hide is
+// suppressed while any match is present, so the reload can't wipe in-flight
+// user state: Clerk sign-in email-code flow, UnifiedSettings, ⌘K search,
+// Story/Signal/CountryIntel modals, etc. Most site modals use `.modal`;
+// Clerk uses `.cl-modalBackdrop`; well-authored dialogs set `aria-modal`
+// or `role="dialog"`; native HTML5 dialogs expose `dialog[open]`.
+export const OPEN_MODAL_SELECTOR =
+  '[aria-modal="true"], [role="dialog"], .modal, .cl-modalBackdrop, dialog[open]';
+
 function appendDebugLog(entry: Record<string, unknown>): void {
   try {
     const raw = sessionStorage.getItem(SW_DEBUG_LOG_KEY);
@@ -163,6 +172,14 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
       }
       logSw('visibility-hidden', { autoReloadAllowed, dismissed });
       if (!dismissed && autoReloadAllowed && doc.body.contains(toast)) {
+        // Don't interrupt an in-flight modal flow (Clerk email-code wait,
+        // Settings, ⌘K search, etc.). The reload stays armed — next tab-hide
+        // after the modal closes will fire it. User can also click Reload
+        // in the toast manually at any time.
+        if (doc.querySelector(OPEN_MODAL_SELECTOR)) {
+          logSw('auto-reload-suppressed-modal-open');
+          return;
+        }
         logSw('auto-reload-triggered');
         reload();
       }
