@@ -27,7 +27,7 @@
 
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { readRawJsonFromUpstash } from '../api/_upstash-json.js';
+import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import {
   assembleStubbedBriefEnvelope,
   filterTopStories,
@@ -51,22 +51,29 @@ const INSIGHTS_KEY = 'news:insights:v1';
 
 // ── Upstash helpers ──────────────────────────────────────────────────────────
 
+/**
+ * Write the brief envelope via the Upstash REST pipeline endpoint
+ * (body-POST), not the path-embedded SETEX form. Realistic briefs
+ * (12 stories, per-story description + whyMatters near caps) encode
+ * to 5–20 KB of JSON; URL-encoding inflates that further and can hit
+ * CDN / edge / Node HTTP request-target limits (commonly 8–16 KB).
+ * `redisPipeline` places the command in a JSON body where size
+ * limits are generous and uniform with the rest of the codebase's
+ * Upstash writes.
+ */
 async function upstashSetex(key, value, ttlSeconds) {
-  const res = await fetch(
-    `${UPSTASH_URL}/setex/${encodeURIComponent(key)}/${ttlSeconds}/${encodeURIComponent(JSON.stringify(value))}`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${UPSTASH_TOKEN}`,
-        'User-Agent': 'worldmonitor-brief-composer/1.0',
-      },
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
-  if (!res.ok) {
-    throw new Error(`Upstash SETEX failed for ${key}: HTTP ${res.status}`);
+  const results = await redisPipeline([
+    ['SETEX', key, String(ttlSeconds), JSON.stringify(value)],
+  ]);
+  if (!results || !Array.isArray(results) || results.length === 0) {
+    throw new Error(`Upstash SETEX failed for ${key}: null pipeline response`);
   }
-  return res.json();
+  const result = results[0];
+  // Upstash pipeline returns either {result} or {error} per command.
+  if (result && typeof result === 'object' && 'error' in result) {
+    throw new Error(`Upstash SETEX failed for ${key}: ${result.error}`);
+  }
+  return result;
 }
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
@@ -123,6 +130,26 @@ async function fetchDigestRules() {
     throw new Error('digest-rules response was not an array');
   }
   return rules;
+}
+
+// ── Failure gate ─────────────────────────────────────────────────────────────
+
+/**
+ * Decide whether the cron should exit non-zero so Railway flags the
+ * run. Denominator is ATTEMPTED writes (success + failed); skipped-
+ * empty users never reached the write path and must not inflate it.
+ * Exported so the denominator contract is testable without mocking
+ * Redis + LLM + the whole cron.
+ *
+ * @param {{ success: number; failed: number; thresholdRatio?: number }} counters
+ * @returns {boolean}
+ */
+export function shouldExitNonZero({ success, failed, thresholdRatio = 0.05 }) {
+  if (failed <= 0) return false;
+  const attempted = success + failed;
+  if (attempted <= 0) return false;
+  const threshold = Math.max(1, Math.floor(attempted * thresholdRatio));
+  return failed >= threshold;
 }
 
 // ── User-name lookup (best effort) ───────────────────────────────────────────
@@ -325,19 +352,13 @@ async function main() {
   }
 
   const eligibleUserCount = eligibleByUser.size;
+  const attempted = success + failed;
   const durationMs = Date.now() - startMs;
   console.log(
-    `[brief-composer] Done: rules=${rules.length} eligible_users=${eligibleUserCount} success=${success} skipped_empty=${skippedEmpty} failed=${failed} duration_ms=${durationMs}`,
+    `[brief-composer] Done: rules=${rules.length} eligible_users=${eligibleUserCount} attempted=${attempted} success=${success} skipped_empty=${skippedEmpty} failed=${failed} duration_ms=${durationMs}`,
   );
 
-  // Failure rate is numerator(failed) / denominator(eligible_users),
-  // NOT pre-dedupe rules.length. A multi-variant user counts once;
-  // a 20% real failure rate (e.g. 2/10 users) must trigger a non-
-  // zero exit even when the 60-rule pre-dedupe count would mask it.
-  const threshold = Math.max(1, Math.floor(eligibleUserCount * 0.05));
-  if (failed > 0 && failed >= threshold) {
-    process.exit(1);
-  }
+  if (shouldExitNonZero({ success, failed })) process.exit(1);
 }
 
 // Only run the cron loop when executed as a script, never on import.

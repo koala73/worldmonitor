@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import {
   dedupeRulesByUser,
   groupEligibleRulesByUser,
+  shouldExitNonZero,
 } from '../scripts/seed-brief-composer.mjs';
 
 function rule(overrides = {}) {
@@ -146,6 +147,43 @@ describe('aiDigestEnabled default parity', () => {
     assert.equal(candidates[0].variant, 'full');
     assert.equal(candidates[1].variant, 'tech');
     assert.equal(candidates[2].variant, 'finance');
+  });
+
+  it('shouldExitNonZero: returns false when no failures', () => {
+    assert.equal(shouldExitNonZero({ success: 10, failed: 0 }), false);
+  });
+
+  it('shouldExitNonZero: catches 100% failure on small attempted volume', () => {
+    // 4 attempted, 4 failed, 96 eligible skipped-empty. The earlier
+    // (eligibleUserCount) denominator would read 4/100=4% and pass.
+    assert.equal(shouldExitNonZero({ success: 0, failed: 4 }), true);
+  });
+
+  it('shouldExitNonZero: 1/20 failures is exactly at 5% (floor(20*0.05)=1), trips', () => {
+    // Exact-threshold boundary: documents intentional behaviour.
+    assert.equal(shouldExitNonZero({ success: 19, failed: 1 }), true);
+  });
+
+  it('shouldExitNonZero: 1/50 failures stays under threshold (floor(50*0.05)=2)', () => {
+    // Threshold floor is Math.max(1, floor(N*0.05)). For N<40 a
+    // single failure always trips. At N=50 the threshold is 2, so
+    // 1/50 stays green. Ops intuition: the 5% bar is only a "bar"
+    // once you have a meaningful sample.
+    assert.equal(shouldExitNonZero({ success: 49, failed: 1 }), false);
+  });
+
+  it('shouldExitNonZero: 2/10 exceeds threshold', () => {
+    // floor(10 * 0.05) = 0 → Math.max forces 1. failed=2 >= 1.
+    assert.equal(shouldExitNonZero({ success: 8, failed: 2 }), true);
+  });
+
+  it('shouldExitNonZero: single isolated failure still tripwires', () => {
+    // floor(1 * 0.05) = 0 → Math.max forces 1. failed=1 >= 1.
+    assert.equal(shouldExitNonZero({ success: 0, failed: 1 }), true);
+  });
+
+  it('shouldExitNonZero: zero attempted means no signal, returns false', () => {
+    assert.equal(shouldExitNonZero({ success: 0, failed: 0 }), false);
   });
 
   it('matches seed-digest-notifications convention', async () => {
