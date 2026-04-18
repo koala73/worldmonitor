@@ -132,10 +132,9 @@ export class LatestBriefPanel extends Panel {
       // userId from the stale token's sub claim and paints the
       // previous user's brief in the new session for up to 50s.
       clearClerkTokenCache();
-      // Drop the referral profile cache too — it's bound to the
-      // outgoing user's Clerk userId and would hand user B user A's
-      // share link on the next render otherwise.
-      void import('@/services/referral').then((m) => m.clearReferralCache()).catch(() => {});
+      // Referral cache is self-invalidating: src/services/referral.ts
+      // subscribes to auth-state at module load and drops its cache on
+      // any id transition. No explicit call needed from the panel.
       if (nextId) {
         void this.refresh();
       } else {
@@ -447,11 +446,10 @@ export class LatestBriefPanel extends Panel {
           return;
         }
         (shareBtn as HTMLButtonElement).disabled = false;
-        if (profile.invitedCount > 0) {
-          shareStatus.textContent = profile.invitedCount === 1
-            ? '1 invited'
-            : `${profile.invitedCount} invited`;
-        }
+        // No invite/conversion count rendered. Attribution flows
+        // through Dodopayments metadata (not registrations.referredBy)
+        // today, so counting from one store would mislead. Metrics
+        // will reappear once the two paths are unified.
         shareBtn.addEventListener('click', async () => {
           const originalLabel = shareBtn.textContent ?? 'Share ↗';
           (shareBtn as HTMLButtonElement).disabled = true;

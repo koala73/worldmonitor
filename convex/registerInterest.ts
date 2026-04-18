@@ -1,4 +1,4 @@
-import { internalQuery, mutation, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { DatabaseReader, DatabaseWriter } from "./_generated/server";
 
@@ -117,32 +117,6 @@ export const register = mutation({
       position,
       emailSuppressed: !!suppressed,
     };
-  },
-});
-
-/**
- * Phase 9 / Todo #223: count registrations attributed to a referral code.
- *
- * Called by the relay-path `/relay/referral-stats` HTTP action.
- * Privacy: returns counts only, never emails. Handles both
- * `registrations.referralCode` (a user's own code) and collisions
- * between the 6-char registrations namespace and the 8-char
- * Clerk-derived namespace — the filter on `by_referral_code` is
- * exact-match, so the two namespaces coexist safely.
- */
-export const getReferralStatsByCode = internalQuery({
-  args: { referralCode: v.string() },
-  handler: async (ctx, args) => {
-    // Count the registrations rows that named this code as their
-    // referredBy. The table has no index on referredBy, so we scan —
-    // acceptable at current scale (< 10k rows). If this becomes hot,
-    // add an `.index("by_referred_by", ["referredBy"])` and migrate.
-    const all = await ctx.db.query("registrations").collect();
-    let invitedCount = 0;
-    for (const r of all) {
-      if (r.referredBy === args.referralCode) invitedCount += 1;
-    }
-    return { invitedCount };
   },
 });
 

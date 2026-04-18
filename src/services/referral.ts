@@ -1,21 +1,45 @@
 // Client referral service (Phase 9 / Todo #223).
 //
-// Thin wrapper around /api/referral/me + the Web Share API. Used by
-// the LatestBriefPanel's share button and any future "share this
-// brief" surface. Profile is cached in-memory for 5 min because the
-// code is immutable (deterministic hash of Clerk userId) and the
-// invited count updates slowly.
+// Thin wrapper around /api/referral/me + the Web Share API.
+//
+// Cache shape: keyed by Clerk userId. Without a user-id key, a stale
+// cache primed by user A can hand user B user A's share link for up
+// to 5 minutes after an account switch — even if no panel is
+// mounted to call clearReferralCache() at transition time. The
+// auth-state subscription below also self-invalidates on any id
+// transition as defence in depth.
 
 import { getClerkToken } from '@/services/clerk';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 
 export interface ReferralProfile {
   code: string;
   shareUrl: string;
-  invitedCount: number;
 }
 
-let _cached: { at: number; data: ReferralProfile } | null = null;
+interface CacheEntry {
+  at: number;
+  userId: string;
+  data: ReferralProfile;
+}
+
+let _cached: CacheEntry | null = null;
+let _lastSeenUserId: string | null = null;
+let _authSubscribed = false;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function ensureAuthSubscription(): void {
+  if (_authSubscribed) return;
+  _authSubscribed = true;
+  _lastSeenUserId = getAuthState().user?.id ?? null;
+  subscribeAuthState((state) => {
+    const nextId = state.user?.id ?? null;
+    if (nextId !== _lastSeenUserId) {
+      _lastSeenUserId = nextId;
+      _cached = null;
+    }
+  });
+}
 
 /**
  * Fetch the signed-in user's referral profile. Returns null when the
@@ -23,7 +47,22 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
  * back to hiding the share button in that case.
  */
 export async function getReferralProfile(): Promise<ReferralProfile | null> {
-  if (_cached && Date.now() - _cached.at < CACHE_TTL_MS) return _cached.data;
+  ensureAuthSubscription();
+  const currentUserId = getAuthState().user?.id ?? null;
+  if (!currentUserId) {
+    _cached = null;
+    return null;
+  }
+  // Cache hit ONLY when the cached userId matches the current user.
+  // A mismatch means an account switch happened between prime and
+  // read; drop and re-fetch.
+  if (
+    _cached &&
+    _cached.userId === currentUserId &&
+    Date.now() - _cached.at < CACHE_TTL_MS
+  ) {
+    return _cached.data;
+  }
   let token: string | null = null;
   try {
     token = await getClerkToken();
@@ -39,7 +78,13 @@ export async function getReferralProfile(): Promise<ReferralProfile | null> {
     if (!res.ok) return null;
     const data = (await res.json()) as ReferralProfile;
     if (!data?.code || !data?.shareUrl) return null;
-    _cached = { at: Date.now(), data };
+    // Re-check the current user before caching — the user may have
+    // switched accounts while the fetch was in flight, in which case
+    // this profile belongs to the previous user and caching it would
+    // poison the next reader.
+    const userNow = getAuthState().user?.id ?? null;
+    if (userNow !== currentUserId) return null;
+    _cached = { at: Date.now(), userId: currentUserId, data };
     return data;
   } catch {
     return null;

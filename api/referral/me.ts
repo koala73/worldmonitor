@@ -74,42 +74,19 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  // Invited count: registrations rows that used this code as
-  // `referredBy`. Convex query is keyed by that field — see
-  // convex/registerInterest.ts for the schema.
-  // The count lookup is best-effort: a Convex outage shouldn't stop
-  // the user from copying the share link, so we default to 0 and log.
-  let invitedCount = 0;
-  try {
-    const convexSite =
-      process.env.CONVEX_SITE_URL ??
-      (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-    const relaySecret = process.env.RELAY_SHARED_SECRET ?? '';
-    if (convexSite && relaySecret) {
-      const res = await fetch(`${convexSite}/relay/referral-stats`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${relaySecret}`,
-          'User-Agent': 'worldmonitor-edge/1.0',
-        },
-        body: JSON.stringify({ referralCode: code }),
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as { invitedCount?: number };
-        if (typeof data.invitedCount === 'number') invitedCount = data.invitedCount;
-      }
-    }
-  } catch (err) {
-    console.warn('[api/referral/me] stats fetch failed:', (err as Error).message);
-  }
-
+  // No invite/conversion count is returned. The earlier draft of
+  // this endpoint read `registrations.referredBy`, but the live
+  // `/pro?ref=<code>` flow feeds the ref into Dodopayments checkout
+  // metadata (`affonso_referral`), NOT into registrations — so that
+  // count would stay at 0 for anyone who converted direct-to-checkout
+  // without filling the waitlist form. Rather than ship a misleading
+  // "N invited" display, the count is deliberately omitted until the
+  // two attribution paths (waitlist + Dodo metadata) are unified in
+  // a follow-up. The share button itself works without metrics.
   return jsonResponse(
     {
       code,
       shareUrl: buildShareUrl(PUBLIC_BASE, code),
-      invitedCount,
     },
     200,
     cors,
