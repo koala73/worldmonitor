@@ -30,7 +30,12 @@
  * ~700ms, warm ~40ms — carousel images are not latency-critical.
  */
 
-export const config = { runtime: 'nodejs20.x' };
+// Vercel functions accept only 'edge' | 'experimental-edge' | 'nodejs'
+// as the runtime value. An unversioned 'nodejs' resolves to the
+// project's default Node version (Node 20 here); a versioned
+// 'nodejs20.x' is rejected at build time ("unsupported runtime
+// value in config").
+export const config = { runtime: 'nodejs' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';
