@@ -23,6 +23,7 @@ import { Panel } from './Panel';
 import { getClerkToken, clearClerkTokenCache } from '@/services/clerk';
 import { PanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { hasTier } from '@/services/entitlements';
 import { h, rawHtml, replaceChildren, clearChildren } from '@/utils/dom-utils';
 
 interface LatestBriefReady {
@@ -184,7 +185,13 @@ export class LatestBriefPanel extends Panel {
     // verifies entitlement from the JWT's userId and returns 403
     // for free accounts. Render the upgrade CTA locally instead of
     // bouncing through a doomed fetch.
-    if (authState.user?.role !== 'pro') {
+    //
+    // MUST use the Convex entitlement check (hasTier) — reading
+    // authState.user.role here reads Clerk publicMetadata.plan,
+    // which is not kept in sync with the paying entitlement (same
+    // bug the layout gate had in PR #3166). hasTier() consults the
+    // Convex snapshot — that IS the source of truth.
+    if (!hasTier(1)) {
       this.renderUpgradeRequired();
       return;
     }
