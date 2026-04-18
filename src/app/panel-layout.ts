@@ -203,7 +203,15 @@ export class PanelLayoutManager implements AppModule {
       if (reload) {
         console.log('[entitlements] Subscription activated — reloading to unlock panels');
         window.location.reload();
+        return;
       }
+      // Re-run panel gating on every entitlement snapshot. hasPremiumAccess()
+      // now consults isEntitled(), so a legacy-pro user whose first snapshot
+      // is already pro (null→true — intentionally not reloaded to avoid a
+      // loop) still needs the paywall overlay lifted; likewise on WS reconnect
+      // or entitlement revocation, the lock state must follow the current
+      // snapshot synchronously rather than waiting for the next auth event.
+      this.updatePanelGating(getAuthState());
     });
   }
 
