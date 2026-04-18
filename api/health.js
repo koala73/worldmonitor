@@ -170,6 +170,7 @@ const STANDALONE_KEYS = {
   energyIntelligence:       'energy:intelligence:feed:v1',
   ieaOilStocks:             'energy:iea-oil-stocks:v1:index',
   oilStocksAnalysis:        'energy:oil-stocks-analysis:v1',
+  eiaPetroleum:             'energy:eia-petroleum:v1',
   jodiGas:                  'energy:jodi-gas:v1:_countries',
   lngVulnerability:         'energy:lng-vulnerability:v1',
   jodiOil:                  'energy:jodi-oil:v1:_countries',
@@ -417,6 +418,13 @@ const ON_DEMAND_KEYS = new Set([
   'climateNewsRelayHeartbeat',     // TRANSITIONAL (PR #3133): same deploy-order rationale.
                                    // 30min initial loop, so window is shorter but still present.
                                    // Remove after ~7 days alongside the chokepoint-flows entry.
+  'eiaPetroleum',                  // TRANSITIONAL: gold-standard migration of /api/eia/petroleum
+                                   // from live Vercel fetch to Redis-reader (seed-bundle-energy-sources
+                                   // daily cron). Vercel deploys the reader instantly; Railway env var
+                                   // (EIA_API_KEY) and first daily tick need ~24h to populate the key.
+                                   // Gate as on-demand so the deploy window doesn't CRIT. Promote to
+                                   // SEED_META (maxStaleMin: 4320) after ~7 days of clean cron runs
+                                   // (verify via `seed-meta:energy:eia-petroleum.fetchedAt`).
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
