@@ -200,6 +200,8 @@ export class SearchModal {
 
   private createModal(): void {
     this.overlay = document.createElement('div');
+    this.overlay.setAttribute('role', 'dialog');
+    this.overlay.setAttribute('aria-modal', 'true');
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';

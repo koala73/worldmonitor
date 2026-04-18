@@ -18,6 +18,8 @@ export function openStoryModal(data: StoryData): void {
 
   modalEl = document.createElement('div');
   modalEl.className = 'story-modal-overlay';
+  modalEl.setAttribute('role', 'dialog');
+  modalEl.setAttribute('aria-modal', 'true');
   modalEl.innerHTML = `
     <div class="story-modal">
       <button class="story-close-x" aria-label="${t('modals.story.close')}">
