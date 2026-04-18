@@ -21,7 +21,7 @@
 //     device is a no-op from the user's perspective.
 
 import { getClerkToken } from '@/services/clerk';
-import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array, arrayBufferToBase64 } from '@/config/push';
+import { VAPID_PUBLIC_KEY, isWebPushConfigured, urlBase64ToUint8Array, arrayBufferToBase64 } from '@/config/push';
 
 export type PushPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
@@ -30,6 +30,12 @@ export type PushPermission = 'default' | 'granted' | 'denied' | 'unsupported';
  * Tauri's webview, iOS Safari without "Add to Home Screen", and
  * in-app browsers typically fail this check and the UI should
  * surface a "Install the app first" hint instead of an error.
+ *
+ * Also returns false when the client bundle was built without a
+ * VAPID public key (VITE_VAPID_PUBLIC_KEY unset at build time) —
+ * in that case subscribe() would throw a cryptic pushManager error;
+ * surfacing it as "unsupported" routes the UI through the same
+ * "can't subscribe on this build" path as iOS/Tauri.
  */
 export function isWebPushSupported(): boolean {
   if (typeof window === 'undefined') return false;
@@ -37,6 +43,7 @@ export function isWebPushSupported(): boolean {
   if (!('serviceWorker' in navigator)) return false;
   if (!('PushManager' in window)) return false;
   if (typeof Notification === 'undefined') return false;
+  if (!isWebPushConfigured()) return false;
   return true;
 }
 

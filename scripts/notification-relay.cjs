@@ -561,6 +561,24 @@ async function sendWebPush(userId, subscription, payload) {
     eventType: payload.eventType,
   });
 
+  // Event-type-aware TTL. Push services hold undeliverable messages
+  // until TTL expires — a 24h blanket meant a device offline 20h
+  // would reconnect to a flood of yesterday's rss_alerts. Three tiers:
+  //   brief_ready:    12h  — the editorial brief is a daily artefact
+  //                          and remains interesting into the next
+  //                          afternoon even on a long reconnect
+  //   quiet_hours_batch: 6h — by definition the alerts inside are
+  //                          already queued-on-wake; users care
+  //                          about the batch when they wake
+  //   everything else:   30 min — rss_alert / oref_siren / conflict_
+  //                          escalation are transient. After 30 min
+  //                          they're noise; the dashboard is the
+  //                          canonical surface.
+  const ttlSec =
+    payload.eventType === 'brief_ready'        ? 60 * 60 * 12 :
+    payload.eventType === 'quiet_hours_batch'  ? 60 * 60 * 6  :
+    60 * 30;
+
   try {
     await client.sendNotification(
       {
@@ -568,7 +586,7 @@ async function sendWebPush(userId, subscription, payload) {
         keys: { p256dh: subscription.p256dh, auth: subscription.auth },
       },
       body,
-      { TTL: 60 * 60 * 24 }, // 24h — expire stale notifications
+      { TTL: ttlSec },
     );
     return true;
   } catch (err) {

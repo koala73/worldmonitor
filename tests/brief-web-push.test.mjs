@@ -43,10 +43,23 @@ describe('push config helpers', () => {
     assert.equal(arrayBufferToBase64(null), '');
   });
 
-  it('VAPID_PUBLIC_KEY falls back to the committed default when env is absent', async () => {
-    const { VAPID_PUBLIC_KEY } = await import('../src/config/push.ts');
+  it('VAPID_PUBLIC_KEY reads from VITE_VAPID_PUBLIC_KEY env, empty when unset', async () => {
+    // REGRESSION guard: previously the module shipped a committed
+    // DEFAULT_VAPID_PUBLIC_KEY fallback. That gave rotations two
+    // sources of truth (code + env) and let stale committed keys
+    // ship alongside fresh env vars. The fallback was removed —
+    // push is intentionally disabled on builds that lack the env.
+    const { VAPID_PUBLIC_KEY, isWebPushConfigured } = await import('../src/config/push.ts');
     assert.equal(typeof VAPID_PUBLIC_KEY, 'string');
-    assert.ok(VAPID_PUBLIC_KEY.length > 40, 'VAPID_PUBLIC_KEY must be non-empty');
+    // In Node tests VITE_VAPID_PUBLIC_KEY is unset, so the module
+    // MUST return empty. If this assertion flips we know a
+    // committed default was reintroduced.
+    assert.equal(
+      VAPID_PUBLIC_KEY,
+      '',
+      'VAPID_PUBLIC_KEY must be empty when VITE env var is unset (no committed fallback)',
+    );
+    assert.equal(isWebPushConfigured(), false);
   });
 });
 

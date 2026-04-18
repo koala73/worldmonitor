@@ -214,7 +214,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             <div class="us-notif-ch-icon">${icon}</div>
             <div class="us-notif-ch-body">
               <div class="us-notif-ch-name">${name}</div>
-              <div class="us-notif-ch-sub">Native notifications when this tab is closed</div>
+              <div class="us-notif-ch-sub">Native notifications on this device. Enabling here replaces any previously registered browser.</div>
             </div>
             <div class="us-notif-ch-actions">
               <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary" id="usConnectWebPush">Enable</button>
