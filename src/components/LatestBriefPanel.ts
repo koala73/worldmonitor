@@ -23,7 +23,7 @@ import { Panel } from './Panel';
 import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState } from '@/services/auth-state';
-import { h, replaceChildren, clearChildren } from '@/utils/dom-utils';
+import { h, rawHtml, replaceChildren, clearChildren } from '@/utils/dom-utils';
 
 interface LatestBriefReady {
   status: 'ready';
@@ -59,6 +59,7 @@ const WM_LOGO_SVG = (
 
 export class LatestBriefPanel extends Panel {
   private refreshing = false;
+  private refreshQueued = false;
 
   constructor() {
     super({
@@ -86,9 +87,18 @@ export class LatestBriefPanel extends Panel {
     void this.refresh();
   }
 
-  /** Called by the dashboard when the panel first mounts or is revisited. */
+  /**
+   * Called by the dashboard when the panel first mounts or is
+   * revisited. A refresh while one is already in flight queues a
+   * single follow-up pass instead of being silently dropped — the
+   * user-facing state always reflects the most recent intent
+   * (e.g. retry after error, fresh fetch after a visibility change).
+   */
   public async refresh(): Promise<void> {
-    if (this.refreshing) return;
+    if (this.refreshing) {
+      this.refreshQueued = true;
+      return;
+    }
     // Belt-and-suspenders against race conditions where the panel
     // mounts before updatePanelGating() runs, or where a user
     // downgrades mid-session. hasPremiumAccess is the single source
@@ -107,6 +117,10 @@ export class LatestBriefPanel extends Panel {
       this.showError(message, () => { void this.refresh(); });
     } finally {
       this.refreshing = false;
+      if (this.refreshQueued) {
+        this.refreshQueued = false;
+        void this.refresh();
+      }
     }
   }
 
@@ -142,9 +156,15 @@ export class LatestBriefPanel extends Panel {
 
   private renderComposing(data: LatestBriefComposing): void {
     clearChildren(this.content);
+    // h()'s applyProps has no special-case for innerHTML — passing
+    // it as a prop sets a literal DOM attribute named "innerHTML"
+    // rather than parsing HTML. Use rawHtml() which returns a
+    // DocumentFragment.
+    const logoDiv = h('div', { className: 'latest-brief-logo' });
+    logoDiv.appendChild(rawHtml(WM_LOGO_SVG));
     this.content.appendChild(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
-        h('div', { className: 'latest-brief-logo', innerHTML: WM_LOGO_SVG }),
+        logoDiv,
         h('div', { className: 'latest-brief-empty-title' }, 'Your brief is composing.'),
         h('div', { className: 'latest-brief-empty-body' },
           `The editorial team at WorldMonitor is writing your ${data.issueDate} brief. Check back in a moment.`,
@@ -156,6 +176,9 @@ export class LatestBriefPanel extends Panel {
   private renderReady(data: LatestBriefReady): void {
     const threadLabel = data.threadCount === 1 ? '1 thread' : `${data.threadCount} threads`;
 
+    const coverLogo = h('div', { className: 'latest-brief-cover-logo' });
+    coverLogo.appendChild(rawHtml(WM_LOGO_SVG));
+
     const coverCard = h('a', {
       className: 'latest-brief-card latest-brief-card--ready',
       href: data.magazineUrl,
@@ -164,7 +187,7 @@ export class LatestBriefPanel extends Panel {
       'aria-label': `Open today's brief — ${threadLabel}`,
     },
       h('div', { className: 'latest-brief-cover' },
-        h('div', { className: 'latest-brief-cover-logo', innerHTML: WM_LOGO_SVG }),
+        coverLogo,
         h('div', { className: 'latest-brief-cover-issue' }, data.dateLong),
         h('div', { className: 'latest-brief-cover-title' }, 'WorldMonitor'),
         h('div', { className: 'latest-brief-cover-title' }, 'Brief.'),
