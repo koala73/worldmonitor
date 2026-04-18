@@ -17,16 +17,27 @@ interface FakeElement {
   remove(): void;
   addEventListener(type: string, cb: (e: unknown) => void): void;
   closest(sel: string): { dataset: Record<string, string> } | null;
+  checkVisibility?: () => boolean;
+  offsetParent?: unknown;
 }
 
 interface FakeEnv {
   doc: {
     visibilityState: string;
     setVisibilityState(v: string): void;
-    /** Test helper: flip to simulate any selector in OPEN_MODAL_SELECTOR matching. */
-    modalOpen: boolean;
+    /**
+     * Test helpers modeling the two states a modal element can be in:
+     * - modalMounted: element exists in DOM (matches OPEN_MODAL_SELECTOR
+     *   on query), but may be hidden via CSS. Matches UnifiedSettings,
+     *   SignalModal, etc. that mount in their constructor.
+     * - modalVisible: the mounted element is actually rendered
+     *   (checkVisibility() returns true / offsetParent non-null).
+     */
+    modalMounted: boolean;
+    modalVisible: boolean;
     _removedListeners: Array<() => void>;
     querySelector(sel: string): FakeElement | null;
+    querySelectorAll(sel: string): Iterable<FakeElement>;
     createElement(tag: string): FakeElement;
     body: {
       appendChild(el: FakeElement): void;
@@ -58,15 +69,39 @@ function makeEnv(): FakeEnv {
   const doc: FakeEnv['doc'] = {
     get visibilityState() { return _visibilityState; },
     setVisibilityState(v: string) { _visibilityState = v; },
-    modalOpen: false,
+    modalMounted: false,
+    modalVisible: false,
     _removedListeners: [],
 
     querySelector(sel: string): FakeElement | null {
       if (sel === '.update-toast') return appendedToasts.at(-1) ?? null;
-      if (sel === OPEN_MODAL_SELECTOR) {
-        return this.modalOpen ? ({} as FakeElement) : null;
-      }
       return null;
+    },
+
+    querySelectorAll(sel: string): Iterable<FakeElement> {
+      if (sel !== OPEN_MODAL_SELECTOR) return [];
+      if (!this.modalMounted && !this.modalVisible) return [];
+      // One fake candidate whose visibility reflects the `modalVisible` flag.
+      const isVisible = this.modalVisible;
+      const el: FakeElement = {
+        tagName: 'DIV',
+        className: '',
+        innerHTML: '',
+        dataset: {},
+        _listeners: {},
+        _removed: false,
+        classList: {
+          _classes: new Set<string>(),
+          add() {}, remove() {}, has() { return false; },
+        },
+        remove() {},
+        addEventListener() {},
+        closest() { return null; },
+        checkVisibility: () => isVisible,
+        // offsetParent fallback mirrors checkVisibility for engines missing the API.
+        offsetParent: isVisible ? {} : null,
+      };
+      return [el];
     },
 
     createElement(_tag: string): FakeElement {
@@ -477,39 +512,60 @@ describe('installSwUpdateHandler', () => {
 
   // --- modal-open guard (preserves Clerk sign-in, Settings, etc.) ------------
 
-  it('does NOT auto-reload when a modal is open while the tab goes hidden', () => {
+  it('does NOT auto-reload when a modal is visibly open while the tab goes hidden', () => {
     env.swContainer._controller = {};
     install(env);
     env.swContainer.fireControllerChange();
     fireDwellTimer(env); // autoReloadAllowed = true
 
-    // Simulate e.g. Clerk sign-in modal open
-    env.doc.modalOpen = true;
+    // Simulate e.g. Clerk sign-in modal: mounted AND visible
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
 
     env.doc.setVisibilityState('hidden');
     fireVisibility(env);
-    assert.equal(env.reloadCalls.length, 0, 'reload suppressed while modal is open');
+    assert.equal(env.reloadCalls.length, 0, 'reload suppressed while modal is visibly open');
   });
 
-  it('auto-reloads on the NEXT tab-hide after the modal closes', () => {
+  it('DOES auto-reload when a modal is mounted-but-hidden (persistent dialog case)', () => {
+    // Regression for the reviewer-flagged bug: UnifiedSettings mounts in its
+    // constructor with role="dialog" and stays in the DOM forever, but hides
+    // via `display: none` when .active is not set. A naive selector match
+    // would permanently disable auto-reload. The visibility filter fixes this.
     env.swContainer._controller = {};
     install(env);
     env.swContainer.fireControllerChange();
     fireDwellTimer(env);
 
-    // First hide with modal open — suppressed
-    env.doc.modalOpen = true;
+    env.doc.modalMounted = true;   // dialog element exists in DOM
+    env.doc.modalVisible = false;  // but it's hidden (display:none, no .active)
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 1, 'reload fires when mounted dialog is not actually visible');
+  });
+
+  it('auto-reloads on the NEXT tab-hide after the modal is closed (hidden)', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    // First hide with modal visibly open — suppressed
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
     env.doc.setVisibilityState('hidden');
     fireVisibility(env);
     assert.equal(env.reloadCalls.length, 0);
 
-    // User returns, closes modal, then switches tabs again
+    // User returns, closes modal (mounted stays true, visible goes false),
+    // then switches tabs again
     env.doc.setVisibilityState('visible');
     fireVisibility(env);
-    env.doc.modalOpen = false;
+    env.doc.modalVisible = false;
     env.doc.setVisibilityState('hidden');
     fireVisibility(env);
-    assert.equal(env.reloadCalls.length, 1, 'reload fires on next hide after modal closes');
+    assert.equal(env.reloadCalls.length, 1, 'reload fires on next hide after modal hidden');
   });
 
   it('manual Reload button click still works while a modal is open', () => {
@@ -517,7 +573,8 @@ describe('installSwUpdateHandler', () => {
     install(env);
     env.swContainer.fireControllerChange();
 
-    env.doc.modalOpen = true;
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
     clickToastButton(env, 'reload');
     assert.equal(env.reloadCalls.length, 1, 'explicit click bypasses modal guard');
   });

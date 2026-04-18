@@ -1,6 +1,12 @@
+interface VisibleElementLike {
+  checkVisibility?: () => boolean;
+  offsetParent?: Element | null;
+}
+
 interface DocumentLike {
   readonly visibilityState: string;
   querySelector: (sel: string) => Element | null;
+  querySelectorAll: (sel: string) => Iterable<Element & VisibleElementLike>;
   createElement: (tag: string) => HTMLElement;
   body: { appendChild: (el: Element) => void; contains: (el: Element | null) => boolean };
   addEventListener: (type: string, cb: () => void) => void;
@@ -37,14 +43,31 @@ export interface SwUpdateHandlerOptions {
 export const SW_DEBUG_LOG_KEY = 'wm-sw-debug-log';
 const SW_DEBUG_LOG_MAX = 30;
 
-// Selectors that identify an open modal/dialog. Auto-reload on tab-hide is
-// suppressed while any match is present, so the reload can't wipe in-flight
-// user state: Clerk sign-in email-code flow, UnifiedSettings, ⌘K search,
-// Story/Signal/CountryIntel modals, etc. Most site modals use `.modal`;
-// Clerk uses `.cl-modalBackdrop`; well-authored dialogs set `aria-modal`
-// or `role="dialog"`; native HTML5 dialogs expose `dialog[open]`.
+// Selectors that identify a modal/dialog candidate. Many site modals mount
+// at app startup and stay in the DOM (e.g. UnifiedSettings sets
+// role="dialog" in its constructor), so a raw selector match alone would
+// permanently disable auto-reload. We only treat a match as "open" when
+// the element is actually rendered — see isModalOpen() below.
 export const OPEN_MODAL_SELECTOR =
-  '[aria-modal="true"], [role="dialog"], .modal, .cl-modalBackdrop, dialog[open]';
+  '[aria-modal="true"], [role="dialog"], .cl-modalBackdrop, .modal-overlay, dialog[open]';
+
+/**
+ * Any candidate that's actually visible → a real open modal.
+ * `checkVisibility()` is the modern spec (Chrome 105+, Safari 17.4+, FF 125+);
+ * `offsetParent === null` is the universal fallback for `display: none`
+ * (which is exactly how `.modal-overlay` hides when `.active` is absent —
+ * see main.css `.modal-overlay { display: none }` / `.active { display: flex }`).
+ */
+function isModalOpen(doc: DocumentLike): boolean {
+  for (const el of doc.querySelectorAll(OPEN_MODAL_SELECTOR)) {
+    const checkVisibility = el.checkVisibility;
+    const visible = typeof checkVisibility === 'function'
+      ? checkVisibility.call(el)
+      : el.offsetParent !== null;
+    if (visible) return true;
+  }
+  return false;
+}
 
 function appendDebugLog(entry: Record<string, unknown>): void {
   try {
@@ -176,7 +199,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         // Settings, ⌘K search, etc.). The reload stays armed — next tab-hide
         // after the modal closes will fire it. User can also click Reload
         // in the toast manually at any time.
-        if (doc.querySelector(OPEN_MODAL_SELECTOR)) {
+        if (isModalOpen(doc)) {
           logSw('auto-reload-suppressed-modal-open');
           return;
         }
