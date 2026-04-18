@@ -20,63 +20,73 @@
  *    no HMAC — the edge route layer owns those concerns.
  */
 
-// satori + @resvg/resvg-wasm + the WASM asset are loaded LAZILY inside
-// renderCarouselPng(). Top-level imports would break Node test runners
-// (they can't resolve `?url` asset imports) and also force the ~800KB
-// wasm to ship with every edge bundle that touches this file for
-// *any* reason. Only the /api/brief/carousel/* route ever calls
-// renderCarouselPng; nothing else needs the libraries loaded.
+// satori + @resvg/resvg-js are loaded LAZILY inside renderCarouselPng
+// so Node test runners don't pay the import cost and Vercel's edge
+// bundler doesn't try to pull native binaries into unrelated functions.
+//
+// This file uses @resvg/resvg-js (native Node binding) — NOT the
+// `@resvg/resvg-wasm` variant. The WASM version requires a Vercel
+// edge runtime + a `?url` asset import that Vercel's bundler refuses
+// to resolve ("Edge Function is referencing unsupported modules"),
+// blocking deploys. The native binding works out of the box on the
+// Node runtime and is faster per request. Consequence: the carousel
+// route MUST run on `runtime: 'nodejs20.x'`, encoded in the route's
+// `export const config`.
 
 // RUNTIME DEPENDENCY on Google Fonts CDN.
 //
-// Satori requires a real TTF/WOFF2 buffer to measure glyphs — the
+// Satori requires a real TTF/WOFF2 buffer to measure glyphs; the
 // family name 'serif' on its own is not enough. On first render in a
-// cold edge isolate we fetch Noto Serif Regular from gstatic.com and
+// cold Node isolate we fetch Noto Serif Regular from gstatic.com and
 // memoise it for subsequent requests on the same isolate. There is
-// NO inline fallback font shipped in the bundle today; adding one
-// would add ~50KB to every edge cold-start.
+// NO inline fallback font shipped in the bundle today.
 //
 // Consequence: if the Google Fonts CDN is unreachable, loadFont()
-// throws, renderCarouselPng() rethrows, the edge route returns
-// 503 no-store, Telegram's sendMediaGroup for that brief drops the
-// whole carousel, the digest's long-form text message still sends,
-// and the next cron tick re-renders from a fresh isolate. The
-// failure is self-healing across ticks because the route
-// deliberately refuses to cache any non-render response — see the
-// route handler's 503 path.
+// throws, renderCarouselPng() rethrows, the route returns 503
+// no-store, Telegram's sendMediaGroup for that brief drops the whole
+// carousel, the digest's long-form text message still sends, and the
+// next cron tick re-renders from a fresh isolate. Self-healing
+// across ticks because the route refuses to cache any non-200
+// response.
 //
 // If Google Fonts reliability ever becomes a problem, swap this
 // fetch for a bundled base64 TTF (Noto or DejaVu Serif public-domain
 // subset) and delete the fetch branch.
 const FONT_URL = 'https://fonts.gstatic.com/s/notoserif/v23/ga6Iaw1J5X9T9RW6j9bNdOwzTRiC.woff2';
 let _fontCache: ArrayBuffer | null = null;
-let _wasmInitialized = false;
 
-// Lazy-loaded in renderCarouselPng so tests + other edge bundles
-// don't pay the WASM import cost.
+// Lazy-loaded in renderCarouselPng so tests + unrelated Vercel
+// functions don't pay the import cost.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _resvgLib: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _satoriLib: any = null;
+// Concurrent-cold-start guard: the first caller that begins loading
+// owns the promise; every other caller awaits the same promise. Was
+// previously a plain `_wasmInitialized` boolean which let two cold
+// callers into `await initWasm()` simultaneously (benign but wasteful
+// and one of the P2 findings on the carousel PR review).
+let _libsLoadPromise: Promise<void> | null = null;
 
-async function ensureLibsAndWasm(): Promise<void> {
-  if (!_satoriLib) {
-    const mod = await import('satori');
-    _satoriLib = mod.default ?? mod;
+async function ensureLibs(): Promise<void> {
+  if (_satoriLib && _resvgLib) return;
+  if (_libsLoadPromise) return _libsLoadPromise;
+  _libsLoadPromise = (async () => {
+    const [satoriMod, resvgMod] = await Promise.all([
+      import('satori'),
+      import('@resvg/resvg-js'),
+    ]);
+    _satoriLib = satoriMod.default ?? satoriMod;
+    _resvgLib = resvgMod;
+  })();
+  try {
+    await _libsLoadPromise;
+  } catch (err) {
+    // Reset so the NEXT cold request retries — a transient import
+    // failure shouldn't poison the isolate for its whole lifetime.
+    _libsLoadPromise = null;
+    throw err;
   }
-  if (!_resvgLib) {
-    _resvgLib = await import('@resvg/resvg-wasm');
-  }
-  if (_wasmInitialized) return;
-  // ?url asset import, resolved by the Vercel edge bundler at build
-  // time. In Node test contexts this branch is never reached because
-  // renderCarouselPng is not called.
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore — raw WASM asset
-  const { default: resvgWasmUrl } = await import('@resvg/resvg-wasm/index_bg.wasm?url');
-  const wasm = await fetch(resvgWasmUrl as unknown as string).then((r) => r.arrayBuffer());
-  await _resvgLib.initWasm(wasm);
-  _wasmInitialized = true;
 }
 
 async function loadFont(): Promise<ArrayBuffer> {
@@ -373,7 +383,7 @@ export async function renderCarouselPng(
 ): Promise<Uint8Array> {
   if (!envelope?.data) throw new Error('invalid envelope');
 
-  await ensureLibsAndWasm();
+  await ensureLibs();
   const fontData = await loadFont();
 
   const tree =

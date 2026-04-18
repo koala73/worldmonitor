@@ -22,11 +22,15 @@
  * per-(userId, issueDate) binding. URLs go out over already-authed
  * channels (Telegram, Slack, Discord, email, push).
  *
- * Runtime: edge. Satori + @resvg/resvg-wasm both claim edge
- * compatibility; the WASM asset ships via the `?url` import below.
+ * Runtime: Node 20. The renderer uses @resvg/resvg-js (native
+ * binding) — the WASM variant requires a `?url` asset import that
+ * Vercel's edge bundler refuses ("Edge Function is referencing
+ * unsupported modules"), blocking deploys. Node sidesteps the
+ * bundler issue and is also faster per request. Cold start is
+ * ~700ms, warm ~40ms — carousel images are not latency-critical.
  */
 
-export const config = { runtime: 'edge' };
+export const config = { runtime: 'nodejs20.x' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from '../../../../_cors.js';

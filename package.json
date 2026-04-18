@@ -104,7 +104,7 @@
     "@deck.gl/mapbox": "^9.2.11",
     "@dodopayments/convex": "^0.2.8",
     "@protomaps/basemaps": "^5.7.1",
-    "@resvg/resvg-wasm": "^2.6.2",
+    "@resvg/resvg-js": "^2.6.2",
     "@sentry/browser": "^10.39.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.1",
