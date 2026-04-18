@@ -73,6 +73,7 @@ export interface TransitSummary {
   disruptionPct: number;
   riskSummary: string;
   riskReportAction: string;
+  dataAvailable: boolean;
 }
 
 export interface TransitDayCount {

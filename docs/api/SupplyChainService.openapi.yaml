@@ -594,6 +594,13 @@ components:
                     type: string
                 riskReportAction:
                     type: string
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        False when the upstream portwatch/relay source did not return data for
+                         this chokepoint in the current cycle — the summary fields are zero-state
+                         fill, not a genuine "zero traffic" reading. Client should render a
+                         "transit data unavailable" indicator and skip stat/chart rendering.
         TransitDayCount:
             type: object
             properties:

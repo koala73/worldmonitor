@@ -296,7 +296,11 @@ export class MapPopup {
           MapPopup.historyInflight.add(cpId);
           void fetchChokepointHistory(cpId).then(resp => {
             MapPopup.historyInflight.delete(cpId);
-            const liveEl = this.popup?.querySelector<HTMLElement>('[data-transit-chart]');
+            // Re-query keyed by cpId — if the user opened a different popup
+            // since this fetch started, the live [data-transit-chart] element
+            // belongs to the NEW chokepoint. Matching by id prevents mounting
+            // A's history into B's chart container.
+            const liveEl = this.popup?.querySelector<HTMLElement>(`[data-transit-chart-id="${cpId}"]`);
             if (!liveEl) return;
             if (resp.history.length) {
               MapPopup.historyCache.set(cpId, resp.history);
@@ -308,7 +312,7 @@ export class MapPopup {
             }
           }).catch(() => {
             MapPopup.historyInflight.delete(cpId);
-            const liveEl = this.popup?.querySelector<HTMLElement>('[data-transit-chart]');
+            const liveEl = this.popup?.querySelector<HTMLElement>(`[data-transit-chart-id="${cpId}"]`);
             if (liveEl) liveEl.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable';
           });
         }
@@ -1332,10 +1336,11 @@ export class MapPopup {
     const cp = this.chokepointData?.chokepoints?.find(
       c => c.id === waterway.chokepointId,
     );
-    // Chart is now lazy-loaded via GetChokepointHistory on popup mount. Always
-    // render the section for any known chokepoint; the initial placeholder
-    // swaps to a chart (PRO) or "History unavailable" as the fetch resolves.
-    const hasChart = !!cp;
+    // Chart is lazy-loaded via GetChokepointHistory on popup mount. Render the
+    // section only when the chokepoint is known AND upstream flagged data
+    // available — a zero-state fill (partial portwatch) means the per-id
+    // history key is also empty, so there's nothing to fetch.
+    const hasChart = !!cp && cp.transitSummary?.dataAvailable !== false;
     const isPro = hasPremiumAccess(getAuthState());
     const sectors = CHOKEPOINT_HS2_SECTORS[waterway.chokepointId];
 
@@ -1349,7 +1354,7 @@ export class MapPopup {
     let chartSection = '';
     if (hasChart) {
       if (isPro) {
-        chartSection = `<div data-transit-chart="${escapeHtml(waterway.name)}" style="margin-top:10px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`;
+        chartSection = `<div data-transit-chart="${escapeHtml(waterway.name)}" data-transit-chart-id="${escapeHtml(cp?.id ?? '')}" style="margin-top:10px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`;
       } else {
         chartSection = `
           <div class="sector-pro-gate" data-gate="chokepoint-transit-chart" style="position:relative;overflow:hidden;border-radius:6px;margin-top:10px;min-height:120px;background:var(--surface-elevated, #111)">

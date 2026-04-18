@@ -7469,6 +7469,10 @@ async function seedTransitSummaries() {
 
     // Compact summary: no history field. Consumed by get-chokepoint-status on
     // every request, so keep it small.
+    // dataAvailable distinguishes genuine zero-traffic (cpData present, 0
+    // crossings) from zero-state fill (upstream missing this cycle). False
+    // here makes the RPC response explicit and lets the client render a
+    // "data unavailable" indicator instead of silently-empty stat rows.
     summaries[cpId] = {
       todayTotal: relayTransit?.total ?? 0,
       todayTanker: relayTransit?.tanker ?? 0,
@@ -7481,6 +7485,7 @@ async function seedTransitSummaries() {
       riskSummary: cr?.riskSummary ?? '',
       riskReportAction: cr?.riskReportAction ?? '',
       anomaly,
+      dataAvailable: Boolean(cpData),
     };
 
     // Per-id history key — only fetched on card expand via GetChokepointHistory.

@@ -84,6 +84,10 @@ interface PreBuiltTransitSummary {
   riskSummary: string;
   riskReportAction: string;
   anomaly: { dropPct: number; signal: boolean };
+  // Optional for back-compat: writers prior to the partial-coverage fix
+  // emitted no flag. Missing = treat as available (pre-fix writers only
+  // emitted summaries they had data for).
+  dataAvailable?: boolean;
 }
 
 interface TransitSummariesPayload {
@@ -339,7 +343,10 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         disruptionPct: ts.disruptionPct,
         riskSummary: ts.riskSummary,
         riskReportAction: ts.riskReportAction,
-      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '' },
+        // Default true for pre-fix writers (absence = covered). New writers
+        // explicitly emit false for canonical zero-state fills.
+        dataAvailable: ts.dataAvailable ?? true,
+      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
       flowEstimate: flowsData?.[cp.id] ? {
         currentMbd: flowsData[cp.id]!.currentMbd,
         baselineMbd: flowsData[cp.id]!.baselineMbd,
@@ -367,8 +374,22 @@ export async function getChokepointStatus(
       async () => {
         const { chokepoints, upstreamUnavailable } = await fetchChokepointData();
         if (upstreamUnavailable) return null;
-        const response = { chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable };
-        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: chokepoints.length }, 604800).catch(() => {});
+        // recordCount reflects the count of chokepoints with REAL upstream data
+        // (not the canonical shape size — always 13). Lets api/health.js
+        // distinguish 13/13 healthy from partial (e.g., 10/13) via the
+        // minRecordCount threshold. Before this, a partial portwatch failure
+        // showed as OK despite the UI rendering 3 zero-state rows.
+        const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable !== false).length;
+        // Response-level signal: if any canonical chokepoint lost upstream,
+        // flip upstreamUnavailable so clients can show a partial-coverage
+        // banner without breaking the cached response (data still useful).
+        const partialCoverage = coveredCount < chokepoints.length;
+        const response = {
+          chokepoints,
+          fetchedAt: new Date().toISOString(),
+          upstreamUnavailable: upstreamUnavailable || partialCoverage,
+        };
+        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: coveredCount }, 604800).catch(() => {});
         return response;
       },
     );

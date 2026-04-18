@@ -245,7 +245,7 @@ const SEED_META = {
   imfLabor:         { key: 'seed-meta:economic:imf-labor',        maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
   imfExternal:      { key: 'seed-meta:economic:imf-external',     maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
   shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
-  chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60 },
+  chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60, minRecordCount: 13 }, // 13 canonical chokepoints; get-chokepoint-status writes covered-count → < 13 = upstream partial (portwatch/ArcGIS dropped some)
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL
   // bisExchange + bisCredit: extras written by same BIS script via writeExtraKey, no dedicated seed-meta
   fxYoy:            { key: 'seed-meta:economic:fx-yoy',           maxStaleMin: 1500 }, // daily cron; 25h tolerance + 1h drift
@@ -554,11 +554,18 @@ function classifyKey(name, redisKey, opts, ctx) {
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY_DATA';
   } else if (seedStale === true) status = 'STALE_SEED';
+  // Coverage threshold: producers that know their canonical shape size can
+  // declare minRecordCount. When the writer reports a count below threshold
+  // (e.g., 10/13 chokepoints because portwatch dropped some), this degrades
+  // to COVERAGE_PARTIAL (warn) instead of reporting OK. Producer must write
+  // seed-meta.recordCount using the *covered* count, not the shape size.
+  else if (seedCfg?.minRecordCount != null && records < seedCfg.minRecordCount) status = 'COVERAGE_PARTIAL';
   else status = 'OK';
 
   const entry = { status, records };
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
+  if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
   return entry;
 }
 
@@ -569,6 +576,7 @@ const STATUS_COUNTS = {
   SEED_ERROR: 'warn',
   EMPTY_ON_DEMAND: 'warn',
   REDIS_PARTIAL: 'warn',
+  COVERAGE_PARTIAL: 'warn',
   EMPTY: 'crit',
   EMPTY_DATA: 'crit',
 };

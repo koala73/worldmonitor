@@ -342,11 +342,10 @@ export class SupplyChainPanel extends Panel {
         const actionRow = expanded && ts?.riskReportAction
           ? `<div class="sc-routing-advisory">${escapeHtml(ts.riskReportAction)}</div>`
           : '';
-        // Always render the chart placeholder when expanded — history is now
-        // lazy-loaded via GetChokepointHistory RPC (see mountTransitChart below).
-        // The placeholder shows a loading hint that's swapped to a chart once
-        // history resolves, or to a graceful "unavailable" message on empty.
-        const chartPlaceholder = expanded
+        // Render the chart placeholder only when expanded AND upstream reported
+        // data available for this chokepoint. If dataAvailable === false, the
+        // per-id history key would also be zero (we skip the lazy-fetch).
+        const chartPlaceholder = expanded && ts?.dataAvailable !== false
           ? `<div data-chart-cp="${escapeHtml(cp.name)}" data-chart-cp-id="${escapeHtml(cp.id)}" style="margin-top:8px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`
           : '';
 
@@ -397,7 +396,8 @@ export class SupplyChainPanel extends Panel {
               <span>${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}</span>
               ${cp.directions?.length ? `<span>${cp.directions.map(d => escapeHtml(d)).join('/')}</span>` : ''}
             </div>
-            ${ts && (ts.todayTotal > 0 || hasWow || disruptPct > 0) ? `<div class="sc-metric-row">
+            ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:11px"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
+            ${ts && ts.dataAvailable !== false && (ts.todayTotal > 0 || hasWow || disruptPct > 0) ? `<div class="sc-metric-row">
               ${ts.todayTotal > 0 ? `<span>${ts.todayTotal} ${t('components.supplyChain.vessels')}</span>` : ''}
               ${hasWow ? `<span>${t('components.supplyChain.wowChange')}: ${wowSpan}</span>` : ''}
               ${disruptPct > 0 ? `<span>${t('components.supplyChain.disruption')}: <span class="${disruptClass}">${disruptPct.toFixed(1)}%</span></span>` : ''}
