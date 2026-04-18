@@ -49,10 +49,19 @@
 // across ticks because the route refuses to cache any non-200
 // response.
 //
-// If Google Fonts reliability ever becomes a problem, swap this
-// fetch for a bundled base64 TTF (Noto or DejaVu Serif public-domain
-// subset) and delete the fetch branch.
-const FONT_URL = 'https://fonts.gstatic.com/s/notoserif/v23/ga6Iaw1J5X9T9RW6j9bNdOwzTRiC.woff2';
+// CRITICAL: Satori parses ttf / otf / woff — NOT woff2. Using a
+// woff2 URL here silently fails every render (Satori throws on an
+// unreadable font buffer, the route returns 503, the carousel never
+// delivers). The gstatic.com CDN only serves woff2 to modern UA
+// strings, so we pull the TTF from @fontsource via jsdelivr
+// (public-domain SIL Open Font License). This is the pattern
+// @vercel/og uses for the same reason.
+//
+// If jsdelivr reliability ever becomes a problem, swap this fetch
+// for a bundled base64 TTF (copy the @fontsource/noto-serif file
+// into this repo and read it via fs / inline import) and delete
+// the fetch branch.
+const FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif/files/noto-serif-latin-400-normal.woff';
 let _fontCache: ArrayBuffer | null = null;
 
 // Lazy-loaded in renderCarouselPng so tests + unrelated Vercel

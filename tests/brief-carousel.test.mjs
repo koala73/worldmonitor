@@ -122,6 +122,26 @@ describe('carousel route — no placeholder PNG on failure', () => {
     );
   });
 
+  it('FONT_URL uses a Satori-parseable format (ttf / otf / woff — NOT woff2)', async () => {
+    // REGRESSION: an earlier head shipped a woff2 URL. Satori parses
+    // ttf / otf / woff only — a woff2 buffer throws on every render,
+    // the route returns 503, the carousel never delivers. Lock the
+    // format here so a future swap can't regress.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const __d = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      resolve(__d, '../server/_shared/brief-carousel-render.ts'),
+      'utf-8',
+    );
+    const fontUrlMatch = src.match(/const FONT_URL\s*=\s*['"]([^'"]+)['"]/);
+    assert.ok(fontUrlMatch, 'FONT_URL constant must exist');
+    const url = fontUrlMatch[1];
+    assert.doesNotMatch(url, /\.woff2($|\?|#)/i, 'woff2 is NOT supported by Satori — use ttf/otf/woff');
+    assert.match(url, /\.(ttf|otf|woff)($|\?|#)/i, 'FONT_URL must end in .ttf, .otf, or .woff');
+  });
+
   it('the renderer honestly declares Google Fonts as a runtime dependency', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
