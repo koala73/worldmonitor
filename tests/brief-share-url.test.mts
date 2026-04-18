@@ -169,3 +169,31 @@ describe('BRIEF_PUBLIC_POINTER_PREFIX', () => {
     assert.equal(BRIEF_PUBLIC_POINTER_PREFIX, 'brief:public:');
   });
 });
+
+describe('pointer wire format (P1 regression — write ↔ read must round-trip)', () => {
+  // Both write sites (api/brief/share-url.ts and api/brief/[userId]/
+  // [issueDate].ts) JSON.stringify the pointer before SETting in
+  // Redis. The public route reads via readRawJsonFromUpstash which
+  // ALWAYS JSON.parses — so a bare colon-delimited string would
+  // throw at parse time and the public route would 503 instead of
+  // resolving the pointer. This test locks the wire format.
+  it('JSON.stringify + JSON.parse + decodePublicPointer round-trips cleanly', () => {
+    const encoded = encodePublicPointer('user_abc', '2026-04-18');
+    // Write side: what api/brief/share-url.ts sends to Redis.
+    const wireValue = JSON.stringify(encoded);
+    // Read side: what readRawJsonFromUpstash returns after parsing
+    // Upstash's `{result: <wireValue>}` response.
+    const parsed = JSON.parse(wireValue);
+    assert.equal(typeof parsed, 'string', 'parsed pointer is a string');
+    const pointer = decodePublicPointer(parsed);
+    assert.deepEqual(pointer, { userId: 'user_abc', issueDate: '2026-04-18' });
+  });
+
+  it('a raw colon-delimited string (the P1 bug) fails JSON.parse', () => {
+    // This is the format the earlier buggy code wrote. If we ever
+    // revert to it, readRawJsonFromUpstash's parse will throw and
+    // the public route will 503. Locking the failure so anyone
+    // who reintroduces the bug gets a red test.
+    assert.throws(() => JSON.parse('user_abc:2026-04-18'), SyntaxError);
+  });
+});

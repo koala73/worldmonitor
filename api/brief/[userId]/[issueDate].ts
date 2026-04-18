@@ -25,8 +25,13 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
 // @ts-expect-error — JS module, no declaration file
-import { readRawJsonFromUpstash } from '../../_upstash-json.js';
+import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
+import {
+  BRIEF_PUBLIC_POINTER_PREFIX,
+  buildPublicBriefUrl,
+  encodePublicPointer,
+} from '../../../server/_shared/brief-share-url';
 
 const HTML_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
@@ -153,12 +158,54 @@ export default async function handler(req: Request): Promise<Response> {
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
 
+  // Prepare the share URL (if BRIEF_SHARE_SECRET is set) so the Share
+  // button in the rendered magazine can navigator.share / clipboard
+  // the URL without having to make an authenticated fetch at click
+  // time. The HMAC token already verified this reader legitimately
+  // holds the per-user magazine URL, so deriving + materialising the
+  // share pointer here is as safe as rendering the magazine at all.
+  //
+  // If the secret isn't configured or the pointer write fails, we
+  // still render the magazine — the Share button just gracefully
+  // hides (renderer requires options.shareUrl to emit the button).
+  let shareUrl: string | undefined;
+  const shareSecret = process.env.BRIEF_SHARE_SECRET;
+  if (shareSecret) {
+    try {
+      const built = await buildPublicBriefUrl({
+        userId,
+        issueDate,
+        baseUrl: new URL(req.url).origin,
+        secret: shareSecret,
+      });
+      // Idempotent pointer write: same hash every call, so SET just
+      // refreshes the TTL. JSON-stringify so readRawJsonFromUpstash
+      // (which always JSON.parses) round-trips cleanly on the public
+      // route — a bare string would throw at parse and 503 there.
+      const pointerKey = `${BRIEF_PUBLIC_POINTER_PREFIX}${built.hash}`;
+      const pointerValue = JSON.stringify(encodePublicPointer(userId, issueDate));
+      const writeResult = await redisPipeline([
+        ['SET', pointerKey, pointerValue, 'EX', '604800'],
+      ]);
+      if (writeResult != null) {
+        shareUrl = built.url;
+      } else {
+        console.warn('[api/brief] pointer write failed; Share button will be hidden');
+      }
+    } catch (err) {
+      console.warn('[api/brief] share URL derive failed:', (err as Error).message);
+    }
+  }
+
   // Cast to BriefEnvelope; renderBriefMagazine runs its own
   // assertBriefEnvelope at the top and will throw on any shape
   // mismatch, which we catch below.
   let html: string;
   try {
-    html = renderBriefMagazine(envelope as Parameters<typeof renderBriefMagazine>[0]);
+    html = renderBriefMagazine(
+      envelope as Parameters<typeof renderBriefMagazine>[0],
+      { shareUrl },
+    );
   } catch (err) {
     // Malformed envelope in Redis (composer bug, version drift, etc.)
     // We treat this as an expired brief from the reader's perspective

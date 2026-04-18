@@ -159,8 +159,14 @@ export default async function handler(req: Request): Promise<Response> {
   // Idempotent pointer write. Same {userId, issueDate, secret} always
   // produces the same hash, so this SET overwrites with an identical
   // value on repeat shares and resets the TTL window.
+  //
+  // CRITICAL: store as JSON-encoded so readRawJsonFromUpstash() on the
+  // public route round-trips successfully. That helper always
+  // JSON.parse's the Redis value; a bare colon-delimited string would
+  // throw at parse time and the public route would 503 instead of
+  // resolving the pointer.
   const pointerKey = `${BRIEF_PUBLIC_POINTER_PREFIX}${hash}`;
-  const pointerValue = encodePublicPointer(session.userId, issueDate);
+  const pointerValue = JSON.stringify(encodePublicPointer(session.userId, issueDate));
   const writeResult = await redisPipeline([
     ['SET', pointerKey, pointerValue, 'EX', String(BRIEF_TTL_SECONDS)],
   ]);

@@ -419,38 +419,71 @@ describe('BRIEF_ENVELOPE_VERSION', () => {
 });
 
 describe('renderBriefMagazine — Share button (non-public views)', () => {
-  it('renders a Share button with the issue date on the button dataset', () => {
+  const SHARE_URL = 'https://worldmonitor.app/api/brief/public/abcDEF012345';
+
+  it('renders a Share button with data-share-url and issue date', () => {
     const env = envelope();
-    const html = renderBriefMagazine(env);
+    const html = renderBriefMagazine(env, { shareUrl: SHARE_URL });
     assert.ok(html.includes('class="wm-share"'), 'share button must be present');
+    assert.ok(html.includes(`data-share-url="${SHARE_URL}"`), 'share button carries pre-derived URL');
     assert.ok(html.includes(`data-issue-date="${env.data.date}"`), 'share button carries issue date');
     assert.ok(html.includes('aria-label="Share this brief"'), 'share button has a11y label');
   });
 
   it('emits the inline share script exactly once', () => {
     const env = envelope();
-    const html = renderBriefMagazine(env);
+    const html = renderBriefMagazine(env, { shareUrl: SHARE_URL });
     const matches = html.match(/document\.querySelector\('\.wm-share'\)/g) ?? [];
     assert.equal(matches.length, 1, 'share script emitted once');
   });
 
-  it('uses the authenticated share-url endpoint', () => {
+  it('click handler reads from dataset rather than fetching — no auth round-trip', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env, { shareUrl: SHARE_URL });
+    // The script must NOT contain any fetch call. It reads the URL
+    // from btn.dataset.shareUrl (server-derived) and invokes
+    // navigator.share / clipboard directly.
+    const scriptStart = html.indexOf("document.querySelector('.wm-share')");
+    const scriptEnd = html.indexOf('</script>', scriptStart);
+    assert.ok(scriptStart > -1 && scriptEnd > scriptStart);
+    const scriptBody = html.slice(scriptStart, scriptEnd);
+    assert.ok(!scriptBody.includes('fetch('), 'inline share script must not make fetch calls');
+    assert.ok(scriptBody.includes('btn.dataset.shareUrl'), 'script reads URL from dataset');
+    assert.ok(scriptBody.includes('navigator.share'), 'script uses Web Share API');
+    assert.ok(scriptBody.includes('navigator.clipboard'), 'script has clipboard fallback');
+  });
+
+  it('gracefully hides the Share button when shareUrl is absent', () => {
     const env = envelope();
     const html = renderBriefMagazine(env);
-    assert.ok(html.includes('/api/brief/share-url'), 'script calls the auth\'d endpoint');
+    assert.ok(!html.includes('class="wm-share"'), 'no Share button when shareUrl unset');
+    assert.ok(
+      !html.includes("document.querySelector('.wm-share')"),
+      'no Share script when shareUrl unset',
+    );
+  });
+
+  it('HTML-escapes the shareUrl into the data attribute', () => {
+    const env = envelope();
+    const hostile = 'https://example.com/path?a=1&b="evil"';
+    const html = renderBriefMagazine(env, { shareUrl: hostile });
+    // The raw " must not appear inside data-share-url — would
+    // break the HTML attribute parser.
+    assert.ok(
+      html.includes('&quot;evil&quot;'),
+      'hostile quotes are HTML-escaped in data-share-url',
+    );
   });
 });
 
 describe('renderBriefMagazine — publicMode', () => {
-  it('strips Share button + share script on public mode', () => {
+  it('strips Share button + share script on public mode even when shareUrl is passed', () => {
     const env = envelope();
-    const html = renderBriefMagazine(env, { publicMode: true });
+    const html = renderBriefMagazine(env, {
+      publicMode: true,
+      shareUrl: 'https://worldmonitor.app/api/brief/public/abcDEF012345',
+    });
     assert.ok(!html.includes('class="wm-share"'), 'share button absent on public');
-    // The share-script marker (a runtime DOM query) must NOT appear.
-    // A substring match on the endpoint URL isn't reliable — the CSS
-    // block references it in a documentation comment as part of
-    // explaining why the public view hides the button. Matching on
-    // the executing code is the right signal.
     assert.ok(
       !html.includes("document.querySelector('.wm-share')"),
       'share script (runtime) absent on public',

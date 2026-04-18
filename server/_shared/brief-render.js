@@ -904,69 +904,53 @@ const STYLE_BLOCK = `<style>
 </style>`;
 
 /**
- * Inline share-button client. Talks to the authenticated
- * /api/brief/share-url endpoint (Clerk JWT sent via the same cookie/
- * bearer the surrounding app already uses), then invokes
- * navigator.share with a clipboard fallback.
+ * Inline share-button client. The hosted magazine route has already
+ * derived the share URL server-side (it has the userId, issueDate,
+ * and BRIEF_SHARE_SECRET — the same inputs the share-url endpoint
+ * uses) and embedded it as `data-share-url` on the button. At click
+ * time we just invoke navigator.share with a clipboard fallback.
  *
- * Emitted only for non-public views. The public mirror has no share
- * UI because a public reader has no Clerk session to sign the
- * share-url call and shouldn't be able to re-share someone else's
- * brief on their behalf.
+ * No network, no auth — the per-user magazine route's HMAC token
+ * check already proved this reader is authorised to share the brief
+ * they are viewing. Deriving the URL at render time instead of click
+ * time also means the button works in a fresh tab with no Clerk
+ * session context (common path: reader opened the magazine from an
+ * email link in a browser they're not signed into).
  *
- * The button reads data-issue-date from itself — composer/route puts
- * the issue date on the button attribute so no DOM parsing is
- * required at runtime.
+ * Emitted only for non-public views AND only when data-share-url is
+ * present on the button (i.e. BRIEF_SHARE_SECRET was configured).
  */
 const SHARE_SCRIPT = `<script>
 (function() {
   var btn = document.querySelector('.wm-share');
   if (!btn) return;
+  var shareUrl = btn.dataset.shareUrl;
+  if (!shareUrl) return;
   btn.addEventListener('click', async function() {
     if (btn.dataset.state === 'sharing') return;
-    var issueDate = btn.dataset.issueDate;
-    if (!issueDate) return;
     btn.dataset.state = 'sharing';
     try {
-      // Clerk session is typically delivered via Authorization bearer
-      // from the parent app shell; when the magazine is opened in a
-      // fresh tab we rely on the same-origin cookie fallback that the
-      // app's fetch wrapper installs. We read from globalThis so this
-      // works equally well inside Tauri and the web dashboard.
-      var token = (window.WM_CLERK_JWT && typeof window.WM_CLERK_JWT === 'string') ? window.WM_CLERK_JWT : '';
-      var headers = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = 'Bearer ' + token;
-      var res = await fetch('/api/brief/share-url?date=' + encodeURIComponent(issueDate), {
-        method: 'POST',
-        credentials: 'include',
-        headers: headers,
-        body: '{}',
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      var data = await res.json();
-      if (!data || typeof data.shareUrl !== 'string') throw new Error('bad response');
       var shareTitle = 'WorldMonitor Brief';
       var shareText = 'My WorldMonitor Brief for today:';
       if (navigator.share) {
         try {
-          await navigator.share({ title: shareTitle, text: shareText, url: data.shareUrl });
+          await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
           btn.dataset.state = 'copied';
           return;
         } catch (err) {
-          // User cancelled the native sheet. Not an error — just stop.
           if (err && (err.name === 'AbortError' || /abort/i.test(String(err.message)))) {
             btn.dataset.state = '';
             return;
           }
-          // Fall through to clipboard.
+          // Fall through to clipboard on non-abort share errors.
         }
       }
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(data.shareUrl);
+        await navigator.clipboard.writeText(shareUrl);
         btn.dataset.state = 'copied';
       } else {
         // Ancient browser. Show the URL so the user can copy manually.
-        window.prompt('Copy the link below:', data.shareUrl);
+        window.prompt('Copy the link below:', shareUrl);
         btn.dataset.state = 'copied';
       }
     } catch (err) {
@@ -1061,7 +1045,7 @@ function redactForPublic(data) {
 
 /**
  * @param {BriefEnvelope} envelope
- * @param {{ publicMode?: boolean; refCode?: string }} [options]
+ * @param {{ publicMode?: boolean; refCode?: string; shareUrl?: string }} [options]
  * @returns {string}
  */
 export function renderBriefMagazine(envelope, options = {}) {
@@ -1071,6 +1055,14 @@ export function renderBriefMagazine(envelope, options = {}) {
   // still HTML-escapes it before interpolation so this is belt-and-
   // suspenders against any accidental leak through that boundary.
   const refCode = typeof options.refCode === 'string' ? options.refCode : '';
+  // shareUrl is expected to be an absolute https URL produced by
+  // buildPublicBriefUrl at the route level. We accept anything
+  // non-empty here and still escape it into the attribute; if the
+  // string is malformed the button's click handler simply fails open
+  // (prompt fallback). Suppressed entirely on publicMode.
+  const shareUrl = !publicMode && typeof options.shareUrl === 'string' && options.shareUrl.length > 0
+    ? options.shareUrl
+    : '';
   const rawData = publicMode ? redactForPublic(envelope.data) : envelope.data;
   const { user, issue, date, dateLong, digest, stories } = rawData;
   const [, month, day] = date.split('-');
@@ -1198,13 +1190,15 @@ export function renderBriefMagazine(envelope, options = {}) {
       + '</div>'
     : '';
 
-  // Only render the Share button on authenticated (non-public) views.
-  // Its click handler calls /api/brief/share-url which requires a
-  // Clerk session. The data-issue-date attribute is read by
-  // SHARE_SCRIPT at click time.
-  const shareButtonHtml = publicMode
-    ? ''
-    : `<button class="wm-share" type="button" data-issue-date="${escapeHtml(date)}" aria-label="Share this brief">Share</button>`;
+  // Only render the Share button on authenticated (non-public) views
+  // AND only when the route was able to derive a share URL (i.e.
+  // BRIEF_SHARE_SECRET is configured and the pointer write
+  // succeeded). The URL is embedded as data-share-url and read at
+  // click time by SHARE_SCRIPT — no fetch, no auth required
+  // client-side.
+  const shareButtonHtml = shareUrl
+    ? `<button class="wm-share" type="button" data-share-url="${escapeHtml(shareUrl)}" data-issue-date="${escapeHtml(date)}" aria-label="Share this brief">Share</button>`
+    : '';
 
   const headMeta = publicMode
     ? '<meta name="robots" content="noindex,nofollow">'
@@ -1232,7 +1226,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     '</div>' +
     '<div class="nav-dots" id="navDots"></div>' +
     '<div class="hint">← → / swipe / scroll</div>' +
-    (publicMode ? '' : SHARE_SCRIPT) +
+    (shareUrl ? SHARE_SCRIPT : '') +
     NAV_SCRIPT +
     '</body>' +
     '</html>'
