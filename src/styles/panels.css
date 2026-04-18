@@ -2846,3 +2846,121 @@ a.hub-top-story {
   color: var(--text-muted);
   opacity: 0.7;
 }
+
+/* ── Latest Brief panel ───────────────────────────────────────────── */
+
+.latest-brief-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #222);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+.latest-brief-card--ready:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent, #4ade80);
+}
+
+.latest-brief-cover {
+  background: #0a0a0a;
+  color: #f2ede4;
+  padding: 22px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.latest-brief-cover-logo {
+  width: 32px;
+  height: 32px;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+.latest-brief-cover-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.latest-brief-cover-issue {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.latest-brief-cover-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+.latest-brief-cover-kicker {
+  margin-top: 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8b3a1f;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.latest-brief-meta {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel-bg, #161616);
+}
+.latest-brief-greeting {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-primary, #eee);
+  line-height: 1.3;
+}
+.latest-brief-cta {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent, #4ade80);
+  white-space: nowrap;
+}
+
+.latest-brief-card--composing {
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--panel-bg, #161616);
+}
+.latest-brief-logo {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 12px;
+  opacity: 0.6;
+  color: var(--text-muted, #888);
+}
+.latest-brief-logo svg,
+.latest-brief-empty-title {
+  display: block;
+}
+.latest-brief-empty-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--text-primary, #eee);
+}
+.latest-brief-empty-body {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  line-height: 1.5;
+  max-width: 36ch;
+  margin: 0 auto;
+}
+.latest-brief-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 12px;
+}
