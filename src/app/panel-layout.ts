@@ -100,7 +100,7 @@ import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, onEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
@@ -174,16 +174,18 @@ export class PanelLayoutManager implements AppModule {
 
     initCheckoutOverlay(() => showCheckoutSuccess());
 
-    // Listen for entitlement changes — reload panels to pick up new gating state.
-    // Skip the initial snapshot to avoid a reload loop for users who already have
-    // premium via legacy signals (API key / wm-pro-key).
-    let skipInitialSnapshot = true;
+    // Reload only on a free→pro transition. Legacy-pro users whose first
+    // snapshot is already pro (lastEntitled === null) must not trigger a
+    // reload loop, but a user who pays mid-session (false → true) must see
+    // their panels unlock without manual refresh. The prior `skipInitialSnapshot`
+    // guard collapsed these cases and silently swallowed post-payment activations
+    // when the first authenticated snapshot carried the new entitlement.
+    let lastEntitled: boolean | null = null;
     this.unsubscribeEntitlementChange = onEntitlementChange(() => {
-      if (skipInitialSnapshot) {
-        skipInitialSnapshot = false;
-        return;
-      }
-      if (isEntitled()) {
+      const entitled = isEntitled();
+      const reload = shouldReloadOnEntitlementChange(lastEntitled, entitled);
+      lastEntitled = entitled;
+      if (reload) {
         console.log('[entitlements] Subscription activated — reloading to unlock panels');
         window.location.reload();
       }

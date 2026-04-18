@@ -52,6 +52,11 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
         case 'checkout.status':
           if (event.data?.status === 'succeeded') {
             onSuccessCallback?.();
+            // Belt-and-braces: reload after the webhook is likely to have
+            // landed (median <5s). This guarantees the post-payment state is
+            // fresh even if the Convex WS subscription was slow to deliver the
+            // pro snapshot or the free→pro transition detector missed it.
+            setTimeout(() => window.location.reload(), 3_000);
           }
           break;
         case 'checkout.closed':
