@@ -9,6 +9,8 @@ import type { Clerk } from '@clerk/clerk-js';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
+const DODO_PORTAL_FALLBACK_URL = 'https://customer.dodopayments.com';
+const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 
 const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace";
 
@@ -145,6 +147,9 @@ async function doCheckout(
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       console.error('[checkout] Edge error:', resp.status, err);
+      if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
+        window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
+      }
       return false;
     }
 

@@ -11,9 +11,12 @@
 
 import { v, ConvexError } from "convex/values";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { checkout } from "../lib/dodo";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import { signUserId } from "../lib/identitySigning";
+
+const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 
 // ---------------------------------------------------------------------------
 // Shared checkout session creation logic
@@ -30,6 +33,43 @@ interface UserInfo {
   userId: string;
   email?: string;
   name?: string;
+}
+
+interface BlockingSubscriptionInfo {
+  planKey: string;
+  displayName: string;
+  status: "active" | "on_hold" | "cancelled" | "expired";
+  currentPeriodEnd: number;
+  dodoSubscriptionId: string;
+}
+
+interface BlockedCheckoutResponse {
+  blocked: true;
+  code: typeof ACTIVE_SUBSCRIPTION_EXISTS;
+  message: string;
+  subscription: BlockingSubscriptionInfo;
+}
+
+function buildBlockedCheckoutResponse(
+  subscription: BlockingSubscriptionInfo,
+): BlockedCheckoutResponse {
+  return {
+    blocked: true,
+    code: ACTIVE_SUBSCRIPTION_EXISTS,
+    message: `A ${subscription.displayName} subscription already exists for this account. Use Manage Billing to update it instead of purchasing again.`,
+    subscription,
+  };
+}
+
+async function getCheckoutBlockingSubscription(
+  ctx: ActionCtx,
+  userId: string,
+  productId: string,
+): Promise<BlockingSubscriptionInfo | null> {
+  return await ctx.runQuery(
+    internal.payments.billing.getCheckoutBlockingSubscription,
+    { userId, productId },
+  );
 }
 
 async function _createCheckoutSession(
@@ -116,6 +156,10 @@ export const createCheckout = action({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const identity = await resolveUserIdentity(ctx);
+    const blocking = await getCheckoutBlockingSubscription(ctx, userId, args.productId);
+    if (blocking) {
+      throw new ConvexError(buildBlockedCheckoutResponse(blocking).message);
+    }
 
     const customerName = identity
       ? [identity.givenName, identity.familyName].filter(Boolean).join(" ") ||
@@ -147,6 +191,10 @@ export const internalCreateCheckout = internalAction({
   handler: async (ctx, args) => {
     if (!args.userId) {
       throw new ConvexError("userId is required");
+    }
+    const blocking = await getCheckoutBlockingSubscription(ctx, args.userId, args.productId);
+    if (blocking) {
+      return buildBlockedCheckoutResponse(blocking);
     }
     return _createCheckoutSession(
       ctx,

@@ -103,6 +103,13 @@ export default async function handler(req: Request): Promise<Response> {
     const data = await resp.json();
     if (!resp.ok) {
       console.error('[create-checkout] Relay error:', resp.status, data);
+      if (resp.status === 409) {
+        return json({
+          error: data?.error || 'ACTIVE_SUBSCRIPTION_EXISTS',
+          message: data?.message || 'An active subscription already exists for this account.',
+          subscription: data?.subscription,
+        }, 409, cors);
+      }
       return json({ error: data?.error || 'Checkout creation failed' }, 502, cors);
     }
 

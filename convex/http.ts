@@ -794,6 +794,24 @@ http.route({
           referralCode: body.referralCode,
         },
       );
+      if (
+        result &&
+        typeof result === "object" &&
+        "blocked" in result &&
+        result.blocked === true
+      ) {
+        return new Response(
+          JSON.stringify({
+            error: result.code,
+            message: result.message,
+            subscription: result.subscription,
+          }),
+          {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: { "Content-Type": "application/json" },

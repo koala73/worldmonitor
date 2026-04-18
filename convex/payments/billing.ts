@@ -15,6 +15,7 @@ import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 
 // UUID v4 regex matching values produced by crypto.randomUUID() in user-identity.ts.
 // Hoisted to module scope to avoid re-allocation on every claimSubscription call.
@@ -130,6 +131,61 @@ export const getActiveSubscription = internalQuery({
 
     const activeSub = allSubs.find((s) => s.status === "active");
     return activeSub ?? null;
+  },
+});
+
+/**
+ * Internal query used by checkout creation to prevent duplicate subscriptions.
+ *
+ * Blocks new checkout sessions when the user already has an active/on_hold
+ * subscription in the same tier group, or a cancelled subscription that
+ * still has time remaining in the current billing period.
+ */
+export const getCheckoutBlockingSubscription = internalQuery({
+  args: {
+    userId: v.string(),
+    productId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const targetPlanKey = resolveProductToPlan(args.productId);
+    if (!targetPlanKey) return null;
+
+    const targetCatalogEntry = PRODUCT_CATALOG[targetPlanKey];
+    if (!targetCatalogEntry) return null;
+
+    const now = Date.now();
+    const priorityOrder = ["active", "on_hold", "cancelled", "expired"];
+    const blockingSubs = (await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50))
+      .filter((sub) => {
+        const existingCatalogEntry = PRODUCT_CATALOG[sub.planKey];
+        if (!existingCatalogEntry) return false;
+        if (existingCatalogEntry.tierGroup !== targetCatalogEntry.tierGroup) return false;
+        if (sub.status === "active" || sub.status === "on_hold") return true;
+        return sub.status === "cancelled" && sub.currentPeriodEnd > now;
+      })
+      .sort((a, b) => {
+        const pa = priorityOrder.indexOf(a.status);
+        const pb = priorityOrder.indexOf(b.status);
+        if (pa !== pb) return pa - pb;
+        if (a.currentPeriodEnd !== b.currentPeriodEnd) {
+          return b.currentPeriodEnd - a.currentPeriodEnd;
+        }
+        return b.updatedAt - a.updatedAt;
+      });
+
+    const blocking = blockingSubs[0];
+    if (!blocking) return null;
+
+    return {
+      planKey: blocking.planKey,
+      displayName: PRODUCT_CATALOG[blocking.planKey]?.displayName ?? blocking.planKey,
+      status: blocking.status,
+      currentPeriodEnd: blocking.currentPeriodEnd,
+      dodoSubscriptionId: blocking.dodoSubscriptionId,
+    };
   },
 });
 
