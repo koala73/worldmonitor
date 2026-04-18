@@ -114,21 +114,51 @@ describe('referral attribution resolves Clerk codes (waitlist path)', () => {
     assert.match(src, /\.index\("by_referrer_email",\s*\["referrerUserId",\s*"refereeEmail"\]\)/);
   });
 
-  it('/api/referral/me blocks on the binding + returns 503 on failure (not a dead share link)', async () => {
+  it('/api/referral/me fires the Convex binding non-blocking and never 503s on binding failure', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const { dirname, resolve } = await import('node:path');
     const __d = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(resolve(__d, '../api/referral/me.ts'), 'utf-8');
     assert.match(src, /registerReferralCodeInConvex/, 'helper must exist');
-    // REGRESSION: the earlier head used ctx.waitUntil(...) which
-    // returned a 200 + share link to the user even if the binding
-    // silently failed (missing env, non-2xx, network). That handed
-    // users dead links. Binding must block the response.
-    assert.match(src, /await registerReferralCodeInConvex/, 'binding must be awaited, not fire-and-forget');
-    assert.doesNotMatch(src, /ctx\.waitUntil\(registerReferralCodeInConvex/, 'must NOT use waitUntil for the binding');
-    // Failure path must return 503 rather than a 200 with a dead link.
-    assert.match(src, /binding failed[\s\S]{0,200}service_unavailable[\s\S]{0,50}503/, 'binding failure returns 503');
+    // CURRENT CONTRACT: binding is fire-and-forget via ctx.waitUntil.
+    //
+    // An earlier iteration (the "await + 503 on failure" shape this
+    // test used to enforce) turned a flaky Convex relay call into a
+    // homepage-wide 503 for every PRO user — the homepage fetches
+    // this endpoint on mount, so one bad Convex response broke the
+    // 5-minute cache window for everyone. The mutation is idempotent
+    // and the /pro?ref=<code> signup side re-reads at conversion
+    // time, so a missed binding degrades to missed attribution
+    // rather than outright breakage.
+    assert.match(
+      src,
+      /ctx\.waitUntil\(\s*registerReferralCodeInConvex/,
+      'binding must be dispatched via ctx.waitUntil (non-blocking)',
+    );
+    // Handler must accept a second ctx arg with waitUntil — matches
+    // the notification-channels + discord-oauth handler shapes.
+    assert.match(
+      src,
+      /export\s+default\s+async\s+function\s+handler\s*\(\s*req:\s*Request,\s*ctx:\s*\{\s*waitUntil:/,
+      'handler signature must take ctx with waitUntil',
+    );
+    // MUST NOT 503 on a binding failure — the whole point of the
+    // non-blocking shape. Handler must not mention "binding failed"
+    // anywhere near a 503 response code.
+    assert.doesNotMatch(
+      src,
+      /binding failed[\s\S]{0,200}service_unavailable[\s\S]{0,50}503/,
+      'binding failure must not return 503',
+    );
+    // BRIEF_URL_SIGNING_SECRET missing still legitimately 503s
+    // (different codepath; we can't mint a code without the secret).
+    // That's intentional, and unrelated to the Convex binding.
+    assert.match(
+      src,
+      /BRIEF_URL_SIGNING_SECRET is not configured[\s\S]{0,200}503/,
+      'missing signing secret still 503s',
+    );
     assert.match(src, /\/relay\/register-referral-code/, 'must POST to the Convex HTTP action');
   });
 

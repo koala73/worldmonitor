@@ -3,21 +3,26 @@
  *
  * GET /api/referral/me
  *   Bearer-auth via Clerk JWT.
- *   -> 200 { code, shareUrl, invitedCount, convertedCount }
+ *   -> 200 { code, shareUrl }
  *   -> 401 on missing/invalid bearer
  *   -> 503 if BRIEF_URL_SIGNING_SECRET is not configured (we reuse
  *      it as the HMAC secret for referral codes — see handler body).
  *
  * `code` is a deterministic 8-char hash of the Clerk userId (stable
- * for the life of the account). `invitedCount` is the number of
- * `registrations` rows that used this user's code as `referredBy`.
- * `convertedCount` is the subset of those that later produced a PRO
- * subscription — omitted in the MVP because subscription tracking
- * lives in a different table and the join isn't needed for the
- * share-button UX.
+ * for the life of the account).
  *
  * Stats are privacy-safe: the route returns counts only, never the
  * referred users' emails or identities.
+ *
+ * Convex binding is fire-and-forget via ctx.waitUntil (see handler).
+ * An earlier iteration blocked on the binding and returned 503 on
+ * any failure — that turned a single flaky Convex call into a
+ * homepage-wide 503 outage for every PRO user (all homepage loads
+ * fetch this within the 5-minute client cache window). The mutation
+ * is idempotent; the next fetch re-attempts, and a receiver's
+ * signup at /pro?ref=<code> only needs the binding to have landed
+ * SOMETIME before that receiver completes signup, not on every
+ * share-button mount. Missed attribution beats homepage 503.
  */
 
 export const config = { runtime: 'edge' };
@@ -36,13 +41,16 @@ const PUBLIC_BASE =
  * Bind the Clerk-derived share code to the userId in Convex so that
  * future /pro?ref=<code> signups can actually credit the sharer.
  *
- * BLOCKING (no longer fire-and-forget). If the binding can't be
- * persisted the endpoint returns 503 instead of a dead share link —
- * handing a user a code the waitlist mutation will never resolve is
- * worse than a retryable error. The Convex mutation is idempotent,
- * so client retries are safe.
+ * Fire-and-forget via the caller's ctx.waitUntil — never blocks the
+ * 200 response on this path. The mutation is idempotent, so the next
+ * /api/referral/me fetch (or signup-side lookup) re-attempts. A
+ * missed binding degrades to "receiver's signup isn't attributed"
+ * which is strictly less bad than the prior behaviour of 503'ing
+ * every PRO homepage load while Convex is slow or misconfigured.
  *
- * Throws on any failure; caller translates to 503.
+ * Resolves on success. Does NOT throw on failure — the caller relies
+ * on waitUntil to catch + log so a background failure can't surface
+ * as an unhandled rejection.
  */
 async function registerReferralCodeInConvex(userId: string, code: string): Promise<void> {
   const convexSite =
@@ -67,7 +75,10 @@ async function registerReferralCodeInConvex(userId: string, code: string): Promi
   }
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
   }
@@ -109,18 +120,22 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  // Bind the code to the userId in Convex BEFORE returning the share
-  // URL. If the binding can't be persisted (Convex outage, missing
-  // env, non-2xx) we must NOT hand the user a link that the waitlist
-  // mutation can never resolve — a dead share link is worse than a
-  // retryable error. The mutation is idempotent so client retries
-  // are safe.
-  try {
-    await registerReferralCodeInConvex(session.userId, code);
-  } catch (err) {
-    console.error('[api/referral/me] binding failed:', (err as Error).message);
-    return jsonResponse({ error: 'service_unavailable' }, 503, cors);
-  }
+  // Bind the code to the userId in Convex in the background so future
+  // /pro?ref=<code> signups can credit the sharer. FIRE-AND-FORGET
+  // via ctx.waitUntil — the response doesn't wait, and a binding
+  // failure (Convex outage, bad env, non-2xx, timeout) logs a warning
+  // but never turns into a 503. See module docstring for the
+  // rationale; an earlier blocking design caused homepage-wide
+  // outages on every flake. The mutation is idempotent so the next
+  // request retries.
+  ctx.waitUntil(
+    registerReferralCodeInConvex(session.userId, code).catch((err: unknown) => {
+      console.warn(
+        '[api/referral/me] binding failed (non-blocking):',
+        (err as Error).message,
+      );
+    }),
+  );
 
   // No invite/conversion count is returned on the response. The
   // waitlist path (userReferralCredits) now credits correctly, but
