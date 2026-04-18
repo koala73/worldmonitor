@@ -421,7 +421,7 @@ export class LatestBriefPanel extends Panel {
       type: 'button',
       className: 'latest-brief-share',
       'aria-label': 'Share WorldMonitor — copies a referral link',
-      disabled: 'true',
+      disabled: true,
     }, 'Share ↗');
     const shareStatus = h('span', {
       className: 'latest-brief-share-status',

@@ -5,7 +5,8 @@
  *   Bearer-auth via Clerk JWT.
  *   -> 200 { code, shareUrl, invitedCount, convertedCount }
  *   -> 401 on missing/invalid bearer
- *   -> 503 if REFERRAL_SIGNING_SECRET is not configured
+ *   -> 503 if BRIEF_URL_SIGNING_SECRET is not configured (we reuse
+ *      it as the HMAC secret for referral codes — see handler body).
  *
  * `code` is a deterministic 8-char hash of the Clerk userId (stable
  * for the life of the account). `invitedCount` is the number of

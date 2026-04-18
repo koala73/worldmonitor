@@ -26,8 +26,6 @@
  * cleanly at attribution time.
  */
 
-const RESERVED_CODES = new Set(['index', 'robots', 'admin']);
-
 function hexHmac(secret: string, message: string): Promise<string> {
   return (async () => {
     const enc = new TextEncoder();
@@ -58,17 +56,15 @@ export async function getReferralCodeForUser(
   }
   const hex = await hexHmac(secret, `referral:v1:${userId}`);
   // 8 hex chars = 32-bit namespace. Plenty for the lifetime of the
-  // product; we'll rotate the secret + migrate if we ever approach
-  // the birthday-collision zone (~65k users).
-  let code = hex.slice(0, 8);
-  // Bump past any reserved prefix collisions rather than rejecting —
-  // deterministic and doesn't change the caller's shape.
-  let ix = 8;
-  while (RESERVED_CODES.has(code) && ix + 8 <= hex.length) {
-    code = hex.slice(ix, ix + 8);
-    ix += 8;
-  }
-  return code;
+  // product; rotate the secret + migrate if we ever approach the
+  // birthday-collision zone (~65k users).
+  //
+  // Note: the output alphabet is [0-9a-f] so there's no risk of the
+  // code colliding with URL-path keywords like 'admin' / 'robots'
+  // — those contain non-hex characters. (An earlier draft carried
+  // a RESERVED_CODES guard for this case; it was dead code and was
+  // removed after review.)
+  return hex.slice(0, 8);
 }
 
 export function buildShareUrl(baseUrl: string, code: string): string {
