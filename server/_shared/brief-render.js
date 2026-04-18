@@ -514,11 +514,18 @@ function renderBackCover({ tz, pageIndex, totalPages }) {
 
 const STYLE_BLOCK = `<style>
   :root {
+    /* WorldMonitor brand palette — aligned with /pro landing + dashboard.
+       Previous sienna rust (#8b3a1f) was the only off-brand color in the
+       product; swapped to WM mint at two strengths so the accent harmonises
+       on both light and dark pages. Paper unified to a single crisp white
+       (#fafafa) rather than warm cream so the brief reads as a sibling of
+       /pro rather than a separate editorial product. */
     --ink: #0a0a0a;
     --bone: #f2ede4;
-    --cream: #f1e9d8;
-    --cream-ink: #1a1612;
-    --sienna: #8b3a1f;
+    --cream: #fafafa;           /* was #f1e9d8 — unified with --paper */
+    --cream-ink: #0a0a0a;       /* was #1a1612 — crisper contrast on white */
+    --sienna: #3ab567;          /* muted mint for light-page accents (was #8b3a1f) */
+    --mint: #4ade80;            /* bright WM brand mint for dark-page accents */
     --paper: #fafafa;
     --paper-ink: #0a0a0a;
   }
@@ -689,11 +696,24 @@ const STYLE_BLOCK = `<style>
     max-width: 40ch; margin-bottom: 4vh; opacity: 0.88;
   }
   .story.dark .desc { opacity: 0.85; }
+  /* Source line — the one editorial accent on story pages. Sits at
+     two-strength mint to match the brand (Option B): muted on light,
+     bright on dark. Opacity removed so mint reads as a deliberate
+     accent, not a muted bone/ink. */
   .story .source {
     font-family: 'IBM Plex Mono', monospace;
     font-size: max(11px, 0.9vw); letter-spacing: 0.2em;
-    text-transform: uppercase; opacity: 0.6;
+    text-transform: uppercase;
   }
+  .story.light .source { color: var(--sienna); }
+  .story.dark  .source { color: var(--mint); }
+  /* Logo ekg dot: mint on every page so the brand "signal" pulse
+     shows across the whole magazine. Light pages use the muted mint
+     so it doesn't glare against #fafafa. */
+  .cover .wm-logo .wm-ekg-dot,
+  .story.dark .wm-logo .wm-ekg-dot,
+  .digest .wm-logo .wm-ekg-dot { fill: var(--mint); }
+  .story.light .wm-logo .wm-ekg-dot { fill: var(--sienna); }
   .story .right { display: flex; flex-direction: column; justify-content: center; }
   .story .callout {
     background: rgba(0, 0, 0, 0.05);
