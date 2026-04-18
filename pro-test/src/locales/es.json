@@ -13,14 +13,16 @@
     "signalWord": "Señal",
     "valueProps": "La capa de IA geopolítica — pregúntale, suscríbete, construye sobre ella.",
     "reserveEarlyAccess": "Reserva tu acceso anticipado",
-    "launchingDate": "Lanzamiento en marzo de 2026",
+    "launchingDate": "Disponible ahora",
     "tryFreeDashboard": "Prueba el panel gratis",
     "emailPlaceholder": "Introduce tu correo",
     "emailAriaLabel": "Correo electrónico para la lista de espera",
     "choosePlan": "Elige tu plan",
     "signIn": "Iniciar sesión"
   },
-  "wired": { "asFeaturedIn": "Destacado en" },
+  "wired": {
+    "asFeaturedIn": "Destacado en"
+  },
   "twoPath": {
     "proTitle": "World Monitor Pro",
     "proDesc": "Tu analista de IA. Una mesa de inteligencia personal. Una plataforma sobre la que construir. Una clave para 22 servicios en vivo.",
@@ -249,7 +251,7 @@
     "title": "Comparar niveles",
     "feature": "Característica",
     "freeHeader": "Free ($0)",
-    "proHeader": "Pro (acceso anticipado)",
+    "proHeader": "Pro ($39.99)",
     "apiHeader": "API (próximamente)",
     "entHeader": "Enterprise (contacto)",
     "dataRefresh": "Actualización de datos",
