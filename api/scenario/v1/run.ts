@@ -128,13 +128,20 @@ export default async function handler(req: Request): Promise<Response> {
     enqueuedAt: Date.now(),
   });
 
-  const redisResp = await fetch(`${url}/rpush/scenario-queue%3Apending`, {
+  // Upstash REST command format: POST base URL with body `[CMD, ...args]`.
+  // The previous `/rpush/{key}` + `body: [payload]` form caused Upstash to
+  // store the literal array-string (`["{jobId:...}"]`) as the list value,
+  // which broke the scenario-worker's JSON.parse → destructure flow and
+  // made every job fail field validation (Railway log 2026-04-18: repeated
+  // `[scenario-worker] Job failed field validation, discarding: ["{...`).
+  // This command format matches `upstashLpush` in scripts/ais-relay.cjs.
+  const redisResp = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify([payload]),
+    body: JSON.stringify(['RPUSH', 'scenario-queue:pending', payload]),
     signal: AbortSignal.timeout(5_000),
   });
 
