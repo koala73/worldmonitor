@@ -80,7 +80,17 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
     // through unchanged (unwrapEnvelope returns {_seed: null, data: raw}).
     return unwrapEnvelope(JSON.parse(data.result)).data;
   } catch (err) {
-    console.warn('[redis] getCachedJson failed:', errMsg(err));
+    // AbortError = timeout; structured + errored so log drains (e.g. Sentry via
+    // Vercel integration) pick it up. Large-payload timeouts used to silently
+    // return null and let downstream callers cache zero-state — see
+    // docs/plans/chokepoint-rpc-payload-split.md for the incident that added
+    // this tag.
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    if (isTimeout) {
+      console.error(`[REDIS-TIMEOUT] getCachedJson key=${key} timeoutMs=${REDIS_OP_TIMEOUT_MS}`);
+    } else {
+      console.warn('[redis] getCachedJson failed:', errMsg(err));
+    }
     return null;
   }
 }

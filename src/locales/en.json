@@ -947,6 +947,8 @@
       "corridorDisruption": "Corridor Disruption",
       "corridor": "Corridor",
       "loadingCorridors": "Loading corridor data...",
+      "loadingHistory": "Loading transit history…",
+      "historyUnavailable": "Transit history unavailable",
       "mineral": "Mineral",
       "topProducers": "Top Producers",
       "risk": "Risk",

@@ -102,6 +102,16 @@ export interface FlowEstimate {
   hazardAlertName: string;
 }
 
+export interface GetChokepointHistoryRequest {
+  chokepointId: string;
+}
+
+export interface GetChokepointHistoryResponse {
+  chokepointId: string;
+  history: TransitDayCount[];
+  fetchedAt: string;
+}
+
 export interface GetCriticalMineralsRequest {
 }
 
@@ -368,6 +378,7 @@ export interface RouteDescriptor {
 export interface SupplyChainServiceHandler {
   getShippingRates(ctx: ServerContext, req: GetShippingRatesRequest): Promise<GetShippingRatesResponse>;
   getChokepointStatus(ctx: ServerContext, req: GetChokepointStatusRequest): Promise<GetChokepointStatusResponse>;
+  getChokepointHistory(ctx: ServerContext, req: GetChokepointHistoryRequest): Promise<GetChokepointHistoryResponse>;
   getCriticalMinerals(ctx: ServerContext, req: GetCriticalMineralsRequest): Promise<GetCriticalMineralsResponse>;
   getShippingStress(ctx: ServerContext, req: GetShippingStressRequest): Promise<GetShippingStressResponse>;
   getCountryChokepointIndex(ctx: ServerContext, req: GetCountryChokepointIndexRequest): Promise<GetCountryChokepointIndexResponse>;
@@ -436,6 +447,53 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getChokepointStatus(ctx, body);
           return new Response(JSON.stringify(result as GetChokepointStatusResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-chokepoint-history",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetChokepointHistoryRequest = {
+            chokepointId: params.get("chokepointId") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getChokepointHistory", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChokepointHistory(ctx, body);
+          return new Response(JSON.stringify(result as GetChokepointHistoryResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

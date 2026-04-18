@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
+
+// GetChokepointHistory returns the transit-count history for a single
+// chokepoint. Loaded lazily on card expand so the main chokepoint-status
+// response can stay compact (no 180-day history per chokepoint).
+message GetChokepointHistoryRequest {
+  string chokepoint_id = 1 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "chokepointId"}
+  ];
+}
+
+message GetChokepointHistoryResponse {
+  string chokepoint_id = 1;
+  repeated TransitDayCount history = 2;
+  int64 fetched_at = 3;
+}

@@ -5,7 +5,8 @@ import type {
   GetCriticalMineralsResponse,
   GetShippingStressResponse,
 } from '@/services/supply-chain';
-import { fetchBypassOptions } from '@/services/supply-chain';
+import { fetchBypassOptions, fetchChokepointHistory } from '@/services/supply-chain';
+import type { TransitDayCount } from '@/services/supply-chain';
 import type { ScenarioResult } from '@/config/scenario-templates';
 import { SCENARIO_TEMPLATES } from '@/config/scenario-templates';
 import { TransitChart } from '@/utils/transit-chart';
@@ -32,6 +33,11 @@ export class SupplyChainPanel extends Panel {
   private transitChart = new TransitChart();
   private chartObserver: MutationObserver | null = null;
   private chartMountTimer: ReturnType<typeof setTimeout> | null = null;
+  // Session-scoped cache for lazy-loaded transit histories (keyed by chokepoint id).
+  // Populated on first card expand via fetchChokepointHistory; reused across re-renders
+  // so we don't refetch 35KB per expand/collapse cycle.
+  private historyCache = new Map<string, TransitDayCount[]>();
+  private historyInflight = new Set<string>();
   private bypassUnsubscribe: (() => void) | null = null;
   private bypassGateTracked = false;
   private onDismissScenario: (() => void) | null = null;
@@ -159,9 +165,47 @@ export class SupplyChainPanel extends Panel {
       const mountTransitChart = (): boolean => {
         const el = this.content.querySelector(`[data-chart-cp="${expandedCpName}"]`) as HTMLElement | null;
         if (!el) return false;
-        if (cp?.transitSummary?.history?.length) {
-          this.transitChart.mount(el, cp.transitSummary.history);
+        const cpId = cp?.id ?? '';
+        if (!cpId) { el.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable'; return true; }
+
+        const cached = this.historyCache.get(cpId);
+        if (cached && cached.length) {
+          el.removeAttribute('style');
+          el.style.marginTop = '8px';
+          el.style.minHeight = '200px';
+          el.textContent = '';
+          this.transitChart.mount(el, cached);
+          return true;
         }
+
+        if (cached && !cached.length) {
+          el.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable';
+          return true;
+        }
+
+        if (this.historyInflight.has(cpId)) return true;
+        this.historyInflight.add(cpId);
+        void fetchChokepointHistory(cpId).then(resp => {
+          this.historyInflight.delete(cpId);
+          this.historyCache.set(cpId, resp.history);
+          // Still mounted? Re-query — DOM may have re-rendered since fetch started.
+          const liveEl = this.content.querySelector(`[data-chart-cp-id="${cpId}"]`) as HTMLElement | null;
+          if (!liveEl) return;
+          if (resp.history.length) {
+            liveEl.removeAttribute('style');
+            liveEl.style.marginTop = '8px';
+            liveEl.style.minHeight = '200px';
+            liveEl.textContent = '';
+            this.transitChart.mount(liveEl, resp.history);
+          } else {
+            liveEl.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable';
+          }
+        }).catch(() => {
+          this.historyInflight.delete(cpId);
+          this.historyCache.set(cpId, []);
+          const liveEl = this.content.querySelector(`[data-chart-cp-id="${cpId}"]`) as HTMLElement | null;
+          if (liveEl) liveEl.textContent = t('components.supplyChain.historyUnavailable') || 'History unavailable';
+        });
         return true;
       };
 
@@ -299,8 +343,12 @@ export class SupplyChainPanel extends Panel {
         const actionRow = expanded && ts?.riskReportAction
           ? `<div class="sc-routing-advisory">${escapeHtml(ts.riskReportAction)}</div>`
           : '';
-        const chartPlaceholder = expanded && ts?.history?.length
-          ? `<div data-chart-cp="${escapeHtml(cp.name)}" style="margin-top:8px;min-height:200px"></div>`
+        // Always render the chart placeholder when expanded — history is now
+        // lazy-loaded via GetChokepointHistory RPC (see mountTransitChart below).
+        // The placeholder shows a loading hint that's swapped to a chart once
+        // history resolves, or to a graceful "unavailable" message on empty.
+        const chartPlaceholder = expanded
+          ? `<div data-chart-cp="${escapeHtml(cp.name)}" data-chart-cp-id="${escapeHtml(cp.id)}" style="margin-top:8px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`
           : '';
 
         const tier = cp.warRiskTier ?? 'WAR_RISK_TIER_NORMAL';

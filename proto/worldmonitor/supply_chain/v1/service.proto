@@ -5,6 +5,7 @@ package worldmonitor.supply_chain.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/supply_chain/v1/get_shipping_rates.proto";
 import "worldmonitor/supply_chain/v1/get_chokepoint_status.proto";
+import "worldmonitor/supply_chain/v1/get_chokepoint_history.proto";
 import "worldmonitor/supply_chain/v1/get_critical_minerals.proto";
 import "worldmonitor/supply_chain/v1/get_shipping_stress.proto";
 import "worldmonitor/supply_chain/v1/get_country_chokepoint_index.proto";
@@ -23,6 +24,13 @@ service SupplyChainService {
 
   rpc GetChokepointStatus(GetChokepointStatusRequest) returns (GetChokepointStatusResponse) {
     option (sebuf.http.config) = {path: "/get-chokepoint-status", method: HTTP_METHOD_GET};
+  }
+
+  // GetChokepointHistory returns transit-count history for a single chokepoint,
+  // loaded lazily on card expand. Keeps the status RPC compact (no 180-day
+  // history per chokepoint on every call).
+  rpc GetChokepointHistory(GetChokepointHistoryRequest) returns (GetChokepointHistoryResponse) {
+    option (sebuf.http.config) = {path: "/get-chokepoint-history", method: HTTP_METHOD_GET};
   }
 
   rpc GetCriticalMinerals(GetCriticalMineralsRequest) returns (GetCriticalMineralsResponse) {

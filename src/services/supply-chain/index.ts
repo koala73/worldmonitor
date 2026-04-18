@@ -4,6 +4,7 @@ import {
   SupplyChainServiceClient,
   type GetShippingRatesResponse,
   type GetChokepointStatusResponse,
+  type GetChokepointHistoryResponse,
   type GetCriticalMineralsResponse,
   type GetShippingStressResponse,
   type GetCountryChokepointIndexResponse,
@@ -19,6 +20,7 @@ import {
   type ShippingRatePoint,
   type ChokepointExposureEntry,
   type BypassOption,
+  type TransitDayCount,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -26,6 +28,7 @@ import { getHydratedData } from '@/services/bootstrap';
 export type {
   GetShippingRatesResponse,
   GetChokepointStatusResponse,
+  GetChokepointHistoryResponse,
   GetCriticalMineralsResponse,
   GetShippingStressResponse,
   GetCountryChokepointIndexResponse,
@@ -41,6 +44,7 @@ export type {
   ShippingRatePoint,
   ChokepointExposureEntry,
   BypassOption,
+  TransitDayCount,
 };
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
@@ -76,6 +80,22 @@ export async function fetchChokepointStatus(): Promise<GetChokepointStatusRespon
     }, emptyChokepoints);
   } catch {
     return emptyChokepoints;
+  }
+}
+
+/**
+ * Lazy-load transit history for a single chokepoint. Main status RPC returns
+ * transitSummary.history = [] to keep the payload under the 1.5s Redis read
+ * budget; this call pulls the ~35KB per-id history key only when a card is
+ * expanded. See docs/plans/chokepoint-rpc-payload-split.md.
+ */
+export async function fetchChokepointHistory(
+  chokepointId: string,
+): Promise<GetChokepointHistoryResponse> {
+  try {
+    return await client.getChokepointHistory({ chokepointId });
+  } catch {
+    return { chokepointId, history: [], fetchedAt: '0' };
   }
 }
 

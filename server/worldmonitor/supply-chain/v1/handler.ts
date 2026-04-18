@@ -2,6 +2,7 @@ import type { SupplyChainServiceHandler } from '../../../../src/generated/server
 
 import { getShippingRates } from './get-shipping-rates';
 import { getChokepointStatus } from './get-chokepoint-status';
+import { getChokepointHistory } from './get-chokepoint-history';
 import { getCriticalMinerals } from './get-critical-minerals';
 import { getShippingStress } from './get-shipping-stress';
 import { getCountryChokepointIndex } from './get-country-chokepoint-index';
@@ -14,6 +15,7 @@ import { getRouteImpact } from './get-route-impact';
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
   getChokepointStatus,
+  getChokepointHistory,
   getCriticalMinerals,
   getShippingStress,
   getCountryChokepointIndex,

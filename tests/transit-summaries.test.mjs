@@ -45,17 +45,31 @@ describe('seedTransitSummaries (relay)', () => {
     assert.match(relaySrc, /seed-meta:supply_chain:transit-summaries/);
   });
 
-  it('summary object includes all required fields', () => {
+  it('compact summary object includes all stat fields (history split out)', () => {
     assert.match(relaySrc, /todayTotal:/);
     assert.match(relaySrc, /todayTanker:/);
     assert.match(relaySrc, /todayCargo:/);
     assert.match(relaySrc, /todayOther:/);
     assert.match(relaySrc, /wowChangePct:/);
-    assert.match(relaySrc, /history:/);
     assert.match(relaySrc, /riskLevel:/);
     assert.match(relaySrc, /incidentCount7d:/);
     assert.match(relaySrc, /disruptionPct:/);
     assert.match(relaySrc, /anomaly/);
+  });
+
+  it('compact summary object does NOT inline history (payload-split guard)', () => {
+    // Matches the `summaries[cpId] = { ... }` block specifically — history
+    // belongs to the per-id key now, not the compact summary.
+    const block = relaySrc.match(/summaries\[cpId\]\s*=\s*\{([\s\S]*?)\};/);
+    assert.ok(block, 'compact summary assignment not found');
+    assert.doesNotMatch(block[1], /\bhistory:/);
+  });
+
+  it('writes per-id history keys via envelopeWrite', () => {
+    assert.match(relaySrc, /TRANSIT_SUMMARY_HISTORY_KEY_PREFIX/);
+    assert.match(relaySrc, /supply_chain:transit-summaries:history:v1:/);
+    // Per-id payload includes chokepointId, history, fetchedAt
+    assert.match(relaySrc, /chokepointId:\s*cpId,\s*history,\s*fetchedAt:\s*now/);
   });
 
   it('reads latestCorridorRiskData for riskLevel/incidentCount7d/disruptionPct', () => {
@@ -234,21 +248,34 @@ describe('get-chokepoint-status handler (source analysis)', () => {
     assert.match(handlerSrc, /getCachedJson\(TRANSIT_SUMMARIES_KEY/);
   });
 
-  it('imports PortWatchData for fallback assembly', () => {
-    assert.match(handlerSrc, /import.*PortWatchData/);
-  });
-
-  it('does NOT import CorridorRiskData (uses local interface)', () => {
-    assert.doesNotMatch(handlerSrc, /import.*CorridorRiskData/);
-  });
-
-  it('imports CANONICAL_CHOKEPOINTS for fallback relay-name mapping', () => {
-    assert.match(handlerSrc, /import.*CANONICAL_CHOKEPOINTS/);
+  it('does NOT import PortWatchData or CANONICAL_CHOKEPOINTS (fallback path removed)', () => {
+    // Fallback against raw 500KB portwatch/corridorrisk keys was removed —
+    // the compact transit-summaries key is authoritative; missing key now
+    // surfaces as upstreamUnavailable=true rather than triggering a large
+    // secondary read that times out at the 1.5s Redis budget.
+    assert.doesNotMatch(handlerSrc, /import.*PortWatchData/);
+    assert.doesNotMatch(handlerSrc, /import\s*\{\s*CANONICAL_CHOKEPOINTS\s*\}/);
   });
 
   it('does NOT import portwatchNameToId or corridorRiskNameToId', () => {
     assert.doesNotMatch(handlerSrc, /import.*portwatchNameToId/);
     assert.doesNotMatch(handlerSrc, /import.*corridorRiskNameToId/);
+  });
+
+  it('treats missing transit-summaries as upstreamUnavailable (silent-cache regression guard)', () => {
+    // Regression guard for the silent zero-state cache bug: before this fix,
+    // a null transit-summaries read produced 13 zero-state chokepoints that
+    // were cached for 5 min (REDIS_CACHE_TTL). Now we mark upstreamUnavailable
+    // so cachedFetchJson writes NEG_SENTINEL (120s) and retries on next poll.
+    assert.match(handlerSrc, /transitSummariesMissing/);
+    assert.match(handlerSrc, /const upstreamUnavailable\s*=\s*transitSummariesMissing/);
+  });
+
+  it('omits history from the transit summary response (lazy-loaded via GetChokepointHistory)', () => {
+    // Main status response no longer carries 180-day history per chokepoint —
+    // clients lazy-fetch via GetChokepointHistory on card expand. Field stays
+    // declared for proto compat but is always empty in this RPC.
+    assert.match(handlerSrc, /history:\s*\[\],\s*\n\s*riskLevel:\s*ts\.riskLevel/);
   });
 
   it('defines PreBuiltTransitSummary interface with all required fields', () => {
@@ -474,26 +501,20 @@ describe('CHOKEPOINT_THREAT_LEVELS relay-handler sync', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. Handler reads pre-built summaries first, falls back to raw keys
+// 8. Handler reads ONLY the compact transit-summaries key (no fallback)
 // ---------------------------------------------------------------------------
 describe('handler transit data strategy', () => {
-  it('reads TRANSIT_SUMMARIES_KEY as primary source', () => {
+  it('reads TRANSIT_SUMMARIES_KEY as the only transit source', () => {
     assert.match(handlerSrc, /TRANSIT_SUMMARIES_KEY/);
   });
 
-  it('has fallback keys for portwatch, corridorrisk, and transit counts', () => {
-    assert.match(handlerSrc, /PORTWATCH_FALLBACK_KEY/);
-    assert.match(handlerSrc, /CORRIDORRISK_FALLBACK_KEY/);
-    assert.match(handlerSrc, /TRANSIT_COUNTS_FALLBACK_KEY/);
-  });
-
-  it('fallback triggers only when pre-built summaries are empty', () => {
-    assert.match(handlerSrc, /Object\.keys\(summaries\)\.length === 0/);
-  });
-
-  it('fallback builds summaries with detectTrafficAnomaly', () => {
-    assert.match(handlerSrc, /buildFallbackSummaries/);
-    assert.match(handlerSrc, /detectTrafficAnomaly/);
+  it('does NOT reference removed fallback keys (portwatch / corridorrisk / chokepoint_transits)', () => {
+    // Previously each of these was a ~500KB secondary read that stacked on
+    // top of the 1.5s Redis read budget and timed out. Removed in payload-split PR.
+    assert.doesNotMatch(handlerSrc, /PORTWATCH_FALLBACK_KEY/);
+    assert.doesNotMatch(handlerSrc, /CORRIDORRISK_FALLBACK_KEY/);
+    assert.doesNotMatch(handlerSrc, /TRANSIT_COUNTS_FALLBACK_KEY/);
+    assert.doesNotMatch(handlerSrc, /buildFallbackSummaries/);
   });
 
   it('does NOT call getPortWatchTransits or fetchCorridorRisk (no upstream fetch)', () => {

@@ -7367,7 +7367,13 @@ setInterval(() => {
 }, CHOKEPOINT_TRANSIT_INTERVAL_MS).unref?.();
 
 // --- Pre-assembled Transit Summaries (Railway advantage: avoids large Redis reads on Vercel) ---
+// Split storage: compact summary (no history, ~30KB) + per-id history keys (~35KB each).
+// The compact summary is read on every /api/supply-chain/v1/get-chokepoint-status call.
+// History keys are read only on card expand via /get-chokepoint-history. Before this
+// split the combined payload was ~500KB and timed out at Vercel edge's 1.5s Redis read
+// budget (docs/plans/chokepoint-rpc-payload-split.md).
 const TRANSIT_SUMMARY_REDIS_KEY = 'supply_chain:transit-summaries:v1';
+const TRANSIT_SUMMARY_HISTORY_KEY_PREFIX = 'supply_chain:transit-summaries:history:v1:';
 const TRANSIT_SUMMARY_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
 const TRANSIT_SUMMARY_INTERVAL_MS = 10 * 60 * 1000;
 
@@ -7448,13 +7454,16 @@ async function seedTransitSummaries() {
     }
 
     const cr = latestCorridorRiskData?.[cpId];
+    const history = cpData.history ?? [];
+
+    // Compact summary: no history field. Consumed by get-chokepoint-status on
+    // every request, so keep it small.
     summaries[cpId] = {
       todayTotal: relayTransit?.total ?? 0,
       todayTanker: relayTransit?.tanker ?? 0,
       todayCargo: relayTransit?.cargo ?? 0,
       todayOther: relayTransit?.other ?? 0,
       wowChangePct: cpData.wowChangePct ?? 0,
-      history: cpData.history ?? [],
       riskLevel: cr?.riskLevel ?? '',
       incidentCount7d: cr?.incidentCount7d ?? 0,
       disruptionPct: cr?.disruptionPct ?? 0,
@@ -7462,11 +7471,24 @@ async function seedTransitSummaries() {
       riskReportAction: cr?.riskReportAction ?? '',
       anomaly,
     };
+
+    // Per-id history key — only fetched on card expand via GetChokepointHistory.
+    // Write best-effort: a failure here doesn't block the summary publish. An
+    // empty history key just means the chart is unavailable for that chokepoint
+    // until the next successful relay tick.
+    const historyPayload = { chokepointId: cpId, history, fetchedAt: now };
+    const historyOk = await envelopeWrite(
+      `${TRANSIT_SUMMARY_HISTORY_KEY_PREFIX}${cpId}`,
+      historyPayload,
+      TRANSIT_SUMMARY_TTL,
+      { recordCount: history.length, sourceVersion: 'transit-summaries-history' },
+    );
+    if (!historyOk) console.warn(`[TransitSummary] history write failed for ${cpId}`);
   }
 
   const ok = await envelopeWrite(TRANSIT_SUMMARY_REDIS_KEY, { summaries, fetchedAt: now }, TRANSIT_SUMMARY_TTL, { recordCount: Object.keys(summaries).length, sourceVersion: 'transit-summaries' });
   await upstashSet('seed-meta:supply_chain:transit-summaries', { fetchedAt: now, recordCount: Object.keys(summaries).length }, 604800);
-  console.log(`[TransitSummary] Seeded ${Object.keys(summaries).length} summaries (redis: ${ok ? 'OK' : 'FAIL'})`);
+  console.log(`[TransitSummary] Seeded ${Object.keys(summaries).length} summaries + per-id history (redis: ${ok ? 'OK' : 'FAIL'})`);
 }
 
 // Seed transit summaries every 10 min (same as transit counter)

@@ -53,6 +53,41 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-chokepoint-history:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetChokepointHistory
+            description: |-
+                GetChokepointHistory returns transit-count history for a single chokepoint,
+                 loaded lazily on card expand. Keeps the status RPC compact (no 180-day
+                 history per chokepoint on every call).
+            operationId: GetChokepointHistory
+            parameters:
+                - name: chokepointId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetChokepointHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/supply-chain/v1/get-critical-minerals:
         get:
             tags:
@@ -623,6 +658,29 @@ components:
                     type: string
                 hazardAlertName:
                     type: string
+        GetChokepointHistoryRequest:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+            required:
+                - chokepointId
+            description: |-
+                GetChokepointHistory returns the transit-count history for a single
+                 chokepoint. Loaded lazily on card expand so the main chokepoint-status
+                 response can stay compact (no 180-day history per chokepoint).
+        GetChokepointHistoryResponse:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TransitDayCount'
+                fetchedAt:
+                    type: string
+                    format: int64
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:
