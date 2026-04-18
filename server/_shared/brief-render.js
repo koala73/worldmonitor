@@ -1182,10 +1182,15 @@ export function renderBriefMagazine(envelope, options = {}) {
   // In public view: the per-hash mirror is noindexed via the HTTP
   // header AND a meta tag, and we prepend a subscribe strip pointing
   // at /pro (with optional referral attribution).
+  const publicStripHref = `https://worldmonitor.app/pro${refCode ? `?ref=${encodeURIComponent(refCode)}` : ''}`;
   const publicStripHtml = publicMode
     ? '<div class="wm-public-strip">'
       + '<span>WorldMonitor Brief \u00b7 shared issue</span>'
-      + `<a href="https://worldmonitor.app/pro${refCode ? `?ref=${encodeURIComponent(refCode)}` : ''}" target="_blank" rel="noopener">`
+      // Match renderBackCover's pattern: escapeHtml on the full href
+      // even though encodeURIComponent already handles HTML-special
+      // chars inside refCode — consistency for anyone auditing XSS
+      // hygiene, and a safety net if the route boundary loosens.
+      + `<a href="${escapeHtml(publicStripHref)}" target="_blank" rel="noopener">`
       + 'Subscribe \u2192</a>'
       + '</div>'
     : '';

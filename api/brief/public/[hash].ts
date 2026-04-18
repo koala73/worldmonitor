@@ -139,10 +139,19 @@ export default async function handler(req: Request): Promise<Response> {
     console.error('[api/brief/public] pointer read failed:', (err as Error).message);
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
-  // The pointer value is stored as a bare colon-delimited string. Our
-  // readRawJsonFromUpstash helper JSON-parses, which means a bare
-  // non-JSON value round-trips through an error → null. Accept either
-  // a {userId, issueDate} object (future-proofing) or a string.
+  // The pointer is JSON-encoded at write time (both
+  // api/brief/share-url.ts and api/brief/[userId]/[issueDate].ts
+  // JSON.stringify the encoded string before SET). readRawJsonFromUpstash
+  // parses it back to a bare JS string, which decodePublicPointer
+  // handles directly. We also accept an object form ({userId, issueDate})
+  // as defence-in-depth in case a future writer switches the wire
+  // format — a non-string/non-object (or a string that fails to decode)
+  // falls through to null and we 404.
+  //
+  // NOTE: if a v0-bug value ever lands in Redis (raw colon-delimited
+  // string without JSON quotes), readRawJsonFromUpstash throws at
+  // JSON.parse and the catch block above returns 503 — that is the
+  // intended (loud) failure mode so the bug isn't silently served.
   const pointer =
     typeof pointerRaw === 'string'
       ? decodePublicPointer(pointerRaw)
