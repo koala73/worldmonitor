@@ -668,6 +668,20 @@ async function processWelcome(event) {
     await sendDiscord(userId, ch.webhookEnvelope, text);
   } else if (channelType === 'email' && ch.email) {
     await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
+  } else if (channelType === 'web_push' && ch.endpoint && ch.p256dh && ch.auth) {
+    // Welcome push on first web_push connect. Short body — Chrome's
+    // notification shelf clips past ~80 chars on most OSes. Click
+    // opens the dashboard so the user lands somewhere useful. Uses
+    // the 'channel_welcome' event type which maps to the 30-min TTL
+    // in sendWebPush — a welcome past 30 minutes after subscribe is
+    // noise, not value.
+    await sendWebPush(userId, ch, {
+      title: 'WorldMonitor connected',
+      body: "You'll receive alerts here when events match your sensitivity settings.",
+      url: 'https://worldmonitor.app/',
+      tag: `channel_welcome:${userId}`,
+      eventType: 'channel_welcome',
+    });
   }
 }
 
