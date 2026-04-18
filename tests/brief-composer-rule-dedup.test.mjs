@@ -9,7 +9,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { dedupeRulesByUser } from '../scripts/seed-brief-composer.mjs';
+import {
+  dedupeRulesByUser,
+  groupEligibleRulesByUser,
+} from '../scripts/seed-brief-composer.mjs';
 
 function rule(overrides = {}) {
   return {
@@ -109,6 +112,40 @@ describe('aiDigestEnabled default parity', () => {
 
   it('excludes only when explicitly false', () => {
     assert.equal(shouldSkipForAiDigest({ aiDigestEnabled: false }), true);
+  });
+
+  it('groupEligibleRulesByUser: opted-out preferred variant falls back to opted-in sibling', () => {
+    const grouped = groupEligibleRulesByUser([
+      rule({ variant: 'full', aiDigestEnabled: false, updatedAt: 100 }),
+      rule({ variant: 'finance', aiDigestEnabled: true, updatedAt: 200 }),
+    ]);
+    const candidates = grouped.get('user_abc');
+    assert.ok(candidates, 'user is still eligible via the opt-in variant');
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].variant, 'finance');
+  });
+
+  it('groupEligibleRulesByUser: user with all variants opted-out is dropped entirely', () => {
+    const grouped = groupEligibleRulesByUser([
+      rule({ variant: 'full', aiDigestEnabled: false }),
+      rule({ variant: 'finance', aiDigestEnabled: false }),
+    ]);
+    assert.equal(grouped.size, 0);
+  });
+
+  it('groupEligibleRulesByUser: retains all eligible candidates in preference order', () => {
+    const grouped = groupEligibleRulesByUser([
+      rule({ variant: 'finance', sensitivity: 'critical', updatedAt: 100 }),
+      rule({ variant: 'full', sensitivity: 'critical', updatedAt: 200 }),
+      rule({ variant: 'tech', sensitivity: 'all', updatedAt: 300 }),
+    ]);
+    const candidates = grouped.get('user_abc');
+    assert.equal(candidates.length, 3);
+    // First is full (preferred variant); then tech (most permissive sensitivity);
+    // then finance. Fallback loop in the main() script tries them in this order.
+    assert.equal(candidates[0].variant, 'full');
+    assert.equal(candidates[1].variant, 'tech');
+    assert.equal(candidates[2].variant, 'finance');
   });
 
   it('matches seed-digest-notifications convention', async () => {

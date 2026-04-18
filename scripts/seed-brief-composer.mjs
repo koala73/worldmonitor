@@ -154,28 +154,46 @@ function compareRules(a, b) {
   return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
 }
 
-export function dedupeRulesByUser(rules) {
-  /** @type {Map<string, any>} */
+/**
+ * Group eligible (non-opted-out) rules by userId, with each user's
+ * candidates sorted in preference order (best first). Returns an
+ * array of `[userId, ranked-candidates[]]` pairs so the main loop
+ * can try each variant in order and fall back when the preferred
+ * one produces zero stories.
+ *
+ * aiDigestEnabled is pre-filtered here so a user whose preferred
+ * variant is opted out but another variant is opted in still
+ * produces a brief — the dedupe must not pick a variant that can
+ * never emit.
+ */
+export function groupEligibleRulesByUser(rules) {
+  /** @type {Map<string, any[]>} */
   const byUser = new Map();
-  /** @type {Map<string, number>} */
-  const counts = new Map();
   for (const rule of rules) {
     if (!rule || typeof rule.userId !== 'string') continue;
-    counts.set(rule.userId, (counts.get(rule.userId) ?? 0) + 1);
-    const current = byUser.get(rule.userId);
-    if (!current || compareRules(rule, current) < 0) {
-      byUser.set(rule.userId, rule);
-    }
+    // Default is OPT-IN — only an explicit false opts the user out.
+    if (rule.aiDigestEnabled === false) continue;
+    const list = byUser.get(rule.userId);
+    if (list) list.push(rule);
+    else byUser.set(rule.userId, [rule]);
   }
-  for (const [userId, n] of counts) {
-    if (n > 1) {
-      const chosen = byUser.get(userId);
-      console.log(
-        `[brief-composer] dedup: userId=${userId} chose variant=${chosen.variant} sensitivity=${chosen.sensitivity ?? 'all'} from ${n} enabled variants`,
-      );
-    }
+  for (const list of byUser.values()) {
+    list.sort(compareRules);
   }
-  return [...byUser.values()];
+  return byUser;
+}
+
+/**
+ * @deprecated Kept so the existing dedupe tests still compile.
+ * Prefer groupEligibleRulesByUser + per-user fallback in callers.
+ */
+export function dedupeRulesByUser(rules) {
+  const grouped = groupEligibleRulesByUser(rules);
+  const out = [];
+  for (const candidates of grouped.values()) {
+    if (candidates.length > 0) out.push(candidates[0]);
+  }
+  return out;
 }
 
 // ── Insights fetch ───────────────────────────────────────────────────────────
@@ -242,39 +260,49 @@ async function main() {
   console.log(`[brief-composer] Rules to process: ${rules.length}`);
 
   // Briefs are user-scoped, but alertRules are (userId, variant)-scoped.
-  // A user with multiple enabled variants would otherwise last-write-wins
-  // on the same `brief:${userId}:${issueDate}` key. Dedupe here so each
-  // user produces exactly one brief per issue.
-  const chosenByUser = dedupeRulesByUser(rules);
+  // Group eligible (not-opted-out) rules by user in preference order
+  // so we can fall back across variants when the preferred one can't
+  // emit (opt-out on that variant, or zero matching stories).
+  const eligibleByUser = groupEligibleRulesByUser(rules);
 
   let success = 0;
   let skippedEmpty = 0;
   let failed = 0;
 
-  for (const rule of chosenByUser) {
+  for (const [userId, candidates] of eligibleByUser) {
     if (shuttingDown) break;
     try {
-      // Default for legacy rules without the field is OPT-IN, matching
-      // seed-digest-notifications.mjs:914 and notifications-settings.ts:228.
-      // Only an explicit false opts the user out.
-      if (rule.aiDigestEnabled === false) continue;
-      const sensitivity = rule.sensitivity ?? 'all';
-      const tz = rule.digestTimezone ?? 'UTC';
-      const issueDate = issueDateInTz(startMs, tz);
-
-      const stories = filterTopStories({
-        stories: insights.topStories,
-        sensitivity,
-        maxStories: MAX_STORIES_PER_USER,
-      });
-      if (stories.length === 0) {
+      // Walk preference order; first variant with non-empty stories wins.
+      let chosen = null;
+      let chosenStories = null;
+      for (const candidate of candidates) {
+        const sensitivity = candidate.sensitivity ?? 'all';
+        const stories = filterTopStories({
+          stories: insights.topStories,
+          sensitivity,
+          maxStories: MAX_STORIES_PER_USER,
+        });
+        if (stories.length > 0) {
+          chosen = candidate;
+          chosenStories = stories;
+          break;
+        }
+      }
+      if (!chosen) {
         skippedEmpty += 1;
         continue;
       }
+      if (candidates.length > 1) {
+        console.log(
+          `[brief-composer] dedup: userId=${userId} chose variant=${chosen.variant} sensitivity=${chosen.sensitivity ?? 'all'} from ${candidates.length} enabled variants`,
+        );
+      }
 
+      const tz = chosen.digestTimezone ?? 'UTC';
+      const issueDate = issueDateInTz(startMs, tz);
       const envelope = assembleStubbedBriefEnvelope({
-        user: { name: userDisplayNameFromId(rule.userId), tz },
-        stories,
+        user: { name: userDisplayNameFromId(chosen.userId), tz },
+        stories: chosenStories,
         issueDate,
         dateLong: dateLongFromIso(issueDate),
         issue: issueCodeFromIso(issueDate),
@@ -283,27 +311,31 @@ async function main() {
         localHour: localHourInTz(startMs, tz),
       });
 
-      const key = `brief:${rule.userId}:${issueDate}`;
+      const key = `brief:${chosen.userId}:${issueDate}`;
       await upstashSetex(key, envelope, BRIEF_TTL_SECONDS);
       success += 1;
     } catch (err) {
       failed += 1;
+      const variants = candidates.map((c) => c.variant).join(',');
       console.error(
-        `[brief-composer] failed for user=${rule.userId} variant=${rule.variant}:`,
+        `[brief-composer] failed for user=${userId} variants=${variants}:`,
         err.message,
       );
     }
   }
 
+  const eligibleUserCount = eligibleByUser.size;
   const durationMs = Date.now() - startMs;
   console.log(
-    `[brief-composer] Done: success=${success} skipped_empty=${skippedEmpty} failed=${failed} duration_ms=${durationMs}`,
+    `[brief-composer] Done: rules=${rules.length} eligible_users=${eligibleUserCount} success=${success} skipped_empty=${skippedEmpty} failed=${failed} duration_ms=${durationMs}`,
   );
 
-  if (failed > 0 && failed >= Math.max(1, Math.floor(rules.length * 0.05))) {
-    // More than 5% of rules failed — exit non-zero so Railway flags
-    // the run. A single transient composer error should not surface,
-    // but structural bugs (auth break, shape drift) should.
+  // Failure rate is numerator(failed) / denominator(eligible_users),
+  // NOT pre-dedupe rules.length. A multi-variant user counts once;
+  // a 20% real failure rate (e.g. 2/10 users) must trigger a non-
+  // zero exit even when the 60-rule pre-dedupe count would mask it.
+  const threshold = Math.max(1, Math.floor(eligibleUserCount * 0.05));
+  if (failed > 0 && failed >= threshold) {
     process.exit(1);
   }
 }
