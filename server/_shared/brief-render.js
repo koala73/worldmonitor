@@ -524,8 +524,16 @@ const STYLE_BLOCK = `<style>
     --bone: #f2ede4;
     --cream: #fafafa;           /* was #f1e9d8 — unified with --paper */
     --cream-ink: #0a0a0a;       /* was #1a1612 — crisper contrast on white */
-    --sienna: #3ab567;          /* muted mint for light-page accents (was #8b3a1f) */
-    --mint: #4ade80;            /* bright WM brand mint for dark-page accents */
+    /* --sienna is kept as the variable name for backwards compat (every
+       .digest rule below references it) but the VALUE is now a dark
+       mint sized for WCAG AA 4.5:1 on #fafafa. The earlier #3ab567 hit
+       only ~2.3:1, which failed accessibility for the mono running
+       heads + source lines even at their 13-18 px sizes. #1f7a3f lands
+       at ~4.90:1 — passes AA for normal text, still reads as mint-
+       family (green hue dominant), and sits close enough to the brand
+       #4ade80 that a reader recognises the relationship. */
+    --sienna: #1f7a3f;          /* dark mint for light-page accents — WCAG AA on #fafafa */
+    --mint: #4ade80;            /* bright WM brand mint for dark-page accents (AAA on #0a0a0a) */
     --paper: #fafafa;
     --paper-ink: #0a0a0a;
   }
@@ -710,9 +718,12 @@ const STYLE_BLOCK = `<style>
   /* Logo ekg dot: mint on every page so the brand "signal" pulse
      shows across the whole magazine. Light pages use the muted mint
      so it doesn't glare against #fafafa. */
+  /* Bright mint on DARK backgrounds only (ink cover + dark stories).
+     Digest pages are light (#fafafa) so they need the dark-mint
+     variant — bright mint would read as a neon dot on white. */
   .cover .wm-logo .wm-ekg-dot,
-  .story.dark .wm-logo .wm-ekg-dot,
-  .digest .wm-logo .wm-ekg-dot { fill: var(--mint); }
+  .story.dark .wm-logo .wm-ekg-dot { fill: var(--mint); }
+  .digest .wm-logo .wm-ekg-dot,
   .story.light .wm-logo .wm-ekg-dot { fill: var(--sienna); }
   .story .right { display: flex; flex-direction: column; justify-content: center; }
   .story .callout {
