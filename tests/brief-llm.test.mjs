@@ -18,6 +18,7 @@ import {
   generateWhyMatters,
   buildDigestPrompt,
   parseDigestProse,
+  validateDigestProseShape,
   generateDigestProse,
   enrichBriefEnvelopeWithLLM,
 } from '../scripts/lib/brief-llm.mjs';
@@ -156,8 +157,8 @@ describe('generateWhyMatters', () => {
     const real = makeLLM('Closure would freeze a fifth of seaborne crude within days.');
     const first = await generateWhyMatters(story(), { ...cache, callLLM: real.callLLM });
     assert.ok(first);
-    const cachedKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:whymatters:v1:'));
-    assert.ok(cachedKey, 'expected a whymatters cache entry');
+    const cachedKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:whymatters:v2:'));
+    assert.ok(cachedKey, 'expected a whymatters cache entry under the v2 key');
 
     // Second call: responder throws — cache must prevent the call
     llm.calls.length = 0;
@@ -337,13 +338,119 @@ describe('generateDigestProse', () => {
     assert.equal(llm2.calls.length, 1, 'digest prose cache is per-user, not per-story-pool');
   });
 
-  it('story pool reordering reuses the cache (hash is order-insensitive)', async () => {
+  // REGRESSION: pre-v2 the digest hash was order-insensitive (sort +
+  // headline|severity only) as a cache-hit-rate optimisation. The
+  // review on PR #3172 called that out as a correctness bug: the
+  // LLM prompt includes ranked order AND category/country/source,
+  // so serving pre-computed prose for a different ranking = serving
+  // stale editorial for a different input. The v2 hash now covers
+  // the full prompt, so reordering MUST miss the cache.
+  it('story pool reordering invalidates the cache (hash covers ranked order)', async () => {
     const cache = makeCache();
     const llm1 = makeLLM(validJson);
     await generateDigestProse('user_a', [stories[0], stories[1]], 'all', { ...cache, callLLM: llm1.callLLM });
-    const llm2 = makeLLM(() => { throw new Error('would not be called'); });
+    const llm2 = makeLLM(validJson);
     await generateDigestProse('user_a', [stories[1], stories[0]], 'all', { ...cache, callLLM: llm2.callLLM });
-    assert.equal(llm2.calls.length, 0, 'reordered pool should hit the same cache entry');
+    assert.equal(llm2.calls.length, 1, 'reordered pool is a different prompt — must re-LLM');
+  });
+
+  it('changing a story category invalidates the cache (hash covers all prompt fields)', async () => {
+    const cache = makeCache();
+    const llm1 = makeLLM(validJson);
+    await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm1.callLLM });
+    const reclassified = [
+      { ...stories[0], category: 'Energy' }, // was 'Diplomacy'
+      stories[1],
+    ];
+    const llm2 = makeLLM(validJson);
+    await generateDigestProse('user_a', reclassified, 'all', { ...cache, callLLM: llm2.callLLM });
+    assert.equal(llm2.calls.length, 1, 'category change re-keys the cache');
+  });
+
+  it('malformed cached row is rejected on hit and re-LLM is called', async () => {
+    const cache = makeCache();
+    // Seed a bad cached row that would poison the envelope: missing
+    // `threads`, which the renderer's assertBriefEnvelope requires.
+    const llm1 = makeLLM(validJson);
+    await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm1.callLLM });
+    // Corrupt the stored row in place
+    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v2:'));
+    assert.ok(badKey, 'expected a digest prose cache entry');
+    cache.store.set(badKey, { lead: 'short', /* missing threads + signals */ });
+    const llm2 = makeLLM(validJson);
+    const out = await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm2.callLLM });
+    assert.ok(out, 'shape-failed hit must fall through to LLM');
+    assert.equal(llm2.calls.length, 1, 'bad cache row treated as miss');
+  });
+});
+
+describe('validateDigestProseShape', () => {
+  // Extracted helper — the same strictness runs on fresh LLM output
+  // AND on cache hits, so a bad row written under older buggy code
+  // can't sneak past.
+  const good = {
+    lead: 'A long-enough executive lead about Hormuz and the Gaza humanitarian crisis, written in editorial tone.',
+    threads: [{ tag: 'Energy', teaser: 'Hormuz closure threats resurface.' }],
+    signals: ['Watch for US naval redeployment.'],
+  };
+
+  it('accepts a well-formed object and returns a normalised copy', () => {
+    const out = validateDigestProseShape(good);
+    assert.ok(out);
+    assert.notEqual(out, good, 'must not return the caller object by reference');
+    assert.equal(out.threads.length, 1);
+  });
+
+  it('rejects missing threads', () => {
+    assert.equal(validateDigestProseShape({ ...good, threads: [] }), null);
+    assert.equal(validateDigestProseShape({ lead: good.lead }), null);
+  });
+
+  it('rejects short lead', () => {
+    assert.equal(validateDigestProseShape({ ...good, lead: 'too short' }), null);
+  });
+
+  it('rejects non-object / array / null input', () => {
+    assert.equal(validateDigestProseShape(null), null);
+    assert.equal(validateDigestProseShape(undefined), null);
+    assert.equal(validateDigestProseShape([good]), null);
+    assert.equal(validateDigestProseShape('string'), null);
+  });
+});
+
+describe('generateWhyMatters — cache key covers all prompt fields', () => {
+  // REGRESSION: pre-v2 whyMatters keyed only on (headline, source,
+  // severity), leaving category + country unhashed. If upstream
+  // classification or geocoding changed while those three fields
+  // stayed the same, cached prose was served for a materially
+  // different prompt.
+  it('category change busts the cache', async () => {
+    const llm1 = {
+      calls: 0,
+      async callLLM(_s, _u, _opts) {
+        this.calls += 1;
+        return 'Closure of the Strait of Hormuz would force a coordinated naval response within days.';
+      },
+    };
+    const cache = makeCache();
+    const s1 = { category: 'Diplomacy', country: 'IR', threatLevel: 'critical', headline: 'Hormuz closure threat', description: '', source: 'Reuters', whyMatters: '' };
+    await generateWhyMatters(s1, { ...cache, callLLM: (sys, u, o) => llm1.callLLM(sys, u, o) });
+    const s2 = { ...s1, category: 'Energy' }; // reclassified
+    await generateWhyMatters(s2, { ...cache, callLLM: (sys, u, o) => llm1.callLLM(sys, u, o) });
+    assert.equal(llm1.calls, 2, 'category change must re-LLM');
+  });
+
+  it('country change busts the cache', async () => {
+    const llm1 = {
+      calls: 0,
+      async callLLM() { this.calls += 1; return 'Closure of the Strait of Hormuz would spike oil prices across global markets.'; },
+    };
+    const cache = makeCache();
+    const s1 = { category: 'Diplomacy', country: 'IR', threatLevel: 'critical', headline: 'Hormuz', description: '', source: 'Reuters', whyMatters: '' };
+    await generateWhyMatters(s1, { ...cache, callLLM: (sys, u, o) => llm1.callLLM(sys, u, o) });
+    const s2 = { ...s1, country: 'OM' }; // re-geocoded
+    await generateWhyMatters(s2, { ...cache, callLLM: (sys, u, o) => llm1.callLLM(sys, u, o) });
+    assert.equal(llm1.calls, 2, 'country change must re-LLM');
   });
 });
 

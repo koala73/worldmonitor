@@ -37,6 +37,7 @@ import {
   shouldExitNonZero as shouldExitOnBriefFailures,
 } from './lib/brief-compose.mjs';
 import { enrichBriefEnvelopeWithLLM } from './lib/brief-llm.mjs';
+import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { signBriefUrl, BriefUrlError } from './lib/brief-url-sign.mjs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -1051,10 +1052,27 @@ async function composeAndStoreBriefForUser(userId, candidates, insightsNumbers, 
   // abort composition if the LLM is down; the stub is better than
   // no brief.
   if (BRIEF_LLM_ENABLED && chosenCandidate) {
+    const baseline = envelope;
     try {
-      envelope = await enrichBriefEnvelopeWithLLM(envelope, chosenCandidate, briefLlmDeps);
+      const enriched = await enrichBriefEnvelopeWithLLM(envelope, chosenCandidate, briefLlmDeps);
+      // Defence in depth: re-validate the enriched envelope against
+      // the renderer's strict contract before we SETEX it. If
+      // enrichment produced a structurally broken shape (bad cache
+      // row, code bug, upstream type drift) we'd otherwise SETEX it
+      // and /api/brief would 404 the user's brief at read time. Fall
+      // back to the unenriched baseline — which is already known to
+      // pass assertBriefEnvelope() because composeBriefFromDigestStories
+      // asserted on construction.
+      try {
+        assertBriefEnvelope(enriched);
+        envelope = enriched;
+      } catch (assertErr) {
+        console.warn(`[digest] brief: enriched envelope failed assertion for ${userId} — shipping stubbed:`, assertErr?.message);
+        envelope = baseline;
+      }
     } catch (err) {
       console.warn(`[digest] brief: LLM enrichment threw for ${userId} — shipping stubbed envelope:`, err?.message);
+      envelope = baseline;
     }
   }
 

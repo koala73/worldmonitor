@@ -48,12 +48,27 @@ const WHY_MATTERS_SYSTEM =
   'no quotes. One sentence only.';
 
 /**
- * Deterministic hash of the story identity used as cache key.
- * Same headline + source + severity from two users gets one LLM call.
- * @param {{ headline: string; source: string; threatLevel: string }} story
+ * Deterministic hash of every field that flows into buildWhyMattersPrompt.
+ *
+ * Keying only on headline/source/severity (as an earlier draft did)
+ * leaves `category` and `country` out of the cache identity, which is
+ * wrong: those fields appear in the user prompt, and if a story's
+ * classification or geocoding is corrected upstream we must re-LLM
+ * rather than serve the pre-correction prose. Bumped key version to
+ * v2 so any pre-fix cached entries (on the v1 hash) are ignored
+ * rather than reused — a one-off recompute is cheaper than serving
+ * stale editorial content.
+ *
+ * @param {{ headline: string; source: string; threatLevel: string; category: string; country: string }} story
  */
 function hashStory(story) {
-  const material = `${story.headline}||${story.source}||${story.threatLevel}`;
+  const material = [
+    story.headline ?? '',
+    story.source ?? '',
+    story.threatLevel ?? '',
+    story.category ?? '',
+    story.country ?? '',
+  ].join('||');
   return createHash('sha256').update(material).digest('hex').slice(0, 16);
 }
 
@@ -110,7 +125,9 @@ export function parseWhyMatters(text) {
  * }} deps
  */
 export async function generateWhyMatters(story, deps) {
-  const key = `brief:llm:whymatters:v1:${hashStory(story)}`;
+  // v2: hash now covers the full prompt (headline/source/severity/
+  // category/country) — see hashStory() comment.
+  const key = `brief:llm:whymatters:v2:${hashStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
@@ -173,22 +190,18 @@ export function buildDigestPrompt(stories, sensitivity) {
 }
 
 /**
- * @param {unknown} text
+ * Strict shape check for a parsed digest-prose object. Used by BOTH
+ * parseDigestProse (fresh LLM output) AND generateDigestProse's
+ * cache-hit path, so a bad row written under an older/buggy version
+ * can't poison the envelope at SETEX time. Returns a **normalised**
+ * copy of the object on success, null on any shape failure — never
+ * returns the caller's object by reference so downstream writes
+ * can't observe internal state.
+ *
+ * @param {unknown} obj
  * @returns {{ lead: string; threads: Array<{tag:string;teaser:string}>; signals: string[] } | null}
  */
-export function parseDigestProse(text) {
-  if (typeof text !== 'string') return null;
-  let s = text.trim();
-  if (!s) return null;
-  // Defensive: strip common wrappings the model sometimes inserts
-  // despite the explicit system instruction.
-  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  let obj;
-  try {
-    obj = JSON.parse(s);
-  } catch {
-    return null;
-  }
+export function validateDigestProseShape(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
 
   const lead = typeof obj.lead === 'string' ? obj.lead.trim() : '';
@@ -216,16 +229,52 @@ export function parseDigestProse(text) {
 }
 
 /**
- * Cache key for digest prose — scoped to (userId, sensitivity) and to
- * the actual story pool, so an LLM call is re-used only when the pool
- * has not changed. Pool hash intentionally uses headline + severity
- * only; re-ordering by score between runs must re-use the same prose.
+ * @param {unknown} text
+ * @returns {{ lead: string; threads: Array<{tag:string;teaser:string}>; signals: string[] } | null}
+ */
+export function parseDigestProse(text) {
+  if (typeof text !== 'string') return null;
+  let s = text.trim();
+  if (!s) return null;
+  // Defensive: strip common wrappings the model sometimes inserts
+  // despite the explicit system instruction.
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  let obj;
+  try {
+    obj = JSON.parse(s);
+  } catch {
+    return null;
+  }
+  return validateDigestProseShape(obj);
+}
+
+/**
+ * Cache key for digest prose. MUST cover every field the LLM sees,
+ * in the order it sees them — anything less and we risk returning
+ * pre-computed prose for a materially different prompt (e.g. the
+ * same stories re-ranked, or with corrected category/country
+ * metadata). The old "sort + headline|severity" hash was explicitly
+ * about cache-hit rate; that optimisation is the wrong tradeoff for
+ * an editorial product whose correctness bar is "matches the email".
+ *
+ * v2 key space so pre-fix cache rows (under the looser key) are
+ * ignored on rollout — a one-tick cost to pay for clean semantics.
  */
 function hashDigestInput(userId, stories, sensitivity) {
-  const material = stories
-    .map((s) => `${s.headline}|${s.threatLevel}`)
-    .sort()
-    .join('\n') + `|${sensitivity}`;
+  // Canonicalise as JSON of the fields the prompt actually references,
+  // in the prompt's ranked order. Stable stringification via an array
+  // of tuples keeps field ordering deterministic without relying on
+  // JS object-key iteration order.
+  const material = JSON.stringify([
+    sensitivity ?? '',
+    ...stories.slice(0, 12).map((s) => [
+      s.headline ?? '',
+      s.threatLevel ?? '',
+      s.category ?? '',
+      s.country ?? '',
+      s.source ?? '',
+    ]),
+  ]);
   const h = createHash('sha256').update(material).digest('hex').slice(0, 16);
   return `${userId}:${sensitivity}:${h}`;
 }
@@ -238,10 +287,22 @@ function hashDigestInput(userId, stories, sensitivity) {
  * @param {object} deps — { callLLM, cacheGet, cacheSet }
  */
 export async function generateDigestProse(userId, stories, sensitivity, deps) {
-  const key = `brief:llm:digest:v1:${hashDigestInput(userId, stories, sensitivity)}`;
+  // v2 key: see hashDigestInput() comment. Full-prompt hash + strict
+  // shape validation on every cache hit.
+  const key = `brief:llm:digest:v2:${hashDigestInput(userId, stories, sensitivity)}`;
   try {
     const hit = await deps.cacheGet(key);
-    if (hit && typeof hit === 'object' && typeof hit.lead === 'string') return hit;
+    // CRITICAL: re-run the shape validator on cache hits. Without
+    // this, a bad row (written under an older buggy code path, or
+    // partial write, or tampered Redis) flows straight into
+    // envelope.data.digest and the envelope later fails
+    // assertBriefEnvelope() at the /api/brief render boundary. The
+    // user's brief URL then 404s / expired-pages. Treat a
+    // shape-failed hit the same as a miss — re-LLM and overwrite.
+    if (hit) {
+      const validated = validateDigestProseShape(hit);
+      if (validated) return validated;
+    }
   } catch { /* cache miss fine */ }
   const { system, user } = buildDigestPrompt(stories, sensitivity);
   let text = null;
