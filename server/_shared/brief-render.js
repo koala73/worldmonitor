@@ -158,7 +158,7 @@ function assertNoExtraKeys(obj, allowed, path) {
  * @param {unknown} envelope
  * @returns {asserts envelope is BriefEnvelope}
  */
-function assertBriefEnvelope(envelope) {
+export function assertBriefEnvelope(envelope) {
   if (!isObject(envelope)) {
     throw new Error('renderBriefMagazine: envelope must be an object');
   }

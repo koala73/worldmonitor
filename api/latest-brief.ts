@@ -30,44 +30,40 @@ import { readRawJsonFromUpstash } from './_upstash-json.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
+import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function todayInUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+function utcDateOffset(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
-function yesterdayInUtc(): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
+function todayInUtc(): string {
+  return utcDateOffset(0);
 }
 
 async function readBriefPreview(
   userId: string,
   issueDate: string,
 ): Promise<{ dateLong: string; greeting: string; threadCount: number } | null> {
-  const envelope = (await readRawJsonFromUpstash(
-    `brief:${userId}:${issueDate}`,
-  )) as
-    | {
-        data?: {
-          dateLong?: unknown;
-          digest?: { greeting?: unknown };
-          stories?: unknown[];
-        };
-      }
-    | null;
-  const data = envelope?.data;
-  if (
-    !data
-    || typeof data.dateLong !== 'string'
-    || !data.digest
-    || typeof data.digest.greeting !== 'string'
-    || !Array.isArray(data.stories)
-  ) {
+  const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);
+  if (raw == null) return null;
+  // Reuse the renderer's strict validator so a "ready" preview never
+  // points at an envelope that the hosted magazine route will reject.
+  // A Redis-resident key that fails assertion is a composer bug — log
+  // and treat as a miss so the dashboard panel shows "composing"
+  // rather than "ready with a broken link".
+  try {
+    assertBriefEnvelope(raw);
+  } catch (err) {
+    console.error(
+      `[api/latest-brief] composer-bug: brief:${userId}:${issueDate} failed envelope assertion: ${(err as Error).message}`,
+    );
     return null;
   }
+  const { data } = raw;
   return {
     dateLong: data.dateLong,
     greeting: data.digest.greeting,
@@ -133,21 +129,25 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Determine which issue slot to probe.
-  //  - If the client passes ?date=YYYY-MM-DD, use that verbatim. This
-  //    is the path the dashboard panel should use: it knows its own
-  //    local tz and computes the user's local date.
-  //  - Otherwise fall back to today UTC, then yesterday UTC. A user
-  //    in a non-UTC tz will often see their most recent brief sit
-  //    under the composer's per-user slot while UTC has already
-  //    rolled over; the walk-back covers that window without needing
-  //    a tz library.
+  //  - If the client passes ?date=YYYY-MM-DD, use that verbatim. The
+  //    dashboard panel should always take this path — it knows the
+  //    user's local tz and computes the local date exactly.
+  //  - Otherwise walk [tomorrow, today, yesterday] UTC in that order.
+  //    The composer writes per user tz; a user at UTC+14 has today's
+  //    brief under tomorrow UTC, a user at UTC-12 has it under
+  //    yesterday UTC. Three candidates cover the full tz range
+  //    without needing a tz database in the edge runtime. The order
+  //    (tomorrow-first) naturally prefers the most recently composed
+  //    slot.
   const url = new URL(req.url);
   const dateParam = url.searchParams.get('date');
   if (dateParam !== null && !ISSUE_DATE_RE.test(dateParam)) {
     return jsonResponse({ error: 'invalid_date_shape' }, 400, cors);
   }
   const todayUtc = todayInUtc();
-  const candidates = dateParam ? [dateParam] : [todayUtc, yesterdayInUtc()];
+  const candidates = dateParam
+    ? [dateParam]
+    : [utcDateOffset(1), todayUtc, utcDateOffset(-1)];
 
   let issueDate: string | null = null;
   let preview: { dateLong: string; greeting: string; threadCount: number } | null = null;
@@ -169,7 +169,14 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   if (!preview || !issueDate) {
-    return jsonResponse({ status: 'composing', issueDate: todayUtc }, 200, cors);
+    // Echo the caller's date on miss when they supplied one — the
+    // client cares about THAT slot's status, not today UTC. Default
+    // to today UTC only when no date was given.
+    return jsonResponse(
+      { status: 'composing', issueDate: dateParam ?? todayUtc },
+      200,
+      cors,
+    );
   }
 
   let magazineUrl: string;

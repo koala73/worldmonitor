@@ -160,3 +160,52 @@ describe('infrastructure-error vs miss (both routes must not collapse)', () => {
     // wiring is covered by the 403/404 smoke tests.
   });
 });
+
+describe('assertBriefEnvelope is shared between renderer and preview', () => {
+  // Regression guard against the "ready preview → 404 on click"
+  // contradiction. The preview RPC must use the same validator the
+  // renderer uses so no partial envelope escapes as a "ready" status.
+
+  it('exports assertBriefEnvelope from server/_shared/brief-render.js', async () => {
+    const mod = await import('../server/_shared/brief-render.js');
+    assert.equal(typeof mod.assertBriefEnvelope, 'function');
+    assert.equal(typeof mod.renderBriefMagazine, 'function');
+  });
+
+  it('assertBriefEnvelope throws on partial envelope missing digest.numbers', async () => {
+    const { assertBriefEnvelope } = await import('../server/_shared/brief-render.js');
+    // Weak preview would have passed this envelope: dateLong string,
+    // digest.greeting string, stories array. But it's missing
+    // digest.numbers entirely — the renderer must reject it so the
+    // preview RPC rejects it too.
+    const partial = {
+      version: 1,
+      issuedAt: Date.now(),
+      data: {
+        user: { name: 'Elie', tz: 'UTC' },
+        issue: '18.04',
+        date: '2026-04-18',
+        dateLong: '18 April 2026',
+        digest: {
+          greeting: 'Good morning.',
+          lead: 'Lead paragraph.',
+          threads: [],
+          signals: [],
+          // numbers intentionally absent
+        },
+        stories: [
+          {
+            category: 'Energy',
+            country: 'US',
+            threatLevel: 'medium',
+            headline: 'Headline',
+            description: 'Description',
+            source: 'Wires',
+            whyMatters: 'Why',
+          },
+        ],
+      },
+    };
+    assert.throws(() => assertBriefEnvelope(partial), /digest\.numbers/);
+  });
+});
