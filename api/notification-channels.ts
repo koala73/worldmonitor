@@ -46,6 +46,37 @@ async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
   return `v1:${btoa(binary)}`;
 }
 
+/**
+ * Allow-list of hostnames every major browser's push service uses.
+ *
+ * A PushSubscription's endpoint URL is assigned by the browser's
+ * push platform — users can't pick it. That means we CAN safely
+ * constrain accepted endpoints to known push-service hosts and
+ * reject anything else before it hits Convex storage (and later
+ * the relay's outbound fetch). Without this allow-list the relay's
+ * sendWebPush() becomes a server-side-request primitive for any
+ * PRO user: they could submit `https://internal.example.com/admin`
+ * as their endpoint and the relay would faithfully POST to it.
+ *
+ * Sources (verified 2026-04-18):
+ *   - Chrome / Edge / Brave:  fcm.googleapis.com
+ *   - Firefox:                updates.push.services.mozilla.com
+ *   - Safari (macOS 13+):     web.push.apple.com
+ *   - Windows Notification:   *.notify.windows.com (wns2-*, etc.)
+ *
+ * If a future browser ships a new push service we'll need to widen
+ * this list — fail-closed is the right default.
+ */
+function isAllowedPushEndpointHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (h === 'fcm.googleapis.com') return true;
+  if (h === 'updates.push.services.mozilla.com') return true;
+  if (h === 'web.push.apple.com') return true;
+  if (h.endsWith('.web.push.apple.com')) return true;
+  if (h.endsWith('.notify.windows.com')) return true;
+  return false;
+}
+
 async function publishWelcome(userId: string, channelType: string): Promise<void> {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) {
     console.error('[notification-channels] publishWelcome: UPSTASH env vars missing — welcome not queued');
@@ -250,13 +281,25 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         if (!endpoint || !p256dh || !auth) {
           return json({ error: 'endpoint, p256dh, auth required' }, 400, corsHeaders);
         }
-        // Basic shape guards — browsers always produce https:// endpoints
-        // at the platform's push service. Reject anything else before it
-        // can poison the channel row.
+        // SSRF defence. The relay later POSTs to whatever endpoint we
+        // persist here, so an unvalidated user-submitted URL is a
+        // server-side-request primitive bounded only by the relay's
+        // network egress. Browsers always produce endpoints at one
+        // of a small set of push-service hosts (FCM, Mozilla, Apple,
+        // Windows Notification Service); anything else is either an
+        // exotic browser (rare) or an attack. Allow-list the known
+        // hosts and reject everything else.
         try {
           const u = new URL(endpoint);
           if (u.protocol !== 'https:') {
             return json({ error: 'endpoint must be https' }, 400, corsHeaders);
+          }
+          if (!isAllowedPushEndpointHost(u.hostname)) {
+            return json(
+              { error: 'endpoint host is not a recognised push service' },
+              400,
+              corsHeaders,
+            );
           }
         } catch {
           return json({ error: 'invalid endpoint' }, 400, corsHeaders);

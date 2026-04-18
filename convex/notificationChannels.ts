@@ -59,6 +59,21 @@ export const setChannelForUser = internalMutation({
 // identity fields, no chatId/webhookEnvelope/email). Replaces any
 // prior subscription for this user — one subscription per user until
 // per-device fan-out is needed.
+//
+// Cross-account dedupe: the browser's PushSubscription is bound to
+// the origin, NOT to the Clerk session. If user A subscribes on
+// device X, signs out, then user B signs in on the same device X
+// and subscribes, the browser hands out the SAME endpoint. Without
+// this dedupe, both users' rows carry the same endpoint — meaning
+// every alert the relay fans out to user A would also deliver to
+// user B on that shared device, and vice versa. That's a cross-
+// account privacy leak.
+//
+// Fix: before writing the new row, delete any existing rows
+// anywhere in the table that match this endpoint. Effectively
+// transfers ownership of the subscription to the current caller.
+// The previous user will need to re-subscribe on that device if
+// they sign in again.
 export const setWebPushChannelForUser = internalMutation({
   args: {
     userId: v.string(),
@@ -68,6 +83,28 @@ export const setWebPushChannelForUser = internalMutation({
     userAgent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Step 1: scan for any existing rows with this endpoint across
+    // ALL users and delete them. notificationChannels has no
+    // endpoint-based index, so we filter at read time — acceptable
+    // at current scale (<10k rows) and well-bounded to a single
+    // write-path per user per connect.
+    const allWebPush = await ctx.db
+      .query("notificationChannels")
+      .collect();
+    for (const row of allWebPush) {
+      if (
+        row.channelType === "web_push" &&
+        // Narrow through the channel-type literal so TS knows
+        // `endpoint` exists on this row.
+        row.endpoint === args.endpoint
+      ) {
+        await ctx.db.delete(row._id);
+      }
+    }
+
+    // Step 2: upsert the current-user row by (userId, channelType).
+    // After the delete above there is at most one row matching the
+    // unique index, so .unique() is safe.
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
