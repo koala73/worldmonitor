@@ -161,7 +161,8 @@ export class PanelLayoutManager implements AppModule {
     // Free users need the subscription active so they receive real-time
     // entitlement updates after purchasing (P1: newly upgraded users must
     // see their premium access without a manual page reload).
-    if (handleCheckoutReturn()) {
+    const returnedFromCheckout = handleCheckoutReturn();
+    if (returnedFromCheckout) {
       showCheckoutSuccess();
     }
 
@@ -177,10 +178,16 @@ export class PanelLayoutManager implements AppModule {
     // Reload only on a free→pro transition. Legacy-pro users whose first
     // snapshot is already pro (lastEntitled === null) must not trigger a
     // reload loop, but a user who pays mid-session (false → true) must see
-    // their panels unlock without manual refresh. The prior `skipInitialSnapshot`
-    // guard collapsed these cases and silently swallowed post-payment activations
-    // when the first authenticated snapshot carried the new entitlement.
-    let lastEntitled: boolean | null = null;
+    // their panels unlock without manual refresh.
+    //
+    // When we just returned from a Dodo full-page redirect checkout, seed
+    // lastEntitled = false instead of null. The webhook may have already
+    // landed by the time the user's browser comes back, so the first
+    // entitlement snapshot can arrive as pro. Without this seed the
+    // transition detector would swallow that snapshot as "legacy-pro" and
+    // the user would see locked panels until a manual refresh — exactly the
+    // symptom that caused the 2026-04-17/18 duplicate-subscription incident.
+    let lastEntitled: boolean | null = returnedFromCheckout ? false : null;
     this.unsubscribeEntitlementChange = onEntitlementChange(() => {
       const entitled = isEntitled();
       const reload = shouldReloadOnEntitlementChange(lastEntitled, entitled);

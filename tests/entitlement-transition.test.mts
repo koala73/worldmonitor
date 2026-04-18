@@ -66,4 +66,33 @@ describe('shouldReloadOnEntitlementChange', () => {
 
     assert.equal(reloadCount, 0);
   });
+
+  it('redirect-return from checkout with webhook already landed: seeded as free → first pro snapshot reloads', () => {
+    // When handleCheckoutReturn() fires, panel-layout seeds lastEntitled=false
+    // instead of null. Otherwise a fast webhook (pro snapshot arrives as the
+    // first snapshot after reload) would be swallowed as "legacy-pro".
+    let last: boolean | null = false; // seeded because returnedFromCheckout=true
+    let reloadCount = 0;
+
+    if (shouldReloadOnEntitlementChange(last, true)) reloadCount += 1;
+    last = true;
+    // WS reconnects and re-emits pro — no further reload.
+    if (shouldReloadOnEntitlementChange(last, true)) reloadCount += 1;
+
+    assert.equal(reloadCount, 1);
+  });
+
+  it('redirect-return when webhook is still pending: seeded false → free → pro sequence reloads exactly once', () => {
+    let last: boolean | null = false;
+    let reloadCount = 0;
+
+    // First snapshot comes back as free (webhook not landed yet).
+    if (shouldReloadOnEntitlementChange(last, false)) reloadCount += 1;
+    last = false;
+    // Webhook lands, pro snapshot arrives.
+    if (shouldReloadOnEntitlementChange(last, true)) reloadCount += 1;
+    last = true;
+
+    assert.equal(reloadCount, 1);
+  });
 });
