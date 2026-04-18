@@ -26,6 +26,7 @@
  */
 
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { readRawJsonFromUpstash } from '../api/_upstash-json.js';
 import {
   assembleStubbedBriefEnvelope,
@@ -47,20 +48,6 @@ const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const BRIEF_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const MAX_STORIES_PER_USER = 12;
 const INSIGHTS_KEY = 'news:insights:v1';
-
-if (process.env.BRIEF_COMPOSER_ENABLED === '0') {
-  console.log('[brief-composer] BRIEF_COMPOSER_ENABLED=0 — skipping run');
-  process.exit(0);
-}
-
-if (!UPSTASH_URL || !UPSTASH_TOKEN) {
-  console.error('[brief-composer] UPSTASH_REDIS_REST_URL/TOKEN not set');
-  process.exit(1);
-}
-if (!CONVEX_SITE_URL || !RELAY_SECRET) {
-  console.error('[brief-composer] CONVEX_SITE_URL / RELAY_SHARED_SECRET not set');
-  process.exit(1);
-}
 
 // ── Upstash helpers ──────────────────────────────────────────────────────────
 
@@ -149,6 +136,48 @@ function userDisplayNameFromId(userId) {
   return 'Reader';
 }
 
+// ── Rule dedupe (one brief per user, not per variant) ───────────────────────
+
+// Most-permissive-first ranking. Lower = broader.
+const SENSITIVITY_RANK = { all: 0, high: 1, critical: 2 };
+
+function compareRules(a, b) {
+  // Prefer the 'full' variant — it's the superset dashboard.
+  const aFull = a.variant === 'full' ? 0 : 1;
+  const bFull = b.variant === 'full' ? 0 : 1;
+  if (aFull !== bFull) return aFull - bFull;
+  // Tie-break on most permissive sensitivity (broadest brief).
+  const aRank = SENSITIVITY_RANK[a.sensitivity ?? 'all'] ?? 0;
+  const bRank = SENSITIVITY_RANK[b.sensitivity ?? 'all'] ?? 0;
+  if (aRank !== bRank) return aRank - bRank;
+  // Final tie-break: earlier-updated rule wins for determinism.
+  return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
+}
+
+export function dedupeRulesByUser(rules) {
+  /** @type {Map<string, any>} */
+  const byUser = new Map();
+  /** @type {Map<string, number>} */
+  const counts = new Map();
+  for (const rule of rules) {
+    if (!rule || typeof rule.userId !== 'string') continue;
+    counts.set(rule.userId, (counts.get(rule.userId) ?? 0) + 1);
+    const current = byUser.get(rule.userId);
+    if (!current || compareRules(rule, current) < 0) {
+      byUser.set(rule.userId, rule);
+    }
+  }
+  for (const [userId, n] of counts) {
+    if (n > 1) {
+      const chosen = byUser.get(userId);
+      console.log(
+        `[brief-composer] dedup: userId=${userId} chose variant=${chosen.variant} sensitivity=${chosen.sensitivity ?? 'all'} from ${n} enabled variants`,
+      );
+    }
+  }
+  return [...byUser.values()];
+}
+
 // ── Insights fetch ───────────────────────────────────────────────────────────
 
 function extractInsights(raw) {
@@ -212,18 +241,23 @@ async function main() {
   }
   console.log(`[brief-composer] Rules to process: ${rules.length}`);
 
+  // Briefs are user-scoped, but alertRules are (userId, variant)-scoped.
+  // A user with multiple enabled variants would otherwise last-write-wins
+  // on the same `brief:${userId}:${issueDate}` key. Dedupe here so each
+  // user produces exactly one brief per issue.
+  const chosenByUser = dedupeRulesByUser(rules);
+
   let success = 0;
   let skippedEmpty = 0;
   let failed = 0;
 
-  for (const rule of rules) {
+  for (const rule of chosenByUser) {
     if (shuttingDown) break;
     try {
-      if (!rule.aiDigestEnabled) {
-        // User opted out of AI-generated content; brief stays silent
-        // until they opt in. Matches the plan's gating story.
-        continue;
-      }
+      // Default for legacy rules without the field is OPT-IN, matching
+      // seed-digest-notifications.mjs:914 and notifications-settings.ts:228.
+      // Only an explicit false opts the user out.
+      if (rule.aiDigestEnabled === false) continue;
       const sensitivity = rule.sensitivity ?? 'all';
       const tz = rule.digestTimezone ?? 'UTC';
       const issueDate = issueDateInTz(startMs, tz);
@@ -274,7 +308,33 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('[brief-composer] fatal:', err);
-  process.exit(1);
-});
+// Only run the cron loop when executed as a script, never on import.
+// Tests import this file for the dedupe helpers and must not trigger
+// process.exit() at module load. Matches feedback_seed_isMain_guard.
+function isMain() {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
+  if (process.env.BRIEF_COMPOSER_ENABLED === '0') {
+    console.log('[brief-composer] BRIEF_COMPOSER_ENABLED=0 — skipping run');
+    process.exit(0);
+  }
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+    console.error('[brief-composer] UPSTASH_REDIS_REST_URL/TOKEN not set');
+    process.exit(1);
+  }
+  if (!CONVEX_SITE_URL || !RELAY_SECRET) {
+    console.error('[brief-composer] CONVEX_SITE_URL / RELAY_SHARED_SECRET not set');
+    process.exit(1);
+  }
+  main().catch((err) => {
+    console.error('[brief-composer] fatal:', err);
+    process.exit(1);
+  });
+}

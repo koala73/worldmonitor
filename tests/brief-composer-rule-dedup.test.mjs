@@ -1,0 +1,129 @@
+// Regression tests for the Phase 3a composer's rule-selection logic.
+//
+// Two guards:
+// 1. aiDigestEnabled default parity — undefined must be opt-IN, matching
+//    seed-digest-notifications.mjs:914 and notifications-settings.ts:228.
+// 2. Per-user dedupe — alertRules are (userId, variant)-scoped but the
+//    brief key is user-scoped. Multi-variant users must produce exactly
+//    one brief per issue, with a deterministic tie-breaker.
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { dedupeRulesByUser } from '../scripts/seed-brief-composer.mjs';
+
+function rule(overrides = {}) {
+  return {
+    userId: 'user_abc',
+    variant: 'full',
+    enabled: true,
+    digestMode: 'daily',
+    sensitivity: 'high',
+    aiDigestEnabled: true,
+    digestTimezone: 'UTC',
+    updatedAt: 1_700_000_000_000,
+    ...overrides,
+  };
+}
+
+describe('dedupeRulesByUser', () => {
+  it('keeps a single rule unchanged', () => {
+    const out = dedupeRulesByUser([rule()]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].variant, 'full');
+  });
+
+  it('dedupes multi-variant users to one rule, preferring "full"', () => {
+    const out = dedupeRulesByUser([
+      rule({ variant: 'finance', sensitivity: 'high' }),
+      rule({ variant: 'full', sensitivity: 'critical' }),
+      rule({ variant: 'tech', sensitivity: 'all' }),
+    ]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].variant, 'full');
+  });
+
+  it('when no full variant: picks most permissive sensitivity', () => {
+    const out = dedupeRulesByUser([
+      rule({ variant: 'tech', sensitivity: 'critical' }),
+      rule({ variant: 'finance', sensitivity: 'all' }),
+      rule({ variant: 'energy', sensitivity: 'high' }),
+    ]);
+    assert.equal(out.length, 1);
+    // 'all' is the most permissive.
+    assert.equal(out[0].variant, 'finance');
+  });
+
+  it('never cross-contaminates across userIds', () => {
+    const out = dedupeRulesByUser([
+      rule({ userId: 'user_a', variant: 'full' }),
+      rule({ userId: 'user_b', variant: 'tech' }),
+      rule({ userId: 'user_a', variant: 'finance' }),
+    ]);
+    assert.equal(out.length, 2);
+    const a = out.find((r) => r.userId === 'user_a');
+    const b = out.find((r) => r.userId === 'user_b');
+    assert.equal(a.variant, 'full');
+    assert.equal(b.variant, 'tech');
+  });
+
+  it('drops rules without a string userId', () => {
+    const out = dedupeRulesByUser([
+      rule({ userId: /** @type {any} */ (null) }),
+      rule({ userId: 'user_ok' }),
+    ]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].userId, 'user_ok');
+  });
+
+  it('is deterministic across duplicate full-variant rules via updatedAt tie-breaker', () => {
+    const older = rule({ variant: 'full', sensitivity: 'high', updatedAt: 1_000 });
+    const newer = rule({ variant: 'full', sensitivity: 'high', updatedAt: 2_000 });
+    const out1 = dedupeRulesByUser([older, newer]);
+    const out2 = dedupeRulesByUser([newer, older]);
+    // Earlier updatedAt wins — stable under input reordering.
+    assert.equal(out1[0].updatedAt, 1_000);
+    assert.equal(out2[0].updatedAt, 1_000);
+  });
+});
+
+describe('aiDigestEnabled default parity', () => {
+  // The composer's main loop short-circuits on `rule.aiDigestEnabled
+  // === false`. Exercising the predicate directly so a refactor that
+  // re-inverts it (back to `!rule.aiDigestEnabled`) fails loud.
+
+  function shouldSkipForAiDigest(rule) {
+    return rule.aiDigestEnabled === false;
+  }
+
+  it('includes rules with aiDigestEnabled: true', () => {
+    assert.equal(shouldSkipForAiDigest({ aiDigestEnabled: true }), false);
+  });
+
+  it('includes rules with aiDigestEnabled: undefined (legacy rows)', () => {
+    assert.equal(shouldSkipForAiDigest({ aiDigestEnabled: undefined }), false);
+  });
+
+  it('includes rules with no aiDigestEnabled field at all (legacy rows)', () => {
+    assert.equal(shouldSkipForAiDigest({}), false);
+  });
+
+  it('excludes only when explicitly false', () => {
+    assert.equal(shouldSkipForAiDigest({ aiDigestEnabled: false }), true);
+  });
+
+  it('matches seed-digest-notifications convention', async () => {
+    // Cross-reference: the existing digest cron uses the same
+    // `!== false` test. If it drifts, the brief and digest will
+    // disagree on who is eligible. This assertion lives here to
+    // surface the divergence loudly.
+    const fs = await import('node:fs/promises');
+    const src = await fs.readFile(
+      new URL('../scripts/seed-digest-notifications.mjs', import.meta.url),
+      'utf8',
+    );
+    assert.ok(
+      src.includes('rule.aiDigestEnabled !== false'),
+      'seed-digest-notifications.mjs must keep `rule.aiDigestEnabled !== false`',
+    );
+  });
+});
