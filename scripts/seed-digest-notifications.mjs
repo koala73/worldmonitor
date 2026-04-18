@@ -617,6 +617,72 @@ function truncateTelegramHtml(html, limit = TELEGRAM_MAX_LEN) {
   return sanitizeTelegramHtml(truncated.slice(0, cutPoint) + '\n\n[truncated]');
 }
 
+/**
+ * Phase 8: derive the 3 carousel image URLs from a signed magazine
+ * URL. The HMAC token binds (userId, issueDate), not the path — so
+ * the same token verifies against /api/brief/{u}/{d}?t=T AND against
+ * /api/brief/carousel/{u}/{d}/{0|1|2}?t=T.
+ *
+ * Returns null when the magazine URL doesn't match the expected shape
+ * — caller falls back to text-only delivery.
+ */
+function carouselUrlsFrom(magazineUrl) {
+  try {
+    const u = new URL(magazineUrl);
+    const m = u.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2})\/?$/);
+    if (!m) return null;
+    const [, userId, issueDate] = m;
+    const token = u.searchParams.get('t');
+    if (!token) return null;
+    return [0, 1, 2].map(
+      (p) => `${u.origin}/api/brief/carousel/${userId}/${issueDate}/${p}?t=${token}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Send the 3-image brief carousel to a Telegram chat via sendMediaGroup.
+ * Telegram fetches each URL server-side, so our carousel edge function
+ * has to be publicly reachable (it is — HMAC is the only credential).
+ *
+ * Caption goes on the FIRST image only (Telegram renders one shared
+ * caption beneath the album). The caller still calls sendTelegram()
+ * afterward for the long-form text — carousel is the header, text is
+ * the body.
+ */
+async function sendTelegramBriefCarousel(userId, chatId, caption, magazineUrl) {
+  if (!TELEGRAM_BOT_TOKEN) return false;
+  const urls = carouselUrlsFrom(magazineUrl);
+  if (!urls) return false;
+  const media = urls.map((url, i) => ({
+    type: 'photo',
+    media: url,
+    ...(i === 0 ? { caption, parse_mode: 'HTML' } : {}),
+  }));
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+        body: JSON.stringify({ chat_id: chatId, media }),
+        signal: AbortSignal.timeout(20000),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.warn(`[digest] Telegram carousel ${res.status} for ${userId}: ${body.slice(0, 300)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[digest] Telegram carousel error for ${userId}: ${err.code || err.message}`);
+    return false;
+  }
+}
+
 async function sendTelegram(userId, chatId, text) {
   if (!TELEGRAM_BOT_TOKEN) {
     console.warn('[digest] Telegram: TELEGRAM_BOT_TOKEN not set, skipping');
@@ -1162,6 +1228,14 @@ async function main() {
     for (const ch of deliverableChannels) {
       let ok = false;
       if (ch.channelType === 'telegram' && ch.chatId) {
+        // Phase 8: send the 3-image carousel first (best-effort), then
+        // the full text. Caption on the carousel is a short teaser —
+        // the long-form story list goes in the text message below so
+        // it remains forwardable / quotable on its own.
+        if (magazineUrl) {
+          const caption = `<b>WorldMonitor Brief — ${shortDate}</b>\n${stories.length} ${stories.length === 1 ? 'thread' : 'threads'} on the desk today.`;
+          await sendTelegramBriefCarousel(rule.userId, ch.chatId, caption, magazineUrl);
+        }
         ok = await sendTelegram(rule.userId, ch.chatId, telegramText);
       } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
         ok = await sendSlack(rule.userId, ch.webhookEnvelope, slackText);
