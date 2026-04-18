@@ -147,9 +147,14 @@ export function userDisplayNameFromId(userId) {
 const MAX_STORIES_PER_USER = 12;
 
 /**
- * Filter + assemble a BriefEnvelope for one alert rule. Returns null
- * when the filter produces zero stories — the caller decides whether
- * to fall back to another variant or skip the user.
+ * Filter + assemble a BriefEnvelope for one alert rule from a
+ * prebuilt upstream top-stories list (news:insights:v1 shape).
+ *
+ * @deprecated The live path is composeBriefFromDigestStories(), which
+ *   reads from the same digest:accumulator pool as the email. This
+ *   entry point is kept only for tests that stub a news:insights payload
+ *   directly — real runs would ship a brief with a different story
+ *   list than the email and should use the digest-stories path.
  *
  * @param {object} rule — enabled alertRule row
  * @param {{ topStories: unknown[]; numbers: { clusters: number; multiSource: number } }} insights
@@ -175,6 +180,73 @@ export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {})
     // Same nowMs as the rest of the envelope so the function stays
     // deterministic for a given input — tests + retries see identical
     // output.
+    issuedAt: nowMs,
+    localHour: localHourInTz(nowMs, tz),
+  });
+}
+
+// ── Compose from digest-accumulator stories (the live path) ─────────────────
+
+/**
+ * Adapter: the digest accumulator hydrates stories from
+ * story:track:v1:{hash} (title / severity / lang / score /
+ * mentionCount) + story:sources:v1:{hash} SMEMBERS. It does NOT carry
+ * a category or country-code — those fields are optional in the
+ * upstream brief-filter shape and default cleanly.
+ *
+ * @param {object} s — digest-shaped story from buildDigest()
+ */
+function digestStoryToUpstreamTopStory(s) {
+  const sources = Array.isArray(s?.sources) ? s.sources : [];
+  const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
+  return {
+    primaryTitle: typeof s?.title === 'string' ? s.title : '',
+    // Digest track hash has no separate body; the title *is* the
+    // headline AND the one-line description. The magazine renderer
+    // treats identical headline/description gracefully (stacks them).
+    // Phase 3b will swap this for an LLM-generated description.
+    description: typeof s?.title === 'string' ? s.title : '',
+    primarySource,
+    threatLevel: s?.severity,
+    // story:track:v1 carries neither field, so the brief falls back
+    // to 'General' / 'Global' via filterTopStories defaults.
+    category: typeof s?.category === 'string' ? s.category : undefined,
+    countryCode: typeof s?.countryCode === 'string' ? s.countryCode : undefined,
+  };
+}
+
+/**
+ * Compose a BriefEnvelope from a per-rule digest-accumulator pool
+ * (same stories the email digest uses), plus global insights numbers
+ * for the stats page.
+ *
+ * Returns null when no story survives the sensitivity filter — caller
+ * falls back to another variant or skips the user.
+ *
+ * @param {object} rule — enabled alertRule row
+ * @param {unknown[]} digestStories — output of buildDigest(rule, windowStart)
+ * @param {{ clusters: number; multiSource: number }} insightsNumbers
+ * @param {{ nowMs?: number }} [opts]
+ */
+export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now() } = {}) {
+  if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
+  const sensitivity = rule.sensitivity ?? 'all';
+  const tz = rule.digestTimezone ?? 'UTC';
+  const upstreamLike = digestStories.map(digestStoryToUpstreamTopStory);
+  const stories = filterTopStories({
+    stories: upstreamLike,
+    sensitivity,
+    maxStories: MAX_STORIES_PER_USER,
+  });
+  if (stories.length === 0) return null;
+  const issueDate = issueDateInTz(nowMs, tz);
+  return assembleStubbedBriefEnvelope({
+    user: { name: userDisplayNameFromId(rule.userId), tz },
+    stories,
+    issueDate,
+    dateLong: dateLongFromIso(issueDate),
+    issue: issueCodeFromIso(issueDate),
+    insightsNumbers,
     issuedAt: nowMs,
     localHour: localHourInTz(nowMs, tz),
   });

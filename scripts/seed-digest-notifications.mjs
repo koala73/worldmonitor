@@ -31,7 +31,7 @@ const { fetchUserPreferences, extractUserContext, formatUserProfile } = require(
 const { Resend } = require('resend');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import {
-  composeBriefForRule,
+  composeBriefFromDigestStories,
   extractInsights,
   groupEligibleRulesByUser,
   shouldExitNonZero as shouldExitOnBriefFailures,
@@ -81,6 +81,12 @@ const BRIEF_URL_SIGNING_SECRET = process.env.BRIEF_URL_SIGNING_SECRET ?? '';
 const WORLDMONITOR_PUBLIC_BASE_URL =
   process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://worldmonitor.app';
 const BRIEF_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+// The brief is a once-per-day editorial snapshot. 24h is the natural
+// window regardless of a user's email cadence (daily / twice_daily /
+// weekly) — weekly subscribers still expect a fresh brief each day
+// in the dashboard panel. Matches DIGEST_LOOKBACK_MS so first-send
+// users see identical story pools in brief and email.
+const BRIEF_STORY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const INSIGHTS_KEY = 'news:insights:v1';
 
 // Operator kill switch — used to intentionally silence brief compose
@@ -932,28 +938,41 @@ async function composeBriefsForRun(rules, nowMs) {
   }
   if (!BRIEF_COMPOSE_ENABLED) return { briefByUser, composeSuccess: 0, composeFailed: 0 };
 
-  let insightsRaw = null;
+  // The brief's story list now comes from the same digest accumulator
+  // the email reads (buildDigest). news:insights:v1 is still consulted
+  // for the global "clusters / multi-source" stat-page numbers, but no
+  // longer for the story list itself. A failed or empty insights fetch
+  // is NOT fatal — we fall back to zeroed numbers and still ship the
+  // brief, because the stories are what matter. (A mismatched brief
+  // was far worse than a brief with dashes on the stats page.)
+  let insightsNumbers = { clusters: 0, multiSource: 0 };
   try {
-    insightsRaw = await readRawJsonFromUpstash(INSIGHTS_KEY);
+    const insightsRaw = await readRawJsonFromUpstash(INSIGHTS_KEY);
+    if (insightsRaw) insightsNumbers = extractInsights(insightsRaw).numbers;
   } catch (err) {
-    console.warn('[digest] brief: insights read failed, skipping brief composition:', err.message);
-    // An infra-level read failure is a compose-layer failure worth
-    // the Railway red-flag — count it as one failure so the exit
-    // gate catches it. We still return a valid shape so the digest
-    // send path runs normally.
-    return { briefByUser, composeSuccess: 0, composeFailed: 1 };
+    console.warn('[digest] brief: insights read failed, using zeroed stats:', err.message);
   }
-  if (!insightsRaw) return { briefByUser, composeSuccess: 0, composeFailed: 0 };
 
-  const insights = extractInsights(insightsRaw);
-  if (insights.topStories.length === 0) return { briefByUser, composeSuccess: 0, composeFailed: 0 };
+  // Memoize buildDigest by (variant, lang, windowStart). Many users
+  // share a variant/lang, so this saves ZRANGE + HGETALL round-trips
+  // across the per-user loop. Scoped to this cron run — no cross-run
+  // memoization needed (Redis is authoritative).
+  const windowStart = nowMs - BRIEF_STORY_WINDOW_MS;
+  const digestCache = new Map();
+  async function digestFor(candidate) {
+    const key = `${candidate.variant ?? 'full'}:${candidate.lang ?? 'en'}:${windowStart}`;
+    if (digestCache.has(key)) return digestCache.get(key);
+    const stories = await buildDigest(candidate, windowStart);
+    digestCache.set(key, stories ?? []);
+    return stories ?? [];
+  }
 
   const eligibleByUser = groupEligibleRulesByUser(rules);
   let composeSuccess = 0;
   let composeFailed = 0;
   for (const [userId, candidates] of eligibleByUser) {
     try {
-      const hit = await composeAndStoreBriefForUser(userId, candidates, insights, nowMs);
+      const hit = await composeAndStoreBriefForUser(userId, candidates, insightsNumbers, digestFor, nowMs);
       if (hit) {
         briefByUser.set(userId, hit);
         composeSuccess++;
@@ -974,15 +993,25 @@ async function composeBriefsForRun(rules, nowMs) {
 }
 
 /**
- * Per-user: walk candidates until one produces stories, SETEX the
- * envelope, sign the magazine URL. Returns the entry the caller
- * should stash in briefByUser, or null when no candidate had stories.
+ * Per-user: walk candidates, for each pull the per-variant digest
+ * story pool (same pool buildDigest feeds to the email), and compose
+ * the brief envelope from the first candidate that yields non-empty
+ * stories. SETEX the envelope, sign the magazine URL. Returns the
+ * entry the caller should stash in briefByUser, or null when no
+ * candidate had stories.
  */
-async function composeAndStoreBriefForUser(userId, candidates, insights, nowMs) {
+async function composeAndStoreBriefForUser(userId, candidates, insightsNumbers, digestFor, nowMs) {
   let envelope = null;
   let chosenVariant = null;
   for (const candidate of candidates) {
-    const composed = composeBriefForRule(candidate, insights, { nowMs });
+    const digestStories = await digestFor(candidate);
+    if (!digestStories || digestStories.length === 0) continue;
+    const composed = composeBriefFromDigestStories(
+      candidate,
+      digestStories,
+      insightsNumbers,
+      { nowMs },
+    );
     if (composed) {
       envelope = composed;
       chosenVariant = candidate.variant;
