@@ -352,6 +352,7 @@ const SEED_META = {
   jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
   ieaOilStocks:         { key: 'seed-meta:energy:iea-oil-stocks',        maxStaleMin: 60 * 24 * 40 }, // monthly cron on 15th; 40d threshold = TTL_SECONDS
   oilStocksAnalysis:    { key: 'seed-meta:energy:oil-stocks-analysis',   maxStaleMin: 60 * 24 * 50 }, // afterPublish of ieaOilStocks; 50d = matches seed-meta TTL (exceeds 40d data TTL)
+  eiaPetroleum:         { key: 'seed-meta:energy:eia-petroleum',         maxStaleMin: 4320 }, // daily bundle cron (seed-bundle-energy-sources); 72h = 3× interval, well under 7d data TTL
   jodiGas:              { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
   lngVulnerability:     { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // written by jodi-gas seeder afterPublish; shares seed-meta key
   chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
@@ -420,11 +421,12 @@ const ON_DEMAND_KEYS = new Set([
                                    // Remove after ~7 days alongside the chokepoint-flows entry.
   'eiaPetroleum',                  // TRANSITIONAL: gold-standard migration of /api/eia/petroleum
                                    // from live Vercel fetch to Redis-reader (seed-bundle-energy-sources
-                                   // daily cron). Vercel deploys the reader instantly; Railway env var
-                                   // (EIA_API_KEY) and first daily tick need ~24h to populate the key.
-                                   // Gate as on-demand so the deploy window doesn't CRIT. Promote to
-                                   // SEED_META (maxStaleMin: 4320) after ~7 days of clean cron runs
-                                   // (verify via `seed-meta:energy:eia-petroleum.fetchedAt`).
+                                   // daily cron). SEED_META entry above enforces 72h staleness — this
+                                   // ON_DEMAND gate only softens the absent-on-deploy case (Vercel
+                                   // deploys instantly; Railway EIA_API_KEY + first daily tick ~24h
+                                   // behind). STALE_SEED still fires if data goes stale after first seed.
+                                   // Remove from this set after ~7 days of clean cron runs so
+                                   // never-provisioned Railway promotes EMPTY_ON_DEMAND → EMPTY (CRIT).
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
