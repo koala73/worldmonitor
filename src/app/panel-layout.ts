@@ -127,6 +127,23 @@ const WEB_PREMIUM_PANELS = new Set([
   'latest-brief',
 ]);
 
+/**
+ * Panels that require a Clerk-authenticated PRO account specifically.
+ * Desktop API key / browser tester keys do NOT satisfy the gate because
+ * these panels are bound to a Clerk userId server-side (e.g. the Brief
+ * is stored at brief:{clerkUserId}:{date} in Redis — no Clerk user, no
+ * brief to fetch).
+ *
+ * Without this extra gate, API-key + free-Clerk users would see the
+ * panel "unlocked" by hasPremiumAccess() and then hit a 403 when the
+ * server re-checks entitlement from the JWT. This set promotes the
+ * inconsistency to the layout gating layer so the user sees the
+ * correct "Upgrade to Pro" CTA instead of a doomed fetch.
+ */
+const WEB_CLERK_PRO_ONLY_PANELS = new Set([
+  'latest-brief',
+]);
+
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
@@ -266,7 +283,20 @@ export class PanelLayoutManager implements AppModule {
   private updatePanelGating(state: AuthSession): void {
     for (const [key, panel] of Object.entries(this.ctx.panels)) {
       const isPremium = WEB_PREMIUM_PANELS.has(key);
-      const reason = getPanelGateReason(state, isPremium);
+      let reason = getPanelGateReason(state, isPremium);
+
+      // Clerk-pro-only panels: even when hasPremiumAccess() returns true
+      // via API/tester key, these panels cannot function without a Clerk
+      // userId bound to a PRO plan. Downgrade the gate reason so the user
+      // sees the correct CTA (sign-in or upgrade) instead of an unlocked
+      // panel that then fails to fetch.
+      if (
+        reason === PanelGateReason.NONE &&
+        WEB_CLERK_PRO_ONLY_PANELS.has(key) &&
+        state.user?.role !== 'pro'
+      ) {
+        reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
+      }
 
       if (reason === PanelGateReason.NONE) {
         // User has access -- unlock if previously locked

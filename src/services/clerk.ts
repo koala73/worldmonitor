@@ -112,6 +112,8 @@ export function openSignIn(): void {
 export async function signOut(): Promise<void> {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _tokenInflight = null;
+  _tokenGen++;
   await clerkInstance?.signOut();
 }
 
@@ -120,15 +122,19 @@ export async function signOut(): Promise<void> {
  *   - Convex signals a 401 via forceRefreshToken
  *   - The observed Clerk user changes (account switch / sign-out)
  *
- * Also drops the inflight promise so an A→B switch while a token
- * fetch is mid-air doesn't let the next caller reuse A's promise.
- * The old promise still resolves to its closure but nothing
- * downstream references it once this runs.
+ * Bumping _tokenGen invalidates any promise that was already awaiting
+ * session.getToken() before the clear. When that promise resolves, its
+ * closure compares its captured generation to the current one and
+ * refuses to write the stale token into the cache or return it to its
+ * (now detached) callers. Without the generation check, an A→B switch
+ * mid-fetch would let the old promise land A's JWT as B's cache entry
+ * and poison the next 50 seconds of requests.
  */
 export function clearClerkTokenCache(): void {
   _cachedToken = null;
   _cachedTokenAt = 0;
   _tokenInflight = null;
+  _tokenGen++;
 }
 
 /**
@@ -138,10 +144,14 @@ export function clearClerkTokenCache(): void {
  *
  * Tokens are cached for 50s (Clerk tokens expire at 60s) with in-flight
  * deduplication to prevent concurrent panels from racing against Clerk.
+ * A monotonic _tokenGen counter lets clearClerkTokenCache() invalidate
+ * any mid-flight fetch whose result would otherwise paint the previous
+ * user's JWT into the new session.
  */
 let _cachedToken: string | null = null;
 let _cachedTokenAt = 0;
 let _tokenInflight: Promise<string | null> | null = null;
+let _tokenGen = 0;
 const TOKEN_CACHE_TTL_MS = 50_000;
 
 export async function getClerkToken(): Promise<string | null> {
@@ -150,14 +160,16 @@ export async function getClerkToken(): Promise<string | null> {
   }
   if (_tokenInflight) return _tokenInflight;
 
-  _tokenInflight = (async () => {
+  const myGen = _tokenGen;
+  const promise: Promise<string | null> = (async () => {
     if (!clerkInstance && PUBLISHABLE_KEY) {
       try { await initClerk(); } catch { /* Clerk load failed, proceed with null */ }
     }
+    // If a session invalidation fired during initClerk(), abandon.
+    if (myGen !== _tokenGen) return null;
     const session = clerkInstance?.session;
     if (!session) {
       console.warn(`[clerk] getClerkToken: no session (clerkInstance=${!!clerkInstance}, user=${!!clerkInstance?.user})`);
-      _tokenInflight = null;
       return null;
     }
     try {
@@ -165,6 +177,10 @@ export async function getClerkToken(): Promise<string | null> {
       // Fall back to the standard session token if the template isn't configured in Clerk.
       const token = (await session.getToken({ template: 'convex' }).catch(() => null))
         ?? await session.getToken().catch(() => null);
+      // If the session generation advanced while getToken() was in
+      // flight, this JWT belongs to the previous user. Drop it on the
+      // floor — do not cache, do not return.
+      if (myGen !== _tokenGen) return null;
       if (token) {
         _cachedToken = token;
         _cachedTokenAt = Date.now();
@@ -173,10 +189,15 @@ export async function getClerkToken(): Promise<string | null> {
     } catch {
       return null;
     } finally {
-      _tokenInflight = null;
+      // Only clear _tokenInflight if we are still the current generation.
+      // If clearClerkTokenCache() fired during our await it has already
+      // nulled _tokenInflight AND bumped _tokenGen; a newer caller may
+      // have assigned a fresh promise that we must not clobber.
+      if (myGen === _tokenGen) _tokenInflight = null;
     }
   })();
-  return _tokenInflight;
+  _tokenInflight = promise;
+  return promise;
 }
 
 
