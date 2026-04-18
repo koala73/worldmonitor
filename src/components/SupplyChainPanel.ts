@@ -719,18 +719,38 @@ export class SupplyChainPanel extends Panel {
     const scenarioId = trigger.dataset.scenarioId!;
     btn.disabled = true;
     btn.textContent = 'Computing\u2026';
+
+    // Guarantee the button never stays stuck at "Computing…" regardless of
+    // exit path. Prior logic early-returned on `signal.aborted` and
+    // `!this.content.isConnected` without ever re-enabling the button, and
+    // swallowed AbortError in the catch block. When the scenario-worker is
+    // down (no result key written in 24h), the polling loop DID fire a
+    // timeout but the abort paths above it leaked the stuck state.
+    const resetButton = (text: string) => {
+      // Only touch the button if it's still the same element in the DOM.
+      // A re-render may have replaced it — updating the detached node is
+      // invisible and harmless, but we skip to avoid confusion.
+      if (btn.isConnected) {
+        btn.textContent = text;
+        btn.disabled = false;
+      }
+    };
     try {
+      // Hard timeout on POST /run so a hanging edge function can't leave
+      // the button in "Computing…" indefinitely.
+      const runSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
       const runResp = await premiumFetch('/api/scenario/v1/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scenarioId }),
-        signal,
+        signal: runSignal,
       });
-      if (!runResp.ok) throw new Error('Run failed');
+      if (!runResp.ok) throw new Error(`Run failed: ${runResp.status}`);
       const { jobId } = await runResp.json() as { jobId: string };
       let result: ScenarioResult | null = null;
       for (let i = 0; i < 30; i++) {
-        if (signal.aborted || !this.content.isConnected) return;
+        if (signal.aborted) { resetButton('Simulate Closure'); return; }
+        if (!this.content.isConnected) return; // panel gone — nothing to update
         if (i > 0) await new Promise(r => setTimeout(r, 2000));
         const statusResp = await premiumFetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`, { signal });
         if (!statusResp.ok) throw new Error(`Status poll failed: ${statusResp.status}`);
@@ -743,14 +763,20 @@ export class SupplyChainPanel extends Panel {
         }
         if (status.status === 'failed') throw new Error('Scenario failed');
       }
-      if (!result) throw new Error('Timeout');
-      if (signal.aborted || !this.content.isConnected) return;
+      if (!result) throw new Error('Timeout — scenario worker may be down');
+      if (signal.aborted) { resetButton('Simulate Closure'); return; }
+      if (!this.content.isConnected) return;
       this.onScenarioActivate?.(scenarioId, result);
-      btn.textContent = 'Active';
+      resetButton('Active');
+      btn.disabled = true; // active state stays disabled until user dismisses
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      btn.textContent = 'Error \u2014 retry';
-      btn.disabled = false;
+      // Abort from a new click = user-triggered retry, no error banner needed.
+      if (err instanceof Error && err.name === 'AbortError') {
+        resetButton('Simulate Closure');
+        return;
+      }
+      console.error('[scenario] run failed:', err);
+      resetButton('Error \u2014 retry');
     }
   }
 }
