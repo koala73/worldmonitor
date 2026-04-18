@@ -635,6 +635,53 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
+// Referral stats (Phase 9 / Todo #223)
+// ---------------------------------------------------------------------------
+
+// Edge-route companion for /api/referral/me. Counts the registrations
+// rows that named `referralCode` as their `referredBy`. Auth is
+// server-to-server via RELAY_SHARED_SECRET — the edge route already
+// validated the caller's Clerk bearer before hitting this.
+http.route({
+  path: "/relay/referral-stats",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    let body: { referralCode?: string };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const code = typeof body.referralCode === "string" ? body.referralCode.trim() : "";
+    if (!code || code.length > 32) {
+      return new Response(JSON.stringify({ error: "referralCode required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const result = await ctx.runQuery(
+      (internal as any).registerInterest.getReferralStatsByCode,
+      { referralCode: code },
+    );
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// ---------------------------------------------------------------------------
 // User API key validation (service-to-service only)
 // ---------------------------------------------------------------------------
 

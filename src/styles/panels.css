@@ -2929,6 +2929,46 @@ a.hub-top-story {
   white-space: nowrap;
 }
 
+/* Share button row (Phase 9 / Todo #223) */
+.latest-brief-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 12px;
+  background: var(--panel-bg, #161616);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.latest-brief-share {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--text-primary, #eee);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.latest-brief-share:hover:not(:disabled) {
+  border-color: var(--accent, #4ade80);
+  background-color: rgba(74, 222, 128, 0.08);
+}
+.latest-brief-share:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.latest-brief-share-status {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
 .latest-brief-card--composing {
   padding: 32px 20px;
   text-align: center;

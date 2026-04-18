@@ -132,6 +132,10 @@ export class LatestBriefPanel extends Panel {
       // userId from the stale token's sub claim and paints the
       // previous user's brief in the new session for up to 50s.
       clearClerkTokenCache();
+      // Drop the referral profile cache too — it's bound to the
+      // outgoing user's Clerk userId and would hand user B user A's
+      // share link on the next render otherwise.
+      void import('@/services/referral').then((m) => m.clearReferralCache()).catch(() => {});
       if (nextId) {
         void this.refresh();
       } else {
@@ -410,7 +414,66 @@ export class LatestBriefPanel extends Panel {
       ),
     );
 
-    replaceChildren(this.content, coverCard);
+    // Share button: referral plumbing is server-side (GET /api/referral/me).
+    // Keep the button in the DOM even before the profile resolves so
+    // the layout doesn't jump; disable-and-enable once the fetch lands.
+    const shareBtn = h('button', {
+      type: 'button',
+      className: 'latest-brief-share',
+      'aria-label': 'Share WorldMonitor — copies a referral link',
+      disabled: 'true',
+    }, 'Share ↗');
+    const shareStatus = h('span', {
+      className: 'latest-brief-share-status',
+      'aria-live': 'polite',
+    }, '');
+    const shareRow = h(
+      'div',
+      { className: 'latest-brief-share-row' },
+      shareBtn,
+      shareStatus,
+    );
+
+    replaceChildren(this.content, coverCard, shareRow);
+
+    // Lazy-load the referral module so the share wiring doesn't pull
+    // into every dashboard bundle the panel lives in.
+    void (async () => {
+      try {
+        const mod = await import('@/services/referral');
+        const profile = await mod.getReferralProfile();
+        if (!profile) {
+          shareRow.remove();
+          return;
+        }
+        (shareBtn as HTMLButtonElement).disabled = false;
+        if (profile.invitedCount > 0) {
+          shareStatus.textContent = profile.invitedCount === 1
+            ? '1 invited'
+            : `${profile.invitedCount} invited`;
+        }
+        shareBtn.addEventListener('click', async () => {
+          const originalLabel = shareBtn.textContent ?? 'Share ↗';
+          (shareBtn as HTMLButtonElement).disabled = true;
+          try {
+            const result = await mod.shareReferral(profile);
+            if (result === 'shared') {
+              shareStatus.textContent = 'Thanks for sharing';
+            } else if (result === 'copied') {
+              shareStatus.textContent = 'Link copied';
+            } else if (result === 'error') {
+              shareStatus.textContent = 'Share unavailable';
+            }
+          } finally {
+            (shareBtn as HTMLButtonElement).disabled = false;
+            shareBtn.textContent = originalLabel;
+          }
+        });
+      } catch {
+        // Lazy-import failure is non-fatal — just hide the row.
+        shareRow.remove();
+      }
+    })();
   }
 
   public override destroy(): void {
