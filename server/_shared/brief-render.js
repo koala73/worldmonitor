@@ -490,20 +490,43 @@ function renderStoryPage({ story, rank, palette, pageIndex, totalPages }) {
   );
 }
 
-/** @param {{ tz: string; pageIndex: number; totalPages: number }} opts */
-function renderBackCover({ tz, pageIndex, totalPages }) {
+/**
+ * @param {{
+ *   tz: string;
+ *   pageIndex: number;
+ *   totalPages: number;
+ *   publicMode: boolean;
+ *   refCode: string;
+ * }} opts
+ */
+function renderBackCover({ tz, pageIndex, totalPages, publicMode, refCode }) {
+  const ctaHref = publicMode
+    ? `https://worldmonitor.app/pro${refCode ? `?ref=${encodeURIComponent(refCode)}` : ''}`
+    : 'https://worldmonitor.app';
+  const kicker = publicMode
+    ? 'You\u2019re reading a shared brief'
+    : 'Thank you for reading';
+  const headline = publicMode
+    ? 'Get your own<br/>daily brief.'
+    : 'End of<br/>Transmission.';
+  const metaLeft = publicMode
+    ? `<a href="${escapeHtml(ctaHref)}" class="mono back-cta" target="_blank" rel="noopener">Subscribe \u2192</a>`
+    : '<span class="mono">worldmonitor.app</span>';
+  const metaRight = publicMode
+    ? '<span class="mono">worldmonitor.app</span>'
+    : `<span class="mono">Next brief \u00b7 08:00 ${escapeHtml(tz)}</span>`;
   return (
     '<section class="page cover back">' +
     '<div class="hero">' +
     '<div class="centered-logo">' +
     logoRef({ size: 80, color: 'var(--bone)' }) +
     '</div>' +
-    '<div class="kicker">Thank you for reading</div>' +
-    '<h1>End of<br/>Transmission.</h1>' +
+    `<div class="kicker">${kicker}</div>` +
+    `<h1>${headline}</h1>` +
     '</div>' +
     '<div class="meta-bottom">' +
-    '<span class="mono">worldmonitor.app</span>' +
-    `<span class="mono">Next brief · 08:00 ${escapeHtml(tz)}</span>` +
+    metaLeft +
+    metaRight +
     '</div>' +
     `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
     '</section>'
@@ -823,7 +846,138 @@ const STYLE_BLOCK = `<style>
     .story .callout .label { font-size: 11px; margin-bottom: 1.5vh; opacity: 0.7; }
     .story .callout .note { font-size: max(16px, 4.2vw); line-height: 1.5; }
   }
+
+  /* ── Share button (non-public views) ─────────────────────────────
+     Floating action pill in the top-right chrome. Separate from the
+     page-number so it doesn't disappear during mobile stacking
+     overrides. Hidden entirely in public views because a public
+     reader shouldn't see a "Share" UI (the button relies on the
+     authenticated /api/brief/share-url endpoint). */
+  .wm-share {
+    position: fixed;
+    top: 3vh; right: 3vw;
+    z-index: 30;
+    display: inline-flex; align-items: center; gap: 0.5em;
+    padding: 0.55em 1em;
+    background: rgba(20, 20, 20, 0.65);
+    color: var(--bone);
+    border: 1px solid rgba(242, 237, 228, 0.25);
+    border-radius: 999px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: max(11px, 0.8vw);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: transform 160ms ease, background 160ms ease;
+    mix-blend-mode: normal;
+  }
+  .wm-share:hover { background: rgba(20, 20, 20, 0.85); transform: translateY(-1px); }
+  .wm-share[data-state="sharing"] { opacity: 0.6; cursor: progress; }
+  .wm-share[data-state="copied"]::after { content: ' \u00b7 copied'; opacity: 0.75; }
+  .wm-share[data-state="error"]::after { content: ' \u00b7 error'; opacity: 0.75; color: #ff9b9b; }
+
+  /* ── Public view: Subscribe banner ─────────────────────────────── */
+  .wm-public-strip {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    gap: 1em;
+    padding: 0.8em 1.2em;
+    background: var(--ink);
+    color: var(--bone);
+    border-bottom: 1px solid rgba(242, 237, 228, 0.2);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: max(11px, 0.75vw);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .wm-public-strip a {
+    color: var(--mint, #4ade80);
+    text-decoration: none;
+    border-bottom: 1px solid currentColor;
+  }
+  @media (max-width: 640px) {
+    .wm-public-strip { font-size: 11px; padding: 0.7em 1em; gap: 0.6em; flex-wrap: wrap; }
+  }
 </style>`;
+
+/**
+ * Inline share-button client. Talks to the authenticated
+ * /api/brief/share-url endpoint (Clerk JWT sent via the same cookie/
+ * bearer the surrounding app already uses), then invokes
+ * navigator.share with a clipboard fallback.
+ *
+ * Emitted only for non-public views. The public mirror has no share
+ * UI because a public reader has no Clerk session to sign the
+ * share-url call and shouldn't be able to re-share someone else's
+ * brief on their behalf.
+ *
+ * The button reads data-issue-date from itself — composer/route puts
+ * the issue date on the button attribute so no DOM parsing is
+ * required at runtime.
+ */
+const SHARE_SCRIPT = `<script>
+(function() {
+  var btn = document.querySelector('.wm-share');
+  if (!btn) return;
+  btn.addEventListener('click', async function() {
+    if (btn.dataset.state === 'sharing') return;
+    var issueDate = btn.dataset.issueDate;
+    if (!issueDate) return;
+    btn.dataset.state = 'sharing';
+    try {
+      // Clerk session is typically delivered via Authorization bearer
+      // from the parent app shell; when the magazine is opened in a
+      // fresh tab we rely on the same-origin cookie fallback that the
+      // app's fetch wrapper installs. We read from globalThis so this
+      // works equally well inside Tauri and the web dashboard.
+      var token = (window.WM_CLERK_JWT && typeof window.WM_CLERK_JWT === 'string') ? window.WM_CLERK_JWT : '';
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      var res = await fetch('/api/brief/share-url?date=' + encodeURIComponent(issueDate), {
+        method: 'POST',
+        credentials: 'include',
+        headers: headers,
+        body: '{}',
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      var data = await res.json();
+      if (!data || typeof data.shareUrl !== 'string') throw new Error('bad response');
+      var shareTitle = 'WorldMonitor Brief';
+      var shareText = 'My WorldMonitor Brief for today:';
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: shareTitle, text: shareText, url: data.shareUrl });
+          btn.dataset.state = 'copied';
+          return;
+        } catch (err) {
+          // User cancelled the native sheet. Not an error — just stop.
+          if (err && (err.name === 'AbortError' || /abort/i.test(String(err.message)))) {
+            btn.dataset.state = '';
+            return;
+          }
+          // Fall through to clipboard.
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(data.shareUrl);
+        btn.dataset.state = 'copied';
+      } else {
+        // Ancient browser. Show the URL so the user can copy manually.
+        window.prompt('Copy the link below:', data.shareUrl);
+        btn.dataset.state = 'copied';
+      }
+    } catch (err) {
+      btn.dataset.state = 'error';
+      try { console.warn('[brief] share failed:', err); } catch (_) {}
+    } finally {
+      setTimeout(function() { if (btn.dataset.state !== 'sharing') btn.dataset.state = ''; }, 2400);
+    }
+  });
+})();
+</script>`;
 
 const NAV_SCRIPT = `<script>
 (function() {
@@ -882,12 +1036,43 @@ const NAV_SCRIPT = `<script>
 // ── Main entry ───────────────────────────────────────────────────────────────
 
 /**
+ * Replace per-user / personal fields with generic placeholders so a
+ * brief can be rendered on the unauth'd public share mirror without
+ * leaking the recipient's name or the LLM-generated whyMatters (which
+ * is framed as direct advice to that specific reader).
+ *
+ * Runs AFTER assertBriefEnvelope so the full v2 contract is still
+ * enforced on the input — we never loosen validation for the public
+ * path, only redact the output.
+ *
+ * @param {BriefData} data
+ * @returns {BriefData}
+ */
+function redactForPublic(data) {
+  return {
+    ...data,
+    user: { ...data.user, name: 'WorldMonitor' },
+    stories: data.stories.map((s) => ({
+      ...s,
+      whyMatters: 'Subscribe to WorldMonitor Brief to see the full editorial on this story.',
+    })),
+  };
+}
+
+/**
  * @param {BriefEnvelope} envelope
+ * @param {{ publicMode?: boolean; refCode?: string }} [options]
  * @returns {string}
  */
-export function renderBriefMagazine(envelope) {
+export function renderBriefMagazine(envelope, options = {}) {
   assertBriefEnvelope(envelope);
-  const { user, issue, date, dateLong, digest, stories } = envelope.data;
+  const publicMode = options.publicMode === true;
+  // refCode shape is validated at the route boundary; the renderer
+  // still HTML-escapes it before interpolation so this is belt-and-
+  // suspenders against any accidental leak through that boundary.
+  const refCode = typeof options.refCode === 'string' ? options.refCode : '';
+  const rawData = publicMode ? redactForPublic(envelope.data) : envelope.data;
+  const { user, issue, date, dateLong, digest, stories } = rawData;
   const [, month, day] = date.split('-');
   const dateShort = `${day}.${month}`;
 
@@ -995,10 +1180,35 @@ export function renderBriefMagazine(envelope) {
       tz: user.tz,
       pageIndex: ++p,
       totalPages,
+      publicMode,
+      refCode,
     }),
   );
 
   const title = `WorldMonitor Brief · ${escapeHtml(dateLong)}`;
+
+  // In public view: the per-hash mirror is noindexed via the HTTP
+  // header AND a meta tag, and we prepend a subscribe strip pointing
+  // at /pro (with optional referral attribution).
+  const publicStripHtml = publicMode
+    ? '<div class="wm-public-strip">'
+      + '<span>WorldMonitor Brief \u00b7 shared issue</span>'
+      + `<a href="https://worldmonitor.app/pro${refCode ? `?ref=${encodeURIComponent(refCode)}` : ''}" target="_blank" rel="noopener">`
+      + 'Subscribe \u2192</a>'
+      + '</div>'
+    : '';
+
+  // Only render the Share button on authenticated (non-public) views.
+  // Its click handler calls /api/brief/share-url which requires a
+  // Clerk session. The data-issue-date attribute is read by
+  // SHARE_SCRIPT at click time.
+  const shareButtonHtml = publicMode
+    ? ''
+    : `<button class="wm-share" type="button" data-issue-date="${escapeHtml(date)}" aria-label="Share this brief">Share</button>`;
+
+  const headMeta = publicMode
+    ? '<meta name="robots" content="noindex,nofollow">'
+    : '';
 
   return (
     '<!DOCTYPE html>' +
@@ -1006,6 +1216,7 @@ export function renderBriefMagazine(envelope) {
     '<head>' +
     '<meta charset="UTF-8" />' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
+    headMeta +
     `<title>${title}</title>` +
     '<link rel="preconnect" href="https://fonts.googleapis.com">' +
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
@@ -1014,11 +1225,14 @@ export function renderBriefMagazine(envelope) {
     '</head>' +
     '<body>' +
     LOGO_SYMBOL +
+    publicStripHtml +
+    shareButtonHtml +
     `<div class="deck" id="deck" data-digest-indexes='${JSON.stringify(digestIndexes)}'>` +
     pagesHtml.join('') +
     '</div>' +
     '<div class="nav-dots" id="navDots"></div>' +
     '<div class="hint">← → / swipe / scroll</div>' +
+    (publicMode ? '' : SHARE_SCRIPT) +
     NAV_SCRIPT +
     '</body>' +
     '</html>'

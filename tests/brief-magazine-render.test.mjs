@@ -417,3 +417,121 @@ describe('BRIEF_ENVELOPE_VERSION', () => {
     assert.equal(BRIEF_ENVELOPE_VERSION, 1);
   });
 });
+
+describe('renderBriefMagazine — Share button (non-public views)', () => {
+  it('renders a Share button with the issue date on the button dataset', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(html.includes('class="wm-share"'), 'share button must be present');
+    assert.ok(html.includes(`data-issue-date="${env.data.date}"`), 'share button carries issue date');
+    assert.ok(html.includes('aria-label="Share this brief"'), 'share button has a11y label');
+  });
+
+  it('emits the inline share script exactly once', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    const matches = html.match(/document\.querySelector\('\.wm-share'\)/g) ?? [];
+    assert.equal(matches.length, 1, 'share script emitted once');
+  });
+
+  it('uses the authenticated share-url endpoint', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(html.includes('/api/brief/share-url'), 'script calls the auth\'d endpoint');
+  });
+});
+
+describe('renderBriefMagazine — publicMode', () => {
+  it('strips Share button + share script on public mode', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(!html.includes('class="wm-share"'), 'share button absent on public');
+    // The share-script marker (a runtime DOM query) must NOT appear.
+    // A substring match on the endpoint URL isn't reliable — the CSS
+    // block references it in a documentation comment as part of
+    // explaining why the public view hides the button. Matching on
+    // the executing code is the right signal.
+    assert.ok(
+      !html.includes("document.querySelector('.wm-share')"),
+      'share script (runtime) absent on public',
+    );
+  });
+
+  it('replaces whyMatters with a generic callout on every story page', () => {
+    const env = envelope();
+    // Pre-test sanity: the fixture uses the Hormuz whyMatters on all
+    // stories, so we know it appears in the private render.
+    const privateHtml = renderBriefMagazine(env);
+    assert.ok(privateHtml.includes('Hormuz is roughly a fifth'), 'private render carries whyMatters');
+
+    const publicHtml = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(!publicHtml.includes('Hormuz is roughly a fifth'), 'whyMatters stripped on public');
+    assert.ok(
+      publicHtml.includes('Subscribe to WorldMonitor Brief to see the full editorial'),
+      'generic placeholder callout rendered',
+    );
+  });
+
+  it('emits a noindex meta tag on public views', () => {
+    const env = envelope();
+    const privateHtml = renderBriefMagazine(env);
+    const publicHtml = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(!privateHtml.includes('noindex'), 'private render is indexable');
+    assert.ok(publicHtml.includes('<meta name="robots" content="noindex,nofollow">'), 'public render sets noindex meta');
+  });
+
+  it('prepends a Subscribe strip on public views', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(html.includes('class="wm-public-strip"'), 'subscribe strip element emitted');
+    assert.ok(html.includes('worldmonitor.app/pro'), 'strip links to /pro');
+    assert.ok(html.includes('Subscribe'), 'strip CTA text present');
+  });
+
+  it('attaches ?ref= to public CTAs when refCode is provided', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env, { publicMode: true, refCode: 'ABC123' });
+    assert.ok(html.includes('worldmonitor.app/pro?ref=ABC123'), 'refCode appended to /pro URL');
+  });
+
+  it('HTML-escapes a hostile refCode before interpolation', () => {
+    const env = envelope();
+    const hostile = '"><script>1';
+    const html = renderBriefMagazine(env, { publicMode: true, refCode: hostile });
+    // encodeURIComponent handles most of the sanitisation; the result
+    // should contain percent-encoded chars and NO raw <script> tag.
+    assert.ok(!html.includes('<script>1'), 'raw hostile payload never appears');
+  });
+
+  it('swaps the back cover to a Subscribe CTA on public views', () => {
+    const env = envelope();
+    const privateHtml = renderBriefMagazine(env);
+    const publicHtml = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(privateHtml.includes('End of'), 'private back cover reads "End of Transmission"');
+    assert.ok(publicHtml.includes('Get your own'), 'public back cover reads Subscribe-style headline');
+    assert.ok(publicHtml.includes('class="mono back-cta"'), 'public back cover has CTA anchor');
+  });
+
+  it('does NOT leak the original user name on public views', () => {
+    const env = envelope({
+      user: { name: 'Alice Personally', tz: 'UTC' },
+    });
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(!html.includes('Alice Personally'), 'user name must not appear on public mirror');
+  });
+
+  it('keeps story headlines, categories, sources on public views (shared content)', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env, { publicMode: true });
+    // Story content itself IS shared — that's the point of the mirror.
+    assert.ok(html.includes('Iran declares Strait of Hormuz open'));
+    assert.ok(html.includes('Multiple wires'));
+  });
+
+  it('default options (no second arg) behaves identically to the private path', () => {
+    const env = envelope();
+    const a = renderBriefMagazine(env);
+    const b = renderBriefMagazine(env, {});
+    assert.equal(a, b);
+  });
+});
