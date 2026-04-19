@@ -696,16 +696,17 @@ export default async function handler(req, ctx) {
     // changes. Otherwise repeated polls during one long WARNING window would
     // fill the 50-entry log with near-identical snapshots, evicting older
     // distinct incidents.
+    // Uses SET ... GET (Redis 6.2+) to atomically swap the sig and return
+    // the previous value in one round-trip, avoiding a read-then-write race
+    // where concurrent health probes could both see the old sig.
     const sig = `${overall}|${problemKeys.join(',')}`;
     const persistCmds = [
       ['SET', 'health:last-failure', JSON.stringify(snapshot), 'EX', 86400],
-      ['GET', 'health:failure-log-sig'],
+      ['SET', 'health:failure-log-sig', sig, 'EX', 86400, 'GET'],
     ];
     const sigResults = await redisPipeline(persistCmds, 4_000).catch(() => null);
     const prevSig = sigResults?.[1]?.result ?? '';
-    const logCmds = [
-      ['SET', 'health:failure-log-sig', sig, 'EX', 86400],
-    ];
+    const logCmds = [];
     if (sig !== prevSig) {
       logCmds.push(
         ['LPUSH', 'health:failure-log', JSON.stringify(snapshot)],
@@ -713,7 +714,9 @@ export default async function handler(req, ctx) {
         ['EXPIRE', 'health:failure-log', 86400 * 7],
       );
     }
-    const persist = redisPipeline(logCmds, 4_000).catch(() => {});
+    const persist = logCmds.length > 0
+      ? redisPipeline(logCmds, 4_000).catch(() => {})
+      : Promise.resolve();
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
   }
 
