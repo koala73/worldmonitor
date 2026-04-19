@@ -260,27 +260,59 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'First-party non-OrbitControls touch error should reach Sentry');
   });
 
-  it('suppresses OrbitControls setPointerCapture NotFoundError when stack is bundle-only', () => {
+  it('suppresses OrbitControls setPointerCapture NotFoundError when frame context matches three.js signature', () => {
+    // Verbatim frame context slice from WORLDMONITOR-NC: minified three.js OrbitControls
+    // onPointerDown body. The `_pointers` + `setPointerCapture` adjacency is a three.js-only
+    // pattern (our own code doesn't use `_pointers` naming).
     const event = makeEvent(
       "Failed to execute 'setPointerCapture' on 'Element': No active pointer with the given id is found.",
       'NotFoundError',
       [
         { filename: '/assets/sentry-CRhtdLad.js', lineno: 15, function: 'HTMLCanvasElement.r' },
-        { filename: '/assets/main-rDi7PwxJ.js', lineno: 6757, function: 'xge._ge' },
+        {
+          filename: '/assets/main-rDi7PwxJ.js',
+          lineno: 6757,
+          function: 'xge._ge',
+          context: [
+            [6757, '.enabled!==!1&&(this._pointers.length===0&&(this.domElement.setPointerCapture(i.pointerId),this.domElement.ownerDocument.addEventListener("p'],
+          ],
+        },
       ],
     );
-    assert.equal(beforeSend(event), null, 'Bundle-only setPointerCapture race should be suppressed');
+    assert.equal(beforeSend(event), null, 'OrbitControls setPointerCapture race should be suppressed');
   });
 
-  it('does NOT suppress setPointerCapture NotFoundError from source-mapped first-party frames', () => {
+  it('does NOT suppress setPointerCapture NotFoundError from unsymbolicated first-party bundle frames (no three.js signature)', () => {
+    // Production-realistic regression: first-party code calling setPointerCapture, stack
+    // lands in /assets/main-*.js (unsymbolicated), but frame context does NOT carry the
+    // three.js `_pointers` adjacency. Must reach Sentry.
     const event = makeEvent(
       "Failed to execute 'setPointerCapture' on 'Element': No active pointer with the given id is found.",
       'NotFoundError',
       [
-        { filename: 'src/components/MyCanvas.ts', lineno: 42, function: 'MyCanvas.onPointerDown' },
+        {
+          filename: '/assets/main-rDi7PwxJ.js',
+          lineno: 1200,
+          function: 'MyCanvas.onPointerDown',
+          context: [
+            [1200, 'this.activePointerId=e.pointerId;this.el.setPointerCapture(e.pointerId);this.emit("pointerdown",e)'],
+          ],
+        },
       ],
     );
-    assert.ok(beforeSend(event) !== null, 'First-party setPointerCapture regression must reach Sentry');
+    assert.ok(beforeSend(event) !== null, 'First-party setPointerCapture regression must reach Sentry even when unsymbolicated');
+  });
+
+  it('does NOT suppress setPointerCapture NotFoundError when no frame context is present', () => {
+    // Defensive: if Sentry strips context, we err on the side of surfacing.
+    const event = makeEvent(
+      "Failed to execute 'setPointerCapture' on 'Element': No active pointer with the given id is found.",
+      'NotFoundError',
+      [
+        { filename: '/assets/main-rDi7PwxJ.js', lineno: 6757, function: 'xge._ge' },
+      ],
+    );
+    assert.ok(beforeSend(event) !== null, 'Context-less stacks must not be silently suppressed');
   });
 
   it('suppresses maplibre TypeError when all frames are maplibre', () => {
