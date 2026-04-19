@@ -11,7 +11,7 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
-import { isEntitled } from '@/services/entitlements';
+import { isEntitled, hasFeature } from '@/services/entitlements';
 import { getSubscription, openBillingPortal } from '@/services/billing';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 
@@ -377,12 +377,15 @@ export class UnifiedSettings {
           this.close();
           import('@/services/clerk').then(m => m.openSignIn()).catch(() => {});
         } else {
-          this.handleUpgradeClick();
+          this.close();
+          import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DODO_PRODUCTS.API_STARTER_MONTHLY))).catch(() => {
+            window.open('https://worldmonitor.app/pro', '_blank');
+          });
         }
       });
     }
 
-    if (this.activeTab === 'api-keys' && isProUser()) {
+    if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadApiKeys();
     }
   }
@@ -400,7 +403,7 @@ export class UnifiedSettings {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
     });
 
-    if (tab === 'api-keys' && isProUser()) {
+    if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadApiKeys();
     }
 
@@ -734,13 +737,13 @@ export class UnifiedSettings {
         </div>`;
     }
 
-    if (!isProUser()) {
+    if (!hasFeature('apiAccess')) {
       const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
       return `
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
           <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
-          <button class="panel-locked-cta api-keys-gate-btn">Upgrade to Pro</button>
+          <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }
 
