@@ -677,20 +677,27 @@ export default async function handler(req, ctx) {
 
   const httpStatus = 200;
 
-  if (overall !== 'HEALTHY' && overall !== 'WARNING') {
+  if (overall !== 'HEALTHY') {
     const problemKeys = Object.entries(checks)
-      .filter(([, c]) => c.status === 'EMPTY' || c.status === 'EMPTY_DATA' || c.status === 'STALE_SEED' || c.status === 'SEED_ERROR' || c.status === 'REDIS_PARTIAL')
+      .filter(([, c]) => c.status !== 'OK' && c.status !== 'OK_CASCADE' && c.status !== 'EMPTY_ON_DEMAND')
       .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
-    console.log('[health] %s crits=[%s]', overall, problemKeys.join(', '));
-    // Persist last failure snapshot for post-mortem. Vercel edge isolates can
-    // terminate before a fire-and-forget Promise resolves; ctx.waitUntil keeps
-    // the runtime alive until the write completes.
-    const persist = redisPipeline([['SET', 'health:last-failure', JSON.stringify({
+    console.log('[health] %s problems=[%s]', overall, problemKeys.join(', '));
+    // Persist snapshot for post-mortem. Includes WARNING (STALE_SEED) so
+    // UptimeRobot keyword-check failures ("HEALTHY" not found) leave a trail.
+    // Previous code excluded WARNING, making stale-seed incidents invisible.
+    const snapshot = {
       at: new Date(now).toISOString(),
       status: overall,
       critCount,
-      crits: problemKeys,
-    }), 'EX', 86400]]).catch(() => {});
+      warnCount: realWarnCount,
+      problems: problemKeys,
+    };
+    const persist = redisPipeline([
+      ['SET', 'health:last-failure', JSON.stringify(snapshot), 'EX', 86400],
+      ['LPUSH', 'health:failure-log', JSON.stringify(snapshot)],
+      ['LTRIM', 'health:failure-log', '0', '49'],
+      ['EXPIRE', 'health:failure-log', String(86400 * 7)],
+    ]).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
   }
 
