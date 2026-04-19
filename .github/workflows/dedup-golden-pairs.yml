@@ -81,7 +81,15 @@ jobs:
             printf '%s\n\n' '```'
             printf 'Workflow run: %s\n' "$RUN_URL"
           } > /tmp/issue-body.md
+          # `--create-label` (gh >=2.44) creates any missing label on
+          # the fly. Without it, a missing `dedup`/`canary`/`p1` label
+          # makes `gh issue create` fail — and the old `|| true`
+          # tail swallowed that silently, breaking the drift alert
+          # channel. Create labels so the alert always lands.
           gh issue create \
             --title "$TITLE" \
             --body-file /tmp/issue-body.md \
-            --label "dedup,canary,p1" || true
+            --label "dedup" \
+            --label "canary" \
+            --label "p1" \
+            --create-label

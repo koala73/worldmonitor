@@ -204,7 +204,11 @@ export async function embedBatch(normalizedTitles, deps = {}) {
   }
   if (normalizedTitles.length === 0) return [];
 
-  const fetchImpl = deps.fetch ?? fetch;
+  // Wrap rather than assign: bare `fetch` captures the current global
+  // binding at lookup time, so later monkey-patches (instrumentation,
+  // Edge-runtime shims) don't see the wrapper. See AGENTS.md's
+  // "fetch.bind(globalThis) is BANNED" rule — same class of bug.
+  const fetchImpl = deps.fetch ?? ((...args) => globalThis.fetch(...args));
   const pipelineImpl = deps.redisPipeline ?? defaultRedisPipeline;
   const nowImpl = deps.now ?? (() => Date.now());
   const wallClockMs = deps.wallClockMs ?? 45_000;
