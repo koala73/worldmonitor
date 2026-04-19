@@ -1,0 +1,45 @@
+---
+title: "Israel Sirens"
+description: "Live OREF (Israel Home Front Command) rocket-alert feed with 24-hour history, wave grouping, and real-time active-siren tracking."
+---
+
+The **Israel Sirens** panel (internal id `oref-sirens`) surfaces the OREF (Israel Home Front Command / Pikud HaOref) civil-defence siren feed in real time. When sirens are active, the panel shows the impacted localities; when none are active, it shows 24-hour history grouped into waves so an analyst can see the recent pattern at a glance.
+
+## What the panel shows
+
+Two states under a single panel frame:
+
+- **Active siren state** — current `OrefAlert[]` with impacted areas and threat labels.
+- **History state** — the last 24 hours of siren activity grouped into waves (`historyWaves: OrefHistoryEntry[]`). The count badge shows the total wave count in view (`MAX_HISTORY_WAVES = 50`).
+
+Summary counters surface across the panel:
+
+- **24-hour count** — number of siren waves in the last 24h.
+- **Total history count** — full retained waves.
+- **Configured state** — when the OREF relay isn't configured, the panel renders an explicit "not configured" empty state rather than a silent zero.
+
+A 3-minute client cache (`HISTORY_TTL = 3 * 60 * 1000`) and an in-flight flag (`historyFetchInFlight`) prevent thundering-herd re-fetches when the panel re-renders.
+
+Panel id is `oref-sirens`; canonical component is `src/components/OrefSirensPanel.ts`. Title from i18n (`panels.orefSirens`); config name: "Israel Sirens".
+
+## How you reach it
+
+- **Cmd+K**: type *siren* or *oref*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`priority: 2`). The full-variant registration layers `premium: 'locked'` on desktop (`_desktop && { premium: 'locked' as const }`), so the panel is **free on web** and **PRO-locked on desktop**. Not present in the tech, finance, commodity, or happy variants. Source: `'oref-sirens'` in `FULL_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+- `fetchOrefHistory()` in `@/services/oref-alerts` — backed by `/api/oref-alerts` (a Railway relay that mirrors the OREF feed; documented under [Proxies](/api-proxies)).
+- Live sirens are delivered separately via the same relay; the panel's `setData()` path accepts an `OrefAlertsResponse` with the `configured` flag + active alert list.
+
+## Refresh cadence
+
+Real-time for active sirens. History is client-cached for 3 minutes to damp re-fetch on re-render.
+
+## Tier & gating
+
+**Free on web; PRO-locked on desktop.** Registered without `premium` on the web path; the desktop variant spreads `premium: 'locked'` via the `_desktop &&` clause.
+
+## API reference
+
+- `/api/oref-alerts` — relay proxy documented under [Proxies](/api-proxies).

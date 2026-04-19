@@ -1,0 +1,38 @@
+---
+title: "Telegram Intel"
+description: "Topic-tabbed Telegram-channel feed — open-source intelligence mirrored through a relay, with live/recent distinction and relay-status awareness."
+---
+
+The **Telegram Intel** panel (internal id `telegram-intel`) mirrors a curated set of open-source Telegram channels into the dashboard: topic-tabbed, freshness-aware, and relay-status-aware so the panel can distinguish "no recent traffic" from "relay unavailable".
+
+## What the panel shows
+
+A row of topic tabs at the top with a feed list below:
+
+- **Topic tabs** — tabs derived from `TELEGRAM_TOPICS` in `src/services/telegram-intel`. The default tab is `all`.
+- **Feed items** — `TelegramItem[]` for the active topic, each showing channel, message timestamp, and message body (with `sanitizeUrl` applied to any links).
+- **Live distinction** — items newer than 10 minutes (`LIVE_THRESHOLD_MS = 600_000`) are flagged as live.
+- **Relay state** — when the Telegram relay isn't reachable (`relayEnabled = false`), the panel indicates degraded mode rather than showing an empty list.
+
+Panel id is `telegram-intel`; canonical component is `src/components/TelegramIntelPanel.ts`. Title from i18n (`panels.telegramIntel`); config name: "Telegram Intel". Default row span is 2 — the panel is dense.
+
+## How you reach it
+
+- **Cmd+K**: type *telegram*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`priority: 2`). The full-variant registration layers `premium: 'locked'` on desktop (`_desktop && { premium: 'locked' as const }`), so the panel is **free on web** and **PRO-locked on desktop**. Not present in the tech, finance, commodity, or happy variants. Source: `'telegram-intel'` in `FULL_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+- `@/services/telegram-intel` — backed by `/api/telegram-feed` which proxies to a Railway relay that pulls the curated channel set. Channel coverage is curated rather than user-configurable.
+
+## Refresh cadence
+
+Driven by the relay's poll cycle; the panel reads on mount and on relevant external refresh triggers.
+
+## Tier & gating
+
+**Free on web; PRO-locked on desktop.** Registered without `premium` on the web path; the desktop variant spreads `premium: 'locked'` via the `_desktop &&` clause.
+
+## API reference
+
+- `/api/telegram-feed` — relay proxy documented under [Proxies](/api-proxies).
