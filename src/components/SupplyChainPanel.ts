@@ -679,8 +679,11 @@ export class SupplyChainPanel extends Panel {
     this.activeScenarioState = { scenarioId, result };
     this.content.querySelector('.sc-scenario-banner')?.remove();
     const top5 = result.topImpactCountries.slice(0, 5);
+    // impactPct is already a 0–100 integer from the scenario-worker
+    // (scripts/scenario-worker.mjs: `Math.min(Math.round((totalImpact / maxImpact) * 100), 100)`).
+    // Prior code multiplied by 100 again → banner showed "10000%" instead of "100%".
     const countriesHtml = top5.map(c =>
-      `<span class="sc-scenario-country">${escapeHtml(c.iso2)} <em>${(c.impactPct * 100).toFixed(0)}%</em></span>`
+      `<span class="sc-scenario-country">${escapeHtml(c.iso2)} <em>${c.impactPct.toFixed(0)}%</em></span>`
     ).join(' \u00B7 ');
     const banner = document.createElement('div');
     banner.className = 'sc-scenario-banner';
