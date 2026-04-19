@@ -19,6 +19,14 @@ const PUBLIC_API_PATHS = new Set(['/api/version', '/api/health', '/api/seed-cont
 const SOCIAL_IMAGE_UA =
   /Slack-ImgProxy|Slackbot|twitterbot|facebookexternalhit|linkedinbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
+// Must match the exact route shape enforced by
+// api/brief/carousel/[userId]/[issueDate]/[page].ts:
+//   /api/brief/carousel/<userId>/YYYY-MM-DD/<0|1|2>
+// pageFromIndex() in brief-carousel-render.ts accepts only 0/1/2, so
+// the trailing segment is tightly bounded.
+const BRIEF_CAROUSEL_PATH_RE =
+  /^\/api\/brief\/carousel\/[^/]+\/\d{4}-\d{2}-\d{2}\/[0-2]\/?$/;
+
 const VARIANT_HOST_MAP: Record<string, string> = {
   'tech.worldmonitor.app': 'tech',
   'finance.worldmonitor.app': 'finance',
@@ -110,16 +118,24 @@ export default function middleware(request: Request) {
   }
 
   // Allow social preview/image bots on OG image assets.
-  // Image-returning API routes that don't end in `.png` (e.g. the
-  // brief carousel at /api/brief/carousel/<userId>/<date>/<page>)
-  // need an explicit prefix here — otherwise Telegram's sendMediaGroup
-  // fetch trips the BOT_UA gate below and surfaces as Telegram
-  // error 400 "WEBPAGE_CURL_FAILED". HMAC token in the URL is the
-  // real auth; the UA allowlist is defence-in-depth.
+  //
+  // Image-returning API routes that don't end in `.png` also need
+  // an explicit carve-out — otherwise server-side fetches from
+  // Slack / Telegram / Discord / LinkedIn / WhatsApp / Facebook /
+  // Twitter / Reddit all trip the BOT_UA gate below. Telegram
+  // surfaces it as error 400 "WEBPAGE_CURL_FAILED" on sendMediaGroup;
+  // the others silently drop the preview image.
+  //
+  // Only the brief carousel route shape is allowlisted — a strict
+  // regex (same shape enforced by the handler) prevents a future
+  // /api/brief/carousel/admin or similar sibling from accidentally
+  // inheriting this bypass. HMAC token in the URL is the real auth;
+  // this allowlist is defence-in-depth for any well-shaped request
+  // whose UA happens to be in SOCIAL_IMAGE_UA.
   if (
     path.startsWith('/favico/') ||
     path.endsWith('.png') ||
-    path.startsWith('/api/brief/carousel/')
+    BRIEF_CAROUSEL_PATH_RE.test(path)
   ) {
     if (SOCIAL_IMAGE_UA.test(ua)) {
       return;
