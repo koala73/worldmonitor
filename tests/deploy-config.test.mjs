@@ -281,9 +281,9 @@ describe('brief magazine CSP override', () => {
   });
 });
 
-// PR #3204: `vercel.json` is strict JSON (no comments allowed), so the
-// arch-assumption reasoning that would otherwise sit next to the
-// `includeFiles` entry lives here instead.
+// PR #3204 / #follow-up: `vercel.json` is strict JSON (no comments
+// allowed), so the arch-assumption reasoning that would otherwise sit
+// next to the `includeFiles` entry lives here instead.
 //
 // Vercel Node serverless currently runs on Amazon Linux 2, x86_64,
 // glibc — so `@resvg/resvg-js/js-binding.js` resolves to
@@ -293,28 +293,53 @@ describe('brief magazine CSP override', () => {
 // migrates its Node pool to Graviton/arm64 (AWS Lambda supports it),
 // the correct subpackage becomes `@resvg/resvg-js-linux-arm64-gnu`
 // and the cold-start `MODULE_NOT_FOUND` crash silently returns with
-// no other signal. This block guards against both (a) the rule being
-// accidentally removed and (b) the glob drifting off the binding the
-// runtime actually loads.
+// no other signal.
+//
+// GOTCHA — discovered the hard way post-PR #3204: Vercel's
+// `functions` config keys use micromatch glob patterns, NOT literal
+// paths. So `"api/brief/carousel/[userId]/[issueDate]/[page].ts"`
+// is interpreted as a character-class expression (`[userId]` =
+// match any ONE character from {u,s,e,r,I,d}), the rule matches
+// zero files, and `includeFiles` is silently ignored. Use wildcard
+// path segments (`api/brief/carousel/**`) to actually catch files
+// under dynamic-segment routes. This block guards against the rule
+// being accidentally removed AND against the key reverting to a
+// literal-looking-but-glob-parsed path that matches nothing.
 describe('brief carousel function native-binding bundling', () => {
-  const CAROUSEL_ROUTE = 'api/brief/carousel/[userId]/[issueDate]/[page].ts';
+  const CAROUSEL_ROUTE_PATTERN = 'api/brief/carousel/**';
   const EXPECTED_BINDING_GLOB = 'node_modules/@resvg/resvg-js-linux-x64-gnu/**';
+  // Paranoia: make sure any key that uses dynamic-segment brackets
+  // literally (which Vercel reads as a glob character class, matching
+  // nothing) fails the test loudly instead of silently shipping.
+  const BRACKET_LITERAL_RE = /\[[A-Za-z]+\]/;
 
   it('forces the resvg linux-x64-gnu native binding into the carousel function bundle', () => {
-    const carouselFn = vercelConfig.functions?.[CAROUSEL_ROUTE];
+    const carouselFn = vercelConfig.functions?.[CAROUSEL_ROUTE_PATTERN];
     assert.ok(
       carouselFn,
-      `vercel.json functions.${CAROUSEL_ROUTE} entry is missing — without it, ` +
-        "Vercel nft doesn't trace @resvg/resvg-js's conditional require() and " +
-        'the function crashes at cold start with FUNCTION_INVOCATION_FAILED. ' +
-        'See PR #3204.',
+      `vercel.json functions.${CAROUSEL_ROUTE_PATTERN} entry is missing — ` +
+        "without it, Vercel nft doesn't trace @resvg/resvg-js's conditional " +
+        'require() and the function crashes at cold start with ' +
+        'FUNCTION_INVOCATION_FAILED. See PR #3204.',
     );
     assert.equal(
       carouselFn.includeFiles,
       EXPECTED_BINDING_GLOB,
-      'includeFiles must point at the Amazon Linux 2 x86_64 glibc binding that ' +
-        'Vercel Lambda actually requires at runtime. If Vercel migrates to ' +
-        'Graviton/arm64, update this glob to linux-arm64-gnu.',
+      'includeFiles must point at the Amazon Linux 2 x86_64 glibc binding ' +
+        'that Vercel Lambda actually requires at runtime. If Vercel migrates ' +
+        'to Graviton/arm64, update this glob to linux-arm64-gnu.',
     );
+  });
+
+  it('does not use literal dynamic-segment brackets (Vercel reads them as glob char classes)', () => {
+    for (const key of Object.keys(vercelConfig.functions ?? {})) {
+      assert.ok(
+        !BRACKET_LITERAL_RE.test(key),
+        `functions key "${key}" contains a bracketed segment — Vercel's ` +
+          'micromatch will interpret it as a character class and the rule ' +
+          'will match nothing. Use wildcard path segments (e.g. `**`) to ' +
+          'cover dynamic-segment routes.',
+      );
+    }
   });
 });

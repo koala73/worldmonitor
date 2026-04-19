@@ -2,7 +2,7 @@
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "functions": {
-    "api/brief/carousel/[userId]/[issueDate]/[page].ts": {
+    "api/brief/carousel/**": {
       "includeFiles": "node_modules/@resvg/resvg-js-linux-x64-gnu/**"
     }
   },
