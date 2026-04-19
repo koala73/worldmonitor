@@ -26,6 +26,16 @@ const listeners = new Set<(sub: SubscriptionInfo | null) => void>();
 let initialized = false;
 let unsubscribeConvex: (() => void) | null = null;
 
+// Convex/Clerk bootstrap rarely rejects with a non-Error value (undefined, null, string).
+// Sentry serializes those as synthetic `Error: undefined` with zero frames — uninvestigable.
+// Normalize to a real Error carrying the offending value so events remain debuggable
+// (WORLDMONITOR-ND).
+function normalizeCaughtError(action: string, err: unknown): Error {
+  return err instanceof Error
+    ? err
+    : new Error(`[billing] ${action} threw non-Error: ${err === undefined ? 'undefined' : String(err)}`);
+}
+
 /**
  * Initialize the subscription watch for the authenticated user.
  * Idempotent -- calling multiple times is a no-op after the first.
@@ -67,13 +77,11 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
     initialized = true;
   } catch (err) {
     console.error('[billing] Failed to initialize subscription watch:', err);
-    // Do not rethrow -- billing service failure must not break the dashboard.
-    // Convex/Clerk bootstrap rarely rejects with a non-Error value; wrap so Sentry
-    // gets a useful stack + message instead of synthetic `Error: undefined` (WORLDMONITOR-ND).
-    const normalized = err instanceof Error
-      ? err
-      : new Error(`[billing] initSubscriptionWatch threw non-Error: ${err === undefined ? 'undefined' : String(err)}`);
-    Sentry.captureException(normalized, { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } });
+    // Do not rethrow -- billing service failure must not break the dashboard
+    Sentry.captureException(
+      normalizeCaughtError('initSubscriptionWatch', err),
+      { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } },
+    );
   }
 }
 
@@ -148,7 +156,10 @@ export async function openBillingPortal(): Promise<string | null> {
     return url;
   } catch (err) {
     console.warn('[billing] Failed to get customer portal URL, falling back:', err);
-    Sentry.captureException(err, { tags: { component: 'dodo-billing', action: 'openBillingPortal' } });
+    Sentry.captureException(
+      normalizeCaughtError('openBillingPortal', err),
+      { tags: { component: 'dodo-billing', action: 'openBillingPortal' } },
+    );
     window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
     return DODO_PORTAL_FALLBACK_URL;
   }
