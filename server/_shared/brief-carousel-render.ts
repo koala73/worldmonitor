@@ -2,110 +2,48 @@
  * Brief carousel image renderer (Phase 8).
  *
  * Given a BriefEnvelope and a page index in {0, 1, 2}, builds a
- * Satori layout tree and rasterises it to a PNG buffer via
- * @resvg/resvg-wasm. The output is a 1200×630 image — the standard
- * OG size that Telegram / Slack / Discord all preview well.
+ * Satori layout tree and hands it to @vercel/og's ImageResponse,
+ * which rasterises to a 1200×630 PNG and returns a Response ready
+ * to ship. The output is the standard OG size that Telegram /
+ * Slack / Discord all preview well.
  *
  * Design choices:
- *  - No external font fetches. Satori falls back to the system serif
- *    when `fontFamily` references a face it doesn't have loaded, AND
- *    we provide a single embedded fallback TTF. We deliberately do
- *    NOT load Playfair Display etc. — keeping the edge function
- *    small (few-KB bundle) and avoiding cold-start font fetches that
- *    would be flaky from Vercel edge.
+ *  - @vercel/og wraps satori + resvg-wasm with Vercel-native
+ *    bundling. Runs on Edge runtime. No native Node binding needed,
+ *    no manual `includeFiles` trick in vercel.json. (Previous
+ *    attempts: direct satori + @resvg/resvg-wasm hit edge-bundler
+ *    asset-URL errors; direct satori + @resvg/resvg-js native
+ *    binding hit FUNCTION_INVOCATION_FAILED because nft never
+ *    traced the platform-conditional peer package. See PR history
+ *    on #3174 / #3196 / #3204 / #3206 for the full arc.)
  *  - Page templates are simplified versions of the magazine's
  *    cover / threads / first-story pages. They are not pixel-matched
  *    — the carousel is a teaser, not a replacement for the HTML.
- *  - The renderer is pure (envelope -> bytes). No I/O, no caching,
- *    no HMAC — the edge route layer owns those concerns.
+ *  - The renderer owns font loading + ImageResponse construction.
+ *    The edge route layer owns HMAC verification + Redis lookup.
  */
 
-// satori + @resvg/resvg-js are loaded LAZILY inside renderCarouselPng
-// so Node test runners don't pay the import cost and Vercel's edge
-// bundler doesn't try to pull native binaries into unrelated functions.
-//
-// This file uses @resvg/resvg-js (native Node binding) — NOT the
-// `@resvg/resvg-wasm` variant. The WASM version requires a Vercel
-// edge runtime + a `?url` asset import that Vercel's bundler refuses
-// to resolve ("Edge Function is referencing unsupported modules"),
-// blocking deploys. The native binding works out of the box on the
-// Node runtime and is faster per request. Consequence: the carousel
-// route MUST run on `runtime: 'nodejs20.x'`, encoded in the route's
-// `export const config`.
+import { ImageResponse } from '@vercel/og';
 
-// RUNTIME DEPENDENCY on Google Fonts CDN.
+// RUNTIME DEPENDENCY on Google Fonts CDN via jsdelivr.
 //
-// Satori requires a real TTF/WOFF2 buffer to measure glyphs; the
-// family name 'serif' on its own is not enough. On first render in a
-// cold Node isolate we fetch Noto Serif Regular from gstatic.com and
-// memoise it for subsequent requests on the same isolate. There is
-// NO inline fallback font shipped in the bundle today.
+// Noto Serif Regular is fetched once per isolate, memoised, and
+// passed into ImageResponse's `fonts` option. Satori parses
+// ttf/otf/woff — NOT woff2 — so we pull the TTF-backed woff from
+// @fontsource via jsdelivr (SIL Open Font License, public domain).
+// Same pattern @vercel/og uses internally for its default font.
 //
-// Consequence: if the Google Fonts CDN is unreachable, loadFont()
-// throws, renderCarouselPng() rethrows, the route returns 503
-// no-store, Telegram's sendMediaGroup for that brief drops the whole
-// carousel, the digest's long-form text message still sends, and the
-// next cron tick re-renders from a fresh isolate. Self-healing
-// across ticks because the route refuses to cache any non-200
-// response.
-//
-// CRITICAL: Satori parses ttf / otf / woff — NOT woff2. Using a
-// woff2 URL here silently fails every render (Satori throws on an
-// unreadable font buffer, the route returns 503, the carousel never
-// delivers). The gstatic.com CDN only serves woff2 to modern UA
-// strings, so we pull the TTF from @fontsource via jsdelivr
-// (public-domain SIL Open Font License). This is the pattern
-// @vercel/og uses for the same reason.
-//
-// If jsdelivr reliability ever becomes a problem, swap this fetch
-// for a bundled base64 TTF (copy the @fontsource/noto-serif file
-// into this repo and read it via fs / inline import) and delete
-// the fetch branch.
+// Consequence: if jsdelivr is unreachable, loadFont() throws,
+// renderCarouselImageResponse rethrows, the route returns 503
+// no-store, Telegram's sendMediaGroup for that brief drops the
+// whole carousel, and the next cron tick re-renders from a fresh
+// isolate. Swap this fetch for a bundled base64 TTF if flakiness
+// ever becomes a problem.
 const FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/noto-serif/files/noto-serif-latin-400-normal.woff';
 let _fontCache: ArrayBuffer | null = null;
 
-// Lazy-loaded in renderCarouselPng so tests + unrelated Vercel
-// functions don't pay the import cost.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _resvgLib: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _satoriLib: any = null;
-// Concurrent-cold-start guard: the first caller that begins loading
-// owns the promise; every other caller awaits the same promise. Was
-// previously a plain `_wasmInitialized` boolean which let two cold
-// callers into `await initWasm()` simultaneously (benign but wasteful
-// and one of the P2 findings on the carousel PR review).
-let _libsLoadPromise: Promise<void> | null = null;
-
-async function ensureLibs(): Promise<void> {
-  if (_satoriLib && _resvgLib) return;
-  if (_libsLoadPromise) return _libsLoadPromise;
-  _libsLoadPromise = (async () => {
-    const [satoriMod, resvgMod] = await Promise.all([
-      import('satori'),
-      import('@resvg/resvg-js'),
-    ]);
-    _satoriLib = satoriMod.default ?? satoriMod;
-    _resvgLib = resvgMod;
-  })();
-  try {
-    await _libsLoadPromise;
-  } catch (err) {
-    // Reset so the NEXT cold request retries — a transient import
-    // failure shouldn't poison the isolate for its whole lifetime.
-    _libsLoadPromise = null;
-    throw err;
-  }
-}
-
 async function loadFont(): Promise<ArrayBuffer> {
   if (_fontCache) return _fontCache;
-  // Google Fonts CDN is a hard runtime dependency — see FONT_URL
-  // comment above. On any failure we rethrow so the route handler
-  // can return 503 no-store rather than letting Satori render with
-  // a missing font (which Satori actually handles by refusing to
-  // measure, producing an empty SVG — a more confusing failure than
-  // a clean HTTP error).
   try {
     const res = await fetch(FONT_URL, {
       signal: AbortSignal.timeout(5_000),
@@ -381,18 +319,18 @@ function buildStory(env: Envelope): any {
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Render a single page of the carousel to a PNG buffer.
- * Throws only when the envelope is structurally unusable — any other
- * failure (font fetch, resvg init) falls back to a minimal text-only
- * image so the CDN can still cache *something*.
+ * Render a single page of the carousel into an ImageResponse.
+ * Throws on structurally unusable envelope OR font-fetch failure —
+ * callers (the edge route) should catch + return 503 no-store so
+ * Vercel's CDN + Telegram's media fetcher don't pin a bad render.
  */
-export async function renderCarouselPng(
+export async function renderCarouselImageResponse(
   envelope: Envelope,
   page: CarouselPage,
-): Promise<Uint8Array> {
+  extraHeaders: Record<string, string> = {},
+): Promise<ImageResponse> {
   if (!envelope?.data) throw new Error('invalid envelope');
 
-  await ensureLibs();
   const fontData = await loadFont();
 
   const tree =
@@ -400,21 +338,16 @@ export async function renderCarouselPng(
     page === 'threads' ? buildThreads(envelope) :
     buildStory(envelope);
 
-  const svg = await _satoriLib(tree, {
+  return new ImageResponse(tree, {
     width: 1200,
     height: 630,
     fonts: [
+      // Satori approximates bold by stroking wider when fontWeight
+      // >= 700 is declared without a matching face. Good enough for
+      // a teaser card; a second @font-face isn't worth the bundle
+      // and cold-start cost.
       { name: 'NotoSerif', data: fontData, weight: 400, style: 'normal' },
-      // Bold variant isn't loaded separately; Satori approximates by
-      // stroking wider when fontWeight >= 700 is declared without a
-      // matching face. Good enough for a teaser card.
     ],
+    headers: extraHeaders,
   });
-
-  const resvg = new _resvgLib.Resvg(svg, {
-    fitTo: { mode: 'width', value: 1200 },
-    background: page === 'cover' ? COLORS.ink : page === 'threads' ? COLORS.cream : COLORS.paper,
-  });
-  const pngData = resvg.render();
-  return pngData.asPng();
 }
