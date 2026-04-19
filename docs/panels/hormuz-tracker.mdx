@@ -1,0 +1,43 @@
+---
+title: "Hormuz Trade Tracker"
+description: "Live AIS vessel tracking through the Strait of Hormuz — tanker counts, disruption events, and weekly flow changes at the world's most critical oil chokepoint."
+---
+
+The **Hormuz Trade Tracker** panel (internal id `hormuz-tracker`) is a focused drill-down on a single chokepoint: the Strait of Hormuz. Approximately 20% of global oil transits the Strait daily, so a dedicated real-time view — status, tanker counts, weekly flow changes, disruption events — is more useful than a row in a generic chokepoint table.
+
+## What the panel shows
+
+A status-colored header and per-series bar charts:
+
+- **Status indicator** — `normal` (green `#2ecc71`), `restricted` (amber `#f39c12`), `disrupted` (orange `#e67e22`), `closed` (red `#e74c3c`). Colours live in `statusColor()` in `src/components/HormuzPanel.ts:10`.
+- **Per-series bar charts** — one chart per tracked series (tanker types, flow categories). Each chart renders recent data points; zero-value bars render in a muted red so gaps are visible rather than invisible. 4-colour palette cycles through `#e67e22` / `#1abc9c` / `#9b59b6` / `#27ae60`.
+- **Hover tooltips** — hovering a bar surfaces the date, value, and unit (via invisible hit-rects `.hbar` with data attributes).
+
+Series types come from `HormuzSeries[]`, bundled into `HormuzChart[]` blocks within the `HormuzTrackerData` payload.
+
+Panel id is `hormuz-tracker`; canonical component is `src/components/HormuzPanel.ts`. Title per `src/config/panels.ts`: "Hormuz Trade Tracker".
+
+## How you reach it
+
+- **Cmd+K**: type *hormuz* or *strait*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`priority: 2`). Not present in the tech, finance, commodity, or happy variants. Source: `'hormuz-tracker'` in `FULL_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+`fetchHormuzTracker()` in `@/services/hormuz-tracker` — backed by the Railway AIS relay that tallies AIS vessel transits through the Strait. The seeder produces both live tanker counts and weekly flow deltas; disruption events surface through the status field.
+
+For the public HTTP surface see `/api/supply-chain/hormuz-tracker` under [Proxies](/api-proxies).
+
+## Refresh cadence
+
+AIS-driven; the relay writes updates in near-real-time. The panel reads on mount and on manual refresh — it does not poll aggressively.
+
+## Tier & gating
+
+**Free.** No `premium` flag in `src/config/panels.ts`. The backing proxy is public.
+
+## Related
+
+- [Maritime Intelligence](/maritime-intelligence) — broader AIS + chokepoint context (Hormuz is one of 13 monitored waterways).
+- [Route Explorer](/route-explorer) — per-lane analysis that often routes through Hormuz for AE-origin tanker cargo.
+- [Scenario Engine](/scenario-engine) — `hormuz-tanker-blockade` template simulates a full Hormuz closure for 14 days.

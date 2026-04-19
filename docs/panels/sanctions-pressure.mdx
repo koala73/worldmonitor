@@ -1,0 +1,45 @@
+---
+title: "Sanctions Pressure"
+description: "OFAC SDN + Consolidated List designations surfaced as country-level pressure scores, with new-entry / vessel / aircraft counts and program-level breakdowns."
+---
+
+The **Sanctions Pressure** panel (internal id `sanctions-pressure`) turns the OFAC SDN and Consolidated sanctions lists into an actionable overview: which countries are under the most designation pressure right now, what programs are driving it, and what has changed since the last update.
+
+## What the panel shows
+
+The panel is a compact, analyst-oriented surface (`defaultRowSpan: 2`):
+
+- **Summary bar** — three cards at the top: **New** (new designations since the last update — highlighted when `> 0`), **Vessels** (designated vessels in the current set), **Aircraft** (designated aircraft).
+- **Country rows** — top 8 countries by sanctions designation pressure, each row showing the country label, total designation count, and the program mix.
+- **Program rows** — designations grouped by OFAC program (e.g. sectoral, counter-terrorism).
+
+The panel tracks activity (`trackActivity: true`) so newly arrived designations get the standard new-item visual treatment.
+
+Panel id is `sanctions-pressure`; canonical component is `src/components/SanctionsPressurePanel.ts`. Displayed title: "Sanctions & Designations" (from `super({...})`).
+
+## How you reach it
+
+- **Cmd+K**: type *sanctions* or *OFAC*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (priority 2), **finance** (priority 1), and **commodity** (priority 1) variants. Not present in the tech or happy variants. Source: `'sanctions-pressure'` entries in `FULL_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+`SanctionsPressureResult` payload from `@/services/sanctions-pressure`, backed by:
+
+- **OFAC Specially Designated Nationals (SDN) list**
+- **OFAC Consolidated List**
+
+The seeder pulls both, normalises the country attribution, counts vessels and aircraft, and diffs against the previous snapshot to compute `newEntryCount`.
+
+## Refresh cadence
+
+OFAC publishes list updates on an irregular cadence (daily-to-weekly). The panel reads the most recent snapshot; freshness is surfaced indirectly via `newEntryCount`.
+
+## Tier & gating
+
+**Free.** No `premium` flag in variant registrations. The Sanctions service RPC is public.
+
+## API reference
+
+- [Sanctions service](/api/SanctionsService.openapi.yaml) — sanctions pressure + entity search RPCs.
+- Related: `/api/sanctions-entity-search` endpoint (documented under [Proxies](/api-proxies)) for fuzzy SDN entity lookups.

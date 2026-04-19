@@ -1,0 +1,43 @@
+---
+title: "Energy Crisis Tracker"
+description: "IEA 2026 Energy Crisis Policy Response Tracker — government measures to conserve energy and support consumers in response to Middle East conflict and Hormuz supply disruptions."
+---
+
+The **Energy Crisis Tracker** panel (internal id `energy-crisis`) surfaces the IEA's 2026 policy database: the full catalogue of government measures announced in response to Middle East conflict and Strait-of-Hormuz-driven energy supply disruptions. Per the Hormuz Trade Tracker's context, ~20% of global oil transits the Strait daily, so policy-side response data is as important as the supply-side flow data.
+
+## What the panel shows
+
+A filterable list of policy measures:
+
+- **Category filter** — `all` (default) plus `conservation` ("Energy Conservation") and `consumer_support` ("Consumer Support").
+- **Sector labels** applied per policy: `transport`, `buildings`, `industry`, `electricity`, `agriculture`, `general`.
+- **Status classes** colour-bucketed per policy: `active` (`ecp-status-active`), `planned` (`ecp-status-planned`), `ended` (`ecp-status-ended`).
+- **Policy cards** with country, sector, category, status, announcement date, and measure summary.
+
+The panel is wide (`defaultRowSpan: 2`) and shows a count badge (`showCount: true`). Activity tracking is on (`trackActivity: true`) so newly added policies get the standard new-item visual treatment.
+
+Panel id is `energy-crisis`; canonical component is `src/components/EnergyCrisisPanel.ts`. Displayed title: "Energy Crisis Tracker".
+
+## How you reach it
+
+- **Cmd+K**: type *energy crisis* or *IEA*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`priority: 2`). Not present in the tech, finance, commodity, or happy variants. Source: `'energy-crisis'` in `FULL_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+- `EconomicServiceClient.getEnergyCrisisPolicies()` via the generated Economic service client.
+- Panel prefers the hydrated bootstrap payload first (`getHydratedData()`) and falls back to a fresh RPC call — the standard WorldMonitor "one bootstrap, no duplicate fetch" pattern.
+
+Upstream source per the in-panel info tooltip: **IEA 2026 Energy Crisis Policy Response Tracker**. Tracks measures across ~60 countries with nearly 200 policy entries.
+
+## Refresh cadence
+
+IEA publishes updates on a weekly-to-monthly cadence. The panel reads the cached snapshot on mount; no polling timer.
+
+## Tier & gating
+
+**Free.** No `premium` flag in `src/config/panels.ts`. The Economic service RPC is public.
+
+## API reference
+
+- [Economic service](/api/EconomicService.openapi.yaml) — includes `GetEnergyCrisisPolicies` and the broader energy / macro family.
