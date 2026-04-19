@@ -1,0 +1,59 @@
+---
+title: "Commerce Endpoints"
+description: "Checkout, customer portal, product catalog, and referrals. Thin edge proxies over Convex + Dodo Payments."
+---
+
+WorldMonitor uses [Dodo Payments](https://dodopayments.com) for PRO subscriptions and [Convex](https://convex.dev) as the source-of-truth for entitlements. These edge endpoints are thin auth proxies — they validate the Clerk JWT, then forward to Convex HTTP actions via `RELAY_SHARED_SECRET`.
+
+## Checkout
+
+### `POST /api/create-checkout`
+
+Creates a Dodo checkout session and returns the hosted-checkout URL.
+
+- **Auth**: Clerk bearer (required)
+- **Body**:
+  ```json
+  { "productId": "pro-monthly", "returnUrl": "https://www.worldmonitor.app/pro/success" }
+  ```
+- **Response**: `{ "checkoutUrl": "https://checkout.dodopayments.com/..." }`
+- **returnUrl** is validated against an allowlist on the Convex side.
+
+### `POST /api/customer-portal`
+
+Creates a Dodo customer-portal session for an existing subscriber (update card, cancel, view invoices).
+
+- **Auth**: Clerk bearer + active entitlement
+- **Response**: `{ "portalUrl": "..." }`
+
+## Product catalog
+
+### `GET /api/product-catalog`
+
+Returns the currently available PRO plan tiers and prices, with currency resolved from the caller's IP. Falls back to `_product-fallback-prices.js` when Dodo is unreachable.
+
+```json
+{
+  "currency": "USD",
+  "plans": [
+    { "id": "pro-monthly",  "label": "Pro", "price": 20, "interval": "month" },
+    { "id": "pro-annual",   "label": "Pro", "price": 180, "interval": "year" }
+  ]
+}
+```
+
+## Referrals
+
+### `GET /api/referral/me`
+
+Returns the caller's referral code, referral count, and accrued rewards. Clerk bearer required.
+
+```json
+{ "code": "elie-7x9q", "referrals": 3, "rewardMonths": 1 }
+```
+
+## Waitlist
+
+### `POST /api/register-interest`
+
+Captures an email into the Convex waitlist table. Turnstile-verified, rate-limited per IP. See [Platform endpoints](/api-platform) for the request shape.

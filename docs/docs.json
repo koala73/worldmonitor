@@ -64,6 +64,15 @@
             ]
           },
           {
+            "group": "Usage",
+            "pages": [
+              "usage-quickstart",
+              "usage-auth",
+              "usage-rate-limits",
+              "usage-errors"
+            ]
+          },
+          {
             "group": "Platform & Features",
             "pages": [
               "overview",
@@ -107,6 +116,24 @@
             "group": "Desktop Application",
             "pages": [
               "desktop-app"
+            ]
+          },
+          {
+            "group": "MCP & Integrations",
+            "pages": [
+              "mcp",
+              "api-oauth",
+              "api-notifications"
+            ]
+          },
+          {
+            "group": "HTTP API",
+            "pages": [
+              "api-platform",
+              "api-brief",
+              "api-commerce",
+              "api-shipping-v2",
+              "api-proxies"
             ]
           },
           {
@@ -160,6 +187,10 @@
               {
                 "group": "Cyber",
                 "openapi": "api/CyberService.openapi.yaml"
+              },
+              {
+                "group": "Sanctions",
+                "openapi": "api/SanctionsService.openapi.yaml"
               }
             ]
           },
@@ -181,6 +212,14 @@
               {
                 "group": "Wildfires",
                 "openapi": "api/WildfireService.openapi.yaml"
+              },
+              {
+                "group": "Radiation",
+                "openapi": "api/RadiationService.openapi.yaml"
+              },
+              {
+                "group": "Thermal",
+                "openapi": "api/ThermalService.openapi.yaml"
               }
             ]
           },
@@ -204,8 +243,16 @@
                 "openapi": "api/SupplyChainService.openapi.yaml"
               },
               {
+                "group": "Consumer Prices",
+                "openapi": "api/ConsumerPricesService.openapi.yaml"
+              },
+              {
                 "group": "Predictions",
                 "openapi": "api/PredictionService.openapi.yaml"
+              },
+              {
+                "group": "Forecasts",
+                "openapi": "api/ForecastService.openapi.yaml"
               }
             ]
           },
@@ -223,6 +270,36 @@
               {
                 "group": "Infrastructure",
                 "openapi": "api/InfrastructureService.openapi.yaml"
+              },
+              {
+                "group": "Resilience",
+                "openapi": "api/ResilienceService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Health & Environment",
+            "pages": [
+              {
+                "group": "Public Health",
+                "openapi": "api/HealthService.openapi.yaml"
+              },
+              {
+                "group": "Imagery",
+                "openapi": "api/ImageryService.openapi.yaml"
+              },
+              {
+                "group": "Webcams",
+                "openapi": "api/WebcamService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Scenarios",
+            "pages": [
+              {
+                "group": "Supply-Chain Scenarios",
+                "openapi": "api/ScenarioService.openapi.yaml"
               }
             ]
           },

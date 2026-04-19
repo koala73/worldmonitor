@@ -1,0 +1,106 @@
+---
+title: "Notifications & Integrations"
+description: "Notification channels, webhook delivery, and Telegram/Slack/Discord/YouTube integration endpoints."
+---
+
+## Notification channels
+
+Users can register multiple delivery channels (webhook, Telegram, Slack, Discord, email) and bind alert rules to them.
+
+### `GET /api/notification-channels`
+
+Lists the caller's registered channels and alert rules.
+
+```json
+{
+  "channels": [
+    { "id": "chn_01", "type": "webhook", "url": "https://hooks.example.com/...", "active": true },
+    { "id": "chn_02", "type": "telegram", "chatId": "@alerts_xyz", "active": true }
+  ],
+  "alertRules": [
+    { "id": "rul_01", "channelId": "chn_01", "trigger": "brief_ready", "filter": null }
+  ]
+}
+```
+
+### `POST /api/notification-channels`
+
+Action-dispatched writer. The body's `action` field selects the mutation:
+
+| action | Purpose |
+|--------|---------|
+| `create_channel` | Register a new channel. Secrets (tokens, webhook URLs) are AES-256-GCM encrypted before storage. |
+| `update_channel` | Update an existing channel. |
+| `delete_channel` | Remove a channel. |
+| `create_rule` | Bind an alert rule to a channel. |
+| `delete_rule` | Remove an alert rule. |
+| `send_test` | Deliver a test payload through the channel (verifies connectivity). |
+
+Auth: Clerk bearer. Forwarded to Convex via `RELAY_SHARED_SECRET`.
+
+## Webhook delivery contract
+
+When an alert fires, registered webhook URLs receive:
+
+- **Method**: `POST`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-WM-Signature: sha256=<HMAC-SHA256(body, channelSecret)>`
+  - `X-WM-Delivery-Id: <ulid>`
+  - `X-WM-Event: <event-name>`
+- **Body** (envelope v1):
+  ```json
+  {
+    "envelope": 1,
+    "event": "brief_ready",
+    "deliveryId": "01HX...",
+    "occurredAt": "2026-04-19T06:00:00Z",
+    "data": { "issueDate": "2026-04-19", "magazineUrl": "..." }
+  }
+  ```
+
+Signature verification: `hmac_sha256(rawBody, channelSecret) == X-WM-Signature[7:]`.
+
+<Warning>
+The envelope version is **shared across three producers** (`notification-relay`, `proactive-intelligence`, `seed-digest-notifications`). Bumping it requires coordinated updates.
+</Warning>
+
+### `POST /api/notify`
+
+Internal ingestion endpoint called by Railway producers to enqueue a notification. Requires `RELAY_SHARED_SECRET`. Not a public API.
+
+## Telegram
+
+### `GET /api/telegram-feed?userId=...`
+
+Returns the pre-rendered brief feed for a given Telegram-linked user. Used by the Telegram mini-app.
+
+## YouTube
+
+### `GET /api/youtube/embed?videoId=...`
+
+SSR'd YouTube embed iframe with CSP-compatible wrapping. Used to bypass WKWebView autoplay restrictions on the desktop app.
+
+### `GET /api/youtube/live?channelId=...`
+
+Returns live-stream metadata for a YouTube channel (title, thumbnail, start time) used in the Live Channels panel.
+
+## Slack integration
+
+### `GET /api/slack/oauth/start`
+
+Initiates the Slack OAuth flow — redirects to Slack's install page.
+
+### `GET /api/slack/oauth/callback`
+
+Slack OAuth callback. Exchanges `code` for a workspace token, stores it in Convex, and redirects back to the dashboard.
+
+## Discord integration
+
+### `GET /api/discord/oauth/start`
+
+Initiates the Discord OAuth flow.
+
+### `GET /api/discord/oauth/callback`
+
+Discord OAuth callback. Stores the guild webhook and redirects.

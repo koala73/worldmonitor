@@ -1,0 +1,65 @@
+---
+title: "Proxies & Raw-Data Passthroughs"
+description: "Thin server-side proxies for upstream APIs — used by the dashboard to avoid CORS, hide API keys, and add rate-limiting/caching."
+---
+
+These endpoints pass caller requests through to an upstream data source. They exist to:
+
+1. Hide upstream API keys server-side
+2. Work around CORS
+3. Add caching + per-IP rate limiting
+4. Normalize response shapes
+
+<Warning>
+Most proxies are intended for **our own dashboard** and are lightly gated. They are not part of the public API contract and may change or be removed without notice. Prefer the domain RPC services (`/api/<domain>/v1/*`) for stable integrations.
+</Warning>
+
+## Raw-data passthroughs
+
+| Endpoint | Upstream | Purpose |
+|----------|----------|---------|
+| `GET /api/eia/[...path]` | EIA v2 (energy.gov) | Catch-all proxy for US Energy Information Administration series. Path segments are appended to `https://api.eia.gov/v2/...`. |
+| `GET /api/opensky` | OpenSky Network | Live ADS-B state vectors. Used by the flights layer. |
+| `GET /api/polymarket` | Polymarket gamma-api | Active event contracts. |
+| `GET /api/satellites` | CelesTrak | LEO/GEO satellite orbital elements. |
+| `GET /api/military-flights` | ADS-B Exchange / adsb.lol | Identified military aircraft. |
+| `GET /api/ais-snapshot` | Internal AIS seed | Snapshot of latest vessel positions for the currently-loaded bbox. |
+| `GET /api/gpsjam` | gpsjam.org | GPS interference hotspot reports. |
+| `GET /api/sanctions-entity-search?q=...` | OFAC SDN | Fuzzy-match sanctions entity search. |
+| `GET /api/oref-alerts` | OREF (Israel Home Front Command) | Tzeva Adom rocket alert mirror. |
+| `GET /api/supply-chain/hormuz-tracker` | Internal AIS + registry | Real-time Hormuz transit dashboard data. |
+
+All proxies:
+- Respect the origin CORS allowlist.
+- Apply per-IP rate limits via `_ip-rate-limit.js` (~ 60 req/min/IP default).
+- Cache aggressively (`s-maxage` varies by upstream).
+
+## Content proxies
+
+### `GET /api/rss-proxy?url=<allowed-feed>`
+
+Fetches an RSS/Atom feed and returns the parsed JSON. The URL must match one of the patterns in `_rss-allowed-domains.js` — arbitrary URLs are refused to prevent SSRF.
+
+### `GET /api/enrichment/company?domain=<host>`
+
+Returns company metadata (name, logo, industry, HQ country) for a website domain. Composite of public sources.
+
+### `GET /api/enrichment/signals?domain=<host>`
+
+Returns trust and risk signals (TLS grade, DNS age, WHOIS country, threat-list membership) for a domain.
+
+## Skills registry
+
+### `GET /api/skills/fetch-agentskills`
+
+Returns the catalog of "skills" (agent capabilities) the WorldMonitor chat analyst can invoke. Used internally by `chat-analyst.ts` and the widget agent.
+
+## Legacy / internal
+
+### `POST /api/fwdstart`
+
+Forward-starting scenario helper used by the desktop app during first-run. Internal.
+
+### `GET /api/mcp-proxy`
+
+Legacy MCP shim — forwards to the current MCP route. Deprecated; use [`/api/mcp`](/mcp) directly.

@@ -1,0 +1,106 @@
+---
+title: "Shipping v2 API"
+description: "Chokepoint route-intelligence queries and webhook subscriptions for supply-chain disruption alerts."
+---
+
+The v2 shipping API is a **PRO-gated** read + webhook-subscription surface on top of WorldMonitor's chokepoint registry and AIS tracking data.
+
+<Info>
+All v2 shipping endpoints require `X-WorldMonitor-Key` (server-to-server). Browser origins are **not** trusted here — `validateApiKey` runs with `forceKey: true`.
+</Info>
+
+## Route intelligence
+
+### `POST /api/v2/shipping/route-intelligence`
+
+Scores a shipping route for chokepoint exposure and current disruption risk.
+
+**Request**:
+```json
+{
+  "origin":      { "port": "JEBEL_ALI",  "iso2": "AE" },
+  "destination": { "port": "ROTTERDAM",  "iso2": "NL" },
+  "commodity":   "crude_oil",
+  "vesselType":  "tanker"
+}
+```
+
+**Response**:
+```json
+{
+  "route": {
+    "originPort": "JEBEL_ALI",
+    "destinationPort": "ROTTERDAM",
+    "distanceNm": 6820,
+    "transitDays": 22
+  },
+  "chokepoints": [
+    {
+      "id": "hormuz",
+      "name": "Strait of Hormuz",
+      "exposurePct": 100,
+      "currentRisk": "ELEVATED",
+      "aisCongestion": 0.42,
+      "recentIncidents": 3
+    },
+    { "id": "suez", ... }
+  ],
+  "compositeRisk": 68,
+  "composedAt": "2026-04-19T12:00:00Z"
+}
+```
+
+`compositeRisk` is 0-100 (higher = more disruption). Combines baseline exposure, AIS congestion, dark-ship activity, and recent incident feeds.
+
+## Webhook subscriptions
+
+### `POST /api/v2/shipping/webhooks`
+
+Registers a webhook for chokepoint disruption alerts.
+
+**Request**:
+```json
+{
+  "callbackUrl": "https://hooks.example.com/shipping-alerts",
+  "chokepointIds": ["hormuz", "suez", "bab-el-mandeb"],
+  "alertThreshold": "ELEVATED"
+}
+```
+
+**Response**:
+```json
+{ "subscriberId": "sub_01H...", "secret": "whsec_..." }
+```
+
+- **TTL**: 30 days (re-register to extend)
+- **Security**:
+  - HTTPS-only `callbackUrl` required.
+  - Hostname validated against private IP ranges at registration.
+  - The delivery worker re-resolves the URL before each delivery and re-checks against `PRIVATE_HOSTNAME_PATTERNS` to mitigate DNS rebinding.
+  - Ownership is tracked via SHA-256 of the caller's API key.
+
+### `GET /api/v2/shipping/webhooks`
+
+Lists the caller's registered webhooks (filtered by the SHA-256 owner tag of the calling API key).
+
+### Delivery format
+
+```
+POST <callbackUrl>
+Content-Type: application/json
+X-WM-Signature: sha256=<HMAC-SHA256(body, secret)>
+X-WM-Delivery-Id: <ulid>
+X-WM-Event: chokepoint.disruption
+
+{
+  "subscriberId": "sub_01H...",
+  "chokepointId": "hormuz",
+  "severity": "ELEVATED",
+  "score": 74,
+  "triggeredAt": "2026-04-19T12:03:00Z",
+  "reason": "ais_congestion_spike",
+  "details": { ... }
+}
+```
+
+Delivery is at-least-once. Consumers must handle duplicates via `deliveryId`.
