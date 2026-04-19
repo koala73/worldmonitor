@@ -1,0 +1,42 @@
+---
+title: "WM Analyst"
+description: "A conversational AI analyst that answers ad-hoc questions about the current geopolitical, market, military, and forecast picture using WorldMonitor's live caches."
+---
+
+The **WM Analyst** panel (internal id `chat-analyst`) is the dashboard's conversational-intelligence surface: a chat interface you can drop a question into — "what's happening in the Red Sea today?", "which economies are most exposed to a Hormuz closure?" — and get a source-aware, structured answer grounded in the live WorldMonitor caches.
+
+## What the panel shows
+
+A chat transcript with a composer at the bottom. Messages are rendered with Markdown → HTML pipeline (`marked` + `DOMPurify` sanitisation + post-processed analyst formatting). History is bounded to the last 20 turns (`MAX_HISTORY = 20` in `src/components/ChatAnalystPanel.ts`).
+
+Panel-level controls:
+
+- **Quick action buttons** at the top of the panel — `Situation` (world brief), `Markets`, `Conflicts`, `Forecasts`, `Risk`. Clicking runs a pre-built query.
+- **Domain selector** — `All` / `Geo` / `Market` / `Military` (+ more). Scopes which caches the analyst draws from.
+- **Composer** — free-form text input; Enter to send.
+
+Panel id is `chat-analyst`; canonical component is `src/components/ChatAnalystPanel.ts`. Title "WM Analyst" per `src/config/panels.ts:52`.
+
+## How you reach it
+
+- **Cmd+K**: type *analyst* or *ask*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`premium: 'locked'` at `src/config/panels.ts:52`). Not present in the tech, finance, commodity, or happy variants.
+
+## Data sources
+
+The panel POSTs to `/api/chat-analyst` (edge function backed by `api/chat-analyst.ts`) via `premiumFetch()`, which injects the caller's credentials (`WORLDMONITOR_API_KEY` on desktop, Clerk bearer + PRO in the browser). The edge function composes context from the intelligence, conflict, markets, forecasts, and risk caches (scoped to the selected domain), streams tokens back, and the panel renders incrementally.
+
+No separate `/chat-analyst/v1/*` RPC surface — this is a first-class edge endpoint, not a proto-generated RPC.
+
+## Refresh cadence
+
+Each send is a fresh LLM call — no caching of analyst answers. Typical response latency is 3-15s depending on question complexity and upstream cache freshness.
+
+## Tier & gating
+
+**PRO (hard-locked).** `premium: 'locked'` in `src/config/panels.ts:52`. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`src/config/panels.ts:973` — `apiKeyPanels` allowlist includes `chat-analyst`).
+
+## API reference
+
+- [AI Intelligence](/ai-intelligence) — overview of the LLM-backed analyst pipeline.
+- For scripted use, the closest MCP equivalents are [`analyze_situation`](/mcp#ai-intelligence-live-llm) and [`get_world_brief`](/mcp#ai-intelligence-live-llm).

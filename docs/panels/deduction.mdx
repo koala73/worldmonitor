@@ -1,0 +1,44 @@
+---
+title: "Deduct Situation"
+description: "Ask the AI analyst to deduce the timeline and impact of a hypothetical or current event, with a configurable analytical framework and geo scope."
+---
+
+The **Deduct Situation** panel (internal id `deduction`) is a one-shot AI analysis surface: you write a scenario prompt (hypothetical or current), optionally scope it to a region, and the analyst returns a structured deduction of likely timeline and impact, framed by whichever analytical framework is active.
+
+## What the panel shows
+
+A form with three inputs and a result area:
+
+- **Query textarea** — free-form scenario prompt.
+- **Geo input** — optional region / country scope applied to the analysis.
+- **Framework selector** — the panel's `FrameworkSelector` binds `panelId: 'deduction'` so the user can switch between active analytical frameworks for this run.
+- **Submit button** — disabled while a call is in flight.
+- **Result container** — renders the response as Markdown → sanitised HTML.
+
+A 5-second cooldown (`COOLDOWN_MS = 5_000` in `src/components/DeductionPanel.ts`) prevents accidental back-to-back submissions.
+
+The panel can consume the latest-news feed via an optional `getLatestNews` hook passed by the host at mount time — the news context is folded into the request so the deduction reflects today's state of the world.
+
+Panel id is `deduction`; canonical component is `src/components/DeductionPanel.ts`. Title "Deduct Situation" per `src/config/panels.ts:111`.
+
+## How you reach it
+
+- **Cmd+K**: type *deduce*, *situation*, or *what if*.
+- **Availability by variant**: registered in the **full/geopolitical** variant only, and **disabled by default** (`enabled: false, premium: 'locked'` at `src/config/panels.ts:111`). PRO users must opt into it. Not present in the tech, finance, commodity, or happy variants.
+
+## Data sources
+
+The panel calls the **Intelligence service** via the generated `IntelligenceServiceClient` (`getRpcBaseUrl()` + `/api/intelligence/v1/*`). Under the hood it composes news context via `buildNewsContext(latestNews)` and submits the prompt with the active framework metadata from `getActiveFrameworkForPanel('deduction')`.
+
+## Refresh cadence
+
+Each submission is a fresh LLM call — no caching. A 5-second cooldown applies between submissions.
+
+## Tier & gating
+
+**PRO (hard-locked) and opt-in.** `enabled: false, premium: 'locked'` in `src/config/panels.ts:111`. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`deduction` is in the `apiKeyPanels` allowlist at `src/config/panels.ts:973`). Per the render path, `hasPremiumAccess()` is also checked before submit.
+
+## API reference
+
+- [Intelligence service](/api/IntelligenceService.openapi.yaml) — generated client used by the panel.
+- Related MCP tool: [`analyze_situation`](/mcp#ai-intelligence-live-llm) exposes equivalent functionality over the MCP transport for agent-based callers.

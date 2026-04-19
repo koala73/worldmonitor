@@ -1,0 +1,44 @@
+---
+title: "AI Strategic Posture"
+description: "Theater-level military posture cards computed from cached posture signals and live naval-vessel movements, with per-theater location click-through to the map."
+---
+
+The **AI Strategic Posture** panel (internal id `strategic-posture`) surfaces theater-level military posture assessments — the cached "seed" view of each theater blended in real time with live military-vessel movements so the rendered posture reflects today's deployments, not yesterday's.
+
+## What the panel shows
+
+A vertical list of theater posture cards. Each card includes the theater name, the current posture summary, and click-through affordances: selecting a theater fires an optional location-click callback so the host can zoom the map to its coordinates.
+
+The panel's internal loading UX is notable: it tracks elapsed time with a `setInterval` while waiting for the posture + vessels fetch to resolve, so the reader gets a visible progress signal on slow runs. When the seed is stale, the panel sets a stale indicator (`isStale`) so the card surface can flag it.
+
+Under the hood the panel:
+
+1. Loads cached posture via `fetchCachedTheaterPosture()`.
+2. Fetches current military vessels via `fetchMilitaryVessels()`.
+3. Recomputes posture on-the-fly with `recalcPostureWithVessels()` so the displayed summary is a fresh surge estimate, not just the cached value.
+
+Panel id is `strategic-posture`; canonical component is `src/components/StrategicPosturePanel.ts`. Title resolves from i18n (`panels.strategicPosture`); config sets `'AI Strategic Posture'` at `src/config/panels.ts:23`.
+
+## How you reach it
+
+- **Cmd+K**: type *posture* or *strategic*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only. Free on the web; on desktop the variant registration spreads `{ premium: 'enhanced' as const }` into the config so the panel becomes enhanced-gated on the desktop build. Source: `'strategic-posture'` entry in `FULL_PANELS` at `src/config/panels.ts:23` (no `premium` set; desktop variants elsewhere layer on enhanced gating per the `_desktop &&` pattern).
+
+## Data sources
+
+- **Cached posture**: seed-level theater posture summaries, read via `@/services/cached-theater-posture`.
+- **Military vessels**: live positions via `@/services/military-vessels` (the same feed that drives the military map layer).
+- **Surge recalculation**: `recalcPostureWithVessels()` in `@/services/military-surge` blends cached baseline with today's vessel positions to produce the displayed `TheaterPostureSummary`.
+
+## Refresh cadence
+
+The panel is not on a polling timer — it fetches on mount and re-renders on relevant external triggers. The underlying posture seed refreshes on the military cron; live vessel positions refresh with the AIS relay.
+
+## Tier & gating
+
+**Free on web; enhanced on desktop.** Registered without `premium` in the full-variant `FULL_PANELS` entry (`src/config/panels.ts:23`), so the web build doesn't gate it. The desktop build layers on `premium: 'enhanced'` in other variant contexts — this is why the panel appears free on web but behind an upgrade CTA on the desktop app.
+
+## API reference
+
+- [Military service](/api/MilitaryService.openapi.yaml) — backing feeds for theater posture + vessels.
+- Related: [Military Tracking](/military-tracking) — the map-layer view of the same underlying dataset.

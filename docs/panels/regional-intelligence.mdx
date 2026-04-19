@@ -1,0 +1,63 @@
+---
+title: "Regional Intelligence"
+description: "A structured per-region snapshot of regime, balance, actors, scenarios, transmission paths, and watchlist — backed by the Intelligence service's canonical RegionalSnapshot."
+---
+
+The **Regional Intelligence** panel (internal id `regional-intelligence`) renders a full regional-level intelligence board: regime, balance, key actors, scenarios, transmission paths, and an active watchlist. It answers "what does the current picture look like in this region?" in a format designed for analysts reading six structured blocks, not scrolling narrative.
+
+## What the panel shows
+
+A region selector at the top and six structured blocks below, plus optional narrative sections:
+
+### Region selector
+
+Choose one of seven canonical regions:
+
+- Middle East & North Africa (`mena`, default)
+- East Asia & Pacific (`east-asia`)
+- Europe & Central Asia (`europe`)
+- North America (`north-america`)
+- South Asia (`south-asia`)
+- Latin America & Caribbean (`latam`)
+- Sub-Saharan Africa (`sub-saharan-africa`)
+
+(Source: `BOARD_REGIONS` in `src/components/regional-intelligence-board-utils.ts:23`. Default is `DEFAULT_REGION_ID = 'mena'`.)
+
+### Six blocks
+
+1. **Regime** — current label, previous label, the driver behind the last transition.
+2. **Balance** — 7-axis balance-of-power bar chart with a net balance indicator.
+3. **Actors** — top 5 actors ranked by leverage score, with movement deltas.
+4. **Scenarios** — 3 horizons (24h / 7d / 30d) × 4 lanes with probability bars.
+5. **Transmission** — top 5 transmission paths that connect regional signals to downstream outcomes.
+6. **Watchlist** — active triggers plus narrative watch items from the seed's LLM layer.
+
+### Narrative sections
+
+Optional inline blocks render above the six when the seed populates them: `situation`, `balance_assessment`, and per-horizon `outlook` (24h / 7d / 30d). Empty narrative fields are hidden rather than shown as placeholders.
+
+Region changes trigger a single RPC call (no polling). A request-sequence arbitrator guards against stale renders when the user rapidly switches regions.
+
+Panel id is `regional-intelligence`; canonical component is `src/components/RegionalIntelligenceBoard.ts`. Title per `src/config/panels.ts:110`.
+
+## How you reach it
+
+- **Cmd+K**: type *regional* or *intelligence board*.
+- **Availability by variant**: registered in the **full/geopolitical** variant only, and **disabled by default** (`enabled: false, premium: 'locked'` at `src/config/panels.ts:110`). PRO users must opt into it. Not present in the tech, finance, commodity, or happy variants.
+
+## Data sources
+
+- `GET /api/intelligence/v1/get-regional-snapshot` via the generated `IntelligenceServiceClient`.
+- Gateway caching handles the per-region cache; the panel issues one call per region change.
+
+## Refresh cadence
+
+The panel itself does not poll — it fetches on mount and on region change. The underlying seed refreshes regional snapshots on the intelligence cron.
+
+## Tier & gating
+
+**PRO (hard-locked) and opt-in.** `enabled: false, premium: 'locked'` in `src/config/panels.ts:110`. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`regional-intelligence` is in the `apiKeyPanels` allowlist at `src/config/panels.ts:973`).
+
+## API reference
+
+- [Intelligence service](/api/IntelligenceService.openapi.yaml) — `GetRegionalSnapshot` and related RPCs.

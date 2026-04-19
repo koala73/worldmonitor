@@ -1,0 +1,36 @@
+---
+title: "Premium Backtesting"
+description: "Historical return and percent-change visualisation for previously-analysed tickers, so you can see how the panel's past signals would have played out."
+---
+
+The **Premium Backtesting** panel (internal id `stock-backtest`) renders a compact list of backtested results — one row per ticker — showing how previous Stock Analysis signals fared over their horizon. It's the longitudinal complement to [Premium Stock Analysis](/panels/stock-analysis)'s point-in-time view.
+
+## What the panel shows
+
+A list of `StockBacktestResult[]` rows — one per symbol. Each row shows the ticker and percent-change / return figures formatted via `fmtPct()`, with positive values rendered in a bullish tint (`#8df0b2`) and negative values in a bearish tint (`#ff8c8c`) via `tone()`.
+
+Source state is tracked — `'live' | 'cached'` — so the panel's data badge shows whether the render came from a fresh fetch or a cached snapshot. Empty result sets render a "No stock backtests available yet." retry state via `showRetrying()`.
+
+Panel id is `stock-backtest`; canonical component is `src/components/StockBacktestPanel.ts`. Title "Premium Backtesting" per the panel's `super({...})` call.
+
+## How you reach it
+
+- **Cmd+K**: type *backtest* or *backtesting*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** and **finance** variants — locked in both. Not present in the tech, commodity, or happy variants. Source: `'stock-backtest'` entries in `FULL_PANELS` (`:50`) and `FINANCE_PANELS`.
+
+## Data sources
+
+Backtests are produced by a Railway cron that replays previous analysis signals against historical price series. Results are stored in the premium-stock store and fetched via `@/services/stock-backtest`. The panel consumes `StockBacktestResult[]` through `renderBacktests(items, source)`.
+
+## Refresh cadence
+
+Backtest results update with the premium-stock cron. Freshness is signalled by the data badge (`live` vs `cached`).
+
+## Tier & gating
+
+**PRO (hard-locked).** `premium: 'locked'` in the panel's constructor and in variant registrations. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`stock-backtest` is in the `apiKeyPanels` allowlist at `src/config/panels.ts:973`).
+
+## API reference
+
+- [Markets service](/api/MarketService.openapi.yaml) — underlying price-series and stock-analysis RPCs.
+- Related: [Premium Stock Analysis](/panels/stock-analysis) — per-ticker deep dive that seeds the backtest input.
