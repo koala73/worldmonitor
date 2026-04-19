@@ -29,7 +29,36 @@ import { fileURLToPath } from 'node:url';
 import { embedBatch, cosineSimilarity, normalizeForEmbedding } from '../lib/brief-embedding.mjs';
 import { shouldVeto } from '../lib/brief-dedup-embed.mjs';
 import { stripSourceSuffix } from '../lib/brief-dedup-jaccard.mjs';
-import { readOrchestratorConfig } from '../lib/brief-dedup.mjs';
+import { ACTIVE_CONFIG_KEY } from '../lib/brief-dedup-consts.mjs';
+
+/**
+ * Read the active dedup config that the Railway cron published to
+ * Upstash on its last tick. Returns null on missing key or any
+ * fetch failure — caller treats that as "skip" rather than running
+ * against hardcoded defaults that might diverge from production.
+ */
+async function fetchActiveConfigFromUpstash() {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const resp = await fetch(`${url}/get/${encodeURIComponent(ACTIVE_CONFIG_KEY)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'worldmonitor-golden-pair-validator/1.0',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) return null;
+    const body = await resp.json();
+    if (typeof body?.result !== 'string') return null;
+    const parsed = JSON.parse(body.result);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 function parseArgs(argv) {
   const args = { fixture: null, thresholdOverride: null, force: false };
@@ -50,16 +79,30 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const fixturePath = args.fixture ? resolve(args.fixture) : DEFAULT_FIXTURE_PATH;
 
-  // Resolve the SAME classifier config production uses, via the
-  // orchestrator helper. DIGEST_DEDUP_MODE, DIGEST_DEDUP_REMOTE_EMBED_ENABLED,
-  // DIGEST_DEDUP_COSINE_THRESHOLD, and DIGEST_DEDUP_ENTITY_VETO_ENABLED
-  // MUST be sourced from the same place Railway reads from — the
-  // workflow pipes them in via `${{ vars.* }}`. A `--threshold`
-  // CLI flag overrides for ad-hoc calibration sweeps; the scheduled
-  // canary leaves it off so it validates the live production config.
-  const cfg = readOrchestratorConfig(process.env);
-  const threshold = args.thresholdOverride ?? cfg.cosineThreshold;
-  const entityVetoEnabled = cfg.entityVetoEnabled;
+  // The Railway cron publishes its resolved classifier config to
+  // Upstash on every tick. Reading from there — instead of
+  // duplicating env vars into GitHub repo variables — keeps
+  // Railway as the single source of truth for DIGEST_DEDUP_MODE,
+  // DIGEST_DEDUP_REMOTE_EMBED_ENABLED, DIGEST_DEDUP_COSINE_THRESHOLD,
+  // and DIGEST_DEDUP_ENTITY_VETO_ENABLED.
+  const cfg = await fetchActiveConfigFromUpstash();
+  if (!cfg) {
+    console.log(
+      '[golden] no active dedup config found at ' +
+        `${ACTIVE_CONFIG_KEY} — either the digest cron has not ` +
+        'run yet, Upstash is unreachable, or the TTL expired. ' +
+        'Skipping canary rather than validating against hardcoded ' +
+        'defaults that might diverge from production. Pass --force ' +
+        'to run against CLI / hardcoded defaults anyway.',
+    );
+    if (!args.force) process.exit(0);
+    console.log('[golden] --force set; using CLI + hardcoded defaults');
+  }
+
+  const threshold = args.thresholdOverride ?? cfg?.cosineThreshold ?? 0.60;
+  const entityVetoEnabled = cfg?.entityVetoEnabled ?? true;
+  const mode = cfg?.mode ?? 'jaccard';
+  const remoteEmbedEnabled = cfg?.remoteEmbedEnabled ?? true;
 
   // If production cannot actually reach the embedding path (hard kill
   // switch off, or mode=jaccard), the canary can't meaningfully
@@ -69,17 +112,15 @@ async function main() {
   // ("production is not on the embed path, so there is nothing
   // to drift against"). A `--force` override stays available for
   // manual dispatch during staged rollouts.
-  if (!cfg.remoteEmbedEnabled || cfg.mode === 'jaccard') {
+  if (!remoteEmbedEnabled || mode === 'jaccard') {
     console.log(
       `[golden] embed path inactive in production ` +
-        `(mode=${cfg.mode} remoteEmbedEnabled=${cfg.remoteEmbedEnabled}) — ` +
-        'skipping live-embedder canary. Set DIGEST_DEDUP_MODE=shadow|embed ' +
-        'AND DIGEST_DEDUP_REMOTE_EMBED_ENABLED=1 in the workflow vars ' +
-        'to re-enable, or pass --force to run the drift check anyway.',
+        `(mode=${mode} remoteEmbedEnabled=${remoteEmbedEnabled}) — ` +
+        'skipping live-embedder canary. Flip DIGEST_DEDUP_MODE=shadow|embed ' +
+        'and DIGEST_DEDUP_REMOTE_EMBED_ENABLED=1 on Railway to re-enable, ' +
+        'or pass --force to run the drift check anyway.',
     );
-    if (!args.force) {
-      process.exit(0);
-    }
+    if (!args.force) process.exit(0);
     console.log('[golden] --force set; running drift check despite inactive prod config');
   }
 
@@ -107,9 +148,9 @@ async function main() {
   const titles = [...titleSet];
   console.log(
     `[golden] embedding ${titles.length} unique titles from ${fixture.length} pairs ` +
-      `(mode=${cfg.mode} remoteEmbedEnabled=${cfg.remoteEmbedEnabled} ` +
+      `(mode=${mode} remoteEmbedEnabled=${remoteEmbedEnabled} ` +
       `threshold=${threshold} veto=${entityVetoEnabled ? '1' : '0'} ` +
-      `source=${args.thresholdOverride !== null ? 'cli' : 'env'})`,
+      `source=${args.thresholdOverride !== null ? 'cli' : cfg ? 'upstash' : 'defaults'})`,
   );
   const vectors = await embedBatch(titles);
   const vecByTitle = new Map();

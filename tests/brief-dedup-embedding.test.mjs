@@ -574,6 +574,64 @@ describe('Scenario 9 — permutation-invariance', () => {
   });
 });
 
+// ── Config-publish round-trip ────────────────────────────────────────────────
+
+describe('orchestrator publishes active config to Upstash on every call', () => {
+  it('writes brief:dedup:config:v1 with the resolved env values', async () => {
+    // Every dedup tick MUST publish the classifier config to Upstash
+    // so the nightly golden-pair canary can read it instead of
+    // depending on parallel GitHub repo variables. Without this
+    // publish, Railway and GH-Actions canary would silently diverge.
+    const pipelineCalls = [];
+    async function pipeline(commands) {
+      pipelineCalls.push(commands);
+      return commands.map(() => ({ result: 'OK' }));
+    }
+    const stories = [story('Only story', 10, 1, 's1')];
+    await deduplicateStories(stories, {
+      env: {
+        DIGEST_DEDUP_MODE: 'shadow',
+        DIGEST_DEDUP_COSINE_THRESHOLD: '0.62',
+        DIGEST_DEDUP_ENTITY_VETO_ENABLED: '0',
+      },
+      embedBatch: stubEmbedder(
+        new Map([[normalizeForEmbedding(stories[0].title), [1, 0, 0]]]),
+      ).embedBatch,
+      redisPipeline: pipeline,
+    });
+    const setCommands = pipelineCalls.flat().filter((c) => c[0] === 'SET');
+    const configWrite = setCommands.find((c) => c[1] === 'brief:dedup:config:v1');
+    assert.ok(configWrite, 'config SET was published with the active-config key');
+    const published = JSON.parse(configWrite[2]);
+    assert.equal(published.mode, 'shadow');
+    assert.equal(published.cosineThreshold, 0.62);
+    assert.equal(published.entityVetoEnabled, false);
+    assert.equal(published.remoteEmbedEnabled, true);
+    assert.equal(configWrite[3], 'EX');
+    // 2-hour TTL keeps the key warm through every 30-min cron cadence.
+    assert.equal(configWrite[4], String(2 * 60 * 60));
+  });
+
+  it('publishes config even when mode=jaccard (canary needs the signal)', async () => {
+    const pipelineCalls = [];
+    async function pipeline(commands) {
+      pipelineCalls.push(commands);
+      return commands.map(() => ({ result: 'OK' }));
+    }
+    const stories = [story('x', 10, 1, 'x1'), story('y', 10, 1, 'y1')];
+    await deduplicateStories(stories, {
+      env: { DIGEST_DEDUP_MODE: 'jaccard' },
+      redisPipeline: pipeline,
+    });
+    const configWrite = pipelineCalls
+      .flat()
+      .find((c) => c[0] === 'SET' && c[1] === 'brief:dedup:config:v1');
+    assert.ok(configWrite, 'config publish must fire on jaccard ticks too');
+    const published = JSON.parse(configWrite[2]);
+    assert.equal(published.mode, 'jaccard');
+  });
+});
+
 // ── Entity extraction unit tests ──────────────────────────────────────────────
 
 describe('extractEntities', () => {

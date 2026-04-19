@@ -41,29 +41,19 @@ jobs:
 
       - name: Run golden-pair validator
         id: validate
-        # Canary MUST validate the SAME classifier production runs. We
-        # source DIGEST_DEDUP_COSINE_THRESHOLD and _ENTITY_VETO_ENABLED
-        # from GitHub repo variables — keep those values in lockstep
-        # with Railway env. If Railway flips a knob, flip the repo
-        # variable at the same time, otherwise the canary can go green
-        # while prod is wrong (or red while prod is healthy).
-        #
-        # workflow_dispatch still supports a threshold override (e.g.
-        # for calibration sweeps), but the scheduled run always uses
-        # the production-parity config.
+        # Classifier config (mode / remote-embed-enabled / threshold /
+        # veto-enabled) is published to Upstash by the Railway digest
+        # cron on every tick and read from there — Railway stays the
+        # single source of truth, no parallel GH repo variables. The
+        # validator skips with exit 0 when prod is still on Jaccard
+        # or the kill switch is off, so a no-op prod state renders
+        # the workflow green (the correct signal). A threshold
+        # override is still available for manual calibration sweeps
+        # via workflow_dispatch.
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-          # All four classifier knobs come from GitHub repo variables.
-          # Keep these in lockstep with Railway; the validator bails
-          # with "embed path inactive" when mode=jaccard or remote
-          # embed is disabled, so prod staying on Jaccard no longer
-          # shows up as a false canary signal.
-          DIGEST_DEDUP_MODE: ${{ vars.DIGEST_DEDUP_MODE || 'jaccard' }}
-          DIGEST_DEDUP_REMOTE_EMBED_ENABLED: ${{ vars.DIGEST_DEDUP_REMOTE_EMBED_ENABLED || '1' }}
-          DIGEST_DEDUP_COSINE_THRESHOLD: ${{ vars.DIGEST_DEDUP_COSINE_THRESHOLD || '0.60' }}
-          DIGEST_DEDUP_ENTITY_VETO_ENABLED: ${{ vars.DIGEST_DEDUP_ENTITY_VETO_ENABLED || '1' }}
           DISPATCH_THRESHOLD: ${{ github.event.inputs.threshold }}
         run: |
           set -o pipefail

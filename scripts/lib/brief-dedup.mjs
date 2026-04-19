@@ -26,6 +26,8 @@
 import { createHash } from 'node:crypto';
 
 import {
+  ACTIVE_CONFIG_KEY,
+  ACTIVE_CONFIG_TTL_SECONDS,
   SHADOW_ARCHIVE_KEY_PREFIX,
   SHADOW_ARCHIVE_TTL_SECONDS,
 } from './brief-dedup-consts.mjs';
@@ -142,6 +144,30 @@ function jaccardRepsToClusterHashes(reps) {
 }
 
 /**
+ * Publish the resolved orchestrator config to Upstash so the GitHub
+ * Actions canary can read it instead of depending on parallel repo
+ * variables. Fire-and-forget; if the SET fails, the canary sees a
+ * stale/missing key and skips for that night — still strictly
+ * better than diverging config across Railway and GH vars.
+ */
+async function publishActiveConfig(pipelineImpl, cfg, now) {
+  const payload = JSON.stringify({
+    mode: cfg.mode,
+    remoteEmbedEnabled: cfg.remoteEmbedEnabled,
+    entityVetoEnabled: cfg.entityVetoEnabled,
+    cosineThreshold: cfg.cosineThreshold,
+    wallClockMs: cfg.wallClockMs,
+    writtenAt: now,
+  });
+  try {
+    await pipelineImpl([['SET', ACTIVE_CONFIG_KEY, payload, 'EX', String(ACTIVE_CONFIG_TTL_SECONDS)]]);
+  } catch {
+    // Swallowing is intentional: a stale key just makes the canary
+    // skip that night. Not a correctness issue.
+  }
+}
+
+/**
  * Persist one shadow-mode batch. Returns an object describing the
  * write outcome so the caller can surface it in structured logs and
  * a Sentry warn. "Fail open" is the wrong semantics here: the Sample
@@ -227,6 +253,8 @@ export async function deduplicateStories(stories, deps = {}) {
   const jaccard = deps.jaccard ?? deduplicateStoriesJaccard;
   const log = deps.log ?? ((line) => console.log(line));
   const warn = deps.warn ?? ((line) => console.warn(line));
+  const pipelineImpl = deps.redisPipeline ?? defaultRedisPipeline;
+  const nowImpl = deps.now ?? (() => Date.now());
 
   if (cfg.invalidModeRaw !== null) {
     warn(
@@ -237,6 +265,13 @@ export async function deduplicateStories(stories, deps = {}) {
 
   if (!Array.isArray(stories) || stories.length === 0) return [];
 
+  // Publish the live config to Upstash so the nightly canary can
+  // validate against the same classifier without requiring parallel
+  // repo variables. Fire-and-forget; a failed write just makes the
+  // next canary run skip. Runs regardless of mode so "prod is on
+  // jaccard" is a readable signal, not an absence of signal.
+  await publishActiveConfig(pipelineImpl, cfg, nowImpl());
+
   // Short-circuit: embedding path disabled entirely. This is the
   // hard kill switch — takes precedence over MODE.
   if (!cfg.remoteEmbedEnabled || cfg.mode === 'jaccard') {
@@ -244,8 +279,6 @@ export async function deduplicateStories(stories, deps = {}) {
   }
 
   const embedImpl = deps.embedBatch ?? embedBatch;
-  const pipelineImpl = deps.redisPipeline ?? defaultRedisPipeline;
-  const nowImpl = deps.now ?? (() => Date.now());
   const started = nowImpl();
 
   try {
