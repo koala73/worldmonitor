@@ -1,0 +1,80 @@
+name: Dedup golden-pair canary
+
+# Nightly drift detector for the embedding-based story dedup. Calls
+# the LIVE OpenRouter embedder against a small canonical canary fixture
+# and asserts each pair still classifies as expected under the current
+# production threshold. NOT run from the brief cron — this is a
+# deliberate separate workflow so the hot-path stays deterministic
+# and off the embedding network budget.
+#
+# On failure the job opens a GitHub issue via the `gh` CLI so the
+# signal isn't silently lost in the Actions UI.
+
+on:
+  schedule:
+    # 07:17 UTC — off-peak for most team timezones and spaced from
+    # other nightly cadences to avoid queue pile-up.
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: 'Cosine threshold to validate at (default 0.60)'
+        required: false
+        default: '0.60'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run golden-pair validator
+        id: validate
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          DEDUP_THRESHOLD: ${{ github.event.inputs.threshold || '0.60' }}
+        run: |
+          set -o pipefail
+          node scripts/tools/golden-pair-validator.mjs \
+            --threshold "$DEDUP_THRESHOLD" \
+            --fixture tests/fixtures/brief-dedup-golden-pairs.json \
+            | tee /tmp/golden-pair-output.txt
+
+      - name: Open issue on validation failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Dedup golden-pair canary failed ($(date -u +%Y-%m-%d))"
+          BODY=$(cat <<EOF
+          The nightly embedding-dedup golden-pair validator detected a
+          classification drift against the canonical canary fixture.
+          Possible causes:
+
+          - OpenRouter upgraded the \`text-embedding-3-small\` weights
+            without a version bump (check cache key + recalibrate).
+          - \`DIGEST_DEDUP_COSINE_THRESHOLD\` needs to move.
+          - The canary fixture is out of date vs real wire examples.
+
+          Logs:
+          \`\`\`
+          $(tail -n 80 /tmp/golden-pair-output.txt || echo "(no logs captured)")
+          \`\`\`
+
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+          )
+          gh issue create \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --label "dedup,canary,p1" || true

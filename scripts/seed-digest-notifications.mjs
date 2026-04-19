@@ -39,6 +39,8 @@ import {
 import { enrichBriefEnvelopeWithLLM } from './lib/brief-llm.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { signBriefUrl, BriefUrlError } from './lib/brief-url-sign.mjs';
+import { deduplicateStories } from './lib/brief-dedup.mjs';
+import { stripSourceSuffix } from './lib/brief-dedup-jaccard.mjs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -224,65 +226,14 @@ function matchesSensitivity(ruleSensitivity, severity) {
   return severity === 'critical';
 }
 
-// ── Fuzzy deduplication ──────────────────────────────────────────────────────
-
-const STOP_WORDS = new Set([
-  'the','a','an','in','on','at','to','for','of','is','are','was','were',
-  'has','have','had','be','been','by','from','with','as','it','its',
-  'says','say','said','according','reports','report','officials','official',
-  'us','new','will','can','could','would','may','also','who','that','this',
-  'after','about','over','more','up','out','into','than','some','other',
-]);
-
-function stripSourceSuffix(title) {
-  return title
-    .replace(/\s*[-–—]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/i, '')
-    .replace(/\s*[-–—]\s*(?:Reuters|AP News|BBC|CNN|Al Jazeera|France 24|DW News|PBS NewsHour|CBS News|NBC|ABC|Associated Press|The Guardian|NOS Nieuws|Tagesschau|CNBC|The National)\s*$/i, '');
-}
-
-function extractTitleWords(title) {
-  return new Set(
-    stripSourceSuffix(title)
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, '')
-      .split(/\s+/)
-      .filter(w => w.length > 2 && !STOP_WORDS.has(w)),
-  );
-}
-
-function jaccardSimilarity(setA, setB) {
-  if (setA.size === 0 || setB.size === 0) return 0;
-  let intersection = 0;
-  for (const w of setA) if (setB.has(w)) intersection++;
-  return intersection / (setA.size + setB.size - intersection);
-}
-
-function deduplicateStories(stories) {
-  const clusters = [];
-  for (const story of stories) {
-    const words = extractTitleWords(story.title);
-    let merged = false;
-    for (const cluster of clusters) {
-      if (jaccardSimilarity(words, cluster.words) > 0.55) {
-        cluster.items.push(story);
-        merged = true;
-        break;
-      }
-    }
-    if (!merged) clusters.push({ words, items: [story] });
-  }
-  return clusters.map(({ items }) => {
-    items.sort((a, b) => b.currentScore - a.currentScore || b.mentionCount - a.mentionCount);
-    const best = { ...items[0] };
-    if (items.length > 1) {
-      best.mentionCount = items.reduce((sum, s) => sum + s.mentionCount, 0);
-    }
-    best.mergedHashes = items.map(s => s.hash);
-    return best;
-  });
-}
-
 // ── Digest content ────────────────────────────────────────────────────────────
+
+// Dedup lives in scripts/lib/brief-dedup.mjs (orchestrator) with the
+// legacy Jaccard in scripts/lib/brief-dedup-jaccard.mjs. The orchestrator
+// reads DIGEST_DEDUP_MODE at call time — default 'jaccard' keeps
+// behaviour identical to pre-embedding production. stripSourceSuffix
+// is imported from the Jaccard module so the text/HTML formatters
+// below keep their current per-story title cleanup.
 
 async function buildDigest(rule, windowStartMs) {
   const variant = rule.variant ?? 'full';
@@ -324,7 +275,7 @@ async function buildDigest(rule, windowStartMs) {
   if (stories.length === 0) return null;
 
   stories.sort((a, b) => b.currentScore - a.currentScore);
-  const deduped = deduplicateStories(stories);
+  const deduped = await deduplicateStories(stories);
   const top = deduped.slice(0, DIGEST_MAX_ITEMS);
 
   const allSourceCmds = [];
