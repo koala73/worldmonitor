@@ -678,13 +678,17 @@ export default async function handler(req, ctx) {
   const httpStatus = 200;
 
   if (overall !== 'HEALTHY') {
+    // problemKeys includes seedAgeMin for the snapshot (useful for post-mortem),
+    // but the dedupe signature uses only key:status (no age) so a long STALE_SEED
+    // window doesn't produce a new log entry on every poll.
     const problemKeys = Object.entries(checks)
       .filter(([, c]) => c.status !== 'OK' && c.status !== 'OK_CASCADE' && c.status !== 'EMPTY_ON_DEMAND')
       .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
+    const sigKeys = Object.entries(checks)
+      .filter(([, c]) => c.status !== 'OK' && c.status !== 'OK_CASCADE' && c.status !== 'EMPTY_ON_DEMAND')
+      .map(([k, c]) => `${k}:${c.status}`)
+      .sort();
     console.log('[health] %s problems=[%s]', overall, problemKeys.join(', '));
-    // Persist snapshot for post-mortem. Includes WARNING (STALE_SEED) so
-    // UptimeRobot keyword-check failures ("HEALTHY" not found) leave a trail.
-    // Previous code excluded WARNING, making stale-seed incidents invisible.
     const snapshot = {
       at: new Date(now).toISOString(),
       status: overall,
@@ -692,14 +696,10 @@ export default async function handler(req, ctx) {
       warnCount: realWarnCount,
       problems: problemKeys,
     };
-    // Dedupe: only LPUSH when the incident signature (status + problem set)
-    // changes. Otherwise repeated polls during one long WARNING window would
-    // fill the 50-entry log with near-identical snapshots, evicting older
-    // distinct incidents.
-    // Uses SET ... GET (Redis 6.2+) to atomically swap the sig and return
-    // the previous value in one round-trip, avoiding a read-then-write race
-    // where concurrent health probes could both see the old sig.
-    const sig = `${overall}|${problemKeys.join(',')}`;
+    // Dedupe: only LPUSH when the incident signature (status + problem set,
+    // excluding seedAgeMin) changes. Uses SET ... GET (Redis 6.2+) to
+    // atomically swap the sig and return the previous value.
+    const sig = `${overall}|${sigKeys.join(',')}`;
     const persistCmds = [
       ['SET', 'health:last-failure', JSON.stringify(snapshot), 'EX', 86400],
       ['SET', 'health:failure-log-sig', sig, 'EX', 86400, 'GET'],
@@ -718,6 +718,12 @@ export default async function handler(req, ctx) {
       ? redisPipeline(logCmds, 4_000).catch(() => {})
       : Promise.resolve();
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
+  } else {
+    // Clear the sig on recovery so a recurrence of the same problem set
+    // after a healthy gap is logged as a new incident, not deduped against
+    // the previous one.
+    const clear = redisPipeline([['DEL', 'health:failure-log-sig']], 4_000).catch(() => {});
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(clear);
   }
 
   const url = new URL(req.url);
