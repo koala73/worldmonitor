@@ -132,6 +132,7 @@
               "api-platform",
               "api-brief",
               "api-commerce",
+              "api-scenarios",
               "api-shipping-v2",
               "api-proxies"
             ]
@@ -291,15 +292,6 @@
               {
                 "group": "Webcams",
                 "openapi": "api/WebcamService.openapi.yaml"
-              }
-            ]
-          },
-          {
-            "group": "Scenarios",
-            "pages": [
-              {
-                "group": "Supply-Chain Scenarios",
-                "openapi": "api/ScenarioService.openapi.yaml"
               }
             ]
           },

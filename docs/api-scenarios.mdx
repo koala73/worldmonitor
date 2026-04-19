@@ -1,0 +1,130 @@
+---
+title: "Scenarios API"
+description: "Run pre-defined supply-chain disruption scenarios against any country and poll for worker-computed results."
+---
+
+The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes.
+
+<Info>
+This service is documented inline (not yet proto-backed). Proto migration is tracked in [issue #3207](https://github.com/koala73/worldmonitor/issues/3207) and will replace this page with auto-generated reference.
+</Info>
+
+## List templates
+
+### `GET /api/scenario/v1/templates`
+
+Returns the catalog of pre-defined scenario templates. Cached `public, max-age=3600`.
+
+**Response**:
+```json
+{
+  "templates": [
+    {
+      "id": "hormuz-closure-30d",
+      "name": "Strait of Hormuz closure (30 days)",
+      "affectedChokepointIds": ["hormuz"],
+      "disruptionPct": 100,
+      "durationDays": 30,
+      "affectedHs2": ["27"],
+      "costShockMultiplier": 1.8
+    }
+  ]
+}
+```
+
+## Run a scenario
+
+### `POST /api/scenario/v1/run`
+
+Enqueues a job. Returns `202 Accepted` with a `jobId` the caller must poll.
+
+- **Auth**: `X-WorldMonitor-Key` (or trusted browser origin) + PRO
+- **Rate limits**:
+  - 10 jobs / minute / user
+  - Global queue capped at 100 in-flight jobs; excess rejected with `429` + `Retry-After: 30`
+
+**Request**:
+```json
+{
+  "scenarioId": "hormuz-closure-30d",
+  "iso2": "SG"
+}
+```
+
+- `scenarioId` — id from `/templates`. Required.
+- `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country.
+
+**Response (`202`)**:
+```json
+{
+  "jobId": "scenario:1713456789012:a1b2c3d4",
+  "status": "pending",
+  "statusUrl": "/api/scenario/v1/status?jobId=scenario:1713456789012:a1b2c3d4"
+}
+```
+
+**Errors**:
+
+| Status | `error` | Cause |
+|--------|---------|-------|
+| 400 | `Invalid JSON body` | Body is not valid JSON |
+| 400 | `scenarioId is required` | Missing field |
+| 400 | `Unknown scenario: ...` | `scenarioId` not in the template catalog |
+| 400 | `iso2 must be a 2-letter uppercase country code` | Malformed `iso2` |
+| 403 | `PRO subscription required` | Not PRO |
+| 405 | — | Method other than `POST` |
+| 429 | `Rate limit exceeded: 10 scenario jobs per minute` | Per-user rate limit |
+| 429 | `Scenario queue is at capacity, please try again later` | Global queue > 100 |
+| 502 | `Failed to enqueue scenario job` | Redis enqueue failure |
+| 503 | `Service temporarily unavailable` | Missing env |
+
+## Poll job status
+
+### `GET /api/scenario/v1/status?jobId=<jobId>`
+
+Returns the job result or `{ status: "pending" }` while the worker is still running.
+
+- **Auth**: same as `/run`
+- **jobId format**: `scenario:{unix-ms}:{8-char-suffix}` — strictly validated to guard against path traversal
+
+**Pending response (`200`)**:
+```json
+{
+  "jobId": "scenario:1713456789012:a1b2c3d4",
+  "status": "pending"
+}
+```
+
+**Completed response (`200`)** — shape is scenario-specific; always includes:
+```json
+{
+  "jobId": "scenario:1713456789012:a1b2c3d4",
+  "scenarioId": "hormuz-closure-30d",
+  "iso2": "SG",
+  "status": "completed",
+  "completedAt": 1713456890123,
+  "result": {
+    "costShockPct": 14.2,
+    "affectedImportValueUsd": 8_400_000_000,
+    "topExposedSectors": ["refined_petroleum", "chemicals"]
+  }
+}
+```
+
+**Errors**:
+
+| Status | `error` | Cause |
+|--------|---------|-------|
+| 400 | `Invalid or missing jobId` | Missing or malformed `jobId` |
+| 403 | `PRO subscription required` | Not PRO |
+| 405 | — | Method other than `GET` |
+| 500 | `Corrupted job result` | Worker wrote invalid JSON |
+| 502 | `Failed to fetch job status` | Redis read failure |
+| 503 | `Service temporarily unavailable` | Missing env |
+
+## Polling strategy
+
+- First poll: ~1s after enqueue.
+- Subsequent polls: exponential backoff (1s → 2s → 4s, cap 10s).
+- Workers typically complete in 5-30 seconds depending on scenario complexity.
+- If still pending after 2 minutes, the job is probably dead — re-enqueue.
