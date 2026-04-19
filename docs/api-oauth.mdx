@@ -39,7 +39,7 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 - `https://claude.com/api/mcp/auth_callback`
 - `http://localhost:<port>` / `http://127.0.0.1:<port>` — any port
 
-**Rate limit**: 10 registrations / hour / IP.
+**Rate limit**: 5 registrations / 60 s / IP.
 
 **Client TTL**: 90 days sliding (every successful token exchange refreshes).
 

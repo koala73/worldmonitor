@@ -30,17 +30,45 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 ### `GET /api/product-catalog`
 
-Returns the currently available PRO plan tiers and prices, with currency resolved from the caller's IP. Falls back to `_product-fallback-prices.js` when Dodo is unreachable.
+Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v2` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to `_product-fallback-prices.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
+
+**Response**:
 
 ```json
 {
-  "currency": "USD",
-  "plans": [
-    { "id": "pro-monthly",  "label": "Pro", "price": 20, "interval": "month" },
-    { "id": "pro-annual",   "label": "Pro", "price": 180, "interval": "year" }
-  ]
+  "tiers": [
+    {
+      "tierGroup": "free",
+      "name": "Free",
+      "description": "Get started with the essentials",
+      "features": ["..."],
+      "plans": []
+    },
+    {
+      "tierGroup": "pro",
+      "name": "Pro",
+      "description": "Full intelligence dashboard",
+      "highlighted": true,
+      "features": ["..."],
+      "plans": [
+        { "planKey": "pro_monthly", "billingPeriod": "monthly", "price": 20,  "currency": "USD", "productId": "pdt_..." },
+        { "planKey": "pro_annual",  "billingPeriod": "annual",  "price": 180, "currency": "USD", "productId": "pdt_..." }
+      ]
+    },
+    { "tierGroup": "api_starter", "...": "..." },
+    { "tierGroup": "enterprise",  "...": "..." }
+  ],
+  "fetchedAt": "2026-04-19T12:00:00Z",
+  "cachedUntil": "2026-04-19T13:00:00Z",
+  "priceSource": "dodo"
 }
 ```
+
+Tier groups (ordered): `free`, `pro`, `api_starter`, `enterprise`.
+
+### `DELETE /api/product-catalog`
+
+Purges the cached catalog. Requires `Authorization: Bearer $RELAY_SHARED_SECRET`. Internal.
 
 ## Referrals
 

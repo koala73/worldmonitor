@@ -21,11 +21,18 @@ Use this on initial page load to avoid 40 parallel RPC calls.
 
 ### `GET /api/version`
 
-Returns the currently deployed git SHA and build metadata. Used by the desktop app to detect update availability.
+Returns the latest **GitHub Release** of `koala73/worldmonitor`. Used by the desktop app to detect a newer published release and prompt the user to update. It is **not** the currently-deployed Vercel commit.
 
 ```json
-{ "commit": "56054bfb", "buildTime": "2026-04-19T12:00:00Z" }
+{
+  "version": "2.6.7",
+  "tag": "v2.6.7",
+  "url": "https://github.com/koala73/worldmonitor/releases/tag/v2.6.7",
+  "prerelease": false
+}
 ```
+
+Cached `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`. Returns `502 { "error": "upstream" }` or `502 { "error": "fetch_failed" }` when the GitHub API is unreachable.
 
 ## Cache purge
 

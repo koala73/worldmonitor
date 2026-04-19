@@ -48,8 +48,9 @@ Other clients must proxy via one of these redirects or run locally.
 ## Rate limits
 
 - **MCP calls**: 60 requests / minute / API key (sliding window)
+- **OAuth authorize**: 10 requests / minute / IP
 - **OAuth token**: 10 requests / minute / IP
-- **Dynamic registration**: 10 registrations / hour / IP
+- **Dynamic registration**: 5 registrations / minute / IP
 
 Exceeding returns `429` with a `Retry-After` header.
 

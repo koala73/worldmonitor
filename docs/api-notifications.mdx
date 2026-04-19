@@ -87,20 +87,26 @@ Returns live-stream metadata for a YouTube channel (title, thumbnail, start time
 
 ## Slack integration
 
-### `GET /api/slack/oauth/start`
+### `POST /api/slack/oauth/start`
 
-Initiates the Slack OAuth flow — redirects to Slack's install page.
+Authenticated (Clerk JWT + PRO). Body is empty. Server generates a one-time CSRF state token, stores the caller's userId in Upstash keyed by that state (10-min TTL), and returns the Slack authorize URL for the frontend to open in a popup.
+
+```json
+{ "oauthUrl": "https://slack.com/oauth/v2/authorize?client_id=...&scope=incoming-webhook&..." }
+```
+
+Errors: 401 (missing/invalid JWT), 403 `pro_required`, 503 (OAuth not configured or Upstash unavailable).
 
 ### `GET /api/slack/oauth/callback`
 
-Slack OAuth callback. Exchanges `code` for a workspace token, stores it in Convex, and redirects back to the dashboard.
+Unauthenticated — the popup lands here after Slack redirects. Validates the state token, exchanges `code` for an incoming-webhook URL, AES-256-GCM encrypts the webhook, and stores it in Convex. Returns a tiny HTML page that `postMessage`s the opener and closes.
 
 ## Discord integration
 
-### `GET /api/discord/oauth/start`
+### `POST /api/discord/oauth/start`
 
-Initiates the Discord OAuth flow.
+Authenticated (Clerk JWT + PRO). Same shape as the Slack start route — returns `{ oauthUrl }` for a popup.
 
 ### `GET /api/discord/oauth/callback`
 
-Discord OAuth callback. Stores the guild webhook and redirects.
+Unauthenticated. Exchanges `code`, stores the guild webhook, and `postMessage`s the opener.

@@ -11,46 +11,66 @@ All v2 shipping endpoints require `X-WorldMonitor-Key` (server-to-server). Brows
 
 ## Route intelligence
 
-### `POST /api/v2/shipping/route-intelligence`
+### `GET /api/v2/shipping/route-intelligence`
 
-Scores a shipping route for chokepoint exposure and current disruption risk.
+Scores a country-pair trade route for chokepoint exposure and current disruption risk.
 
-**Request**:
-```json
-{
-  "origin":      { "port": "JEBEL_ALI",  "iso2": "AE" },
-  "destination": { "port": "ROTTERDAM",  "iso2": "NL" },
-  "commodity":   "crude_oil",
-  "vesselType":  "tanker"
-}
+**Query parameters**:
+
+| Param | Required | Description |
+|-------|----------|-------------|
+| `fromIso2` | yes | Origin country, ISO-3166-1 alpha-2 (uppercase). |
+| `toIso2` | yes | Destination country, ISO-3166-1 alpha-2 (uppercase). |
+| `cargoType` | no | One of `container` (default), `tanker`, `bulk`, `roro`. |
+| `hs2` | no | 2-digit HS commodity code (default `27` — mineral fuels). |
+
+**Example**:
+```
+GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&hs2=27
 ```
 
-**Response**:
+**Response (`200`)**:
 ```json
 {
-  "route": {
-    "originPort": "JEBEL_ALI",
-    "destinationPort": "ROTTERDAM",
-    "distanceNm": 6820,
-    "transitDays": 22
-  },
-  "chokepoints": [
-    {
-      "id": "hormuz",
-      "name": "Strait of Hormuz",
-      "exposurePct": 100,
-      "currentRisk": "ELEVATED",
-      "aisCongestion": 0.42,
-      "recentIncidents": 3
-    },
-    { "id": "suez", ... }
+  "fromIso2": "AE",
+  "toIso2": "NL",
+  "cargoType": "tanker",
+  "hs2": "27",
+  "primaryRouteId": "ae-to-eu-via-hormuz-suez",
+  "chokepointExposures": [
+    { "chokepointId": "hormuz", "chokepointName": "Strait of Hormuz", "exposurePct": 100 },
+    { "chokepointId": "suez",   "chokepointName": "Suez Canal",        "exposurePct": 100 }
   ],
-  "compositeRisk": 68,
-  "composedAt": "2026-04-19T12:00:00Z"
+  "bypassOptions": [
+    {
+      "id": "cape-of-good-hope",
+      "name": "Cape of Good Hope",
+      "type": "maritime_detour",
+      "addedTransitDays": 12,
+      "addedCostMultiplier": 1.35,
+      "activationThreshold": "DISRUPTION_SCORE_60"
+    }
+  ],
+  "warRiskTier": "WAR_RISK_TIER_ELEVATED",
+  "disruptionScore": 68,
+  "fetchedAt": "2026-04-19T12:00:00Z"
 }
 ```
 
-`compositeRisk` is 0-100 (higher = more disruption). Combines baseline exposure, AIS congestion, dark-ship activity, and recent incident feeds.
+- `disruptionScore` is 0-100 on the **primary** chokepoint for the route (higher = more disruption).
+- `warRiskTier` is one of the `WAR_RISK_TIER_*` enum values from the chokepoint status feed.
+- `bypassOptions` are filtered to those whose `suitableCargoTypes` includes `cargoType` (or is unset).
+
+**Caching**: `Cache-Control: public, max-age=60, stale-while-revalidate=120`.
+
+**Errors**:
+
+| Status | Cause |
+|--------|-------|
+| 400 | `fromIso2` or `toIso2` missing/malformed |
+| 401 | API key required or invalid |
+| 403 | `PRO subscription required` |
+| 405 | Method other than `GET` |
 
 ## Webhook subscriptions
 

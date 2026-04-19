@@ -29,6 +29,8 @@ See [MCP](/mcp) for details.
 | `GET /api/oauth/authorize` | 10 | 60 s | Per IP |
 | `POST /api/oauth/token` | 10 | 60 s | Per IP |
 
+Matches the implementations in `api/oauth/{register,authorize,token}.js`.
+
 Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
 
 ## Write endpoints
@@ -37,11 +39,10 @@ Exceeding any of these during the OAuth flow will cause the MCP client to fail t
 |----------|-------|--------|-------|
 | `POST /api/scenario/v1/run` | 10 | 60 s | Per user |
 | `POST /api/scenario/v1/run` (queue depth) | 100 in-flight | — | Global |
-| `POST /api/brief/share-url` | 30 | 60 s | Per user |
-| `POST /api/notification-channels` | 30 | 60 s | Per user |
-| `POST /api/create-checkout` | 20 | 60 s | Per user |
-| `POST /api/register-interest` | 5 | 60 s | Per IP |
-| `POST /api/contact` | 3 | 60 s | Per IP + Turnstile |
+| `POST /api/register-interest` | 5 | 60 min | Per IP + Turnstile |
+| `POST /api/contact` | 3 | 60 min | Per IP + Turnstile |
+
+Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, `/api/customer-portal`, etc.) fall back to the default per-IP limit above.
 
 ## Bootstrap / health
 
