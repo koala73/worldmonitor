@@ -7,6 +7,16 @@ The WorldMonitor Country Resilience Index (CRI) scores every country in the worl
 
 This document is the v1.0 reference for the live product. A planned v2.0 upgrade will rebuild the top-level shape into three pillars (structural readiness, live shock exposure, recovery capacity) with a partly non-compensatory aggregation, and ship an annual Reference Edition at citation quality. That work is tracked in a separate reference-grade upgrade plan and is not yet shipped; everything documented below describes the **current shipping behavior**.
 
+## In the dashboard
+
+CRI is surfaced across three places in the product, all driven from the same v1.0 score described below:
+
+- **Resilience widget** — a standalone panel (component: `src/components/ResilienceWidget.ts`) that ranks countries by resilience score with filter and search affordances. Reach it from Cmd+K by typing *resilience*.
+- **Country Deep-Dive** — inside the per-country drill-down panel, CRI appears alongside CII (Country Instability Index) as a structural complement to the short-horizon stress signal. CII and CRI are intentionally **not interchangeable**: CII answers "how much stress is on this country right now?"; CRI answers "how well-positioned is this country to absorb and recover from shocks?"
+- **Map choropleth** — the resilience score drives a country-level choropleth layer on the main map. Toggle it from the map's layer panel or via Cmd+K.
+
+All three surfaces are free to view. The underlying data served at `/api/resilience/v1/*` is public; see [Resilience service](/api/ResilienceService.openapi.yaml) for the HTTP contract.
+
 ## Overview
 
 The WorldMonitor Country Resilience Index scores 222 countries on a 0-100 scale across 5 domains and 13 dimensions. It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) to produce a single resilience score updated every 6 hours.

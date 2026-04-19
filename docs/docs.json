@@ -121,6 +121,17 @@
             ]
           },
           {
+            "group": "Panels",
+            "pages": [
+              "panels/latest-brief",
+              "panels/forecast",
+              "panels/consumer-prices",
+              "panels/disease-outbreaks",
+              "panels/radiation-watch",
+              "panels/thermal-escalation"
+            ]
+          },
+          {
             "group": "Desktop Application",
             "pages": [
               "desktop-app"
