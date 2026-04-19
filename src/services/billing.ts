@@ -67,8 +67,13 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
     initialized = true;
   } catch (err) {
     console.error('[billing] Failed to initialize subscription watch:', err);
-    // Do not rethrow -- billing service failure must not break the dashboard
-    Sentry.captureException(err, { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } });
+    // Do not rethrow -- billing service failure must not break the dashboard.
+    // Convex/Clerk bootstrap rarely rejects with a non-Error value; wrap so Sentry
+    // gets a useful stack + message instead of synthetic `Error: undefined` (WORLDMONITOR-ND).
+    const normalized = err instanceof Error
+      ? err
+      : new Error(`[billing] initSubscriptionWatch threw non-Error: ${err === undefined ? 'undefined' : String(err)}`);
+    Sentry.captureException(normalized, { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } });
   }
 }
 
