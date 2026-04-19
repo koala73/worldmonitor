@@ -276,11 +276,11 @@ async function sendTelegram(userId, chatId, text, _retryCount = 0) {
     }
     return false;
   }
-  if (_retryCount >= 1) {
-    console.warn(`[relay] Telegram rate-limited twice — giving up for ${userId}`);
-    return false;
-  }
   if (res.status === 429) {
+    if (_retryCount >= 1) {
+      console.warn(`[relay] Telegram rate-limited twice — giving up for ${userId}`);
+      return false;
+    }
     const body = await res.json().catch(() => ({}));
     const wait = ((body.parameters?.retry_after ?? 5) + 1) * 1000;
     await new Promise(r => setTimeout(r, wait));
