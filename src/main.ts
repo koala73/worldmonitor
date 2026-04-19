@@ -248,6 +248,7 @@ Sentry.init({
     /Possible side-effect in debug-evaluate/, // Chrome DevTools internal EvalError
     /ConvexError: CONFLICT/, // Expected OCC rejection on concurrent preference saves
     /ConvexError: API_ACCESS_REQUIRED/, // Expected business error: free user opens API Keys tab; client handles gracefully (UnifiedSettings.ts:731-738) — WORLDMONITOR-NA
+    /ConvexError: AUTH_REQUIRED/, // Expected business error: query fires before Convex WS auth handshake completes; subscription error handler recovers — WORLDMONITOR-N3
     /\[CONVEX [AQM]\(.+?\)\] Connection lost while action was in flight/, // Convex SDK transient WS disconnect
     /Response did not contain `success` or `data`/, // DuckDuckGo browser internal tracker/content-block response — never emitted by our code
     /Cannot set properties of undefined \(setting 'bodyTouched'\)/, // Quark browser (Alibaba mobile) touch-tracking script injection (WORLDMONITOR-N1)
