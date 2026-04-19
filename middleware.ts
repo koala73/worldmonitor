@@ -109,8 +109,18 @@ export default function middleware(request: Request) {
     return;
   }
 
-  // Allow social preview/image bots on OG image assets
-  if (path.startsWith('/favico/') || path.endsWith('.png')) {
+  // Allow social preview/image bots on OG image assets.
+  // Image-returning API routes that don't end in `.png` (e.g. the
+  // brief carousel at /api/brief/carousel/<userId>/<date>/<page>)
+  // need an explicit prefix here — otherwise Telegram's sendMediaGroup
+  // fetch trips the BOT_UA gate below and surfaces as Telegram
+  // error 400 "WEBPAGE_CURL_FAILED". HMAC token in the URL is the
+  // real auth; the UA allowlist is defence-in-depth.
+  if (
+    path.startsWith('/favico/') ||
+    path.endsWith('.png') ||
+    path.startsWith('/api/brief/carousel/')
+  ) {
     if (SOCIAL_IMAGE_UA.test(ua)) {
       return;
     }
