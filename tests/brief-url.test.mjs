@@ -18,7 +18,8 @@ import {
 const SECRET = 'primary-secret-for-tests-0123456789';
 const PREV_SECRET = 'rotated-out-legacy-secret-abcdefghij';
 const USER_ID = 'user_abc123';
-const ISSUE_DATE = '2026-04-17';
+// Slot format: YYYY-MM-DD-HHMM (per compose run).
+const ISSUE_DATE = '2026-04-17-0800';
 
 describe('signBriefToken + verifyBriefToken', () => {
   it('round-trips: verify(sign) is true for matching inputs', async () => {
@@ -51,9 +52,10 @@ describe('signBriefToken + verifyBriefToken', () => {
     assert.equal(await verifyBriefToken('user_xyz', ISSUE_DATE, token, SECRET), false);
   });
 
-  it('rejects a token bound to a different issueDate', async () => {
+  it('rejects a token bound to a different issueSlot', async () => {
     const token = await signBriefToken(USER_ID, ISSUE_DATE, SECRET);
-    assert.equal(await verifyBriefToken(USER_ID, '2026-04-18', token, SECRET), false);
+    // Same day, different slot (13:00) must NOT verify.
+    assert.equal(await verifyBriefToken(USER_ID, '2026-04-17-1300', token, SECRET), false);
   });
 
   it('rejects a token signed with a different secret', async () => {
@@ -107,6 +109,16 @@ describe('signBriefToken + verifyBriefToken', () => {
   it('throws BriefUrlError on malformed issueDate at sign time', async () => {
     await assert.rejects(
       () => signBriefToken(USER_ID, '2026/04/17', SECRET),
+      (err) => err instanceof BriefUrlError && err.code === 'invalid_issue_date',
+    );
+  });
+
+  it('throws BriefUrlError when slot is missing the HHMM suffix', async () => {
+    // Bare YYYY-MM-DD is no longer a valid slot — cron must pass the
+    // full YYYY-MM-DD-HHMM. Guards against an accidental partial
+    // revert of the slot rollout.
+    await assert.rejects(
+      () => signBriefToken(USER_ID, '2026-04-17', SECRET),
       (err) => err instanceof BriefUrlError && err.code === 'invalid_issue_date',
     );
   });

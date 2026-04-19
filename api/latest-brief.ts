@@ -13,10 +13,11 @@
  *
  * The returned magazineUrl is freshly signed per request. It is safe
  * to expose to the authenticated client — the HMAC binds {userId,
- * issueDate} so it is only useful to the owner.
+ * issueSlot} so it is only useful to the owner.
  *
- * The route does NOT drive composition. It is a read-only mirror of
- * whatever brief:{userId}:{issueDate} Redis happens to hold.
+ * The route does NOT drive composition. It reads the
+ * brief:latest:{userId} pointer written by the digest cron to locate
+ * the most recent slot, then returns that slot's envelope preview.
  */
 
 export const config = { runtime: 'edge' };
@@ -32,23 +33,26 @@ import { getEntitlements } from '../server/_shared/entitlement-check';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 
-const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function utcDateOffset(days: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+// Slot format written by the digest cron. Must match ISSUE_DATE_RE in
+// server/_shared/brief-url.ts — the signer rejects anything else.
+const ISSUE_SLOT_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 
 function todayInUtc(): string {
-  return utcDateOffset(0);
+  return new Date().toISOString().slice(0, 10);
 }
+
+type BriefPreview = {
+  issueDate: string;
+  dateLong: string;
+  greeting: string;
+  threadCount: number;
+};
 
 async function readBriefPreview(
   userId: string,
-  issueDate: string,
-): Promise<{ dateLong: string; greeting: string; threadCount: number } | null> {
-  const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);
+  issueSlot: string,
+): Promise<BriefPreview | null> {
+  const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`);
   if (raw == null) return null;
   // Reuse the renderer's strict validator so a "ready" preview never
   // points at an envelope that the hosted magazine route will reject.
@@ -59,16 +63,31 @@ async function readBriefPreview(
     assertBriefEnvelope(raw);
   } catch (err) {
     console.error(
-      `[api/latest-brief] composer-bug: brief:${userId}:${issueDate} failed envelope assertion: ${(err as Error).message}`,
+      `[api/latest-brief] composer-bug: brief:${userId}:${issueSlot} failed envelope assertion: ${(err as Error).message}`,
     );
     return null;
   }
   const { data } = raw;
   return {
+    issueDate: data.date,
     dateLong: data.dateLong,
     greeting: data.digest.greeting,
     threadCount: data.stories.length,
   };
+}
+
+/**
+ * Resolve the user's most recent brief slot. Reads the
+ * brief:latest:{userId} pointer the digest cron writes alongside each
+ * SETEX. Returns null when no pointer exists (user never received a
+ * brief, or the pointer has expired past its 7d TTL).
+ */
+async function readLatestPointer(userId: string): Promise<string | null> {
+  const raw = await readRawJsonFromUpstash(`brief:latest:${userId}`);
+  if (raw == null) return null;
+  const slot = (raw as { issueSlot?: unknown } | null)?.issueSlot;
+  if (typeof slot !== 'string' || !ISSUE_SLOT_RE.test(slot)) return null;
+  return slot;
 }
 
 /**
@@ -128,36 +147,26 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  // Determine which issue slot to probe.
-  //  - If the client passes ?date=YYYY-MM-DD, use that verbatim. The
-  //    dashboard panel should always take this path — it knows the
-  //    user's local tz and computes the local date exactly.
-  //  - Otherwise walk [tomorrow, today, yesterday] UTC in that order.
-  //    The composer writes per user tz; a user at UTC+14 has today's
-  //    brief under tomorrow UTC, a user at UTC-12 has it under
-  //    yesterday UTC. Three candidates cover the full tz range
-  //    without needing a tz database in the edge runtime. The order
-  //    (tomorrow-first) naturally prefers the most recently composed
-  //    slot.
+  // Locate the user's most recent brief via the pointer the digest
+  // cron writes. An optional ?slot=YYYY-MM-DD-HHMM lets the client
+  // request a specific prior brief (e.g. the dashboard's "compare to
+  // earlier" or tests); on malformed input we fall through to the
+  // pointer path rather than 400, so a stale URL never hard-breaks
+  // the panel.
   const url = new URL(req.url);
-  const dateParam = url.searchParams.get('date');
-  if (dateParam !== null && !ISSUE_DATE_RE.test(dateParam)) {
-    return jsonResponse({ error: 'invalid_date_shape' }, 400, cors);
-  }
-  const todayUtc = todayInUtc();
-  const candidates = dateParam
-    ? [dateParam]
-    : [utcDateOffset(1), todayUtc, utcDateOffset(-1)];
+  const slotParam = url.searchParams.get('slot');
+  const requestedSlot =
+    slotParam !== null && ISSUE_SLOT_RE.test(slotParam) ? slotParam : null;
 
-  let issueDate: string | null = null;
-  let preview: { dateLong: string; greeting: string; threadCount: number } | null = null;
+  let issueSlot: string | null = null;
+  let preview: BriefPreview | null = null;
   try {
-    for (const slot of candidates) {
-      const hit = await readBriefPreview(session.userId, slot);
+    const targetSlot = requestedSlot ?? (await readLatestPointer(session.userId));
+    if (targetSlot) {
+      const hit = await readBriefPreview(session.userId, targetSlot);
       if (hit) {
-        issueDate = slot;
+        issueSlot = targetSlot;
         preview = hit;
-        break;
       }
     }
   } catch (err) {
@@ -168,12 +177,12 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  if (!preview || !issueDate) {
-    // Echo the caller's date on miss when they supplied one — the
-    // client cares about THAT slot's status, not today UTC. Default
-    // to today UTC only when no date was given.
+  if (!preview || !issueSlot) {
+    // No pointer yet (never composed) or pointer points at a missing
+    // key. The panel just wants a display date for the "composing"
+    // state; UTC today is an acceptable placeholder.
     return jsonResponse(
-      { status: 'composing', issueDate: dateParam ?? todayUtc },
+      { status: 'composing', issueDate: todayInUtc() },
       200,
       cors,
     );
@@ -183,7 +192,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     magazineUrl = await signBriefUrl({
       userId: session.userId,
-      issueDate,
+      issueDate: issueSlot,
       baseUrl: publicBaseUrl(req),
       secret,
     });
@@ -201,7 +210,8 @@ export default async function handler(req: Request): Promise<Response> {
   return jsonResponse(
     {
       status: 'ready',
-      issueDate,
+      issueDate: preview.issueDate,
+      issueSlot,
       dateLong: preview.dateLong,
       greeting: preview.greeting,
       threadCount: preview.threadCount,

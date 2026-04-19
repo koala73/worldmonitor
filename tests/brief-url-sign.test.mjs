@@ -26,7 +26,8 @@ import {
 
 const SECRET = 'consolidation-parity-secret-0xdead';
 const USER_ID = 'user_consolidated123';
-const ISSUE_DATE = '2026-04-18';
+// Slot format: YYYY-MM-DD-HHMM (per compose run, user's tz).
+const ISSUE_DATE = '2026-04-18-0800';
 
 describe('scripts/lib/brief-url-sign parity with server/_shared/brief-url', () => {
   it('produces byte-identical tokens for the same inputs', async () => {

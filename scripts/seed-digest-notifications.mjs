@@ -36,6 +36,7 @@ import {
   groupEligibleRulesByUser,
   shouldExitNonZero as shouldExitOnBriefFailures,
 } from './lib/brief-compose.mjs';
+import { issueSlotInTz } from '../shared/brief-filter.js';
 import { enrichBriefEnvelopeWithLLM } from './lib/brief-llm.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { signBriefUrl, BriefUrlError } from './lib/brief-url-sign.mjs';
@@ -642,9 +643,9 @@ function truncateTelegramHtml(html, limit = TELEGRAM_MAX_LEN) {
 
 /**
  * Phase 8: derive the 3 carousel image URLs from a signed magazine
- * URL. The HMAC token binds (userId, issueDate), not the path — so
- * the same token verifies against /api/brief/{u}/{d}?t=T AND against
- * /api/brief/carousel/{u}/{d}/{0|1|2}?t=T.
+ * URL. The HMAC token binds (userId, issueSlot), not the path — so
+ * the same token verifies against /api/brief/{u}/{slot}?t=T AND against
+ * /api/brief/carousel/{u}/{slot}/{0|1|2}?t=T.
  *
  * Returns null when the magazine URL doesn't match the expected shape
  * — caller falls back to text-only delivery.
@@ -652,13 +653,13 @@ function truncateTelegramHtml(html, limit = TELEGRAM_MAX_LEN) {
 function carouselUrlsFrom(magazineUrl) {
   try {
     const u = new URL(magazineUrl);
-    const m = u.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2})\/?$/);
+    const m = u.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2}-\d{4})\/?$/);
     if (!m) return null;
-    const [, userId, issueDate] = m;
+    const [, userId, issueSlot] = m;
     const token = u.searchParams.get('t');
     if (!token) return null;
     return [0, 1, 2].map(
-      (p) => `${u.origin}/api/brief/carousel/${userId}/${issueDate}/${p}?t=${token}`,
+      (p) => `${u.origin}/api/brief/carousel/${userId}/${issueSlot}/${p}?t=${token}`,
     );
   } catch {
     return null;
@@ -1142,22 +1143,35 @@ async function composeAndStoreBriefForUser(userId, candidates, insightsNumbers, 
     }
   }
 
-  const issueDate = envelope.data.date;
-  const key = `brief:${userId}:${issueDate}`;
+  // Slot (YYYY-MM-DD-HHMM in the user's tz) is what routes the
+  // magazine URL + Redis key. Using the same tz the composer used to
+  // produce envelope.data.date guarantees the slot's date portion
+  // matches the displayed date. Two same-day compose runs produce
+  // distinct slots so each digest dispatch freezes its own URL.
+  const briefTz = chosenCandidate?.digestTimezone ?? 'UTC';
+  const issueSlot = issueSlotInTz(nowMs, briefTz);
+  const key = `brief:${userId}:${issueSlot}`;
+  // The latest-pointer lets readers (dashboard panel, share-url
+  // endpoint) locate the most recent brief without knowing the slot.
+  // One SET per compose is cheap and always current.
+  const latestPointerKey = `brief:latest:${userId}`;
+  const latestPointerValue = JSON.stringify({ issueSlot });
   const pipelineResult = await redisPipeline([
     ['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(envelope)],
+    ['SETEX', latestPointerKey, String(BRIEF_TTL_SECONDS), latestPointerValue],
   ]);
-  if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length === 0) {
+  if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
     throw new Error('null pipeline response from Upstash');
   }
-  const cell = pipelineResult[0];
-  if (cell && typeof cell === 'object' && 'error' in cell) {
-    throw new Error(`Upstash SETEX error: ${cell.error}`);
+  for (const cell of pipelineResult) {
+    if (cell && typeof cell === 'object' && 'error' in cell) {
+      throw new Error(`Upstash SETEX error: ${cell.error}`);
+    }
   }
 
   const magazineUrl = await signBriefUrl({
     userId,
-    issueDate,
+    issueDate: issueSlot,
     baseUrl: WORLDMONITOR_PUBLIC_BASE_URL,
     secret: BRIEF_URL_SIGNING_SECRET,
   });

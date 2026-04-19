@@ -46,7 +46,8 @@ import { renderCarouselPng, pageFromIndex } from '../../../../../server/_shared/
 
 const PAGE_CACHE_TTL = 60 * 60 * 24 * 7; // 7 days — matches brief key TTL
 
-const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Matches the signer's slot format (YYYY-MM-DD-HHMM).
+const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 
 function jsonError(
   msg: string,

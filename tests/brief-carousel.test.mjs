@@ -19,13 +19,13 @@ import { pageFromIndex } from '../server/_shared/brief-carousel-render.ts';
 function carouselUrlsFrom(magazineUrl) {
   try {
     const u = new URL(magazineUrl);
-    const m = u.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2})\/?$/);
+    const m = u.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2}-\d{4})\/?$/);
     if (!m) return null;
-    const [, userId, issueDate] = m;
+    const [, userId, issueSlot] = m;
     const token = u.searchParams.get('t');
     if (!token) return null;
     return [0, 1, 2].map(
-      (p) => `${u.origin}/api/brief/carousel/${userId}/${issueDate}/${p}?t=${token}`,
+      (p) => `${u.origin}/api/brief/carousel/${userId}/${issueSlot}/${p}?t=${token}`,
     );
   } catch {
     return null;
@@ -48,32 +48,36 @@ describe('pageFromIndex', () => {
 });
 
 describe('carouselUrlsFrom', () => {
-  const magazine = 'https://www.worldmonitor.app/api/brief/user_abc/2026-04-18?t=XXX';
+  const magazine = 'https://www.worldmonitor.app/api/brief/user_abc/2026-04-18-0800?t=XXX';
 
   it('derives three signed carousel URLs from a valid magazine URL', () => {
     const urls = carouselUrlsFrom(magazine);
     assert.ok(urls);
     assert.equal(urls.length, 3);
-    assert.equal(urls[0], 'https://www.worldmonitor.app/api/brief/carousel/user_abc/2026-04-18/0?t=XXX');
-    assert.equal(urls[1], 'https://www.worldmonitor.app/api/brief/carousel/user_abc/2026-04-18/1?t=XXX');
-    assert.equal(urls[2], 'https://www.worldmonitor.app/api/brief/carousel/user_abc/2026-04-18/2?t=XXX');
+    assert.equal(urls[0], 'https://www.worldmonitor.app/api/brief/carousel/user_abc/2026-04-18-0800/0?t=XXX');
+    assert.equal(urls[1], 'https://www.worldmonitor.app/api/brief/carousel/user_abc/2026-04-18-0800/1?t=XXX');
+    assert.equal(urls[2], 'https://www.worldmonitor.app/api/brief/carousel/user_abc/2026-04-18-0800/2?t=XXX');
   });
 
   it('preserves origin (localhost, preview deploys, etc.)', () => {
-    const urls = carouselUrlsFrom('http://localhost:3000/api/brief/user_a/2026-04-18?t=T');
-    assert.equal(urls[0], 'http://localhost:3000/api/brief/carousel/user_a/2026-04-18/0?t=T');
+    const urls = carouselUrlsFrom('http://localhost:3000/api/brief/user_a/2026-04-18-1300?t=T');
+    assert.equal(urls[0], 'http://localhost:3000/api/brief/carousel/user_a/2026-04-18-1300/0?t=T');
   });
 
   it('returns null for a URL without a token', () => {
-    assert.equal(carouselUrlsFrom('https://worldmonitor.app/api/brief/user_a/2026-04-18'), null);
+    assert.equal(carouselUrlsFrom('https://worldmonitor.app/api/brief/user_a/2026-04-18-0800'), null);
   });
 
   it('returns null when the path is not the magazine route', () => {
     assert.equal(carouselUrlsFrom('https://worldmonitor.app/dashboard?t=X'), null);
-    assert.equal(carouselUrlsFrom('https://worldmonitor.app/api/other/path/2026-04-18?t=X'), null);
+    assert.equal(carouselUrlsFrom('https://worldmonitor.app/api/other/path/2026-04-18-0800?t=X'), null);
   });
 
-  it('returns null when issueDate is not YYYY-MM-DD', () => {
+  it('returns null when the slot is date-only (no HHMM suffix)', () => {
+    assert.equal(carouselUrlsFrom('https://worldmonitor.app/api/brief/user_a/2026-04-18?t=X'), null);
+  });
+
+  it('returns null when slot is not YYYY-MM-DD-HHMM', () => {
     assert.equal(carouselUrlsFrom('https://worldmonitor.app/api/brief/user_a/today?t=X'), null);
   });
 
@@ -92,7 +96,7 @@ describe('carouselUrlsFrom — contract parity with seed-digest-notifications.mj
     const __d = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(resolve(__d, '../scripts/seed-digest-notifications.mjs'), 'utf-8');
     assert.match(src, /function carouselUrlsFrom\(magazineUrl\)/, 'cron must export carouselUrlsFrom');
-    assert.match(src, /\/api\/brief\/carousel\/\$\{userId\}\/\$\{issueDate\}\/\$\{p\}\?t=\$\{token\}/, 'cron path template must match test fixture');
+    assert.match(src, /\/api\/brief\/carousel\/\$\{userId\}\/\$\{issueSlot\}\/\$\{p\}\?t=\$\{token\}/, 'cron path template must match test fixture');
   });
 });
 

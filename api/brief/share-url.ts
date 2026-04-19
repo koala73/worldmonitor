@@ -1,17 +1,23 @@
 /**
- * POST /api/brief/share-url?date=YYYY-MM-DD
- *   -> 200 { shareUrl, hash, issueDate }           on success
+ * POST /api/brief/share-url?slot=YYYY-MM-DD-HHMM
+ *   -> 200 { shareUrl, hash, issueSlot }           on success
  *   -> 401 UNAUTHENTICATED                         on missing/bad JWT
  *   -> 403 pro_required                            for non-PRO users
- *   -> 400 invalid_date_shape / invalid_payload    on bad inputs
+ *   -> 400 invalid_slot_shape / invalid_payload    on bad inputs
  *   -> 404 brief_not_found                         when the per-user
  *            brief key is missing (reader can't share what doesn't exist)
  *   -> 503 service_unavailable                     on env/Upstash failure
  *
+ * Omitting ?slot= defaults to the user's most recent brief via the
+ * brief:latest:{userId} pointer the digest cron writes. That covers
+ * the Share button in the hosted magazine — it already carries the
+ * slot in its path — but also gives dashboard/test callers a path
+ * that doesn't need to know the slot.
+ *
  * Materialises the brief:public:{hash} pointer used by the unauth'd
  * /api/brief/public/{hash} route. Idempotent — the hash is a pure
- * function of {userId, issueDate, BRIEF_SHARE_SECRET}, so repeated
- * calls for the same reader+date always return the same URL and
+ * function of {userId, issueSlot, BRIEF_SHARE_SECRET}, so repeated
+ * calls for the same reader+slot always return the same URL and
  * overwrite the pointer with the same value (refreshing its TTL).
  *
  * Writing the pointer LAZILY (on share, not on compose) keeps the
@@ -37,7 +43,7 @@ import {
   encodePublicPointer,
 } from '../../server/_shared/brief-share-url';
 
-const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISSUE_SLOT_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 
 // Public pointer lives as long as the brief key itself (7 days), so
 // the share link works for the entire TTL window even if the user
@@ -96,29 +102,44 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  // Date may come from ?date=YYYY-MM-DD OR from a JSON body. Supporting
-  // both makes the call site in the magazine Share button trivial
-  // (send a POST with an empty body + query param) and leaves room for
-  // future extension (e.g. refCode) via the body.
+  // Slot may come from ?slot=YYYY-MM-DD-HHMM OR a JSON body, OR be
+  // omitted — in which case we look up the user's most recent brief
+  // via the latest-pointer the cron writes. That lets dashboard/test
+  // callers POST without knowing the slot while the magazine Share
+  // button can still pass its own slot through explicitly.
   const url = new URL(req.url);
-  let issueDate = url.searchParams.get('date');
+  let issueSlot = url.searchParams.get('slot');
   let refCode: string | undefined;
-  if (!issueDate || req.headers.get('content-type')?.includes('application/json')) {
+  if (!issueSlot || req.headers.get('content-type')?.includes('application/json')) {
     try {
       const body = (await req.json().catch(() => null)) as
-        | { date?: unknown; refCode?: unknown }
+        | { slot?: unknown; refCode?: unknown }
         | null;
-      if (!issueDate && typeof body?.date === 'string') issueDate = body.date;
+      if (!issueSlot && typeof body?.slot === 'string') issueSlot = body.slot;
       if (typeof body?.refCode === 'string' && body.refCode.length > 0 && body.refCode.length <= 32) {
         refCode = body.refCode;
       }
     } catch {
-      /* ignore — empty body is fine when ?date= carries the value */
+      /* ignore — empty body is fine when ?slot= carries the value */
     }
   }
 
-  if (!issueDate || !ISSUE_DATE_RE.test(issueDate)) {
-    return jsonResponse({ error: 'invalid_date_shape' }, 400, cors);
+  if (issueSlot === null || issueSlot === undefined || issueSlot === '') {
+    // Fall back to the latest-pointer the cron writes.
+    try {
+      const latest = await readRawJsonFromUpstash(`brief:latest:${session.userId}`);
+      const slot = (latest as { issueSlot?: unknown } | null)?.issueSlot;
+      if (typeof slot === 'string' && ISSUE_SLOT_RE.test(slot)) {
+        issueSlot = slot;
+      }
+    } catch (err) {
+      console.error('[api/brief/share-url] latest pointer read failed:', (err as Error).message);
+      return jsonResponse({ error: 'service_unavailable' }, 503, cors);
+    }
+  }
+
+  if (!issueSlot || !ISSUE_SLOT_RE.test(issueSlot)) {
+    return jsonResponse({ error: 'invalid_slot_shape' }, 400, cors);
   }
 
   // Ensure the per-user brief actually exists before minting a share
@@ -127,7 +148,7 @@ export default async function handler(req: Request): Promise<Response> {
   // gives a clean 503 path if Upstash is down.
   let existing: unknown;
   try {
-    existing = await readRawJsonFromUpstash(`brief:${session.userId}:${issueDate}`);
+    existing = await readRawJsonFromUpstash(`brief:${session.userId}:${issueSlot}`);
   } catch (err) {
     console.error('[api/brief/share-url] Upstash read failed:', (err as Error).message);
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
@@ -141,7 +162,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const built = await buildPublicBriefUrl({
       userId: session.userId,
-      issueDate,
+      issueDate: issueSlot,
       baseUrl: publicBaseUrl(req),
       secret,
       refCode,
@@ -156,7 +177,7 @@ export default async function handler(req: Request): Promise<Response> {
     throw err;
   }
 
-  // Idempotent pointer write. Same {userId, issueDate, secret} always
+  // Idempotent pointer write. Same {userId, issueSlot, secret} always
   // produces the same hash, so this SET overwrites with an identical
   // value on repeat shares and resets the TTL window.
   //
@@ -166,7 +187,7 @@ export default async function handler(req: Request): Promise<Response> {
   // throw at parse time and the public route would 503 instead of
   // resolving the pointer.
   const pointerKey = `${BRIEF_PUBLIC_POINTER_PREFIX}${hash}`;
-  const pointerValue = JSON.stringify(encodePublicPointer(session.userId, issueDate));
+  const pointerValue = JSON.stringify(encodePublicPointer(session.userId, issueSlot));
   const writeResult = await redisPipeline([
     ['SET', pointerKey, pointerValue, 'EX', String(BRIEF_TTL_SECONDS)],
   ]);
@@ -175,5 +196,5 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 
-  return jsonResponse({ shareUrl, hash, issueDate }, 200, cors);
+  return jsonResponse({ shareUrl, hash, issueSlot }, 200, cors);
 }

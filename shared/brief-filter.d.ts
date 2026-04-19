@@ -57,6 +57,18 @@ export function assembleStubbedBriefEnvelope(input: {
  */
 export function issueDateInTz(nowMs: number, timezone: string): string;
 
+/**
+ * Slot identifier (YYYY-MM-DD-HHMM, local tz) used as the Redis key
+ * suffix and magazine URL path segment. Two compose runs on the same
+ * day produce distinct slots so each digest dispatch gets a frozen
+ * magazine URL that keeps pointing at the envelope that was live when
+ * the notification went out.
+ *
+ * envelope.data.date (YYYY-MM-DD) is still the field the magazine
+ * renders as "19 April 2026"; issueSlot only drives routing.
+ */
+export function issueSlotInTz(nowMs: number, timezone: string): string;
+
 /** Upstream shape from news:insights:v1.topStories[]. */
 export interface UpstreamTopStory {
   primaryTitle?: unknown;

@@ -40,7 +40,7 @@ describe('api/brief handler behaviour (no secrets / no Redis)', () => {
 
   it('returns 204 on OPTIONS preflight', async () => {
     const { default: handler } = await import('../api/brief/[userId]/[issueDate].ts');
-    const req = new Request('https://worldmonitor.app/api/brief/user_x/2026-04-17', {
+    const req = new Request('https://worldmonitor.app/api/brief/user_x/2026-04-17-0800', {
       method: 'OPTIONS',
       headers: { origin: 'https://worldmonitor.app' },
     });
@@ -51,7 +51,7 @@ describe('api/brief handler behaviour (no secrets / no Redis)', () => {
   it('returns 405 on disallowed methods', async () => {
     process.env.BRIEF_URL_SIGNING_SECRET ??= 'test-secret-used-only-for-method-gate';
     const { default: handler } = await import('../api/brief/[userId]/[issueDate].ts');
-    const req = new Request('https://worldmonitor.app/api/brief/user_x/2026-04-17', {
+    const req = new Request('https://worldmonitor.app/api/brief/user_x/2026-04-17-0800', {
       method: 'POST',
       headers: { origin: 'https://worldmonitor.app' },
     });
@@ -64,7 +64,7 @@ describe('api/brief handler behaviour (no secrets / no Redis)', () => {
     const { default: handler } = await import('../api/brief/[userId]/[issueDate].ts');
     // HEAD with a bad token → 403 path; body should still be empty.
     const req = new Request(
-      'https://worldmonitor.app/api/brief/user_x/2026-04-17?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'https://worldmonitor.app/api/brief/user_x/2026-04-17-0800?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       {
         method: 'HEAD',
         headers: { origin: 'https://worldmonitor.app' },
@@ -88,7 +88,7 @@ describe('infrastructure-error vs miss (both routes must not collapse)', () => {
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     try {
       await assert.rejects(
-        () => readRawJsonFromUpstash('brief:user_x:2026-04-17'),
+        () => readRawJsonFromUpstash('brief:user_x:2026-04-17-0800'),
         /not configured/,
       );
     } finally {
@@ -105,7 +105,7 @@ describe('infrastructure-error vs miss (both routes must not collapse)', () => {
     globalThis.fetch = async () => new Response('internal error', { status: 500 });
     try {
       await assert.rejects(
-        () => readRawJsonFromUpstash('brief:user_x:2026-04-17'),
+        () => readRawJsonFromUpstash('brief:user_x:2026-04-17-0800'),
         /HTTP 500/,
       );
     } finally {
@@ -124,7 +124,7 @@ describe('infrastructure-error vs miss (both routes must not collapse)', () => {
         headers: { 'content-type': 'application/json' },
       });
     try {
-      const out = await readRawJsonFromUpstash('brief:user_x:2026-04-17');
+      const out = await readRawJsonFromUpstash('brief:user_x:2026-04-17-0800');
       assert.equal(out, null);
     } finally {
       globalThis.fetch = realFetch;
@@ -141,7 +141,7 @@ describe('infrastructure-error vs miss (both routes must not collapse)', () => {
       const { default: handler } = await import('../api/brief/[userId]/[issueDate].ts');
       const { signBriefToken } = await import('../server/_shared/brief-url.ts');
       const userId = 'user_test';
-      const issueDate = '2026-04-17';
+      const issueDate = '2026-04-17-0800';
       const token = await signBriefToken(userId, issueDate, process.env.BRIEF_URL_SIGNING_SECRET);
       const req = new Request(
         `https://worldmonitor.app/api/brief/${userId}/${issueDate}?t=${token}`,

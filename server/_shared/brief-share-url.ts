@@ -27,7 +27,11 @@
  */
 
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
-const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// YYYY-MM-DD-HHMM issue slot — matches the magazine signer's slot
+// format. deriveShareHash is bound to (userId, slot) so a morning
+// brief and an afternoon brief of the same day produce distinct
+// public share URLs.
+const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 // 12 base64url chars = 72 bits — enough to prevent brute-force
 // enumeration of active share URLs even at aggressive rates.
 const HASH_RE = /^[A-Za-z0-9_-]{12}$/;
@@ -47,7 +51,7 @@ function assertShape(userId: string, issueDate: string): void {
     throw new BriefShareUrlError('invalid_user_id', 'userId must match [A-Za-z0-9_-]{1,128}');
   }
   if (!ISSUE_DATE_RE.test(issueDate)) {
-    throw new BriefShareUrlError('invalid_issue_date', 'issueDate must match YYYY-MM-DD');
+    throw new BriefShareUrlError('invalid_issue_date', 'issueDate must match YYYY-MM-DD-HHMM');
   }
 }
 

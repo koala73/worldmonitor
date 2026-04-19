@@ -28,7 +28,10 @@
  */
 
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
-const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// YYYY-MM-DD-HHMM issue slot — hour+minute of the compose run in the
+// user's tz. The token binds userId + slot so each digest dispatch
+// gets its own frozen magazine URL.
+const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/; // base64url(sha256) = 43 chars, no padding
 
 export class BriefUrlError extends Error {
@@ -46,7 +49,7 @@ function assertShape(userId: string, issueDate: string): void {
     throw new BriefUrlError('invalid_user_id', 'userId must match [A-Za-z0-9_-]{1,128}');
   }
   if (!ISSUE_DATE_RE.test(issueDate)) {
-    throw new BriefUrlError('invalid_issue_date', 'issueDate must match YYYY-MM-DD');
+    throw new BriefUrlError('invalid_issue_date', 'issueDate must match YYYY-MM-DD-HHMM');
   }
 }
 
@@ -155,7 +158,7 @@ function base64urlDecode(token: string): Uint8Array | null {
  *
  *   const url = await signBriefUrl({
  *     userId: 'user_abc',
- *     issueDate: '2026-04-17',
+ *     issueDate: '2026-04-17-0800',
  *     baseUrl: 'https://worldmonitor.app',
  *     secret: process.env.BRIEF_URL_SIGNING_SECRET!,
  *   });

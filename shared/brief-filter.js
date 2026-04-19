@@ -271,3 +271,42 @@ export function issueDateInTz(nowMs, timezone) {
   }
   return new Date(nowMs).toISOString().slice(0, 10);
 }
+
+/**
+ * Slot identifier for the brief URL + Redis key. Encodes the user's
+ * local calendar date PLUS the hour+minute of the compose run so two
+ * digests on the same day produce distinct magazine URLs.
+ *
+ * Format: YYYY-MM-DD-HHMM (local tz).
+ *
+ * `issueDate` (YYYY-MM-DD) remains the field the magazine renders as
+ * "19 April 2026"; `issueSlot` only drives routing.
+ *
+ * @param {number} nowMs
+ * @param {string} timezone
+ * @returns {string}
+ */
+export function issueSlotInTz(nowMs, timezone) {
+  const date = issueDateInTz(nowMs, timezone);
+  try {
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date(nowMs));
+    const hh = parts.find((p) => p.type === 'hour')?.value ?? '';
+    const mm = parts.find((p) => p.type === 'minute')?.value ?? '';
+    const hhmm = `${hh}${mm}`;
+    // Intl in some locales emits "24" for midnight instead of "00";
+    // pin to the expected 4-digit numeric shape or fall through.
+    if (/^[01]\d[0-5]\d$|^2[0-3][0-5]\d$/.test(hhmm)) return `${date}-${hhmm}`;
+  } catch {
+    /* fall through to UTC */
+  }
+  const d = new Date(nowMs);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${date}-${hh}${mm}`;
+}

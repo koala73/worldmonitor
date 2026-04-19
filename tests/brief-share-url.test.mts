@@ -23,38 +23,47 @@ const SECRET_B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
 describe('deriveShareHash', () => {
   it('produces a 12-char base64url string', async () => {
-    const hash = await deriveShareHash('user_abc', '2026-04-18', SECRET_A);
+    const hash = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_A);
     assert.equal(hash.length, 12);
     assert.match(hash, /^[A-Za-z0-9_-]{12}$/);
   });
 
   it('is deterministic for the same inputs', async () => {
-    const a = await deriveShareHash('user_abc', '2026-04-18', SECRET_A);
-    const b = await deriveShareHash('user_abc', '2026-04-18', SECRET_A);
+    const a = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_A);
+    const b = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_A);
     assert.equal(a, b);
   });
 
   it('differs for different userIds', async () => {
-    const a = await deriveShareHash('user_abc', '2026-04-18', SECRET_A);
-    const b = await deriveShareHash('user_xyz', '2026-04-18', SECRET_A);
+    const a = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_A);
+    const b = await deriveShareHash('user_xyz', '2026-04-18-0800', SECRET_A);
     assert.notEqual(a, b);
   });
 
   it('differs for different dates', async () => {
-    const a = await deriveShareHash('user_abc', '2026-04-18', SECRET_A);
-    const b = await deriveShareHash('user_abc', '2026-04-19', SECRET_A);
+    const a = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_A);
+    const b = await deriveShareHash('user_abc', '2026-04-19-0800', SECRET_A);
     assert.notEqual(a, b);
   });
 
+  it('differs for same-day slots at different hours (the whole point of slot rollout)', async () => {
+    // The regression this slot format prevents: morning + afternoon
+    // digest emails on the same day must produce distinct public
+    // share hashes so each dispatch has its own share URL.
+    const morning = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_A);
+    const afternoon = await deriveShareHash('user_abc', '2026-04-18-1300', SECRET_A);
+    assert.notEqual(morning, afternoon);
+  });
+
   it('differs for different secrets (rotation invalidates old hashes)', async () => {
-    const a = await deriveShareHash('user_abc', '2026-04-18', SECRET_A);
-    const b = await deriveShareHash('user_abc', '2026-04-18', SECRET_B);
+    const a = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_A);
+    const b = await deriveShareHash('user_abc', '2026-04-18-0800', SECRET_B);
     assert.notEqual(a, b);
   });
 
   it('throws BriefShareUrlError on missing secret', async () => {
     await assert.rejects(
-      () => deriveShareHash('user_abc', '2026-04-18', ''),
+      () => deriveShareHash('user_abc', '2026-04-18-0800', ''),
       (err: unknown) =>
         err instanceof BriefShareUrlError && err.code === 'missing_secret',
     );
@@ -62,7 +71,7 @@ describe('deriveShareHash', () => {
 
   it('throws on malformed userId', async () => {
     await assert.rejects(
-      () => deriveShareHash('has spaces', '2026-04-18', SECRET_A),
+      () => deriveShareHash('has spaces', '2026-04-18-0800', SECRET_A),
       (err: unknown) =>
         err instanceof BriefShareUrlError && err.code === 'invalid_user_id',
     );
@@ -95,16 +104,16 @@ describe('isValidShareHashShape', () => {
 
 describe('encodePublicPointer / decodePublicPointer', () => {
   it('round-trips', () => {
-    const encoded = encodePublicPointer('user_abc', '2026-04-18');
-    assert.equal(encoded, 'user_abc:2026-04-18');
+    const encoded = encodePublicPointer('user_abc', '2026-04-18-0800');
+    assert.equal(encoded, 'user_abc:2026-04-18-0800');
     assert.deepEqual(decodePublicPointer(encoded), {
       userId: 'user_abc',
-      issueDate: '2026-04-18',
+      issueDate: '2026-04-18-0800',
     });
   });
 
   it('rejects malformed inputs at encode time', () => {
-    assert.throws(() => encodePublicPointer('bad user', '2026-04-18'), BriefShareUrlError);
+    assert.throws(() => encodePublicPointer('bad user', '2026-04-18-0800'), BriefShareUrlError);
     assert.throws(() => encodePublicPointer('user_abc', 'not-a-date'), BriefShareUrlError);
   });
 
@@ -114,7 +123,7 @@ describe('encodePublicPointer / decodePublicPointer', () => {
     assert.equal(decodePublicPointer(''), null);
     assert.equal(decodePublicPointer('no-colon'), null);
     assert.equal(decodePublicPointer('user:not-a-date'), null);
-    assert.equal(decodePublicPointer('user spaces:2026-04-18'), null);
+    assert.equal(decodePublicPointer('user spaces:2026-04-18-0800'), null);
   });
 });
 
@@ -122,7 +131,7 @@ describe('buildPublicBriefUrl', () => {
   it('returns a full URL under baseUrl with the derived hash in the path', async () => {
     const { url, hash } = await buildPublicBriefUrl({
       userId: 'user_abc',
-      issueDate: '2026-04-18',
+      issueDate: '2026-04-18-0800',
       baseUrl: 'https://worldmonitor.app',
       secret: SECRET_A,
     });
@@ -133,7 +142,7 @@ describe('buildPublicBriefUrl', () => {
   it('attaches ?ref= when refCode is provided', async () => {
     const { url } = await buildPublicBriefUrl({
       userId: 'user_abc',
-      issueDate: '2026-04-18',
+      issueDate: '2026-04-18-0800',
       baseUrl: 'https://worldmonitor.app',
       secret: SECRET_A,
       refCode: 'ABC123',
@@ -144,7 +153,7 @@ describe('buildPublicBriefUrl', () => {
   it('URL-encodes refCode safely', async () => {
     const { url } = await buildPublicBriefUrl({
       userId: 'user_abc',
-      issueDate: '2026-04-18',
+      issueDate: '2026-04-18-0800',
       baseUrl: 'https://worldmonitor.app',
       secret: SECRET_A,
       refCode: 'a b+c',
@@ -155,7 +164,7 @@ describe('buildPublicBriefUrl', () => {
   it('trims trailing slashes from baseUrl', async () => {
     const { url } = await buildPublicBriefUrl({
       userId: 'user_abc',
-      issueDate: '2026-04-18',
+      issueDate: '2026-04-18-0800',
       baseUrl: 'https://worldmonitor.app///',
       secret: SECRET_A,
     });
@@ -178,7 +187,7 @@ describe('pointer wire format (P1 regression — write ↔ read must round-trip)
   // throw at parse time and the public route would 503 instead of
   // resolving the pointer. This test locks the wire format.
   it('JSON.stringify + JSON.parse + decodePublicPointer round-trips cleanly', () => {
-    const encoded = encodePublicPointer('user_abc', '2026-04-18');
+    const encoded = encodePublicPointer('user_abc', '2026-04-18-0800');
     // Write side: what api/brief/share-url.ts sends to Redis.
     const wireValue = JSON.stringify(encoded);
     // Read side: what readRawJsonFromUpstash returns after parsing
@@ -186,7 +195,7 @@ describe('pointer wire format (P1 regression — write ↔ read must round-trip)
     const parsed = JSON.parse(wireValue);
     assert.equal(typeof parsed, 'string', 'parsed pointer is a string');
     const pointer = decodePublicPointer(parsed);
-    assert.deepEqual(pointer, { userId: 'user_abc', issueDate: '2026-04-18' });
+    assert.deepEqual(pointer, { userId: 'user_abc', issueDate: '2026-04-18-0800' });
   });
 
   it('a raw colon-delimited string (the P1 bug) fails JSON.parse', () => {
@@ -194,6 +203,6 @@ describe('pointer wire format (P1 regression — write ↔ read must round-trip)
     // revert to it, readRawJsonFromUpstash's parse will throw and
     // the public route will 503. Locking the failure so anyone
     // who reintroduces the bug gets a red test.
-    assert.throws(() => JSON.parse('user_abc:2026-04-18'), SyntaxError);
+    assert.throws(() => JSON.parse('user_abc:2026-04-18-0800'), SyntaxError);
   });
 });
