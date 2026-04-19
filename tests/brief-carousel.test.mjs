@@ -1,14 +1,17 @@
-// Phase 8 — carousel URL parsing + page index helpers.
+// Phase 8 — carousel URL parsing + page index helpers + renderer smoke.
 //
-// We do NOT test the PNG render here — Satori needs a font buffer and
-// @resvg/resvg-wasm needs a WASM init, both of which require a
-// browser-or-edge runtime context. The render path is verified via
-// the smoke-test route during deploy validation. These tests lock
-// the pure plumbing: carousel URL derivation + page index mapping.
+// After the @vercel/og refactor (PR #3210), the full render path
+// actually runs cleanly in Node via tsx — ImageResponse wraps satori
+// + resvg-wasm and both work in plain Node. So in addition to the
+// pure plumbing tests (URL derivation + page index mapping) we now
+// end-to-end each of the three layouts, asserting PNG magic bytes
+// and a plausible byte range. This catches Satori tree-shape
+// regressions, font-load breakage, and resvg-wasm init issues long
+// before they'd surface in a Vercel deploy.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pageFromIndex } from '../server/_shared/brief-carousel-render.ts';
+import { pageFromIndex, renderCarouselImageResponse } from '../server/_shared/brief-carousel-render.ts';
 
 // Import the URL helper via dynamic eval of the private function.
 // The digest cron is .mjs; we re-declare the same logic here to lock
@@ -164,6 +167,111 @@ describe('carousel route — no placeholder PNG on failure', () => {
     assert.ok(
       hasHonestDependency || hasEmbeddedFallback,
       'font loading must EITHER declare the CDN dependency OR ship an embedded fallback',
+    );
+  });
+});
+
+// ── End-to-end renderer smoke ───────────────────────────────────────────
+//
+// Exercises @vercel/og's ImageResponse against each layout. Catches:
+//   - Satori tree-shape regressions (bad style/children keys throw)
+//   - Font fetch breakage (jsdelivr down, wrong format, etc.)
+//   - resvg-wasm init failure (rare but has happened)
+//   - PNG output corruption (wrong magic, zero bytes)
+//
+// Hits the real jsdelivr CDN for the Noto Serif TTF. Same network
+// footprint as the rest of the data suite (which calls FRED, IMF,
+// etc.). If that ever becomes a problem, swap loadFont() to an
+// embedded base64 TTF per the comment in brief-carousel-render.ts.
+
+const SAMPLE_ENVELOPE = {
+  version: 1,
+  issuedAt: Date.now(),
+  data: {
+    issue: '001',
+    dateLong: '19 April 2026',
+    user: { name: 'Test User' },
+    digest: {
+      greeting: 'Good morning',
+      lead: 'A sample lead line that gives the reader the day in one sentence.',
+      threads: [
+        { tag: 'MIDDLE EAST', teaser: 'Iran re-closes the Strait of Hormuz' },
+        { tag: 'UKRAINE', teaser: 'Kyiv authorities investigate terror attack' },
+        { tag: 'LEBANON', teaser: 'French UNIFIL peacekeeper killed in attack' },
+      ],
+    },
+    stories: [
+      {
+        category: 'Geopolitics',
+        country: 'IR',
+        threatLevel: 'HIGH',
+        headline: 'Iran closes Strait of Hormuz again, cites US blockade',
+        source: 'Reuters',
+      },
+    ],
+  },
+};
+
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+async function assertRendersPng(page) {
+  const res = await renderCarouselImageResponse(SAMPLE_ENVELOPE, page);
+  assert.equal(res.status, 200, `${page}: status should be 200`);
+  assert.equal(
+    res.headers.get('content-type'),
+    'image/png',
+    `${page}: content-type must be image/png`,
+  );
+  const buf = new Uint8Array(await res.arrayBuffer());
+  assert.ok(buf.byteLength > 5_000, `${page}: PNG body should be > 5KB, got ${buf.byteLength}`);
+  assert.ok(buf.byteLength < 500_000, `${page}: PNG body should be < 500KB, got ${buf.byteLength}`);
+  for (let i = 0; i < PNG_MAGIC.length; i++) {
+    assert.equal(buf[i], PNG_MAGIC[i], `${page}: byte ${i} should be PNG magic 0x${PNG_MAGIC[i].toString(16)}, got 0x${buf[i].toString(16)}`);
+  }
+}
+
+describe('renderCarouselImageResponse', () => {
+  it('renders the cover page to a valid PNG', async () => {
+    await assertRendersPng('cover');
+  });
+
+  it('renders the threads page to a valid PNG', async () => {
+    await assertRendersPng('threads');
+  });
+
+  it('renders the story page to a valid PNG', async () => {
+    await assertRendersPng('story');
+  });
+
+  it('rejects a structurally empty envelope', async () => {
+    await assert.rejects(
+      () => renderCarouselImageResponse({}, 'cover'),
+      /invalid envelope/,
+    );
+  });
+
+  it('threads the extraHeaders argument onto the Response', async () => {
+    const res = await renderCarouselImageResponse(SAMPLE_ENVELOPE, 'cover', {
+      'X-Test-Marker': 'carousel-smoke',
+      'Referrer-Policy': 'no-referrer',
+    });
+    assert.equal(res.headers.get('x-test-marker'), 'carousel-smoke');
+    assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+  });
+
+  it('keeps @vercel/og default Cache-Control (extraHeaders must NOT override it)', async () => {
+    // ImageResponse APPENDS rather than overrides Cache-Control when
+    // the caller passes one via headers. Guards the route handler
+    // choice to rely on @vercel/og's 1-year immutable default instead
+    // of stacking our own. If @vercel/og ever changes this semantics,
+    // this test fails and the route needs a review.
+    const res = await renderCarouselImageResponse(SAMPLE_ENVELOPE, 'cover', {
+      'Cache-Control': 'public, max-age=60',
+    });
+    const cc = res.headers.get('cache-control') ?? '';
+    assert.ok(
+      cc.includes('max-age=31536000'),
+      `expected @vercel/og's default 1-year cache to survive, got "${cc}"`,
     );
   });
 });

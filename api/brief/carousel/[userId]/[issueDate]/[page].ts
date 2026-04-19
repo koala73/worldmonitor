@@ -39,8 +39,6 @@ import { readRawJsonFromUpstash } from '../../../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../../../server/_shared/brief-url';
 import { renderCarouselImageResponse, pageFromIndex } from '../../../../../server/_shared/brief-carousel-render';
 
-const PAGE_CACHE_TTL = 60 * 60 * 24 * 7; // 7 days — matches brief key TTL
-
 // Matches the signer's slot format (YYYY-MM-DD-HHMM).
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 
@@ -114,9 +112,16 @@ export default async function handler(req: Request): Promise<Response> {
   }
   if (!envelope) return jsonError('not_found', 404, cors);
 
+  // @vercel/og sets its own default Cache-Control
+  // (`public, immutable, no-transform, max-age=31536000`). Passing
+  // another Cache-Control via extraHeaders would APPEND rather than
+  // override, producing a comma-joined duplicate. The default 1-year
+  // immutable is fine here — the underlying envelope is immutable
+  // for the life of its 7d Redis TTL, and stale-past-TTL requests
+  // just 404 at the route before reaching render. Browsers +
+  // Telegram's media cache happily reuse.
   const extraHeaders: Record<string, string> = {
     ...cors,
-    'Cache-Control': `public, max-age=${PAGE_CACHE_TTL}, s-maxage=${PAGE_CACHE_TTL}, immutable`,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
   };
