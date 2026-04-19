@@ -21,7 +21,6 @@ import {
 import {
   CACHE_KEY_PREFIX,
   JACCARD_MERGE_THRESHOLD,
-  SHADOW_ARCHIVE_TTL_SECONDS,
 } from '../scripts/lib/brief-dedup-consts.mjs';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -35,10 +34,6 @@ describe('brief-dedup-consts', () => {
     // Bump when the embed model or dimension changes — silent threshold
     // drift on model upgrade is the #1 documented regression mode.
     assert.equal(CACHE_KEY_PREFIX, 'brief:emb:v1:text-3-small-512');
-  });
-
-  it('shadow archive TTL covers the 14-day window + 7-day labelling buffer', () => {
-    assert.equal(SHADOW_ARCHIVE_TTL_SECONDS, 21 * 24 * 60 * 60);
   });
 });
 
@@ -202,19 +197,26 @@ describe('deduplicateStoriesJaccard', () => {
   });
 });
 
-// ── Orchestrator default-mode parity ──────────────────────────────────────────
+// ── Orchestrator kill-switch path ────────────────────────────────────────────
 
-describe('brief-dedup orchestrator (default mode)', () => {
-  it('defaults to Jaccard output when DIGEST_DEDUP_MODE is unset', async () => {
+describe('brief-dedup orchestrator — jaccard kill switch', () => {
+  it('DIGEST_DEDUP_MODE=jaccard routes straight through the fallback', async () => {
     const { deduplicateStories } = await import('../scripts/lib/brief-dedup.mjs');
+    let embedCalls = 0;
+    const stubEmbed = async () => {
+      embedCalls++;
+      throw new Error('embedBatch must NOT be called under MODE=jaccard');
+    };
     const stories = [
       story('Iran closes Strait of Hormuz', 90, 1, 'h1'),
       story('Iran shuts Strait of Hormuz - Reuters', 85, 1, 'h2'),
       story('Myanmar coup leader elected president', 80, 1, 'h3'),
     ];
-    // Pass explicit env so the test is deterministic across local
-    // shells that might have DIGEST_DEDUP_MODE exported.
-    const out = await deduplicateStories(stories, { env: {} });
+    const out = await deduplicateStories(stories, {
+      env: { DIGEST_DEDUP_MODE: 'jaccard' },
+      embedBatch: stubEmbed,
+    });
+    assert.equal(embedCalls, 0);
     const expected = deduplicateStoriesJaccard(stories);
     assert.equal(out.length, expected.length);
     for (let i = 0; i < out.length; i++) {
@@ -224,22 +226,6 @@ describe('brief-dedup orchestrator (default mode)', () => {
     }
   });
 
-  it('DIGEST_DEDUP_REMOTE_EMBED_ENABLED=0 forces Jaccard even under MODE=embed', async () => {
-    const { deduplicateStories } = await import('../scripts/lib/brief-dedup.mjs');
-    let embedCalls = 0;
-    const stubEmbed = async () => {
-      embedCalls++;
-      throw new Error('embedBatch should NOT be called when the kill switch is off');
-    };
-    const stories = [story('x', 10, 1, 'x1'), story('y', 10, 1, 'y1')];
-    const out = await deduplicateStories(stories, {
-      env: { DIGEST_DEDUP_MODE: 'embed', DIGEST_DEDUP_REMOTE_EMBED_ENABLED: '0' },
-      embedBatch: stubEmbed,
-    });
-    assert.equal(embedCalls, 0);
-    assert.equal(out.length, 2);
-  });
-
   it('returns [] for empty input without invoking Jaccard', async () => {
     const { deduplicateStories } = await import('../scripts/lib/brief-dedup.mjs');
     let jaccardCalls = 0;
@@ -247,7 +233,10 @@ describe('brief-dedup orchestrator (default mode)', () => {
       jaccardCalls++;
       return deduplicateStoriesJaccard(s);
     };
-    const out = await deduplicateStories([], { env: {}, jaccard: stubJaccard });
+    const out = await deduplicateStories([], {
+      env: { DIGEST_DEDUP_MODE: 'jaccard' },
+      jaccard: stubJaccard,
+    });
     assert.deepEqual(out, []);
     assert.equal(jaccardCalls, 0);
   });

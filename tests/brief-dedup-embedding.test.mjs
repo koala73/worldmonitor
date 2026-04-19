@@ -207,106 +207,10 @@ describe('Scenario 3 — provider outage collapses to Jaccard', () => {
   });
 });
 
-// ── Scenario 4 — shadow mode ──────────────────────────────────────────────────
-
-describe('Scenario 4 — shadow mode runs both, ships Jaccard', () => {
-  it('logs disagreements, writes archive, returns Jaccard output', async () => {
-    // Embed path merges aggressively (near-parallel vectors). Jaccard
-    // keeps them separate (different content words). Disagreement on
-    // the two stories guaranteed.
-    const stories = [
-      story('Breaking: Iran strike on Israel', 90, 1, 's0'),
-      story('Tel Aviv responds to Tehran', 85, 1, 's1'),
-    ];
-    const vecByTitle = new Map([
-      [normalizeForEmbedding(stories[0].title), [1, 0, 0]],
-      [normalizeForEmbedding(stories[1].title), [0.99, Math.sqrt(1 - 0.99 * 0.99), 0]],
-    ]);
-    const embedder = stubEmbedder(vecByTitle);
-
-    const pipelineCalls = [];
-    async function pipeline(commands) {
-      pipelineCalls.push(commands);
-      return commands.map(() => ({ result: 'OK' }));
-    }
-
-    const collector = lineCollector();
-    const out = await deduplicateStories(stories, {
-      env: { DIGEST_DEDUP_MODE: 'shadow', DIGEST_DEDUP_COSINE_THRESHOLD: '0.5' },
-      embedBatch: embedder.embedBatch,
-      redisPipeline: pipeline,
-      ...collector,
-    });
-
-    // Shadow ships Jaccard output (user-visible behaviour unchanged).
-    const jaccardExpected = deduplicateStoriesJaccard(stories);
-    assert.equal(out.length, jaccardExpected.length);
-
-    // Shadow archive written — the SETEX command targets the versioned
-    // per-run key.
-    const setCommands = pipelineCalls.flat().filter((c) => c[0] === 'SET');
-    const archiveWrite = setCommands.find((c) => typeof c[1] === 'string' && c[1].startsWith('brief:dedup:shadow:v1:'));
-    assert.ok(archiveWrite, 'shadow archive SET was written with the versioned prefix');
-    // The archive TTL matches 21 days (SHADOW_ARCHIVE_TTL_SECONDS).
-    assert.equal(archiveWrite[3], 'EX');
-    assert.equal(archiveWrite[4], String(21 * 24 * 60 * 60));
-
-    // Disagreement log line emitted; archive_write=ok under a happy
-    // pipeline stub that returns {result: 'OK'}.
-    assert.ok(collector.lines.some((l) => l.line.includes('mode=shadow')));
-    assert.ok(collector.lines.some((l) => l.line.includes('disagreements=')));
-    assert.ok(collector.lines.some((l) => l.line.includes('archive_write=ok')));
-  });
-
-  it('silent archive-write failure (pipeline → null) surfaces as a warn + archive_write=failed', async () => {
-    // Regression guard: `defaultRedisPipeline()` returns null on
-    // timeout/auth/HTTP failure. writeShadowArchive MUST treat that
-    // as a failure rather than "fail open" — otherwise a Phase C
-    // rollout collects zero archive data while logs read healthy.
-    const stories = [
-      story('Breaking: Iran strike on Israel', 90, 1, 's0'),
-      story('Tel Aviv responds to Tehran', 85, 1, 's1'),
-    ];
-    const vecByTitle = new Map([
-      [normalizeForEmbedding(stories[0].title), [1, 0, 0]],
-      [normalizeForEmbedding(stories[1].title), [0.99, Math.sqrt(1 - 0.99 * 0.99), 0]],
-    ]);
-    const embedder = stubEmbedder(vecByTitle);
-    // Pipeline stub that mirrors the real shared helper's null-on-
-    // failure contract. embedBatch's cache lookup still needs to
-    // succeed, so we return the expected cache-miss shape for GETs
-    // and null only for the SET that writes the archive.
-    async function failingShadowWritePipeline(commands) {
-      if (commands.length > 0 && commands[0][0] === 'GET') {
-        // Cache-miss response for the embed cache lookup.
-        return commands.map(() => ({ result: null }));
-      }
-      if (commands.length > 0 && commands[0][0] === 'SET') {
-        // Simulate the archive write coming back as a pipeline failure.
-        return null;
-      }
-      return commands.map(() => ({ result: null }));
-    }
-    const collector = lineCollector();
-
-    await deduplicateStories(stories, {
-      env: { DIGEST_DEDUP_MODE: 'shadow', DIGEST_DEDUP_COSINE_THRESHOLD: '0.5' },
-      embedBatch: embedder.embedBatch,
-      redisPipeline: failingShadowWritePipeline,
-      ...collector,
-    });
-
-    const warnLine = collector.lines.find(
-      (l) => l.level === 'warn' && l.line.includes('shadow archive write failed'),
-    );
-    assert.ok(warnLine, 'warn line must surface the archive-write failure');
-    assert.match(warnLine.line, /reason=pipeline_null_or_network_error/);
-    assert.ok(
-      collector.lines.some((l) => l.line.includes('archive_write=failed')),
-      'structured log line must reflect archive_write=failed',
-    );
-  });
-});
+// ── Scenario 4 / 8 — shadow mode and remote-embed kill switch were
+// removed when the rollout was simplified to "ship embed directly".
+// MODE=jaccard is the only rollback path; covered in
+// tests/brief-dedup-jaccard.test.mjs.
 
 // ── Scenario 5 — entity veto ──────────────────────────────────────────────────
 
@@ -489,25 +393,6 @@ describe('Scenario 7 — cluster-level fixture', () => {
   });
 });
 
-// ── Scenario 8 — remote-embed-disabled bypass ─────────────────────────────────
-
-describe('Scenario 8 — kill switch hard-disables the embed path', () => {
-  it('MODE=embed + REMOTE_EMBED_ENABLED=0 never calls the embedder', async () => {
-    let called = 0;
-    const trap = async () => {
-      called++;
-      throw new Error('should not be called');
-    };
-    const stories = [story('x', 10, 1, 'x')];
-    await deduplicateStories(stories, {
-      env: { DIGEST_DEDUP_MODE: 'embed', DIGEST_DEDUP_REMOTE_EMBED_ENABLED: '0' },
-      embedBatch: trap,
-      redisPipeline: noopPipeline,
-    });
-    assert.equal(called, 0);
-  });
-});
-
 // ── Scenario 9 — permutation-invariance property test ────────────────────────
 
 describe('Scenario 9 — permutation-invariance', () => {
@@ -571,64 +456,6 @@ describe('Scenario 9 — permutation-invariance', () => {
         `permutation ${run} produced a different cluster set`,
       );
     }
-  });
-});
-
-// ── Config-publish round-trip ────────────────────────────────────────────────
-
-describe('orchestrator publishes active config to Upstash on every call', () => {
-  it('writes brief:dedup:config:v1 with the resolved env values', async () => {
-    // Every dedup tick MUST publish the classifier config to Upstash
-    // so the nightly golden-pair canary can read it instead of
-    // depending on parallel GitHub repo variables. Without this
-    // publish, Railway and GH-Actions canary would silently diverge.
-    const pipelineCalls = [];
-    async function pipeline(commands) {
-      pipelineCalls.push(commands);
-      return commands.map(() => ({ result: 'OK' }));
-    }
-    const stories = [story('Only story', 10, 1, 's1')];
-    await deduplicateStories(stories, {
-      env: {
-        DIGEST_DEDUP_MODE: 'shadow',
-        DIGEST_DEDUP_COSINE_THRESHOLD: '0.62',
-        DIGEST_DEDUP_ENTITY_VETO_ENABLED: '0',
-      },
-      embedBatch: stubEmbedder(
-        new Map([[normalizeForEmbedding(stories[0].title), [1, 0, 0]]]),
-      ).embedBatch,
-      redisPipeline: pipeline,
-    });
-    const setCommands = pipelineCalls.flat().filter((c) => c[0] === 'SET');
-    const configWrite = setCommands.find((c) => c[1] === 'brief:dedup:config:v1');
-    assert.ok(configWrite, 'config SET was published with the active-config key');
-    const published = JSON.parse(configWrite[2]);
-    assert.equal(published.mode, 'shadow');
-    assert.equal(published.cosineThreshold, 0.62);
-    assert.equal(published.entityVetoEnabled, false);
-    assert.equal(published.remoteEmbedEnabled, true);
-    assert.equal(configWrite[3], 'EX');
-    // 2-hour TTL keeps the key warm through every 30-min cron cadence.
-    assert.equal(configWrite[4], String(2 * 60 * 60));
-  });
-
-  it('publishes config even when mode=jaccard (canary needs the signal)', async () => {
-    const pipelineCalls = [];
-    async function pipeline(commands) {
-      pipelineCalls.push(commands);
-      return commands.map(() => ({ result: 'OK' }));
-    }
-    const stories = [story('x', 10, 1, 'x1'), story('y', 10, 1, 'y1')];
-    await deduplicateStories(stories, {
-      env: { DIGEST_DEDUP_MODE: 'jaccard' },
-      redisPipeline: pipeline,
-    });
-    const configWrite = pipelineCalls
-      .flat()
-      .find((c) => c[0] === 'SET' && c[1] === 'brief:dedup:config:v1');
-    assert.ok(configWrite, 'config publish must fire on jaccard ticks too');
-    const published = JSON.parse(configWrite[2]);
-    assert.equal(published.mode, 'jaccard');
   });
 });
 
