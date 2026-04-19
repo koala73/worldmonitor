@@ -692,12 +692,28 @@ export default async function handler(req, ctx) {
       warnCount: realWarnCount,
       problems: problemKeys,
     };
-    const persist = redisPipeline([
+    // Dedupe: only LPUSH when the incident signature (status + problem set)
+    // changes. Otherwise repeated polls during one long WARNING window would
+    // fill the 50-entry log with near-identical snapshots, evicting older
+    // distinct incidents.
+    const sig = `${overall}|${problemKeys.join(',')}`;
+    const persistCmds = [
       ['SET', 'health:last-failure', JSON.stringify(snapshot), 'EX', 86400],
-      ['LPUSH', 'health:failure-log', JSON.stringify(snapshot)],
-      ['LTRIM', 'health:failure-log', '0', '49'],
-      ['EXPIRE', 'health:failure-log', String(86400 * 7)],
-    ]).catch(() => {});
+      ['GET', 'health:failure-log-sig'],
+    ];
+    const sigResults = await redisPipeline(persistCmds).catch(() => null);
+    const prevSig = sigResults?.[1]?.result ?? '';
+    const logCmds = [
+      ['SET', 'health:failure-log-sig', sig, 'EX', 86400],
+    ];
+    if (sig !== prevSig) {
+      logCmds.push(
+        ['LPUSH', 'health:failure-log', JSON.stringify(snapshot)],
+        ['LTRIM', 'health:failure-log', '0', '49'],
+        ['EXPIRE', 'health:failure-log', String(86400 * 7)],
+      );
+    }
+    const persist = redisPipeline(logCmds).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
   }
 
