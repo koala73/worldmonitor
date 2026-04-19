@@ -390,10 +390,27 @@ export class SupplyChainPanel extends Panel {
           );
           if (!template) return '';
           const isPro = hasPremiumAccess(getAuthState());
-          const btnClass = isPro ? 'sc-scenario-btn' : 'sc-scenario-btn sc-scenario-btn--gated';
+          // Derive button state from activeScenarioState so it stays correct
+          // across re-renders. Previously runScenario() imperatively set
+          // btn.disabled = true + btn.textContent = 'Active' AFTER the
+          // activate path had already called render() (via showScenarioSummary),
+          // so the mutation hit a detached node and the visible button
+          // remained enabled + "Simulate Closure" — letting users queue
+          // duplicate runs of an already-active scenario.
+          const isActiveScenario = this.activeScenarioState?.scenarioId === template.id;
+          const btnClass = [
+            'sc-scenario-btn',
+            !isPro ? 'sc-scenario-btn--gated' : '',
+            isActiveScenario ? 'sc-scenario-btn--active' : '',
+          ].filter(Boolean).join(' ');
+          const btnLabel = isActiveScenario ? 'Active' : 'Simulate Closure';
+          const btnAttrs = [
+            !isPro ? 'data-gated="1"' : '',
+            isActiveScenario ? 'disabled' : '',
+          ].filter(Boolean).join(' ');
           return `<div class="sc-scenario-trigger" data-scenario-id="${escapeHtml(template.id)}" data-chokepoint-id="${escapeHtml(cp.id)}">
-            <button class="${btnClass}" ${!isPro ? 'data-gated="1"' : ''} aria-label="Simulate ${escapeHtml(template.name)}">
-              Simulate Closure
+            <button class="${btnClass}" ${btnAttrs} aria-label="Simulate ${escapeHtml(template.name)}">
+              ${btnLabel}
             </button>
           </div>`;
         })() : '';
@@ -853,9 +870,13 @@ export class SupplyChainPanel extends Panel {
       if (!result) throw new Error('Timeout — scenario worker may be down');
       if (signal.aborted) { resetButton('Simulate Closure'); return; }
       if (!this.content.isConnected) return;
+      // After this callback fires, showScenarioSummary() → render() will rebuild
+      // the scenario-trigger DOM with the button already in its "Active" +
+      // disabled state (driven by activeScenarioState in renderChokepoints()).
+      // Do NOT touch the captured btn reference here — it's about to be detached
+      // by render()'s setContent(), and any imperative update would no-op
+      // silently while the fresh button shows the wrong state.
       this.onScenarioActivate?.(scenarioId, result);
-      resetButton('Active');
-      btn.disabled = true; // active state stays disabled until user dismisses
     } catch (err) {
       // Abort from a new click = user-triggered retry, no error banner needed.
       if (err instanceof Error && err.name === 'AbortError') {
