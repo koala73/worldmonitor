@@ -106,6 +106,69 @@ function unorderedPairKey(a, b) {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
+/**
+ * Pure helper: enumerate pairs across a list of shadow archives and
+ * dedupe by unordered pair of story hashes. Returns a Map keyed by
+ * pair-key with a representative `{batchTs, aHash, bHash, aTitle,
+ * bTitle, embedMerged, jaccardMerged}` record.
+ *
+ * CRITICAL: the mode filter runs BEFORE the dedup check. An earlier
+ * implementation added every seen pair to a Set first and then
+ * filtered by agreement, so a pair that agreed in batch X and
+ * disagreed in batch Y would silently drop the disagreeing
+ * occurrence if SCAN returned X first. Sample A was biased by scan
+ * order. The fix: in `--mode disagreements`, skip agreeing pairs
+ * BEFORE they take the dedup slot, so any later disagreement can
+ * still register.
+ *
+ * Exported for regression testing.
+ *
+ * @param {Array<object>} archives  parsed shadow-batch bodies
+ * @param {'disagreements' | 'population'} mode
+ */
+export function enumeratePairs(archives, mode) {
+  const pairRecords = new Map();
+  for (const archive of archives) {
+    if (!archive) continue;
+    const storyIds = Array.isArray(archive.storyIds) ? archive.storyIds : [];
+    const titles = Array.isArray(archive.normalizedTitles) ? archive.normalizedTitles : [];
+    const embedClusters = Array.isArray(archive.embeddingClusters) ? archive.embeddingClusters : [];
+    const jaccardClusters = Array.isArray(archive.jaccardClusters) ? archive.jaccardClusters : [];
+    const embedIdxOf = new Map();
+    const jaccardIdxOf = new Map();
+    for (let c = 0; c < embedClusters.length; c++) {
+      for (const h of embedClusters[c]) embedIdxOf.set(h, c);
+    }
+    for (let c = 0; c < jaccardClusters.length; c++) {
+      for (const h of jaccardClusters[c]) jaccardIdxOf.set(h, c);
+    }
+    const titleByHash = new Map();
+    for (let i = 0; i < storyIds.length; i++) titleByHash.set(storyIds[i], titles[i] ?? '');
+
+    for (let i = 0; i < storyIds.length; i++) {
+      for (let j = i + 1; j < storyIds.length; j++) {
+        const a = storyIds[i];
+        const b = storyIds[j];
+        const em = embedIdxOf.get(a) === embedIdxOf.get(b);
+        const jm = jaccardIdxOf.get(a) === jaccardIdxOf.get(b);
+        if (mode === 'disagreements' && em === jm) continue;
+        const pk = unorderedPairKey(a, b);
+        if (pairRecords.has(pk)) continue;
+        pairRecords.set(pk, {
+          batchTs: archive.timestamp,
+          aHash: a,
+          bHash: b,
+          aTitle: titleByHash.get(a) ?? '',
+          bTitle: titleByHash.get(b) ?? '',
+          embedMerged: em,
+          jaccardMerged: jm,
+        });
+      }
+    }
+  }
+  return pairRecords;
+}
+
 function csvEscape(s) {
   if (s == null) return '';
   const str = String(s);
@@ -166,50 +229,13 @@ async function main() {
   const keys = await scanAllKeys(SHADOW_SCAN_PATTERN);
   console.error(`[shadow-sample] found ${keys.length} archived batches`);
 
-  const seenPairs = new Set();
-  const allPairs = [];
-
+  const archives = [];
   for (const key of keys) {
     const archive = await readArchive(key);
-    if (!archive) continue;
-    const storyIds = Array.isArray(archive.storyIds) ? archive.storyIds : [];
-    const titles = Array.isArray(archive.normalizedTitles) ? archive.normalizedTitles : [];
-    const embedClusters = Array.isArray(archive.embeddingClusters) ? archive.embeddingClusters : [];
-    const jaccardClusters = Array.isArray(archive.jaccardClusters) ? archive.jaccardClusters : [];
-    const embedIdxOf = new Map();
-    const jaccardIdxOf = new Map();
-    for (let c = 0; c < embedClusters.length; c++) {
-      for (const h of embedClusters[c]) embedIdxOf.set(h, c);
-    }
-    for (let c = 0; c < jaccardClusters.length; c++) {
-      for (const h of jaccardClusters[c]) jaccardIdxOf.set(h, c);
-    }
-    const titleByHash = new Map();
-    for (let i = 0; i < storyIds.length; i++) titleByHash.set(storyIds[i], titles[i] ?? '');
-
-    for (let i = 0; i < storyIds.length; i++) {
-      for (let j = i + 1; j < storyIds.length; j++) {
-        const a = storyIds[i];
-        const b = storyIds[j];
-        const pk = unorderedPairKey(a, b);
-        if (seenPairs.has(pk)) continue;
-        seenPairs.add(pk);
-        const em = embedIdxOf.get(a) === embedIdxOf.get(b);
-        const jm = jaccardIdxOf.get(a) === jaccardIdxOf.get(b);
-        if (args.mode === 'disagreements' && em === jm) continue;
-        allPairs.push({
-          batchTs: archive.timestamp,
-          aHash: a,
-          bHash: b,
-          aTitle: titleByHash.get(a) ?? '',
-          bTitle: titleByHash.get(b) ?? '',
-          embedMerged: em,
-          jaccardMerged: jm,
-        });
-      }
-    }
+    if (archive) archives.push(archive);
   }
 
+  const allPairs = [...enumeratePairs(archives, args.mode).values()];
   console.error(
     `[shadow-sample] ${args.mode}: enumerated ${allPairs.length} candidate pair(s); drawing ${Math.min(args.n, allPairs.length)} uniformly at random`,
   );
@@ -217,7 +243,13 @@ async function main() {
   writeCsv(drawn);
 }
 
-main().catch((err) => {
-  console.error('[shadow-sample] failed:', err?.stack ?? err);
-  process.exit(1);
-});
+// Run only when invoked directly; allow tests to import
+// `enumeratePairs` without triggering the CLI scan. Matches the
+// isMain guard pattern documented in AGENTS.md.
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  main().catch((err) => {
+    console.error('[shadow-sample] failed:', err?.stack ?? err);
+    process.exit(1);
+  });
+}

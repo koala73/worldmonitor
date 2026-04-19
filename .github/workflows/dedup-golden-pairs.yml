@@ -55,6 +55,13 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          # All four classifier knobs come from GitHub repo variables.
+          # Keep these in lockstep with Railway; the validator bails
+          # with "embed path inactive" when mode=jaccard or remote
+          # embed is disabled, so prod staying on Jaccard no longer
+          # shows up as a false canary signal.
+          DIGEST_DEDUP_MODE: ${{ vars.DIGEST_DEDUP_MODE || 'jaccard' }}
+          DIGEST_DEDUP_REMOTE_EMBED_ENABLED: ${{ vars.DIGEST_DEDUP_REMOTE_EMBED_ENABLED || '1' }}
           DIGEST_DEDUP_COSINE_THRESHOLD: ${{ vars.DIGEST_DEDUP_COSINE_THRESHOLD || '0.60' }}
           DIGEST_DEDUP_ENTITY_VETO_ENABLED: ${{ vars.DIGEST_DEDUP_ENTITY_VETO_ENABLED || '1' }}
           DISPATCH_THRESHOLD: ${{ github.event.inputs.threshold }}

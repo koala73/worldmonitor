@@ -32,10 +32,11 @@ import { stripSourceSuffix } from '../lib/brief-dedup-jaccard.mjs';
 import { readOrchestratorConfig } from '../lib/brief-dedup.mjs';
 
 function parseArgs(argv) {
-  const args = { fixture: null, thresholdOverride: null };
+  const args = { fixture: null, thresholdOverride: null, force: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--fixture') args.fixture = argv[++i];
     else if (argv[i] === '--threshold') args.thresholdOverride = Number.parseFloat(argv[++i]);
+    else if (argv[i] === '--force') args.force = true;
   }
   return args;
 }
@@ -50,16 +51,37 @@ async function main() {
   const fixturePath = args.fixture ? resolve(args.fixture) : DEFAULT_FIXTURE_PATH;
 
   // Resolve the SAME classifier config production uses, via the
-  // orchestrator helper. DIGEST_DEDUP_COSINE_THRESHOLD and
-  // DIGEST_DEDUP_ENTITY_VETO_ENABLED MUST be sourced from the same
-  // place Railway reads from — the workflow pipes them in via
-  // `${{ vars.* }}`. A `--threshold` CLI flag still overrides for
-  // ad-hoc manual runs (e.g. calibration sweeps), but its use
-  // in the scheduled canary defeats the drift detector; the
-  // workflow leaves it off.
+  // orchestrator helper. DIGEST_DEDUP_MODE, DIGEST_DEDUP_REMOTE_EMBED_ENABLED,
+  // DIGEST_DEDUP_COSINE_THRESHOLD, and DIGEST_DEDUP_ENTITY_VETO_ENABLED
+  // MUST be sourced from the same place Railway reads from — the
+  // workflow pipes them in via `${{ vars.* }}`. A `--threshold`
+  // CLI flag overrides for ad-hoc calibration sweeps; the scheduled
+  // canary leaves it off so it validates the live production config.
   const cfg = readOrchestratorConfig(process.env);
   const threshold = args.thresholdOverride ?? cfg.cosineThreshold;
   const entityVetoEnabled = cfg.entityVetoEnabled;
+
+  // If production cannot actually reach the embedding path (hard kill
+  // switch off, or mode=jaccard), the canary can't meaningfully
+  // detect drift — running embeddings here would only flag OpenRouter
+  // issues prod never sees. Exit 0 with an explicit "inactive" line;
+  // the workflow still renders green, which is the correct signal
+  // ("production is not on the embed path, so there is nothing
+  // to drift against"). A `--force` override stays available for
+  // manual dispatch during staged rollouts.
+  if (!cfg.remoteEmbedEnabled || cfg.mode === 'jaccard') {
+    console.log(
+      `[golden] embed path inactive in production ` +
+        `(mode=${cfg.mode} remoteEmbedEnabled=${cfg.remoteEmbedEnabled}) — ` +
+        'skipping live-embedder canary. Set DIGEST_DEDUP_MODE=shadow|embed ' +
+        'AND DIGEST_DEDUP_REMOTE_EMBED_ENABLED=1 in the workflow vars ' +
+        'to re-enable, or pass --force to run the drift check anyway.',
+    );
+    if (!args.force) {
+      process.exit(0);
+    }
+    console.log('[golden] --force set; running drift check despite inactive prod config');
+  }
 
   if (!process.env.OPENROUTER_API_KEY) {
     console.error('[golden] OPENROUTER_API_KEY not set');
@@ -85,7 +107,8 @@ async function main() {
   const titles = [...titleSet];
   console.log(
     `[golden] embedding ${titles.length} unique titles from ${fixture.length} pairs ` +
-      `(threshold=${threshold} veto=${entityVetoEnabled ? '1' : '0'} ` +
+      `(mode=${cfg.mode} remoteEmbedEnabled=${cfg.remoteEmbedEnabled} ` +
+      `threshold=${threshold} veto=${entityVetoEnabled ? '1' : '0'} ` +
       `source=${args.thresholdOverride !== null ? 'cli' : 'env'})`,
   );
   const vectors = await embedBatch(titles);
