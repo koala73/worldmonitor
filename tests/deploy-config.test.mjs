@@ -311,7 +311,11 @@ describe('brief carousel function native-binding bundling', () => {
   // Paranoia: make sure any key that uses dynamic-segment brackets
   // literally (which Vercel reads as a glob character class, matching
   // nothing) fails the test loudly instead of silently shipping.
-  const BRACKET_LITERAL_RE = /\[[A-Za-z]+\]/;
+  // Covers all common Next.js-style segment name shapes:
+  // [userId], [user_id], [issue_date], [page1], [slug2024], etc.
+  // A leading letter is required so legitimate glob char classes like
+  // [0-9] or [!abc] don't false-positive.
+  const BRACKET_LITERAL_RE = /\[[A-Za-z][A-Za-z0-9_]*\]/;
 
   it('forces the resvg linux-x64-gnu native binding into the carousel function bundle', () => {
     const carouselFn = vercelConfig.functions?.[CAROUSEL_ROUTE_PATTERN];
@@ -339,6 +343,36 @@ describe('brief carousel function native-binding bundling', () => {
           'micromatch will interpret it as a character class and the rule ' +
           'will match nothing. Use wildcard path segments (e.g. `**`) to ' +
           'cover dynamic-segment routes.',
+      );
+    }
+  });
+
+  // Self-test for the guard regex itself. Catches drift where someone
+  // narrows it and breaks the only thing standing between us and a
+  // silent re-regression of PR #3206.
+  it('bracket-literal regex catches common dynamic-segment shapes', () => {
+    for (const shape of [
+      'api/brief/carousel/[userId]/a.ts',
+      'api/brief/carousel/[user_id]/a.ts',
+      'api/brief/carousel/[issue_date]/a.ts',
+      'api/brief/carousel/[page1]/a.ts',
+      'api/foo/[slug2024]/a.ts',
+    ]) {
+      assert.ok(
+        BRACKET_LITERAL_RE.test(shape),
+        `regex should flag literal dynamic segment in "${shape}"`,
+      );
+    }
+    // Negative cases — legitimate glob syntax that should NOT trip.
+    for (const shape of [
+      'api/brief/carousel/**',
+      'api/brief/carousel/**/*.ts',
+      'api/foo/[0-9].ts',
+      'api/foo/[!abc].ts',
+    ]) {
+      assert.ok(
+        !BRACKET_LITERAL_RE.test(shape),
+        `regex should NOT flag valid glob "${shape}"`,
       );
     }
   });
