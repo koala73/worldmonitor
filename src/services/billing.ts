@@ -28,12 +28,17 @@ let unsubscribeConvex: (() => void) | null = null;
 
 // Convex/Clerk bootstrap rarely rejects with a non-Error value (undefined, null, string).
 // Sentry serializes those as synthetic `Error: undefined` with zero frames — uninvestigable.
-// Normalize to a real Error carrying the offending value so events remain debuggable
-// (WORLDMONITOR-ND).
+// Normalize to a real Error carrying the offending value both in the message (for log/search)
+// and as `cause` (for Sentry's structured display) so events remain debuggable (WORLDMONITOR-ND).
 function normalizeCaughtError(action: string, err: unknown): Error {
-  return err instanceof Error
-    ? err
-    : new Error(`[billing] ${action} threw non-Error: ${err === undefined ? 'undefined' : String(err)}`);
+  if (err instanceof Error) return err;
+  const rendered = err === undefined ? 'undefined' : String(err);
+  const wrapped = new Error(`[billing] ${action} threw non-Error: ${rendered}`);
+  // Attach the original thrown value as `cause` so Sentry shows it as structured data.
+  // Assigned post-construction because tsconfig target=ES2020 lacks ErrorOptions typing;
+  // Sentry and modern browsers read the property either way.
+  (wrapped as Error & { cause?: unknown }).cause = err;
+  return wrapped;
 }
 
 /**
