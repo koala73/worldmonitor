@@ -27,7 +27,13 @@ const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
-const CAROUSEL_PATH = '/api/brief/carousel/user_abc/2026-04-19/0';
+// Slot format: YYYY-MM-DD-HHMM — per compose run, matches the
+// carousel route's ISSUE_DATE_RE and the signer's slot regex.
+const CAROUSEL_PATH = '/api/brief/carousel/user_abc/2026-04-19-0800/0';
+// Bare YYYY-MM-DD (the pre-slot shape) must no longer match, so digest
+// links that predate the slot rollout naturally fall into the bot gate
+// instead of silently leaking the allowlist.
+const LEGACY_DATE_ONLY_CAROUSEL_PATH = '/api/brief/carousel/user_abc/2026-04-19/0';
 const OTHER_API_PATH = '/api/notifications';
 const MALFORMED_CAROUSEL_PATH = '/api/brief/carousel/admin/dashboard';
 
@@ -103,13 +109,22 @@ describe('middleware bot gate / carousel allowlist', () => {
   });
 
   it('does not accept page 3+ on the carousel route (pageFromIndex only has 0/1/2)', () => {
-    const res = call('/api/brief/carousel/user_abc/2026-04-19/3', TELEGRAM_BOT_UA);
+    const res = call('/api/brief/carousel/user_abc/2026-04-19-0800/3', TELEGRAM_BOT_UA);
     assert.ok(res instanceof Response, 'out-of-range page must hit the bot gate');
     assert.equal(res.status, 403);
   });
 
-  it('does not accept non-ISO-date segments on the carousel route', () => {
+  it('does not accept non-slot segments on the carousel route', () => {
     const res = call('/api/brief/carousel/user_abc/today/0', TELEGRAM_BOT_UA);
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 403);
+  });
+
+  it('does not accept the pre-slot YYYY-MM-DD shape (slot rollout parity)', () => {
+    // Once the composer moves to slot URLs, legacy date-only paths
+    // should NOT leak the social allowlist — they correspond to
+    // expired pre-rollout links whose Redis keys no longer exist.
+    const res = call(LEGACY_DATE_ONLY_CAROUSEL_PATH, TELEGRAM_BOT_UA);
     assert.ok(res instanceof Response);
     assert.equal(res.status, 403);
   });

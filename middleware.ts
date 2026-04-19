@@ -21,11 +21,13 @@ const SOCIAL_IMAGE_UA =
 
 // Must match the exact route shape enforced by
 // api/brief/carousel/[userId]/[issueDate]/[page].ts:
-//   /api/brief/carousel/<userId>/YYYY-MM-DD/<0|1|2>
+//   /api/brief/carousel/<userId>/YYYY-MM-DD-HHMM/<0|1|2>
+// The issueDate segment is a per-run slot (date + HHMM in the user's
+// tz) so same-day digests produce distinct carousel URLs.
 // pageFromIndex() in brief-carousel-render.ts accepts only 0/1/2, so
 // the trailing segment is tightly bounded.
 const BRIEF_CAROUSEL_PATH_RE =
-  /^\/api\/brief\/carousel\/[^/]+\/\d{4}-\d{2}-\d{2}\/[0-2]\/?$/;
+  /^\/api\/brief\/carousel\/[^/]+\/\d{4}-\d{2}-\d{2}-\d{4}\/[0-2]\/?$/;
 
 const VARIANT_HOST_MAP: Record<string, string> = {
   'tech.worldmonitor.app': 'tech',
