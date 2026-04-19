@@ -38,10 +38,24 @@ Cached `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`. R
 
 ### `POST /api/cache-purge`
 
-Admin-only. Invalidates a Redis cache key or tag.
+Internal. Invalidates Redis cache keys by explicit list or glob patterns.
 
-- **Auth**: `ADMIN_PURGE_KEY` env var via `X-WorldMonitor-Admin-Key` header
-- **Body**: `{ "key": "market:stocks-bootstrap:v1" }` or `{ "tag": "markets" }`
+- **Auth**: `Authorization: Bearer $RELAY_SHARED_SECRET` (timing-safe compared). Anything else returns `401`.
+- **Body** (at least one of `keys` / `patterns` required):
+  ```json
+  {
+    "keys":     ["market:stocks-bootstrap:v1", "infra:outages:v1"],
+    "patterns": ["market:sectors:*"],
+    "dryRun":   false
+  }
+  ```
+- **Limits**: up to 20 explicit keys, up to 3 patterns (each must end in `*`, bare `*` rejected), up to 200 deletions total, up to 5 SCAN iterations per pattern.
+- **Safety**: keys with prefixes `rl:` / `__` are always skipped; patterns that would match `military:bases:*`, `conflict:iran-events:*`, `conflict:ucdp-events:*` (durable seeds) are skipped.
+- **Non-production**: on preview / development deploys, keys are auto-prefixed with `{env}:{git-sha}:` so purges can't affect production data.
+- **Response**:
+  ```json
+  { "matched": 4, "deleted": 4, "keys": ["..."], "dryRun": false, "truncated": false }
+  ```
 
 ## Health
 
@@ -107,9 +121,30 @@ City name → coordinates lookup.
 
 ## Utilities
 
-### `GET /api/download?file=<id>`
+### `GET /api/download?platform=<id>&variant=<id>`
 
-Signed download handler for release artifacts.
+Redirects to the matching asset on the latest GitHub release of `koala73/worldmonitor`. Returns `302` to the asset URL on success, or `302` to [releases/latest](https://github.com/koala73/worldmonitor/releases/latest) on any failure (unknown platform, no match, GitHub error).
+
+**`platform`** (required, exact string):
+
+| value | matches |
+|-------|---------|
+| `windows-exe` | `*_x64-setup.exe` |
+| `windows-msi` | `*_x64_en-US.msi` |
+| `macos-arm64` | `*_aarch64.dmg` |
+| `macos-x64` | `*_x64.dmg` (excluding `*setup*`) |
+| `linux-appimage` | `*_amd64.AppImage` |
+| `linux-appimage-arm64` | `*_aarch64.AppImage` |
+
+**`variant`** (optional):
+
+| value | filters asset name to |
+|-------|-----------------------|
+| `full` / `world` | `worldmonitor` |
+| `tech` | `techmonitor` |
+| `finance` | `financemonitor` |
+
+Caches the 302 for 5 minutes (`s-maxage=300`, `stale-while-revalidate=60`, `stale-if-error=600`).
 
 ### `POST /api/contact`
 

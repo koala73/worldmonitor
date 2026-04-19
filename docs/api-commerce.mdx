@@ -32,31 +32,50 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v2` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to `_product-fallback-prices.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
 
-**Response**:
+**Response** (tiers ordered `free`, `pro`, `api_starter`, `enterprise`):
 
 ```json
 {
   "tiers": [
     {
-      "tierGroup": "free",
       "name": "Free",
       "description": "Get started with the essentials",
-      "features": ["..."],
-      "plans": []
+      "features": ["Core dashboard panels", "..."],
+      "cta": "Get Started",
+      "href": "https://worldmonitor.app",
+      "highlighted": false,
+      "price": 0,
+      "period": "forever"
     },
     {
-      "tierGroup": "pro",
       "name": "Pro",
       "description": "Full intelligence dashboard",
-      "highlighted": true,
       "features": ["..."],
-      "plans": [
-        { "planKey": "pro_monthly", "billingPeriod": "monthly", "price": 20,  "currency": "USD", "productId": "pdt_..." },
-        { "planKey": "pro_annual",  "billingPeriod": "annual",  "price": 180, "currency": "USD", "productId": "pdt_..." }
-      ]
+      "highlighted": true,
+      "monthlyPrice": 20,
+      "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
+      "annualPrice": 180,
+      "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ"
     },
-    { "tierGroup": "api_starter", "...": "..." },
-    { "tierGroup": "enterprise",  "...": "..." }
+    {
+      "name": "API",
+      "description": "Programmatic access to intelligence data",
+      "features": ["..."],
+      "highlighted": false,
+      "monthlyPrice": 99,
+      "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
+      "annualPrice": 990,
+      "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV"
+    },
+    {
+      "name": "Enterprise",
+      "description": "Custom solutions for organizations",
+      "features": ["..."],
+      "cta": "Contact Sales",
+      "href": "mailto:enterprise@worldmonitor.app",
+      "highlighted": false,
+      "price": null
+    }
   ],
   "fetchedAt": "2026-04-19T12:00:00Z",
   "cachedUntil": "2026-04-19T13:00:00Z",
@@ -64,7 +83,9 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
 }
 ```
 
-Tier groups (ordered): `free`, `pro`, `api_starter`, `enterprise`.
+Notes:
+- Price fields are flat on the tier. Paid tiers expose `monthlyPrice` / `monthlyProductId` and `annualPrice` / `annualProductId`. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
+- Prices are dollars (Dodo returns cents; the handler divides by 100). Currency is implicit USD for the published catalog.
 
 ### `DELETE /api/product-catalog`
 
@@ -74,11 +95,20 @@ Purges the cached catalog. Requires `Authorization: Bearer $RELAY_SHARED_SECRET`
 
 ### `GET /api/referral/me`
 
-Returns the caller's referral code, referral count, and accrued rewards. Clerk bearer required.
+Returns the caller's deterministic referral code (an 8-char HMAC of the Clerk userId, stable for the life of the account) and a pre-built share URL. Clerk bearer required. The handler also fires a best-effort `ctx.waitUntil` Convex binding so future `/pro?ref=<code>` signups can attribute — this never blocks the response.
 
 ```json
-{ "code": "elie-7x9q", "referrals": 3, "rewardMonths": 1 }
+{
+  "code": "a1b2c3d4",
+  "shareUrl": "https://worldmonitor.app/pro?ref=a1b2c3d4"
+}
 ```
+
+Errors:
+- `401 UNAUTHENTICATED` — missing or invalid Clerk JWT.
+- `503 service_unavailable` — `BRIEF_URL_SIGNING_SECRET` not configured (the referral-code HMAC reuses that secret).
+
+No `referrals` count or `rewardMonths` is returned today — Dodo's `affonso_referral` attribution doesn't yet flow into Convex, and exposing only the waitlist-side count would mislead.
 
 ## Waitlist
 

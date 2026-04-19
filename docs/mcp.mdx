@@ -24,7 +24,12 @@ Protocol version: `2025-03-26`. Server identifier: `worldmonitor` v1.0.
 
 ## Authentication
 
-WorldMonitor MCP uses **OAuth 2.1 with PKCE**. A client registers once, exchanges an authorization code for a bearer token, then passes the token on every JSON-RPC call as `Authorization: Bearer <token>`.
+The MCP handler accepts two auth modes, in priority order:
+
+1. **OAuth 2.1 bearer** — `Authorization: Bearer <token>` where `<token>` was issued by `/api/oauth/token`. This is what Claude Desktop, claude.ai, Cursor, and MCP Inspector use automatically. Required for any client that hits MCP from a browser origin.
+2. **Direct API key** — `X-WorldMonitor-Key: wm_live_...`. Intended for server-side scripts, `curl`, and custom integrations. Do **not** send a `wm_live_...` key as a `Bearer` token — it will fail OAuth resolution and return `401 invalid_token`.
+
+Both modes check the same PRO entitlement before every tool call, so a subscription downgrade revokes access on the next request.
 
 ### Redirect URI allowlist
 
@@ -162,18 +167,20 @@ The server exposes 32 tools. Most are cache-reads over pre-seeded Redis keys (su
 
 ## JSON-RPC example
 
+Server-side with a direct API key — send it as `X-WorldMonitor-Key`, **not** as a bearer token.
+
 ```bash
-TOKEN="wm_live_..."
+WM_KEY="wm_live_..."
 
 # 1. List tools
 curl -s https://api.worldmonitor.app/api/mcp \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 # 2. Call a cache tool
 curl -s https://api.worldmonitor.app/api/mcp \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
     "jsonrpc":"2.0","id":2,
@@ -181,6 +188,8 @@ curl -s https://api.worldmonitor.app/api/mcp \
     "params":{"name":"get_country_risk","arguments":{"iso2":"IR"}}
   }'
 ```
+
+If instead you've completed the OAuth flow and hold an access token from `/api/oauth/token`, pass it as `Authorization: Bearer $TOKEN`.
 
 ## Response shape
 

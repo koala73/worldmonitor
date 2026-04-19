@@ -76,32 +76,76 @@ GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&h
 
 ### `POST /api/v2/shipping/webhooks`
 
-Registers a webhook for chokepoint disruption alerts.
+Registers a webhook for chokepoint disruption alerts. Returns `201 Created`.
 
 **Request**:
 ```json
 {
   "callbackUrl": "https://hooks.example.com/shipping-alerts",
   "chokepointIds": ["hormuz", "suez", "bab-el-mandeb"],
-  "alertThreshold": "ELEVATED"
+  "alertThreshold": 60
 }
 ```
 
-**Response**:
+- `callbackUrl` — required, HTTPS only, must not resolve to a private/loopback address (SSRF guard at registration).
+- `chokepointIds` — optional. Omitting or passing an empty array subscribes to **all** registered chokepoints. Unknown IDs return `400`.
+- `alertThreshold` — numeric 0-100 (default `50`). Values outside that range return `400 "alertThreshold must be a number between 0 and 100"`.
+
+**Response (`201`)**:
 ```json
-{ "subscriberId": "sub_01H...", "secret": "whsec_..." }
+{
+  "subscriberId": "wh_a1b2c3d4e5f6a7b8c9d0e1f2",
+  "secret": "64-char-lowercase-hex-string"
+}
 ```
 
-- **TTL**: 30 days (re-register to extend)
-- **Security**:
-  - HTTPS-only `callbackUrl` required.
-  - Hostname validated against private IP ranges at registration.
-  - The delivery worker re-resolves the URL before each delivery and re-checks against `PRIVATE_HOSTNAME_PATTERNS` to mitigate DNS rebinding.
-  - Ownership is tracked via SHA-256 of the caller's API key.
+- `subscriberId` — `wh_` prefix + 24 hex chars (12 random bytes).
+- `secret` — raw 64-char lowercase hex (32 random bytes). There is no `whsec_` prefix. Persist it — the server never returns it again except on rotation.
+- **TTL**: 30 days on the record and the owner-index set (re-register or rotate to extend).
+- Ownership is tracked via SHA-256 of the caller's API key (never secret — stored as `ownerTag`).
+
+Auth: `X-WorldMonitor-Key` (forceKey: true) + PRO. Returns `401` / `403` otherwise.
 
 ### `GET /api/v2/shipping/webhooks`
 
 Lists the caller's registered webhooks (filtered by the SHA-256 owner tag of the calling API key).
+
+```json
+{
+  "webhooks": [
+    {
+      "subscriberId": "wh_...",
+      "callbackUrl": "https://hooks.example.com/...",
+      "chokepointIds": ["hormuz", "suez"],
+      "alertThreshold": 60,
+      "createdAt": "2026-04-19T12:00:00Z",
+      "active": true
+    }
+  ]
+}
+```
+
+The `secret` is intentionally omitted from list and status responses.
+
+### `GET /api/v2/shipping/webhooks/{subscriberId}`
+
+Status read for a single webhook. Returns the same record shape as in `GET /webhooks` (no `secret`). `404` if unknown, `403` if owned by a different API key.
+
+### `POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret`
+
+Generates and returns a **new** secret. The record's `secret` is replaced in place; the old secret stops validating immediately.
+
+```json
+{ "subscriberId": "wh_...", "secret": "new-64-char-hex", "rotatedAt": "2026-04-19T12:05:00Z" }
+```
+
+### `POST /api/v2/shipping/webhooks/{subscriberId}/reactivate`
+
+Flips `active: true` on the record (use after investigating and fixing a delivery failure that caused deactivation).
+
+```json
+{ "subscriberId": "wh_...", "active": true }
+```
 
 ### Delivery format
 
@@ -113,14 +157,14 @@ X-WM-Delivery-Id: <ulid>
 X-WM-Event: chokepoint.disruption
 
 {
-  "subscriberId": "sub_01H...",
+  "subscriberId": "wh_...",
   "chokepointId": "hormuz",
-  "severity": "ELEVATED",
   "score": 74,
+  "alertThreshold": 60,
   "triggeredAt": "2026-04-19T12:03:00Z",
   "reason": "ais_congestion_spike",
   "details": { ... }
 }
 ```
 
-Delivery is at-least-once. Consumers must handle duplicates via `deliveryId`.
+The delivery worker re-resolves `callbackUrl` before each send and re-checks against `PRIVATE_HOSTNAME_PATTERNS` to mitigate DNS rebinding. Delivery is at-least-once — consumers must handle duplicates via `X-WM-Delivery-Id`.
