@@ -29,12 +29,13 @@ import { fileURLToPath } from 'node:url';
 import { embedBatch, cosineSimilarity, normalizeForEmbedding } from '../lib/brief-embedding.mjs';
 import { shouldVeto } from '../lib/brief-dedup-embed.mjs';
 import { stripSourceSuffix } from '../lib/brief-dedup-jaccard.mjs';
+import { readOrchestratorConfig } from '../lib/brief-dedup.mjs';
 
 function parseArgs(argv) {
-  const args = { fixture: null, threshold: 0.60 };
+  const args = { fixture: null, thresholdOverride: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--fixture') args.fixture = argv[++i];
-    else if (argv[i] === '--threshold') args.threshold = Number.parseFloat(argv[++i]);
+    else if (argv[i] === '--threshold') args.thresholdOverride = Number.parseFloat(argv[++i]);
   }
   return args;
 }
@@ -47,7 +48,18 @@ const DEFAULT_FIXTURE_PATH = (() => {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const fixturePath = args.fixture ? resolve(args.fixture) : DEFAULT_FIXTURE_PATH;
-  const threshold = args.threshold;
+
+  // Resolve the SAME classifier config production uses, via the
+  // orchestrator helper. DIGEST_DEDUP_COSINE_THRESHOLD and
+  // DIGEST_DEDUP_ENTITY_VETO_ENABLED MUST be sourced from the same
+  // place Railway reads from — the workflow pipes them in via
+  // `${{ vars.* }}`. A `--threshold` CLI flag still overrides for
+  // ad-hoc manual runs (e.g. calibration sweeps), but its use
+  // in the scheduled canary defeats the drift detector; the
+  // workflow leaves it off.
+  const cfg = readOrchestratorConfig(process.env);
+  const threshold = args.thresholdOverride ?? cfg.cosineThreshold;
+  const entityVetoEnabled = cfg.entityVetoEnabled;
 
   if (!process.env.OPENROUTER_API_KEY) {
     console.error('[golden] OPENROUTER_API_KEY not set');
@@ -72,7 +84,9 @@ async function main() {
   }
   const titles = [...titleSet];
   console.log(
-    `[golden] embedding ${titles.length} unique titles from ${fixture.length} pairs (threshold=${threshold})`,
+    `[golden] embedding ${titles.length} unique titles from ${fixture.length} pairs ` +
+      `(threshold=${threshold} veto=${entityVetoEnabled ? '1' : '0'} ` +
+      `source=${args.thresholdOverride !== null ? 'cli' : 'env'})`,
   );
   const vectors = await embedBatch(titles);
   const vecByTitle = new Map();
@@ -82,7 +96,11 @@ async function main() {
     const aNorm = normalizeForEmbedding(pair.a);
     const bNorm = normalizeForEmbedding(pair.b);
     const cos = cosineSimilarity(vecByTitle.get(aNorm), vecByTitle.get(bNorm));
-    const veto = shouldVeto(stripSourceSuffix(pair.a), stripSourceSuffix(pair.b));
+    // Veto only fires when prod has the entity veto enabled; mirroring
+    // DIGEST_DEDUP_ENTITY_VETO_ENABLED keeps the canary in lockstep.
+    const veto = entityVetoEnabled
+      ? shouldVeto(stripSourceSuffix(pair.a), stripSourceSuffix(pair.b))
+      : false;
     const actual = cos >= threshold && !veto ? 'merge' : 'split';
     return { ...pair, cosine: Number(cos.toFixed(4)), veto, actual };
   });

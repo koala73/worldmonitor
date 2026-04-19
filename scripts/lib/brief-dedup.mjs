@@ -141,6 +141,21 @@ function jaccardRepsToClusterHashes(reps) {
   return reps.map((rep) => rep.mergedHashes ?? [rep.hash]);
 }
 
+/**
+ * Persist one shadow-mode batch. Returns an object describing the
+ * write outcome so the caller can surface it in structured logs and
+ * a Sentry warn. "Fail open" is the wrong semantics here: the Sample
+ * B sampler reads the archive at labelling time, and a silently-
+ * dropped batch turns the calibration window into a no-op without
+ * anyone noticing.
+ *
+ * Result shape:
+ *   { ok: true,  key }                       // confirmed OK from Upstash
+ *   { ok: false, key, reason: <string> }     // auth/timeout/HTTP error,
+ *                                            // malformed cell, or a per-
+ *                                            // command error from the
+ *                                            // Upstash pipeline
+ */
 async function writeShadowArchive({
   pipelineImpl,
   timestamp,
@@ -161,12 +176,37 @@ async function writeShadowArchive({
     embeddingClusters: embedClusters,
     disagreementPairs: disagreements,
   });
+  let result;
   try {
-    await pipelineImpl([['SET', key, value, 'EX', String(SHADOW_ARCHIVE_TTL_SECONDS)]]);
-  } catch {
-    // Archive write is best-effort; Sample B sampler only reads keys
-    // that actually landed. A missed tick is not a correctness bug.
+    result = await pipelineImpl([['SET', key, value, 'EX', String(SHADOW_ARCHIVE_TTL_SECONDS)]]);
+  } catch (err) {
+    return { ok: false, key, reason: err instanceof Error ? err.message : String(err) };
   }
+  // defaultRedisPipeline returns null on missing creds / non-2xx /
+  // network timeout. Treat that as a write failure rather than
+  // pretending success.
+  if (result === null) {
+    return { ok: false, key, reason: 'pipeline_null_or_network_error' };
+  }
+  if (!Array.isArray(result) || result.length === 0) {
+    return { ok: false, key, reason: 'pipeline_empty_response' };
+  }
+  const cell = result[0];
+  if (cell && typeof cell === 'object' && 'error' in cell) {
+    return { ok: false, key, reason: `upstash_error:${String(cell.error).slice(0, 120)}` };
+  }
+  // Upstash REST returns `{ result: "OK" }` on success. Anything else
+  // (missing result field, unexpected value) gets treated as failure
+  // — better a false-positive alarm than a silent drop.
+  const okResult = cell && typeof cell === 'object' && 'result' in cell && cell.result === 'OK';
+  if (!okResult) {
+    return {
+      ok: false,
+      key,
+      reason: `unexpected_result:${JSON.stringify(cell).slice(0, 120)}`,
+    };
+  }
+  return { ok: true, key };
 }
 
 // ── Public entry point ─────────────────────────────────────────────────
@@ -277,7 +317,7 @@ export async function deduplicateStories(stories, deps = {}) {
         jaccardClusterHashes,
         allHashes,
       );
-      await writeShadowArchive({
+      const archiveResult = await writeShadowArchive({
         pipelineImpl,
         timestamp: started,
         items,
@@ -285,10 +325,20 @@ export async function deduplicateStories(stories, deps = {}) {
         jaccardClusters: jaccardClusterHashes,
         disagreements,
       });
+      // Silent archive failures are the #1 way a Phase C rollout turns
+      // into a calibration-data no-op — surface every bad write so
+      // Sentry catches the drift before labelling day.
+      if (!archiveResult.ok) {
+        warn(
+          `[digest] dedup shadow archive write failed — ` +
+            `reason=${archiveResult.reason} key=${archiveResult.key}`,
+        );
+      }
       log(
         `[digest] dedup mode=shadow stories=${items.length} embed_clusters=${embedClusterHashes.length} ` +
           `jaccard_clusters=${jaccardClusterHashes.length} disagreements=${disagreements.length} ` +
-          `veto_fires=${clusterResult.vetoFires} ms=${elapsed} threshold=${cfg.cosineThreshold}`,
+          `veto_fires=${clusterResult.vetoFires} ms=${elapsed} threshold=${cfg.cosineThreshold} ` +
+          `archive_write=${archiveResult.ok ? 'ok' : 'failed'}`,
       );
       return jaccardReps;
     }

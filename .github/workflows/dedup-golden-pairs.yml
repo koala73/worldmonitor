@@ -18,9 +18,12 @@ on:
   workflow_dispatch:
     inputs:
       threshold:
-        description: 'Cosine threshold to validate at (default 0.60)'
+        description: >-
+          Optional cosine threshold override (for calibration sweeps).
+          Leave EMPTY on routine reruns so the job validates the
+          same DIGEST_DEDUP_COSINE_THRESHOLD production uses.
         required: false
-        default: '0.60'
+        default: ''
 
 permissions:
   contents: read
@@ -38,17 +41,36 @@ jobs:
 
       - name: Run golden-pair validator
         id: validate
+        # Canary MUST validate the SAME classifier production runs. We
+        # source DIGEST_DEDUP_COSINE_THRESHOLD and _ENTITY_VETO_ENABLED
+        # from GitHub repo variables — keep those values in lockstep
+        # with Railway env. If Railway flips a knob, flip the repo
+        # variable at the same time, otherwise the canary can go green
+        # while prod is wrong (or red while prod is healthy).
+        #
+        # workflow_dispatch still supports a threshold override (e.g.
+        # for calibration sweeps), but the scheduled run always uses
+        # the production-parity config.
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-          DEDUP_THRESHOLD: ${{ github.event.inputs.threshold || '0.60' }}
+          DIGEST_DEDUP_COSINE_THRESHOLD: ${{ vars.DIGEST_DEDUP_COSINE_THRESHOLD || '0.60' }}
+          DIGEST_DEDUP_ENTITY_VETO_ENABLED: ${{ vars.DIGEST_DEDUP_ENTITY_VETO_ENABLED || '1' }}
+          DISPATCH_THRESHOLD: ${{ github.event.inputs.threshold }}
         run: |
           set -o pipefail
-          node scripts/tools/golden-pair-validator.mjs \
-            --threshold "$DEDUP_THRESHOLD" \
-            --fixture tests/fixtures/brief-dedup-golden-pairs.json \
+          # A --threshold flag arrives ONLY on manual dispatch with an
+          # explicit value, so the scheduled run never overrides the
+          # env. "${input:-}" resolves to empty on scheduled runs.
+          CLI_FLAGS=(--fixture tests/fixtures/brief-dedup-golden-pairs.json)
+          if [ -n "${DISPATCH_THRESHOLD:-}" ]; then
+            CLI_FLAGS+=(--threshold "$DISPATCH_THRESHOLD")
+          fi
+          node scripts/tools/golden-pair-validator.mjs "${CLI_FLAGS[@]}" \
             | tee /tmp/golden-pair-output.txt
+        shell: bash
+        continue-on-error: false
 
       - name: Open issue on validation failure
         if: failure()

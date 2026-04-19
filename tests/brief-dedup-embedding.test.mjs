@@ -251,9 +251,60 @@ describe('Scenario 4 — shadow mode runs both, ships Jaccard', () => {
     assert.equal(archiveWrite[3], 'EX');
     assert.equal(archiveWrite[4], String(21 * 24 * 60 * 60));
 
-    // Disagreement log line emitted.
+    // Disagreement log line emitted; archive_write=ok under a happy
+    // pipeline stub that returns {result: 'OK'}.
     assert.ok(collector.lines.some((l) => l.line.includes('mode=shadow')));
     assert.ok(collector.lines.some((l) => l.line.includes('disagreements=')));
+    assert.ok(collector.lines.some((l) => l.line.includes('archive_write=ok')));
+  });
+
+  it('silent archive-write failure (pipeline → null) surfaces as a warn + archive_write=failed', async () => {
+    // Regression guard: `defaultRedisPipeline()` returns null on
+    // timeout/auth/HTTP failure. writeShadowArchive MUST treat that
+    // as a failure rather than "fail open" — otherwise a Phase C
+    // rollout collects zero archive data while logs read healthy.
+    const stories = [
+      story('Breaking: Iran strike on Israel', 90, 1, 's0'),
+      story('Tel Aviv responds to Tehran', 85, 1, 's1'),
+    ];
+    const vecByTitle = new Map([
+      [normalizeForEmbedding(stories[0].title), [1, 0, 0]],
+      [normalizeForEmbedding(stories[1].title), [0.99, Math.sqrt(1 - 0.99 * 0.99), 0]],
+    ]);
+    const embedder = stubEmbedder(vecByTitle);
+    // Pipeline stub that mirrors the real shared helper's null-on-
+    // failure contract. embedBatch's cache lookup still needs to
+    // succeed, so we return the expected cache-miss shape for GETs
+    // and null only for the SET that writes the archive.
+    async function failingShadowWritePipeline(commands) {
+      if (commands.length > 0 && commands[0][0] === 'GET') {
+        // Cache-miss response for the embed cache lookup.
+        return commands.map(() => ({ result: null }));
+      }
+      if (commands.length > 0 && commands[0][0] === 'SET') {
+        // Simulate the archive write coming back as a pipeline failure.
+        return null;
+      }
+      return commands.map(() => ({ result: null }));
+    }
+    const collector = lineCollector();
+
+    await deduplicateStories(stories, {
+      env: { DIGEST_DEDUP_MODE: 'shadow', DIGEST_DEDUP_COSINE_THRESHOLD: '0.5' },
+      embedBatch: embedder.embedBatch,
+      redisPipeline: failingShadowWritePipeline,
+      ...collector,
+    });
+
+    const warnLine = collector.lines.find(
+      (l) => l.level === 'warn' && l.line.includes('shadow archive write failed'),
+    );
+    assert.ok(warnLine, 'warn line must surface the archive-write failure');
+    assert.match(warnLine.line, /reason=pipeline_null_or_network_error/);
+    assert.ok(
+      collector.lines.some((l) => l.line.includes('archive_write=failed')),
+      'structured log line must reflect archive_write=failed',
+    );
   });
 });
 
