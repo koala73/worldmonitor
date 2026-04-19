@@ -1,0 +1,119 @@
+---
+title: "News Feeds"
+description: "Catalogue of regional, topical, and variant-specific news-feed panels — content-stream surfaces that share a common panel framework with per-topic or per-region scoping."
+---
+
+Every variant of WorldMonitor ships a set of **content-stream panels** — regional news, topical news, tech / startup feeds, commodity news, and happy-variant feel-good streams. They share a common panel framework: ranked headlines, source attribution, activity tracking, and Cmd+K / custom-monitor highlighting. This page is the collective reference so the per-panel behaviour is findable without writing one page per feed.
+
+Every panel name in the tables below is also registered in at least one `*_PANELS` block in `src/config/panels.ts`. When you open a panel and the content is empty, check [Data Sources](/data-sources) and the global [health endpoint](/health-endpoints) for the underlying feed's status.
+
+## Regional news
+
+Regional panels scope the world to one macro-region's news stream, with language coverage and source curation optimised for that region. They share the `regional news` family in the geopolitical variant and appear in the Cmd+K "News" group.
+
+| Panel id | Title | Variants |
+|---|---|---|
+| `politics` | World News | Full / tech / finance / commodity |
+| `us` | United States | Full |
+| `europe` | Europe | Full |
+| `middleeast` | Middle East | Full |
+| `africa` | Africa | Full |
+| `latam` | Latin America | Full |
+| `asia` | Asia-Pacific | Full |
+
+All free. Source curation and entitlement live in `src/config/variants/full.ts` (and equivalents).
+
+## Topical news
+
+Topic-scoped news feeds — each panel is the canonical news view for its domain. Topical panels are usually paired with the matching intelligence / data panel (e.g. Crypto News next to Crypto Sectors).
+
+| Panel id | Title | Typical variant |
+|---|---|---|
+| `economic-news` | Economic News | Full / finance / commodity |
+| `markets-news` | Markets News | Finance |
+| `crypto-news` | Crypto News | Finance |
+| `climate-news` | Climate News | Full / commodity |
+| `mining-news` | Mining News | Commodity |
+| `commodity-news` | Commodity News | Commodity |
+| `commodities-news` | Commodities News | Finance |
+
+All free.
+
+## Tech / startup streams (tech variant)
+
+The tech variant ships a large family of content streams covering the startup ecosystem, infrastructure trends, and tech-policy signals. They appear in the tech variant's panel grid and are reachable from Cmd+K.
+
+| Panel id | Title |
+|---|---|
+| `startups` | Startups & VC |
+| `unicorns` | Unicorns |
+| `accelerators` | Accelerators & Demo Days |
+| `regionalStartups` | Global Startup News |
+| `fintech` | Fintech & Trading Tech |
+| `ipo` | IPO & SPAC |
+| `layoffs` | Layoffs Tracker |
+| `producthunt` | Product Hunt |
+| `thinktanks` | Think Tanks |
+| `vcblogs` | VC Insights & Essays |
+| `defense-patents` | R&D Signal |
+| `ai-regulation` | AI Regulation Dashboard |
+| `tech-hubs` | Hot Tech Hubs |
+| `ai` | AI/ML News / AI/ML |
+| `cloud` | Cloud |
+| `hardware` | Hardware |
+| `dev` | Dev tools |
+| `security` | Security |
+| `github` | GitHub |
+
+All free. Specific sub-feeds are configured in `src/config/variants/tech.ts`.
+
+## Finance streams (finance variant)
+
+The finance variant's content-stream panels are tighter and market-focused.
+
+| Panel id | Title |
+|---|---|
+| `bonds` | Bonds |
+| `centralbanks` | Central Bank Watch |
+| `derivatives` | Derivatives & Options |
+| `forex` | Forex |
+| `institutional` | Institutional |
+| `policy` | Policy |
+| `fin-regulation` | Financial Regulation |
+| `commodity-regulation` | Regulation & Policy |
+| `analysis` | Market Analysis |
+
+All free. Stream configuration lives in `src/config/variants/finance.ts`.
+
+## Happy variant feeds
+
+The happy variant (positive-news product) replaces conflict-centric feeds with a curated set of constructive-news surfaces.
+
+| Panel id | Title |
+|---|---|
+| `species` | Conservation Wins |
+| `breakthroughs` | Scientific Breakthroughs |
+| `progress` | Progress Signals |
+| `spotlight` | Spotlight |
+| `giving` | Giving & Philanthropy |
+| `digest` | Daily Digest |
+| `events` | Positive Events |
+| `funding` | Funding |
+| `counters` | Live Counters |
+| `gov` | Government Action |
+| `renewable` | Renewable Energy |
+
+All free. Stream configuration lives in `src/config/variants/happy.ts`.
+
+## Shared behaviour across all news panels
+
+- **Activity tracking** — newly arrived items get the standard new-item visual treatment.
+- **Custom Monitor highlighting** — matching articles surface their [monitor](/panels/monitors) colour as an accent (including inside clusters).
+- **Cmd+K discoverability** — each panel is searchable by its title and category.
+- **Free by default** — none of the news-feed panels are PRO-gated.
+
+## Related
+
+- [Signal Intelligence](/signal-intelligence) — structural overview of how news feeds are classified, deduplicated, and ranked.
+- [Data Sources](/data-sources) — the full upstream source list.
+- [My Monitors](/panels/monitors) — how keyword monitors work across news feeds.

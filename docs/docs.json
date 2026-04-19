@@ -121,14 +121,47 @@
             ]
           },
           {
-            "group": "Panels",
+            "group": "Panels — AI & PRO",
             "pages": [
               "panels/latest-brief",
               "panels/forecast",
+              "panels/chat-analyst",
+              "panels/market-implications",
+              "panels/deduction",
+              "panels/daily-market-brief",
+              "panels/regional-intelligence",
+              "panels/strategic-posture",
+              "panels/stock-analysis",
+              "panels/stock-backtest",
+              "panels/wsb-ticker-scanner"
+            ]
+          },
+          {
+            "group": "Panels — Data & Tracking",
+            "pages": [
               "panels/consumer-prices",
               "panels/disease-outbreaks",
               "panels/radiation-watch",
-              "panels/thermal-escalation"
+              "panels/thermal-escalation",
+              "panels/airline-intel",
+              "panels/tech-readiness",
+              "panels/trade-policy",
+              "panels/supply-chain",
+              "panels/sanctions-pressure",
+              "panels/hormuz-tracker",
+              "panels/energy-crisis",
+              "panels/world-clock",
+              "panels/monitors",
+              "panels/oref-sirens",
+              "panels/telegram-intel",
+              "panels/fsi"
+            ]
+          },
+          {
+            "group": "Panels — Catalogues",
+            "pages": [
+              "panels/news-feeds",
+              "panels/indicators-and-signals"
             ]
           },
           {
