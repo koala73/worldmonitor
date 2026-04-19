@@ -62,6 +62,29 @@ export function jaccardSimilarity(setA, setB) {
 }
 
 /**
+ * Representative-selection + mentionCount-sum + mergedHashes contract
+ * that composeBriefFromDigestStories / sources-population rely on.
+ *
+ * Shared helper so the orchestrator's embed path and the Jaccard
+ * fallback apply identical semantics — drift here silently breaks
+ * downstream. Accepts an array of story refs (already a single
+ * cluster) and returns one story object.
+ *
+ * @param {Array<{hash:string, currentScore:number, mentionCount:number}>} items
+ */
+export function materializeCluster(items) {
+  const sorted = [...items].sort(
+    (a, b) => b.currentScore - a.currentScore || b.mentionCount - a.mentionCount,
+  );
+  const best = { ...sorted[0] };
+  if (sorted.length > 1) {
+    best.mentionCount = sorted.reduce((sum, s) => sum + s.mentionCount, 0);
+  }
+  best.mergedHashes = sorted.map((s) => s.hash);
+  return best;
+}
+
+/**
  * Greedy single-link clustering by Jaccard > 0.55. Preserves the
  * representative-selection + mentionCount-sum + mergedHashes contract
  * that composeBriefFromDigestStories / sources-population rely on.
@@ -87,13 +110,5 @@ export function deduplicateStoriesJaccard(stories) {
     }
     if (!merged) clusters.push({ words, items: [story] });
   }
-  return clusters.map(({ items }) => {
-    items.sort((a, b) => b.currentScore - a.currentScore || b.mentionCount - a.mentionCount);
-    const best = { ...items[0] };
-    if (items.length > 1) {
-      best.mentionCount = items.reduce((sum, s) => sum + s.mentionCount, 0);
-    }
-    best.mergedHashes = items.map((s) => s.hash);
-    return best;
-  });
+  return clusters.map(({ items }) => materializeCluster(items));
 }

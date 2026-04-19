@@ -164,16 +164,3 @@ export function completeLinkCluster(items, { cosineThreshold, vetoFn = null }) {
   return { clusters, vetoFires };
 }
 
-/**
- * Convenience wrapper: same signature as completeLinkCluster but with
- * the entity veto wired in from the items' `title` field.
- *
- * The orchestrator uses this when DIGEST_DEDUP_ENTITY_VETO_ENABLED=1;
- * otherwise it calls completeLinkCluster with vetoFn=null.
- */
-export function clusterWithEntityVeto(items, { cosineThreshold }) {
-  return completeLinkCluster(items, {
-    cosineThreshold,
-    vetoFn: (a, b) => shouldVeto(a.title, b.title),
-  });
-}

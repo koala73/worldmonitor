@@ -26,31 +26,52 @@
 import { createHash } from 'node:crypto';
 
 import {
-  CACHE_TTL_SECONDS,
   SHADOW_ARCHIVE_KEY_PREFIX,
   SHADOW_ARCHIVE_TTL_SECONDS,
 } from './brief-dedup-consts.mjs';
 import {
   deduplicateStoriesJaccard,
+  materializeCluster,
   stripSourceSuffix,
 } from './brief-dedup-jaccard.mjs';
 import {
-  clusterWithEntityVeto,
   completeLinkCluster,
+  shouldVeto,
 } from './brief-dedup-embed.mjs';
 import {
   embedBatch,
   normalizeForEmbedding,
 } from './brief-embedding.mjs';
+import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
 
 // ── Config resolution (env read at call entry) ─────────────────────────
 
 /**
  * @param {Record<string, string | undefined>} [env]
+ * @returns {{
+ *   mode: 'jaccard' | 'shadow' | 'embed',
+ *   remoteEmbedEnabled: boolean,
+ *   entityVetoEnabled: boolean,
+ *   cosineThreshold: number,
+ *   wallClockMs: number,
+ *   invalidModeRaw: string | null,
+ * }}
  */
 export function readOrchestratorConfig(env = process.env) {
-  const modeRaw = (env.DIGEST_DEDUP_MODE ?? 'jaccard').toLowerCase();
-  const mode = modeRaw === 'embed' || modeRaw === 'shadow' ? modeRaw : 'jaccard';
+  const modeRaw = (env.DIGEST_DEDUP_MODE ?? '').toLowerCase();
+  let mode;
+  let invalidModeRaw = null;
+  if (modeRaw === '' || modeRaw === 'jaccard') {
+    mode = 'jaccard';
+  } else if (modeRaw === 'embed' || modeRaw === 'shadow') {
+    mode = modeRaw;
+  } else {
+    // Unrecognised value — fall back to jaccard but surface to the
+    // operator so a DIGEST_DEDUP_MODE=embbed typo doesn't silently
+    // stay on the legacy path for a 14-day shadow window.
+    mode = 'jaccard';
+    invalidModeRaw = modeRaw;
+  }
 
   const cosineRaw = Number.parseFloat(env.DIGEST_DEDUP_COSINE_THRESHOLD ?? '');
   const cosineThreshold =
@@ -66,31 +87,8 @@ export function readOrchestratorConfig(env = process.env) {
     entityVetoEnabled: env.DIGEST_DEDUP_ENTITY_VETO_ENABLED !== '0',
     cosineThreshold,
     wallClockMs,
+    invalidModeRaw,
   };
-}
-
-// ── Default (production) deps wiring ───────────────────────────────────
-
-async function defaultRedisPipeline(commands) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token || commands.length === 0) return null;
-  try {
-    const resp = await fetch(`${url}/pipeline`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'worldmonitor-digest/1.0',
-      },
-      body: JSON.stringify(commands),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!resp.ok) return null;
-    return await resp.json();
-  } catch {
-    return null;
-  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -100,28 +98,16 @@ function titleHashHex(normalizedTitle) {
 }
 
 /**
- * Apply the same representative-selection + mentionCount-sum +
- * mergedHashes contract the inline Jaccard path used. Takes a cluster
- * (list of story refs) and returns a single story object.
- */
-function materializeCluster(members) {
-  const sorted = [...members].sort(
-    (a, b) => b.currentScore - a.currentScore || b.mentionCount - a.mentionCount,
-  );
-  const best = { ...sorted[0] };
-  if (sorted.length > 1) {
-    best.mentionCount = sorted.reduce((sum, s) => sum + s.mentionCount, 0);
-  }
-  best.mergedHashes = sorted.map((s) => s.hash);
-  return best;
-}
-
-/**
  * Enumerate pairs and check whether each system merged them. Returns
  * the subset of pairs where the two systems disagree.
  *
  * Works in hash-space so cluster representations from different
  * input orderings compare cleanly.
+ *
+ * @pre `allHashes` contains unique values. Upstream `buildDigest`
+ * already dedupes by `story:track:v1:<hash>` so this holds in
+ * production; if it ever stops holding, the hash→cluster index
+ * will overwrite entries and the diff will be wrong.
  */
 function diffClustersByHash(embedClusterHashes, jaccardClusterHashes, allHashes) {
   const embedIdxOf = new Map();
@@ -148,12 +134,11 @@ function diffClustersByHash(embedClusterHashes, jaccardClusterHashes, allHashes)
 }
 
 /**
- * Run Jaccard on the given stories and return cluster membership as
- * arrays of story hashes (not indices). Shape matches the embed
- * path's hash-array projection so diffClustersByHash compares cleanly.
+ * Project a list of Jaccard reps (output of deduplicateStoriesJaccard)
+ * into the hash-arrays-per-cluster shape diffClustersByHash expects.
  */
-function jaccardClusterHashesFor(stories) {
-  return deduplicateStoriesJaccard(stories).map((rep) => rep.mergedHashes ?? [rep.hash]);
+function jaccardRepsToClusterHashes(reps) {
+  return reps.map((rep) => rep.mergedHashes ?? [rep.hash]);
 }
 
 async function writeShadowArchive({
@@ -202,6 +187,13 @@ export async function deduplicateStories(stories, deps = {}) {
   const jaccard = deps.jaccard ?? deduplicateStoriesJaccard;
   const log = deps.log ?? ((line) => console.log(line));
   const warn = deps.warn ?? ((line) => console.warn(line));
+
+  if (cfg.invalidModeRaw !== null) {
+    warn(
+      `[digest] dedup unrecognised DIGEST_DEDUP_MODE=${cfg.invalidModeRaw} — ` +
+        'falling back to jaccard. Valid values: jaccard | shadow | embed.',
+    );
+  }
 
   if (!Array.isArray(stories) || stories.length === 0) return [];
 
@@ -257,9 +249,13 @@ export async function deduplicateStories(stories, deps = {}) {
     }
     const items = prepared.map((p, i) => ({ ...p, embedding: embeddings[i] }));
 
-    const clusterResult = cfg.entityVetoEnabled
-      ? clusterWithEntityVeto(items, { cosineThreshold: cfg.cosineThreshold })
-      : completeLinkCluster(items, { cosineThreshold: cfg.cosineThreshold });
+    const vetoFn = cfg.entityVetoEnabled
+      ? (a, b) => shouldVeto(a.title, b.title)
+      : null;
+    const clusterResult = completeLinkCluster(items, {
+      cosineThreshold: cfg.cosineThreshold,
+      vetoFn,
+    });
 
     const embedClusters = clusterResult.clusters;
     const embedOutput = embedClusters.map((cluster) =>
@@ -268,11 +264,13 @@ export async function deduplicateStories(stories, deps = {}) {
     const elapsed = nowImpl() - started;
 
     if (cfg.mode === 'shadow') {
-      // Shadow: run BOTH systems, log disagreements, archive the
-      // batch for Sample B drawing, and ship Jaccard output so
-      // user-visible behaviour is unchanged until the Phase D flip.
+      // Shadow: run Jaccard ONCE for both the user-visible return
+      // value AND the disagreement diff. Archive the batch for
+      // Sample B drawing. Ship Jaccard output so user-visible
+      // behaviour is unchanged until the Phase D flip.
+      const jaccardReps = jaccard(stories);
+      const jaccardClusterHashes = jaccardRepsToClusterHashes(jaccardReps);
       const embedClusterHashes = embedClusters.map((c) => c.map((i) => items[i].hash));
-      const jaccardClusterHashes = jaccardClusterHashesFor(stories);
       const allHashes = stories.map((s) => s.hash);
       const disagreements = diffClustersByHash(
         embedClusterHashes,
@@ -292,7 +290,7 @@ export async function deduplicateStories(stories, deps = {}) {
           `jaccard_clusters=${jaccardClusterHashes.length} disagreements=${disagreements.length} ` +
           `veto_fires=${clusterResult.vetoFires} ms=${elapsed} threshold=${cfg.cosineThreshold}`,
       );
-      return jaccard(stories);
+      return jaccardReps;
     }
 
     log(
@@ -301,17 +299,14 @@ export async function deduplicateStories(stories, deps = {}) {
     );
     return embedOutput;
   } catch (err) {
+    const reason =
+      err instanceof Error && typeof err.name === 'string' && err.name !== 'Error'
+        ? err.name
+        : 'other';
     const msg = err instanceof Error ? err.message : String(err);
-    warn(`[digest] dedup embed path failed, falling back to Jaccard: ${msg}`);
+    warn(
+      `[digest] dedup embed path failed, falling back to Jaccard reason=${reason} msg=${msg}`,
+    );
     return jaccard(stories);
   }
 }
-
-// Re-export helpers so the call site doesn't have to import from
-// multiple lib files for the common cases.
-export { deduplicateStoriesJaccard } from './brief-dedup-jaccard.mjs';
-export { normalizeForEmbedding } from './brief-embedding.mjs';
-
-// Re-export the default TTL in case downstream wants it (avoid
-// importing brief-dedup-consts in a dozen places).
-export { CACHE_TTL_SECONDS };

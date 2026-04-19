@@ -32,43 +32,12 @@ export const SHADOW_ARCHIVE_TTL_SECONDS = 21 * 24 * 60 * 60; // 14d window + 7d 
 // OpenRouter embeddings endpoint (OpenAI-compatible passthrough).
 export const OPENROUTER_EMBEDDINGS_URL = 'https://openrouter.ai/api/v1/embeddings';
 
-// ── Env-driven runtime knobs (read at call time, not module load) ───────
+// Env-driven runtime knobs live in brief-dedup.mjs:readOrchestratorConfig
+// — a single source of truth, read at call entry so Railway env flips
+// take effect on the next tick. An earlier version exported getter
+// helpers here too; they had zero callers and were deleted.
 
-export function getMode() {
-  const raw = (process.env.DIGEST_DEDUP_MODE ?? 'jaccard').toLowerCase();
-  return raw === 'embed' || raw === 'shadow' || raw === 'jaccard' ? raw : 'jaccard';
-}
-
-export function isRemoteEmbedEnabled() {
-  return process.env.DIGEST_DEDUP_REMOTE_EMBED_ENABLED !== '0';
-}
-
-export function isEntityVetoEnabled() {
-  return process.env.DIGEST_DEDUP_ENTITY_VETO_ENABLED !== '0';
-}
-
-export function getCosineThreshold() {
-  const raw = Number.parseFloat(process.env.DIGEST_DEDUP_COSINE_THRESHOLD ?? '');
-  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : 0.60;
-}
-
-export function getWallClockMs() {
-  const raw = Number.parseInt(process.env.DIGEST_DEDUP_WALL_CLOCK_MS ?? '', 10);
-  return Number.isInteger(raw) && raw > 0 ? raw : 45_000;
-}
-
-// ── Test harness bag ────────────────────────────────────────────────────
-// Exposed so tests can assert against constants without regex-extraction
-// from the production source (that fragile harness is what we're killing
-// in this PR).
-export const __constants = Object.freeze({
-  JACCARD_MERGE_THRESHOLD,
-  EMBED_MODEL,
-  EMBED_DIMS,
-  CACHE_VERSION,
-  CACHE_KEY_PREFIX,
-  CACHE_TTL_SECONDS,
-  SHADOW_ARCHIVE_KEY_PREFIX,
-  SHADOW_ARCHIVE_TTL_SECONDS,
-  OPENROUTER_EMBEDDINGS_URL,
-});
+// An earlier iteration exposed an `__constants` bag so tests could
+// assert against tunables in one deepEqual. Once the regex-extraction
+// harness was removed, named imports became cleaner — the bag got
+// deleted. If you need to assert a constant, import it directly.

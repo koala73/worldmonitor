@@ -23,10 +23,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  deduplicateStories,
-  deduplicateStoriesJaccard,
-} from '../scripts/lib/brief-dedup.mjs';
+import { deduplicateStories } from '../scripts/lib/brief-dedup.mjs';
+import { deduplicateStoriesJaccard } from '../scripts/lib/brief-dedup-jaccard.mjs';
 import {
   EmbeddingProviderError,
   EmbeddingTimeoutError,
@@ -160,12 +158,22 @@ describe('Scenario 2 — cold-cache timeout collapses to Jaccard', () => {
       ...collector,
     });
 
-    // Jaccard output is the ground truth under fallback.
+    // Jaccard output is the ground truth under fallback — deep-equal
+    // cluster shape, not just length, so a regression that preserves
+    // count but changes membership or representative can't slip.
     const expected = deduplicateStoriesJaccard(stories);
     assert.equal(out.length, expected.length);
-    assert.ok(
-      collector.lines.some((l) => l.level === 'warn' && l.line.includes('falling back to Jaccard')),
+    for (let i = 0; i < out.length; i++) {
+      assert.equal(out[i].hash, expected[i].hash);
+      assert.deepEqual(out[i].mergedHashes, expected[i].mergedHashes);
+      assert.equal(out[i].mentionCount, expected[i].mentionCount);
+    }
+    // Fallback warn line must carry a filterable reason= field.
+    const fallbackWarn = collector.lines.find(
+      (l) => l.level === 'warn' && l.line.includes('falling back to Jaccard'),
     );
+    assert.ok(fallbackWarn, 'warn line on fallback');
+    assert.match(fallbackWarn.line, /reason=EmbeddingTimeoutError\b/);
   });
 });
 
@@ -186,8 +194,16 @@ describe('Scenario 3 — provider outage collapses to Jaccard', () => {
       ...collector,
     });
 
-    assert.equal(out.length, deduplicateStoriesJaccard(stories).length);
-    assert.ok(collector.lines.some((l) => l.level === 'warn'));
+    const expected = deduplicateStoriesJaccard(stories);
+    assert.equal(out.length, expected.length);
+    for (let i = 0; i < out.length; i++) {
+      assert.equal(out[i].hash, expected[i].hash);
+      assert.deepEqual(out[i].mergedHashes, expected[i].mergedHashes);
+      assert.equal(out[i].mentionCount, expected[i].mentionCount);
+    }
+    const fallbackWarn = collector.lines.find((l) => l.level === 'warn');
+    assert.ok(fallbackWarn, 'warn line on fallback');
+    assert.match(fallbackWarn.line, /reason=EmbeddingProviderError\b/);
   });
 });
 

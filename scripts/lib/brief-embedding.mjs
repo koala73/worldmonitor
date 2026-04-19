@@ -28,6 +28,8 @@ import {
   EMBED_MODEL,
   OPENROUTER_EMBEDDINGS_URL,
 } from './brief-dedup-consts.mjs';
+import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
+import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
 
 export class EmbeddingProviderError extends Error {
   constructor(message, { status, cause } = {}) {
@@ -50,21 +52,16 @@ export class EmbeddingTimeoutError extends Error {
  * input. Any caller that embeds outside this function will drift.
  *
  *   1. Strip wire-service suffixes (" - Reuters", " | AP News", etc.)
+ *      via the shared stripSourceSuffix so the outlet allow-list is
+ *      single-sourced with the Jaccard fallback. Adding a new outlet
+ *      updates both paths at once.
  *   2. Trim.
  *   3. Collapse internal whitespace.
  *   4. Lowercase.
  */
 export function normalizeForEmbedding(title) {
   if (typeof title !== 'string') return '';
-  return title
-    .replace(/\s*[-–—]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/i, '')
-    .replace(
-      /\s*[-–—]\s*(?:Reuters|AP News|BBC|CNN|Al Jazeera|France 24|DW News|PBS NewsHour|CBS News|NBC|ABC|Associated Press|The Guardian|NOS Nieuws|Tagesschau|CNBC|The National)\s*$/i,
-      '',
-    )
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+  return stripSourceSuffix(title).trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 export function cacheKeyFor(normalizedTitle) {
@@ -72,29 +69,8 @@ export function cacheKeyFor(normalizedTitle) {
   return `${CACHE_KEY_PREFIX}:${hash}`;
 }
 
-// ── Default (production) deps wiring ───────────────────────────────────
-
-async function defaultRedisPipeline(commands) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token || commands.length === 0) return null;
-  try {
-    const resp = await fetch(`${url}/pipeline`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'worldmonitor-digest/1.0',
-      },
-      body: JSON.stringify(commands),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!resp.ok) return null;
-    return await resp.json();
-  } catch {
-    return null;
-  }
-}
+// Default (production) deps wiring lives in ./_upstash-pipeline.mjs so
+// the orchestrator and the embedding client share one implementation.
 
 /**
  * Look up a set of cache keys via the redis pipeline and return a
@@ -134,6 +110,12 @@ async function cacheGetBatched(uniqueKeys, pipelineImpl) {
  * any other upstream failure. NEVER returns a partial result.
  */
 async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }) {
+  // Negative / zero remaining-budget means the deadline is already past.
+  // Bail to the orchestrator's all-or-nothing fallback rather than open a
+  // doomed HTTP connection that blows the wall-clock cap by the floor.
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new EmbeddingTimeoutError();
+  }
   let resp;
   try {
     resp = await fetchImpl(OPENROUTER_EMBEDDINGS_URL, {
@@ -150,7 +132,7 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
         input: missingTitles,
         dimensions: EMBED_DIMS,
       }),
-      signal: AbortSignal.timeout(Math.max(250, timeoutMs)),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
@@ -207,7 +189,8 @@ async function callEmbeddingsApi({ fetchImpl, apiKey, missingTitles, timeoutMs }
  * @param {(commands: Array<unknown[]>) => Promise<Array<{result: unknown}> | null>} [deps.redisPipeline]
  * @param {() => number} [deps.now]
  * @param {number} [deps.wallClockMs]
- * @param {string} [deps.apiKey]  OPENROUTER_API_KEY override (for tests)
+ * @param {string} [deps._apiKey]  OPENROUTER_API_KEY override (tests only;
+ *   prefixed to discourage accidental spread from user-controlled objects)
  * @returns {Promise<number[][]>}  one 512-dim vector per input, in order
  *
  * Throws EmbeddingTimeoutError on wall-clock overrun.
@@ -225,7 +208,7 @@ export async function embedBatch(normalizedTitles, deps = {}) {
   const pipelineImpl = deps.redisPipeline ?? defaultRedisPipeline;
   const nowImpl = deps.now ?? (() => Date.now());
   const wallClockMs = deps.wallClockMs ?? 45_000;
-  const apiKey = deps.apiKey ?? process.env.OPENROUTER_API_KEY ?? '';
+  const apiKey = deps._apiKey ?? process.env.OPENROUTER_API_KEY ?? '';
 
   if (!apiKey) {
     // Provider failure so the orchestrator falls back to Jaccard rather

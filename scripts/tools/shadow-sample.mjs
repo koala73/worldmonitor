@@ -50,7 +50,17 @@ function envOrDie(name) {
   return v;
 }
 
+// Hard allowlist. This tool only READS the shadow archive; any future
+// caller that wants DEL/SET/FLUSHDB must add the command here on
+// purpose and justify it in review.
+const UPSTASH_COMMANDS_ALLOWED = new Set(['SCAN', 'GET', 'EXISTS']);
+
 async function upstash(command, ...params) {
+  if (!UPSTASH_COMMANDS_ALLOWED.has(command)) {
+    throw new Error(
+      `shadow-sample upstash helper refuses command ${command}; allowed: ${[...UPSTASH_COMMANDS_ALLOWED].join(', ')}`,
+    );
+  }
   const url = envOrDie('UPSTASH_REDIS_REST_URL');
   const token = envOrDie('UPSTASH_REDIS_REST_TOKEN');
   const path = [command, ...params].map(encodeURIComponent).join('/');

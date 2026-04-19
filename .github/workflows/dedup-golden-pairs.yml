@@ -54,27 +54,34 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          # Compose the issue body via printf rather than a heredoc.
+          # Validator stdout (fixture text) flows through $LOG_TAIL and
+          # MUST NOT be interpreted as shell, so we never embed it in
+          # a heredoc that allows command substitution. We also sanitise
+          # $LOG_TAIL to printable ASCII + tab/LF/CR to strip ANSI /
+          # control sequences that could smuggle rendering surprises
+          # into the issue body.
           TITLE="Dedup golden-pair canary failed ($(date -u +%Y-%m-%d))"
-          BODY=$(cat <<EOF
-          The nightly embedding-dedup golden-pair validator detected a
-          classification drift against the canonical canary fixture.
-          Possible causes:
-
-          - OpenRouter upgraded the \`text-embedding-3-small\` weights
-            without a version bump (check cache key + recalibrate).
-          - \`DIGEST_DEDUP_COSINE_THRESHOLD\` needs to move.
-          - The canary fixture is out of date vs real wire examples.
-
-          Logs:
-          \`\`\`
-          $(tail -n 80 /tmp/golden-pair-output.txt || echo "(no logs captured)")
-          \`\`\`
-
-          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          EOF
-          )
+          LOG_TAIL=$(tail -n 80 /tmp/golden-pair-output.txt 2>/dev/null \
+            | LC_ALL=C tr -cd '\11\12\15\40-\176' \
+            || printf '(no logs captured)')
+          {
+            printf '%s\n' 'The nightly embedding-dedup golden-pair validator detected a'
+            printf '%s\n' 'classification drift against the canonical canary fixture.'
+            printf '%s\n\n' 'Possible causes:'
+            printf '%s\n' '- OpenRouter upgraded the `text-embedding-3-small` weights'
+            printf '%s\n' '  without a version bump (check cache key + recalibrate).'
+            printf '%s\n' '- `DIGEST_DEDUP_COSINE_THRESHOLD` needs to move.'
+            printf '%s\n\n' '- The canary fixture is out of date vs real wire examples.'
+            printf '%s\n' 'Logs:'
+            printf '%s\n' '```'
+            printf '%s\n' "$LOG_TAIL"
+            printf '%s\n\n' '```'
+            printf 'Workflow run: %s\n' "$RUN_URL"
+          } > /tmp/issue-body.md
           gh issue create \
             --title "$TITLE" \
-            --body "$BODY" \
+            --body-file /tmp/issue-body.md \
             --label "dedup,canary,p1" || true

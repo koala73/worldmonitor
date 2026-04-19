@@ -18,23 +18,27 @@ import {
   jaccardSimilarity,
   stripSourceSuffix,
 } from '../scripts/lib/brief-dedup-jaccard.mjs';
-import { __constants } from '../scripts/lib/brief-dedup-consts.mjs';
+import {
+  CACHE_KEY_PREFIX,
+  JACCARD_MERGE_THRESHOLD,
+  SHADOW_ARCHIVE_TTL_SECONDS,
+} from '../scripts/lib/brief-dedup-consts.mjs';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 describe('brief-dedup-consts', () => {
   it('exposes the Jaccard merge threshold as a pure constant', () => {
-    assert.equal(__constants.JACCARD_MERGE_THRESHOLD, 0.55);
+    assert.equal(JACCARD_MERGE_THRESHOLD, 0.55);
   });
 
   it('embedding cache key prefix is namespaced + versioned', () => {
     // Bump when the embed model or dimension changes — silent threshold
     // drift on model upgrade is the #1 documented regression mode.
-    assert.equal(__constants.CACHE_KEY_PREFIX, 'brief:emb:v1:text-3-small-512');
+    assert.equal(CACHE_KEY_PREFIX, 'brief:emb:v1:text-3-small-512');
   });
 
   it('shadow archive TTL covers the 14-day window + 7-day labelling buffer', () => {
-    assert.equal(__constants.SHADOW_ARCHIVE_TTL_SECONDS, 21 * 24 * 60 * 60);
+    assert.equal(SHADOW_ARCHIVE_TTL_SECONDS, 21 * 24 * 60 * 60);
   });
 });
 
