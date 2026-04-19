@@ -124,13 +124,26 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
-  if (issueSlot === null || issueSlot === undefined || issueSlot === '') {
-    // Fall back to the latest-pointer the cron writes.
+  // Remember whether the caller supplied anything at all, so we can
+  // distinguish two miss modes below: bad input shape vs. "no brief
+  // exists yet for this user". Empty/whitespace counts as omitted.
+  const callerProvidedSlot =
+    typeof issueSlot === 'string' && issueSlot.trim().length > 0;
+
+  if (!callerProvidedSlot) {
+    // No slot given → fall back to the latest-pointer the cron writes.
     try {
       const latest = await readRawJsonFromUpstash(`brief:latest:${session.userId}`);
       const slot = (latest as { issueSlot?: unknown } | null)?.issueSlot;
       if (typeof slot === 'string' && ISSUE_SLOT_RE.test(slot)) {
         issueSlot = slot;
+      } else {
+        // Pointer missing (never composed / TTL expired) — this is a
+        // "no brief to share" condition, not an input-shape problem.
+        // Return the same 404 the existing-brief check would return
+        // so the caller gets a coherent contract: either the brief
+        // exists and is shareable, or it doesn't and you get 404.
+        return jsonResponse({ error: 'brief_not_found' }, 404, cors);
       }
     } catch (err) {
       console.error('[api/brief/share-url] latest pointer read failed:', (err as Error).message);

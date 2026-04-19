@@ -178,9 +178,22 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   if (!preview || !issueSlot) {
-    // No pointer yet (never composed) or pointer points at a missing
-    // key. The panel just wants a display date for the "composing"
-    // state; UTC today is an acceptable placeholder.
+    // Two miss cases with different semantics:
+    //   (a) Caller asked for a specific ?slot= that doesn't exist →
+    //       report that slot back as missing, NOT "today is composing".
+    //       Otherwise a client probing a known slot gets a misleading
+    //       "composing today" signal that has nothing to do with what
+    //       they asked about.
+    //   (b) No ?slot= given and no latest pointer → truly "no brief
+    //       yet today". Keep the UTC-today placeholder the panel uses
+    //       to render its empty-state title.
+    if (requestedSlot) {
+      return jsonResponse(
+        { status: 'composing', issueSlot: requestedSlot, issueDate: requestedSlot.slice(0, 10) },
+        200,
+        cors,
+      );
+    }
     return jsonResponse(
       { status: 'composing', issueDate: todayInUtc() },
       200,
