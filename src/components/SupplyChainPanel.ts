@@ -415,17 +415,25 @@ export class SupplyChainPanel extends Panel {
           </div>`;
         })() : '';
 
-        // Projected score (0–100) when this card is the scenario target.
-        // Projected = max(current, template.disruptionPct). disruptionPct is
-        // "% of capacity blocked" in the scenario template — treating that as
-        // the floor for the post-scenario score is conservative (the actual
-        // scoring function mixes threat + warnings + anomaly, which a real
-        // closure can only push upward).
-        const projected = isAffectedByScenario && projectedScore != null
-          ? Math.max(cp.disruptionScore, projectedScore)
-          : null;
-        const badgeHtml = projected != null
-          ? `<span class="trade-badge">${cp.disruptionScore}/100</span> <span class="trade-badge trade-badge--projected" style="background:#7f1d1d;color:#fff;margin-left:4px">\u2192 ${projected}/100</span>`
+        // Projected score (0–100) when this card is the scenario target AND
+        // the scenario would push the score higher than today's. disruptionPct
+        // is "% of capacity blocked" in the template — NOT the same scale as
+        // the computed cp.disruptionScore (threat + warnings + anomaly), but
+        // they share the 0–100 axis so we can compare directionally.
+        //
+        // Only show the projection arrow when `template.disruptionPct >
+        // cp.disruptionScore`. When current already meets or exceeds the
+        // scenario's closure level (e.g., Suez scenario at 80% with Suez
+        // currently at 82/100, or Panama at 50% scenario vs a 60/100
+        // current score), the arrow would render `N/100 → N/100` and
+        // imply the scenario has zero effect, which is misleading. The
+        // red left border + scenario callout still indicate the card is
+        // affected; the arrow stays reserved for a genuine escalation.
+        const showProjection = isAffectedByScenario
+          && projectedScore != null
+          && projectedScore > cp.disruptionScore;
+        const badgeHtml = showProjection
+          ? `<span class="trade-badge">${cp.disruptionScore}/100</span> <span class="trade-badge trade-badge--projected" style="background:#7f1d1d;color:#fff;margin-left:4px">\u2192 ${projectedScore}/100</span>`
           : `<span class="trade-badge">${cp.disruptionScore}/100</span>`;
 
         return `<div class="trade-restriction-card${expanded ? ' expanded' : ''}${isAffectedByScenario ? ' scenario-affected' : ''}" data-cp-id="${escapeHtml(cp.name)}" style="cursor:pointer${isAffectedByScenario ? ';border-left:3px solid #dc2626' : ''}">
