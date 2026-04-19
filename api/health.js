@@ -701,7 +701,7 @@ export default async function handler(req, ctx) {
       ['SET', 'health:last-failure', JSON.stringify(snapshot), 'EX', 86400],
       ['GET', 'health:failure-log-sig'],
     ];
-    const sigResults = await redisPipeline(persistCmds).catch(() => null);
+    const sigResults = await redisPipeline(persistCmds, 4_000).catch(() => null);
     const prevSig = sigResults?.[1]?.result ?? '';
     const logCmds = [
       ['SET', 'health:failure-log-sig', sig, 'EX', 86400],
@@ -709,11 +709,11 @@ export default async function handler(req, ctx) {
     if (sig !== prevSig) {
       logCmds.push(
         ['LPUSH', 'health:failure-log', JSON.stringify(snapshot)],
-        ['LTRIM', 'health:failure-log', '0', '49'],
-        ['EXPIRE', 'health:failure-log', String(86400 * 7)],
+        ['LTRIM', 'health:failure-log', 0, 49],
+        ['EXPIRE', 'health:failure-log', 86400 * 7],
       );
     }
-    const persist = redisPipeline(logCmds).catch(() => {});
+    const persist = redisPipeline(logCmds, 4_000).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
   }
 
