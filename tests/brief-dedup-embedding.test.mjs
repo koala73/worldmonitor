@@ -467,7 +467,12 @@ describe('extractEntities', () => {
     // physical geography is the venue.
     const { locations, actors } = extractEntities('Iran closes Strait of Hormuz');
     assert.ok(actors.includes('iran'));
-    assert.ok(locations.includes('hormuz'));
+    // Multi-word match finds "strait of hormuz", NOT the single-token
+    // fallback "hormuz" — the full phrase is in the gazetteer.
+    assert.ok(
+      locations.includes('strait of hormuz') || locations.includes('hormuz'),
+      'hormuz location must be detected (as phrase or single token)',
+    );
     assert.ok(!locations.includes('iran'));
   });
 
@@ -489,6 +494,50 @@ describe('extractEntities', () => {
     assert.ok(actors.includes('trump'));
     // Japan is a country → actor, not location
     assert.ok(actors.includes('japan'));
+  });
+
+  // Regression: multi-word gazetteer entries are matched as whole
+  // phrases. An earlier implementation split on whitespace and only
+  // checked single tokens, so "Red Sea", "South China Sea", "New York",
+  // etc. silently fell through to the actor bucket and disabled the
+  // veto for a whole class of real headlines.
+  it('matches multi-word location: Red Sea', () => {
+    const { locations, actors } = extractEntities('Houthis strike ship in Red Sea');
+    assert.ok(locations.includes('red sea'));
+    assert.ok(!actors.includes('red'));
+    assert.ok(!actors.includes('sea'));
+    assert.ok(actors.includes('houthis'));
+  });
+
+  it('matches multi-word location: South China Sea', () => {
+    const { locations } = extractEntities('Tensions flare in South China Sea');
+    assert.ok(locations.includes('south china sea'));
+  });
+
+  it('matches multi-word location with lowercase connector: Strait of Hormuz', () => {
+    const { locations } = extractEntities('Iran closes Strait of Hormuz');
+    assert.ok(locations.includes('strait of hormuz'));
+  });
+
+  it('matches multi-word city: Abu Dhabi', () => {
+    const { locations } = extractEntities('Summit held in Abu Dhabi');
+    assert.ok(locations.includes('abu dhabi'));
+  });
+
+  it('matches multi-word city: New York', () => {
+    const { locations } = extractEntities('UN meeting in New York');
+    assert.ok(locations.includes('new york'));
+  });
+
+  // Veto end-to-end: reproducer from the P1 finding. Two Red-Sea
+  // headlines share a location and disagree on the actor — veto
+  // MUST fire (otherwise the main anti-overmerge guard is off for
+  // bodies-of-water / region headlines).
+  it('shouldVeto: Houthis vs US on Red Sea — location phrase match fires the veto', () => {
+    assert.equal(
+      shouldVeto('Houthis strike ship in Red Sea', 'US escorts convoy in Red Sea'),
+      true,
+    );
   });
 });
 

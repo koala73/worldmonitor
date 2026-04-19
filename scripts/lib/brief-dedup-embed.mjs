@@ -18,18 +18,51 @@ import {
 
 // ── Entity extraction / veto ───────────────────────────────────────────
 
+const CAPITALIZED_TOKEN_RE = /^[A-Z][a-zA-Z\-'.]{1,}$/;
+
+// Longest multi-word entry in the gazetteer (e.g. "ho chi minh city"
+// is 4 tokens). Precomputed once; the sliding window in
+// extractEntities never tries phrases longer than this, so the cost
+// stays O(N * MAX_PHRASE_LEN) rather than O(N²).
+const MAX_LOCATION_PHRASE_LEN = (() => {
+  let max = 1;
+  for (const entry of LOCATION_GAZETTEER) {
+    const len = entry.split(/\s+/).length;
+    if (len > max) max = len;
+  }
+  return max;
+})();
+
+function cleanToken(t) {
+  return t.replace(/[.,;:!?"')\]]+$/g, '').replace(/^["'([]+/g, '');
+}
+
 /**
- * Pull proper-noun-like tokens from a headline and classify them.
+ * Pull proper-noun-like entities from a headline and classify them
+ * against the gazetteer.
  *
- * Rule:
- *   - token matches /^[A-Z][a-zA-Z\-'.]{1,}$/ (capitalized, 2+ chars)
- *   - token's lowercase form is NOT in COMMON_CAPITALIZED
- *   - token's lowercase form IN LOCATION_GAZETTEER → Location
- *   - otherwise → Actor
+ * Locations are matched as **whole phrases** — single tokens like
+ * "Tokyo" AND multi-token phrases like "Red Sea", "Strait of Hormuz",
+ * "New York", "Abu Dhabi" all work. An earlier version tokenized on
+ * whitespace and only checked single tokens, which silently made
+ * ~30% of the gazetteer unreachable (bodies of water, regions,
+ * compound city names). That turned off the veto for a whole class
+ * of real headlines — hence the sliding-window greedy match below.
  *
- * Includes sentence-start tokens — news headlines front-load the
- * anchor entity ("Iran...", "Trump...") and we'd throw away the most
- * important signal by skipping position 0.
+ * Rules:
+ *   1. Tokenize on whitespace, strip surrounding punctuation.
+ *   2. Greedy match: at each position, try the longest multi-word
+ *      location phrase first, down to 2 tokens. A phrase matches
+ *      only when its first AND last tokens are capitalized (so
+ *      "the middle east" in lowercase prose doesn't match, but
+ *      "Middle East" in a headline does). Lowercase connectors
+ *      like "of" / "and" may appear between them.
+ *   3. If no multi-word match: fall back to single-token lookup.
+ *      Capitalized + not in COMMON_CAPITALIZED → Location if in
+ *      gazetteer, Actor otherwise.
+ *
+ * Sentence-start tokens are intentionally kept — news headlines
+ * front-load the anchor entity ("Iran...", "Trump...").
  *
  * @param {string} title
  * @returns {{ locations: string[], actors: string[] }}
@@ -38,23 +71,45 @@ export function extractEntities(title) {
   if (typeof title !== 'string' || title.length === 0) {
     return { locations: [], actors: [] };
   }
-  // Strip trailing punctuation so "Hormuz," doesn't diverge from "Hormuz".
-  const tokens = title
-    .split(/\s+/)
-    .map((t) => t.replace(/[.,;:!?"')\]]+$/g, '').replace(/^["'([]+/g, ''))
-    .filter(Boolean);
+  const tokens = title.split(/\s+/).map(cleanToken).filter(Boolean);
 
   const locations = new Set();
   const actors = new Set();
-  for (const tok of tokens) {
-    if (!/^[A-Z][a-zA-Z\-'.]{1,}$/.test(tok)) continue;
-    const lower = tok.toLowerCase();
-    if (COMMON_CAPITALIZED.has(lower)) continue;
-    if (LOCATION_GAZETTEER.has(lower)) {
-      locations.add(lower);
-    } else {
-      actors.add(lower);
+  let i = 0;
+  while (i < tokens.length) {
+    // Greedy longest-phrase scan for multi-word locations.
+    let matchedLen = 0;
+    const maxTry = Math.min(MAX_LOCATION_PHRASE_LEN, tokens.length - i);
+    for (let L = maxTry; L >= 2; L--) {
+      const first = tokens[i];
+      const last = tokens[i + L - 1];
+      if (!CAPITALIZED_TOKEN_RE.test(first) || !CAPITALIZED_TOKEN_RE.test(last)) {
+        continue;
+      }
+      const phrase = tokens.slice(i, i + L).join(' ').toLowerCase();
+      if (LOCATION_GAZETTEER.has(phrase)) {
+        locations.add(phrase);
+        matchedLen = L;
+        break;
+      }
     }
+    if (matchedLen > 0) {
+      i += matchedLen;
+      continue;
+    }
+    // Single-token classification.
+    const tok = tokens[i];
+    if (CAPITALIZED_TOKEN_RE.test(tok)) {
+      const lower = tok.toLowerCase();
+      if (!COMMON_CAPITALIZED.has(lower)) {
+        if (LOCATION_GAZETTEER.has(lower)) {
+          locations.add(lower);
+        } else {
+          actors.add(lower);
+        }
+      }
+    }
+    i += 1;
   }
   return {
     locations: [...locations],
