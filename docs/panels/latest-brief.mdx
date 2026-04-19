@@ -17,8 +17,8 @@ Panel id is `latest-brief`; canonical component is `src/components/LatestBriefPa
 
 ## How you reach it
 
-- **Default on most variants** — the panel is enabled out of the box in the full/geopolitical, tech, finance, and commodity variants.
 - **Cmd+K** — type *brief* (matches "Panel: Latest Brief" in the command palette).
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical**, **tech**, **finance**, and **commodity** variants (all of them as `premium: 'locked'`). Not present in the happy variant. Source: `FULL_PANELS`, `TECH_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` in `src/config/panels.ts`.
 
 Clicking **Read brief →** opens the full magazine-style reader in a new tab. Sharing the brief is a separate, explicit action — see [AI Brief Endpoints](/api-brief) for how share links are materialised.
 
