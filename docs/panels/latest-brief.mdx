@@ -32,7 +32,13 @@ The brief itself is composed by a Railway job from:
 - The intelligence, conflict, and markets caches
 - Per-reader personalisation if the user has configured preferences
 
-The composed result is stored at `brief:{userId}:{issueDate}` in Redis and read back on demand.
+**Redis key shape** (for anyone inspecting the feature from the backend):
+
+- The composer writes the envelope to `brief:{userId}:{issueSlot}` — where `issueSlot` is computed by `issueSlotInTz(nowMs, userTz)`, so two same-day compose runs in different time-of-day slots produce distinct keys.
+- A **latest pointer** is written atomically alongside: `brief:latest:{userId}` → `{ "issueSlot": "<slot>" }`. Readers (the dashboard panel, the share-URL endpoint) resolve the current brief by reading the pointer first, then fetching the slot-keyed envelope.
+- TTL is 7 days on both keys; if the pointer is absent, the reader treats the user as having no recent brief.
+
+Reference: `scripts/seed-digest-notifications.mjs` (writer) and `api/latest-brief.ts` (reader).
 
 ## Refresh cadence
 

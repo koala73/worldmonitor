@@ -11,10 +11,20 @@ A list of radiation observations with:
 
 - **Station reading** — the observed value and unit, with the baseline shown alongside.
 - **Delta** — how the current reading compares to the station's baseline (absolute and z-score).
-- **Status flags** — whether the observation is an anomaly, elevated, a spike, corroborated, low-confidence, or conflicting with nearby readings.
-- **Converted-from-CPM indicator** — readings that were originally in counts-per-minute are converted to the panel's display unit and tagged so you know the conversion happened.
+- **Per-row status badges** — each observation can surface inline badges for **confirmed** (corroborated across sources), **conflict** (disagreement with nearby readings), and **CPM-derived** (value was originally in counts-per-minute and was converted to the panel's display unit).
 
-A summary bar across the top of the panel counts: anomalies, elevated stations, spikes, corroborated anomalies, low-confidence readings, conflicts, and CPM-converted rows.
+A summary bar across the top of the panel renders six count cards:
+
+| Card | Backing field |
+|---|---|
+| Anomalies | `anomalyCount` |
+| Elevated | `elevatedCount` |
+| Confirmed | `corroboratedCount` |
+| Low Confidence | `lowConfidenceCount` |
+| Conflicts | `conflictingCount` |
+| Spikes | `spikeCount` |
+
+CPM-derived observations are surfaced per-row only (as a badge), not in the summary bar.
 
 **Row interactions**:
 - Click a row to jump the map to that station's coordinates (requires the map to be mounted in the current variant).

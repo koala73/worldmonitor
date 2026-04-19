@@ -19,10 +19,9 @@ Five tabs under a market + basket selector and a time-range control:
 
 Panel-level controls:
 
-- **Market selector** — switch between supported markets (default `AE`; the full list comes from `MARKETS` in `src/services/consumer-prices`).
-- **Basket selector** — per-market basket variants (default basket per market).
-- **Time range** — `7d`, `30d`, or `90d`.
-- **Category filter** — apply a category from the Categories tab to scope movers.
+- **Market bar** — a button per supported market (default `AE`; the full list comes from `MARKETS` in `src/services/consumer-prices`). Selecting a market implicitly sets the basket to that market's `essentials-<code>` variant (or the default basket when the `all` aggregate view is active) — there is no separate basket picker.
+- **Range bar** — `7d`, `30d`, or `90d`.
+- **Category filter** — click a category row on the **Categories** tab to scope the **Movers** tab to that category. A clear-filter affordance resets it.
 
 Settings persist across sessions in `localStorage` under `wm-consumer-prices-v1`.
 
