@@ -280,3 +280,41 @@ describe('brief magazine CSP override', () => {
     }
   });
 });
+
+// PR #3204: `vercel.json` is strict JSON (no comments allowed), so the
+// arch-assumption reasoning that would otherwise sit next to the
+// `includeFiles` entry lives here instead.
+//
+// Vercel Node serverless currently runs on Amazon Linux 2, x86_64,
+// glibc — so `@resvg/resvg-js/js-binding.js` resolves to
+// `@resvg/resvg-js-linux-x64-gnu` at cold start. Vercel's nft tracer
+// does NOT follow that conditional require, so the subpackage has to
+// be force-included via `functions.includeFiles`. If Vercel ever
+// migrates its Node pool to Graviton/arm64 (AWS Lambda supports it),
+// the correct subpackage becomes `@resvg/resvg-js-linux-arm64-gnu`
+// and the cold-start `MODULE_NOT_FOUND` crash silently returns with
+// no other signal. This block guards against both (a) the rule being
+// accidentally removed and (b) the glob drifting off the binding the
+// runtime actually loads.
+describe('brief carousel function native-binding bundling', () => {
+  const CAROUSEL_ROUTE = 'api/brief/carousel/[userId]/[issueDate]/[page].ts';
+  const EXPECTED_BINDING_GLOB = 'node_modules/@resvg/resvg-js-linux-x64-gnu/**';
+
+  it('forces the resvg linux-x64-gnu native binding into the carousel function bundle', () => {
+    const carouselFn = vercelConfig.functions?.[CAROUSEL_ROUTE];
+    assert.ok(
+      carouselFn,
+      `vercel.json functions.${CAROUSEL_ROUTE} entry is missing — without it, ` +
+        "Vercel nft doesn't trace @resvg/resvg-js's conditional require() and " +
+        'the function crashes at cold start with FUNCTION_INVOCATION_FAILED. ' +
+        'See PR #3204.',
+    );
+    assert.equal(
+      carouselFn.includeFiles,
+      EXPECTED_BINDING_GLOB,
+      'includeFiles must point at the Amazon Linux 2 x86_64 glibc binding that ' +
+        'Vercel Lambda actually requires at runtime. If Vercel migrates to ' +
+        'Graviton/arm64, update this glob to linux-arm64-gnu.',
+    );
+  });
+});
