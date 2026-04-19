@@ -260,6 +260,29 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'First-party non-OrbitControls touch error should reach Sentry');
   });
 
+  it('suppresses OrbitControls setPointerCapture NotFoundError when stack is bundle-only', () => {
+    const event = makeEvent(
+      "Failed to execute 'setPointerCapture' on 'Element': No active pointer with the given id is found.",
+      'NotFoundError',
+      [
+        { filename: '/assets/sentry-CRhtdLad.js', lineno: 15, function: 'HTMLCanvasElement.r' },
+        { filename: '/assets/main-rDi7PwxJ.js', lineno: 6757, function: 'xge._ge' },
+      ],
+    );
+    assert.equal(beforeSend(event), null, 'Bundle-only setPointerCapture race should be suppressed');
+  });
+
+  it('does NOT suppress setPointerCapture NotFoundError from source-mapped first-party frames', () => {
+    const event = makeEvent(
+      "Failed to execute 'setPointerCapture' on 'Element': No active pointer with the given id is found.",
+      'NotFoundError',
+      [
+        { filename: 'src/components/MyCanvas.ts', lineno: 42, function: 'MyCanvas.onPointerDown' },
+      ],
+    );
+    assert.ok(beforeSend(event) !== null, 'First-party setPointerCapture regression must reach Sentry');
+  });
+
   it('suppresses maplibre TypeError when all frames are maplibre', () => {
     const event = makeEvent('Cannot read properties of null', 'TypeError', [
       { filename: '/assets/maplibre-AbC123.js', lineno: 100, function: 'paint' },

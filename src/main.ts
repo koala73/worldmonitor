@@ -294,9 +294,13 @@ Sentry.init({
     }
     // Suppress Three.js OrbitControls pointer-capture race: pointerdown handler calls
     // setPointerCapture but the browser has already released the pointer (focus change,
-    // rapid re-tap). Message is unique to setPointerCapture; no first-party code uses it
-    // (WORLDMONITOR-NC).
-    if (excType === 'NotFoundError' && /setPointerCapture.*No active pointer with the given id/.test(msg)) return null;
+    // rapid re-tap). OrbitControls is bundled into main-*.js, so the generic hasFirstParty
+    // gate below would miss it; instead require absence of any source-mapped .ts/.tsx frame
+    // so a future first-party setPointerCapture regression still surfaces (WORLDMONITOR-NC).
+    if (excType === 'NotFoundError' && /setPointerCapture.*No active pointer with the given id/.test(msg)) {
+      const hasSourceMappedFrame = frames.some(f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? ''));
+      if (!hasSourceMappedFrame) return null;
+    }
     // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
     if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
     // Suppress Safari sortedTrackListForMenu native crash (value is generic "Type error", function name in stack)
