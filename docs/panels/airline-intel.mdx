@@ -40,7 +40,11 @@ All are backed by the **Aviation service** (`/api/aviation/v1/*`) — see the AP
 
 ## Refresh cadence
 
-Loaded per-tab on demand (`loadTab(tab)`) rather than a single bulk fetch. The `tracking` and `prices` tabs re-fetch on tab switch; cached tabs repaint from memory. No polling timer.
+Three distinct refresh paths in `src/components/AirlineIntelPanel.ts`:
+
+- **Auto-refresh timer** — the panel constructor sets a **5-minute `setInterval`** (`5 * 60_000`) that calls `refresh()`, which reloads the ops tab and the currently-active tab. Source: the constructor around line 173 (`setInterval(() => void this.refresh(), 5 * 60_000)`).
+- **Tab switch** — switching to `ops`, `flights`, `airlines`, `tracking`, or `news` triggers `loadTab(tab)` only when that tab's cache is empty. Repeated switches to an already-loaded tab repaint from memory without a refetch.
+- **Prices tab — explicit fetch only** — the `prices` tab is deliberately excluded from both the tab-switch and auto-refresh paths. Prices load **only on an explicit search-button click** (the `refresh()` helper skips prices with `if (this.activeTab !== 'prices') void this.loadTab(this.activeTab)` around line 291; the tab-switch guard is commented `prices tab: never auto-fetch — only on explicit search button click` around line 287).
 
 ## Tier & gating
 
