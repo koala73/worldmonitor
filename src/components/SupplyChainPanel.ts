@@ -240,8 +240,12 @@ export class SupplyChainPanel extends Panel {
     }
 
     // Re-insert scenario banner after setContent replaces inner content.
+    // Use the private renderScenarioBanner() — NOT showScenarioSummary() —
+    // so this render() call doesn't recurse. showScenarioSummary() is the
+    // public activate entrypoint that triggers render(); the banner DOM
+    // itself is built here from activeScenarioState.
     if (this.activeScenarioState) {
-      this.showScenarioSummary(this.activeScenarioState.scenarioId, this.activeScenarioState.result);
+      this.renderScenarioBanner();
     }
   }
 
@@ -701,8 +705,27 @@ export class SupplyChainPanel extends Panel {
 
   // ─── Scenario banner ─────────────────────────────────────────────────────────
 
+  /**
+   * Activate a scenario: set state and trigger a full re-render. Re-rendering
+   * is required so renderChokepoints() sees the new activeScenarioState and
+   * paints the projected score + red border on affected chokepoint cards —
+   * prior code only mutated the banner DOM, leaving cards stale until an
+   * unrelated update forced a re-render.
+   */
   public showScenarioSummary(scenarioId: string, result: ScenarioResult): void {
     this.activeScenarioState = { scenarioId, result };
+    this.render();
+  }
+
+  /**
+   * Build the banner DOM from activeScenarioState and prepend it. Called
+   * from render() after setContent() wipes inner HTML. Kept private so no
+   * caller mutates banner-only state without triggering a full re-render.
+   */
+  private renderScenarioBanner(): void {
+    const state = this.activeScenarioState;
+    if (!state) return;
+    const { scenarioId, result } = state;
     this.content.querySelector('.sc-scenario-banner')?.remove();
     const top5 = result.topImpactCountries.slice(0, 5);
     // impactPct is already a 0–100 integer from the scenario-worker
@@ -747,13 +770,16 @@ export class SupplyChainPanel extends Panel {
     this.content.prepend(banner);
   }
 
+  /**
+   * Dismiss the active scenario: clear state and trigger a full re-render.
+   * Re-rendering strips the projected score / red border / callout from
+   * affected chokepoint cards, and the fresh card template resets the
+   * Simulate Closure button text by construction — no manual button loop
+   * needed.
+   */
   public hideScenarioSummary(): void {
     this.activeScenarioState = null;
-    this.content.querySelector('.sc-scenario-banner')?.remove();
-    this.content.querySelectorAll<HTMLButtonElement>('.sc-scenario-btn').forEach(btn => {
-      btn.disabled = false;
-      btn.textContent = 'Simulate Closure';
-    });
+    this.render();
   }
 
   public setOnDismissScenario(cb: () => void): void {
