@@ -132,10 +132,22 @@ export interface ScenarioVisualState {
 }
 
 /**
- * Subset of the scenario worker result consumed by the map layer.
+ * Subset of the scenario worker result consumed by the map layer and panel UI.
  * Full result shape lives in the scenario worker (scenario-worker.mjs).
+ *
+ * Fields beyond the map-level minimum (template, currentDisruptionScores) are
+ * optional to keep backward-compat with any consumer that only cares about
+ * chokepoint IDs + country impacts.
  */
 export interface ScenarioResult {
   affectedChokepointIds: string[];
   topImpactCountries: Array<{ iso2: string; totalImpact: number; impactPct: number }>;
+  template?: {
+    name: string;
+    disruptionPct: number;
+    durationDays: number;
+    costShockMultiplier: number;
+  };
+  /** Map of chokepointId → its pre-scenario disruptionScore (0–100). */
+  currentDisruptionScores?: Record<string, number | null>;
 }
