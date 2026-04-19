@@ -697,26 +697,25 @@ export default async function handler(req, ctx) {
       problems: problemKeys,
     };
     // Dedupe: only LPUSH when the incident signature (status + problem set,
-    // excluding seedAgeMin) changes. Uses SET ... GET (Redis 6.2+) to
-    // atomically swap the sig and return the previous value.
+    // excluding seedAgeMin) changes. Read the previous sig first, then write
+    // everything (last-failure + sig + LPUSH) in one atomic pipeline so the
+    // sig only advances when the LPUSH succeeds. If the pipeline fails, the
+    // sig stays stale and the next poll retries the append.
     const sig = `${overall}|${sigKeys.join(',')}`;
+    const prevSigResult = await redisPipeline([['GET', 'health:failure-log-sig']], 4_000).catch(() => null);
+    const prevSig = prevSigResult?.[0]?.result ?? '';
     const persistCmds = [
       ['SET', 'health:last-failure', JSON.stringify(snapshot), 'EX', 86400],
-      ['SET', 'health:failure-log-sig', sig, 'EX', 86400, 'GET'],
     ];
-    const sigResults = await redisPipeline(persistCmds, 4_000).catch(() => null);
-    const prevSig = sigResults?.[1]?.result ?? '';
-    const logCmds = [];
     if (sig !== prevSig) {
-      logCmds.push(
+      persistCmds.push(
         ['LPUSH', 'health:failure-log', JSON.stringify(snapshot)],
         ['LTRIM', 'health:failure-log', 0, 49],
         ['EXPIRE', 'health:failure-log', 86400 * 7],
+        ['SET', 'health:failure-log-sig', sig, 'EX', 86400],
       );
     }
-    const persist = logCmds.length > 0
-      ? redisPipeline(logCmds, 4_000).catch(() => {})
-      : Promise.resolve();
+    const persist = redisPipeline(persistCmds, 4_000).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(persist);
   } else {
     // Clear the sig on recovery so a recurrence of the same problem set
