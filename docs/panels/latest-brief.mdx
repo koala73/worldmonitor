@@ -37,9 +37,10 @@ The composed result is stored at `brief:{userId}:{issueDate}` in Redis and read 
 ## Refresh cadence
 
 - **Composer**: one run per eligible user per day (Railway cron).
-- **Panel**: reads on panel load, and re-reads on user-visible refresh triggers; no polling timer.
+- **Panel — ready state**: reads on panel load; subsequent reads happen only on user-visible refresh triggers. No polling timer while the brief is already displayed.
+- **Panel — composing state**: schedules a 60-second re-poll (`COMPOSING_POLL_MS = 60_000` in `src/components/LatestBriefPanel.ts`) so the panel transitions from `composing` to `ready` on the next composer tick without requiring a full page reload. The poll timer is cleared when the panel leaves the composing state.
 
-The brief is explicitly a *daily* product — if the composer has not produced today's brief yet, the panel shows `composing` rather than yesterday's content.
+The brief is explicitly a *daily* product — if the composer has not produced today's brief yet, the panel shows `composing` rather than yesterday's content, and auto-promotes to `ready` once the composer writes today's payload.
 
 ## Tier & gating
 
