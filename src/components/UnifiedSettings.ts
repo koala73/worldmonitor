@@ -11,7 +11,7 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
-import { isEntitled, hasFeature } from '@/services/entitlements';
+import { isEntitled, hasFeature, onEntitlementChange } from '@/services/entitlements';
 import { getSubscription, openBillingPortal } from '@/services/billing';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 
@@ -61,6 +61,7 @@ export class UnifiedSettings {
   private apiKeysLoading = false;
   private apiKeysError = '';
   private newlyCreatedKey: string | null = null;
+  private unsubscribeEntitlement: (() => void) | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -220,6 +221,22 @@ export class UnifiedSettings {
     localStorage.setItem('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
     track('settings-open', { tab: tab ?? 'default' });
+
+    // Re-render API Keys panel when entitlements arrive (cold-load race:
+    // hasFeature('apiAccess') returns false until the Convex subscription
+    // delivers data, so a paid API Starter user sees the upgrade CTA briefly).
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = onEntitlementChange(() => {
+      const panel = this.overlay.querySelector<HTMLElement>('[data-panel-id="api-keys"]');
+      if (panel) {
+        panel.innerHTML = this.renderApiKeysContent();
+        // Re-attach CTA and input handlers for the refreshed content
+        this.attachApiKeysHandlers();
+        if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
+          void this.loadApiKeys();
+        }
+      }
+    });
   }
 
   public close(): void {
@@ -230,6 +247,8 @@ export class UnifiedSettings {
     this.notifCleanup?.();
     this.notifCleanup = null;
     this.pendingNotifs = null;
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = null;
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -257,6 +276,8 @@ export class UnifiedSettings {
     this.notifCleanup?.();
     this.notifCleanup = null;
     this.pendingNotifs = null;
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = null;
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
   }
@@ -361,30 +382,7 @@ export class UnifiedSettings {
     this.renderSourcesGrid();
     this.updateSourcesCounter();
 
-    // API keys: Enter to submit (only exists when PRO user sees full UI)
-    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
-    if (apiKeyInput) {
-      apiKeyInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') void this.handleCreateApiKey();
-      });
-    }
-
-    // API keys gate CTA click
-    const gateBtn = this.overlay.querySelector<HTMLElement>('.api-keys-gate-btn');
-    if (gateBtn) {
-      gateBtn.addEventListener('click', () => {
-        if (!getAuthState().user) {
-          this.close();
-          import('@/services/clerk').then(m => m.openSignIn()).catch(() => {});
-        } else {
-          this.close();
-          import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DODO_PRODUCTS.API_STARTER_MONTHLY))).catch(() => {
-            window.open('https://worldmonitor.app/pro', '_blank');
-          });
-        }
-      });
-    }
-
+    this.attachApiKeysHandlers();
     if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadApiKeys();
     }
@@ -723,6 +721,32 @@ export class UnifiedSettings {
   // ---------------------------------------------------------------------------
   // API Keys tab
   // ---------------------------------------------------------------------------
+
+  private attachApiKeysHandlers(): void {
+    // Enter to submit (only exists when entitled user sees full UI)
+    const apiKeyInput = this.overlay.querySelector<HTMLInputElement>('.api-keys-name-input');
+    if (apiKeyInput) {
+      apiKeyInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') void this.handleCreateApiKey();
+      });
+    }
+
+    // Gate CTA click (sign-in for anonymous, checkout for free)
+    const gateBtn = this.overlay.querySelector<HTMLElement>('.api-keys-gate-btn');
+    if (gateBtn) {
+      gateBtn.addEventListener('click', () => {
+        if (!getAuthState().user) {
+          this.close();
+          import('@/services/clerk').then(m => m.openSignIn()).catch(() => {});
+        } else {
+          this.close();
+          import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DODO_PRODUCTS.API_STARTER_MONTHLY))).catch(() => {
+            window.open('https://worldmonitor.app/pro', '_blank');
+          });
+        }
+      });
+    }
+  }
 
   private renderApiKeysContent(): string {
     const authState = getAuthState();
