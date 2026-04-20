@@ -35,8 +35,8 @@ async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
   const { Clerk: C } = await import('@clerk/clerk-js/no-rhc');
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
-  clerk = new C(key);
-  await clerk.load({
+  const instance = new C(key);
+  await instance.load({
     appearance: {
       variables: {
         colorBackground: '#0f0f0f',
@@ -59,6 +59,11 @@ async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
       },
     },
   });
+
+  // Only publish the instance after load() succeeds, so a failed load
+  // doesn't wedge ensureClerk()'s `if (clerk) return clerk;` short-circuit
+  // and bypass the retry path.
+  clerk = instance;
 
   // Auto-resume checkout after sign-in
   clerk.addListener(() => {
