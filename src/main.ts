@@ -8,6 +8,17 @@ import { installUtmInterceptor } from './utils/utm';
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 
+// Known third-party hosts fetched by MapLibre (tiles, styles, glyphs, sprites).
+// Used by the beforeSend `Failed to fetch (<host>)` filter to avoid suppressing
+// failures from our self-hosted R2 PMTiles bucket or any api.worldmonitor.app
+// fetches that happen to land on a maplibre-framed stack.
+const MAPLIBRE_THIRD_PARTY_TILE_HOSTS = new Set([
+  'tilecache.rainviewer.com',
+  'basemaps.cartocdn.com',
+  'tiles.openfreemap.org',
+  'protomaps.github.io',
+]);
+
 // Initialize Sentry error tracking (early as possible)
 Sentry.init({
   dsn: sentryDsn || undefined,
@@ -276,14 +287,17 @@ Sentry.init({
     if ((excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg)) && frames.length > 0) {
       if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress MapLibre AJAXError for raster tile fetches: maplibre wraps transient network
-    // errors as `Failed to fetch (<hostname>)` and rethrows in a Generator-backed Promise
-    // that leaks to onunhandledrejection even though DeckGLMap's map-error handler already
-    // logs it as a warning. Our own fetch code throws plain `Failed to fetch` (no paren
-    // suffix); the `(hostname)` format is maplibre-specific, and requiring a maplibre
-    // vendor frame guards against hiding first-party regressions (WORLDMONITOR-NE/NF).
-    if (excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg)
-        && frames.some(f => /\/maplibre-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
+    // Suppress MapLibre AJAXError for third-party tile fetches: maplibre wraps transient
+    // network errors as `Failed to fetch (<hostname>)` and rethrows in a Generator-backed
+    // Promise that leaks to onunhandledrejection even though DeckGLMap's map-error handler
+    // already logs it as a warning. Allowlist KNOWN third-party tile/style/glyph hosts —
+    // leaves first-party fetch failures (self-hosted R2 PMTiles bucket, api.worldmonitor.app)
+    // to surface so a real basemap regression is never silently dropped (WORLDMONITOR-NE/NF).
+    if (excType === 'TypeError' && frames.some(f => /\/maplibre-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) {
+      const hostMatch = msg.match(/^Failed to fetch \(([^)]+)\)$/);
+      const host = hostMatch?.[1];
+      if (host && MAPLIBRE_THIRD_PARTY_TILE_HOSTS.has(host)) return null;
+    }
     // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
     // __globeObjType is exclusively set by three-globe on its own objects and we have no user onClick/onHover handler, so it is always globe.gl internal even when the stack shows the bundled main chunk (WORLDMONITOR-ME).
     if (/reading '__globeObjType'|__globeObjType/.test(msg)) return null;

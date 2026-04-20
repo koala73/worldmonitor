@@ -29,9 +29,14 @@ const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
   .replace(/as\s+\w+(\[\])?/g, '')        // type assertions
   .replace(/<[A-Z]\w*>/g, '');            // generic type params
 
+// Extract the MAPLIBRE_THIRD_PARTY_TILE_HOSTS Set so the test harness can evaluate
+// beforeSend with the same allowlist the real module has.
+const tpMatch = mainSrc.match(/const MAPLIBRE_THIRD_PARTY_TILE_HOSTS = new Set\(\[[^\]]*\]\);/);
+assert.ok(tpMatch, 'MAPLIBRE_THIRD_PARTY_TILE_HOSTS must be defined in src/main.ts');
+
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
-const beforeSend = new Function('event', fnBody);
+const beforeSend = new Function('event', `${tpMatch[0]}\n${fnBody}`);
 
 /** Helper to build a minimal Sentry event. */
 function makeEvent(value, type = 'Error', frames = []) {
@@ -325,6 +330,19 @@ describe('existing beforeSend filters', () => {
       { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
     ]);
     assert.ok(beforeSend(event) !== null, 'Non-maplibre Failed-to-fetch must reach Sentry');
+  });
+
+  it('does NOT suppress MapLibre AJAXError for a non-allowlisted host (e.g. self-hosted R2 PMTiles bucket)', () => {
+    // Real basemap regression on our self-hosted R2 bucket must surface. Stack mirrors
+    // WORLDMONITOR-NE/NF (mixed maplibre + first-party fetch wrapper) so the pre-existing
+    // "all frames are maplibre internals" filter doesn't apply, and the allowlist gate
+    // must be what decides. Only the allowlisted third-party tile hosts (rainviewer,
+    // cartocdn, openfreemap, protomaps.github.io) should be suppressed.
+    const event = makeEvent('Failed to fetch (pmtiles.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/maplibre-A8Ca0ysS.js', lineno: 4, function: 'ajaxFetch' },
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 24, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'Self-hosted tile fetch failure must reach Sentry');
   });
 
   it('does NOT suppress setPointerCapture NotFoundError when no frame context is present', () => {
