@@ -304,6 +304,21 @@ async function buildDigest(rule, windowStartMs) {
         `of ${dedupedAll.length} clusters (DIGEST_SCORE_MIN=${scoreFloor})`,
     );
   }
+  // If the floor drained every cluster, return null with a distinct
+  // log line so operators can tell "floor too high" apart from "no
+  // stories in window" (the caller treats both as a skip but the
+  // root causes are different — without this line the main-loop
+  // "No stories in window" message never fires because [] is truthy
+  // and silences the diagnostic at the caller's guard).
+  if (deduped.length === 0) {
+    if (scoreFloor > 0 && dedupedAll.length > 0) {
+      console.log(
+        `[digest] score floor dropped ALL ${dedupedAll.length} clusters ` +
+          `(DIGEST_SCORE_MIN=${scoreFloor}) — skipping user`,
+      );
+    }
+    return null;
+  }
   const top = deduped.slice(0, DIGEST_MAX_ITEMS);
 
   const allSourceCmds = [];

@@ -80,4 +80,25 @@ describe('DIGEST_SCORE_MIN env floor', () => {
       'log fragment with the scoreFloor value must be present',
     );
   });
+
+  it('returns null when floor drains every cluster (caller skips cleanly)', () => {
+    // Greptile P2 regression: if buildDigest returned [] rather than
+    // null when the floor emptied the list, the caller's `if (!stories)`
+    // guard (which checks falsiness, so [] slips through) would stop
+    // logging the canonical "No stories in window" line, and the
+    // only skip-signal would be a swallowed formatDigest=>null at the
+    // `!storyListPlain` check. Contract is: empty-after-floor returns
+    // null so the caller takes the same path as pre-dedup-empty.
+    assert.match(src, /if\s*\(\s*deduped\.length\s*===\s*0\s*\)\s*\{/);
+    // A distinct log line fires BEFORE the return so operators can
+    // tell "floor too high" apart from "no news today".
+    assert.ok(
+      src.includes('score floor dropped ALL'),
+      'distinct "dropped ALL" log line must fire when the floor drains everything',
+    );
+    assert.ok(
+      src.includes('skipping user'),
+      'log line must mention the user is being skipped',
+    );
+  });
 });
