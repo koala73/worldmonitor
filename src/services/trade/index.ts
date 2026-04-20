@@ -4,6 +4,7 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
 import {
   TradeServiceClient,
   type GetTradeRestrictionsResponse,
@@ -35,7 +36,9 @@ export type {
   ListComtradeFlowsResponse,
 };
 
-const client = new TradeServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+// get-tariff-trends + list-comtrade-flows are premium-gated; the rest fall
+// through premiumFetch unauthenticated without penalty.
+const client = new TradeServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const restrictionsBreaker = createCircuitBreaker<GetTradeRestrictionsResponse>({ name: 'WTO Restrictions', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const tariffsBreaker = createCircuitBreaker<GetTariffTrendsResponse>({ name: 'WTO Tariffs', cacheTtlMs: 30 * 60 * 1000, persistCache: true });

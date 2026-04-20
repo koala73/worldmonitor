@@ -1,5 +1,6 @@
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
 import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
 import type {
@@ -581,10 +582,12 @@ export class CountryIntelManager implements AppModule {
 
   private fetchProSections(code: string): void {
     const rpcBase = getRpcBaseUrl();
-    const fetchFn = (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args);
-    const economicClient = new EconomicServiceClient(rpcBase, { fetch: fetchFn });
-    const intelClientPro = new IntelligenceServiceClient(rpcBase, { fetch: fetchFn });
-    const tradeClient = new TradeServiceClient(rpcBase, { fetch: fetchFn });
+    // Pro-section endpoints (national-debt, regional briefs, comtrade flows)
+    // are premium-gated — premiumFetch injects the Clerk bearer / API key so
+    // signed-in pro users actually get data instead of 401.
+    const economicClient = new EconomicServiceClient(rpcBase, { fetch: premiumFetch });
+    const intelClientPro = new IntelligenceServiceClient(rpcBase, { fetch: premiumFetch });
+    const tradeClient = new TradeServiceClient(rpcBase, { fetch: premiumFetch });
     const iso3 = iso2ToIso3(code);
 
     economicClient.getNationalDebt({}).then(resp => {

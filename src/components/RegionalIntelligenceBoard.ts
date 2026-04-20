@@ -1,14 +1,16 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml, buildRegimeHistoryBlock, buildWeeklyBriefBlock, isLatestSequence } from './regional-intelligence-board-utils';
 
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), {
-  fetch: (...args) => globalThis.fetch(...args),
-});
+// get-regional-snapshot + get-regime-history + get-regional-brief are
+// premium-gated. Plain globalThis.fetch skips Clerk/tester/api-key injection
+// and returns 401 for pro users — premiumFetch is the correct fetcher here.
+const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 /**
  * RegionalIntelligenceBoard — premium panel rendering a canonical
