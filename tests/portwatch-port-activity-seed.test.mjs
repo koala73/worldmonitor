@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -64,9 +64,28 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /where:\s*`date\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
   });
 
-  it('defines fetchAllActivityRows that groups rows by ISO3 in memory', () => {
-    assert.match(src, /async function fetchAllActivityRows/);
-    assert.match(src, /byIso3\.set\(key,\s*list\)/);
+  it('streams EP3 into per-port accumulators, not a flat rows array', () => {
+    // Review feedback on PR #3225: materialising the full 90d activity
+    // dataset as Map<iso3, Feature[]> holds ~180k feature objects at once
+    // (~70MB) on a 1GB Railway container. The aggregator now folds each
+    // page into Map<iso3, Map<portId, PortAccum>> (~200KB) and discards
+    // the rows. Assert both the rename and the accumulator shape.
+    assert.match(src, /async function fetchAndAggregateActivity/);
+    assert.doesNotMatch(src, /async function fetchAllActivityRows/);
+    // Accumulator fields (at least the key ones we rely on downstream).
+    assert.match(src, /last30_calls:\s*0/);
+    assert.match(src, /last30_count:\s*0/);
+    assert.match(src, /prev30_calls:\s*0/);
+    assert.match(src, /last7_calls:\s*0/);
+    // No more flat rows array collected per country.
+    assert.doesNotMatch(src, /byIso3\.set\(key,\s*list\)/);
+  });
+
+  it('finalisePortsForCountry emits top-N ports from accumulators', () => {
+    assert.match(src, /function finalisePortsForCountry\(portAccumMap,\s*refMap\)/);
+    assert.match(src, /MAX_PORTS_PER_COUNTRY/);
+    // Same anomaly/trend formula as the old per-row code.
+    assert.match(src, /avg7d\s*<\s*avg30d\s*\*\s*0\.5/);
   });
 
   it('registers SIGTERM handler for graceful shutdown', () => {
@@ -89,9 +108,9 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /progress\.stage\s*=\s*'compute'/);
   });
 
-  it('fetchAllActivityRows updates progress.pages + progress.countries', () => {
+  it('fetchAndAggregateActivity updates progress.pages + progress.countries', () => {
     assert.match(src, /progress\.pages\s*=\s*page/);
-    assert.match(src, /progress\.countries\s*=\s*byIso3\.size/);
+    assert.match(src, /progress\.countries\s*=\s*accumByIso3\.size/);
   });
 
   it('fetchWithTimeout combines caller signal with FETCH_TIMEOUT via AbortSignal.any', () => {
@@ -100,7 +119,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /AbortSignal\.any\(\[signal,\s*AbortSignal\.timeout\(FETCH_TIMEOUT\)\]\)/);
   });
 
-  it('fetchAllActivityRows checks signal.aborted between pages', () => {
+  it('fetchAndAggregateActivity checks signal.aborted between pages', () => {
     assert.match(src, /signal\?\.aborted\)\s*throw\s+signal\.reason/);
   });
 
@@ -273,6 +292,90 @@ describe('top-N port truncation', () => {
     assert.equal(result[0].portId, 'b');
     assert.equal(result[1].portId, 'c');
     assert.equal(result[2].portId, 'a');
+  });
+});
+
+describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
+  // eslint-disable-next-line import/first
+  let finalisePortsForCountry;
+  before(async () => {
+    ({ finalisePortsForCountry } = await import('../scripts/seed-portwatch-port-activity.mjs'));
+  });
+
+  it('emits tankerCalls30d / trendDelta / anomalySignal that match the old per-row formula', () => {
+    // Accum equivalent of: last30 has 30 rows × 60 calls, prev30 has 30 × 40,
+    // last7 has 7 rows × 20 calls (subset of last30 — but note that the
+    // streaming aggregator increments last30 AND last7 on the same row for
+    // dates ≤ 7d, so last7_calls should be <= last30_calls).
+    const portAccumMap = new Map([
+      ['42', {
+        portname: 'Test Port',
+        last30_calls: 60 * 23 + 20 * 7, // 23 rows in 8-30d window + 7 rows in 0-7d window
+        last30_count: 30,
+        last30_import: 1000,
+        last30_export: 500,
+        prev30_calls: 40 * 30,
+        last7_calls: 20 * 7,
+        last7_count: 7,
+      }],
+    ]);
+    const refMap = new Map([['42', { lat: 10, lon: 20 }]]);
+    const [port] = finalisePortsForCountry(portAccumMap, refMap);
+
+    assert.equal(port.portId, '42');
+    assert.equal(port.portName, 'Test Port');
+    assert.equal(port.lat, 10);
+    assert.equal(port.lon, 20);
+    assert.equal(port.tankerCalls30d, 60 * 23 + 20 * 7);
+    assert.equal(port.importTankerDwt30d, 1000);
+    assert.equal(port.exportTankerDwt30d, 500);
+    // trendDelta = ((last30 - prev30) / prev30) * 100, rounded to 1 decimal
+    const expectedTrend = Math.round(((60 * 23 + 20 * 7 - 40 * 30) / (40 * 30)) * 1000) / 10;
+    assert.equal(port.trendDelta, expectedTrend);
+    // avg30d = last30_calls / last30_count; avg7d = last7_calls / last7_count
+    // (60*23 + 20*7) / 30 = (1380+140)/30 = 50.67; last7 avg = 140/7 = 20
+    // 20 < 50.67 * 0.5 = 25.33 → anomaly = true
+    assert.equal(port.anomalySignal, true);
+  });
+
+  it('returns trendDelta=0 when prev30_calls is zero (no baseline)', () => {
+    const portAccumMap = new Map([
+      ['1', {
+        portname: 'P', last30_calls: 100, last30_count: 30,
+        last30_import: 0, last30_export: 0,
+        prev30_calls: 0, // no prior-period baseline
+        // last7 matches last30 rate → no anomaly
+        last7_calls: Math.round((100 / 30) * 7),
+        last7_count: 7,
+      }],
+    ]);
+    const [port] = finalisePortsForCountry(portAccumMap, new Map());
+    assert.equal(port.trendDelta, 0);
+    assert.equal(port.anomalySignal, false);
+  });
+
+  it('sorts by tankerCalls30d desc and truncates to MAX_PORTS_PER_COUNTRY=50', () => {
+    const portAccumMap = new Map();
+    for (let i = 0; i < 60; i++) {
+      portAccumMap.set(String(i), {
+        portname: `P${i}`, last30_calls: 60 - i, last30_count: 1,
+        last30_import: 0, last30_export: 0, prev30_calls: 0,
+        last7_calls: 0, last7_count: 0,
+      });
+    }
+    const out = finalisePortsForCountry(portAccumMap, new Map());
+    assert.equal(out.length, 50);
+    assert.equal(out[0].tankerCalls30d, 60);
+    assert.equal(out[49].tankerCalls30d, 11);
+  });
+
+  it('falls back to lat/lon=0 when a portId is missing from refMap', () => {
+    const portAccumMap = new Map([
+      ['999', { portname: 'Orphan', last30_calls: 1, last30_count: 1, last30_import: 0, last30_export: 0, prev30_calls: 0, last7_calls: 0, last7_count: 0 }],
+    ]);
+    const [port] = finalisePortsForCountry(portAccumMap, new Map());
+    assert.equal(port.lat, 0);
+    assert.equal(port.lon, 0);
   });
 });
 

@@ -118,22 +118,36 @@ async function fetchAllPortRefs() {
   return byIso3;
 }
 
-// Fetch ALL activity rows globally in one paginated pass, grouped by ISO3.
+// Stream-aggregate ALL activity rows into per-port running counters.
 // Replaces 174× per-country WHERE=ISO3 round-trips (which hit ~90s each at
 // concurrency 12, far exceeding the 420s section budget even when none of
 // them hung) with a single sequential loop of ~150-200 pages that completes
 // comfortably inside the section budget. Also eliminates the `Invalid query
 // parameters` errors we saw in prod for BRA/IDN/NGA on the per-country
-// filter: the global WHERE does not involve an ISO3 equality on the feature
-// server, so those failure modes disappear.
+// filter: the global WHERE has no ISO3 equality, so those failure modes
+// disappear.
 //
-// Returns Map<iso3, Feature[]>. Aborts between pages when signal.aborted.
-async function fetchAllActivityRows(since, { signal, progress } = {}) {
-  const byIso3 = new Map();
+// Memory: each page's features are folded into Map<iso3, Map<portId, Accum>>
+// and discarded. We never materialise the full 180k+ rows at once; only
+// ~2000 accumulators (≈100 bytes each = ~200KB) live across pages. Review
+// feedback on PR #3225 flagged the prior shape (Map<iso3, Feature[]>) as an
+// OOM risk on the 1GB Railway container — this addresses it.
+//
+// Returns Map<iso3, Map<portId, PortAccum>>. Aborts between pages when
+// signal.aborted is set.
+async function fetchAndAggregateActivity(since, { signal, progress } = {}) {
+  const now = Date.now();
+  const cutoff30 = now - 30 * 86400000;
+  const cutoff60 = now - 60 * 86400000;
+  const cutoff7 = now - 7 * 86400000;
+
+  const accumByIso3 = new Map();
   let offset = 0;
   let body;
   let page = 0;
   const t0 = Date.now();
+  let totalRows = 0;
+
   do {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const params = new URLSearchParams({
@@ -148,88 +162,89 @@ async function fetchAllActivityRows(since, { signal, progress } = {}) {
     body = await fetchWithTimeout(`${EP3_BASE}?${params}`, { signal });
     const features = body.features ?? [];
     for (const f of features) {
-      const iso3 = f.attributes?.ISO3;
-      if (!iso3) continue;
-      const key = String(iso3);
-      let list = byIso3.get(key);
-      if (!list) { list = []; byIso3.set(key, list); }
-      list.push(f);
+      const a = f.attributes;
+      if (!a || a.portid == null || !a.ISO3 || a.date == null) continue;
+      const iso3 = String(a.ISO3);
+      const portId = String(a.portid);
+      // ArcGIS changed date field to esriFieldTypeDateOnly — returns ISO
+      // string "YYYY-MM-DD", not epoch ms. Same parse as the prior per-row
+      // code, just done inline here so we can fold without keeping the row.
+      const date = typeof a.date === 'number' ? a.date : Date.parse(a.date + 'T12:00:00Z');
+      const calls = Number(a.portcalls_tanker ?? 0);
+      const imports = Number(a.import_tanker ?? 0);
+      const exports_ = Number(a.export_tanker ?? 0);
+
+      let countryMap = accumByIso3.get(iso3);
+      if (!countryMap) { countryMap = new Map(); accumByIso3.set(iso3, countryMap); }
+
+      let acc = countryMap.get(portId);
+      if (!acc) {
+        // First time we see this port — capture its name. Rows arrive in
+        // (portid ASC, date ASC) order, so this matches the old behaviour
+        // where `rows[0].portname` was the earliest row's portname.
+        acc = {
+          portname: String(a.portname || ''),
+          last30_calls: 0, last30_count: 0, last30_import: 0, last30_export: 0,
+          prev30_calls: 0,
+          last7_calls: 0, last7_count: 0,
+        };
+        countryMap.set(portId, acc);
+      }
+
+      if (date >= cutoff30) {
+        acc.last30_calls += calls;
+        acc.last30_count += 1;
+        acc.last30_import += imports;
+        acc.last30_export += exports_;
+        if (date >= cutoff7) {
+          acc.last7_calls += calls;
+          acc.last7_count += 1;
+        }
+      } else if (date >= cutoff60) {
+        acc.prev30_calls += calls;
+      }
     }
     page++;
+    totalRows += features.length;
     if (progress) {
       progress.pages = page;
-      progress.countries = byIso3.size;
+      progress.countries = accumByIso3.size;
     }
     if (page === 1 || page % ACTIVITY_LOG_EVERY === 0) {
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      console.log(`  [port-activity]   activity page ${page}: +${features.length} rows (${byIso3.size} countries, ${elapsed}s)`);
+      console.log(`  [port-activity]   activity page ${page}: +${features.length} rows (${accumByIso3.size} countries, ${totalRows} total rows, ${elapsed}s)`);
     }
     if (features.length === 0) break;
     offset += features.length;
   } while (body.exceededTransferLimit);
-  console.log(`  [port-activity] Activity rows loaded: ${page} pages across ${byIso3.size} countries (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
-  return byIso3;
+  console.log(`  [port-activity] Activity folded: ${page} pages, ${totalRows} rows, ${accumByIso3.size} countries (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  return accumByIso3;
 }
 
-function computeCountryPorts(rawRows, refMap) {
-  const now = Date.now();
-  const cutoff30 = now - 30 * 86400000;
-  const cutoff60 = now - 60 * 86400000;
-  const cutoff7 = now - 7 * 86400000;
-
-  const portGroups = new Map();
-  for (const f of rawRows) {
-    const a = f.attributes;
-    if (a?.portid == null || a?.date == null) continue;
-    const portId = String(a.portid);
-    if (!portGroups.has(portId)) portGroups.set(portId, []);
-    portGroups.get(portId).push({
-      // ArcGIS changed date field to esriFieldTypeDateOnly — returns ISO string "YYYY-MM-DD", not epoch ms
-      date: typeof a.date === 'number' ? a.date : Date.parse(a.date + 'T12:00:00Z'),
-      portname: String(a.portname || ''),
-      portcalls_tanker: Number(a.portcalls_tanker ?? 0),
-      import_tanker: Number(a.import_tanker ?? 0),
-      export_tanker: Number(a.export_tanker ?? 0),
-    });
-  }
-
+export function finalisePortsForCountry(portAccumMap, refMap) {
   const ports = [];
-  for (const [portId, rows] of portGroups) {
-    const last30 = rows.filter(r => r.date >= cutoff30);
-    const prev30 = rows.filter(r => r.date >= cutoff60 && r.date < cutoff30);
-    const last7 = rows.filter(r => r.date >= cutoff7);
-
-    const tankerCalls30d = last30.reduce((s, r) => s + r.portcalls_tanker, 0);
-    const tankerCalls30dPrev = prev30.reduce((s, r) => s + r.portcalls_tanker, 0);
-    const importTankerDwt30d = last30.reduce((s, r) => s + r.import_tanker, 0);
-    const exportTankerDwt30d = last30.reduce((s, r) => s + r.export_tanker, 0);
-
-    const avg30d = last30.length > 0 ? tankerCalls30d / last30.length : 0;
-    const avg7d = last7.length > 0 ? last7.reduce((s, r) => s + r.portcalls_tanker, 0) / last7.length : 0;
+  for (const [portId, a] of portAccumMap) {
+    const avg30d = a.last30_count > 0 ? a.last30_calls / a.last30_count : 0;
+    const avg7d = a.last7_count > 0 ? a.last7_calls / a.last7_count : 0;
     const anomalySignal = avg30d > 0 && avg7d < avg30d * 0.5;
-
-    const trendDelta = tankerCalls30dPrev > 0
-      ? Math.round(((tankerCalls30d - tankerCalls30dPrev) / tankerCalls30dPrev) * 1000) / 10
+    const trendDelta = a.prev30_calls > 0
+      ? Math.round(((a.last30_calls - a.prev30_calls) / a.prev30_calls) * 1000) / 10
       : 0;
-
-    const portName = rows[0].portname;
     const coords = refMap.get(portId) || { lat: 0, lon: 0 };
-
     ports.push({
       portId,
-      portName,
+      portName: a.portname,
       lat: coords.lat,
       lon: coords.lon,
-      tankerCalls30d,
+      tankerCalls30d: a.last30_calls,
       trendDelta,
-      importTankerDwt30d,
-      exportTankerDwt30d,
+      importTankerDwt30d: a.last30_import,
+      exportTankerDwt30d: a.last30_export,
       anomalySignal,
     });
   }
-
   return ports
-    .sort((a, b) => b.tankerCalls30d - a.tankerCalls30d)
+    .sort((x, y) => y.tankerCalls30d - x.tankerCalls30d)
     .slice(0, MAX_PORTS_PER_COUNTRY);
 }
 
@@ -264,20 +279,20 @@ export async function fetchAll(progress, { signal } = {}) {
   console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
   if (progress) progress.stage = 'activity';
-  console.log(`  [port-activity] Fetching global activity rows (${HISTORY_DAYS}d history, EP3)...`);
-  const activityByIso3 = await fetchAllActivityRows(since, { signal, progress });
+  console.log(`  [port-activity] Fetching + aggregating global activity (${HISTORY_DAYS}d history, EP3)...`);
+  const accumByIso3 = await fetchAndAggregateActivity(since, { signal, progress });
 
   if (progress) progress.stage = 'compute';
   const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
   const skipped = refsByIso3.size - eligibleIso3.length;
-  console.log(`  [port-activity] Computing ports for ${eligibleIso3.length} eligible countries (skipping ${skipped} unmapped iso3)`);
+  console.log(`  [port-activity] Finalising ports for ${eligibleIso3.length} eligible countries (skipping ${skipped} unmapped iso3)`);
 
   const countryData = new Map();
   let missingActivity = 0;
   for (const iso3 of eligibleIso3) {
-    const rawRows = activityByIso3.get(iso3);
-    if (!rawRows || rawRows.length === 0) { missingActivity++; continue; }
-    const ports = computeCountryPorts(rawRows, refsByIso3.get(iso3));
+    const accum = accumByIso3.get(iso3);
+    if (!accum || accum.size === 0) { missingActivity++; continue; }
+    const ports = finalisePortsForCountry(accum, refsByIso3.get(iso3));
     if (!ports.length) continue;
     const iso2 = iso3ToIso2.get(iso3);
     countryData.set(iso2, { iso2, ports, fetchedAt: new Date().toISOString() });
