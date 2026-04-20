@@ -48,10 +48,19 @@ function epochToTimestamp(epochMs) {
   return `timestamp '${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}'`;
 }
 
-async function fetchWithTimeout(url) {
+async function fetchWithTimeout(url, { signal } = {}) {
+  // Combine the per-call FETCH_TIMEOUT with the upstream per-country signal
+  // so a per-country abort propagates into the in-flight fetch AND future
+  // pagination iterations (review feedback P1 on PR #3222). Without this,
+  // the 90s withPerCountryTimeout timer fires, the batch moves on, but the
+  // orphaned country keeps paginating with fresh 45s fetch timeouts —
+  // breaking the CONCURRENCY=12 cap and amplifying ArcGIS throttling.
+  const combined = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT)])
+    : AbortSignal.timeout(FETCH_TIMEOUT);
   const resp = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT),
+    signal: combined,
   });
   if (resp.status === 429) {
     const proxyAuth = resolveProxyForConnect();
@@ -111,11 +120,15 @@ async function fetchAllPortRefs() {
   return byIso3;
 }
 
-async function fetchActivityRows(iso3, since) {
+async function fetchActivityRows(iso3, since, { signal } = {}) {
   let offset = 0;
   const allRows = [];
   let body;
   do {
+    // Abort between pages so a cancelled per-country timer stops the
+    // paginator on the next iteration boundary even if the current fetch
+    // has already resolved.
+    if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const params = new URLSearchParams({
       where: `ISO3='${iso3}' AND date > ${epochToTimestamp(since)}`,
       outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
@@ -125,7 +138,7 @@ async function fetchActivityRows(iso3, since) {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithTimeout(`${EP3_BASE}?${params}`);
+    body = await fetchWithTimeout(`${EP3_BASE}?${params}`, { signal });
     const features = body.features ?? [];
     if (features.length) allRows.push(...features);
     // Advance by actual returned count, not PAGE_SIZE. ArcGIS can cap below
@@ -213,27 +226,32 @@ async function redisPipeline(commands) {
   return resp.json();
 }
 
-async function processCountry(iso3, iso2, since, refMap) {
-  const rawRows = await fetchActivityRows(iso3, since);
+async function processCountry(iso3, iso2, since, refMap, { signal } = {}) {
+  const rawRows = await fetchActivityRows(iso3, since, { signal });
   if (!rawRows.length) return null;
   const ports = computeCountryPorts(rawRows, refMap);
   if (!ports.length) return null;
   return { iso2, ports, fetchedAt: new Date().toISOString() };
 }
 
-// Promise.race against a rejecting timer. Bounded worst-case per-country time
-// even when underlying HTTP paginator is infinite. The orphan fetch keeps
-// running in the background until its own AbortSignal.timeout(FETCH_TIMEOUT)
-// fires; acceptable because the process exits soon after either way.
-function withPerCountryTimeout(promise, iso3) {
+// Runs `doWork(signal)` but rejects if the per-country timer fires first,
+// aborting the controller so the in-flight fetch (and its pagination loop)
+// actually stops instead of orphaning. Keeps the CONCURRENCY=12 cap real:
+// the next batch cannot pile new requests on top of still-running earlier
+// work. Exported with an injectable timeoutMs so runtime tests can exercise
+// the abort path at 50ms instead of the production 90s.
+export function withPerCountryTimeout(doWork, iso3, timeoutMs = PER_COUNTRY_TIMEOUT_MS) {
+  const controller = new AbortController();
   let timer;
   const guard = new Promise((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`per-country timeout after ${PER_COUNTRY_TIMEOUT_MS / 1000}s (${iso3})`)),
-      PER_COUNTRY_TIMEOUT_MS,
-    );
+    timer = setTimeout(() => {
+      const err = new Error(`per-country timeout after ${timeoutMs / 1000}s (${iso3})`);
+      try { controller.abort(err); } catch {}
+      reject(err);
+    }, timeoutMs);
   });
-  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+  const work = doWork(controller.signal);
+  return Promise.race([work, guard]).finally(() => clearTimeout(timer));
 }
 
 // fetchAll() — pure data collection, no Redis writes.
@@ -265,19 +283,26 @@ export async function fetchAll(progress) {
     const batch = eligibleIso3.slice(i, i + CONCURRENCY);
     const batchIdx = Math.floor(i / CONCURRENCY) + 1;
     if (progress) progress.batchIdx = batchIdx;
-    const settled = await Promise.allSettled(
-      batch.map(iso3 => {
-        const iso2 = iso3ToIso2.get(iso3);
-        return withPerCountryTimeout(processCountry(iso3, iso2, since, refsByIso3.get(iso3)), iso3);
-      })
-    );
+    const promises = batch.map(iso3 => {
+      const iso2 = iso3ToIso2.get(iso3);
+      const p = withPerCountryTimeout(
+        (signal) => processCountry(iso3, iso2, since, refsByIso3.get(iso3), { signal }),
+        iso3,
+      );
+      // Eager error flush (review feedback P2 on PR #3222). Push into the
+      // shared errors array the moment each promise rejects, so a SIGTERM
+      // that arrives MID-batch (while Promise.allSettled is still pending)
+      // sees the rejections that have already fired. The settled-loop
+      // below skips rejected outcomes to avoid double-counting.
+      p.catch(err => {
+        errors.push(`${iso3}: ${err?.message || err}`);
+      });
+      return p;
+    });
+    const settled = await Promise.allSettled(promises);
     for (let j = 0; j < batch.length; j++) {
-      const iso3 = batch[j];
       const outcome = settled[j];
-      if (outcome.status === 'rejected') {
-        errors.push(`${iso3}: ${outcome.reason?.message || outcome.reason}`);
-        continue;
-      }
+      if (outcome.status === 'rejected') continue; // already recorded via .catch above
       if (!outcome.value) continue;
       const { iso2, ports, fetchedAt } = outcome.value;
       countryData.set(iso2, { iso2, ports, fetchedAt });
