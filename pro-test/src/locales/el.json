@@ -133,7 +133,7 @@
     "cyber": "Κυβερνοαπειλές",
     "cyberDesc": "Feeds ransomware, BGP hijacks, εντοπισμός DDoS",
     "gdelt": "GDELT και ειδήσεις",
-    "gdeltDesc": "435+ RSS feeds, γεγονότα GDELT βαθμολογημένα από AI, ζωντανές μεταδόσεις",
+    "gdeltDesc": "500+ RSS feeds, γεγονότα GDELT βαθμολογημένα από AI, ζωντανές μεταδόσεις",
     "seismology": "Σεισμολογία και φυσικά φαινόμενα",
     "seismologyDesc": "Σεισμοί USGS, ηφαιστειακή δραστηριότητα, ακραίες καιρικές συνθήκες"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Δείτε τα πάντα",
     "freeDesc": "Ο open-source πίνακας",
     "freeF1": "Ανανέωση 5-15 λεπτά",
-    "freeF2": "435+ feeds, 45 επίπεδα χάρτη",
+    "freeF2": "500+ feeds, 45 επίπεδα χάρτη",
     "freeF3": "BYOK για AI",
     "freeF4": "Δωρεάν για πάντα",
     "openDashboard": "Άνοιγμα πίνακα",

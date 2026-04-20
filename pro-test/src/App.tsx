@@ -218,7 +218,7 @@ const SocialProof = () => (
           { value: "2M+", label: t('socialProof.uniqueVisitors') },
           { value: "421K", label: t('socialProof.peakDailyUsers') },
           { value: "190+", label: t('socialProof.countriesReached') },
-          { value: "435+", label: t('socialProof.liveDataSources') },
+          { value: "500+", label: t('socialProof.liveDataSources') },
         ].map((stat, i) => (
           <div key={i}>
             <p className="text-3xl md:text-4xl font-display font-bold text-wm-green">{stat.value}</p>

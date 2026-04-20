@@ -133,7 +133,7 @@
     "cyber": "Cyberdreigingen",
     "cyberDesc": "Ransomware-feeds, BGP-kapingen, DDoS-detectie",
     "gdelt": "GDELT en nieuws",
-    "gdeltDesc": "435+ RSS-feeds, AI-gescoorde GDELT-events, live uitzendingen",
+    "gdeltDesc": "500+ RSS-feeds, AI-gescoorde GDELT-events, live uitzendingen",
     "seismology": "Seismologie en natuurrampen",
     "seismologyDesc": "USGS-aardbevingen, vulkanische activiteit, extreem weer"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Zie alles",
     "freeDesc": "Het open-source dashboard",
     "freeF1": "Refresh 5-15 min",
-    "freeF2": "435+ feeds, 45 kaartlagen",
+    "freeF2": "500+ feeds, 45 kaartlagen",
     "freeF3": "BYOK voor AI",
     "freeF4": "Altijd gratis",
     "openDashboard": "Dashboard openen",

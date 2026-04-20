@@ -8,7 +8,7 @@ Thank you for helping spread the word about World Monitor! This guide provides t
 
 **One-line pitch**: A free, open-source, real-time global intelligence dashboard — like Bloomberg Terminal meets OSINT, for everyone.
 
-**Longer description**: World Monitor aggregates 170+ news feeds, military tracking, financial markets, conflict data, protest monitoring, satellite imagery, and AI-powered analysis into a single unified dashboard with an interactive globe. Available as a web app, desktop app (macOS/Windows/Linux), and installable PWA.
+**Longer description**: World Monitor aggregates 500+ news feeds, military tracking, financial markets, conflict data, protest monitoring, satellite imagery, and AI-powered analysis into a single unified dashboard with an interactive globe. Available as a web app, desktop app (macOS/Windows/Linux), and installable PWA.
 
 ---
 
@@ -120,7 +120,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 ### For General Audience
 
 - "An open-source Bloomberg Terminal for everyone — free, no login required"
-- "170+ news sources, military tracking, AI analysis — all in one dashboard"
+- "500+ news sources, military tracking, AI analysis — all in one dashboard"
 - "Run AI summaries locally with Ollama — your data never leaves your machine"
 - "Available in Japanese with NHK and Nikkei feeds built in"
 - "Native desktop app for macOS/Windows/Linux, completely free"

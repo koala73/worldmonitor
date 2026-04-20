@@ -133,7 +133,7 @@
     "cyber": "Amenințări cibernetice",
     "cyberDesc": "Feed-uri ransomware, hijack-uri BGP, detecție DDoS",
     "gdelt": "GDELT și știri",
-    "gdeltDesc": "435+ feed-uri RSS, evenimente GDELT punctate de IA, transmisiuni live",
+    "gdeltDesc": "500+ feed-uri RSS, evenimente GDELT punctate de IA, transmisiuni live",
     "seismology": "Seismologie și naturale",
     "seismologyDesc": "Cutremure USGS, activitate vulcanică, vreme extremă"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Vezi tot",
     "freeDesc": "Panoul open-source",
     "freeF1": "Refresh 5-15 min",
-    "freeF2": "435+ feed-uri, 45 straturi de hartă",
+    "freeF2": "500+ feed-uri, 45 straturi de hartă",
     "freeF3": "BYOK pentru IA",
     "freeF4": "Gratuit pentru totdeauna",
     "openDashboard": "Deschide panoul",

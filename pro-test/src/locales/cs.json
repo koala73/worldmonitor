@@ -133,7 +133,7 @@
     "cyber": "Kybernetické hrozby",
     "cyberDesc": "Ransomware feedy, BGP únosy, detekce DDoS",
     "gdelt": "GDELT a zprávy",
-    "gdeltDesc": "435+ RSS feedů, události GDELT bodované AI, živé přenosy",
+    "gdeltDesc": "500+ RSS feedů, události GDELT bodované AI, živé přenosy",
     "seismology": "Seismologie a přírodní",
     "seismologyDesc": "USGS zemětřesení, vulkanická aktivita, extrémní počasí"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Vidět vše",
     "freeDesc": "Open-source dashboard",
     "freeF1": "Obnovování 5-15 min",
-    "freeF2": "435+ feedů, 45 vrstev mapy",
+    "freeF2": "500+ feedů, 45 vrstev mapy",
     "freeF3": "BYOK pro AI",
     "freeF4": "Zdarma navždy",
     "openDashboard": "Otevřít dashboard",

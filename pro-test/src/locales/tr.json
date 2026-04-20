@@ -133,7 +133,7 @@
     "cyber": "Siber tehditler",
     "cyberDesc": "Ransomware beslemeleri, BGP hijack'leri, DDoS tespiti",
     "gdelt": "GDELT ve haberler",
-    "gdeltDesc": "435+ RSS beslemesi, AI puanlı GDELT olayları, canlı yayınlar",
+    "gdeltDesc": "500+ RSS beslemesi, AI puanlı GDELT olayları, canlı yayınlar",
     "seismology": "Sismoloji ve doğal",
     "seismologyDesc": "USGS depremler, volkanik faaliyet, şiddetli hava"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Her şeyi gör",
     "freeDesc": "Açık kaynak kontrol paneli",
     "freeF1": "Yenileme 5-15 dk",
-    "freeF2": "435+ besleme, 45 harita katmanı",
+    "freeF2": "500+ besleme, 45 harita katmanı",
     "freeF3": "AI için BYOK",
     "freeF4": "Sonsuza dek ücretsiz",
     "openDashboard": "Kontrol panelini aç",

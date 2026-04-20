@@ -133,7 +133,7 @@
     "cyber": "サイバー脅威",
     "cyberDesc": "ランサムウェアフィード、BGP ハイジャック、DDoS 検出",
     "gdelt": "GDELT とニュース",
-    "gdeltDesc": "435 以上の RSS フィード、AI スコア付き GDELT イベント、ライブ配信",
+    "gdeltDesc": "500 以上の RSS フィード、AI スコア付き GDELT イベント、ライブ配信",
     "seismology": "地震と自然",
     "seismologyDesc": "USGS 地震、火山活動、極端気象"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "すべてを見る",
     "freeDesc": "オープンソースのダッシュボード",
     "freeF1": "更新 5-15 分",
-    "freeF2": "435 以上のフィード、45 の地図レイヤー",
+    "freeF2": "500 以上のフィード、45 の地図レイヤー",
     "freeF3": "AI は BYOK",
     "freeF4": "永久無料",
     "openDashboard": "ダッシュボードを開く",

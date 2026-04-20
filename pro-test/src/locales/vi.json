@@ -133,7 +133,7 @@
     "cyber": "Mối đe dọa mạng",
     "cyberDesc": "Nguồn cấp ransomware, chiếm đoạt BGP, phát hiện DDoS",
     "gdelt": "GDELT và tin tức",
-    "gdeltDesc": "435+ nguồn cấp RSS, sự kiện GDELT được AI ghi điểm, phát sóng trực tiếp",
+    "gdeltDesc": "500+ nguồn cấp RSS, sự kiện GDELT được AI ghi điểm, phát sóng trực tiếp",
     "seismology": "Động đất và tự nhiên",
     "seismologyDesc": "Động đất USGS, hoạt động núi lửa, thời tiết khắc nghiệt"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Xem tất cả",
     "freeDesc": "Bảng điều khiển mã nguồn mở",
     "freeF1": "Làm mới 5-15 phút",
-    "freeF2": "435+ nguồn cấp, 45 lớp bản đồ",
+    "freeF2": "500+ nguồn cấp, 45 lớp bản đồ",
     "freeF3": "BYOK cho AI",
     "freeF4": "Miễn phí vĩnh viễn",
     "openDashboard": "Mở bảng điều khiển",

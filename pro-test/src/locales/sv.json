@@ -133,7 +133,7 @@
     "cyber": "Cyberhot",
     "cyberDesc": "Ransomware-feeds, BGP-kapningar, DDoS-detektering",
     "gdelt": "GDELT och nyheter",
-    "gdeltDesc": "435+ RSS-feeds, AI-poängsatta GDELT-händelser, liveutsändningar",
+    "gdeltDesc": "500+ RSS-feeds, AI-poängsatta GDELT-händelser, liveutsändningar",
     "seismology": "Seismologi och natur",
     "seismologyDesc": "USGS-jordbävningar, vulkanisk aktivitet, extremväder"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Se allt",
     "freeDesc": "Den öppna dashboarden",
     "freeF1": "Uppdatering 5-15 min",
-    "freeF2": "435+ feeds, 45 kartlager",
+    "freeF2": "500+ feeds, 45 kartlager",
     "freeF3": "BYOK för AI",
     "freeF4": "Alltid gratis",
     "openDashboard": "Öppna dashboarden",

@@ -74,7 +74,7 @@
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
     "title": "Your personal intelligence desk",
-    "body": "Up to 30 ranked items per send, deduped across 400+ sources, scored against your watchlist. Choose your cadence — daily, twice-daily, or weekly — with an AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook.",
+    "body": "Up to 30 ranked items per send, deduped across 500+ sources, scored against your watchlist. Choose your cadence — daily, twice-daily, or weekly — with an AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook.",
     "closer": "Not a newsletter. An analyst.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
   },
@@ -133,7 +133,7 @@
     "cyber": "Cyber Threats",
     "cyberDesc": "Ransomware feeds, BGP hijacks, DDoS detection",
     "gdelt": "GDELT & News",
-    "gdeltDesc": "435+ RSS feeds, AI-scored GDELT events, live broadcasts",
+    "gdeltDesc": "500+ RSS feeds, AI-scored GDELT events, live broadcasts",
     "seismology": "Seismology & Natural",
     "seismologyDesc": "USGS earthquakes, volcanic activity, severe weather"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "See everything",
     "freeDesc": "The open-source dashboard",
     "freeF1": "5-15 min refresh",
-    "freeF2": "435+ feeds, 45 map layers",
+    "freeF2": "500+ feeds, 45 map layers",
     "freeF3": "BYOK for AI",
     "freeF4": "Free forever",
     "openDashboard": "Open Dashboard",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Orbital Surveillance",
     "orbitalSurveillanceDesc": "(Soon) Overhead pass predictions, revisit frequency analysis, and imaging window alerts. Know when intelligence satellites are watching your areas of interest.",
     "morningBriefs": "Personal Intelligence Desk",
-    "morningBriefsDesc": "Up to 30 ranked stories per digest, deduped across 400+ sources. Pick daily, twice-daily, or weekly cadence — or real-time alerts for critical events. AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook. Not a newsletter — an analyst.",
+    "morningBriefsDesc": "Up to 30 ranked stories per digest, deduped across 500+ sources. Pick daily, twice-daily, or weekly cadence — or real-time alerts for critical events. AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook. Not a newsletter — an analyst.",
     "oneKey": "30+ Services, 1 Key",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
     "deliveryLabel": "Choose how intelligence finds you"
@@ -317,7 +317,7 @@
     "q10": "Can I connect Claude or GPT to WorldMonitor?",
     "a10": "Yes. MCP is included in Pro — plug WorldMonitor into Claude, GPT, or any MCP-compatible LLM as a live tool.",
     "q11": "How personalized is the digest?",
-    "a11": "Pick your cadence — daily, twice-daily, or weekly. We re-score every tracked story against your alert rules and watchlist, dedupe across 400+ sources, and send up to 30 ranked items with an AI Assessment and Signals to watch written to your context. Real-time alerts are also available for critical events.",
+    "a11": "Pick your cadence — daily, twice-daily, or weekly. We re-score every tracked story against your alert rules and watchlist, dedupe across 500+ sources, and send up to 30 ranked items with an AI Assessment and Signals to watch written to your context. Real-time alerts are also available for critical events.",
     "q12": "What's the refresh rate?",
     "a12": "Near real time for Pro. 5–15 minutes on Free.",
     "q13": "Where does my data go?",

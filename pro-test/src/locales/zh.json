@@ -133,7 +133,7 @@
     "cyber": "网络威胁",
     "cyberDesc": "勒索软件 feed、BGP 劫持、DDoS 检测",
     "gdelt": "GDELT 与新闻",
-    "gdeltDesc": "435+ RSS feed、AI 评分的 GDELT 事件、实时直播",
+    "gdeltDesc": "500+ RSS feed、AI 评分的 GDELT 事件、实时直播",
     "seismology": "地震与自然",
     "seismologyDesc": "USGS 地震、火山活动、极端天气"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "纵览一切",
     "freeDesc": "开源仪表板",
     "freeF1": "刷新 5-15 分钟",
-    "freeF2": "435+ feed,45 个地图图层",
+    "freeF2": "500+ feed,45 个地图图层",
     "freeF3": "AI 自带密钥",
     "freeF4": "永久免费",
     "openDashboard": "打开仪表板",

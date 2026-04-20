@@ -133,7 +133,7 @@
     "cyber": "사이버 위협",
     "cyberDesc": "랜섬웨어 피드, BGP 하이재킹, DDoS 감지",
     "gdelt": "GDELT와 뉴스",
-    "gdeltDesc": "435+ RSS 피드, AI 점수 GDELT 이벤트, 라이브 방송",
+    "gdeltDesc": "500+ RSS 피드, AI 점수 GDELT 이벤트, 라이브 방송",
     "seismology": "지진학과 자연",
     "seismologyDesc": "USGS 지진, 화산 활동, 극한 기상"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "전부 보기",
     "freeDesc": "오픈 소스 대시보드",
     "freeF1": "갱신 5-15분",
-    "freeF2": "435+ 피드, 45 지도 레이어",
+    "freeF2": "500+ 피드, 45 지도 레이어",
     "freeF3": "AI는 BYOK",
     "freeF4": "영구 무료",
     "openDashboard": "대시보드 열기",

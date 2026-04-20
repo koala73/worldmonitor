@@ -74,7 +74,7 @@
   "deliveryDesk": {
     "eyebrow": "BUREAU DE LIVRAISON",
     "title": "Votre bureau de renseignement personnel",
-    "body": "Jusqu'à 30 items classés par envoi, dédoublonnés sur 400+ sources, scorés selon votre watchlist. Choisissez votre cadence — quotidien, biquotidien ou hebdomadaire — avec un Assessment IA et des Signals to watch livrés sur Slack, Discord, Telegram, Email ou webhook.",
+    "body": "Jusqu'à 30 items classés par envoi, dédoublonnés sur 500+ sources, scorés selon votre watchlist. Choisissez votre cadence — quotidien, biquotidien ou hebdomadaire — avec un Assessment IA et des Signals to watch livrés sur Slack, Discord, Telegram, Email ou webhook.",
     "closer": "Pas une newsletter. Un analyste.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · Chiffrement AES-256 · Heures de silence"
   },
@@ -133,7 +133,7 @@
     "cyber": "Menaces cyber",
     "cyberDesc": "Flux ransomware, détournements BGP, détection DDoS",
     "gdelt": "GDELT et news",
-    "gdeltDesc": "435+ flux RSS, événements GDELT scorés par IA, diffusions en direct",
+    "gdeltDesc": "500+ flux RSS, événements GDELT scorés par IA, diffusions en direct",
     "seismology": "Sismologie et naturels",
     "seismologyDesc": "Tremblements de terre USGS, activité volcanique, météo extrême"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Voyez tout",
     "freeDesc": "Le tableau de bord open-source",
     "freeF1": "Rafraîchissement 5-15 min",
-    "freeF2": "435+ flux, 45 couches de carte",
+    "freeF2": "500+ flux, 45 couches de carte",
     "freeF3": "BYOK pour l'IA",
     "freeF4": "Gratuit pour toujours",
     "openDashboard": "Ouvrir le tableau de bord",
@@ -180,7 +180,7 @@
     "orbitalSurveillance": "Surveillance orbitale",
     "orbitalSurveillanceDesc": "(Bientôt) Prédictions de passages orbitaux, analyse de fréquence de revisite et alertes de fenêtre de prise. Sachez quand les satellites de renseignement observent vos zones d'intérêt.",
     "morningBriefs": "Bureau de renseignement personnel",
-    "morningBriefsDesc": "Jusqu'à 30 histoires classées par digest, dédoublonnées sur 400+ sources. Cadence au choix — quotidienne, biquotidienne ou hebdomadaire — ou alertes en temps réel pour les événements critiques. Assessment IA et Signals to watch livrés sur Slack, Discord, Telegram, Email ou webhook. Pas une newsletter — un analyste.",
+    "morningBriefsDesc": "Jusqu'à 30 histoires classées par digest, dédoublonnées sur 500+ sources. Cadence au choix — quotidienne, biquotidienne ou hebdomadaire — ou alertes en temps réel pour les événements critiques. Assessment IA et Signals to watch livrés sur Slack, Discord, Telegram, Email ou webhook. Pas une newsletter — un analyste.",
     "oneKey": "30+ services, 1 clé",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky et plus — tous actifs, sans inscriptions séparées.",
     "deliveryLabel": "Choisissez comment le renseignement vous trouve"
@@ -317,7 +317,7 @@
     "q10": "Puis-je connecter Claude ou GPT à WorldMonitor ?",
     "a10": "Oui. MCP est inclus dans Pro — branchez WorldMonitor à Claude, GPT ou tout LLM compatible MCP comme outil en direct.",
     "q11": "Quel est le degré de personnalisation du digest ?",
-    "a11": "Choisissez votre cadence : quotidien, biquotidien ou hebdomadaire. Nous re-scorons chaque histoire suivie contre vos règles d'alerte et votre watchlist, dédoublonnons sur 400+ sources et envoyons jusqu'à 30 items classés avec un Assessment IA et des Signals to watch écrits pour votre contexte. Des alertes en temps réel sont aussi disponibles pour les événements critiques.",
+    "a11": "Choisissez votre cadence : quotidien, biquotidien ou hebdomadaire. Nous re-scorons chaque histoire suivie contre vos règles d'alerte et votre watchlist, dédoublonnons sur 500+ sources et envoyons jusqu'à 30 items classés avec un Assessment IA et des Signals to watch écrits pour votre contexte. Des alertes en temps réel sont aussi disponibles pour les événements critiques.",
     "q12": "Quel est le taux de rafraîchissement ?",
     "a12": "Quasi temps réel pour Pro. 5–15 minutes sur Free.",
     "q13": "Où vont mes données ?",

@@ -133,7 +133,7 @@
     "cyber": "Ameaças cibernéticas",
     "cyberDesc": "Feeds de ransomware, hijacks BGP, deteção DDoS",
     "gdelt": "GDELT e notícias",
-    "gdeltDesc": "435+ feeds RSS, eventos GDELT pontuados por IA, emissões ao vivo",
+    "gdeltDesc": "500+ feeds RSS, eventos GDELT pontuados por IA, emissões ao vivo",
     "seismology": "Sismologia e natural",
     "seismologyDesc": "Sismos USGS, atividade vulcânica, meteorologia severa"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Veja tudo",
     "freeDesc": "O painel open-source",
     "freeF1": "Atualização 5-15 min",
-    "freeF2": "435+ feeds, 45 camadas de mapa",
+    "freeF2": "500+ feeds, 45 camadas de mapa",
     "freeF3": "BYOK para IA",
     "freeF4": "Grátis para sempre",
     "openDashboard": "Abrir painel",

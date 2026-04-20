@@ -133,7 +133,7 @@
     "cyber": "Cyber-Bedrohungen",
     "cyberDesc": "Ransomware-Feeds, BGP-Hijacks, DDoS-Erkennung",
     "gdelt": "GDELT & News",
-    "gdeltDesc": "435+ RSS-Feeds, KI-bewertete GDELT-Events, Live-Sendungen",
+    "gdeltDesc": "500+ RSS-Feeds, KI-bewertete GDELT-Events, Live-Sendungen",
     "seismology": "Seismologie & Natur",
     "seismologyDesc": "USGS-Erdbeben, vulkanische Aktivität, schwere Wetter"
   },
@@ -142,7 +142,7 @@
     "freeTagline": "Alles sehen",
     "freeDesc": "Das Open-Source-Dashboard",
     "freeF1": "5-15 Min Refresh",
-    "freeF2": "435+ Feeds, 45 Kartenebenen",
+    "freeF2": "500+ Feeds, 45 Kartenebenen",
     "freeF3": "BYOK für KI",
     "freeF4": "Für immer kostenlos",
     "openDashboard": "Dashboard öffnen",
