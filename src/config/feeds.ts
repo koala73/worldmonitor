@@ -133,10 +133,10 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Voice of America': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded' },
   'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian perspective on Russia-Ukraine war' },
   'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent, critical of Russian government' },
-  'Jerusalem Post': { risk: 'low', knownBiases: ['Israeli centre-right'], note: 'English-language Israeli daily of record' },
-  'Ynetnews': { risk: 'low', knownBiases: ['Israeli mainstream'], note: 'Yedioth Ahronoth English edition' },
 
   // Low risk - Independent with editorial standards (explicit)
+  'Jerusalem Post': { risk: 'low', knownBiases: ['Israeli centre-right'], note: 'English-language Israeli daily of record' },
+  'Ynetnews': { risk: 'low', knownBiases: ['Israeli mainstream'], note: 'Yedioth Ahronoth English edition' },
   'Reuters': { risk: 'low', note: 'Wire service, strict editorial standards' },
   'AP News': { risk: 'low', note: 'Wire service, nonprofit cooperative' },
   'AFP': { risk: 'low', note: 'Wire service, editorially independent' },
