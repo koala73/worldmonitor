@@ -180,7 +180,7 @@ const AIRPORTS = [
   { iata: 'ADD', icao: 'HAAB', name: 'Bole International',            city: 'Addis Ababa',  country: 'Ethiopia',     lat: 8.9779,   lon: 38.7993, region: 'africa', sources: ['aviationstack'] },
   { iata: 'CPT', icao: 'FACT', name: 'Cape Town International',       city: 'Cape Town',    country: 'South Africa', lat: -33.9715, lon: 18.6021, region: 'africa', sources: ['aviationstack'] },
   // Africa NOTAM-only
-  { iata: 'GBE', icao: 'GABS', name: 'Sir Seretse Khama International', city: 'Gaborone',    country: 'Botswana',    region: 'africa', sources: ['notam'] },
+  { iata: 'GBE', icao: 'FBSK', name: 'Sir Seretse Khama International', city: 'Gaborone',    country: 'Botswana',    region: 'africa', sources: ['notam'] },
 ];
 
 // Derived per-source views (built once at module load)
@@ -188,8 +188,15 @@ const AVIATIONSTACK_LIST = AIRPORTS.filter(a => a.sources.includes('aviationstac
 const FAA_LIST           = AIRPORTS.filter(a => a.sources.includes('faa')).map(a => a.iata);
 const NOTAM_LIST         = AIRPORTS.filter(a => a.sources.includes('notam')).map(a => a.icao);
 
-// iata → aviationstack-enriched meta (for building AirportDelayAlert envelopes)
+// iata → aviationstack-enriched meta (for building AirportDelayAlert envelopes
+// with coordinates — aviationstack rows are the only ones with lat/lon).
 const AIRPORT_META = Object.fromEntries(AVIATIONSTACK_LIST.map(a => [a.iata, a]));
+
+// iata → FAA-row meta (icao/name/city/country for alert envelopes; no lat/lon
+// by design — FAA rows are US-regional airports we don't render on the globe).
+const FAA_META = Object.fromEntries(
+  AIRPORTS.filter(a => a.sources.includes('faa')).map(a => [a.iata, a]),
+);
 
 // Protobuf enum mappers (mirror ais-relay.cjs mappings; consumers parse strings)
 const REGION_MAP = {
@@ -522,14 +529,15 @@ async function seedFaaDelays() {
   for (const iata of FAA_LIST) {
     const d = faaDelays.get(iata);
     if (!d) continue;
+    const meta = FAA_META[iata];
     alerts.push({
       id: `faa-${iata}`,
       iata,
-      icao: '',
-      name: iata,
-      city: '',
-      country: 'USA',
-      location: { latitude: 0, longitude: 0 },
+      icao: meta?.icao ?? '',
+      name: meta?.name ?? iata,
+      city: meta?.city ?? '',
+      country: meta?.country ?? 'USA',
+      location: { latitude: 0, longitude: 0 }, // FAA rows have no lat/lon in the registry
       region: 'AIRPORT_REGION_AMERICAS',
       delayType: `FLIGHT_DELAY_TYPE_${d.type.toUpperCase()}`,
       severity: `FLIGHT_DELAY_SEVERITY_${faaSeverityFromAvg(d.avgDelay).toUpperCase()}`,
