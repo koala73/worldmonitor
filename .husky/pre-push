@@ -190,7 +190,12 @@ echo "Running pro-test bundle freshness check..."
 # pro-test/ scratch edits don't trigger a slow rebuild on unrelated
 # branches. RUN_ALL forces the check when the branch delta couldn't be
 # computed (matches the safety fallback used by the test runners above).
-if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -q "^pro-test/"; then
+#
+# Trigger on EITHER pro-test/ OR public/pro/ to match the CI workflow's
+# path filter — a bundle-only PR that edits public/pro/ without touching
+# pro-test/ (e.g. a fix-forward rebuild, or a hand-edit) is exactly the
+# class of change this guard is meant to validate.
+if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/pro)/"; then
   if [ ! -d pro-test/node_modules ]; then
     echo "  Installing pro-test deps..."
     (cd pro-test && npm install --prefer-offline) || exit 1
@@ -223,7 +228,7 @@ if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -q "^pro-test/"; then
   fi
   echo "  pro-test bundle is up to date."
 else
-  echo "  Skipped (no pro-test/ changes in branch)."
+  echo "  Skipped (no pro-test/ or public/pro/ changes in branch)."
 fi
 
 echo "Running version sync check..."
