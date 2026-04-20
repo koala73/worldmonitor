@@ -23,6 +23,7 @@ import {
   CHROME_UA,
   runSeed,
   writeExtraKeyWithMeta,
+  extendExistingTtl,
   getRedisCredentials,
 } from './_seed-utils.mjs';
 
@@ -741,7 +742,14 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
 // News are written as "extra keys" after the primary publish. Each has its own
 // seed-meta override that matches api/health.js expectations.
 
-async function fetchAll() {
+// Per-run cache. runSeed wraps fetchFn in withRetry(3) — if our first attempt
+// throws (e.g. intl unhealthy → throw to preserve prior snapshot), the retry
+// re-invokes fetchAll. Without this cache, each retry would re-fetch FAA /
+// NOTAM / RSS (burning ICAO quota 3x). Memoize the single real fetch so retries
+// short-circuit to the same result.
+let cachedRun = null;
+
+async function doFetchAll() {
   const [intlRes, faaRes, notamRes, newsRes] = await Promise.allSettled([
     seedIntlDelays(),
     seedFaaDelays(),
@@ -749,32 +757,45 @@ async function fetchAll() {
     seedAviationNews(),
   ]);
 
-  // Secondary key: FAA
+  // Secondary key: FAA (free API — safe to overwrite when the fetch succeeded)
   if (faaRes.status === 'fulfilled' && Array.isArray(faaRes.value?.alerts)) {
     try {
       await writeExtraKeyWithMeta(FAA_KEY, faaRes.value, FAA_TTL, faaRes.value.alerts.length, FAA_META_KEY);
     } catch (e) { console.warn(`  ${FAA_KEY} write error: ${e?.message || e}`); }
   } else if (faaRes.status === 'rejected') {
-    console.warn(`  FAA fetch failed: ${faaRes.reason?.message || faaRes.reason}`);
+    console.warn(`  FAA fetch failed: ${faaRes.reason?.message || faaRes.reason} — extending TTL`);
+    try { await extendExistingTtl([FAA_KEY, FAA_META_KEY], FAA_TTL); } catch {}
   }
 
-  // Secondary key: NOTAM. On quota exhaustion we don't overwrite — the key
-  // and meta are left at whatever they were; runSeed's extendExistingTtl path
-  // doesn't apply to secondaries, so we just skip.
+  // Secondary key: NOTAM.
+  //   • quota exhausted ("Reach call limit"): refresh data-key TTL AND write a
+  //     fresh seed-meta{fetchedAt: now, recordCount: 0, quotaExhausted: true}
+  //     so consumers keep serving the last known closure list and api/health.js
+  //     stays green during the 24h ICAO backoff (matches prior ais-relay
+  //     behavior at scripts/ais-relay.cjs:2805-2808 pre-strip).
+  //   • fetch rejected / network error: just extend the existing TTL.
+  //   • success: normal write.
   if (notamRes.status === 'fulfilled' && !notamRes.value.skipped) {
     const n = notamRes.value;
     if (n.quotaExhausted) {
-      console.log(`  ${NOTAM_KEY}: quota exhausted — leaving prior value + meta untouched`);
+      try { await extendExistingTtl([NOTAM_KEY], NOTAM_TTL); } catch {}
+      // Fresh seed-meta with quotaExhausted flag keeps health maxStaleMin=240
+      // satisfied even though the data key wasn't rewritten.
+      try {
+        await upstashSet(NOTAM_META_KEY, { fetchedAt: Date.now(), recordCount: 0, quotaExhausted: true }, 604_800);
+      } catch (e) { console.warn(`  ${NOTAM_META_KEY} write error: ${e?.message || e}`); }
+      console.log(`  ${NOTAM_KEY}: ICAO quota exhausted — extended data TTL + wrote fresh meta (quotaExhausted=true)`);
     } else {
       try {
         await writeExtraKeyWithMeta(NOTAM_KEY, { closedIcaos: n.closedIcaos, reasons: n.reasons }, NOTAM_TTL, n.closedIcaos.length, NOTAM_META_KEY);
       } catch (e) { console.warn(`  ${NOTAM_KEY} write error: ${e?.message || e}`); }
     }
   } else if (notamRes.status === 'rejected') {
-    console.warn(`  NOTAM fetch failed: ${notamRes.reason?.message || notamRes.reason}`);
+    console.warn(`  NOTAM fetch failed: ${notamRes.reason?.message || notamRes.reason} — extending TTL`);
+    try { await extendExistingTtl([NOTAM_KEY, NOTAM_META_KEY], NOTAM_TTL); } catch {}
   }
 
-  // Secondary key: News (RSS prewarm)
+  // Secondary key: News (RSS prewarm, free)
   if (newsRes.status === 'fulfilled' && newsRes.value?.items?.length > 0) {
     try {
       await writeExtraKeyWithMeta(NEWS_KEY, newsRes.value, NEWS_TTL, newsRes.value.items.length);
@@ -783,8 +804,8 @@ async function fetchAll() {
     console.warn(`  News fetch failed: ${newsRes.reason?.message || newsRes.reason}`);
   }
 
-  // Dispatch notifications based on fresh intl delays + notam closures
-  if (intlRes.status === 'fulfilled' && intlRes.value?.healthy) {
+  // Dispatch notifications only when source was healthy AND produced real data.
+  if (intlRes.status === 'fulfilled' && intlRes.value?.healthy && !intlRes.value.skipped) {
     try { await dispatchAviationNotifications(intlRes.value.alerts); }
     catch (e) { console.warn(`  Aviation notify error: ${e?.message || e}`); }
   }
@@ -793,9 +814,37 @@ async function fetchAll() {
     catch (e) { console.warn(`  NOTAM notify error: ${e?.message || e}`); }
   }
 
-  // Primary return — INTL alerts for runSeed canonical key
-  if (intlRes.status === 'fulfilled') return { alerts: intlRes.value.alerts };
-  throw new Error(`intl delays failed: ${intlRes.reason?.message || intlRes.reason}`);
+  // Intl primary key decision: publish only when the fetch succeeded AND was healthy
+  // AND wasn't skipped (missing API key). An unhealthy or skipped intl fetch MUST
+  // NOT overwrite the last-good snapshot — consumers keep serving it while we
+  // extend the TTL + meta TTL so health.js stays green.
+  const intlFulfilled = intlRes.status === 'fulfilled';
+  const intlPublishable = intlFulfilled && intlRes.value.healthy && !intlRes.value.skipped;
+  if (!intlPublishable) {
+    // Refresh intl key TTL + seed-meta TTL so consumers keep the prior payload
+    // until the next healthy tick. runSeed's catch-path also calls
+    // extendExistingTtl on these keys — double-extend is idempotent.
+    try { await extendExistingTtl([INTL_KEY, INTL_META_KEY], INTL_TTL); } catch {}
+    const why = !intlFulfilled
+      ? (intlRes.reason?.message || intlRes.reason)
+      : intlRes.value.skipped ? 'no AVIATIONSTACK_API key'
+      : 'systemic fetch failure (failures > successes)';
+    return { _publishable: false, _reason: why };
+  }
+
+  return { _publishable: true, alerts: intlRes.value.alerts };
+}
+
+async function fetchAll() {
+  if (!cachedRun) cachedRun = await doFetchAll();
+  if (!cachedRun._publishable) {
+    // Throw so runSeed enters its graceful failure path and ALSO extends the
+    // existing TTL on INTL_KEY + seed-meta:aviation:intl. withRetry will
+    // invoke us up to 3 more times; the cachedRun gate makes each retry a
+    // no-op that just rethrows — no duplicate fetches or quota burn.
+    throw new Error(`intl unpublishable: ${cachedRun._reason}`);
+  }
+  return { alerts: cachedRun.alerts };
 }
 
 function validate(data) {
