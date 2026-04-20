@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
+import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -90,6 +91,16 @@ export class RegionalIntelligenceBoard extends Panel {
   }
 
   private async loadCurrent(): Promise<void> {
+    // Skip premium RPCs when this app instance is running inside the /pro
+    // marketing page's live-preview iframe — no Clerk session carries across
+    // that boundary, so every call would 401. The breaker + renderEmpty path
+    // already handles "no data" cases visually; short-circuiting here keeps
+    // the /pro console and Sentry quiet from these expected failures.
+    if (IS_EMBEDDED_PREVIEW) {
+      this.renderEmpty();
+      return;
+    }
+
     // Claim a sequence number BEFORE we await anything. The latest claim
     // wins — any response from an earlier sequence is dropped so fast
     // dropdown switches can't leave the panel rendering a stale region.
