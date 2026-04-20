@@ -24,7 +24,10 @@ let clerkLoadPromise: Promise<InstanceType<typeof Clerk>> | null = null;
 export async function ensureClerk(): Promise<InstanceType<typeof Clerk>> {
   if (clerk) return clerk;
   if (clerkLoadPromise) return clerkLoadPromise;
-  clerkLoadPromise = _loadClerk();
+  clerkLoadPromise = _loadClerk().catch((err) => {
+    clerkLoadPromise = null;
+    throw err;
+  });
   return clerkLoadPromise;
 }
 
@@ -98,7 +101,15 @@ export async function startCheckout(
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
 
-  const c = await ensureClerk();
+  let c: InstanceType<typeof Clerk>;
+  try {
+    c = await ensureClerk();
+  } catch (err) {
+    console.error('[checkout] Failed to load Clerk:', err);
+    Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk' } });
+    return false;
+  }
+
   if (!c.user) {
     pendingProductId = productId;
     pendingOptions = options ?? null;
