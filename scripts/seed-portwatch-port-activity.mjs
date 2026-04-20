@@ -33,14 +33,7 @@ const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 45_000;
 const HISTORY_DAYS = 90;
 const MAX_PORTS_PER_COUNTRY = 50;
-const CONCURRENCY = 12;
-const BATCH_LOG_EVERY = 5;
-// Per-country budget. Promise.allSettled waits for the slowest member of the
-// batch, so one runaway country (e.g. USA: many ports × many pages when EP3
-// is slow) can stall the whole batch and cascade to the section timeout,
-// leaving batches 2..N unattempted. This caps a single country without
-// aborting the whole section.
-const PER_COUNTRY_TIMEOUT_MS = 90_000;
+const ACTIVITY_LOG_EVERY = 20;
 
 function epochToTimestamp(epochMs) {
   const d = new Date(epochMs);
@@ -125,17 +118,26 @@ async function fetchAllPortRefs() {
   return byIso3;
 }
 
-async function fetchActivityRows(iso3, since, { signal } = {}) {
+// Fetch ALL activity rows globally in one paginated pass, grouped by ISO3.
+// Replaces 174× per-country WHERE=ISO3 round-trips (which hit ~90s each at
+// concurrency 12, far exceeding the 420s section budget even when none of
+// them hung) with a single sequential loop of ~150-200 pages that completes
+// comfortably inside the section budget. Also eliminates the `Invalid query
+// parameters` errors we saw in prod for BRA/IDN/NGA on the per-country
+// filter: the global WHERE does not involve an ISO3 equality on the feature
+// server, so those failure modes disappear.
+//
+// Returns Map<iso3, Feature[]>. Aborts between pages when signal.aborted.
+async function fetchAllActivityRows(since, { signal, progress } = {}) {
+  const byIso3 = new Map();
   let offset = 0;
-  const allRows = [];
   let body;
+  let page = 0;
+  const t0 = Date.now();
   do {
-    // Abort between pages so a cancelled per-country timer stops the
-    // paginator on the next iteration boundary even if the current fetch
-    // has already resolved.
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const params = new URLSearchParams({
-      where: `ISO3='${iso3}' AND date > ${epochToTimestamp(since)}`,
+      where: `date > ${epochToTimestamp(since)}`,
       outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
       orderByFields: 'portid ASC,date ASC',
       resultRecordCount: String(PAGE_SIZE),
@@ -145,13 +147,28 @@ async function fetchActivityRows(iso3, since, { signal } = {}) {
     });
     body = await fetchWithTimeout(`${EP3_BASE}?${params}`, { signal });
     const features = body.features ?? [];
-    if (features.length) allRows.push(...features);
-    // Advance by actual returned count, not PAGE_SIZE. ArcGIS can cap below
-    // the requested size (see fetchAllPortRefs for the same issue on EP4).
+    for (const f of features) {
+      const iso3 = f.attributes?.ISO3;
+      if (!iso3) continue;
+      const key = String(iso3);
+      let list = byIso3.get(key);
+      if (!list) { list = []; byIso3.set(key, list); }
+      list.push(f);
+    }
+    page++;
+    if (progress) {
+      progress.pages = page;
+      progress.countries = byIso3.size;
+    }
+    if (page === 1 || page % ACTIVITY_LOG_EVERY === 0) {
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      console.log(`  [port-activity]   activity page ${page}: +${features.length} rows (${byIso3.size} countries, ${elapsed}s)`);
+    }
     if (features.length === 0) break;
     offset += features.length;
   } while (body.exceededTransferLimit);
-  return allRows;
+  console.log(`  [port-activity] Activity rows loaded: ${page} pages across ${byIso3.size} countries (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  return byIso3;
 }
 
 function computeCountryPorts(rawRows, refMap) {
@@ -231,96 +248,43 @@ async function redisPipeline(commands) {
   return resp.json();
 }
 
-async function processCountry(iso3, iso2, since, refMap, { signal } = {}) {
-  const rawRows = await fetchActivityRows(iso3, since, { signal });
-  if (!rawRows.length) return null;
-  const ports = computeCountryPorts(rawRows, refMap);
-  if (!ports.length) return null;
-  return { iso2, ports, fetchedAt: new Date().toISOString() };
-}
-
-// Runs `doWork(signal)` but rejects if the per-country timer fires first,
-// aborting the controller so the in-flight fetch (and its pagination loop)
-// actually stops instead of orphaning. Keeps the CONCURRENCY=12 cap real:
-// the next batch cannot pile new requests on top of still-running earlier
-// work. Exported with an injectable timeoutMs so runtime tests can exercise
-// the abort path at 50ms instead of the production 90s.
-export function withPerCountryTimeout(doWork, iso3, timeoutMs = PER_COUNTRY_TIMEOUT_MS) {
-  const controller = new AbortController();
-  let timer;
-  const guard = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      const err = new Error(`per-country timeout after ${timeoutMs / 1000}s (${iso3})`);
-      try { controller.abort(err); } catch {}
-      reject(err);
-    }, timeoutMs);
-  });
-  const work = doWork(controller.signal);
-  return Promise.race([work, guard]).finally(() => clearTimeout(timer));
-}
-
 // fetchAll() — pure data collection, no Redis writes.
 // Returns { countries: string[], countryData: Map<iso2, payload>, fetchedAt: string }.
 //
 // `progress` (optional) is mutated in-place so a SIGTERM handler in main()
-// can read the last batch index, seeded count, and error list at kill time.
-export async function fetchAll(progress) {
+// can report which stage was running and how far into it we got.
+export async function fetchAll(progress, { signal } = {}) {
   const { iso3ToIso2 } = createCountryResolvers();
   const since = Date.now() - HISTORY_DAYS * 86400000;
 
+  if (progress) progress.stage = 'refs';
   console.log('  [port-activity] Fetching global port reference (EP4)...');
   const t0 = Date.now();
   const refsByIso3 = await fetchAllPortRefs();
   console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
-  // Only fetch activity for ISO3s that have at least one port AND exist in our iso3→iso2 map.
+  if (progress) progress.stage = 'activity';
+  console.log(`  [port-activity] Fetching global activity rows (${HISTORY_DAYS}d history, EP3)...`);
+  const activityByIso3 = await fetchAllActivityRows(since, { signal, progress });
+
+  if (progress) progress.stage = 'compute';
   const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
   const skipped = refsByIso3.size - eligibleIso3.length;
-  console.log(`  [port-activity] Activity queue: ${eligibleIso3.length} countries (skipping ${skipped} unmapped iso3, concurrency ${CONCURRENCY}, per-country cap ${PER_COUNTRY_TIMEOUT_MS / 1000}s)`);
+  console.log(`  [port-activity] Computing ports for ${eligibleIso3.length} eligible countries (skipping ${skipped} unmapped iso3)`);
 
   const countryData = new Map();
-  const errors = progress?.errors ?? [];
-  const batches = Math.ceil(eligibleIso3.length / CONCURRENCY);
-  const activityStart = Date.now();
-  if (progress) progress.totalBatches = batches;
-
-  for (let i = 0; i < eligibleIso3.length; i += CONCURRENCY) {
-    const batch = eligibleIso3.slice(i, i + CONCURRENCY);
-    const batchIdx = Math.floor(i / CONCURRENCY) + 1;
-    if (progress) progress.batchIdx = batchIdx;
-    const promises = batch.map(iso3 => {
-      const iso2 = iso3ToIso2.get(iso3);
-      const p = withPerCountryTimeout(
-        (signal) => processCountry(iso3, iso2, since, refsByIso3.get(iso3), { signal }),
-        iso3,
-      );
-      // Eager error flush (review feedback P2 on PR #3222). Push into the
-      // shared errors array the moment each promise rejects, so a SIGTERM
-      // that arrives MID-batch (while Promise.allSettled is still pending)
-      // sees the rejections that have already fired. The settled-loop
-      // below skips rejected outcomes to avoid double-counting.
-      p.catch(err => {
-        errors.push(`${iso3}: ${err?.message || err}`);
-      });
-      return p;
-    });
-    const settled = await Promise.allSettled(promises);
-    for (let j = 0; j < batch.length; j++) {
-      const outcome = settled[j];
-      if (outcome.status === 'rejected') continue; // already recorded via .catch above
-      if (!outcome.value) continue;
-      const { iso2, ports, fetchedAt } = outcome.value;
-      countryData.set(iso2, { iso2, ports, fetchedAt });
-    }
-    if (progress) progress.seeded = countryData.size;
-    if (batchIdx === 1 || batchIdx % BATCH_LOG_EVERY === 0 || batchIdx === batches) {
-      const elapsed = ((Date.now() - activityStart) / 1000).toFixed(1);
-      console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries seeded, ${errors.length} errors (${elapsed}s)`);
-    }
+  let missingActivity = 0;
+  for (const iso3 of eligibleIso3) {
+    const rawRows = activityByIso3.get(iso3);
+    if (!rawRows || rawRows.length === 0) { missingActivity++; continue; }
+    const ports = computeCountryPorts(rawRows, refsByIso3.get(iso3));
+    if (!ports.length) continue;
+    const iso2 = iso3ToIso2.get(iso3);
+    countryData.set(iso2, { iso2, ports, fetchedAt: new Date().toISOString() });
   }
 
-  if (errors.length) {
-    console.warn(`  [port-activity] ${errors.length} country errors: ${errors.slice(0, 5).join('; ')}${errors.length > 5 ? ' ...' : ''}`);
+  if (missingActivity > 0) {
+    console.log(`  [port-activity] ${missingActivity} eligible countries had no activity rows in the global dataset`);
   }
 
   if (countryData.size === 0) throw new Error('No country port data returned from ArcGIS');
@@ -350,11 +314,15 @@ async function main() {
   let prevCountryKeys = [];
   let prevCount = 0;
 
-  // Mutated in-place by fetchAll() so the SIGTERM handler can log which batch
-  // we died in and what the per-country errors looked like. Without this, a
-  // timeout kill flushes nothing from the errors array — past regressions
-  // have been undiagnosable for exactly this reason.
-  const progress = { batchIdx: 0, totalBatches: 0, seeded: 0, errors: [] };
+  // Mutated in-place by fetchAll() so the SIGTERM handler can report which
+  // stage was running and how far into the global paginator we got.
+  const progress = { stage: 'starting', pages: 0, countries: 0 };
+
+  // AbortController plumbed through fetchAll → fetchAllActivityRows →
+  // fetchWithTimeout → _proxy-utils so a SIGTERM kill (or bundle-runner
+  // grace-window escalation) actually stops any in-flight HTTP work
+  // instead of leaving orphan requests running into the SIGKILL.
+  const shutdownController = new AbortController();
 
   // Bundle-runner SIGKILLs via SIGTERM → SIGKILL on timeout. Release the lock
   // and extend existing TTLs synchronously(ish) so the next cron tick isn't
@@ -363,12 +331,10 @@ async function main() {
   const onSigterm = async () => {
     if (sigHandled) return;
     sigHandled = true;
+    try { shutdownController.abort(new Error('SIGTERM')); } catch {}
     console.error(
-      `  [port-activity] SIGTERM at batch ${progress.batchIdx}/${progress.totalBatches} — ${progress.seeded} seeded, ${progress.errors.length} errors`,
+      `  [port-activity] SIGTERM during stage=${progress.stage} (pages=${progress.pages}, countries=${progress.countries})`,
     );
-    if (progress.errors.length) {
-      console.error(`  [port-activity] First errors: ${progress.errors.slice(0, 10).join('; ')}`);
-    }
     console.error('  [port-activity] Releasing lock + extending TTLs');
     try {
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL);
@@ -386,7 +352,7 @@ async function main() {
     prevCount = Array.isArray(prevIso2List) ? prevIso2List.length : 0;
 
     console.log(`  Fetching port activity data (${HISTORY_DAYS}d history)...`);
-    const { countries, countryData } = await fetchAll(progress);
+    const { countries, countryData } = await fetchAll(progress, { signal: shutdownController.signal });
 
     console.log(`  Fetched ${countryData.size} countries`);
 
