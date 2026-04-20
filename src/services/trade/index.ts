@@ -5,6 +5,7 @@
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
+import { getCurrentClerkUser } from '@/services/clerk';
 import {
   TradeServiceClient,
   type GetTradeRestrictionsResponse,
@@ -66,6 +67,26 @@ const barriersBreaker = createCircuitBreaker<GetTradeBarriersResponse>({ name: '
 const revenueBreaker = createCircuitBreaker<GetCustomsRevenueResponse>({ name: 'Treasury Revenue', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const comtradeBreaker = createCircuitBreaker<ListComtradeFlowsResponse>({ name: 'Comtrade Flows', cacheTtlMs: 6 * 60 * 60 * 1000, persistCache: false });
 
+// Track the Clerk user identity that last populated the in-memory premium
+// breaker caches. On identity change (sign-out, user switch, free→pro
+// upgrade, pro→free downgrade), wipe the premium breakers' in-memory cache
+// so the new session doesn't see the previous session's premium response.
+// persistCache:false already closes the cross-browser-reload path; this
+// closes the in-tab SPA auth-transition path.
+let lastPremiumUserId: string | null | undefined; // undefined = never observed
+
+function invalidatePremiumBreakersIfIdentityChanged(): void {
+  let currentUserId: string | null = null;
+  try {
+    currentUserId = getCurrentClerkUser()?.id ?? null;
+  } catch { /* clerk not loaded yet */ }
+  if (lastPremiumUserId !== undefined && currentUserId !== lastPremiumUserId) {
+    tariffsBreaker.clearMemoryCache();
+    comtradeBreaker.clearMemoryCache();
+  }
+  lastPremiumUserId = currentUserId;
+}
+
 const emptyRestrictions: GetTradeRestrictionsResponse = { restrictions: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyTariffs: GetTariffTrendsResponse = { datapoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyFlows: GetTradeFlowsResponse = { flows: [], fetchedAt: '', upstreamUnavailable: false };
@@ -86,6 +107,7 @@ export async function fetchTradeRestrictions(countries: string[] = [], limit = 5
 
 export async function fetchTariffTrends(reportingCountry: string, partnerCountry: string, productSector = '', years = 10): Promise<GetTariffTrendsResponse> {
   if (!isFeatureAvailable('wtoTrade')) return emptyTariffs;
+  invalidatePremiumBreakersIfIdentityChanged();
   try {
     return await tariffsBreaker.execute(async () => {
       return premiumClient.getTariffTrends({ reportingCountry, partnerCountry, productSector, years });
@@ -130,6 +152,7 @@ export async function fetchCustomsRevenue(): Promise<GetCustomsRevenueResponse> 
 }
 
 export async function fetchComtradeFlows(): Promise<ListComtradeFlowsResponse> {
+  invalidatePremiumBreakersIfIdentityChanged();
   try {
     return await comtradeBreaker.execute(async () => {
       return premiumClient.listComtradeFlows({ reporterCode: '', cmdCode: '', anomaliesOnly: false });
