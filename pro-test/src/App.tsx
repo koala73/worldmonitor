@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
 import {
   Globe, Activity, ShieldAlert, Zap, Terminal, Database,
@@ -57,6 +58,7 @@ function getRefCode(): string | undefined {
 function openSignIn(): void {
   ensureClerk().then(c => c.openSignIn()).catch((err) => {
     console.error('[auth] Failed to open sign in:', err);
+    Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'open-sign-in' } });
   });
 }
 

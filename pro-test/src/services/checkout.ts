@@ -5,6 +5,7 @@
  * No Convex client needed — the edge endpoint handles relay.
  */
 
+import * as Sentry from '@sentry/react';
 import type { Clerk } from '@clerk/clerk-js';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 
@@ -28,7 +29,7 @@ export async function ensureClerk(): Promise<InstanceType<typeof Clerk>> {
 }
 
 async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
-  const { Clerk: C } = await import('@clerk/clerk-js');
+  const { Clerk: C } = await import('@clerk/clerk-js/no-rhc');
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
   clerk = new C(key);
@@ -101,7 +102,14 @@ export async function startCheckout(
   if (!c.user) {
     pendingProductId = productId;
     pendingOptions = options ?? null;
-    c.openSignIn();
+    try {
+      c.openSignIn();
+    } catch (err) {
+      console.error('[checkout] Failed to open sign in:', err);
+      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-in' } });
+      pendingProductId = null;
+      pendingOptions = null;
+    }
     return false;
   }
 
