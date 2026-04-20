@@ -184,7 +184,13 @@ echo "Running pro-test bundle freshness check..."
 # changes ship without the rebuild, production /pro serves the old bundle
 # (see PR #3227 → #3228: source fix merged but deploy still broken because
 # public/pro/ was stale).
-if git diff --name-only origin/main -- pro-test/ | grep -q .; then
+#
+# Scope to the BRANCH delta ($CHANGED_FILES, computed earlier from
+# `git diff origin/main...HEAD`), not the worktree, so unstaged local
+# pro-test/ scratch edits don't trigger a slow rebuild on unrelated
+# branches. RUN_ALL forces the check when the branch delta couldn't be
+# computed (matches the safety fallback used by the test runners above).
+if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -q "^pro-test/"; then
   if [ ! -d pro-test/node_modules ]; then
     echo "  Installing pro-test deps..."
     (cd pro-test && npm install --prefer-offline) || exit 1
@@ -217,7 +223,7 @@ if git diff --name-only origin/main -- pro-test/ | grep -q .; then
   fi
   echo "  pro-test bundle is up to date."
 else
-  echo "  Skipped (no pro-test/ changes)."
+  echo "  Skipped (no pro-test/ changes in branch)."
 fi
 
 echo "Running version sync check..."
