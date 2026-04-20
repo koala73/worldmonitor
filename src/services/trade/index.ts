@@ -67,24 +67,40 @@ const barriersBreaker = createCircuitBreaker<GetTradeBarriersResponse>({ name: '
 const revenueBreaker = createCircuitBreaker<GetCustomsRevenueResponse>({ name: 'Treasury Revenue', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const comtradeBreaker = createCircuitBreaker<ListComtradeFlowsResponse>({ name: 'Comtrade Flows', cacheTtlMs: 6 * 60 * 60 * 1000, persistCache: false });
 
-// Track the Clerk user identity that last populated the in-memory premium
-// breaker caches. On identity change (sign-out, user switch, free→pro
-// upgrade, pro→free downgrade), wipe the premium breakers' in-memory cache
-// so the new session doesn't see the previous session's premium response.
-// persistCache:false already closes the cross-browser-reload path; this
-// closes the in-tab SPA auth-transition path.
-let lastPremiumUserId: string | null | undefined; // undefined = never observed
+// Track the Clerk identity + entitlement that last populated the in-memory
+// premium breaker caches. On any change — sign-out, user switch, OR
+// entitlement downgrade/upgrade for the same user — wipe the premium
+// breakers so the new session doesn't see the previous session's premium
+// response. persistCache:false already closes the cross-browser-reload
+// path; this closes the in-tab SPA transition path.
+//
+// The fingerprint must include `plan`: a user who cancels Pro mid-session
+// keeps the same Clerk user id, so a pure-id key would let their cached
+// tariff/comtrade response persist for up to the breaker TTL even though
+// the gateway would now refuse a fresh fetch.
+//
+// Shape: `${userId}:${plan}` | `anon` | null-not-yet-observed
+let lastPremiumFingerprint: string | null | undefined; // undefined = never observed
+
+function currentPremiumFingerprint(): string {
+  try {
+    const u = getCurrentClerkUser();
+    if (!u) return 'anon';
+    return `${u.id}:${u.plan}`;
+  } catch {
+    // Clerk not loaded yet — treat as anon; first real call after load
+    // will trigger an invalidation because the fingerprint will differ.
+    return 'anon';
+  }
+}
 
 function invalidatePremiumBreakersIfIdentityChanged(): void {
-  let currentUserId: string | null = null;
-  try {
-    currentUserId = getCurrentClerkUser()?.id ?? null;
-  } catch { /* clerk not loaded yet */ }
-  if (lastPremiumUserId !== undefined && currentUserId !== lastPremiumUserId) {
+  const fp = currentPremiumFingerprint();
+  if (lastPremiumFingerprint !== undefined && fp !== lastPremiumFingerprint) {
     tariffsBreaker.clearMemoryCache();
     comtradeBreaker.clearMemoryCache();
   }
-  lastPremiumUserId = currentUserId;
+  lastPremiumFingerprint = fp;
 }
 
 const emptyRestrictions: GetTradeRestrictionsResponse = { restrictions: [], fetchedAt: '', upstreamUnavailable: false };
