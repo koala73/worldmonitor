@@ -275,7 +275,7 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   const keyMap = new Map<string, ParsedItem[]>();
   for (const item of candidates) {
     const hash = (await sha256Hex(item.title.toLowerCase())).slice(0, 16);
-    const key = `classify:sebuf:v2:${hash}`;
+    const key = `classify:sebuf:v3:${hash}`;
     const existing = keyMap.get(key) ?? [];
     existing.push(item);
     keyMap.set(key, existing);

@@ -63,12 +63,12 @@ describe('shadow-log key version', () => {
   it('uses the v4 JSON-member key (prompt upgrade clean dataset)', () => {
     assert.match(
       relaySrc,
-      /SHADOW_SCORE_LOG_KEY\s*=\s*['"]shadow:score-log:v4['"]/,
-      'notification-relay must write to shadow:score-log:v4 after the prompt upgrade',
+      /SHADOW_SCORE_LOG_KEY\s*=\s*['"]shadow:score-log:v5['"]/,
+      'notification-relay must write to shadow:score-log:v5 after the prompt upgrade',
     );
     assert.ok(
-      !/SHADOW_SCORE_LOG_KEY\s*=\s*['"]shadow:score-log:v[123]['"]/.test(relaySrc),
-      'legacy v1/v2/v3 keys must not be active',
+      !/SHADOW_SCORE_LOG_KEY\s*=\s*['"]shadow:score-log:v[1234]['"]/.test(relaySrc),
+      'legacy v1/v2/v3/v4 keys must not be active',
     );
   });
 
