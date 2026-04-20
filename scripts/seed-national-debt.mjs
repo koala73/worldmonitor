@@ -7,7 +7,11 @@ loadEnvFile(import.meta.url);
 const TREASURY_URL = 'https://api.fiscaldata.treasury.gov/services/api/v1/accounting/od/debt_to_penny?fields=record_date,tot_pub_debt_out_amt&sort=-record_date&page[size]=1';
 
 const CANONICAL_KEY = 'economic:national-debt:v1';
-const CACHE_TTL = 35 * 24 * 3600; // 35 days — monthly cron with buffer
+// 65 days — must exceed health.js SEED_META.nationalDebt.maxStaleMin (60d) so
+// a missed monthly cron keeps the canonical payload readable through the
+// STALE_SEED warn window instead of vanishing into EMPTY crit at day 35.
+// writeFreshnessMetadata() uses max(7d, ttlSeconds) → meta TTL tracks this.
+const CACHE_TTL = 65 * 24 * 3600;
 
 // IMF WEO regional aggregate codes (not real sovereign countries)
 const AGGREGATE_CODES = new Set([
@@ -178,7 +182,10 @@ if (process.argv[1]?.endsWith('seed-national-debt.mjs')) {
   
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 10080,
+    // Matches api/health.js SEED_META.nationalDebt (60d = 2× monthly interval).
+    // runSeed only validates the field is present; health.js is the actual
+    // alarm source, but keeping these in sync prevents future drift.
+    maxStaleMin: 86400,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
