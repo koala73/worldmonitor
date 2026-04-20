@@ -1,0 +1,31 @@
+# =============================================================================
+# Seed Bundle: PortWatch Port-Activity (daily cron, standalone)
+# =============================================================================
+# Runs scripts/seed-bundle-portwatch-port-activity.mjs which spawns the single
+# PW-Port-Activity section via _bundle-runner.mjs. Split out of the main
+# portwatch bundle on 2026-04-20 because ArcGIS Daily_Ports_Data scales poorly
+# at the per-country level — see the bundle script header for the full
+# rationale.
+#
+# Runtime deps this image needs:
+#   - node:22-alpine (ESM, AbortSignal.any, fetch)
+#   - scripts/ tree (seeder + _seed-utils + _proxy-utils + _country-resolver
+#     + _bundle-runner + proxy helpers)
+#   - shared/ (country mappings that _country-resolver depends on)
+#   - .nvmrc? (not needed; node version baked into the base image)
+# =============================================================================
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Ship the full scripts/ tree rather than cherry-picking. The cherry-picked
+# approach has broken three+ seed services in the past when a local import
+# was added without updating the Dockerfile (PR #3041, #3052, #3196). 2 MB of
+# scripts + robustness is a good trade.
+COPY scripts/ ./scripts/
+COPY shared/ ./shared/
+
+ENV NODE_OPTIONS="--max-old-space-size=1024 --dns-result-order=ipv4first"
+
+CMD ["node", "scripts/seed-bundle-portwatch-port-activity.mjs"]

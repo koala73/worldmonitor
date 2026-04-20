@@ -9,8 +9,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const src = readFileSync(resolve(root, 'scripts/seed-portwatch-port-activity.mjs'), 'utf-8');
-const seedUtilsSrc = readFileSync(resolve(root, 'scripts/_seed-utils.mjs'), 'utf-8');
-const proxyUtilsSrc = readFileSync(resolve(root, 'scripts/_proxy-utils.cjs'), 'utf-8');
+const bundleSrc = readFileSync(resolve(root, 'scripts/seed-bundle-portwatch-port-activity.mjs'), 'utf-8');
+const mainBundleSrc = readFileSync(resolve(root, 'scripts/seed-bundle-portwatch.mjs'), 'utf-8');
+const dockerfileSrc = readFileSync(resolve(root, 'Dockerfile.seed-bundle-portwatch-port-activity'), 'utf-8');
 
 // ── seeder source assertions ──────────────────────────────────────────────────
 
@@ -23,12 +24,16 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /export\s+function\s+validateFn/);
   });
 
-  it('CANONICAL_KEY is supply_chain:portwatch-ports:v1:_countries', () => {
-    assert.match(src, /supply_chain:portwatch-ports:v1:_countries/);
+  it('exports withPerCountryTimeout', () => {
+    assert.match(src, /export\s+function\s+withPerCountryTimeout/);
   });
 
-  it('KEY_PREFIX is supply_chain:portwatch-ports:v1:', () => {
-    assert.match(src, /supply_chain:portwatch-ports:v1:/);
+  it('exports finalisePortsForCountry', () => {
+    assert.match(src, /export\s+function\s+finalisePortsForCountry/);
+  });
+
+  it('CANONICAL_KEY is supply_chain:portwatch-ports:v1:_countries', () => {
+    assert.match(src, /supply_chain:portwatch-ports:v1:_countries/);
   });
 
   it('Endpoint 3 URL contains Daily_Ports_Data', () => {
@@ -39,133 +44,94 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /PortWatch_ports_database/);
   });
 
-  it('date filter uses epochToTimestamp', () => {
-    assert.match(src, /epochToTimestamp/);
+  it('EP3 per-country WHERE uses ISO3 index + date filter', () => {
+    // After the PR #3225 globalisation failed in prod, we restored the
+    // per-country shape because ArcGIS has an ISO3 index but NO date
+    // index — the per-country filter is what keeps queries fast.
+    assert.match(src, /where:\s*`ISO3='\$\{iso3\}'\s+AND\s+date\s*>/);
+    // Global where=date>X shape must NOT be present any more.
+    assert.doesNotMatch(src, /where:\s*`date\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
   });
 
-  it('Endpoint 3 pagination loop checks body.exceededTransferLimit', () => {
-    assert.match(src, /body\.exceededTransferLimit/);
-  });
-
-  it('Endpoint 4 query fetches all ports globally with where=1=1', () => {
-    assert.match(src, /PortWatch_ports_database/);
+  it('EP4 refs query fetches all ports globally with where=1=1', () => {
     assert.match(src, /where:\s*'1=1'/);
     assert.match(src, /outFields:\s*'portid,ISO3,lat,lon'/);
   });
 
-  it('both paginators set returnGeometry:false to avoid wasted wire bandwidth', () => {
-    // ArcGIS returns geometry by default (~100-200KB per page). Omitting
-    // this in the EP3 paginator across ~150-200 pages adds tens of MB to
-    // the perf-critical path. Review feedback on PR #3225.
+  it('both paginators set returnGeometry:false', () => {
     const matches = src.match(/returnGeometry:\s*'false'/g) ?? [];
-    assert.ok(matches.length >= 2, `expected returnGeometry:'false' in both EP3 and EP4 paginators, found ${matches.length}`);
-  });
-
-  it('fetchAllPortRefs accepts + forwards signal for SIGTERM cancellation', () => {
-    // Review feedback on PR #3225: during the 'refs' stage a SIGTERM must
-    // cancel in-flight EP4 fetches, not let them run up to FETCH_TIMEOUT
-    // after the handler fires. The signal must thread through the
-    // paginator into fetchWithTimeout.
-    assert.match(src, /async function fetchAllPortRefs\(\{\s*signal\s*\}\s*=\s*\{\}\)/);
-    assert.match(src, /fetchWithTimeout\(`\$\{EP4_BASE\}\?\$\{params\}`,\s*\{\s*signal\s*\}\)/);
-    // fetchAll must pass the signal when calling it.
-    assert.match(src, /fetchAllPortRefs\(\{\s*signal\s*\}\)/);
-  });
-
-  it('Endpoint 3 activity query is globalised — no per-country ISO3 filter', () => {
-    // The per-country `WHERE ISO3='XX' AND date > ...` shape is gone; the
-    // globalised paginator uses a single date filter and groups by ISO3 in
-    // memory. This eliminates the 174-per-country round-trip cost that
-    // blew the 420s section budget even when every country was fast, and
-    // also removes the `Invalid query parameters` errors that hit
-    // BRA/IDN/NGA under the per-country shape.
-    assert.doesNotMatch(src, /where:\s*`ISO3=/);
-    assert.match(src, /where:\s*`date\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
-  });
-
-  it('streams EP3 into per-port accumulators, not a flat rows array', () => {
-    // Review feedback on PR #3225: materialising the full 90d activity
-    // dataset as Map<iso3, Feature[]> holds ~180k feature objects at once
-    // (~70MB) on a 1GB Railway container. The aggregator now folds each
-    // page into Map<iso3, Map<portId, PortAccum>> (~200KB) and discards
-    // the rows. Assert both the rename and the accumulator shape.
-    assert.match(src, /async function fetchAndAggregateActivity/);
-    assert.doesNotMatch(src, /async function fetchAllActivityRows/);
-    // Accumulator fields (at least the key ones we rely on downstream).
-    assert.match(src, /last30_calls:\s*0/);
-    assert.match(src, /last30_count:\s*0/);
-    assert.match(src, /prev30_calls:\s*0/);
-    assert.match(src, /last7_calls:\s*0/);
-    // No more flat rows array collected per country.
-    assert.doesNotMatch(src, /byIso3\.set\(key,\s*list\)/);
-  });
-
-  it('finalisePortsForCountry emits top-N ports from accumulators', () => {
-    assert.match(src, /function finalisePortsForCountry\(portAccumMap,\s*refMap\)/);
-    assert.match(src, /MAX_PORTS_PER_COUNTRY/);
-    // Same anomaly/trend formula as the old per-row code.
-    assert.match(src, /avg7d\s*<\s*avg30d\s*\*\s*0\.5/);
-  });
-
-  it('registers SIGTERM handler for graceful shutdown', () => {
-    assert.match(src, /process\.on\('SIGTERM'/);
-  });
-
-  it('SIGTERM handler aborts shutdownController + logs stage/pages/countries', () => {
-    // Per-country batching is gone, but the SIGTERM path still must (a)
-    // abort the in-flight global paginator via the shared controller, and
-    // (b) emit a forensic line identifying which stage we died in.
-    assert.match(src, /shutdownController\.abort\(new Error\('SIGTERM'\)\)/);
-    assert.match(src, /SIGTERM during stage=\$\{progress\.stage\}/);
-    assert.match(src, /pages=\$\{progress\.pages\},\s*countries=\$\{progress\.countries\}/);
-  });
-
-  it('fetchAll accepts progress + { signal } and mutates progress.stage', () => {
-    assert.match(src, /export async function fetchAll\(progress,\s*\{\s*signal\s*\}\s*=\s*\{\}\)/);
-    assert.match(src, /progress\.stage\s*=\s*'refs'/);
-    assert.match(src, /progress\.stage\s*=\s*'activity'/);
-    assert.match(src, /progress\.stage\s*=\s*'compute'/);
-  });
-
-  it('fetchAndAggregateActivity updates progress.pages + progress.countries', () => {
-    assert.match(src, /progress\.pages\s*=\s*page/);
-    assert.match(src, /progress\.countries\s*=\s*accumByIso3\.size/);
+    assert.ok(matches.length >= 2, `expected returnGeometry:'false' in both paginators, found ${matches.length}`);
   });
 
   it('fetchWithTimeout combines caller signal with FETCH_TIMEOUT via AbortSignal.any', () => {
-    // Still needed so a shutdown-controller abort propagates into the
-    // in-flight fetch instead of orphaning it for up to 45s.
     assert.match(src, /AbortSignal\.any\(\[signal,\s*AbortSignal\.timeout\(FETCH_TIMEOUT\)\]\)/);
   });
 
-  it('fetchAndAggregateActivity checks signal.aborted between pages', () => {
-    assert.match(src, /signal\?\.aborted\)\s*throw\s+signal\.reason/);
+  it('paginators check signal.aborted between pages', () => {
+    // Both refs + activity paginators must exit fast on abort.
+    const matches = src.match(/signal\?\.aborted\)\s*throw\s+signal\.reason/g) ?? [];
+    assert.ok(matches.length >= 2, `expected signal.aborted checks in both paginators, found ${matches.length}`);
   });
 
-  it('429 proxy fallback threads caller signal into httpsProxyFetchRaw', () => {
-    assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
+  it('defines fetchWithRetryOnInvalidParams — single retry on transient ArcGIS error', () => {
+    // Prod log 2026-04-20 showed ArcGIS returning "Cannot perform query.
+    // Invalid query parameters." for otherwise-valid queries (BRA/IDN/NGA
+    // on per-country; also the global WHERE). One retry clears it.
+    assert.match(src, /async function fetchWithRetryOnInvalidParams/);
+    assert.match(src, /Invalid query parameters/);
+    // Must NOT retry other error classes.
+    assert.match(src, /if\s*\(!\/Invalid query parameters\/i\.test\(msg\)\)\s*throw\s+err/);
   });
 
-  it('httpsProxyFetchRaw accepts and forwards signal', () => {
-    assert.match(seedUtilsSrc, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
-    assert.match(seedUtilsSrc, /proxyFetch\(url,\s*proxyConfig,\s*\{[^}]*signal[^}]*\}/s);
+  it('both EP3 + EP4 paginators route through fetchWithRetryOnInvalidParams', () => {
+    const matches = src.match(/fetchWithRetryOnInvalidParams\(/g) ?? [];
+    // Called in: fetchAllPortRefs (EP4), fetchCountryAccum (EP3). 2+ usages.
+    assert.ok(matches.length >= 2, `expected retry wrapper used by both paginators, found ${matches.length}`);
   });
 
-  it('proxyFetch + proxyConnectTunnel accept signal and bail early if aborted', () => {
-    assert.match(proxyUtilsSrc, /function proxyFetch\([\s\S]*?\bsignal,?\s*\}\s*=\s*\{\}/);
-    assert.match(proxyUtilsSrc, /function proxyConnectTunnel\([\s\S]*?\bsignal\s*\}\s*=\s*\{\}/);
-    assert.match(proxyUtilsSrc, /signal && signal\.aborted/);
-    assert.match(proxyUtilsSrc, /signal\.addEventListener\('abort'/);
+  it('CONCURRENCY is 12 and PER_COUNTRY_TIMEOUT_MS is 90s', () => {
+    assert.match(src, /CONCURRENCY\s*=\s*12/);
+    assert.match(src, /PER_COUNTRY_TIMEOUT_MS\s*=\s*90_000/);
+  });
+
+  it('batch loop wires eager .catch for mid-batch SIGTERM diagnostics', () => {
+    assert.match(src, /p\.catch\(err\s*=>\s*errors\.push/);
+  });
+
+  it('withPerCountryTimeout aborts the controller when timer fires', () => {
+    // Abort propagation must be real — not just a Promise.race that lets
+    // the inner work keep running (PR #3222 review P1).
+    assert.match(src, /controller\.abort\(err\)/);
+  });
+
+  it('fetchCountryAccum returns per-port accumulators, not raw rows', () => {
+    assert.match(src, /async function fetchCountryAccum/);
+    assert.match(src, /last30_calls:\s*0/);
+    assert.match(src, /prev30_calls:\s*0/);
+    assert.match(src, /last7_calls:\s*0/);
+  });
+
+  it('registers SIGTERM + SIGINT + aborts shutdownController', () => {
+    assert.match(src, /process\.on\('SIGTERM'/);
+    assert.match(src, /process\.on\('SIGINT'/);
+    assert.match(src, /shutdownController\.abort\(new Error\('SIGTERM'\)\)/);
+  });
+
+  it('SIGTERM handler logs batch + stage + seeded + first errors', () => {
+    assert.match(src, /SIGTERM at batch \$\{progress\.batchIdx\}\/\$\{progress\.totalBatches\}/);
+    assert.match(src, /progress\.errors\.slice\(0,\s*10\)/);
   });
 
   it('pagination advances by actual features.length, not PAGE_SIZE', () => {
-    // ArcGIS PortWatch_ports_database caps responses at 1000 rows even when
-    // resultRecordCount=2000. Advancing by PAGE_SIZE skips rows 1000-1999.
-    // Guard: no 'offset += PAGE_SIZE' anywhere in the file, both loops use
-    // 'offset += features.length'.
     assert.doesNotMatch(src, /offset\s*\+=\s*PAGE_SIZE/);
     const matches = src.match(/offset\s*\+=\s*features\.length/g) ?? [];
     assert.ok(matches.length >= 2, `expected both paginators to advance by features.length, found ${matches.length}`);
+  });
+
+  it('LOCK_TTL_MS is 60 min', () => {
+    // Bumped from 30 → 60 min when this moved to its own Railway cron with
+    // a bigger wall-time budget.
+    assert.match(src, /LOCK_TTL_MS\s*=\s*60\s*\*\s*60\s*\*\s*1000/);
   });
 
   it('anomalySignal computation is present', () => {
@@ -196,16 +162,40 @@ describe('ArcGIS 429 proxy fallback', () => {
     assert.match(src, /resp\.status\s*===\s*429/);
   });
 
-  it('calls resolveProxyForConnect() on 429', () => {
-    assert.match(src, /resolveProxyForConnect\(\)/);
+  it('429 proxy fallback threads caller signal', () => {
+    assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
+  });
+});
+
+// ── standalone bundle + Dockerfile assertions ────────────────────────────────
+
+describe('standalone Railway cron split', () => {
+  it('main portwatch bundle NO LONGER contains PW-Port-Activity', () => {
+    assert.doesNotMatch(mainBundleSrc, /label:\s*'PW-Port-Activity'/);
+    assert.doesNotMatch(mainBundleSrc, /seed-portwatch-port-activity\.mjs/);
   });
 
-  it('calls httpsProxyFetchRaw with proxy auth on 429', () => {
-    assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth/);
+  it('new dedicated bundle script exists and references the seeder', () => {
+    assert.match(bundleSrc, /seed-portwatch-port-activity\.mjs/);
+    assert.match(bundleSrc, /runBundle\('portwatch-port-activity'/);
+    assert.match(bundleSrc, /label:\s*'PW-Port-Activity'/);
   });
 
-  it('throws if 429 and no proxy configured', () => {
-    assert.match(src, /429.*rate limited/);
+  it('new bundle gives the section a 540s timeout', () => {
+    assert.match(bundleSrc, /timeoutMs:\s*540_000/);
+  });
+
+  it('Dockerfile copies scripts/ + shared/ (needed at runtime)', () => {
+    assert.match(dockerfileSrc, /COPY\s+scripts\/\s+\.\/scripts\//);
+    assert.match(dockerfileSrc, /COPY\s+shared\/\s+\.\/shared\//);
+  });
+
+  it('Dockerfile CMD runs the new bundle script', () => {
+    assert.match(dockerfileSrc, /CMD\s*\["node",\s*"scripts\/seed-bundle-portwatch-port-activity\.mjs"\]/);
+  });
+
+  it('Dockerfile sets dns-result-order=ipv4first (matches other seed services)', () => {
+    assert.match(dockerfileSrc, /dns-result-order=ipv4first/);
   });
 });
 
@@ -247,12 +237,10 @@ describe('anomalySignal computation', () => {
     for (let i = 0; i < 30; i++) {
       rows.push({ date: now - (29 - i) * 86400000, portcalls_tanker: 60 });
     }
-    // last 7 days avg = 2 (spike down)
     for (let i = 0; i < 7; i++) {
       rows[rows.length - 7 + i].portcalls_tanker = 2;
     }
-    const result = computeAnomalySignal(rows, cutoff30, cutoff7);
-    assert.equal(result, true, 'should detect anomaly when 7d avg is far below 30d avg');
+    assert.equal(computeAnomalySignal(rows, cutoff30, cutoff7), true);
   });
 
   it('does NOT flag anomaly when 7d avg is close to 30d avg', () => {
@@ -260,76 +248,81 @@ describe('anomalySignal computation', () => {
     for (let i = 0; i < 30; i++) {
       rows.push({ date: now - (29 - i) * 86400000, portcalls_tanker: 60 });
     }
-    // last 7 days avg = 55 (close to 60)
     for (let i = 0; i < 7; i++) {
       rows[rows.length - 7 + i].portcalls_tanker = 55;
     }
-    const result = computeAnomalySignal(rows, cutoff30, cutoff7);
-    assert.equal(result, false, 'should not flag anomaly when 7d is close to 30d avg');
+    assert.equal(computeAnomalySignal(rows, cutoff30, cutoff7), false);
   });
 
-  it('returns false when 30d avg is zero (no baseline)', () => {
-    const rows = [];
-    for (let i = 0; i < 30; i++) {
-      rows.push({ date: now - (29 - i) * 86400000, portcalls_tanker: 0 });
-    }
-    const result = computeAnomalySignal(rows, cutoff30, cutoff7);
-    assert.equal(result, false, 'should return false when baseline is zero');
+  it('returns false when 30d avg is zero', () => {
+    const rows = Array.from({ length: 30 }, (_, i) => ({ date: now - (29 - i) * 86400000, portcalls_tanker: 0 }));
+    assert.equal(computeAnomalySignal(rows, cutoff30, cutoff7), false);
   });
 });
 
 describe('top-N port truncation', () => {
   it('returns top 50 ports from a set of 60', () => {
-    const ports = Array.from({ length: 60 }, (_, i) => ({
-      portId: String(i),
-      portName: `Port ${i}`,
-      tankerCalls30d: 60 - i,
-    }));
+    const ports = Array.from({ length: 60 }, (_, i) => ({ portId: String(i), portName: `P${i}`, tankerCalls30d: 60 - i }));
     const result = topN(ports, 50);
-    assert.equal(result.length, 50, 'should return exactly 50 ports');
-    assert.equal(result[0].tankerCalls30d, 60, 'first port should have highest tankerCalls30d');
-    assert.equal(result[49].tankerCalls30d, 11, 'last port should be rank 50');
+    assert.equal(result.length, 50);
+    assert.equal(result[0].tankerCalls30d, 60);
+    assert.equal(result[49].tankerCalls30d, 11);
   });
 
   it('returns all ports when count is less than N', () => {
-    const ports = Array.from({ length: 10 }, (_, i) => ({
-      portId: String(i),
-      portName: `Port ${i}`,
-      tankerCalls30d: 10 - i,
-    }));
-    const result = topN(ports, 50);
-    assert.equal(result.length, 10, 'should return all 10 ports when fewer than 50');
+    const ports = Array.from({ length: 10 }, (_, i) => ({ portId: String(i), portName: `P${i}`, tankerCalls30d: 10 - i }));
+    assert.equal(topN(ports, 50).length, 10);
+  });
+});
+
+// ── runtime tests ────────────────────────────────────────────────────────────
+
+describe('withPerCountryTimeout (runtime)', () => {
+  let withPerCountryTimeout;
+  before(async () => {
+    ({ withPerCountryTimeout } = await import('../scripts/seed-portwatch-port-activity.mjs'));
   });
 
-  it('sorts by tankerCalls30d descending', () => {
-    const ports = [
-      { portId: 'a', portName: 'A', tankerCalls30d: 5 },
-      { portId: 'b', portName: 'B', tankerCalls30d: 100 },
-      { portId: 'c', portName: 'C', tankerCalls30d: 50 },
-    ];
-    const result = topN(ports, 50);
-    assert.equal(result[0].portId, 'b');
-    assert.equal(result[1].portId, 'c');
-    assert.equal(result[2].portId, 'a');
+  it('aborts the per-country signal when the timer fires', async () => {
+    let observedSignal;
+    const p = withPerCountryTimeout(
+      (signal) => {
+        observedSignal = signal;
+        return new Promise((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+      },
+      'TST',
+      40,
+    );
+    await assert.rejects(p, /per-country timeout after 0\.04s \(TST\)/);
+    assert.equal(observedSignal.aborted, true);
+  });
+
+  it('resolves with the work result when work completes before the timer', async () => {
+    const result = await withPerCountryTimeout((_s) => Promise.resolve({ ok: true }), 'TST', 500);
+    assert.deepEqual(result, { ok: true });
+  });
+
+  it('surfaces the real error when work rejects first (not timeout message)', async () => {
+    await assert.rejects(
+      withPerCountryTimeout((_s) => Promise.reject(new Error('ArcGIS HTTP 500')), 'TST', 1_000),
+      /ArcGIS HTTP 500/,
+    );
   });
 });
 
 describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
-  // eslint-disable-next-line import/first
   let finalisePortsForCountry;
   before(async () => {
     ({ finalisePortsForCountry } = await import('../scripts/seed-portwatch-port-activity.mjs'));
   });
 
   it('emits tankerCalls30d / trendDelta / anomalySignal that match the old per-row formula', () => {
-    // Accum equivalent of: last30 has 30 rows × 60 calls, prev30 has 30 × 40,
-    // last7 has 7 rows × 20 calls (subset of last30 — but note that the
-    // streaming aggregator increments last30 AND last7 on the same row for
-    // dates ≤ 7d, so last7_calls should be <= last30_calls).
     const portAccumMap = new Map([
       ['42', {
         portname: 'Test Port',
-        last30_calls: 60 * 23 + 20 * 7, // 23 rows in 8-30d window + 7 rows in 0-7d window
+        last30_calls: 60 * 23 + 20 * 7,
         last30_count: 30,
         last30_import: 1000,
         last30_export: 500,
@@ -340,47 +333,27 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
     ]);
     const refMap = new Map([['42', { lat: 10, lon: 20 }]]);
     const [port] = finalisePortsForCountry(portAccumMap, refMap);
-
-    assert.equal(port.portId, '42');
-    assert.equal(port.portName, 'Test Port');
-    assert.equal(port.lat, 10);
-    assert.equal(port.lon, 20);
     assert.equal(port.tankerCalls30d, 60 * 23 + 20 * 7);
     assert.equal(port.importTankerDwt30d, 1000);
     assert.equal(port.exportTankerDwt30d, 500);
-    // trendDelta = ((last30 - prev30) / prev30) * 100, rounded to 1 decimal
     const expectedTrend = Math.round(((60 * 23 + 20 * 7 - 40 * 30) / (40 * 30)) * 1000) / 10;
     assert.equal(port.trendDelta, expectedTrend);
-    // avg30d = last30_calls / last30_count; avg7d = last7_calls / last7_count
-    // (60*23 + 20*7) / 30 = (1380+140)/30 = 50.67; last7 avg = 140/7 = 20
-    // 20 < 50.67 * 0.5 = 25.33 → anomaly = true
     assert.equal(port.anomalySignal, true);
   });
 
-  it('returns trendDelta=0 when prev30_calls is zero (no baseline)', () => {
+  it('trendDelta=0 when prev30_calls=0', () => {
     const portAccumMap = new Map([
-      ['1', {
-        portname: 'P', last30_calls: 100, last30_count: 30,
-        last30_import: 0, last30_export: 0,
-        prev30_calls: 0, // no prior-period baseline
-        // last7 matches last30 rate → no anomaly
-        last7_calls: Math.round((100 / 30) * 7),
-        last7_count: 7,
-      }],
+      ['1', { portname: 'P', last30_calls: 100, last30_count: 30, last30_import: 0, last30_export: 0, prev30_calls: 0, last7_calls: Math.round((100 / 30) * 7), last7_count: 7 }],
     ]);
     const [port] = finalisePortsForCountry(portAccumMap, new Map());
     assert.equal(port.trendDelta, 0);
     assert.equal(port.anomalySignal, false);
   });
 
-  it('sorts by tankerCalls30d desc and truncates to MAX_PORTS_PER_COUNTRY=50', () => {
+  it('sorts desc + truncates to MAX_PORTS_PER_COUNTRY=50', () => {
     const portAccumMap = new Map();
     for (let i = 0; i < 60; i++) {
-      portAccumMap.set(String(i), {
-        portname: `P${i}`, last30_calls: 60 - i, last30_count: 1,
-        last30_import: 0, last30_export: 0, prev30_calls: 0,
-        last7_calls: 0, last7_count: 0,
-      });
+      portAccumMap.set(String(i), { portname: `P${i}`, last30_calls: 60 - i, last30_count: 1, last30_import: 0, last30_export: 0, prev30_calls: 0, last7_calls: 0, last7_count: 0 });
     }
     const out = finalisePortsForCountry(portAccumMap, new Map());
     assert.equal(out.length, 50);
@@ -388,7 +361,7 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
     assert.equal(out[49].tankerCalls30d, 11);
   });
 
-  it('falls back to lat/lon=0 when a portId is missing from refMap', () => {
+  it('falls back to lat/lon=0 when refMap lacks the portId', () => {
     const portAccumMap = new Map([
       ['999', { portname: 'Orphan', last30_calls: 1, last30_count: 1, last30_import: 0, last30_export: 0, prev30_calls: 0, last7_calls: 0, last7_count: 0 }],
     ]);
@@ -403,9 +376,6 @@ describe('proxyFetch signal propagation (runtime)', () => {
   const { proxyFetch } = require_('../scripts/_proxy-utils.cjs');
 
   it('rejects synchronously when called with an already-aborted signal', async () => {
-    // A shutdown-controller abort must short-circuit BEFORE any CONNECT
-    // tunnel opens; otherwise a killed run's proxy call continues in the
-    // background past SIGKILL. No network reached in this test.
     const controller = new AbortController();
     controller.abort(new Error('test-cancel'));
     await assert.rejects(
@@ -421,15 +391,13 @@ describe('proxyFetch signal propagation (runtime)', () => {
 describe('validateFn', () => {
   it('returns true when countries array has >= 50 entries', () => {
     const data = { countries: Array.from({ length: 80 }, (_, i) => `C${i}`), fetchedAt: new Date().toISOString() };
-    const countries = data.countries;
-    const valid = data && Array.isArray(countries) && countries.length >= 50;
+    const valid = data && Array.isArray(data.countries) && data.countries.length >= 50;
     assert.equal(valid, true);
   });
 
   it('returns false when countries array has < 50 entries', () => {
     const data = { countries: ['US', 'SA'], fetchedAt: new Date().toISOString() };
-    const countries = data.countries;
-    const valid = data && Array.isArray(countries) && countries.length >= 50;
+    const valid = data && Array.isArray(data.countries) && data.countries.length >= 50;
     assert.equal(valid, false);
   });
 

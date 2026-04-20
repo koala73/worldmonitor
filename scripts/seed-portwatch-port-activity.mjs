@@ -20,7 +20,8 @@ export const CANONICAL_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 const KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';
 const META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
-const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min — covers worst-case full run
+// 60 min — covers the widest realistic run of this standalone service.
+const LOCK_TTL_MS = 60 * 60 * 1000;
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
 const MIN_VALID_COUNTRIES = 50;
 
@@ -33,7 +34,14 @@ const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 45_000;
 const HISTORY_DAYS = 90;
 const MAX_PORTS_PER_COUNTRY = 50;
-const ACTIVITY_LOG_EVERY = 20;
+
+// Per-country budget. ArcGIS's ISO3 index makes per-country fetches O(rows-in-country),
+// which is fine for most countries but heavy ones (USA ~313k historic rows, CHN/IND/RUS
+// similar) can push 60-90s when the server is under load. Promise.allSettled would
+// otherwise wait for the slowest, stalling the whole batch.
+const PER_COUNTRY_TIMEOUT_MS = 90_000;
+const CONCURRENCY = 12;
+const BATCH_LOG_EVERY = 5;
 
 function epochToTimestamp(epochMs) {
   const d = new Date(epochMs);
@@ -42,12 +50,8 @@ function epochToTimestamp(epochMs) {
 }
 
 async function fetchWithTimeout(url, { signal } = {}) {
-  // Combine the per-call FETCH_TIMEOUT with the upstream per-country signal
-  // so a per-country abort propagates into the in-flight fetch AND future
-  // pagination iterations (review feedback P1 on PR #3222). Without this,
-  // the 90s withPerCountryTimeout timer fires, the batch moves on, but the
-  // orphaned country keeps paginating with fresh 45s fetch timeouts —
-  // breaking the CONCURRENCY=12 cap and amplifying ArcGIS throttling.
+  // Combine the per-call FETCH_TIMEOUT with the upstream caller signal so an
+  // abort propagates into the in-flight fetch AND future pagination iterations.
   const combined = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT)])
     : AbortSignal.timeout(FETCH_TIMEOUT);
@@ -59,11 +63,6 @@ async function fetchWithTimeout(url, { signal } = {}) {
     const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) throw new Error(`ArcGIS HTTP 429 (rate limited) for ${url.slice(0, 80)}`);
     console.warn(`  [portwatch] 429 rate-limited — retrying via proxy: ${url.slice(0, 80)}`);
-    // Pass the caller signal so a per-country abort also cancels the proxy
-    // fallback path (review feedback on PR #3222). Without this, a timed-out
-    // country could keep a proxy CONNECT tunnel + request alive for another
-    // 45s after the batch moved on, re-creating the orphan-work problem
-    // under the exact throttling scenario this PR addresses.
     const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT, signal });
     const proxied = JSON.parse(buffer.toString('utf8'));
     if (proxied.error) throw new Error(`ArcGIS error (via proxy): ${proxied.error.message}`);
@@ -75,14 +74,27 @@ async function fetchWithTimeout(url, { signal } = {}) {
   return body;
 }
 
+// ArcGIS's Daily_Ports_Data FeatureServer intermittently returns "Cannot
+// perform query. Invalid query parameters." for otherwise-valid queries —
+// observed in prod 2026-04-20 for BRA/IDN/NGA on per-country WHERE, and
+// also for the global WHERE after the PR #3225 rollout. A single retry with
+// a short back-off clears it in practice. No retry loop — one attempt
+// bounded. Does not retry any other error class.
+async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
+  try {
+    return await fetchWithTimeout(url, { signal });
+  } catch (err) {
+    const msg = err?.message || '';
+    if (!/Invalid query parameters/i.test(msg)) throw err;
+    await new Promise((r) => setTimeout(r, 500));
+    if (signal?.aborted) throw signal.reason ?? err;
+    console.warn(`  [port-activity] retrying after "${msg}": ${url.slice(0, 80)}`);
+    return await fetchWithTimeout(url, { signal });
+  }
+}
+
 // Fetch ALL ports globally in one paginated pass, grouped by ISO3.
-// Replaces 240× per-country queries with a handful of pages. Returns
-// Map<iso3, Map<portId, { lat, lon }>>.
-//
-// IMPORTANT: ArcGIS FeatureServer can cap responses below the requested
-// resultRecordCount (PortWatch_ports_database caps at 1000 despite
-// PAGE_SIZE=2000). Advancing by PAGE_SIZE silently skips the rows between
-// the server cap and PAGE_SIZE. Advance by the actual features.length.
+// ArcGIS server-cap: advance by actual features.length, never PAGE_SIZE.
 async function fetchAllPortRefs({ signal } = {}) {
   const byIso3 = new Map();
   let offset = 0;
@@ -101,7 +113,7 @@ async function fetchAllPortRefs({ signal } = {}) {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithTimeout(`${EP4_BASE}?${params}`, { signal });
+    body = await fetchWithRetryOnInvalidParams(`${EP4_BASE}?${params}`, { signal });
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
@@ -113,50 +125,34 @@ async function fetchAllPortRefs({ signal } = {}) {
       ports.set(portId, { lat: Number(a.lat ?? 0), lon: Number(a.lon ?? 0) });
     }
     console.log(`  [port-activity]   ref page ${page}: +${features.length} ports (${byIso3.size} countries so far)`);
-    if (features.length === 0) break; // defensive: ETL=true + 0 features would infinite-loop
+    if (features.length === 0) break;
     offset += features.length;
   } while (body.exceededTransferLimit);
   return byIso3;
 }
 
-// Stream-aggregate ALL activity rows into per-port running counters.
-// Replaces 174× per-country WHERE=ISO3 round-trips (which hit ~90s each at
-// concurrency 12, far exceeding the 420s section budget even when none of
-// them hung) with a single sequential loop of ~150-200 pages that completes
-// comfortably inside the section budget. Also eliminates the `Invalid query
-// parameters` errors we saw in prod for BRA/IDN/NGA on the per-country
-// filter: the global WHERE has no ISO3 equality, so those failure modes
-// disappear.
+// Fetch ONE country's activity rows, streaming into per-port accumulators.
+// ArcGIS's ISO3 index makes this cheap for most countries (~3-9s typical).
+// Heavy countries (USA/CHN/etc.) can be 30-60s because 90 days × their many
+// ports = thousands of rows across multiple pages. Hence the per-country
+// timeout + single retry.
 //
-// Memory: each page's features are folded into Map<iso3, Map<portId, Accum>>
-// and discarded. We never materialise the full 180k+ rows at once; only
-// ~2000 accumulators (≈100 bytes each = ~200KB) live across pages. Review
-// feedback on PR #3225 flagged the prior shape (Map<iso3, Feature[]>) as an
-// OOM risk on the 1GB Railway container — this addresses it.
-//
-// Returns Map<iso3, Map<portId, PortAccum>>. Aborts between pages when
-// signal.aborted is set.
-async function fetchAndAggregateActivity(since, { signal, progress } = {}) {
+// Returns Map<portId, PortAccum> — same shape `finalisePortsForCountry`
+// consumes. Memory per country is O(unique ports for that country) ≈ <200.
+async function fetchCountryAccum(iso3, since, { signal } = {}) {
   const now = Date.now();
   const cutoff30 = now - 30 * 86400000;
   const cutoff60 = now - 60 * 86400000;
   const cutoff7 = now - 7 * 86400000;
 
-  const accumByIso3 = new Map();
+  const portAccumMap = new Map();
   let offset = 0;
   let body;
-  let page = 0;
-  const t0 = Date.now();
-  let totalRows = 0;
-
   do {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const params = new URLSearchParams({
-      where: `date > ${epochToTimestamp(since)}`,
+      where: `ISO3='${iso3}' AND date > ${epochToTimestamp(since)}`,
       outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
-      // ArcGIS returns geometry by default (~100-200KB per page). We only
-      // need attributes — skip geometry to shave tens of MB off the wire
-      // across ~150-200 pages on the perf-critical path (PR #3225 review).
       returnGeometry: 'false',
       orderByFields: 'portid ASC,date ASC',
       resultRecordCount: String(PAGE_SIZE),
@@ -164,38 +160,28 @@ async function fetchAndAggregateActivity(since, { signal, progress } = {}) {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithTimeout(`${EP3_BASE}?${params}`, { signal });
+    body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, { signal });
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
-      if (!a || a.portid == null || !a.ISO3 || a.date == null) continue;
-      const iso3 = String(a.ISO3);
+      if (!a || a.portid == null || a.date == null) continue;
       const portId = String(a.portid);
-      // ArcGIS changed date field to esriFieldTypeDateOnly — returns ISO
-      // string "YYYY-MM-DD", not epoch ms. Same parse as the prior per-row
-      // code, just done inline here so we can fold without keeping the row.
+      // ArcGIS date is esriFieldTypeDateOnly → "YYYY-MM-DD" string (or epoch ms).
       const date = typeof a.date === 'number' ? a.date : Date.parse(a.date + 'T12:00:00Z');
       const calls = Number(a.portcalls_tanker ?? 0);
       const imports = Number(a.import_tanker ?? 0);
       const exports_ = Number(a.export_tanker ?? 0);
 
-      let countryMap = accumByIso3.get(iso3);
-      if (!countryMap) { countryMap = new Map(); accumByIso3.set(iso3, countryMap); }
-
-      let acc = countryMap.get(portId);
+      let acc = portAccumMap.get(portId);
       if (!acc) {
-        // First time we see this port — capture its name. Rows arrive in
-        // (portid ASC, date ASC) order, so this matches the old behaviour
-        // where `rows[0].portname` was the earliest row's portname.
         acc = {
           portname: String(a.portname || ''),
           last30_calls: 0, last30_count: 0, last30_import: 0, last30_export: 0,
           prev30_calls: 0,
           last7_calls: 0, last7_count: 0,
         };
-        countryMap.set(portId, acc);
+        portAccumMap.set(portId, acc);
       }
-
       if (date >= cutoff30) {
         acc.last30_calls += calls;
         acc.last30_count += 1;
@@ -209,21 +195,10 @@ async function fetchAndAggregateActivity(since, { signal, progress } = {}) {
         acc.prev30_calls += calls;
       }
     }
-    page++;
-    totalRows += features.length;
-    if (progress) {
-      progress.pages = page;
-      progress.countries = accumByIso3.size;
-    }
-    if (page === 1 || page % ACTIVITY_LOG_EVERY === 0) {
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      console.log(`  [port-activity]   activity page ${page}: +${features.length} rows (${accumByIso3.size} countries, ${totalRows} total rows, ${elapsed}s)`);
-    }
     if (features.length === 0) break;
     offset += features.length;
   } while (body.exceededTransferLimit);
-  console.log(`  [port-activity] Activity folded: ${page} pages, ${totalRows} rows, ${accumByIso3.size} countries (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
-  return accumByIso3;
+  return portAccumMap;
 }
 
 export function finalisePortsForCountry(portAccumMap, refMap) {
@@ -253,6 +228,25 @@ export function finalisePortsForCountry(portAccumMap, refMap) {
     .slice(0, MAX_PORTS_PER_COUNTRY);
 }
 
+// Runs `doWork(signal)` but rejects if the per-country timer fires first,
+// aborting the controller so the in-flight fetch (and its pagination loop)
+// actually stops instead of orphaning. Keeps the CONCURRENCY cap real.
+// Exported with an injectable timeoutMs so runtime tests can exercise the
+// abort path at 40ms instead of the production 90s.
+export function withPerCountryTimeout(doWork, iso3, timeoutMs = PER_COUNTRY_TIMEOUT_MS) {
+  const controller = new AbortController();
+  let timer;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`per-country timeout after ${timeoutMs / 1000}s (${iso3})`);
+      try { controller.abort(err); } catch {}
+      reject(err);
+    }, timeoutMs);
+  });
+  const work = doWork(controller.signal);
+  return Promise.race([work, guard]).finally(() => clearTimeout(timer));
+}
+
 async function redisPipeline(commands) {
   const { url, token } = getRedisCredentials();
   const resp = await fetch(`${url}/pipeline`, {
@@ -272,7 +266,7 @@ async function redisPipeline(commands) {
 // Returns { countries: string[], countryData: Map<iso2, payload>, fetchedAt: string }.
 //
 // `progress` (optional) is mutated in-place so a SIGTERM handler in main()
-// can report which stage was running and how far into it we got.
+// can report which batch / country we died on.
 export async function fetchAll(progress, { signal } = {}) {
   const { iso3ToIso2 } = createCountryResolvers();
   const since = Date.now() - HISTORY_DAYS * 86400000;
@@ -284,27 +278,54 @@ export async function fetchAll(progress, { signal } = {}) {
   console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
   if (progress) progress.stage = 'activity';
-  console.log(`  [port-activity] Fetching + aggregating global activity (${HISTORY_DAYS}d history, EP3)...`);
-  const accumByIso3 = await fetchAndAggregateActivity(since, { signal, progress });
-
-  if (progress) progress.stage = 'compute';
   const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
   const skipped = refsByIso3.size - eligibleIso3.length;
-  console.log(`  [port-activity] Finalising ports for ${eligibleIso3.length} eligible countries (skipping ${skipped} unmapped iso3)`);
+  const batches = Math.ceil(eligibleIso3.length / CONCURRENCY);
+  if (progress) progress.totalBatches = batches;
+  console.log(`  [port-activity] Activity queue: ${eligibleIso3.length} countries (skipping ${skipped} unmapped iso3, concurrency ${CONCURRENCY}, per-country cap ${PER_COUNTRY_TIMEOUT_MS / 1000}s)`);
 
   const countryData = new Map();
-  let missingActivity = 0;
-  for (const iso3 of eligibleIso3) {
-    const accum = accumByIso3.get(iso3);
-    if (!accum || accum.size === 0) { missingActivity++; continue; }
-    const ports = finalisePortsForCountry(accum, refsByIso3.get(iso3));
-    if (!ports.length) continue;
-    const iso2 = iso3ToIso2.get(iso3);
-    countryData.set(iso2, { iso2, ports, fetchedAt: new Date().toISOString() });
+  const errors = progress?.errors ?? [];
+  const activityStart = Date.now();
+
+  for (let i = 0; i < eligibleIso3.length; i += CONCURRENCY) {
+    const batch = eligibleIso3.slice(i, i + CONCURRENCY);
+    const batchIdx = Math.floor(i / CONCURRENCY) + 1;
+    if (progress) progress.batchIdx = batchIdx;
+
+    const promises = batch.map(iso3 => {
+      const p = withPerCountryTimeout(
+        (childSignal) => fetchCountryAccum(iso3, since, { signal: childSignal }),
+        iso3,
+      );
+      // Eager error flush so a SIGTERM mid-batch captures rejections that
+      // have already fired, not only those that settled after allSettled.
+      p.catch(err => errors.push(`${iso3}: ${err?.message || err}`));
+      return p;
+    });
+    const settled = await Promise.allSettled(promises);
+
+    for (let j = 0; j < batch.length; j++) {
+      const iso3 = batch[j];
+      const outcome = settled[j];
+      if (outcome.status === 'rejected') continue; // already recorded via .catch
+      const portAccumMap = outcome.value;
+      if (!portAccumMap || portAccumMap.size === 0) continue;
+      const ports = finalisePortsForCountry(portAccumMap, refsByIso3.get(iso3));
+      if (!ports.length) continue;
+      const iso2 = iso3ToIso2.get(iso3);
+      countryData.set(iso2, { iso2, ports, fetchedAt: new Date().toISOString() });
+    }
+
+    if (progress) progress.seeded = countryData.size;
+    if (batchIdx === 1 || batchIdx % BATCH_LOG_EVERY === 0 || batchIdx === batches) {
+      const elapsed = ((Date.now() - activityStart) / 1000).toFixed(1);
+      console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries seeded, ${errors.length} errors (${elapsed}s)`);
+    }
   }
 
-  if (missingActivity > 0) {
-    console.log(`  [port-activity] ${missingActivity} eligible countries had no activity rows in the global dataset`);
+  if (errors.length) {
+    console.warn(`  [port-activity] ${errors.length} country errors: ${errors.slice(0, 5).join('; ')}${errors.length > 5 ? ' ...' : ''}`);
   }
 
   if (countryData.size === 0) throw new Error('No country port data returned from ArcGIS');
@@ -334,27 +355,26 @@ async function main() {
   let prevCountryKeys = [];
   let prevCount = 0;
 
-  // Mutated in-place by fetchAll() so the SIGTERM handler can report which
-  // stage was running and how far into the global paginator we got.
-  const progress = { stage: 'starting', pages: 0, countries: 0 };
+  // Shared progress object so the SIGTERM handler can report which batch /
+  // stage we died in and what per-country errors have fired so far.
+  const progress = { stage: 'starting', batchIdx: 0, totalBatches: 0, seeded: 0, errors: [] };
 
-  // AbortController plumbed through fetchAll → fetchAllActivityRows →
-  // fetchWithTimeout → _proxy-utils so a SIGTERM kill (or bundle-runner
-  // grace-window escalation) actually stops any in-flight HTTP work
-  // instead of leaving orphan requests running into the SIGKILL.
+  // AbortController threaded through fetchAll → fetchCountryAccum → fetchWithTimeout
+  // → _proxy-utils so a SIGTERM kill (or bundle-runner grace-window escalation)
+  // actually stops any in-flight HTTP work.
   const shutdownController = new AbortController();
 
-  // Bundle-runner SIGKILLs via SIGTERM → SIGKILL on timeout. Release the lock
-  // and extend existing TTLs synchronously(ish) so the next cron tick isn't
-  // blocked for up to 30 min and the Redis snapshot doesn't evaporate.
   let sigHandled = false;
   const onSigterm = async () => {
     if (sigHandled) return;
     sigHandled = true;
     try { shutdownController.abort(new Error('SIGTERM')); } catch {}
     console.error(
-      `  [port-activity] SIGTERM during stage=${progress.stage} (pages=${progress.pages}, countries=${progress.countries})`,
+      `  [port-activity] SIGTERM at batch ${progress.batchIdx}/${progress.totalBatches} (stage=${progress.stage}) — ${progress.seeded} seeded, ${progress.errors.length} errors`,
     );
+    if (progress.errors.length) {
+      console.error(`  [port-activity] First errors: ${progress.errors.slice(0, 10).join('; ')}`);
+    }
     console.error('  [port-activity] Releasing lock + extending TTLs');
     try {
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL);
@@ -366,7 +386,6 @@ async function main() {
   process.on('SIGINT', onSigterm);
 
   try {
-    // Read previous snapshot first — needed for both degradation guard and error TTL extension.
     const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
     prevCountryKeys = Array.isArray(prevIso2List) ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`) : [];
     prevCount = Array.isArray(prevIso2List) ? prevIso2List.length : 0;
@@ -382,9 +401,6 @@ async function main() {
       return;
     }
 
-    // Degradation guard: refuse to replace a healthy snapshot that is significantly smaller.
-    // Transient ArcGIS outages cause per-country fetches to fail via Promise.allSettled() without
-    // throwing — publishin a 50-country result over a 120-country snapshot silently drops 70 countries.
     if (prevCount > 0 && countryData.size < prevCount * 0.8) {
       console.error(`  DEGRADATION GUARD: ${countryData.size} countries vs ${prevCount} previous — refusing to overwrite (need ≥${Math.ceil(prevCount * 0.8)})`);
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
