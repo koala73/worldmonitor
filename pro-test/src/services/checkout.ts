@@ -32,7 +32,7 @@ export async function ensureClerk(): Promise<InstanceType<typeof Clerk>> {
 }
 
 async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
-  const { Clerk: C } = await import('@clerk/clerk-js/no-rhc');
+  const { Clerk: C } = await import('@clerk/clerk-js');
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
   const instance = new C(key);
