@@ -118,6 +118,8 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Sputnik': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state media' },
   'CGTN': { risk: 'high', stateAffiliated: 'China', note: 'Chinese state broadcaster' },
   'Press TV': { risk: 'high', stateAffiliated: 'Iran', note: 'Iranian state media' },
+  'IRNA': { risk: 'high', stateAffiliated: 'Iran', note: 'Iranian state news agency (Islamic Republic News Agency)' },
+  'Mehr News': { risk: 'high', stateAffiliated: 'Iran', note: 'Iranian state-affiliated, Basij-linked' },
   'KCNA': { risk: 'high', stateAffiliated: 'North Korea', note: 'North Korean state media' },
 
   // Medium risk - State-affiliated or known bias
@@ -131,6 +133,8 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Voice of America': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded' },
   'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian perspective on Russia-Ukraine war' },
   'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent, critical of Russian government' },
+  'Jerusalem Post': { risk: 'low', knownBiases: ['Israeli centre-right'], note: 'English-language Israeli daily of record' },
+  'Ynetnews': { risk: 'low', knownBiases: ['Israeli mainstream'], note: 'Yedioth Ahronoth English edition' },
 
   // Low risk - Independent with editorial standards (explicit)
   'Reuters': { risk: 'low', note: 'Wire service, strict editorial standards' },
@@ -272,7 +276,11 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'BBC Persian', url: rss('http://feeds.bbci.co.uk/persian/tv-and-radio-37434376/rss.xml') },
     { name: 'Iran International', url: rss('https://news.google.com/rss/search?q=site:iranintl.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Fars News', url: rss('https://news.google.com/rss/search?q=site:farsnews.ir+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'IRNA', url: rss('https://en.irna.ir/rss') },
+    { name: 'Mehr News', url: rss('https://en.mehrnews.com/rss') },
     { name: 'Haaretz', url: rss('https://news.google.com/rss/search?q=site:haaretz.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Jerusalem Post', url: rss('https://www.jpost.com/rss/rssfeedsheadlines.aspx') },
+    { name: 'Ynetnews', url: rss('https://www.ynetnews.com/Integration/StoryRss3089.xml') },
     { name: 'Arab News', url: rss('https://news.google.com/rss/search?q=site:arabnews.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The National', url: rss('https://news.google.com/rss/search?q=site:thenationalnews.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Oman Observer', url: rss('https://www.omanobserver.om/rssFeed/1') },
