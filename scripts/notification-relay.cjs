@@ -626,10 +626,11 @@ function shouldNotify(rule, event) {
 
   if (process.env.IMPORTANCE_SCORE_LIVE === '1' && event.payload?.importanceScore != null) {
     // Calibrated from v5 shadow-log recalibration (2026-04-20).
-    // Adjustable via env: IMPORTANCE_SCORE_MIN overrides the 'all' floor.
+    // IMPORTANCE_SCORE_MIN env var controls the 'all' floor at both the
+    // relay ingress gate AND per-rule sensitivity — single tuning surface.
     const threshold = rule.sensitivity === 'critical' ? 82
                     : rule.sensitivity === 'high' ? 69
-                    : 63; // 'all'
+                    : IMPORTANCE_SCORE_MIN;
     return event.payload.importanceScore >= threshold;
   }
 
