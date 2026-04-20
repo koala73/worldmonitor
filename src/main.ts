@@ -283,8 +283,14 @@ Sentry.init({
     // Suppress any TypeError / RangeError that happens entirely within maplibre or deck.gl internals.
     // RangeError: "Invalid array length" during deck.gl bindVertexArray / _updateCache on large
     // GL layer updates (vertex-buffer allocation failure in vendor code — WORLDMONITOR-N4).
+    // EXCEPTION: `Failed to fetch (<host>)` is routed through the host-allowlist block below
+    // so a self-hosted R2 PMTiles / first-party basemap regression isn't silently dropped just
+    // because its stack happens to be all-vendor frames (WORLDMONITOR-NE/NF follow-up).
     const excType = event.exception?.values?.[0]?.type ?? '';
-    if ((excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg)) && frames.length > 0) {
+    const isMaplibreAjaxFailure = excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg);
+    if (!isMaplibreAjaxFailure
+        && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
+        && frames.length > 0) {
       if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress MapLibre AJAXError for third-party tile fetches: maplibre wraps transient
@@ -293,7 +299,7 @@ Sentry.init({
     // already logs it as a warning. Allowlist KNOWN third-party tile/style/glyph hosts —
     // leaves first-party fetch failures (self-hosted R2 PMTiles bucket, api.worldmonitor.app)
     // to surface so a real basemap regression is never silently dropped (WORLDMONITOR-NE/NF).
-    if (excType === 'TypeError' && frames.some(f => /\/maplibre-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) {
+    if (isMaplibreAjaxFailure && frames.some(f => /\/maplibre-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) {
       const hostMatch = msg.match(/^Failed to fetch \(([^)]+)\)$/);
       const host = hostMatch?.[1];
       if (host && MAPLIBRE_THIRD_PARTY_TILE_HOSTS.has(host)) return null;
