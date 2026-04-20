@@ -66,7 +66,12 @@ async function fetchWithTimeout(url, { signal } = {}) {
     const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) throw new Error(`ArcGIS HTTP 429 (rate limited) for ${url.slice(0, 80)}`);
     console.warn(`  [portwatch] 429 rate-limited — retrying via proxy: ${url.slice(0, 80)}`);
-    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT });
+    // Pass the caller signal so a per-country abort also cancels the proxy
+    // fallback path (review feedback on PR #3222). Without this, a timed-out
+    // country could keep a proxy CONNECT tunnel + request alive for another
+    // 45s after the batch moved on, re-creating the orphan-work problem
+    // under the exact throttling scenario this PR addresses.
+    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT, signal });
     const proxied = JSON.parse(buffer.toString('utf8'));
     if (proxied.error) throw new Error(`ArcGIS error (via proxy): ${proxied.error.message}`);
     return proxied;

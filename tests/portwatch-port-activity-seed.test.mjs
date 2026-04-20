@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 import { withPerCountryTimeout } from '../scripts/seed-portwatch-port-activity.mjs';
 
@@ -10,6 +11,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const src = readFileSync(resolve(root, 'scripts/seed-portwatch-port-activity.mjs'), 'utf-8');
+const seedUtilsSrc = readFileSync(resolve(root, 'scripts/_seed-utils.mjs'), 'utf-8');
+const proxyUtilsSrc = readFileSync(resolve(root, 'scripts/_proxy-utils.cjs'), 'utf-8');
 
 // ── seeder source assertions ──────────────────────────────────────────────────
 
@@ -87,6 +90,26 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
 
   it('fetchActivityRows checks signal.aborted between pages', () => {
     assert.match(src, /signal\?\.aborted\)\s*throw\s+signal\.reason/);
+  });
+
+  it('429 proxy fallback threads caller signal into httpsProxyFetchRaw', () => {
+    // Review feedback: without this, a timed-out country can leak a
+    // proxy CONNECT tunnel for up to FETCH_TIMEOUT (45s) after the
+    // batch moved on, defeating the concurrency cap under the exact
+    // throttling scenario this PR addresses.
+    assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
+  });
+
+  it('httpsProxyFetchRaw accepts and forwards signal', () => {
+    assert.match(seedUtilsSrc, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
+    assert.match(seedUtilsSrc, /proxyFetch\(url,\s*proxyConfig,\s*\{[^}]*signal[^}]*\}/s);
+  });
+
+  it('proxyFetch + proxyConnectTunnel accept signal and bail early if aborted', () => {
+    assert.match(proxyUtilsSrc, /function proxyFetch\([\s\S]*?\bsignal,?\s*\}\s*=\s*\{\}/);
+    assert.match(proxyUtilsSrc, /function proxyConnectTunnel\([\s\S]*?\bsignal\s*\}\s*=\s*\{\}/);
+    assert.match(proxyUtilsSrc, /signal && signal\.aborted/);
+    assert.match(proxyUtilsSrc, /signal\.addEventListener\('abort'/);
   });
 
   it('eager error flush attaches p.catch before Promise.allSettled', () => {
@@ -304,6 +327,28 @@ describe('withPerCountryTimeout (runtime)', () => {
         1_000,
       ),
       /ArcGIS HTTP 500/,
+    );
+  });
+});
+
+describe('proxyFetch signal propagation (runtime)', () => {
+  const require_ = createRequire(import.meta.url);
+  const { proxyFetch } = require_('../scripts/_proxy-utils.cjs');
+
+  it('rejects synchronously when called with an already-aborted signal', async () => {
+    // Review feedback: the per-country AbortController must kill the proxy
+    // fallback too. Pre-aborted signals must short-circuit BEFORE any
+    // CONNECT tunnel opens; otherwise a timed-out country's proxy call
+    // continues in the background. No network reached in this test — the
+    // synchronous aborted check is the guard.
+    const controller = new AbortController();
+    controller.abort(new Error('test-cancel'));
+    await assert.rejects(
+      proxyFetch('https://example.invalid/x', { host: 'nope', port: 1, auth: 'a:b', tls: true }, {
+        timeoutMs: 60_000,
+        signal: controller.signal,
+      }),
+      /test-cancel|aborted/,
     );
   });
 });

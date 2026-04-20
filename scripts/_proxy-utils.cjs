@@ -88,16 +88,37 @@ function resolveProxyStringConnect() {
   return cfg.tls ? `https://${base}` : base;
 }
 
-function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, targetPort = 443 } = {}) {
+function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, targetPort = 443, signal } = {}) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      proxySock.destroy();
-      reject(new Error('CONNECT tunnel timeout'));
-    }, timeoutMs);
-
-    const onError = (e) => { clearTimeout(timer); reject(e); };
+    if (signal && signal.aborted) {
+      return reject(signal.reason || new Error('aborted'));
+    }
 
     let proxySock;
+    let settled = false;
+    let onAbort = null;
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+    };
+    const resolveOnce = (val) => { if (settled) return; settled = true; cleanup(); resolve(val); };
+    const rejectOnce = (err) => { if (settled) return; settled = true; cleanup(); reject(err); };
+
+    const timer = setTimeout(() => {
+      if (proxySock) proxySock.destroy();
+      rejectOnce(new Error('CONNECT tunnel timeout'));
+    }, timeoutMs);
+
+    if (signal) {
+      onAbort = () => {
+        if (proxySock) proxySock.destroy();
+        rejectOnce(signal.reason || new Error('aborted'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    const onError = (e) => rejectOnce(e);
+
     const connectCb = () => {
       const authHeader = proxyConfig.auth
         ? `\r\nProxy-Authorization: Basic ${Buffer.from(proxyConfig.auth).toString('base64')}`
@@ -113,9 +134,8 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
         proxySock.removeListener('data', onData);
         const statusLine = buf.split('\r\n')[0];
         if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
-          clearTimeout(timer);
           proxySock.destroy();
-          return reject(
+          return rejectOnce(
             Object.assign(new Error(`Proxy CONNECT: ${statusLine}`), {
               status: parseInt(statusLine.split(' ')[1]) || 0,
             })
@@ -126,9 +146,8 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
         const tlsSocket = tls.connect(
           { socket: proxySock, servername: targetHostname, ALPNProtocols: ['http/1.1'] },
           () => {
-            clearTimeout(timer);
             proxySock.resume();
-            resolve({
+            resolveOnce({
               socket: tlsSocket,
               destroy: () => { tlsSocket.destroy(); proxySock.destroy(); },
             });
@@ -157,13 +176,33 @@ function proxyFetch(url, proxyConfig, {
   method = 'GET',
   body = null,
   timeoutMs = 20_000,
+  signal,
 } = {}) {
   const targetUrl = new URL(url);
 
-  return proxyConnectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs }).then(({ socket: tlsSocket, destroy }) => {
+  if (signal && signal.aborted) {
+    return Promise.reject(signal.reason || new Error('aborted'));
+  }
+
+  return proxyConnectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs, signal }).then(({ socket: tlsSocket, destroy }) => {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { destroy(); reject(new Error('proxy fetch timeout')); }, timeoutMs);
-      const fail = (e) => { clearTimeout(timer); destroy(); reject(e); };
+      let settled = false;
+      let onAbort = null;
+      const cleanup = () => {
+        clearTimeout(timer);
+        if (signal && onAbort) signal.removeEventListener('abort', onAbort);
+      };
+      // Both terminal paths destroy the TLS tunnel (mirrors the original
+      // behavior where success + failure both released the socket).
+      const resolveOnce = (v) => { if (settled) return; settled = true; cleanup(); destroy(); resolve(v); };
+      const rejectOnce = (e) => { if (settled) return; settled = true; cleanup(); destroy(); reject(e); };
+
+      const timer = setTimeout(() => rejectOnce(new Error('proxy fetch timeout')), timeoutMs);
+
+      if (signal) {
+        onAbort = () => rejectOnce(signal.reason || new Error('aborted'));
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
 
       const reqHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -190,18 +229,16 @@ function proxyFetch(url, proxyConfig, {
         const chunks = [];
         stream.on('data', (c) => chunks.push(c));
         stream.on('end', () => {
-          clearTimeout(timer);
-          destroy();
-          resolve({
+          resolveOnce({
             ok: resp.statusCode >= 200 && resp.statusCode < 300,
             status: resp.statusCode,
             buffer: Buffer.concat(chunks),
             contentType: resp.headers['content-type'] || '',
           });
         });
-        stream.on('error', fail);
+        stream.on('error', rejectOnce);
       });
-      req.on('error', fail);
+      req.on('error', rejectOnce);
       if (body != null) req.write(body);
       req.end();
     });
