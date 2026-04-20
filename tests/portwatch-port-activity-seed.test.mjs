@@ -53,6 +53,25 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /outFields:\s*'portid,ISO3,lat,lon'/);
   });
 
+  it('both paginators set returnGeometry:false to avoid wasted wire bandwidth', () => {
+    // ArcGIS returns geometry by default (~100-200KB per page). Omitting
+    // this in the EP3 paginator across ~150-200 pages adds tens of MB to
+    // the perf-critical path. Review feedback on PR #3225.
+    const matches = src.match(/returnGeometry:\s*'false'/g) ?? [];
+    assert.ok(matches.length >= 2, `expected returnGeometry:'false' in both EP3 and EP4 paginators, found ${matches.length}`);
+  });
+
+  it('fetchAllPortRefs accepts + forwards signal for SIGTERM cancellation', () => {
+    // Review feedback on PR #3225: during the 'refs' stage a SIGTERM must
+    // cancel in-flight EP4 fetches, not let them run up to FETCH_TIMEOUT
+    // after the handler fires. The signal must thread through the
+    // paginator into fetchWithTimeout.
+    assert.match(src, /async function fetchAllPortRefs\(\{\s*signal\s*\}\s*=\s*\{\}\)/);
+    assert.match(src, /fetchWithTimeout\(`\$\{EP4_BASE\}\?\$\{params\}`,\s*\{\s*signal\s*\}\)/);
+    // fetchAll must pass the signal when calling it.
+    assert.match(src, /fetchAllPortRefs\(\{\s*signal\s*\}\)/);
+  });
+
   it('Endpoint 3 activity query is globalised — no per-country ISO3 filter', () => {
     // The per-country `WHERE ISO3='XX' AND date > ...` shape is gone; the
     // globalised paginator uses a single date filter and groups by ISO3 in

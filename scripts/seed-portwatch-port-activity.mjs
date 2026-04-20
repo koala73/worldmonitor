@@ -83,12 +83,13 @@ async function fetchWithTimeout(url, { signal } = {}) {
 // resultRecordCount (PortWatch_ports_database caps at 1000 despite
 // PAGE_SIZE=2000). Advancing by PAGE_SIZE silently skips the rows between
 // the server cap and PAGE_SIZE. Advance by the actual features.length.
-async function fetchAllPortRefs() {
+async function fetchAllPortRefs({ signal } = {}) {
   const byIso3 = new Map();
   let offset = 0;
   let body;
   let page = 0;
   do {
+    if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     page++;
     const params = new URLSearchParams({
       where: '1=1',
@@ -100,7 +101,7 @@ async function fetchAllPortRefs() {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithTimeout(`${EP4_BASE}?${params}`);
+    body = await fetchWithTimeout(`${EP4_BASE}?${params}`, { signal });
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
@@ -153,6 +154,10 @@ async function fetchAndAggregateActivity(since, { signal, progress } = {}) {
     const params = new URLSearchParams({
       where: `date > ${epochToTimestamp(since)}`,
       outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
+      // ArcGIS returns geometry by default (~100-200KB per page). We only
+      // need attributes — skip geometry to shave tens of MB off the wire
+      // across ~150-200 pages on the perf-critical path (PR #3225 review).
+      returnGeometry: 'false',
       orderByFields: 'portid ASC,date ASC',
       resultRecordCount: String(PAGE_SIZE),
       resultOffset: String(offset),
@@ -275,7 +280,7 @@ export async function fetchAll(progress, { signal } = {}) {
   if (progress) progress.stage = 'refs';
   console.log('  [port-activity] Fetching global port reference (EP4)...');
   const t0 = Date.now();
-  const refsByIso3 = await fetchAllPortRefs();
+  const refsByIso3 = await fetchAllPortRefs({ signal });
   console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
   if (progress) progress.stage = 'activity';
