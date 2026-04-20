@@ -35,6 +35,12 @@ const HISTORY_DAYS = 90;
 const MAX_PORTS_PER_COUNTRY = 50;
 const CONCURRENCY = 12;
 const BATCH_LOG_EVERY = 5;
+// Per-country budget. Promise.allSettled waits for the slowest member of the
+// batch, so one runaway country (e.g. USA: many ports × many pages when EP3
+// is slow) can stall the whole batch and cascade to the section timeout,
+// leaving batches 2..N unattempted. This caps a single country without
+// aborting the whole section.
+const PER_COUNTRY_TIMEOUT_MS = 90_000;
 
 function epochToTimestamp(epochMs) {
   const d = new Date(epochMs);
@@ -215,9 +221,27 @@ async function processCountry(iso3, iso2, since, refMap) {
   return { iso2, ports, fetchedAt: new Date().toISOString() };
 }
 
+// Promise.race against a rejecting timer. Bounded worst-case per-country time
+// even when underlying HTTP paginator is infinite. The orphan fetch keeps
+// running in the background until its own AbortSignal.timeout(FETCH_TIMEOUT)
+// fires; acceptable because the process exits soon after either way.
+function withPerCountryTimeout(promise, iso3) {
+  let timer;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`per-country timeout after ${PER_COUNTRY_TIMEOUT_MS / 1000}s (${iso3})`)),
+      PER_COUNTRY_TIMEOUT_MS,
+    );
+  });
+  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+}
+
 // fetchAll() — pure data collection, no Redis writes.
 // Returns { countries: string[], countryData: Map<iso2, payload>, fetchedAt: string }.
-export async function fetchAll() {
+//
+// `progress` (optional) is mutated in-place so a SIGTERM handler in main()
+// can read the last batch index, seeded count, and error list at kill time.
+export async function fetchAll(progress) {
   const { iso3ToIso2 } = createCountryResolvers();
   const since = Date.now() - HISTORY_DAYS * 86400000;
 
@@ -229,20 +253,22 @@ export async function fetchAll() {
   // Only fetch activity for ISO3s that have at least one port AND exist in our iso3→iso2 map.
   const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
   const skipped = refsByIso3.size - eligibleIso3.length;
-  console.log(`  [port-activity] Activity queue: ${eligibleIso3.length} countries (skipping ${skipped} unmapped iso3, concurrency ${CONCURRENCY})`);
+  console.log(`  [port-activity] Activity queue: ${eligibleIso3.length} countries (skipping ${skipped} unmapped iso3, concurrency ${CONCURRENCY}, per-country cap ${PER_COUNTRY_TIMEOUT_MS / 1000}s)`);
 
   const countryData = new Map();
-  const errors = [];
+  const errors = progress?.errors ?? [];
   const batches = Math.ceil(eligibleIso3.length / CONCURRENCY);
   const activityStart = Date.now();
+  if (progress) progress.totalBatches = batches;
 
   for (let i = 0; i < eligibleIso3.length; i += CONCURRENCY) {
     const batch = eligibleIso3.slice(i, i + CONCURRENCY);
     const batchIdx = Math.floor(i / CONCURRENCY) + 1;
+    if (progress) progress.batchIdx = batchIdx;
     const settled = await Promise.allSettled(
       batch.map(iso3 => {
         const iso2 = iso3ToIso2.get(iso3);
-        return processCountry(iso3, iso2, since, refsByIso3.get(iso3));
+        return withPerCountryTimeout(processCountry(iso3, iso2, since, refsByIso3.get(iso3)), iso3);
       })
     );
     for (let j = 0; j < batch.length; j++) {
@@ -256,6 +282,7 @@ export async function fetchAll() {
       const { iso2, ports, fetchedAt } = outcome.value;
       countryData.set(iso2, { iso2, ports, fetchedAt });
     }
+    if (progress) progress.seeded = countryData.size;
     if (batchIdx === 1 || batchIdx % BATCH_LOG_EVERY === 0 || batchIdx === batches) {
       const elapsed = ((Date.now() - activityStart) / 1000).toFixed(1);
       console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries seeded, ${errors.length} errors (${elapsed}s)`);
@@ -293,6 +320,12 @@ async function main() {
   let prevCountryKeys = [];
   let prevCount = 0;
 
+  // Mutated in-place by fetchAll() so the SIGTERM handler can log which batch
+  // we died in and what the per-country errors looked like. Without this, a
+  // timeout kill flushes nothing from the errors array — past regressions
+  // have been undiagnosable for exactly this reason.
+  const progress = { batchIdx: 0, totalBatches: 0, seeded: 0, errors: [] };
+
   // Bundle-runner SIGKILLs via SIGTERM → SIGKILL on timeout. Release the lock
   // and extend existing TTLs synchronously(ish) so the next cron tick isn't
   // blocked for up to 30 min and the Redis snapshot doesn't evaporate.
@@ -300,7 +333,13 @@ async function main() {
   const onSigterm = async () => {
     if (sigHandled) return;
     sigHandled = true;
-    console.error('  [port-activity] SIGTERM received — releasing lock + extending TTLs');
+    console.error(
+      `  [port-activity] SIGTERM at batch ${progress.batchIdx}/${progress.totalBatches} — ${progress.seeded} seeded, ${progress.errors.length} errors`,
+    );
+    if (progress.errors.length) {
+      console.error(`  [port-activity] First errors: ${progress.errors.slice(0, 10).join('; ')}`);
+    }
+    console.error('  [port-activity] Releasing lock + extending TTLs');
     try {
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL);
     } catch {}
@@ -317,7 +356,7 @@ async function main() {
     prevCount = Array.isArray(prevIso2List) ? prevIso2List.length : 0;
 
     console.log(`  Fetching port activity data (${HISTORY_DAYS}d history)...`);
-    const { countries, countryData } = await fetchAll();
+    const { countries, countryData } = await fetchAll(progress);
 
     console.log(`  Fetched ${countryData.size} countries`);
 

@@ -62,6 +62,31 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /process\.on\('SIGTERM'/);
   });
 
+  it('defines a per-country timeout to cap Promise.allSettled stalls', () => {
+    // Without this cap, one slow country (USA: many ports × many pages when
+    // ArcGIS is throttled) blocks the whole batch via Promise.allSettled and
+    // cascades to the 420s section timeout, leaving batches 2..N unattempted.
+    assert.match(src, /PER_COUNTRY_TIMEOUT_MS\s*=\s*\d/);
+  });
+
+  it('wraps processCountry with the per-country timeout in the batch loop', () => {
+    assert.match(src, /withPerCountryTimeout\s*\(\s*processCountry/);
+  });
+
+  it('SIGTERM handler flushes batch progress + first errors', () => {
+    // Past regressions were undiagnosable because the errors array was only
+    // logged after all batches completed — a SIGTERM kill discarded it.
+    assert.match(src, /SIGTERM at batch \$\{progress\.batchIdx\}/);
+    assert.match(src, /progress\.errors\.slice\(0,\s*10\)/);
+  });
+
+  it('fetchAll accepts a progress object and mutates it', () => {
+    assert.match(src, /export async function fetchAll\(progress\)/);
+    assert.match(src, /progress\.totalBatches\s*=\s*batches/);
+    assert.match(src, /progress\.batchIdx\s*=\s*batchIdx/);
+    assert.match(src, /progress\.seeded\s*=\s*countryData\.size/);
+  });
+
   it('pagination advances by actual features.length, not PAGE_SIZE', () => {
     // ArcGIS PortWatch_ports_database caps responses at 1000 rows even when
     // resultRecordCount=2000. Advancing by PAGE_SIZE skips rows 1000-1999.
