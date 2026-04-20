@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Extract shadow:score-log (defaults to v3; override via SHADOW_SCORE_KEY) from
+// Extract shadow:score-log (defaults to v4; override via SHADOW_SCORE_KEY) from
 // Upstash and write a review bundle to ./shadow-score-report/. Parses both v2
 // JSON members and legacy v1 string members.
 // Usage: node scripts/shadow-score-report.mjs

@@ -60,9 +60,14 @@ Guidelines for LEVEL assignment:
 - info: Opinion/editorial pieces, analysis/explainer articles, historical retrospectives, lifestyle, entertainment, routine local news, tutorials
 
 Key distinction: classify by THE EVENT, not the headline's emotional tone.
+- "Guardian view on ceasefire: need real peace" → editorial, not a ceasefire → info
+- "Trump's obsession with energy" → opinion/analysis → info
 - "Man killed his estranged wife" → domestic crime, not geopolitical → info
 - "How to Crack the SAM Database" → tutorial → info
 - "700 killed in Sudan drone strikes" → mass-casualty → critical
+
+Focus: geopolitical events, conflicts, disasters, diplomacy.
+Classify by real-world event severity, not headline sentiment.
 
 Return: {"level":"...","category":"..."}`;
 
