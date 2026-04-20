@@ -35,7 +35,7 @@ export const FRESHNESS_REGISTRY = [
   { key: 'intelligence:cross-source-signals:v1', maxAgeMin: 45,    feedsAxes: ['coercive_pressure', 'evidence'] },
   { key: 'relay:oref:history:v1',                maxAgeMin: 15,    feedsAxes: ['coercive_pressure', 'triggers'] },
   { key: 'economic:macro-signals:v1',            maxAgeMin: 60,    feedsAxes: ['capital_stress'] },
-  { key: 'economic:national-debt:v1',            maxAgeMin: 86400, feedsAxes: ['capital_stress'] }, // monthly seed (30d cron), 60d window absorbs one missed run — mirrors api/health.js nationalDebt
+  { key: 'economic:national-debt:v1',            maxAgeMin: 86400, feedsAxes: ['capital_stress'], metaKey: 'seed-meta:economic:national-debt' }, // monthly seed (30d cron), 60d window absorbs one missed run — mirrors api/health.js nationalDebt. metaKey is the primary freshness source (payload's seededAt is also recognized by extractTimestamp as a fallback).
   { key: 'economic:stress-index:v1',             maxAgeMin: 120,   feedsAxes: ['capital_stress'] },
   { key: 'energy:mix:v1:_all',                   maxAgeMin: 50400, feedsAxes: ['energy_vulnerability'] },
   { key: 'economic:eu-gas-storage:v1',           maxAgeMin: 2880,  feedsAxes: ['energy_vulnerability'] },
@@ -122,7 +122,12 @@ export function classifyInputs(payloads, metaPayloads = {}) {
 function extractTimestamp(payload) {
   if (typeof payload !== 'object' || payload === null) return null;
   const obj = payload;
-  for (const field of ['fetchedAt', 'generatedAt', 'timestamp', 'updatedAt', 'lastUpdate']) {
+  // `seededAt` is the convention used by runSeed-based seeders that wrap
+  // data in a { ...data, seededAt: ISOString } shape (seed-national-debt,
+  // seed-iea-oil-stocks, seed-eurostat-country-data, etc.). Without it here,
+  // those seeds got classified "present but undated" → always fresh,
+  // silently masking stalled crons.
+  for (const field of ['fetchedAt', 'generatedAt', 'timestamp', 'updatedAt', 'lastUpdate', 'seededAt']) {
     if (typeof obj[field] === 'number') return obj[field];
     if (typeof obj[field] === 'string') {
       const parsed = Date.parse(obj[field]);
