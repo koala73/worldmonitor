@@ -35,7 +35,7 @@ export const FRESHNESS_REGISTRY = [
   { key: 'intelligence:cross-source-signals:v1', maxAgeMin: 45,    feedsAxes: ['coercive_pressure', 'evidence'] },
   { key: 'relay:oref:history:v1',                maxAgeMin: 15,    feedsAxes: ['coercive_pressure', 'triggers'] },
   { key: 'economic:macro-signals:v1',            maxAgeMin: 60,    feedsAxes: ['capital_stress'] },
-  { key: 'economic:national-debt:v1',            maxAgeMin: 10080, feedsAxes: ['capital_stress'] },
+  { key: 'economic:national-debt:v1',            maxAgeMin: 86400, feedsAxes: ['capital_stress'] }, // monthly seed (30d cron), 60d window absorbs one missed run — mirrors api/health.js nationalDebt
   { key: 'economic:stress-index:v1',             maxAgeMin: 120,   feedsAxes: ['capital_stress'] },
   { key: 'energy:mix:v1:_all',                   maxAgeMin: 50400, feedsAxes: ['energy_vulnerability'] },
   { key: 'economic:eu-gas-storage:v1',           maxAgeMin: 2880,  feedsAxes: ['energy_vulnerability'] },
