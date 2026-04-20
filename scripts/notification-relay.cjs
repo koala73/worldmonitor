@@ -625,9 +625,11 @@ function shouldNotify(rule, event) {
   if (!passesLegacy) return false;
 
   if (process.env.IMPORTANCE_SCORE_LIVE === '1' && event.payload?.importanceScore != null) {
-    const threshold = rule.sensitivity === 'critical' ? 85
-                    : rule.sensitivity === 'high' ? 65
-                    : 40; // 'all'
+    // Calibrated from v5 shadow-log recalibration (2026-04-20).
+    // Adjustable via env: IMPORTANCE_SCORE_MIN overrides the 'all' floor.
+    const threshold = rule.sensitivity === 'critical' ? 82
+                    : rule.sensitivity === 'high' ? 69
+                    : 63; // 'all'
     return event.payload.importanceScore >= threshold;
   }
 
