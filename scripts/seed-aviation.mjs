@@ -24,6 +24,8 @@ import {
   runSeed,
   writeExtraKeyWithMeta,
   extendExistingTtl,
+  acquireLockSafely,
+  releaseLock,
   getRedisCredentials,
 } from './_seed-utils.mjs';
 
@@ -742,127 +744,134 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
 // News are written as "extra keys" after the primary publish. Each has its own
 // seed-meta override that matches api/health.js expectations.
 
-// Pure fetch — no Redis writes, no notification publishing. All side effects
-// are gated on successful canonical publish and happen in afterPublish(). This
-// keeps the "single home / one cron tick" atomic: if the canonical intl write
-// fails, FAA/NOTAM/news don't write either and no notifications fire.
+// ─── Side-car seed runners ───────────────────────────────────────────────────
+// Each secondary data source (FAA, NOTAM, news) seeds INDEPENDENTLY of the
+// AviationStack intl path. A transient intl outage or missing AVIATIONSTACK_API
+// MUST NOT freeze FAA/NOTAM/news writes — they have their own upstream sources
+// (FAA ASWS, ICAO API, RSS) and their own consumers (list-airport-delays,
+// loadNotamClosures, list-aviation-news).
 //
-// Per-run memo: runSeed wraps fetchFn in withRetry(3). When intl is unhealthy
-// we throw to force runSeed's graceful TTL-extend path; withRetry still
-// invokes us up to 2 more times before giving up. The memo turns those
-// retries into cheap cache-hits that just rethrow — no duplicate upstream
-// fetches (matters most for ICAO NOTAM free-tier quota).
-let cachedBundle = null;
+// Each side-car: acquires its own Redis lock (distinct from intl's lock),
+// fetches, writes data-key + seed-meta on success, extends TTL on failure,
+// releases the lock in finally. Sequential so concurrent Railway cron fires
+// don't stomp; each source's cost is independent so total wall time ≈ sum.
 
-async function doFetchAll() {
-  const [intlRes, faaRes, notamRes, newsRes] = await Promise.allSettled([
-    seedIntlDelays(),
-    seedFaaDelays(),
-    seedNotamClosures(),
-    seedAviationNews(),
-  ]);
-
-  return {
-    intl:  intlRes.status  === 'fulfilled' ? intlRes.value  : { alerts: [], healthy: false, skipped: false, error: intlRes.reason ?? new Error('rejected') },
-    faa:   faaRes.status   === 'fulfilled' ? faaRes.value   : null,
-    notam: notamRes.status === 'fulfilled' ? notamRes.value : null,
-    news:  newsRes.status  === 'fulfilled' ? newsRes.value  : null,
-    faaRejection:   faaRes.status   === 'rejected' ? faaRes.reason   : null,
-    notamRejection: notamRes.status === 'rejected' ? notamRes.reason : null,
-    newsRejection:  newsRes.status  === 'rejected' ? newsRes.reason  : null,
-  };
+async function withLock(lockDomain, body) {
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const lockResult = await acquireLockSafely(lockDomain, runId, 120_000, { label: lockDomain });
+  if (lockResult.skipped) {
+    console.log(`  ${lockDomain}: SKIPPED (Redis unavailable)`);
+    return;
+  }
+  if (!lockResult.locked) {
+    console.log(`  ${lockDomain}: SKIPPED (lock held by another run)`);
+    return;
+  }
+  try {
+    await body();
+  } finally {
+    await releaseLock(lockDomain, runId);
+  }
 }
 
-async function fetchAll() {
-  if (!cachedBundle) cachedBundle = await doFetchAll();
-  const bundle = cachedBundle;
+async function runFaaSideCar() {
+  await withLock('aviation:faa', async () => {
+    try {
+      const faa = await seedFaaDelays();
+      if (faa?.alerts) {
+        await writeExtraKeyWithMeta(FAA_KEY, faa, FAA_TTL, faa.alerts.length, FAA_META_KEY);
+        console.log(`[FAA] wrote ${faa.alerts.length} alerts to ${FAA_KEY}`);
+      }
+    } catch (err) {
+      console.warn(`[FAA] fetch/write error: ${err?.message || err} — extending TTL`);
+      try { await extendExistingTtl([FAA_KEY, FAA_META_KEY], FAA_TTL); } catch {}
+    }
+  });
+}
 
-  // Intl gate: canonical is publishable only when the fetch succeeded AND was
-  // healthy AND wasn't skipped (missing AVIATIONSTACK_API key). Anything else
-  // throws so runSeed enters its catch path — which extends the existing TTL
-  // on INTL_KEY + seed-meta:aviation:intl and exits 0 without touching
-  // afterPublish. Consumers keep serving the last-good snapshot.
-  if (!bundle.intl.healthy || bundle.intl.skipped) {
-    const why = bundle.intl.skipped
+async function runNotamSideCar() {
+  await withLock('aviation:notam', async () => {
+    try {
+      const notam = await seedNotamClosures();
+      if (notam.skipped) return; // no ICAO_API_KEY
+      if (notam.quotaExhausted) {
+        // ICAO quota exhausted ("Reach call limit") — preserve the last known
+        // closure list by refreshing the data-key TTL + writing fresh meta
+        // with quotaExhausted=true. Keeps api/health.js (maxStaleMin: 240)
+        // green through the 24h backoff window. Matches pre-strip
+        // ais-relay.cjs:2805-2808 byte-for-byte.
+        try { await extendExistingTtl([NOTAM_KEY], NOTAM_TTL); } catch {}
+        try {
+          await upstashSet(NOTAM_META_KEY, { fetchedAt: Date.now(), recordCount: 0, quotaExhausted: true }, 604_800);
+        } catch (e) { console.warn(`[NOTAM] meta write error: ${e?.message || e}`); }
+        console.log(`[NOTAM] ICAO quota exhausted — extended data TTL + wrote fresh meta (quotaExhausted=true)`);
+        return;
+      }
+      await writeExtraKeyWithMeta(
+        NOTAM_KEY,
+        { closedIcaos: notam.closedIcaos, reasons: notam.reasons },
+        NOTAM_TTL,
+        notam.closedIcaos.length,
+        NOTAM_META_KEY,
+      );
+      console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures to ${NOTAM_KEY}`);
+      try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
+      catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
+    } catch (err) {
+      console.warn(`[NOTAM] fetch/write error: ${err?.message || err} — extending TTL`);
+      try { await extendExistingTtl([NOTAM_KEY, NOTAM_META_KEY], NOTAM_TTL); } catch {}
+    }
+  });
+}
+
+async function runNewsSideCar() {
+  await withLock('aviation:news', async () => {
+    try {
+      const news = await seedAviationNews();
+      if (news?.items?.length > 0) {
+        await writeExtraKeyWithMeta(NEWS_KEY, news, NEWS_TTL, news.items.length);
+        console.log(`[News] wrote ${news.items.length} articles to ${NEWS_KEY}`);
+      }
+    } catch (err) {
+      console.warn(`[News] fetch/write error: ${err?.message || err}`);
+    }
+  });
+}
+
+// ─── Intl via runSeed ────────────────────────────────────────────────────────
+// Intl (the paid-API, high-cost canonical) uses runSeed's full machinery:
+// contract-mode envelope, retry-on-throw, graceful TTL-extend on failure,
+// seed-meta freshness. When intl is unhealthy we throw to force runSeed into
+// its catch path — which extends the INTL_KEY + seed-meta:aviation:intl TTLs
+// and exits 0 without touching afterPublish. Consumers keep serving the
+// last-good snapshot. FAA/NOTAM/news already ran via their side-cars and are
+// independent — an intl outage does NOT freeze their freshness.
+
+async function fetchIntl() {
+  const result = await seedIntlDelays();
+  if (!result.healthy || result.skipped) {
+    const why = result.skipped
       ? 'no AVIATIONSTACK_API key'
-      : bundle.intl.error
-        ? `fetch error: ${bundle.intl.error?.message || bundle.intl.error}`
-        : 'systemic fetch failure (failures > successes)';
+      : 'systemic fetch failure (failures > successes)';
     throw new Error(`intl unpublishable: ${why}`);
   }
-
-  return bundle;
+  return result;
 }
 
-// publishTransform reshapes the raw bundle into the canonical envelope payload
-// that atomicPublish writes to INTL_KEY. afterPublish still receives the full
-// raw bundle so it can handle FAA/NOTAM/news + notifications.
+export function declareRecords(data) {
+  return data?.alerts?.length ?? 0;
+}
+
+// publishTransform reshapes seedIntlDelays' output into the canonical envelope
+// shape consumers read ({ alerts: AirportDelayAlert[] }). declareRecords sees
+// this transformed shape; afterPublish still receives the raw fetchIntl result.
 function publishTransform(data) {
-  return { alerts: data?.intl?.alerts ?? [] };
+  return { alerts: data?.alerts ?? [] };
 }
 
-export function declareRecords(publishData) {
-  return publishData?.alerts?.length ?? 0;
-}
-
-// Publish-phase side effects: runs ONLY when the canonical intl publish
-// succeeds. Order matters: secondary keys + meta first, then notifications
-// (which depend on fresh prev-state being readable before the next tick).
-async function afterPublish(data) {
-  // ── FAA ── free API; always safe to overwrite when fetch succeeded.
-  if (data.faa?.alerts) {
-    try {
-      await writeExtraKeyWithMeta(FAA_KEY, data.faa, FAA_TTL, data.faa.alerts.length, FAA_META_KEY);
-    } catch (e) { console.warn(`  ${FAA_KEY} write error: ${e?.message || e}`); }
-  } else if (data.faaRejection) {
-    console.warn(`  FAA fetch failed: ${data.faaRejection?.message || data.faaRejection} — extending TTL`);
-    try { await extendExistingTtl([FAA_KEY, FAA_META_KEY], FAA_TTL); } catch {}
-  }
-
-  // ── NOTAM ── quota-aware:
-  //   • quotaExhausted ("Reach call limit"): refresh data-key TTL + write a
-  //     fresh meta { fetchedAt: now, recordCount: 0, quotaExhausted: true }
-  //     so consumers keep serving the last known closure list and
-  //     api/health.js (maxStaleMin: 240) stays green during the 24h backoff.
-  //     Matches pre-strip ais-relay.cjs:2805-2808 byte-for-byte.
-  //   • rejection / network error: extend TTL only.
-  //   • success: normal write.
-  if (data.notam && !data.notam.skipped) {
-    const n = data.notam;
-    if (n.quotaExhausted) {
-      try { await extendExistingTtl([NOTAM_KEY], NOTAM_TTL); } catch {}
-      try {
-        await upstashSet(NOTAM_META_KEY, { fetchedAt: Date.now(), recordCount: 0, quotaExhausted: true }, 604_800);
-      } catch (e) { console.warn(`  ${NOTAM_META_KEY} write error: ${e?.message || e}`); }
-      console.log(`  ${NOTAM_KEY}: ICAO quota exhausted — extended data TTL + wrote fresh meta (quotaExhausted=true)`);
-    } else {
-      try {
-        await writeExtraKeyWithMeta(NOTAM_KEY, { closedIcaos: n.closedIcaos, reasons: n.reasons }, NOTAM_TTL, n.closedIcaos.length, NOTAM_META_KEY);
-      } catch (e) { console.warn(`  ${NOTAM_KEY} write error: ${e?.message || e}`); }
-    }
-  } else if (data.notamRejection) {
-    console.warn(`  NOTAM fetch failed: ${data.notamRejection?.message || data.notamRejection} — extending TTL`);
-    try { await extendExistingTtl([NOTAM_KEY, NOTAM_META_KEY], NOTAM_TTL); } catch {}
-  }
-
-  // ── News ── free API; only publish when RSS actually returned items.
-  if (data.news?.items?.length > 0) {
-    try {
-      await writeExtraKeyWithMeta(NEWS_KEY, data.news, NEWS_TTL, data.news.items.length);
-    } catch (e) { console.warn(`  ${NEWS_KEY} write error: ${e?.message || e}`); }
-  } else if (data.newsRejection) {
-    console.warn(`  News fetch failed: ${data.newsRejection?.message || data.newsRejection}`);
-  }
-
-  // ── Notifications ── aviation gate already passed (healthy + not skipped);
-  // NOTAM gate excludes skipped/quota-exhausted ticks.
-  try { await dispatchAviationNotifications(data.intl.alerts); }
-  catch (e) { console.warn(`  Aviation notify error: ${e?.message || e}`); }
-
-  if (data.notam && !data.notam.skipped && !data.notam.quotaExhausted) {
-    try { await dispatchNotamNotifications(data.notam.closedIcaos, data.notam.reasons); }
-    catch (e) { console.warn(`  NOTAM notify error: ${e?.message || e}`); }
-  }
+async function afterPublishIntl(data) {
+  try { await dispatchAviationNotifications(data.alerts); }
+  catch (e) { console.warn(`[Intl] notify error: ${e?.message || e}`); }
 }
 
 function validate(publishData) {
@@ -871,17 +880,29 @@ function validate(publishData) {
   return !!(publishData && Array.isArray(publishData.alerts));
 }
 
-runSeed('aviation', 'intl', INTL_KEY, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: INTL_TTL,
-  sourceVersion: 'aviationstack',
-  schemaVersion: 3,
-  declareRecords,
-  publishTransform,
-  afterPublish,
-  maxStaleMin: 90,
-  zeroIsValid: true,
-}).catch((err) => {
+// Entry point: run the three independent side-cars sequentially, then hand off
+// to runSeed for intl. runSeed calls process.exit() on every terminal path, so
+// it MUST be the last thing invoked in this file.
+async function main() {
+  console.log('=== Aviation Seeder (side-cars + intl) ===');
+  await runFaaSideCar();
+  await runNotamSideCar();
+  await runNewsSideCar();
+
+  return runSeed('aviation', 'intl', INTL_KEY, fetchIntl, {
+    validateFn: validate,
+    ttlSeconds: INTL_TTL,
+    sourceVersion: 'aviationstack',
+    schemaVersion: 3,
+    declareRecords,
+    publishTransform,
+    afterPublish: afterPublishIntl,
+    maxStaleMin: 90,
+    zeroIsValid: true,
+  });
+}
+
+main().catch((err) => {
   const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + cause);
   process.exit(1);
