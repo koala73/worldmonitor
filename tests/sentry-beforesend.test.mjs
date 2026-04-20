@@ -303,6 +303,30 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'First-party setPointerCapture regression must reach Sentry even when unsymbolicated');
   });
 
+  it('suppresses MapLibre AJAXError "Failed to fetch (<hostname>)" with a maplibre vendor frame', () => {
+    const event = makeEvent('Failed to fetch (tilecache.rainviewer.com)', 'TypeError', [
+      { filename: '/assets/maplibre-A8Ca0ysS.js', lineno: 4, function: 'ajaxFetch' },
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 24, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'MapLibre tile AJAX failure should be suppressed');
+  });
+
+  it('does NOT suppress plain "Failed to fetch" from first-party code without maplibre frames', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'Plain first-party fetch failure should surface');
+  });
+
+  it('does NOT suppress "Failed to fetch (<hostname>)" when no maplibre frame is present', () => {
+    // Guards against broad message-only suppression hiding a real first-party fetch
+    // regression that happens to wrap host into the message.
+    const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'Non-maplibre Failed-to-fetch must reach Sentry');
+  });
+
   it('does NOT suppress setPointerCapture NotFoundError when no frame context is present', () => {
     // Defensive: if Sentry strips context, we err on the side of surfacing.
     const event = makeEvent(
