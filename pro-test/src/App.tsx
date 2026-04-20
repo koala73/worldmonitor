@@ -385,7 +385,13 @@ const LivePreview = () => (
             className="absolute inset-0 w-full h-full object-cover"
           />
           <iframe
-            src="https://worldmonitor.app?alert=false"
+            // ?embed=pro-preview is the unique marker the main app's
+            // IS_EMBEDDED_PREVIEW helper keys off to silence premium-RPC
+            // 401s that otherwise surface in /pro's parent console. See
+            // src/utils/embedded-preview.ts. Not a generic iframe gate —
+            // enterprise white-label embeds without this marker keep
+            // firing premium RPCs normally.
+            src="https://worldmonitor.app?embed=pro-preview"
             title={t('livePreview.iframeTitle')}
             className="relative w-full h-full border-0"
             loading="lazy"
