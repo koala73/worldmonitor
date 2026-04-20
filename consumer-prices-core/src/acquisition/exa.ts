@@ -8,6 +8,8 @@ export class ExaProvider implements AcquisitionProvider {
 
   constructor(apiKey: string) {
     this.client = new Exa(apiKey);
+    (this.client as unknown as { headers: { set: (k: string, v: string) => void } })
+      .headers.set('x-exa-integration', 'worldmonitor');
   }
 
   async fetch(url: string, _opts: FetchOptions = {}): Promise<FetchResult> {

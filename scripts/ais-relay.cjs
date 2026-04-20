@@ -10359,7 +10359,7 @@ async function performWidgetWebSearch(query) {
     try {
       const res = await fetch('https://api.exa.ai/search', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': WIDGET_EXA_KEY },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': WIDGET_EXA_KEY, 'x-exa-integration': 'worldmonitor' },
         body: JSON.stringify({
           query,
           numResults: 8,
