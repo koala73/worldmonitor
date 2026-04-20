@@ -9,7 +9,7 @@ import { hashString, sha256Hex } from '../../../_shared/hash';
 // ========================================================================
 
 export const UPSTREAM_TIMEOUT_MS = 25_000;
-const CLASSIFY_CACHE_PREFIX = 'classify:sebuf:v1:';
+const CLASSIFY_CACHE_PREFIX = 'classify:sebuf:v2:';
 
 // ========================================================================
 // Tier-1 country definitions (used by risk-scores + country-intel-brief)

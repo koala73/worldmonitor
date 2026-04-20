@@ -52,7 +52,17 @@ export async function classifyEvent(
 Levels: critical, high, medium, low, info
 Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general
 
-Focus: geopolitical events, conflicts, disasters, diplomacy. Classify by real-world severity and impact.
+Guidelines for LEVEL assignment:
+- critical: Active military strikes, mass-casualty events (10+ killed), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures
+- high: Armed conflict updates, major diplomatic actions, sanctions packages, significant natural disasters, blockades, terrorist attacks
+- medium: Ongoing conflict analysis, economic impact reports, protest movements, regional policy changes, military exercises
+- low: Diplomatic meetings, trade discussions, humanitarian aid, election updates, peacekeeping deployments
+- info: Opinion/editorial pieces, analysis/explainer articles, historical retrospectives, lifestyle, entertainment, routine local news, tutorials
+
+Key distinction: classify by THE EVENT, not the headline's emotional tone.
+- "Man killed his estranged wife" → domestic crime, not geopolitical → info
+- "How to Crack the SAM Database" → tutorial → info
+- "700 killed in Sudan drone strikes" → mass-casualty → critical
 
 Return: {"level":"...","category":"..."}`;
 

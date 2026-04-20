@@ -3485,15 +3485,31 @@ const CLASSIFY_VALID_CATEGORIES = [
   'crime', 'infrastructure', 'tech', 'general',
 ];
 
-const CLASSIFY_SYSTEM_PROMPT = `You classify news headlines by threat level and category. Return ONLY a JSON array, no other text.
+const CLASSIFY_SYSTEM_PROMPT = `You classify news headlines by threat level and category.
+Return ONLY a JSON array, no other text.
 
 Levels: critical, high, medium, low, info
 Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general
 
+Guidelines for LEVEL assignment:
+- critical: Active military strikes, mass-casualty events (10+ killed), ceasefire agreements/collapses, nuclear incidents, pandemic declarations, coups, strait/waterway closures
+- high: Armed conflict updates, major diplomatic actions, sanctions packages, significant natural disasters, blockades, terrorist attacks
+- medium: Ongoing conflict analysis, economic impact reports, protest movements, regional policy changes, military exercises
+- low: Diplomatic meetings, trade discussions, humanitarian aid, election updates, peacekeeping deployments
+- info: Opinion/editorial pieces, analysis/explainer articles, historical retrospectives, lifestyle, entertainment, routine local news, tutorials
+
+Key distinction: classify by THE EVENT, not the headline's emotional tone.
+- "Guardian view on ceasefire: need real peace" → editorial, not a ceasefire → info
+- "Trump's obsession with energy" → opinion/analysis → info
+- "Man killed his estranged wife" → domestic crime, not geopolitical → info
+- "How to Crack the SAM Database in Kali Linux" → tutorial → info
+- "700 killed in Sudan drone strikes" → mass-casualty event → critical
+
 Input: numbered lines "index|Title"
 Output: [{"i":0,"l":"high","c":"conflict"}, ...]
 
-Focus: geopolitical events, conflicts, disasters, diplomacy. Classify by real-world severity and impact.`;
+Focus: geopolitical events, conflicts, disasters, diplomacy.
+Classify by real-world event severity, not headline sentiment.`;
 
 const NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
 const NEWS_THREAT_SUMMARY_TTL = 1200; // 20 min — aligns with relay cadence
@@ -3574,7 +3590,7 @@ function matchCountryNamesInText(text) {
 
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v1:${hash}`;
+  return `classify:sebuf:v2:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS

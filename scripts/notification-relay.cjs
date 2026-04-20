@@ -691,7 +691,7 @@ const IMPORTANCE_SCORE_MIN = Number(process.env.IMPORTANCE_SCORE_MIN ?? 40);
 // The old v1 key (compact string format) is retained by consumers for
 // backward-compat reading but is no longer written. See
 // docs/internal/scoringDiagnostic.md §5 and §9 Step 4.
-const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v3';
+const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v4';
 const SHADOW_LOG_TTL = 7 * 24 * 3600; // 7 days
 
 async function shadowLogScore(event) {
