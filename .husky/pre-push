@@ -177,5 +177,48 @@ else
   echo "No proto-related changes, skipping."
 fi
 
+echo "Running pro-test bundle freshness check..."
+# public/pro/ is NOT built by Vercel — the root build script only runs the
+# main app's vite build. The /pro marketing app under pro-test/ must be
+# rebuilt manually and its output committed to public/pro/. If source
+# changes ship without the rebuild, production /pro serves the old bundle
+# (see PR #3227 → #3228: source fix merged but deploy still broken because
+# public/pro/ was stale).
+if git diff --name-only origin/main -- pro-test/ | grep -q .; then
+  if [ ! -d pro-test/node_modules ]; then
+    echo "  Installing pro-test deps..."
+    (cd pro-test && npm install --prefer-offline) || exit 1
+  fi
+  (cd pro-test && npm run build >/dev/null) || {
+    echo "ERROR: pro-test build failed"
+    exit 1
+  }
+  if ! git diff --exit-code public/pro/; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: pro-test sources changed but public/pro/ is stale."
+    echo "Vercel ships whatever is committed under public/pro/ —"
+    echo "it does NOT rebuild pro-test on deploy."
+    echo "Fix:"
+    echo "  cd pro-test && npm run build && cd .."
+    echo "  git add public/pro/ && git commit --amend --no-edit"
+    echo "============================================================"
+    exit 1
+  fi
+  UNTRACKED=$(git ls-files --others --exclude-standard public/pro/)
+  if [ -n "$UNTRACKED" ]; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: Untracked files in public/pro/ after rebuild:"
+    echo "$UNTRACKED"
+    echo "Run: git add public/pro/ && git commit --amend --no-edit"
+    echo "============================================================"
+    exit 1
+  fi
+  echo "  pro-test bundle is up to date."
+else
+  echo "  Skipped (no pro-test/ changes)."
+fi
+
 echo "Running version sync check..."
 npm run version:check || exit 1
