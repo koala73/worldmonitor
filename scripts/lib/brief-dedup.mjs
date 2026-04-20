@@ -35,6 +35,7 @@ import {
 import {
   completeLinkCluster,
   shouldVeto,
+  singleLinkCluster,
 } from './brief-dedup-embed.mjs';
 import {
   embedBatch,
@@ -48,6 +49,7 @@ import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
  * @param {Record<string, string | undefined>} [env]
  * @returns {{
  *   mode: 'jaccard' | 'embed',
+ *   clustering: 'single' | 'complete',
  *   entityVetoEnabled: boolean,
  *   cosineThreshold: number,
  *   wallClockMs: number,
@@ -69,6 +71,17 @@ export function readOrchestratorConfig(env = process.env) {
     invalidModeRaw = modeRaw;
   }
 
+  // DIGEST_DEDUP_CLUSTERING = 'single' (default) | 'complete'.
+  // Single-link chains wire variants that share a strong
+  // intermediate headline (calibrated F1 0.73 vs complete-link 0.53
+  // on real brief output). Flip to 'complete' for instant kill
+  // switch if single-link ever over-merges in production.
+  const clusteringRaw = (env.DIGEST_DEDUP_CLUSTERING ?? '').toLowerCase();
+  const clustering =
+    clusteringRaw === 'complete' ? 'complete'
+    : clusteringRaw === 'single' || clusteringRaw === '' ? 'single'
+    : 'single';
+
   const cosineRaw = Number.parseFloat(env.DIGEST_DEDUP_COSINE_THRESHOLD ?? '');
   const cosineThreshold =
     Number.isFinite(cosineRaw) && cosineRaw > 0 && cosineRaw <= 1 ? cosineRaw : 0.60;
@@ -79,6 +92,7 @@ export function readOrchestratorConfig(env = process.env) {
 
   return {
     mode,
+    clustering,
     entityVetoEnabled: env.DIGEST_DEDUP_ENTITY_VETO_ENABLED !== '0',
     cosineThreshold,
     wallClockMs,
@@ -175,7 +189,8 @@ export async function deduplicateStories(stories, deps = {}) {
     const vetoFn = cfg.entityVetoEnabled
       ? (a, b) => shouldVeto(a.title, b.title)
       : null;
-    const clusterResult = completeLinkCluster(items, {
+    const clusterFn = cfg.clustering === 'complete' ? completeLinkCluster : singleLinkCluster;
+    const clusterResult = clusterFn(items, {
       cosineThreshold: cfg.cosineThreshold,
       vetoFn,
     });
@@ -186,7 +201,7 @@ export async function deduplicateStories(stories, deps = {}) {
     );
 
     log(
-      `[digest] dedup mode=embed stories=${items.length} clusters=${embedClusters.length} ` +
+      `[digest] dedup mode=embed clustering=${cfg.clustering} stories=${items.length} clusters=${embedClusters.length} ` +
         `veto_fires=${clusterResult.vetoFires} ms=${nowImpl() - started} ` +
         `threshold=${cfg.cosineThreshold} fallback=false`,
     );

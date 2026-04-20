@@ -219,3 +219,96 @@ export function completeLinkCluster(items, { cosineThreshold, vetoFn = null }) {
   return { clusters, vetoFires };
 }
 
+// ── Single-link clustering ─────────────────────────────────────────────
+
+/**
+ * Single-link agglomerative clustering via union-find.
+ *
+ * Admission rule: two items end up in the same cluster iff there
+ * EXISTS a path of pairwise merges, where every step has
+ *   1. cosine(a.embedding, b.embedding) >= cosineThreshold
+ *   2. vetoFn(a, b) === false  (if vetoFn provided)
+ *
+ * This lets wire stories chain through a strong intermediate
+ * headline: ship-1 ↔ ship-5 (0.63) and ship-5 ↔ ship-8 (0.69) both
+ * clear, so all three merge even when ship-1 ↔ ship-8 is only 0.50.
+ * Complete-link would block this whole cluster because of the one
+ * weak pair.
+ *
+ * The original plan rejected single-link to avoid "bridge pollution"
+ * (topically-unrelated stories chaining through a mixed-topic
+ * headline). With embeddings at threshold ≥ 0.60 the bridge has to
+ * be semantically real, so the empirical win on the 2026-04-20
+ * story set (F1 0.73 vs complete-link 0.53) outweighed the
+ * theoretical concern.
+ *
+ * Output cluster membership is independent of iteration order — the
+ * union-find shape is determined purely by the set of admissible
+ * pairs, so single-link is permutation-invariant by construction.
+ *
+ * @param {Array<{title:string, embedding:number[]}>} items
+ * @param {object} opts
+ * @param {number} opts.cosineThreshold
+ * @param {((a: {title:string}, b: {title:string}) => boolean) | null} [opts.vetoFn]
+ * @returns {{ clusters: number[][], vetoFires: number }}
+ */
+export function singleLinkCluster(items, { cosineThreshold, vetoFn = null }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { clusters: [], vetoFires: 0 };
+  }
+
+  const n = items.length;
+  const parent = new Array(n);
+  const rank = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) parent[i] = i;
+
+  const find = (x) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) parent[ra] = rb;
+    else if (rank[ra] > rank[rb]) parent[rb] = ra;
+    else { parent[rb] = ra; rank[ra]++; }
+  };
+
+  let vetoFires = 0;
+  for (let i = 0; i < n; i++) {
+    const a = items[i];
+    if (!a || !Array.isArray(a.embedding)) continue;
+    for (let j = i + 1; j < n; j++) {
+      const b = items[j];
+      if (!b || !Array.isArray(b.embedding)) continue;
+      // Already in the same cluster via a prior union — skip both
+      // the cosine and veto checks. Union-find makes this cheap.
+      if (find(i) === find(j)) continue;
+      const cos = cosineSimilarity(a.embedding, b.embedding);
+      if (cos < cosineThreshold) continue;
+      if (vetoFn?.(a, b)) {
+        vetoFires += 1;
+        continue;
+      }
+      union(i, j);
+    }
+  }
+
+  // Build clusters preserving the caller's input order: iterate
+  // items in order, group by their union-find root, and drop into
+  // a Map whose insertion order reflects first-appearance. Keeps
+  // downstream representative selection deterministic alongside
+  // the caller's pre-sort contract.
+  const byRoot = new Map();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    if (!byRoot.has(r)) byRoot.set(r, []);
+    byRoot.get(r).push(i);
+  }
+  return { clusters: [...byRoot.values()], vetoFires };
+}
+
