@@ -15,7 +15,9 @@ import {
   buildRankingItem,
   getCachedResilienceScores,
   listScorableCountries,
+  rankingCacheTagMatches,
   sortRankingItems,
+  stampRankingCacheTag,
   warmMissingResilienceScores,
   type ScoreInterval,
 } from './_shared';
@@ -88,8 +90,21 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     return true;
   })();
   if (!forceRefresh) {
-    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as GetResilienceRankingResponse | null;
-    if (cached != null && (cached.items.length > 0 || (cached.greyedOut?.length ?? 0) > 0)) return cached;
+    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as (GetResilienceRankingResponse & { _formula?: string }) | null;
+    // Stale-formula gate: the ranking cache key is bumped at PR deploy,
+    // but the flag flip happens later, so the v10 namespace starts out
+    // filled with 6-domain rankings. Without this check, a flip would
+    // serve the legacy ranking aggregate for up to the 12h ranking TTL
+    // even as per-country reads produced pillar-combined scores. Drop
+    // stale-formula hits so the recompute-and-publish path below runs.
+    const tagMatches = cached != null && rankingCacheTagMatches(cached);
+    if (tagMatches && (cached!.items.length > 0 || (cached!.greyedOut?.length ?? 0) > 0)) {
+      // Strip the cache-only tag before returning to callers so the
+      // wire shape matches the generated proto response type.
+      const { _formula: _drop, ...publicResponse } = cached!;
+      void _drop;
+      return publicResponse as GetResilienceRankingResponse;
+    }
   }
 
   const countryCodes = await listScorableCountries();
@@ -132,8 +147,12 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     // self-heal here ensures we at least log it, and the seeder also verifies
     // BOTH keys post-refresh. If either SET didn't return OK we log a warning
     // that ops can grep for, rather than silently succeeding.
+    // Tag the persisted ranking so the stale-formula gate above can
+    // detect a cross-formula cache hit after a flag flip. The tag is
+    // stripped on read before the response crosses back to callers.
+    const persistedRanking = stampRankingCacheTag(response);
     const pipelineResult = await runRedisPipeline([
-      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(response), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
+      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(persistedRanking), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
       ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({
         fetchedAt: Date.now(),
         count: response.items.length + response.greyedOut.length,
