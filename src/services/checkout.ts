@@ -15,9 +15,17 @@ import * as Sentry from '@sentry/browser';
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 import { openBillingPortal } from './billing';
-import { getCurrentClerkUser, getClerkToken } from './clerk';
+import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
+import {
+  classifyHttpCheckoutError,
+  classifySyntheticCheckoutError,
+  classifyThrownCheckoutError,
+  type CheckoutError,
+  type CheckoutErrorBody,
+} from './checkout-errors';
+import { showCheckoutErrorToast } from './checkout-error-toast';
 
 export {
   saveCheckoutAttempt,
@@ -34,7 +42,6 @@ const CHECKOUT_DISCOUNT_PARAM = 'checkoutDiscount';
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
 const POST_CHECKOUT_FLAG_KEY = 'wm-post-checkout';
 const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
-const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 
 /**
  * Session flag set just before the post-overlay reload. Lets panel-layout
@@ -407,7 +414,28 @@ export async function startCheckout(
 
   const user = getCurrentClerkUser();
   if (!user) {
-    if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+    // No-user path: save both keys before opening sign-in so the
+    // post-signin Clerk listener auto-resumes the exact checkout.
+    // LAST_CHECKOUT_ATTEMPT also powers the failure-retry banner if
+    // the user abandons sign-in but returns later in the session.
+    const intent = {
+      productId,
+      referralCode: options?.referralCode,
+      discountCode: options?.discountCode,
+    };
+    savePendingCheckoutIntent(intent);
+    saveCheckoutAttempt({
+      ...intent,
+      startedAt: Date.now(),
+      origin: 'dashboard',
+    });
+    reportCheckoutError(
+      classifySyntheticCheckoutError('unauthorized'),
+      { productId, action: 'no-user' },
+    );
+    // Prefer sign-in inline over a /pro tab. openSignIn is a safe call
+    // even if Clerk isn't loaded (it becomes a no-op).
+    openSignIn();
     return false;
   }
 
@@ -430,7 +458,9 @@ export async function startCheckout(
       token = await getClerkToken();
     }
     if (!token) {
-      if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+      const error = classifySyntheticCheckoutError('session_expired');
+      reportCheckoutError(error, { productId, action: 'no-token' });
+      renderCheckoutErrorSurface(error, fallbackToPricingPage);
       return false;
     }
 
@@ -447,15 +477,20 @@ export async function startCheckout(
     });
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      console.error('[checkout] Edge endpoint error:', resp.status, err);
-      if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
+      const body = (await resp.json().catch(() => ({}))) as CheckoutErrorBody;
+      const error = classifyHttpCheckoutError(resp.status, body);
+      reportCheckoutError(error, { productId, action: 'http-error' });
+      // 409 duplicate-subscription continues to route through the
+      // billing portal (PR-7 will add a user-facing dialog before the
+      // portal hand-off). The taxonomy now classifies the code but we
+      // preserve the current navigation until PR-7.
+      if (error.code === 'duplicate_subscription') {
         clearPendingCheckoutIntent();
         clearCheckoutAttempt('duplicate');
         await openBillingPortal();
         return false;
       }
-      if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+      renderCheckoutErrorSurface(error, fallbackToPricingPage);
       return false;
     }
 
@@ -466,13 +501,71 @@ export async function startCheckout(
     }
     return false;
   } catch (err) {
-    console.error('[checkout] Failed to create checkout session:', err);
-    Sentry.captureException(err, { tags: { component: 'dodo-checkout', action: 'createCheckout' }, extra: { productId } });
-    if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+    const error = classifyThrownCheckoutError(err);
+    reportCheckoutError(error, { productId, action: 'exception' }, err);
+    renderCheckoutErrorSurface(error, fallbackToPricingPage);
     return false;
   } finally {
     _checkoutInFlight = false;
   }
+}
+
+/**
+ * Capture a checkout error to Sentry with structured context. Raw
+ * server-generated text is attached as `extra.serverMessage` — never
+ * surfaces to the user.
+ */
+function reportCheckoutError(
+  error: CheckoutError,
+  context: { productId: string; action: string },
+  caught?: unknown,
+): void {
+  const payload = {
+    level: 'error' as const,
+    tags: {
+      component: 'dodo-checkout',
+      action: context.action,
+      code: error.code,
+    },
+    extra: {
+      productId: context.productId,
+      httpStatus: error.httpStatus,
+      serverMessage: error.serverMessage,
+    },
+  };
+  if (caught) {
+    Sentry.captureException(caught, payload);
+  } else {
+    Sentry.captureMessage(`Checkout error: ${error.code}`, payload);
+  }
+  console.error(
+    `[checkout] ${error.code}${error.httpStatus ? ` (HTTP ${error.httpStatus})` : ''}`,
+    error.serverMessage ?? '',
+  );
+}
+
+/**
+ * Render the appropriate user-facing surface for a checkout error.
+ *
+ * `fallbackToPricingPage` semantics:
+ *   - true  → same-tab navigate to `/pro` so the user lands on the
+ *             marketing pricing page (used by in-product upsells that
+ *             expect to route users away from the dashboard).
+ *   - false → inline toast only (default for dashboard-origin retries
+ *             and resumePendingCheckout).
+ *
+ * Never uses `window.open(..., '_blank')` anymore — the stranded new
+ * tab pattern was the failure mode this PR closes.
+ */
+function renderCheckoutErrorSurface(
+  error: CheckoutError,
+  fallbackToPricingPage: boolean,
+): void {
+  if (fallbackToPricingPage) {
+    window.location.assign('https://worldmonitor.app/pro');
+    return;
+  }
+  showCheckoutErrorToast(error.userMessage);
 }
 
 /**
