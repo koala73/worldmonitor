@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect } from './_seed-utils.mjs';
 import { getAcledToken } from './shared/acled-oauth.mjs';
 
 loadEnvFile(import.meta.url);
@@ -159,20 +159,59 @@ async function fetchAcledProtests() {
 
 // ---------- GDELT Fetch ----------
 
+function describeErr(err) {
+  if (!err) return 'unknown';
+  const cause = err.cause;
+  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
+  return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
+}
+
+async function fetchGdeltDirect(url) {
+  const resp = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resp.ok) throw Object.assign(new Error(`GDELT API error: ${resp.status}`), { httpStatus: resp.status });
+  return resp.json();
+}
+
+async function fetchGdeltViaProxy(url, proxyAuth) {
+  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
+    accept: 'application/json',
+    timeoutMs: 20_000,
+  });
+  return JSON.parse(buffer.toString('utf8'));
+}
+
 async function fetchGdeltEvents() {
   const params = new URLSearchParams({
     query: 'protest OR riot OR demonstration OR strike',
     maxrows: '2500',
   });
+  const url = `${GDELT_GKG_URL}?${params}`;
 
-  const resp = await fetch(`${GDELT_GKG_URL}?${params}`, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(30_000),
-  });
+  let data;
+  try {
+    data = await fetchGdeltDirect(url);
+  } catch (directErr) {
+    // Upstream HTTP error (4xx/5xx) — proxy routes to the same GDELT endpoint so
+    // it won't change the response. Save the 20s proxy timeout and bubble up.
+    if (directErr.httpStatus) throw directErr;
+    const proxyAuth = resolveProxyForConnect();
+    if (!proxyAuth) {
+      throw Object.assign(new Error(`GDELT direct failed (no proxy configured): ${describeErr(directErr)}`), { cause: directErr });
+    }
+    console.warn(`  [GDELT] direct failed (${describeErr(directErr)}); retrying via proxy`);
+    try {
+      data = await fetchGdeltViaProxy(url, proxyAuth);
+    } catch (proxyErr) {
+      throw Object.assign(
+        new Error(`GDELT both paths failed — direct: ${describeErr(directErr)}; proxy: ${describeErr(proxyErr)}`),
+        { cause: proxyErr },
+      );
+    }
+  }
 
-  if (!resp.ok) throw new Error(`GDELT API error: ${resp.status}`);
-
-  const data = await resp.json();
   const features = data?.features || [];
 
   // Aggregate by location (v1 GKG returns individual mentions, not aggregated counts)
@@ -236,8 +275,8 @@ async function fetchUnrestEvents() {
   const acledEvents = results[0].status === 'fulfilled' ? results[0].value : [];
   const gdeltEvents = results[1].status === 'fulfilled' ? results[1].value : [];
 
-  if (results[0].status === 'rejected') console.log(`  ACLED failed: ${results[0].reason?.message || results[0].reason}`);
-  if (results[1].status === 'rejected') console.log(`  GDELT failed: ${results[1].reason?.message || results[1].reason}`);
+  if (results[0].status === 'rejected') console.log(`  ACLED failed: ${describeErr(results[0].reason)}`);
+  if (results[1].status === 'rejected') console.log(`  GDELT failed: ${describeErr(results[1].reason)}`);
 
   const merged = deduplicateEvents([...acledEvents, ...gdeltEvents]);
   const sorted = sortBySeverityAndRecency(merged);

@@ -12,7 +12,7 @@
  * LLM latency predictable.
  */
 
-import { WHY_MATTERS_SYSTEM } from '../../../../shared/brief-llm-core.js';
+import { WHY_MATTERS_ANALYST_SYSTEM_V2 } from '../../../../shared/brief-llm-core.js';
 import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import type { BriefStoryContext } from './brief-story-context';
 
@@ -22,6 +22,9 @@ export interface StoryForPrompt {
   threatLevel: string;
   category: string;
   country: string;
+  /** Optional story description; included when the cron has already
+   *  resolved it (post-describe pipeline). Absent on first-pass calls. */
+  description?: string;
 }
 
 /**
@@ -38,6 +41,9 @@ export function sanitizeStoryFields(story: StoryForPrompt): StoryForPrompt {
     threatLevel: sanitizeForPrompt(story.threatLevel),
     category: sanitizeForPrompt(story.category),
     country: sanitizeForPrompt(story.country),
+    ...(typeof story.description === 'string' && story.description.length > 0
+      ? { description: sanitizeForPrompt(story.description) }
+      : {}),
   };
 }
 
@@ -103,23 +109,34 @@ export function buildAnalystWhyMattersPrompt(
   const safe = sanitizeStoryFields(story);
   const contextBlock = buildContextBlock(context);
 
-  const storyLines = [
+  const storyLineList = [
     `Headline: ${safe.headline}`,
+    ...(safe.description ? [`Description: ${safe.description}`] : []),
     `Source: ${safe.source}`,
     `Severity: ${safe.threatLevel}`,
     `Category: ${safe.category}`,
     `Country: ${safe.country}`,
-  ].join('\n');
+  ];
+  const storyLines = storyLineList.join('\n');
 
   const sections = [];
   if (contextBlock) {
     sections.push('# Live WorldMonitor Context', contextBlock);
   }
   sections.push('# Story', storyLines);
-  sections.push('One editorial sentence on why this matters:');
+  // Prompt footer matches the system prompt's SITUATION → ANALYSIS →
+  // (optional) WATCH arc, but explicitly restates the grounding
+  // requirement so the model can't ignore it from the system message
+  // alone. Models follow inline instructions more reliably than
+  // system-prompt constraints on longer outputs.
+  sections.push(
+    'Write 2–3 sentences (40–70 words) on why this story matters, grounded in at ' +
+      'least ONE specific actor / metric / date / place drawn from the context above. ' +
+      'Plain prose, no section labels in the output:',
+  );
 
   return {
-    system: WHY_MATTERS_SYSTEM,
+    system: WHY_MATTERS_ANALYST_SYSTEM_V2,
     user: sections.join('\n\n'),
   };
 }
