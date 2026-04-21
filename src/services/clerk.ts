@@ -230,8 +230,15 @@ export function subscribeClerk(callback: () => void): () => void {
  */
 export function mountUserButton(el: HTMLDivElement): () => void {
   if (!clerkInstance) return () => {};
+  // Pin the after-sign-out destination to the origin root rather than
+  // `window.location.href`. The current page URL may carry stale
+  // checkout params (e.g., a subscription_id/status query that
+  // handleCheckoutReturn hasn't cleaned yet at sign-out time) or
+  // transient session fragments that shouldn't persist into a
+  // signed-out state. Origin-root is unambiguous and identical on
+  // Tauri desktop (same absolute URL resolves correctly in WKWebView).
   clerkInstance.mountUserButton(el, {
-    afterSignOutUrl: window.location.href,
+    afterSignOutUrl: new URL('/', window.location.origin).toString(),
     appearance: getAppearance(),
   });
   return () => clerkInstance?.unmountUserButton(el);
