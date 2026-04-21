@@ -28,6 +28,19 @@ import {
 } from './checkout-errors';
 import { showCheckoutErrorToast } from './checkout-error-toast';
 import { decideNoUserPathOutcome } from './checkout-no-user-policy';
+import { isEntitled, onEntitlementChange } from './entitlements';
+import {
+  CLASSIC_AUTO_DISMISS_MS,
+  EXTENDED_UNLOCK_TIMEOUT_MS,
+  computeInitialBannerState,
+  type CheckoutSuccessBannerState,
+} from './checkout-banner-state';
+
+export {
+  EXTENDED_UNLOCK_TIMEOUT_MS,
+  computeInitialBannerState,
+  type CheckoutSuccessBannerState,
+} from './checkout-banner-state';
 
 export {
   saveCheckoutAttempt,
@@ -132,15 +145,20 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
             // cleared to avoid auto-opening the overlay on the reload.
             clearCheckoutAttempt('success');
             clearPendingCheckoutIntent();
-            // Belt-and-braces: reload after the webhook is likely to have
-            // landed (median <5s). Mark a session flag so the reloaded page
-            // can seed the entitlement transition detector as post-checkout
-            // — the overlay uses manualRedirect:true so the reload lands at
-            // the original URL without subscription_id params, and the
-            // detector would otherwise treat the first pro snapshot as the
-            // legacy-pro baseline and swallow it.
+            // Mark a session flag so the reloaded page seeds the entitlement
+            // transition detector as post-checkout — without this, the
+            // detector would treat the first pro snapshot as "legacy-pro
+            // baseline" and swallow the activation.
+            //
+            // Reload ownership: as of PR-4, the entitlement watcher in
+            // panel-layout.ts is the SINGLE reload source (fires on
+            // free→pro transition). We no longer schedule a 3s setTimeout
+            // reload here — that competed with the entitlement watcher's
+            // reload and made "still unlocking" UX impossible because the
+            // banner was guaranteed to be wiped at 3s regardless of
+            // webhook latency. The watcher's reload depends on the
+            // 2026-04-18-001 fix landing first (#3163, merged).
             markPostCheckout();
-            setTimeout(() => window.location.reload(), 3_000);
           }
           break;
         }
@@ -628,10 +646,29 @@ function renderCheckoutErrorSurface(
 }
 
 /**
- * Show a transient success banner at the top of the viewport.
- * Auto-dismisses after 5 seconds.
+ * Show the post-checkout success banner.
+ *
+ * Classic mode (no `waitForEntitlement`): renders "Payment received! ..."
+ * and auto-dismisses after 5s. Used when entitlement unlock is a
+ * synchronous consequence of the current page load (e.g., the overlay
+ * handler firing pre-reload) or when the caller does not own the
+ * entitlement lifecycle.
+ *
+ * Extended-unlock mode (`waitForEntitlement: true`): stays mounted and
+ * transitions through three states that are observable via the
+ * `data-entitlement-state` attribute:
+ *   - `pending` (initial): "Payment received! Unlocking..."
+ *   - `active`: "Premium activated — reloading..." (set either on
+ *               mount when already entitled, or when the entitlement
+ *               watcher fires free→pro). Lets the watcher trigger the
+ *               actual reload so the banner persists across it.
+ *   - `timeout`: after 30s with no transition, swap to an explicit
+ *               "Refresh if features haven't unlocked" CTA + Sentry
+ *               warning. Never silently disappears.
  */
-export function showCheckoutSuccess(): void {
+export function showCheckoutSuccess(
+  options?: { waitForEntitlement?: boolean },
+): void {
   const existing = document.getElementById('checkout-success-banner');
   if (existing) existing.remove();
 
@@ -653,9 +690,13 @@ export function showCheckoutSuccess(): void {
     transition: 'opacity 0.4s ease, transform 0.4s ease',
     transform: 'translateY(-100%)',
     opacity: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '12px',
   });
-  banner.textContent = 'Payment received! Unlocking your premium features...';
 
+  setBannerText(banner, 'pending');
   document.body.appendChild(banner);
 
   requestAnimationFrame(() => {
@@ -663,9 +704,75 @@ export function showCheckoutSuccess(): void {
     banner.style.opacity = '1';
   });
 
-  setTimeout(() => {
-    banner.style.transform = 'translateY(-100%)';
-    banner.style.opacity = '0';
-    setTimeout(() => banner.remove(), 400);
-  }, 5000);
+  if (!options?.waitForEntitlement) {
+    setTimeout(() => dismissBanner(banner), CLASSIC_AUTO_DISMISS_MS);
+    return;
+  }
+
+  const initial = computeInitialBannerState(isEntitled());
+  if (initial === 'active') {
+    setBannerText(banner, 'active');
+    // No auto-dismiss: the entitlement watcher's reload navigates away.
+    return;
+  }
+
+  let resolved = false;
+  const timeoutHandle = setTimeout(() => {
+    if (resolved) return;
+    resolved = true;
+    unsubscribe();
+    setBannerText(banner, 'timeout');
+    Sentry.captureMessage('Checkout entitlement-activation timeout', {
+      level: 'warning',
+      tags: { component: 'dodo-checkout', action: 'entitlement-timeout' },
+    });
+  }, EXTENDED_UNLOCK_TIMEOUT_MS);
+
+  const unsubscribe = onEntitlementChange(() => {
+    if (resolved) return;
+    if (!isEntitled()) return;
+    resolved = true;
+    clearTimeout(timeoutHandle);
+    setBannerText(banner, 'active');
+    unsubscribe();
+  });
+}
+
+function setBannerText(banner: HTMLElement, state: CheckoutSuccessBannerState): void {
+  banner.setAttribute('data-entitlement-state', state);
+  if (state === 'pending') {
+    banner.textContent = 'Payment received! Unlocking your premium features…';
+    return;
+  }
+  if (state === 'active') {
+    banner.textContent = 'Premium activated — reloading…';
+    return;
+  }
+  // timeout
+  banner.innerHTML = '';
+  const text = document.createElement('span');
+  text.textContent = "Payment received. If features haven't unlocked, refresh the page.";
+  const refreshBtn = document.createElement('button');
+  refreshBtn.type = 'button';
+  refreshBtn.textContent = 'Refresh';
+  Object.assign(refreshBtn.style, {
+    background: '#fff',
+    color: '#16a34a',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '4px 12px',
+    fontWeight: '600',
+    fontSize: '12px',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  });
+  refreshBtn.addEventListener('click', () => window.location.reload());
+  banner.appendChild(text);
+  banner.appendChild(refreshBtn);
+}
+
+function dismissBanner(banner: HTMLElement): void {
+  banner.style.transform = 'translateY(-100%)';
+  banner.style.opacity = '0';
+  setTimeout(() => banner.remove(), 400);
 }

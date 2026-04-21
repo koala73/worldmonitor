@@ -193,7 +193,13 @@ export class PanelLayoutManager implements AppModule {
       // of the attempt record here catches the success path where the
       // overlay handler never ran (direct Dodo redirect).
       clearCheckoutAttempt('success');
-      showCheckoutSuccess();
+      // waitForEntitlement: true keeps the banner mounted across the
+      // entitlement-watcher reload (post-PR-4 the watcher is the single
+      // reload source). If the user is already entitled on mount the
+      // banner goes straight to the "active" state; otherwise it waits
+      // up to 30s for the transition before surfacing a manual-refresh
+      // CTA.
+      showCheckoutSuccess({ waitForEntitlement: true });
     } else if (returnResult.kind === 'failed') {
       showCheckoutFailureBanner(returnResult.rawStatus);
     }
@@ -205,7 +211,11 @@ export class PanelLayoutManager implements AppModule {
       this.unsubscribePaymentFailureBanner = initPaymentFailureBanner();
     }
 
-    initCheckoutOverlay(() => showCheckoutSuccess());
+    // Overlay success fires BEFORE the entitlement-watcher reload. The
+    // banner stays mounted through the reload via waitForEntitlement so
+    // the user sees visual continuity from "Payment received!" through
+    // "Premium activated" without a blank intermediate state.
+    initCheckoutOverlay(() => showCheckoutSuccess({ waitForEntitlement: true }));
 
     // Reload only on a free→pro transition. Legacy-pro users whose first
     // snapshot is already pro (lastEntitled === null) must not trigger a
