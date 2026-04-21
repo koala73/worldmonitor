@@ -162,7 +162,7 @@ async function fetchAcledProtests() {
 function describeErr(err) {
   if (!err) return 'unknown';
   const cause = err.cause;
-  const causeCode = cause?.code || cause?.errno || cause?.message;
+  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
   return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
 }
 
@@ -171,7 +171,7 @@ async function fetchGdeltDirect(url) {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(30_000),
   });
-  if (!resp.ok) throw new Error(`GDELT API error: ${resp.status}`);
+  if (!resp.ok) throw Object.assign(new Error(`GDELT API error: ${resp.status}`), { httpStatus: resp.status });
   return resp.json();
 }
 
@@ -194,6 +194,9 @@ async function fetchGdeltEvents() {
   try {
     data = await fetchGdeltDirect(url);
   } catch (directErr) {
+    // Upstream HTTP error (4xx/5xx) — proxy routes to the same GDELT endpoint so
+    // it won't change the response. Save the 20s proxy timeout and bubble up.
+    if (directErr.httpStatus) throw directErr;
     const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) {
       throw Object.assign(new Error(`GDELT direct failed (no proxy configured): ${describeErr(directErr)}`), { cause: directErr });
