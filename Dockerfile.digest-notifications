@@ -58,6 +58,14 @@ COPY shared/brief-envelope.js shared/brief-envelope.d.ts ./shared/
 COPY shared/brief-filter.js shared/brief-filter.d.ts ./shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
+# llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback
+# path (legacy whyMatters generator) to strip prompt-injection patterns
+# from story fields before they reach the LLM. Without this COPY, the
+# digest cron crashes at import with ERR_MODULE_NOT_FOUND once the cron
+# hits any story whose analyst endpoint call falls through to the
+# fallback. See feedback_validation_docker_ship_full_scripts_dir.md —
+# the cherry-pick pattern keeps biting when new cross-dir imports land.
+COPY server/_shared/llm-sanitize.js server/_shared/llm-sanitize.d.ts ./server/_shared/
 
 # Upstash REST helper (brief compose uses redisPipeline + readRawJson).
 COPY api/_upstash-json.js ./api/
