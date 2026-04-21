@@ -142,6 +142,14 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /MAX_PORTS_PER_COUNTRY\s*=\s*50/);
   });
 
+  it('HISTORY_DAYS is 60 (enough for last30 + prev30/trendDelta, no more)', () => {
+    // 90d was the prior default but prod log 2026-04-21 00:02Z showed
+    // per-country pagination at 90d cannot fit 174 countries in the 540s
+    // section budget even in a standalone Railway cron. 60d is the minimum
+    // that still covers the UI's trendDelta window (prev30 = days 30-60).
+    assert.match(src, /const\s+HISTORY_DAYS\s*=\s*60\b/);
+  });
+
   it('TTL is 259200 (3 days)', () => {
     assert.match(src, /259[_\s]*200/);
   });

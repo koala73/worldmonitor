@@ -32,7 +32,15 @@ const EP4_BASE =
 
 const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 45_000;
-const HISTORY_DAYS = 90;
+// 60 days. Enough to cover both window aggregates used by the UI
+// (last30 for current metrics + prev30 = days 30-60 for trendDelta),
+// without the extra 30d of tail data that we never actually look at.
+// Cutting from 90→60 days drops each per-country query by ~33% in row
+// count and page count — prod log on 2026-04-21 00:02Z showed 90d
+// per-country pagination averaging ~75s/batch at concurrency 12, which
+// mathematically cannot fit 15 batches into the 540s section budget.
+// 60 days should bring avg batch time down enough for a full publish.
+const HISTORY_DAYS = 60;
 const MAX_PORTS_PER_COUNTRY = 50;
 
 // Per-country budget. ArcGIS's ISO3 index makes per-country fetches O(rows-in-country),
@@ -133,7 +141,7 @@ async function fetchAllPortRefs({ signal } = {}) {
 
 // Fetch ONE country's activity rows, streaming into per-port accumulators.
 // ArcGIS's ISO3 index makes this cheap for most countries (~3-9s typical).
-// Heavy countries (USA/CHN/etc.) can be 30-60s because 90 days × their many
+// Heavy countries (USA/CHN/etc.) can still be 30-60s because 60 days × their many
 // ports = thousands of rows across multiple pages. Hence the per-country
 // timeout + single retry.
 //
