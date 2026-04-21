@@ -1,4 +1,6 @@
 import { trackGateHit } from '@/services/analytics';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { onEntitlementChange } from '@/services/entitlements';
 
 let bannerEl: HTMLElement | null = null;
 
@@ -35,6 +37,15 @@ export function showProBanner(container: HTMLElement): void {
   if (bannerEl) return;
   if (window.self !== window.top) return;
   if (isDismissed()) return;
+  // Don't pitch Pro to users who already have it. hasPremiumAccess() is the
+  // authoritative signal — unions API key, tester key, Clerk pro role, AND
+  // Convex Dodo entitlement (panel-gating.ts:11-27). A paying user shouldn't
+  // see "Upgrade to Pro" at the top of every dashboard refresh.
+  //
+  // Subscribe to entitlement changes so a user who upgrades mid-session has
+  // the banner auto-dismissed on the next snapshot, instead of staring at
+  // their old "go pro" prompt while their just-paid plan is already active.
+  if (hasPremiumAccess()) return;
 
   trackGateHit('pro-banner');
 
@@ -77,3 +88,18 @@ export function hideProBanner(): void {
 export function isProBannerVisible(): boolean {
   return bannerEl !== null;
 }
+
+// Reactive auto-hide: if a Convex entitlement snapshot arrives that flips
+// the user to premium (e.g. Dodo webhook lands while they're sitting on the
+// dashboard with the banner visible), drop the banner immediately. The
+// dismiss timestamp is intentionally NOT written so the banner reappears
+// correctly if they later downgrade or the entitlement lapses.
+onEntitlementChange(() => {
+  if (bannerEl && hasPremiumAccess()) {
+    bannerEl.classList.add('pro-banner-out');
+    setTimeout(() => {
+      bannerEl?.remove();
+      bannerEl = null;
+    }, 300);
+  }
+});

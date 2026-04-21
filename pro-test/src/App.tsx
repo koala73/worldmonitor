@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type ReactElement } from 'react';
+import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
 import {
@@ -62,6 +63,85 @@ function openSignIn(): void {
   });
 }
 
+/**
+ * Subscribe to Clerk's current user. Returns null while loading or signed out,
+ * and the Clerk UserResource when signed in. Re-renders on any auth change
+ * (sign-in, sign-out, user switch) via clerk.addListener.
+ *
+ * Used by the Navbar to swap the SIGN IN button for Clerk's UserButton avatar
+ * once the visitor is authenticated, and by the Hero to hide its redundant
+ * SIGN IN CTA. Single source of truth for "is the /pro visitor signed in".
+ */
+function useClerkUser(): { user: UserResource | null; isLoaded: boolean } {
+  const [user, setUser] = useState<UserResource | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    ensureClerk()
+      .then((clerk) => {
+        if (!mounted) return;
+        setUser(clerk.user ?? null);
+        setIsLoaded(true);
+        unsubscribe = clerk.addListener(() => {
+          if (!mounted) return;
+          setUser(clerk.user ?? null);
+        });
+      })
+      .catch((err) => {
+        console.error('[auth] Failed to load Clerk for nav auth state:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
+        if (mounted) setIsLoaded(true); // unblock UI; show signed-out state
+      });
+
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
+  }, []);
+
+  return { user, isLoaded };
+}
+
+/**
+ * Mounts Clerk's native UserButton (avatar + dropdown with profile + sign
+ * out) into a DOM node. Using Clerk's built-in widget avoids reimplementing
+ * a signed-in UI from scratch and inherits theming from the existing
+ * clerk.load() appearance options in services/checkout.ts.
+ */
+function ClerkUserButton(): ReactElement {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    let unmounted = false;
+
+    ensureClerk()
+      .then((clerk) => {
+        if (unmounted || !el) return;
+        clerk.mountUserButton(el, {
+          afterSignOutUrl: 'https://www.worldmonitor.app/pro',
+        });
+      })
+      .catch((err) => {
+        console.error('[auth] Failed to mount user button:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'mount-user-button' } });
+      });
+
+    return () => {
+      unmounted = true;
+      ensureClerk().then((clerk) => {
+        if (el) clerk.unmountUserButton(el);
+      }).catch(() => { /* mount path already failed */ });
+    };
+  }, []);
+
+  return <div ref={ref} className="flex items-center" />;
+}
+
 const SlackIcon = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
     <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
@@ -82,27 +162,40 @@ const Logo = () => (
 );
 
 /* ─── 0. Navbar ─── */
-const Navbar = () => (
-  <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
-    <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-      <Logo />
-      <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
-        <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
-        <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
-        <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
-        <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+const Navbar = () => {
+  const { user, isLoaded } = useClerkUser();
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Logo />
+        <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
+          <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
+          <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
+          <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
+          <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* While Clerk is still loading, render nothing in the auth slot
+              to avoid a SIGN IN → UserButton flicker for returning users. */}
+          {isLoaded && (user
+            ? <ClerkUserButton />
+            : (
+              <button
+                type="button"
+                onClick={openSignIn}
+                className="border border-wm-border text-wm-text px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:border-wm-text transition-colors"
+              >
+                {t('nav.signIn')}
+              </button>
+            ))}
+          <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+            {t('nav.upgradeToPro')}
+          </a>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-          {t('nav.signIn')}
-        </button>
-        <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
-          {t('nav.upgradeToPro')}
-        </a>
-      </div>
-    </div>
-  </nav>
-);
+    </nav>
+  );
+};
 
 /* ─── 1. Hero — Less noise, more signal ─── */
 const WiredBadge = () => (
@@ -165,49 +258,58 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => (
-  <section className="pt-28 pb-12 px-6 relative overflow-hidden">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
-    <div className="max-w-4xl mx-auto text-center relative z-10">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="mb-4">
-          <WiredBadge />
-        </div>
+const Hero = () => {
+  const { user, isLoaded } = useClerkUser();
+  // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
+  // Hide it once auth state confirms; falls back to just the "Choose Plan"
+  // CTA which is the relevant action for returning users anyway.
+  const showSignIn = isLoaded && !user;
+  return (
+    <section className="pt-28 pb-12 px-6 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
+      <div className="max-w-4xl mx-auto text-center relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="mb-4">
+            <WiredBadge />
+          </div>
 
-        <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
-          <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
-          <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
-        </h1>
+          <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
+            <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
+          </h1>
 
-        <SignalBars />
+          <SignalBars />
 
-        <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
-          {t('hero.valueProps')}
-        </p>
+          <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
+            {t('hero.valueProps')}
+          </p>
 
-        <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
-          <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
-            {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
-          </a>
-          <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-            {t('hero.signIn')}
-          </button>
-        </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
+            <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </a>
+            {showSignIn && (
+              <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
+                {t('hero.signIn')}
+              </button>
+            )}
+          </div>
 
-        <div className="flex items-center justify-center mt-4">
-          <a href="https://worldmonitor.app" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
-            {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </a>
-        </div>
-      </motion.div>
-    </div>
-  </section>
-);
+          <div className="flex items-center justify-center mt-4">
+            <a href="https://worldmonitor.app" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+              {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+};
 
 /* ─── 2. Social proof (current — WIRED badge already in hero) ─── */
 const SocialProof = () => (
