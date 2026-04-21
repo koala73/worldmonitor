@@ -175,8 +175,10 @@ describe('middleware PUBLIC_API_PATHS — secret-authed internal endpoints bypas
   }
 
   // Negative case: a sibling path that is NOT in the allowlist must still 403
-  // under the same triggers. This catches a future prefix-match refactor that
-  // would accidentally unblock /api/internal/*.
+  // under EACH of the 3 triggers. This catches a future refactor that moves
+  // the PUBLIC_API_PATHS check later in the chain (e.g. behind a broadened
+  // prefix-match) and might let one of the trigger UAs slip through on a
+  // sibling path without this suite failing. Pin all three guard paths.
   const SIBLING_PATHS = [
     '/api/internal/brief-why-matters-v2',     // near-miss suffix
     '/api/internal/',                          // directory only
@@ -184,10 +186,12 @@ describe('middleware PUBLIC_API_PATHS — secret-authed internal endpoints bypas
   ];
 
   for (const path of SIBLING_PATHS) {
-    it(`${path} does NOT bypass the UA gate (exact-match allowlist)`, () => {
-      const res = call(path, EMPTY_UA);
-      assert.ok(res instanceof Response, `${path} must still hit the 403 guard`);
-      assert.equal(res.status, 403);
-    });
+    for (const { label, ua } of TRIGGERS) {
+      it(`${path} does NOT bypass the UA gate — ${label}`, () => {
+        const res = call(path, ua);
+        assert.ok(res instanceof Response, `${path} must still hit the 403 guard under ${label}`);
+        assert.equal(res.status, 403);
+      });
+    }
   }
 });
