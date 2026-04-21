@@ -700,3 +700,67 @@ describe('renderBriefMagazine — publicMode', () => {
     assert.equal(a, b);
   });
 });
+
+// ── Regression: cover greeting follows envelope.data.digest.greeting ─────────
+// Previously the cover hardcoded "Good evening" regardless of issue time, so
+// a brief composed at 13:02 local (envelope greeting = "Good afternoon.")
+// rendered "Good evening" on the cover and "Good afternoon." on slide 2 —
+// visibly inconsistent. Fix wires digest.greeting into the cover (period
+// stripped for the mono-cased slot).
+describe('cover greeting ↔ digest.greeting parity', () => {
+  /**
+   * Extract the cover <section> so we can assert on it in isolation without
+   * matching the identical greeting that appears on slide 2.
+   */
+  function extractCover(html) {
+    const match = html.match(/<section class="page cover">[\s\S]*?<\/section>/);
+    assert.ok(match, 'cover section must be present');
+    return match[0];
+  }
+
+  it('renders "Good afternoon" on the cover when digest.greeting is "Good afternoon."', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good afternoon.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(cover.includes('>Good afternoon<'), `cover should contain "Good afternoon" without period, got: ${cover}`);
+    assert.ok(!cover.includes('Good evening'), 'cover must NOT say "Good evening" when digest.greeting is afternoon');
+  });
+
+  it('renders "Good morning" on the cover when digest.greeting is "Good morning."', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good morning.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(cover.includes('>Good morning<'));
+    assert.ok(!cover.includes('Good evening'));
+    assert.ok(!cover.includes('Good afternoon'));
+  });
+
+  it('renders "Good evening" on the cover when digest.greeting is "Good evening."', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good evening.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(cover.includes('>Good evening<'));
+  });
+
+  it('strips trailing period(s) — cover is mono-cased, no punctuation', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good afternoon...' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    // Envelope can send any trailing dot count; cover strips all of them.
+    assert.ok(cover.includes('>Good afternoon<'));
+    assert.ok(!cover.includes('Good afternoon.'));
+  });
+
+  it('HTML-escapes the greeting (defense-in-depth, even though envelope values are controlled)', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: '<script>alert(1)</script>.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(!cover.includes('<script>alert'));
+    assert.ok(cover.includes('&lt;script&gt;'));
+  });
+});

@@ -379,7 +379,19 @@ function digestRunningHead(dateShort, label) {
 /**
  * @param {{ dateLong: string; issue: string; storyCount: number; pageIndex: number; totalPages: number }} opts
  */
-function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages }) {
+/**
+ * Strip the trailing period from envelope.data.digest.greeting
+ * ("Good afternoon." → "Good afternoon") so the cover's mono-cased
+ * salutation stays consistent with the historical no-period style.
+ * Defensive: if the envelope ever produces an unexpected value, fall
+ * back to a generic "Hello" rather than hardcoding a wrong time-of-day.
+ */
+function coverGreeting(greeting) {
+  if (typeof greeting !== 'string' || greeting.length === 0) return 'Hello';
+  return greeting.replace(/\.+$/, '').trim() || 'Hello';
+}
+
+function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greeting }) {
   const blurb =
     storyCount === 1
       ? 'One thread that shaped the world today.'
@@ -399,7 +411,7 @@ function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages }) {
     `<p class="blurb">${escapeHtml(blurb)}</p>` +
     '</div>' +
     '<div class="meta-bottom">' +
-    '<span class="mono">Good evening</span>' +
+    `<span class="mono">${escapeHtml(coverGreeting(greeting))}</span>` +
     '<span class="mono">Swipe / ↔ to begin</span>' +
     '</div>' +
     `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
@@ -1200,6 +1212,7 @@ export function renderBriefMagazine(envelope, options = {}) {
       storyCount: stories.length,
       pageIndex: ++p,
       totalPages,
+      greeting: digest.greeting,
     }),
   );
 
