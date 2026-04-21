@@ -23,8 +23,9 @@ import {
   parseWhyMatters,
 } from '../shared/brief-llm-core.js';
 
-// Pre-extract sync impl, kept inline so the parity test can't drift from
-// what the cron used to emit.
+// Mirror impl (sync `node:crypto`) — kept inline so a drift between
+// the Web Crypto implementation and this sentinel fails the parity
+// test here first. Must include `description` to match v5 semantics.
 function legacyHashBriefStory(story) {
   const material = [
     story.headline ?? '',
@@ -32,6 +33,7 @@ function legacyHashBriefStory(story) {
     story.threatLevel ?? '',
     story.category ?? '',
     story.country ?? '',
+    story.description ?? '',
   ].join('||');
   return createHash('sha256').update(material).digest('hex').slice(0, 16);
 }
@@ -72,6 +74,30 @@ describe('hashBriefStory — Web Crypto parity with legacy node:crypto', () => {
       const h = await hashBriefStory(mutated);
       assert.notEqual(h, baseline, `${field} must be part of the cache identity`);
     }
+  });
+
+  it('description is part of cache identity (v5 regression guard)', async () => {
+    // Pinned from PR #3269 review P1: adding `description` to the
+    // analyst prompt without adding it to the hash caused same-story-
+    // diff-description to collide on one cache entry, so callers got
+    // prose grounded in a PREVIOUS caller's description.
+    const withDescA = {
+      ...FIXTURE,
+      description: 'Tehran publicly reopened commercial shipping.',
+    };
+    const withDescB = {
+      ...FIXTURE,
+      description: 'Iran formally blockaded outbound tankers.',
+    };
+    const noDesc = { ...FIXTURE };
+
+    const hashA = await hashBriefStory(withDescA);
+    const hashB = await hashBriefStory(withDescB);
+    const hashNone = await hashBriefStory(noDesc);
+
+    assert.notEqual(hashA, hashB, 'different descriptions must produce different hashes');
+    assert.notEqual(hashA, hashNone, 'description present vs absent must differ');
+    assert.notEqual(hashB, hashNone);
   });
 
   it('treats missing fields as empty strings (backcompat)', async () => {

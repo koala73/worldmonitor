@@ -204,10 +204,9 @@ describe('generateWhyMatters — analyst priority', () => {
     assert.equal(callLlmInvoked, true, 'legacy callLLM must fire after analyst miss');
   });
 
-  it('falls through when analyst returns unparseable prose (parser rejection)', async () => {
+  it('falls through when analyst returns out-of-bounds output (too short)', async () => {
     let callLlmInvoked = false;
     const out = await generateWhyMatters(story(), {
-      // Too short — fails parseWhyMatters length gate (< 30 chars).
       callAnalystWhyMatters: async () => 'Short.',
       callLLM: async () => {
         callLlmInvoked = true;
@@ -217,7 +216,33 @@ describe('generateWhyMatters — analyst priority', () => {
       cacheSet: async () => {},
     });
     assert.equal(out, VALID);
-    assert.equal(callLlmInvoked, true, 'unparseable analyst output must trigger fallback');
+    assert.equal(callLlmInvoked, true, 'out-of-bounds analyst output must trigger fallback');
+  });
+
+  it('preserves multi-sentence v2 analyst output verbatim (P1 regression guard)', async () => {
+    // The endpoint now returns 2–3 sentences validated by parseWhyMattersV2.
+    // The cron MUST NOT reparse with the v1 single-sentence parser, which
+    // would silently truncate the 2nd + 3rd sentences. Caught in PR #3269
+    // review; fixed by trusting the endpoint's own validation and only
+    // rejecting obvious garbage (length / stub echo) here.
+    const multi =
+      "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
+      'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters. ' +
+      'Watch IMF commentary in the next 48 hours for cascading guidance.';
+    let callLlmInvoked = false;
+    const out = await generateWhyMatters(story(), {
+      callAnalystWhyMatters: async () => multi,
+      callLLM: async () => {
+        callLlmInvoked = true;
+        return VALID;
+      },
+      cacheGet: async () => null,
+      cacheSet: async () => {},
+    });
+    assert.equal(out, multi, 'multi-sentence v2 output must reach the envelope unchanged');
+    assert.equal(callLlmInvoked, false, 'legacy callLLM must not fire when v2 analyst succeeds');
+    // Sanity: output is actually multi-sentence (not truncated to first).
+    assert.ok(out.split('. ').length >= 2, 'output must retain 2nd+ sentences');
   });
 
   it('falls through when analyst throws', async () => {

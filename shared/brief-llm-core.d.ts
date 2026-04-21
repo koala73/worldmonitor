@@ -4,6 +4,9 @@ export interface BriefStoryHashInput {
   threatLevel?: string;
   category?: string;
   country?: string;
+  /** v5: part of cache identity so same-story + different description
+   *  don't collide on cached analyst output. */
+  description?: string;
 }
 
 export interface BriefStoryPromptInput {

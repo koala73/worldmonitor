@@ -69,11 +69,20 @@ export function parseWhyMatters(text) {
 }
 
 /**
- * Deterministic 16-char hex hash of the five story fields that flow
- * into the whyMatters prompt. Same material as the pre-v3 sync
- * implementation (`scripts/lib/brief-llm.mjs:hashBriefStory`) — a
- * fixed fixture in tests/brief-llm-core.test.mjs pins the output so a
- * future refactor cannot silently invalidate every cached entry.
+ * Deterministic 16-char hex hash of the SIX story fields that flow
+ * into the whyMatters prompt (5 core + description). Cache identity
+ * MUST cover every field that shapes the LLM output, or two requests
+ * with the same core fields but different descriptions will share a
+ * cache entry and the second caller gets prose grounded in the first
+ * caller's description (P1 regression caught in PR #3269 review).
+ *
+ * History:
+ *   - pre-v3: 5 fields, sync `node:crypto.createHash`.
+ *   - v3: moved to Web Crypto (async), same 5 fields.
+ *   - v5 (with endpoint cache bump to brief:llm:whymatters:v5:):
+ *     6 fields — `description` added to match the analyst path's
+ *     v2 prompt which interpolates `Description: <desc>` between
+ *     headline and source.
  *
  * Uses Web Crypto so the module is edge-safe. Returns a Promise because
  * `crypto.subtle.digest` is async; cron call sites are already in an
@@ -85,6 +94,7 @@ export function parseWhyMatters(text) {
  *   threatLevel?: string;
  *   category?: string;
  *   country?: string;
+ *   description?: string;
  * }} story
  * @returns {Promise<string>}
  */
@@ -95,6 +105,11 @@ export async function hashBriefStory(story) {
     story.threatLevel ?? '',
     story.category ?? '',
     story.country ?? '',
+    // New in v5: description is a prompt input on the analyst path,
+    // so MUST be part of cache identity. Absent on legacy paths →
+    // empty string → deterministic; same-story-same-description pairs
+    // still collide on purpose, different descriptions don't.
+    story.description ?? '',
   ].join('||');
   const bytes = new TextEncoder().encode(material);
   const digest = await crypto.subtle.digest('SHA-256', bytes);

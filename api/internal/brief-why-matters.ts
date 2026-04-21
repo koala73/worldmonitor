@@ -362,14 +362,16 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
 
   // Cache identity.
   const hash = await hashBriefStory(story);
-  // v4: analyst-path prompt rewritten to 2–3 sentences (40–70 words) with
-  // explicit grounding requirement. Bumping the key invalidates v3 entries
-  // written under the old single-sentence prompt so fresh output lands on
-  // the next cron tick post-deploy.
-  const cacheKey = `brief:llm:whymatters:v4:${hash}`;
-  // Shadow bump v1 → v2 for the same reason — comparisons are now
-  // v2-analyst vs v1-gemini, which is a different A/B than before.
-  const shadowKey = `brief:llm:whymatters:shadow:v2:${hash}`;
+  // v5: `hashBriefStory` now includes `description` as a prompt input
+  // so same-story + different description no longer collide on a single
+  // cache entry (P1 caught in PR #3269 review — endpoint could serve
+  // prose grounded in a PREVIOUS caller's description). Bumping v4→v5
+  // invalidates the short-lived v4 entries written under the buggy
+  // 5-field hash so fresh output lands on the next cron tick.
+  const cacheKey = `brief:llm:whymatters:v5:${hash}`;
+  // Shadow v2→v3 for the same reason — any v2 comparison pairs may be
+  // grounded in the wrong description, so the A/B was noisy.
+  const shadowKey = `brief:llm:whymatters:shadow:v3:${hash}`;
 
   // Cache read. Any infrastructure failure → treat as miss (logged).
   let cached: WhyMattersEnvelope | null = null;
