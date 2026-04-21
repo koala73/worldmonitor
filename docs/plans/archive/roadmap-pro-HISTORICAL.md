@@ -1,3 +1,15 @@
+> **[HISTORICAL — archived 2026-04-21]**
+>
+> This document is **obsolete**. It describes a pre-Clerk, pre-Dodo roadmap that was never built as scoped. The shipped architecture uses **Clerk** (auth) + **Dodo Payments** (billing) + **Convex** (entitlements), not Stripe + custom auth as planned below.
+>
+> For **current** monetization architecture, read [`docs/architecture/pro-monetization.md`](../../architecture/pro-monetization.md).
+>
+> For ongoing UX/flow hardening, see [`docs/plans/2026-04-21-002-feat-harden-auth-checkout-flow-ux-plan.md`](../2026-04-21-002-feat-harden-auth-checkout-flow-ux-plan.md).
+>
+> Preserved here for historical reference only — **do not** implement against this doc.
+
+---
+
 # World Monitor Pro — Implementation Roadmap
 
 ## Context
