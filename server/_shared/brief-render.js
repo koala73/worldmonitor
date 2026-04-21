@@ -377,9 +377,6 @@ function digestRunningHead(dateShort, label) {
 // ── Page renderers ───────────────────────────────────────────────────────────
 
 /**
- * @param {{ dateLong: string; issue: string; storyCount: number; pageIndex: number; totalPages: number }} opts
- */
-/**
  * Strip the trailing period from envelope.data.digest.greeting
  * ("Good afternoon." → "Good afternoon") so the cover's mono-cased
  * salutation stays consistent with the historical no-period style.
@@ -391,6 +388,9 @@ function coverGreeting(greeting) {
   return greeting.replace(/\.+$/, '').trim() || 'Hello';
 }
 
+/**
+ * @param {{ dateLong: string; issue: string; storyCount: number; pageIndex: number; totalPages: number; greeting: string }} opts
+ */
 function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greeting }) {
   const blurb =
     storyCount === 1
