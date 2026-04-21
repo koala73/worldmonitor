@@ -4,7 +4,7 @@ import type { ResilienceScoreResponse } from '@/services/resilience';
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
 // the exact values do not need to match any real country. They just
-// need to populate the 5 domain bars AND the 13-cell per-dimension
+// need to populate the 6 domain bars AND the 19-cell per-dimension
 // confidence grid (T1.6) with realistic-looking data so the gated
 // card is not a blank gap. Raised in PR #2949 review. Lives in this
 // dependency-free utils module so tests can import it without
@@ -120,6 +120,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   energy: 'Energy',
   'social-governance': 'Social & Gov',
   'health-food': 'Health & Food',
+  recovery: 'Recovery',
 };
 
 export function getResilienceVisualLevel(score: number): ResilienceVisualLevel {
@@ -163,10 +164,14 @@ export function formatBaselineStress(baseline: number, stress: number): string {
 }
 
 // Formats the dataVersion field (ISO date YYYY-MM-DD, sourced from the
-// seed-meta key) for display in the widget footer. Returns an empty string
-// when dataVersion is missing, malformed, or not a real calendar date so
-// the caller can skip rendering. Format is stable and regex + calendar
-// tested by resilience-widget.test.mts.
+// seed-meta:resilience:static.fetchedAt key) for display in the widget
+// footer. Returns an empty string when dataVersion is missing, malformed,
+// or not a real calendar date so the caller can skip rendering. The
+// "Seed date" label is narrower than "Data" — the value reflects the
+// static-seed refresh only, not the freshness of every live input that
+// contributes to the score (individual dimension freshness is surfaced
+// separately via the per-dimension freshness badge). Format is stable
+// and regex + calendar tested by resilience-widget.test.mts.
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 export function formatResilienceDataVersion(dataVersion: string | null | undefined): string {
   if (typeof dataVersion !== 'string' || !ISO_DATE_PATTERN.test(dataVersion)) return '';
@@ -179,22 +184,20 @@ export function formatResilienceDataVersion(dataVersion: string | null | undefin
   const parsed = new Date(dataVersion);
   if (Number.isNaN(parsed.getTime())) return '';
   if (parsed.toISOString().slice(0, 10) !== dataVersion) return '';
-  return `Data ${dataVersion}`;
+  return `Seed date ${dataVersion}`;
 }
 
 // T1.6 Phase 1 of the country-resilience reference-grade upgrade plan.
 // Per-dimension confidence helpers. The widget uses these to render a
-// compact confidence grid below the 5-domain rows so analysts can see
+// compact confidence grid below the 6-domain rows so analysts can see
 // per-dimension data coverage without opening the deep-dive panel.
 //
 // This slice uses ONLY the existing ResilienceDimension fields (`id`,
-// `coverage`, `observedWeight`, `imputedWeight`) already on every
-// response, so no proto or schema changes are needed. The downstream
-// adds (imputation class icon from T1.7, freshness badge from T1.5)
-// land as additional columns in later PRs once the schema exposes
-// those fields through the response type.
+// `coverage`, `observedWeight`, `imputedWeight`, `imputationClass`,
+// `freshness`) already on every response, so no proto or schema
+// changes are needed to render the full grid.
 
-// Short labels for each of the 13 dimensions so the compact grid does
+// Short labels for each of the 19 dimensions so the compact grid does
 // not wrap. Keys match `ResilienceDimensionId` from
 // server/worldmonitor/resilience/v1/_dimension-scorers.ts. The doc
 // linter test (resilience-methodology-lint.test.mts) already pins the

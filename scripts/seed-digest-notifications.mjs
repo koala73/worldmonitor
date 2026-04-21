@@ -38,6 +38,7 @@ import {
 } from './lib/brief-compose.mjs';
 import { issueSlotInTz } from '../shared/brief-filter.js';
 import { enrichBriefEnvelopeWithLLM } from './lib/brief-llm.mjs';
+import { parseDigestOnlyUser } from './lib/digest-only-user.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { signBriefUrl, BriefUrlError } from './lib/brief-url-sign.mjs';
 import {
@@ -1325,24 +1326,52 @@ async function main() {
     return;
   }
 
-  // Operator single-user test filter. Set DIGEST_ONLY_USER=user_xxx on
-  // the Railway service to run the compose + send paths for exactly
-  // one user on the next cron tick, then unset. Intended for
-  // validating new features (brief enrichment, rendering, email
-  // template changes) end-to-end without fanning out to every PRO user.
-  // Empty string / unset = normal fan-out (production default).
-  const onlyUser = (process.env.DIGEST_ONLY_USER ?? '').trim();
-  if (onlyUser) {
+  // Operator single-user test filter. Self-expiring by design: the env
+  // var MUST carry an `|until=<ISO8601>` suffix within 48h, or it's
+  // IGNORED. Rationale: the naive `DIGEST_ONLY_USER=user_xxx` format
+  // from PR #3255 was a sticky footgun — if an operator set it for a
+  // one-off validation and forgot to unset it, the cron would silently
+  // filter out every other user indefinitely while still completing
+  // normally and exiting 0, creating a prolonged partial outage with
+  // "green" runs. Mandatory expiry + hard 48h cap + loud warn at run
+  // start makes the test surface self-cleanup even if the operator
+  // walks away.
+  //
+  // Format: DIGEST_ONLY_USER=user_xxxxxxxxxxxxxxxxxxxxxx|until=2026-04-22T18:00Z
+  // Legacy bare-userId format is rejected (fall-through to normal
+  // fan-out) with a loud warn explaining the new syntax.
+  const onlyUserFilter = parseDigestOnlyUser(
+    (process.env.DIGEST_ONLY_USER ?? '').trim(),
+    nowMs,
+  );
+  if (onlyUserFilter.kind === 'active') {
+    const remainingMin = Math.round((onlyUserFilter.untilMs - nowMs) / 60_000);
+    console.warn(
+      `⚠️  [digest] DIGEST_ONLY_USER ACTIVE — filtering to userId=${onlyUserFilter.userId}. ` +
+        `Expires in ${remainingMin} min (${new Date(onlyUserFilter.untilMs).toISOString()}). ` +
+        `All other users are EXCLUDED from this run. Unset DIGEST_ONLY_USER after testing.`,
+    );
     const before = rules.length;
-    rules = rules.filter((r) => r && r.userId === onlyUser);
+    rules = rules.filter((r) => r && r.userId === onlyUserFilter.userId);
     console.log(
-      `[digest] DIGEST_ONLY_USER=${onlyUser} — filtered ${before} rules → ${rules.length}`,
+      `[digest] DIGEST_ONLY_USER — filtered ${before} rules → ${rules.length}`,
     );
     if (rules.length === 0) {
-      console.log(`[digest] No rules matched userId=${onlyUser} — nothing to do`);
+      console.warn(
+        `[digest] No rules matched userId=${onlyUserFilter.userId} — nothing to do (exiting green).`,
+      );
       return;
     }
+  } else if (onlyUserFilter.kind === 'reject') {
+    // Malformed / expired / cap-exceeded — log LOUDLY and fan out normally
+    // so a forgotten flag cannot produce a silent partial outage.
+    console.warn(
+      `[digest] DIGEST_ONLY_USER present but IGNORED: ${onlyUserFilter.reason}. ` +
+        `Proceeding with normal fan-out. Format: ` +
+        `DIGEST_ONLY_USER=user_xxx|until=<ISO8601 within 48h>.`,
+    );
   }
+  // kind === 'unset' → normal fan-out, no log (production default)
 
   // Compose per-user brief envelopes once per run (extracted so main's
   // complexity score stays in the biome budget). Failures MUST NOT

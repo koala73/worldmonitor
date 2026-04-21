@@ -29,14 +29,16 @@ message GetResilienceScoreResponse {
   double stress_factor = 12;
   string data_version = 13;
   ScoreInterval score_interval = 14;
-  // Phase 2 T2.1: three-pillar schema. Empty array when
-  // schema_version == "1.0" (the default until Phase 2 T2.3 lands).
-  // Populated with shaped-but-empty pillar entries when
-  // schema_version == "2.0"; real scores/coverage land in T2.3 / PR 4.
+  // Phase 2 T2.1/T2.3: three-pillar schema. Populated with real
+  // coverage-weighted pillar scores when schema_version == "2.0" (the
+  // current default). Empty array when schema_version == "1.0", which is
+  // the legacy opt-out path retained for one release cycle via the
+  // RESILIENCE_SCHEMA_V2_ENABLED env flag.
   repeated ResiliencePillar pillars = 15;
-  // Phase 2 T2.1: "1.0" (default, preserves the current response shape)
-  // or "2.0" (adds pillars; keeps overall_score / baseline_score / etc.
-  // populated for one release cycle for backward compat). Controlled at
-  // response build time by the RESILIENCE_SCHEMA_V2_ENABLED env flag.
+  // Phase 2 T2.1/T2.3: "2.0" is the current default (adds pillars; keeps
+  // overall_score / baseline_score / etc. populated for backward compat).
+  // "1.0" is the legacy opt-out shape (pillars empty) retained for one
+  // release cycle. Controlled at response build time by the
+  // RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
   string schema_version = 16;
 }

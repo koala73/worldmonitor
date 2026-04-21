@@ -151,7 +151,7 @@ export class ResilienceWidget {
           'span',
           {
             className: 'resilience-widget__help',
-            title: 'Composite resilience score derived from economic, infrastructure, energy, social/governance, and health/food domains.',
+            title: 'Composite resilience score from 19 dimensions across 6 domains (economic, infrastructure, energy, social & governance, health & food, recovery), grouped into 3 pillars (structural readiness, live shock exposure, recovery capacity). Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).',
             'aria-label': 'Resilience score methodology',
           },
           '?',
@@ -308,7 +308,7 @@ export class ResilienceWidget {
                 'span',
                 {
                   className: 'resilience-widget__data-version',
-                  title: 'Date the underlying source data was last refreshed by the Railway static-seed job.',
+                  title: 'Date the static-seed bundle (Railway job) was last refreshed. Individual live inputs (conflict events, sanctions, prices) can be newer — see the per-dimension freshness badge for those.',
                 },
                 dataVersionLabel,
               )]

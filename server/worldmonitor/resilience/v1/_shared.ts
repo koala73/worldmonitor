@@ -27,16 +27,22 @@ import {
 } from './_dimension-scorers';
 import { buildPillarList } from './_pillar-membership';
 
-// Phase 2 T2.1: feature flag for the three-pillar response shape.
-// When `true`, responses carry `schemaVersion: "2.0"` and a non-empty
-// `pillars` array (shaped but with score=0/coverage=0 until PR 4 wires
-// the real aggregation). When `false` (default), responses preserve the
-// Phase 1 shape: `schemaVersion: "1.0"` and `pillars: []`.
+// Phase 2 T2.1/T2.3: feature flag for the three-pillar response shape.
+// Default is `true` → responses carry `schemaVersion: "2.0"` and a
+// non-empty `pillars` array with real coverage-weighted scores from
+// `_pillar-membership.ts#buildPillarList`. When `false`, responses fall
+// back to the Phase 1 shape (`schemaVersion: "1.0"`, `pillars: []`) —
+// retained as an emergency opt-out for one release cycle.
 //
-// The `overallScore`, `baselineScore`, `stressScore`, etc. top-level
-// fields remain populated in BOTH modes for one release cycle to
-// preserve backward compat for widget + map layer + Country Brief
-// consumers per the plan ("Schema changes (OpenAPI + proto)" section).
+// IMPORTANT: `overallScore` is STILL computed as the 6-domain weighted
+// aggregate (Σ domain.score * domain.weight, weights sum to 1.00) in both
+// modes. A pillar-combined score with a min-pillar penalty is defined
+// below (`penalizedPillarScore`) and exercised by
+// scripts/validate-resilience-sensitivity.mjs; the activation that
+// switches `overallScore` to the pillar combine is a separate PR.
+//
+// `baselineScore`, `stressScore`, `stressFactor`, etc. remain populated
+// in both modes for widget + map layer + Country Brief consumers.
 export const RESILIENCE_SCHEMA_V2_ENABLED =
   (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
 
