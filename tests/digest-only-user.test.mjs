@@ -92,9 +92,32 @@ describe('parseDigestOnlyUser — kind:reject (prevents sticky footgun)', () => 
     assert.match(out.reason, /exceeds the 48h hard cap/);
   });
 
-  it('rejects multiple pipes (ambiguous format)', () => {
+  it('rejects multiple pipes with a SPECIFIC reason (not the misleading "missing suffix")', () => {
+    // Regression pin: earlier the reason incorrectly pointed the
+    // operator toward adding a suffix that was already present.
     const out = parseDigestOnlyUser('user_xxx|until=2026-04-22T18:00Z|extra', NOW);
     assert.equal(out.kind, 'reject');
+    assert.match(out.reason, /expected exactly one "\|" separator, got 2/);
+    assert.doesNotMatch(out.reason, /missing mandatory/);
+  });
+
+  it('rejects non-ISO8601 formats that V8 Date.parse would accept', () => {
+    // V8's Date.parse is lenient (RFC 2822, locale-formatted, etc.).
+    // The documented contract is strict ISO 8601 — enforce by shape,
+    // not just by the 48h cap catching a random valid date.
+    const cases = [
+      'April 22, 2026 18:00',
+      '22 Apr 2026 18:00:00 GMT',
+      '04/22/2026',
+      '2026/04/22 18:00',
+      'tomorrow',
+      '1717200000',           // numeric epoch, accepted by some parsers
+    ];
+    for (const c of cases) {
+      const out = parseDigestOnlyUser(`user_xxx|until=${c}`, NOW);
+      assert.equal(out.kind, 'reject', `should reject non-ISO "${c}"`);
+      assert.match(out.reason, /not a parseable ISO8601 timestamp/);
+    }
   });
 });
 

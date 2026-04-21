@@ -27,9 +27,16 @@ export function parseDigestOnlyUser(raw, nowMs) {
 
   const parts = raw.split('|');
   if (parts.length !== 2) {
+    // Distinguish "no separator" from "too many" so the operator's
+    // next action is clear. Without this, a double-`|until=` typo got
+    // told "missing suffix" even though a suffix was present — the
+    // operator's instinct would be to add a second suffix, looping.
     return {
       kind: 'reject',
-      reason: 'missing mandatory "|until=<ISO8601>" suffix',
+      reason:
+        parts.length === 1
+          ? 'missing mandatory "|until=<ISO8601>" suffix'
+          : `expected exactly one "|" separator, got ${parts.length - 1}`,
     };
   }
   const userId = parts[0].trim();
@@ -42,6 +49,17 @@ export function parseDigestOnlyUser(raw, nowMs) {
     };
   }
   const untilRaw = suffix.slice('until='.length).trim();
+  // `Date.parse` is intentionally lenient in V8 (accepts RFC 2822,
+  // locale-formatted dates, etc.). The documented contract is strict
+  // ISO 8601 — gate with a rough regex so non-ISO values are rejected
+  // by shape, not just by the 48h cap catching a random valid date.
+  // Accept YYYY-MM-DD with optional time / fractional / timezone.
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+\-]\d{2}:?\d{2})?)?$/.test(untilRaw)) {
+    return {
+      kind: 'reject',
+      reason: `expiry "${untilRaw}" is not a parseable ISO8601 timestamp`,
+    };
+  }
   const untilMs = Date.parse(untilRaw);
   if (!Number.isFinite(untilMs)) {
     return {
