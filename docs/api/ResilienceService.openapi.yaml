@@ -141,10 +141,11 @@ components:
                 schemaVersion:
                     type: string
                     description: |-
-                        Phase 2 T2.1: "1.0" (default, preserves the current response shape)
-                         or "2.0" (adds pillars; keeps overall_score / baseline_score / etc.
-                         populated for one release cycle for backward compat). Controlled at
-                         response build time by the RESILIENCE_SCHEMA_V2_ENABLED env flag.
+                        Phase 2 T2.1/T2.3: "2.0" is the current default (adds pillars; keeps
+                         overall_score / baseline_score / etc. populated for backward compat).
+                         "1.0" is the legacy opt-out shape (pillars empty) retained for one
+                         release cycle. Controlled at response build time by the
+                         RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
         ResilienceDomain:
             type: object
             properties:
@@ -220,25 +221,32 @@ components:
                 score:
                     type: number
                     format: double
-                    description: Pillar score in [0, 100]. 0 when shipped empty (T2.1).
+                    description: Pillar score in [0, 100], coverage-weighted mean of member domains.
                 weight:
                     type: number
                     format: double
-                    description: 'Pillar weight in the overall combine. Per the plan: 0.40 / 0.35 / 0.25.'
+                    description: 'Pillar weight in the pillar-combined score. Per the plan: 0.40 / 0.35 / 0.25.'
                 coverage:
                     type: number
                     format: double
-                    description: Coverage in [0, 1]. 0 when shipped empty (T2.1).
+                    description: Coverage in [0, 1], mean of member-domain average dimension coverage.
                 domains:
                     type: array
                     items:
                         $ref: '#/components/schemas/ResilienceDomain'
             description: |-
-                Phase 2 T2.1 of the country-resilience reference-grade upgrade plan.
-                 Three-pillar response shape that regroups the existing 5 domains into
-                 long-run capacity, current shock pressure, and recovery capability.
-                 Shipped as a shaped-but-empty payload in T2.1 (score=0, coverage=0);
-                 real aggregation lands in T2.3 / PR 4 of the Phase 2 rebuild.
+                Phase 2 T2.1/T2.3 of the country-resilience reference-grade upgrade plan.
+                 Three-pillar response shape that regroups the 6 ResilienceDomains
+                 (economic, infrastructure, energy, social-governance, health-food,
+                 recovery) into long-run capacity (structural-readiness), current shock
+                 pressure (live-shock-exposure), and recovery capability (recovery-capacity).
+                 Pillar scores and coverage are real coverage-weighted aggregates computed
+                 from the constituent domains; see _pillar-membership.ts for the mapping.
+                 The top-level overall_score on GetResilienceScoreResponse remains a
+                 domain-weighted aggregate (Σ domain.score * domain.weight) for this
+                 release cycle; a pillar-combined score with penalty term is staged in
+                 _shared.ts#penalizedPillarScore and validated by
+                 scripts/validate-resilience-sensitivity.mjs ahead of the activation PR.
         GetResilienceRankingRequest:
             type: object
         GetResilienceRankingResponse:

@@ -58,8 +58,13 @@ test('getResilienceTrendArrow renders the expected glyphs', () => {
 test('getResilienceDomainLabel keeps the deep-dive shorthand labels stable', () => {
   assert.equal(getResilienceDomainLabel('economic'), 'Economic');
   assert.equal(getResilienceDomainLabel('infrastructure'), 'Infra & Supply');
+  assert.equal(getResilienceDomainLabel('energy'), 'Energy');
   assert.equal(getResilienceDomainLabel('social-governance'), 'Social & Gov');
   assert.equal(getResilienceDomainLabel('health-food'), 'Health & Food');
+  // Regression for the missing sixth-domain label. Before this pin, the
+  // recovery row rendered as the raw id "recovery" because DOMAIN_LABELS
+  // was a 5-entry map from the pre-recovery-domain era.
+  assert.equal(getResilienceDomainLabel('recovery'), 'Recovery');
   assert.equal(getResilienceDomainLabel('custom-domain'), 'custom-domain');
 });
 
@@ -90,9 +95,13 @@ test('formatBaselineStress renders the expected breakdown string (no Impact)', (
 // renders a footer label so analysts can see how fresh the underlying
 // source data is; a missing or malformed dataVersion returns an empty
 // string so the caller skips rendering rather than showing a dangling label.
-test('formatResilienceDataVersion renders a label for a valid ISO date', () => {
-  assert.equal(formatResilienceDataVersion('2026-04-11'), 'Data 2026-04-11');
-  assert.equal(formatResilienceDataVersion('2024-01-01'), 'Data 2024-01-01');
+test('formatResilienceDataVersion renders a "Seed date" label for a valid ISO date', () => {
+  // Label narrowed from "Data" to "Seed date" in the review followup
+  // so it is clear the value reflects the static-seed bundle refresh,
+  // not the freshness of every live input feeding the score. Live
+  // inputs carry their own per-dimension freshness badges.
+  assert.equal(formatResilienceDataVersion('2026-04-11'), 'Seed date 2026-04-11');
+  assert.equal(formatResilienceDataVersion('2024-01-01'), 'Seed date 2024-01-01');
 });
 
 test('formatResilienceDataVersion returns empty for missing or malformed dataVersion', () => {
@@ -120,8 +129,8 @@ test('formatResilienceDataVersion rejects regex-valid but calendar-invalid dates
   assert.equal(formatResilienceDataVersion('2024-02-30'), '');
   assert.equal(formatResilienceDataVersion('2024-02-31'), '');
   // Legitimate calendar dates still pass.
-  assert.equal(formatResilienceDataVersion('2024-02-29'), 'Data 2024-02-29'); // leap year
-  assert.equal(formatResilienceDataVersion('2023-02-28'), 'Data 2023-02-28');
+  assert.equal(formatResilienceDataVersion('2024-02-29'), 'Seed date 2024-02-29'); // leap year
+  assert.equal(formatResilienceDataVersion('2023-02-28'), 'Seed date 2023-02-28');
 });
 
 test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
@@ -130,12 +139,12 @@ test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
   // seed-meta key; the widget footer renders it via formatResilienceDataVersion.
   assert.equal(typeof baseResponse.dataVersion, 'string');
   assert.ok(baseResponse.dataVersion.length > 0, 'baseResponse should carry a non-empty dataVersion for regression coverage');
-  assert.equal(formatResilienceDataVersion(baseResponse.dataVersion), `Data ${baseResponse.dataVersion}`);
+  assert.equal(formatResilienceDataVersion(baseResponse.dataVersion), `Seed date ${baseResponse.dataVersion}`);
 });
 
 // T1.6 Phase 1 of the country-resilience reference-grade upgrade plan.
 // Per-dimension confidence helpers. The widget renders a compact
-// coverage grid below the 5-domain rows using these helpers; each
+// coverage grid below the 6-domain rows using these helpers; each
 // scorer dimension must have a stable display label and a consistent
 // status classification.
 

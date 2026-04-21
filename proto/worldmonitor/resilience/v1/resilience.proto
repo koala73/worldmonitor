@@ -47,20 +47,27 @@ message ResilienceRankingItem {
   bool rank_stable = 6;
 }
 
-// Phase 2 T2.1 of the country-resilience reference-grade upgrade plan.
-// Three-pillar response shape that regroups the existing 5 domains into
-// long-run capacity, current shock pressure, and recovery capability.
-// Shipped as a shaped-but-empty payload in T2.1 (score=0, coverage=0);
-// real aggregation lands in T2.3 / PR 4 of the Phase 2 rebuild.
+// Phase 2 T2.1/T2.3 of the country-resilience reference-grade upgrade plan.
+// Three-pillar response shape that regroups the 6 ResilienceDomains
+// (economic, infrastructure, energy, social-governance, health-food,
+// recovery) into long-run capacity (structural-readiness), current shock
+// pressure (live-shock-exposure), and recovery capability (recovery-capacity).
+// Pillar scores and coverage are real coverage-weighted aggregates computed
+// from the constituent domains; see _pillar-membership.ts for the mapping.
+// The top-level overall_score on GetResilienceScoreResponse remains a
+// domain-weighted aggregate (Σ domain.score * domain.weight) for this
+// release cycle; a pillar-combined score with penalty term is staged in
+// _shared.ts#penalizedPillarScore and validated by
+// scripts/validate-resilience-sensitivity.mjs ahead of the activation PR.
 message ResiliencePillar {
   // "structural-readiness" | "live-shock-exposure" | "recovery-capacity".
   string id = 1;
-  // Pillar score in [0, 100]. 0 when shipped empty (T2.1).
+  // Pillar score in [0, 100], coverage-weighted mean of member domains.
   double score = 2;
-  // Pillar weight in the overall combine. Per the plan: 0.40 / 0.35 / 0.25.
+  // Pillar weight in the pillar-combined score. Per the plan: 0.40 / 0.35 / 0.25.
   double weight = 3;
-  // Coverage in [0, 1]. 0 when shipped empty (T2.1).
+  // Coverage in [0, 1], mean of member-domain average dimension coverage.
   double coverage = 4;
-  // Subset of the 5 ResilienceDomains that compose this pillar.
+  // Subset of the 6 ResilienceDomains that compose this pillar.
   repeated ResilienceDomain domains = 5;
 }

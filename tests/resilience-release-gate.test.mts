@@ -150,8 +150,12 @@ describe('resilience release gate', () => {
   //     NO (elite tier)   overallScore = 86.58, baseline 86.85, stress 84.36
   //     US (strong tier)  overallScore = 72.80, baseline 73.15, stress 70.58
   //     Delta             NO - US = 13.78 points
-  //     Ceiling           neither country approaches 100; all 5 domains stay
+  //     Ceiling           neither country approaches 100; all 6 domains stay
   //                       well inside the [0, 100] clamp range
+  // (Note: the investigation was run at the 5-domain state before the
+  // recovery domain landed; the overall ordering finding held after the
+  // Phase 2 recovery-domain addition — rerun under current fixtures
+  // continues to produce no ceiling and preserves NO > US by ≥8 points.)
   //
   // The ordering elite > strong > stressed > fragile is preserved. There is
   // no hard 100 ceiling in the scorer, and nothing in _dimension-scorers.ts
