@@ -14,7 +14,18 @@ const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 //   UptimeRobot + ops curl. Was blocked by the curl/bot UA regex before this
 //   exception landed (Vercel log 2026-04-15: "Middleware 403 Forbidden" on
 //   /api/seed-contract-probe).
-const PUBLIC_API_PATHS = new Set(['/api/version', '/api/health', '/api/seed-contract-probe']);
+// - /api/internal/brief-why-matters: requires RELAY_SHARED_SECRET Bearer
+//   (subtle-crypto HMAC timing-safe compare in server/_shared/internal-auth.ts).
+//   Called from the Railway digest-notifications cron whose fetch() uses the
+//   Node undici default UA, which is short enough to trip the "no UA or
+//   suspiciously short" 403 below (Railway log 2026-04-21 post-#3248 merge:
+//   every cron call returned 403 and silently fell back to legacy Gemini).
+const PUBLIC_API_PATHS = new Set([
+  '/api/version',
+  '/api/health',
+  '/api/seed-contract-probe',
+  '/api/internal/brief-why-matters',
+]);
 
 const SOCIAL_IMAGE_UA =
   /Slack-ImgProxy|Slackbot|twitterbot|facebookexternalhit|linkedinbot|telegrambot|whatsapp|discordbot|redditbot/i;

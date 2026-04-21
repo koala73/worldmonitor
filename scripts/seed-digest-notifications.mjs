@@ -156,6 +156,13 @@ async function callAnalystWhyMatters(story) {
       headers: {
         Authorization: `Bearer ${RELAY_SECRET}`,
         'Content-Type': 'application/json',
+        // Explicit UA — Node undici's default is short/empty enough to
+        // trip middleware.ts's "No user-agent or suspiciously short"
+        // 403 path. Defense-in-depth alongside the PUBLIC_API_PATHS
+        // allowlist. Distinct from ops curl / UptimeRobot so log grep
+        // disambiguates cron traffic from operator traffic.
+        'User-Agent': 'worldmonitor-digest-notifications/1.0',
+        Accept: 'application/json',
       },
       body: JSON.stringify({ story }),
       signal: AbortSignal.timeout(15_000),
@@ -1297,6 +1304,25 @@ async function main() {
   if (!Array.isArray(rules) || rules.length === 0) {
     console.log('[digest] No digest rules found — nothing to do');
     return;
+  }
+
+  // Operator single-user test filter. Set DIGEST_ONLY_USER=user_xxx on
+  // the Railway service to run the compose + send paths for exactly
+  // one user on the next cron tick, then unset. Intended for
+  // validating new features (brief enrichment, rendering, email
+  // template changes) end-to-end without fanning out to every PRO user.
+  // Empty string / unset = normal fan-out (production default).
+  const onlyUser = (process.env.DIGEST_ONLY_USER ?? '').trim();
+  if (onlyUser) {
+    const before = rules.length;
+    rules = rules.filter((r) => r && r.userId === onlyUser);
+    console.log(
+      `[digest] DIGEST_ONLY_USER=${onlyUser} — filtered ${before} rules → ${rules.length}`,
+    );
+    if (rules.length === 0) {
+      console.log(`[digest] No rules matched userId=${onlyUser} — nothing to do`);
+      return;
+    }
   }
 
   // Compose per-user brief envelopes once per run (extracted so main's
