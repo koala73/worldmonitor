@@ -1,6 +1,7 @@
 import { trackGateHit } from '@/services/analytics';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { onEntitlementChange } from '@/services/entitlements';
+import { onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import { getCurrentClerkUser } from '@/services/clerk';
 
 let bannerEl: HTMLElement | null = null;
 // Cached at first showProBanner() call (App.ts always calls it once at init,
@@ -56,6 +57,21 @@ export function showProBanner(container: HTMLElement): void {
   // Convex Dodo entitlement (panel-gating.ts:11-27). A paying user shouldn't
   // see "Upgrade to Pro" at the top of every dashboard refresh.
   if (hasPremiumAccess()) return;
+  // Defer the initial mount when entitlement state hasn't loaded yet for a
+  // signed-in user. App.ts:923 calls showProBanner() synchronously during
+  // init Phase 1, but App.ts:868's `void initEntitlementSubscription()` is
+  // non-awaited — the Convex snapshot can take up to ~10s on a cold start.
+  // hasPremiumAccess() reads isEntitled() against currentState===null in
+  // that window and returns false, which would mount an "Upgrade to Pro"
+  // banner for a paying Convex-only user that the onEntitlementChange
+  // listener then has to dismiss seconds later. The flash is jarring and
+  // misleading; better to render nothing until we know the user's tier.
+  //
+  // The skip is gated on "signed in", because anonymous users will never
+  // have a Convex entitlement and would otherwise wait forever. The
+  // listener handles re-mounting once the first snapshot confirms the
+  // user is actually free.
+  if (getCurrentClerkUser() && getEntitlementState() === null) return;
 
   trackGateHit('pro-banner');
 
