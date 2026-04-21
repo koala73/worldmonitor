@@ -342,7 +342,6 @@ export function createDomainGateway(
     // User API keys on PREMIUM_RPC_PATHS need verified pro-tier entitlement.
     // Admin keys (WORLDMONITOR_VALID_KEYS) bypass this since they are operator-issued.
     if (isUserApiKey && needsLegacyProBearerGate && sessionUserId) {
-      const { getEntitlements } = await import('./_shared/entitlement-check');
       const ent = await getEntitlements(sessionUserId);
       if (!ent || !ent.features.apiAccess) {
         return new Response(JSON.stringify({ error: 'API access subscription required' }), {
