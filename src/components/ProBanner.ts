@@ -3,6 +3,14 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { onEntitlementChange } from '@/services/entitlements';
 
 let bannerEl: HTMLElement | null = null;
+// Cached at first showProBanner() call (App.ts always calls it once at init,
+// regardless of premium state — the early-returns inside decide whether to
+// actually mount). Holding the container reference here lets the entitlement
+// listener re-mount the banner on a downgrade without needing App.ts to
+// re-call showProBanner. Guarded by the same dismiss / iframe / premium
+// checks that the original mount path uses, so the listener can never
+// surface a banner the user has already explicitly dismissed.
+let bannerContainer: HTMLElement | null = null;
 
 // Versioned dismiss key. The banner copy changed from "Pro is coming / Reserve
 // your spot" to "Pro is launched / Upgrade to Pro"; a fresh key guarantees
@@ -34,6 +42,12 @@ function dismiss(): void {
 }
 
 export function showProBanner(container: HTMLElement): void {
+  // Cache container even on early-return paths so the entitlement-change
+  // listener can re-mount on a downgrade. App.ts calls this once at init
+  // regardless of premium state, so caching here covers both "initially
+  // free" and "initially premium then downgrade" trajectories.
+  bannerContainer = container;
+
   if (bannerEl) return;
   if (window.self !== window.top) return;
   if (isDismissed()) return;
@@ -41,10 +55,6 @@ export function showProBanner(container: HTMLElement): void {
   // authoritative signal — unions API key, tester key, Clerk pro role, AND
   // Convex Dodo entitlement (panel-gating.ts:11-27). A paying user shouldn't
   // see "Upgrade to Pro" at the top of every dashboard refresh.
-  //
-  // Subscribe to entitlement changes so a user who upgrades mid-session has
-  // the banner auto-dismissed on the next snapshot, instead of staring at
-  // their old "go pro" prompt while their just-paid plan is already active.
   if (hasPremiumAccess()) return;
 
   trackGateHit('pro-banner');
@@ -89,17 +99,33 @@ export function isProBannerVisible(): boolean {
   return bannerEl !== null;
 }
 
-// Reactive auto-hide: if a Convex entitlement snapshot arrives that flips
-// the user to premium (e.g. Dodo webhook lands while they're sitting on the
-// dashboard with the banner visible), drop the banner immediately. The
-// dismiss timestamp is intentionally NOT written so the banner reappears
-// correctly if they later downgrade or the entitlement lapses.
+// Reactive sync with entitlement state. App.ts calls showProBanner() ONCE at
+// init, so any later free↔pro flip (Dodo webhook lands mid-session, plan
+// cancelled, billing grace expires) needs an explicit re-render here —
+// otherwise the banner stays at whatever state the init call computed for
+// the rest of the SPA session.
+//
+// Both directions handled symmetrically:
+//
+//   - Premium snapshot arrives + banner currently visible
+//     → fade out. Dismiss timestamp intentionally NOT written, so a later
+//       downgrade can re-show it.
+//
+//   - Non-premium snapshot arrives + banner not visible + cached container +
+//     not user-dismissed + not in iframe
+//     → re-mount via showProBanner. Same gate set as the initial mount path,
+//       so we can never surface a banner the user has already ✕'d this week.
 onEntitlementChange(() => {
-  if (bannerEl && hasPremiumAccess()) {
+  const premium = hasPremiumAccess();
+  if (premium && bannerEl) {
     bannerEl.classList.add('pro-banner-out');
     setTimeout(() => {
       bannerEl?.remove();
       bannerEl = null;
     }, 300);
+    return;
+  }
+  if (!premium && !bannerEl && bannerContainer) {
+    showProBanner(bannerContainer);
   }
 });
