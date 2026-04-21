@@ -21128,6 +21128,51 @@ body.map-width-resizing {
   display: flex;
   align-items: center;
   position: relative;
+  gap: 8px;
+}
+
+.auth-signup-link {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.auth-signup-link:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+.auth-signup-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 55%, transparent);
+}
+
+.auth-settings-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary, var(--text));
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.auth-settings-btn:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+.auth-settings-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 55%, transparent);
 }
 
 .auth-signin-btn {

@@ -108,6 +108,32 @@ export function openSignIn(): void {
   clerkInstance?.openSignIn({ appearance: getAppearance() });
 }
 
+/**
+ * Open the Clerk sign-up modal.
+ *
+ * No-op if Clerk is not loaded OR if sign-up is disabled in the Clerk
+ * dashboard. Symmetric with openSignIn — used by the "Create account"
+ * CTA in AuthHeaderWidget to make the register funnel an explicit
+ * first-class action rather than hiding it behind Clerk's sign-in
+ * footer link.
+ */
+export function openSignUp(): void {
+  clerkInstance?.openSignUp({ appearance: getAppearance() });
+}
+
+/**
+ * Epoch ms of the current Clerk user's account creation, or null when
+ * signed out. Read at the source rather than projected through
+ * getCurrentClerkUser() so analytics can gate fresh-signup detection on
+ * a timestamp without widening the UI projection.
+ */
+export function getClerkUserCreatedAt(): number | null {
+  const user = clerkInstance?.user;
+  const createdAt = user?.createdAt;
+  if (!createdAt) return null;
+  return createdAt instanceof Date ? createdAt.getTime() : Number(createdAt);
+}
+
 /** Sign out the current user. */
 export async function signOut(): Promise<void> {
   _cachedToken = null;

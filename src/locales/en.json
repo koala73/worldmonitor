@@ -2892,6 +2892,11 @@
     "openCountryBrief": "Open Country Brief",
     "copyCoordinates": "Copy Coordinates"
   },
+  "auth": {
+    "signIn": "Sign In",
+    "createAccount": "Create account",
+    "settings": "Settings"
+  },
   "mcp": {
     "connectPanel": "Connect MCP",
     "modalTitle": "Connect MCP Server",
