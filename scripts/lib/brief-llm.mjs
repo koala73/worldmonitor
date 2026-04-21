@@ -103,15 +103,24 @@ const BRIEF_LLM_SKIP_PROVIDERS = ['ollama', 'groq'];
  * }} deps
  */
 export async function generateWhyMatters(story, deps) {
-  // Priority path: analyst endpoint. It owns its own cache (v3) so
-  // the cron doesn't touch Redis when the endpoint handles the story.
+  // Priority path: analyst endpoint. It owns its own cache and has
+  // ALREADY validated the output via parseWhyMatters (gemini path) or
+  // parseWhyMattersV2 (analyst path, multi-sentence). We must NOT
+  // re-parse here with the single-sentence v1 parser — that silently
+  // truncates v2's 2–3-sentence output to the first sentence. Trust
+  // the wire shape; only reject an obviously-bad payload (empty, stub
+  // echo, or length outside the legal bounds for either parser).
   if (typeof deps.callAnalystWhyMatters === 'function') {
     try {
       const analystOut = await deps.callAnalystWhyMatters(story);
-      if (typeof analystOut === 'string' && analystOut.length > 0) {
-        const parsed = parseWhyMatters(analystOut);
-        if (parsed) return parsed;
-        console.warn('[brief-llm] callAnalystWhyMatters → fallback: analyst returned unparseable prose');
+      if (typeof analystOut === 'string') {
+        const trimmed = analystOut.trim();
+        const lenOk = trimmed.length >= 30 && trimmed.length <= 500;
+        const notStub = !/^story flagged by your sensitivity/i.test(trimmed);
+        if (lenOk && notStub) return trimmed;
+        console.warn(
+          `[brief-llm] callAnalystWhyMatters → fallback: endpoint returned out-of-bounds or stub (len=${trimmed.length})`,
+        );
       } else {
         console.warn('[brief-llm] callAnalystWhyMatters → fallback: null/empty response');
       }

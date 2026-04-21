@@ -23,8 +23,9 @@ import {
   parseWhyMatters,
 } from '../shared/brief-llm-core.js';
 
-// Pre-extract sync impl, kept inline so the parity test can't drift from
-// what the cron used to emit.
+// Mirror impl (sync `node:crypto`) — kept inline so a drift between
+// the Web Crypto implementation and this sentinel fails the parity
+// test here first. Must include `description` to match v5 semantics.
 function legacyHashBriefStory(story) {
   const material = [
     story.headline ?? '',
@@ -32,6 +33,7 @@ function legacyHashBriefStory(story) {
     story.threatLevel ?? '',
     story.category ?? '',
     story.country ?? '',
+    story.description ?? '',
   ].join('||');
   return createHash('sha256').update(material).digest('hex').slice(0, 16);
 }
@@ -72,6 +74,30 @@ describe('hashBriefStory — Web Crypto parity with legacy node:crypto', () => {
       const h = await hashBriefStory(mutated);
       assert.notEqual(h, baseline, `${field} must be part of the cache identity`);
     }
+  });
+
+  it('description is part of cache identity (v5 regression guard)', async () => {
+    // Pinned from PR #3269 review P1: adding `description` to the
+    // analyst prompt without adding it to the hash caused same-story-
+    // diff-description to collide on one cache entry, so callers got
+    // prose grounded in a PREVIOUS caller's description.
+    const withDescA = {
+      ...FIXTURE,
+      description: 'Tehran publicly reopened commercial shipping.',
+    };
+    const withDescB = {
+      ...FIXTURE,
+      description: 'Iran formally blockaded outbound tankers.',
+    };
+    const noDesc = { ...FIXTURE };
+
+    const hashA = await hashBriefStory(withDescA);
+    const hashB = await hashBriefStory(withDescB);
+    const hashNone = await hashBriefStory(noDesc);
+
+    assert.notEqual(hashA, hashB, 'different descriptions must produce different hashes');
+    assert.notEqual(hashA, hashNone, 'description present vs absent must differ');
+    assert.notEqual(hashB, hashNone);
   });
 
   it('treats missing fields as empty strings (backcompat)', async () => {
@@ -138,5 +164,80 @@ describe('parseWhyMatters — pure sentence validator', () => {
   it('preserves a valid one-sentence output verbatim', () => {
     const s = 'Closure of the Strait of Hormuz would spike global oil prices and force a US naval response.';
     assert.equal(parseWhyMatters(s), s);
+  });
+});
+
+describe('parseWhyMattersV2 — multi-sentence, analyst-path only', () => {
+  it('lazy-loads', async () => {
+    const mod = await import('../shared/brief-llm-core.js');
+    assert.equal(typeof mod.parseWhyMattersV2, 'function');
+  });
+
+  it('accepts 2–3 sentences totalling 100–500 chars', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const good =
+      "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
+      'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters. ' +
+      'Watch IMF commentary in the next 48 hours for cascading guidance.';
+    assert.ok(good.length >= 100 && good.length <= 500);
+    assert.equal(parseWhyMattersV2(good), good);
+  });
+
+  it('rejects <100 chars (too terse for the analyst contract)', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    assert.equal(parseWhyMattersV2('Short.'), null);
+    assert.equal(parseWhyMattersV2('x'.repeat(99)), null);
+  });
+
+  it('rejects >500 chars (runaway generation)', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    assert.equal(parseWhyMattersV2('a'.repeat(501)), null);
+  });
+
+  it('rejects preamble the system prompt banned', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const cases = [
+      'This matters because global energy markets depend on the Strait of Hormuz remaining open for transit and this is therefore a critical development.',
+      'The importance of this development cannot be overstated given the potential for cascading economic impacts across multiple regions and industries.',
+      'It is important to note that the ongoing situation in the Strait of Hormuz has implications that extend far beyond simple maritime concerns.',
+      'Importantly, the developments in the Strait of Hormuz today signal a shift in regional dynamics that could reshape global energy markets for months.',
+      'In summary, the current situation presents significant risks to global stability and requires careful monitoring of diplomatic and military channels.',
+      'To summarize the situation, the Strait of Hormuz developments represent a critical juncture in regional power dynamics with broad implications.',
+    ];
+    for (const c of cases) {
+      assert.ok(c.length >= 100 && c.length <= 500);
+      assert.equal(parseWhyMattersV2(c), null, `should reject preamble: ${c.slice(0, 40)}…`);
+    }
+  });
+
+  it('rejects markdown / leaked section labels the prompt told it to omit', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const cases = [
+      '# Situation\nIran closed the strait on April 21, halting 20% of seaborne oil. Analysis: sovereign risk repricing follows immediately for Gulf exporters.',
+      '- Bullet one that should not open the response at all given the plain-prose rule in the system message.\n- Bullet two of the banned response.',
+      '* Leading bullet with asterisk that should also trip the markdown rejection because analyst prose should be plain paragraphs across 2–3 sentences.',
+      '1. Numbered point opening the response is equally banned by the system prompt requiring plain prose across two to three sentences with grounded references.',
+      'SITUATION: Iran closed Hormuz today. ANALYSIS: cascading sovereign repricing follows. WATCH: IMF Gulf commentary in 48h. This mirrors the 2019 pattern.',
+      'Analysis — the Strait closure triggers a cascading sovereign risk repricing across Gulf exporters with immediate effect on global markets and shipping lanes.',
+    ];
+    for (const c of cases) {
+      assert.equal(parseWhyMattersV2(c), null, `should reject leaked label: ${c.slice(0, 40)}…`);
+    }
+  });
+
+  it('still rejects the stub echo', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const stub =
+      'Story flagged by your sensitivity settings. Open for context. This stub is long enough to clear the 100-char floor but must still be rejected as non-enrichment output.';
+    assert.equal(parseWhyMattersV2(stub), null);
+  });
+
+  it('strips surrounding smart-quotes before validation', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const raw =
+      '\u201CIran closed the Strait on April 21, halting 20% of seaborne oil. The disruption forces an immediate repricing of sovereign risk across Gulf exporters.\u201D';
+    const out = parseWhyMattersV2(raw);
+    assert.ok(out && !out.startsWith('\u201C'));
+    assert.ok(out && !out.endsWith('\u201D'));
   });
 });

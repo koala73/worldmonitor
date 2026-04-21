@@ -50,6 +50,7 @@ import {
   buildWhyMattersUserPrompt,
   hashBriefStory,
   parseWhyMatters,
+  parseWhyMattersV2,
 } from '../../shared/brief-llm-core.js';
 
 // ── Env knobs (read at request entry so Railway/Vercel flips take effect
@@ -109,12 +110,16 @@ const SHADOW_TTL_SEC = 7 * 24 * 60 * 60; // 7d
 
 // ── Validation ────────────────────────────────────────────────────────
 const VALID_THREAT_LEVELS = new Set(['critical', 'high', 'medium', 'low']);
-const MAX_BODY_BYTES = 4096;
+// Bumped body cap to 8 KB: v2 optionally carries `story.description`
+// (up to 1000 chars) in addition to the other fields, which can push
+// worst-case payloads past the old 4 KB cap under UTF-8 expansion.
+const MAX_BODY_BYTES = 8192;
 const CAPS = {
   headline: 400,
   source: 120,
   category: 80,
   country: 80,
+  description: 1000,
 };
 
 interface StoryPayload {
@@ -123,6 +128,8 @@ interface StoryPayload {
   threatLevel: string;
   category: string;
   country: string;
+  /** Optional — gives the LLM a sentence of story context beyond the headline. */
+  description?: string;
 }
 
 type ValidationOk = { ok: true; story: StoryPayload };
@@ -177,6 +184,19 @@ function validateStoryBody(raw: unknown): ValidationOk | ValidationErr {
     country = s.country;
   }
 
+  // description — optional; when present, flows into the analyst prompt
+  // so the LLM has grounded story context beyond the headline.
+  let description: string | undefined;
+  if (s.description !== undefined && s.description !== null) {
+    if (typeof s.description !== 'string') {
+      return { ok: false, status: 400, error: 'story.description must be a string' };
+    }
+    if (s.description.length > CAPS.description) {
+      return { ok: false, status: 400, error: `story.description exceeds ${CAPS.description} chars` };
+    }
+    if (s.description.length > 0) description = s.description;
+  }
+
   return {
     ok: true,
     story: {
@@ -185,6 +205,7 @@ function validateStoryBody(raw: unknown): ValidationOk | ValidationErr {
       threatLevel: s.threatLevel,
       category: s.category as string,
       country,
+      ...(description ? { description } : {}),
     },
   };
 }
@@ -200,20 +221,23 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
-      maxTokens: 180,
+      // v2 prompt is 2–3 sentences / 40–70 words — roughly 3× v1's
+      // single-sentence output, so bump maxTokens proportionally.
+      maxTokens: 260,
       temperature: 0.4,
       timeoutMs: 15_000,
       // Provider is pinned via LLM_REASONING_PROVIDER env var (already
       // set to 'openrouter' in prod). `callLlmReasoning` routes through
       // the resolveProviderChain based on that env.
-      // Note: no `validate` option. The post-call parseWhyMatters check
-      // below handles rejection by returning null. Using validate inside
+      // Note: no `validate` option. The post-call parseWhyMattersV2
+      // check below handles rejection. Using validate inside
       // callLlmReasoning would walk the provider chain on parse-reject,
-      // causing duplicate openrouter billings when only one provider is
-      // configured in prod. See todo 245.
+      // causing duplicate openrouter billings (see todo 245).
     });
     if (!result) return null;
-    return parseWhyMatters(result.content);
+    // v2 parser accepts multi-sentence output + rejects preamble /
+    // leaked section labels. Analyst path ONLY — gemini path stays on v1.
+    return parseWhyMattersV2(result.content);
   } catch (err) {
     console.warn(`[brief-why-matters] analyst path failed: ${err instanceof Error ? err.message : String(err)}`);
     return null;
@@ -338,8 +362,16 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
 
   // Cache identity.
   const hash = await hashBriefStory(story);
-  const cacheKey = `brief:llm:whymatters:v3:${hash}`;
-  const shadowKey = `brief:llm:whymatters:shadow:v1:${hash}`;
+  // v5: `hashBriefStory` now includes `description` as a prompt input
+  // so same-story + different description no longer collide on a single
+  // cache entry (P1 caught in PR #3269 review — endpoint could serve
+  // prose grounded in a PREVIOUS caller's description). Bumping v4→v5
+  // invalidates the short-lived v4 entries written under the buggy
+  // 5-field hash so fresh output lands on the next cron tick.
+  const cacheKey = `brief:llm:whymatters:v5:${hash}`;
+  // Shadow v2→v3 for the same reason — any v2 comparison pairs may be
+  // grounded in the wrong description, so the A/B was noisy.
+  const shadowKey = `brief:llm:whymatters:shadow:v3:${hash}`;
 
   // Cache read. Any infrastructure failure → treat as miss (logged).
   let cached: WhyMattersEnvelope | null = null;

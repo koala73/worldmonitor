@@ -1,0 +1,283 @@
+syntax = "proto3";
+
+package worldmonitor.aria.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "sebuf/http/annotations.proto";
+
+// AriaService provides JARVIS-like intelligent assistance
+// analyzing global events, markets, and risks in real-time
+service AriaService {
+  // Query Aria for intelligent analysis and recommendations
+  rpc Query(QueryRequest) returns (stream QueryResponse) {
+    option (sebuf.http.config) = {
+      http: "POST /aria/query"
+      timeout_ms: 30000
+    };
+  }
+
+  // Get Aria's current awareness state and cached insights
+  rpc GetAwareness(GetAwarenessRequest) returns (AwarenessState) {
+    option (sebuf.http.config) = {
+      http: "GET /aria/awareness"
+      timeout_ms: 5000
+    };
+  }
+
+  // Stream real-time alerts and proactive insights
+  rpc StreamAlerts(StreamAlertsRequest) returns (stream AlertNotification) {
+    option (sebuf.http.config) = {
+      http: "GET /aria/stream-alerts"
+      timeout_ms: 300000
+      is_websocket: true
+    };
+  }
+
+  // Get intelligence summary on specific topic
+  rpc GetIntelligence(IntelligenceRequest) returns (stream IntelligenceResponse) {
+    option (sebuf.http.config) = {
+      http: "POST /aria/intelligence"
+      timeout_ms: 30000
+    };
+  }
+}
+
+// QueryRequest sends a question to Aria
+message QueryRequest {
+  string query = 1 [(buf.validate.rules).string = {min_len: 1, max_len: 2000}];
+  
+  // Optional context filters
+  repeated string domains = 2 [(sebuf.http.query) = "domains"];
+  repeated string regions = 3 [(sebuf.http.query) = "regions"];
+  
+  // Aria personality mode
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    ANALYTICAL = 1;    // Data-driven, precise analysis
+    PROACTIVE = 2;     // Alert-focused, predictive
+    ADVISORY = 3;      // Decision support, risk-aware
+    EXPLORATORY = 4;   // Curiosity-driven investigation
+  }
+  Mode mode = 4;
+  
+  // Enable reasoning transparency
+  bool show_reasoning = 5;
+  
+  // Reference previous conversation
+  string conversation_id = 6;
+  int32 message_sequence = 7;
+}
+
+// QueryResponse streams back from Aria
+message QueryResponse {
+  oneof content {
+    // Metadata about the analysis
+    QueryMetadata metadata = 1;
+    
+    // Streaming text content
+    string delta = 2;
+    
+    // Suggested actions/insights
+    ActionSuggestion action = 3;
+    
+    // Source citations
+    SourceCitation source = 4;
+    
+    // Reasoning trace (if enabled)
+    ReasoningStep reasoning = 5;
+    
+    // Final completion signal
+    CompletionStatus completion = 6;
+  }
+}
+
+message QueryMetadata {
+  string conversation_id = 1;
+  int32 message_sequence = 2;
+  google.protobuf.Timestamp started_at = 3;
+  
+  // Context sources that Aria accessed
+  repeated string accessed_domains = 4;
+  repeated string accessed_regions = 5;
+  
+  // Confidence metrics
+  float confidence = 6;
+  float uncertainty = 7;
+  
+  // Response characteristics
+  bool is_predictive = 8;
+  bool requires_attention = 9;
+  int32 affected_widgets = 10;
+}
+
+message ActionSuggestion {
+  string widget_name = 1;
+  string action_type = 2;  // "focus", "expand", "open", "configure"
+  string reason = 3;
+  float relevance = 4;
+  google.protobuf.Struct config = 5;
+}
+
+message SourceCitation {
+  string source_name = 1;
+  string source_url = 2;
+  google.protobuf.Timestamp fetched_at = 3;
+  string excerpt = 4;
+  float relevance = 5;
+}
+
+message ReasoningStep {
+  int32 step_number = 1;
+  string reasoning_type = 2;  // "context", "analysis", "inference", "conclusion"
+  string content = 3;
+  repeated string supporting_facts = 4;
+}
+
+message CompletionStatus {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    SUCCESS = 1;
+    PARTIAL = 2;
+    ERROR = 3;
+    TIMEOUT = 4;
+  }
+  Status status = 1;
+  string message = 2;
+  float total_tokens = 3;
+  google.protobuf.Timestamp completed_at = 4;
+}
+
+// GetAwarenessRequest queries Aria's current state
+message GetAwarenessRequest {
+  bool include_recent_events = 1;
+  bool include_alerts = 2;
+  bool include_trending = 3;
+}
+
+// AwarenessState represents what Aria is currently monitoring
+message AwarenessState {
+  google.protobuf.Timestamp as_of = 1;
+  
+  // Current focus areas
+  repeated FocusArea focus_areas = 2;
+  
+  // Recent significant events
+  repeated SignificantEvent recent_events = 3;
+  
+  // Active alerts
+  repeated AriaAlert active_alerts = 4;
+  
+  // Trending analysis topics
+  repeated TrendingTopic trending = 5;
+  
+  // Health metrics
+  float system_confidence = 6;
+  float data_freshness = 7;
+  int32 sources_connected = 8;
+}
+
+message FocusArea {
+  string domain = 1;
+  string region = 2;
+  string topic = 3;
+  float intensity = 4;
+  string status = 5;
+}
+
+message SignificantEvent {
+  google.protobuf.Timestamp occurred_at = 1;
+  string title = 2;
+  string description = 3;
+  repeated string affected_domains = 4;
+  repeated string affected_regions = 5;
+  float impact_score = 6;
+}
+
+message AriaAlert {
+  string alert_id = 1;
+  string severity = 2;  // "info", "warning", "critical"
+  string title = 3;
+  string description = 4;
+  repeated string recommended_actions = 5;
+  google.protobuf.Timestamp created_at = 6;
+  bool acknowledged = 7;
+}
+
+message TrendingTopic {
+  string topic = 1;
+  string category = 2;
+  float momentum = 3;
+  int32 mention_count = 4;
+  repeated string related_topics = 5;
+}
+
+// StreamAlertsRequest configures alert streaming
+message StreamAlertsRequest {
+  repeated string severity_filter = 1 [(sebuf.http.query) = "severity"];
+  repeated string domain_filter = 2 [(sebuf.http.query) = "domains"];
+  repeated string region_filter = 3 [(sebuf.http.query) = "regions"];
+  
+  bool include_predictions = 4;
+  bool include_market_impact = 5;
+}
+
+message AlertNotification {
+  oneof content {
+    AriaAlert alert = 1;
+    PredictionAlert prediction = 2;
+    MarketImpactAlert market_impact = 3;
+    KeepAlive keep_alive = 4;
+  }
+}
+
+message PredictionAlert {
+  string prediction = 1;
+  float probability = 2;
+  string timeframe = 3;
+  repeated string confidence_factors = 4;
+}
+
+message MarketImpactAlert {
+  string market = 1;
+  float expected_impact = 2;
+  string direction = 3;  // "positive", "negative", "neutral"
+  int32 affected_instruments = 4;
+}
+
+message KeepAlive {
+  google.protobuf.Timestamp timestamp = 1;
+}
+
+// IntelligenceRequest queries specific intelligence topics
+message IntelligenceRequest {
+  string topic = 1;
+  string report_type = 2;  // "briefing", "analysis", "risk-assessment", "forecast"
+  repeated string focus_regions = 3;
+  bool include_visualizations = 4;
+}
+
+message IntelligenceResponse {
+  oneof content {
+    IntelligenceMetadata metadata = 1;
+    string content = 2;
+    DataPoint data_point = 3;
+    CompletionStatus completion = 4;
+  }
+}
+
+message IntelligenceMetadata {
+  string report_id = 1;
+  string report_type = 2;
+  google.protobuf.Timestamp generated_at = 3;
+  int32 total_sources = 4;
+  repeated string primary_sources = 5;
+}
+
+message DataPoint {
+  string key = 1;
+  google.protobuf.Struct value = 2;
+  string interpretation = 3;
+  float confidence = 4;
+}

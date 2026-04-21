@@ -204,10 +204,9 @@ describe('generateWhyMatters — analyst priority', () => {
     assert.equal(callLlmInvoked, true, 'legacy callLLM must fire after analyst miss');
   });
 
-  it('falls through when analyst returns unparseable prose (parser rejection)', async () => {
+  it('falls through when analyst returns out-of-bounds output (too short)', async () => {
     let callLlmInvoked = false;
     const out = await generateWhyMatters(story(), {
-      // Too short — fails parseWhyMatters length gate (< 30 chars).
       callAnalystWhyMatters: async () => 'Short.',
       callLLM: async () => {
         callLlmInvoked = true;
@@ -217,7 +216,33 @@ describe('generateWhyMatters — analyst priority', () => {
       cacheSet: async () => {},
     });
     assert.equal(out, VALID);
-    assert.equal(callLlmInvoked, true, 'unparseable analyst output must trigger fallback');
+    assert.equal(callLlmInvoked, true, 'out-of-bounds analyst output must trigger fallback');
+  });
+
+  it('preserves multi-sentence v2 analyst output verbatim (P1 regression guard)', async () => {
+    // The endpoint now returns 2–3 sentences validated by parseWhyMattersV2.
+    // The cron MUST NOT reparse with the v1 single-sentence parser, which
+    // would silently truncate the 2nd + 3rd sentences. Caught in PR #3269
+    // review; fixed by trusting the endpoint's own validation and only
+    // rejecting obvious garbage (length / stub echo) here.
+    const multi =
+      "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
+      'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters. ' +
+      'Watch IMF commentary in the next 48 hours for cascading guidance.';
+    let callLlmInvoked = false;
+    const out = await generateWhyMatters(story(), {
+      callAnalystWhyMatters: async () => multi,
+      callLLM: async () => {
+        callLlmInvoked = true;
+        return VALID;
+      },
+      cacheGet: async () => null,
+      cacheSet: async () => {},
+    });
+    assert.equal(out, multi, 'multi-sentence v2 output must reach the envelope unchanged');
+    assert.equal(callLlmInvoked, false, 'legacy callLLM must not fire when v2 analyst succeeds');
+    // Sanity: output is actually multi-sentence (not truncated to first).
+    assert.ok(out.split('. ').length >= 2, 'output must retain 2nd+ sentences');
   });
 
   it('falls through when analyst throws', async () => {
@@ -359,7 +384,8 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.ok(typeof builder === 'function');
   });
 
-  it('reuses WHY_MATTERS_SYSTEM verbatim', () => {
+  it('uses the analyst v2 system prompt (multi-sentence, grounded)', async () => {
+    const { WHY_MATTERS_ANALYST_SYSTEM_V2 } = await import('../shared/brief-llm-core.js');
     const { system } = builder(story(), {
       worldBrief: 'X',
       countryBrief: '',
@@ -369,10 +395,13 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
       macroSignals: '',
       degraded: false,
     });
-    assert.equal(system, WHY_MATTERS_SYSTEM);
+    assert.equal(system, WHY_MATTERS_ANALYST_SYSTEM_V2);
+    // Contract must still mention the 40–70 word target + grounding rule.
+    assert.match(system, /40–70 words/);
+    assert.match(system, /named person \/ country \/ organization \/ number \/ percentage \/ date \/ city/);
   });
 
-  it('includes the story fields in the same 5-line format', () => {
+  it('includes story fields with the multi-sentence footer', () => {
     const { user } = builder(story(), {
       worldBrief: '',
       countryBrief: '',
@@ -387,7 +416,38 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.match(user, /Severity: critical/);
     assert.match(user, /Category: Geopolitical Risk/);
     assert.match(user, /Country: IR/);
-    assert.match(user, /One editorial sentence on why this matters:$/);
+    assert.match(user, /Write 2–3 sentences \(40–70 words\)/);
+    assert.match(user, /grounded in at least ONE specific/);
+  });
+
+  it('includes story description when present', () => {
+    const storyWithDesc = {
+      ...story(),
+      description: 'Tehran publicly reopened the Strait of Hormuz to commercial shipping today.',
+    };
+    const { user } = builder(storyWithDesc, {
+      worldBrief: '',
+      countryBrief: '',
+      riskScores: '',
+      forecasts: '',
+      marketData: '',
+      macroSignals: '',
+      degraded: false,
+    });
+    assert.match(user, /Description: Tehran publicly reopened/);
+  });
+
+  it('omits description line when field absent', () => {
+    const { user } = builder(story(), {
+      worldBrief: '',
+      countryBrief: '',
+      riskScores: '',
+      forecasts: '',
+      marketData: '',
+      macroSignals: '',
+      degraded: false,
+    });
+    assert.doesNotMatch(user, /Description:/);
   });
 
   it('omits context block when all fields empty', () => {
