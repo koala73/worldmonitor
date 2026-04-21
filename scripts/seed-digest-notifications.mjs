@@ -126,11 +126,54 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
 
+// Phase 3c — analyst-backed whyMatters enrichment via an internal Vercel
+// edge endpoint. When the endpoint is reachable + returns a string, it
+// takes priority over the direct-Gemini path. On any failure the cron
+// falls through to its existing Gemini cache+LLM chain. Env override
+// lets local dev point at a preview deployment or `localhost:3000`.
+const BRIEF_WHY_MATTERS_ENDPOINT_URL =
+  process.env.BRIEF_WHY_MATTERS_ENDPOINT_URL ??
+  `${WORLDMONITOR_PUBLIC_BASE_URL}/api/internal/brief-why-matters`;
+
+/**
+ * POST one story to the analyst whyMatters endpoint. Returns the
+ * string on success, null on any failure (auth, non-200, parse error,
+ * timeout, missing value). The cron's `generateWhyMatters` is
+ * responsible for falling through to the direct-Gemini path on null.
+ */
+async function callAnalystWhyMatters(story) {
+  if (!RELAY_SECRET) return null;
+  try {
+    const resp = await fetch(BRIEF_WHY_MATTERS_ENDPOINT_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RELAY_SECRET}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ story }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      console.warn(`[digest] brief-why-matters endpoint HTTP ${resp.status}`);
+      return null;
+    }
+    const data = await resp.json();
+    if (!data || typeof data.whyMatters !== 'string') return null;
+    return data.whyMatters;
+  } catch (err) {
+    console.warn(
+      `[digest] brief-why-matters endpoint call failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
 // Dependencies injected into brief-llm.mjs. Defined near the top so
 // the upstashRest helper below is in scope when this closure runs
 // inside composeAndStoreBriefForUser().
 const briefLlmDeps = {
   callLLM,
+  callAnalystWhyMatters,
   async cacheGet(key) {
     const raw = await upstashRest('GET', key);
     if (typeof raw !== 'string' || raw.length === 0) return null;

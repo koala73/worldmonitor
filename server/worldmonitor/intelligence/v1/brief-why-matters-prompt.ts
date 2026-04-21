@@ -1,0 +1,106 @@
+/**
+ * Prompt builder for the analyst-backed whyMatters LLM call.
+ *
+ * System prompt is the edge-safe `WHY_MATTERS_SYSTEM` from
+ * shared/brief-llm-core.js — same editorial voice the cron's legacy
+ * Gemini path uses.
+ *
+ * User prompt wraps the story fields (identical to
+ * `buildWhyMattersUserPrompt`) with a compact context block assembled
+ * from `BriefStoryContext`. The context is hard-truncated to a total
+ * budget so that worst-case prompts stay under ~2KB of text, keeping
+ * LLM latency predictable.
+ */
+
+import { WHY_MATTERS_SYSTEM } from '../../../../shared/brief-llm-core.js';
+import type { BriefStoryContext } from './brief-story-context';
+
+export interface StoryForPrompt {
+  headline: string;
+  source: string;
+  threatLevel: string;
+  category: string;
+  country: string;
+}
+
+// Total budget for the context block alone (the story fields + prompt
+// footer add another ~250 chars). Keeping the total under ~2KB means
+// the LLM call latency stays under ~6s on typical provider responses.
+const CONTEXT_BUDGET_CHARS = 1700;
+
+// Per-section caps so no single heavy bundle (e.g. long worldBrief)
+// crowds out the others. Ordered by editorial importance: a single-
+// sentence summary benefits most from narrative + country framing.
+const SECTION_CAPS: Array<{ key: keyof BriefStoryContext; label: string; cap: number }> = [
+  { key: 'worldBrief', label: 'World Brief', cap: 500 },
+  { key: 'countryBrief', label: 'Country Brief', cap: 400 },
+  { key: 'riskScores', label: 'Risk Scores', cap: 250 },
+  { key: 'forecasts', label: 'Forecasts', cap: 250 },
+  { key: 'macroSignals', label: 'Macro Signals', cap: 200 },
+  { key: 'marketData', label: 'Market Data', cap: 200 },
+];
+
+function clip(s: string, cap: number): string {
+  if (typeof s !== 'string' || s.length === 0) return '';
+  if (s.length <= cap) return s;
+  return `${s.slice(0, cap - 1).trimEnd()}…`;
+}
+
+/**
+ * Assemble the compact context block. Skips empty sections. Respects
+ * a total-chars budget so a bloated single section can't push the
+ * prompt over its token limit.
+ */
+export function buildContextBlock(context: BriefStoryContext): string {
+  if (!context) return '';
+  const parts: string[] = [];
+  let used = 0;
+  for (const { key, label, cap } of SECTION_CAPS) {
+    const raw = context[key];
+    if (typeof raw !== 'string' || raw.trim() === '') continue;
+    const clipped = clip(raw, cap);
+    const section = `## ${label}\n${clipped}`;
+    // Keep adding sections until the total budget would overflow.
+    // +2 accounts for the blank line between sections.
+    if (used + section.length + 2 > CONTEXT_BUDGET_CHARS) break;
+    parts.push(section);
+    used += section.length + 2;
+  }
+  return parts.join('\n\n');
+}
+
+/**
+ * Build the system + user prompt tuple for the analyst whyMatters path.
+ *
+ * The user prompt is layered:
+ *   1. Compact context block (named sections, hard-truncated).
+ *   2. Story fields (exact format from buildWhyMattersUserPrompt so
+ *      the analyst path's story framing matches the gemini path).
+ *   3. Instruction footer.
+ */
+export function buildAnalystWhyMattersPrompt(
+  story: StoryForPrompt,
+  context: BriefStoryContext,
+): { system: string; user: string } {
+  const contextBlock = buildContextBlock(context);
+
+  const storyLines = [
+    `Headline: ${story.headline}`,
+    `Source: ${story.source}`,
+    `Severity: ${story.threatLevel}`,
+    `Category: ${story.category}`,
+    `Country: ${story.country}`,
+  ].join('\n');
+
+  const sections = [];
+  if (contextBlock) {
+    sections.push('# Live WorldMonitor Context', contextBlock);
+  }
+  sections.push('# Story', storyLines);
+  sections.push('One editorial sentence on why this matters:');
+
+  return {
+    system: WHY_MATTERS_SYSTEM,
+    user: sections.join('\n\n'),
+  };
+}

@@ -1,0 +1,419 @@
+/**
+ * Internal endpoint — enriches a brief story's `whyMatters` field with
+ * live analyst context + LLM.
+ *
+ * POST /api/internal/brief-why-matters
+ *
+ * Internal-only. Auth via `Authorization: Bearer $RELAY_SHARED_SECRET`
+ * (same secret Railway crons already use). Not Pro-gated, no CORS.
+ *
+ * Body:
+ *   {
+ *     story: {
+ *       headline:    string, 1..400
+ *       source:      string, 1..120
+ *       threatLevel: 'critical' | 'high' | 'medium' | 'low'
+ *       category:    string, 1..80  (free-form)
+ *       country:     string, 0..80  (full name, ISO2, 'Global', or empty)
+ *     }
+ *   }
+ *
+ * Response (200):
+ *   {
+ *     whyMatters: string | null
+ *     source:     'cache' | 'analyst' | 'gemini'
+ *     producedBy: 'analyst' | 'gemini' | null
+ *     shadow?:    { analyst: string | null, gemini: string | null }
+ *   }
+ *
+ * 400 on invalid body, 401 on bad auth, 500 on unexpected.
+ *
+ * Architecture note: this endpoint calls an LLM from Vercel edge, which
+ * is consistent with /api/chat-analyst (both are analyst flows). The
+ * "Vercel reads only" convention from memory is for data-seeder flows
+ * and does not apply here.
+ */
+
+export const config = { runtime: 'edge' };
+
+import { authenticateInternalRequest } from '../../server/_shared/internal-auth';
+import { normalizeCountryToIso2 } from '../../server/_shared/country-normalize';
+import { assembleBriefStoryContext } from '../../server/worldmonitor/intelligence/v1/brief-story-context';
+import { buildAnalystWhyMattersPrompt } from '../../server/worldmonitor/intelligence/v1/brief-why-matters-prompt';
+import { callLlmReasoning } from '../../server/_shared/llm';
+// @ts-expect-error — JS module, no declaration file
+import { readRawJsonFromUpstash, setCachedData, redisPipeline } from '../_upstash-json.js';
+import {
+  buildWhyMattersUserPrompt,
+  hashBriefStory,
+  parseWhyMatters,
+} from '../../shared/brief-llm-core.js';
+
+// ── Env knobs (read at request entry so Railway/Vercel flips take effect
+// on the next invocation without a redeploy) ───────────────────────────
+
+function readConfig(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): {
+  primary: 'analyst' | 'gemini';
+  invalidPrimaryRaw: string | null;
+  shadowEnabled: boolean;
+  sampleHardRoll: (hash16: string) => boolean;
+  invalidSamplePctRaw: string | null;
+} {
+  // PRIMARY: default 'analyst'. Unknown value → 'gemini' (stable path) + warn.
+  const rawPrimary = (env.BRIEF_WHY_MATTERS_PRIMARY ?? '').trim().toLowerCase();
+  let primary: 'analyst' | 'gemini';
+  let invalidPrimaryRaw: string | null = null;
+  if (rawPrimary === '' || rawPrimary === 'analyst') {
+    primary = 'analyst';
+  } else if (rawPrimary === 'gemini') {
+    primary = 'gemini';
+  } else {
+    primary = 'gemini';
+    invalidPrimaryRaw = rawPrimary;
+  }
+
+  // SHADOW: default-on kill switch. Only exactly '0' disables.
+  const shadowEnabled = env.BRIEF_WHY_MATTERS_SHADOW !== '0';
+
+  // SAMPLE_PCT: default 100. Invalid/out-of-range → 100 + warn.
+  const rawSample = env.BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT;
+  let samplePct = 100;
+  let invalidSamplePctRaw: string | null = null;
+  if (rawSample !== undefined && rawSample !== '') {
+    const parsed = Number.parseInt(rawSample, 10);
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 100 && String(parsed) === rawSample.trim()) {
+      samplePct = parsed;
+    } else {
+      invalidSamplePctRaw = rawSample;
+    }
+  }
+
+  // Deterministic per-hash sampling so the same story takes the same
+  // decision across retries inside a rollout window.
+  const sampleHardRoll = (hash16: string): boolean => {
+    if (samplePct >= 100) return true;
+    if (samplePct <= 0) return false;
+    const bucket = Number.parseInt(hash16.slice(0, 8), 16) % 100;
+    return bucket < samplePct;
+  };
+
+  return { primary, invalidPrimaryRaw, shadowEnabled, sampleHardRoll, invalidSamplePctRaw };
+}
+
+// ── TTLs ──────────────────────────────────────────────────────────────
+const WHY_MATTERS_TTL_SEC = 6 * 60 * 60; // 6h
+const SHADOW_TTL_SEC = 7 * 24 * 60 * 60; // 7d
+
+// ── Validation ────────────────────────────────────────────────────────
+const VALID_THREAT_LEVELS = new Set(['critical', 'high', 'medium', 'low']);
+const MAX_BODY_BYTES = 4096;
+const CAPS = {
+  headline: 400,
+  source: 120,
+  category: 80,
+  country: 80,
+};
+
+interface StoryPayload {
+  headline: string;
+  source: string;
+  threatLevel: string;
+  category: string;
+  country: string;
+}
+
+type ValidationOk = { ok: true; story: StoryPayload };
+type ValidationErr = { ok: false; status: number; error: string };
+
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function validateStoryBody(raw: unknown): ValidationOk | ValidationErr {
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, status: 400, error: 'body must be an object' };
+  }
+  const storyRaw = (raw as { story?: unknown }).story;
+  if (!storyRaw || typeof storyRaw !== 'object') {
+    return { ok: false, status: 400, error: 'body.story must be an object' };
+  }
+  const s = storyRaw as Record<string, unknown>;
+
+  // Required non-empty strings with length caps.
+  for (const field of ['headline', 'source', 'category'] as const) {
+    const v = s[field];
+    if (typeof v !== 'string' || v.length === 0) {
+      return { ok: false, status: 400, error: `story.${field} must be a non-empty string` };
+    }
+    if (v.length > CAPS[field]) {
+      return { ok: false, status: 400, error: `story.${field} exceeds ${CAPS[field]} chars` };
+    }
+  }
+
+  // threatLevel — strict enum matching brief-render.js:286 VALID_THREAT_LEVELS.
+  if (typeof s.threatLevel !== 'string' || !VALID_THREAT_LEVELS.has(s.threatLevel)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `story.threatLevel must be one of critical|high|medium|low`,
+    };
+  }
+
+  // country — optional; string with cap when provided.
+  let country = '';
+  if (s.country !== undefined && s.country !== null) {
+    if (typeof s.country !== 'string') {
+      return { ok: false, status: 400, error: 'story.country must be a string' };
+    }
+    if (s.country.length > CAPS.country) {
+      return { ok: false, status: 400, error: `story.country exceeds ${CAPS.country} chars` };
+    }
+    country = s.country;
+  }
+
+  return {
+    ok: true,
+    story: {
+      headline: s.headline as string,
+      source: s.source as string,
+      threatLevel: s.threatLevel,
+      category: s.category as string,
+      country,
+    },
+  };
+}
+
+// ── LLM paths ─────────────────────────────────────────────────────────
+
+async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise<string | null> {
+  try {
+    const context = await assembleBriefStoryContext({ iso2, category: story.category });
+    const { system, user } = buildAnalystWhyMattersPrompt(story, context);
+    const result = await callLlmReasoning({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      maxTokens: 180,
+      temperature: 0.4,
+      timeoutMs: 15_000,
+      // Provider is pinned via LLM_REASONING_PROVIDER env var (already
+      // set to 'openrouter' in prod). `callLlmReasoning` routes through
+      // the resolveProviderChain based on that env.
+      validate: (content: string) => parseWhyMatters(content) !== null,
+    });
+    if (!result) return null;
+    return parseWhyMatters(result.content);
+  } catch (err) {
+    console.warn(`[brief-why-matters] analyst path failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+async function runGeminiPath(story: StoryPayload): Promise<string | null> {
+  try {
+    const { system, user } = buildWhyMattersUserPrompt(story);
+    const result = await callLlmReasoning({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      maxTokens: 120,
+      temperature: 0.4,
+      timeoutMs: 10_000,
+      validate: (content: string) => parseWhyMatters(content) !== null,
+    });
+    if (!result) return null;
+    return parseWhyMatters(result.content);
+  } catch (err) {
+    console.warn(`[brief-why-matters] gemini path failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+// ── Cache envelope ────────────────────────────────────────────────────
+interface WhyMattersEnvelope {
+  whyMatters: string;
+  producedBy: 'analyst' | 'gemini';
+  at: string; // ISO8601
+}
+
+function isEnvelope(v: unknown): v is WhyMattersEnvelope {
+  if (!v || typeof v !== 'object') return false;
+  const e = v as Record<string, unknown>;
+  return (
+    typeof e.whyMatters === 'string' &&
+    (e.producedBy === 'analyst' || e.producedBy === 'gemini') &&
+    typeof e.at === 'string'
+  );
+}
+
+// ── Handler ───────────────────────────────────────────────────────────
+
+export default async function handler(req: Request): Promise<Response> {
+  if (req.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, 405);
+  }
+
+  // Auth.
+  const unauthorized = await authenticateInternalRequest(req, 'RELAY_SHARED_SECRET');
+  if (unauthorized) return unauthorized;
+
+  // Body size cap — two layers: Content-Length pre-read, byte-length post-read.
+  const contentLengthRaw = req.headers.get('content-length');
+  if (contentLengthRaw) {
+    const cl = Number.parseInt(contentLengthRaw, 10);
+    if (Number.isFinite(cl) && cl > MAX_BODY_BYTES) {
+      return json({ error: `body exceeds ${MAX_BODY_BYTES} bytes` }, 400);
+    }
+  }
+
+  // Read body as text so we can enforce the post-read cap before JSON.parse.
+  let bodyText: string;
+  try {
+    bodyText = await req.text();
+  } catch {
+    return json({ error: 'failed to read body' }, 400);
+  }
+  if (new TextEncoder().encode(bodyText).byteLength > MAX_BODY_BYTES) {
+    return json({ error: `body exceeds ${MAX_BODY_BYTES} bytes` }, 400);
+  }
+
+  let bodyParsed: unknown;
+  try {
+    bodyParsed = JSON.parse(bodyText);
+  } catch {
+    return json({ error: 'invalid JSON' }, 400);
+  }
+
+  const validation = validateStoryBody(bodyParsed);
+  if (!validation.ok) {
+    console.warn(`[brief-why-matters] validation_reject error=${validation.error}`);
+    return json({ error: validation.error }, validation.status);
+  }
+  const story = validation.story;
+
+  // Normalize country to ISO2 for context lookup; unknown/Global → null
+  // (analyst path will skip country-specific fields).
+  const iso2 = normalizeCountryToIso2(story.country);
+
+  // Resolve config + runtime flags.
+  const cfg = readConfig();
+  if (cfg.invalidPrimaryRaw !== null) {
+    console.warn(
+      `[brief-why-matters] unrecognised BRIEF_WHY_MATTERS_PRIMARY=${cfg.invalidPrimaryRaw} — falling back to gemini (safe path). Valid values: analyst | gemini.`,
+    );
+  }
+  if (cfg.invalidSamplePctRaw !== null) {
+    console.warn(
+      `[brief-why-matters] unrecognised BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT=${cfg.invalidSamplePctRaw} — defaulting to 100. Must be integer 0-100.`,
+    );
+  }
+
+  // Cache identity.
+  const hash = await hashBriefStory(story);
+  const cacheKey = `brief:llm:whymatters:v3:${hash}`;
+  const shadowKey = `brief:llm:whymatters:shadow:v1:${hash}`;
+
+  // Cache read. Any infrastructure failure → treat as miss (logged).
+  let cached: WhyMattersEnvelope | null = null;
+  try {
+    const raw = await readRawJsonFromUpstash(cacheKey);
+    if (raw !== null && isEnvelope(raw)) {
+      cached = raw;
+    }
+  } catch (err) {
+    console.warn(`[brief-why-matters] cache read degraded: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (cached) {
+    return json({
+      whyMatters: cached.whyMatters,
+      source: 'cache',
+      producedBy: cached.producedBy,
+    }, 200);
+  }
+
+  // Cache miss — run paths.
+  const runShadow = cfg.shadowEnabled && cfg.sampleHardRoll(hash);
+
+  let analystResult: string | null = null;
+  let geminiResult: string | null = null;
+  let chosenProducer: 'analyst' | 'gemini';
+  let chosenValue: string | null;
+
+  if (runShadow) {
+    const [a, g] = await Promise.allSettled([
+      runAnalystPath(story, iso2),
+      runGeminiPath(story),
+    ]);
+    analystResult = a.status === 'fulfilled' ? a.value : null;
+    geminiResult = g.status === 'fulfilled' ? g.value : null;
+    if (cfg.primary === 'analyst') {
+      // Fall back to gemini if analyst failed.
+      chosenProducer = analystResult !== null ? 'analyst' : 'gemini';
+      chosenValue = analystResult ?? geminiResult;
+    } else {
+      chosenProducer = geminiResult !== null ? 'gemini' : 'analyst';
+      chosenValue = geminiResult ?? analystResult;
+    }
+  } else if (cfg.primary === 'analyst') {
+    analystResult = await runAnalystPath(story, iso2);
+    chosenProducer = 'analyst';
+    chosenValue = analystResult;
+  } else {
+    geminiResult = await runGeminiPath(story);
+    chosenProducer = 'gemini';
+    chosenValue = geminiResult;
+  }
+
+  // Cache write — only when we actually have a value, so cache-miss
+  // retries on the next tick can try again.
+  const now = new Date().toISOString();
+  if (chosenValue !== null) {
+    const envelope: WhyMattersEnvelope = {
+      whyMatters: chosenValue,
+      producedBy: chosenProducer,
+      at: now,
+    };
+    try {
+      await setCachedData(cacheKey, envelope, WHY_MATTERS_TTL_SEC);
+    } catch (err) {
+      console.warn(`[brief-why-matters] cache write degraded: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Fire-and-forget shadow record so offline diff has pairs to sample.
+  if (runShadow) {
+    const record = {
+      analyst: analystResult,
+      gemini: geminiResult,
+      chosen: chosenProducer,
+      at: now,
+    };
+    // Intentionally not awaited — must not block response.
+    redisPipeline([['SET', shadowKey, JSON.stringify(record), 'EX', String(SHADOW_TTL_SEC)]])
+      .catch(() => {
+        // Silent — shadow is observability, not critical.
+      });
+  }
+
+  const response: {
+    whyMatters: string | null;
+    source: 'analyst' | 'gemini';
+    producedBy: 'analyst' | 'gemini' | null;
+    shadow?: { analyst: string | null; gemini: string | null };
+  } = {
+    whyMatters: chosenValue,
+    source: chosenProducer,
+    producedBy: chosenValue !== null ? chosenProducer : null,
+  };
+  if (runShadow) {
+    response.shadow = { analyst: analystResult, gemini: geminiResult };
+  }
+
+  return json(response, 200);
+}

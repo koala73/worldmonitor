@@ -27,6 +27,17 @@
 
 import { createHash } from 'node:crypto';
 
+import {
+  WHY_MATTERS_SYSTEM,
+  buildWhyMattersUserPrompt,
+  hashBriefStory,
+  parseWhyMatters,
+} from '../../shared/brief-llm-core.js';
+
+// Re-export for backcompat with existing tests / callers.
+export { WHY_MATTERS_SYSTEM, hashBriefStory, parseWhyMatters };
+export const buildWhyMattersPrompt = buildWhyMattersUserPrompt;
+
 // ── Tunables ───────────────────────────────────────────────────────────────
 
 const WHY_MATTERS_TTL_SEC = 24 * 60 * 60;
@@ -40,101 +51,57 @@ const WHY_MATTERS_CONCURRENCY = 5;
 const BRIEF_LLM_SKIP_PROVIDERS = ['ollama', 'groq'];
 
 // ── whyMatters (per story) ─────────────────────────────────────────────────
-
-const WHY_MATTERS_SYSTEM =
-  'You are the editor of WorldMonitor Brief, a geopolitical intelligence magazine. ' +
-  'For each story below, write ONE concise sentence (18–30 words) explaining the ' +
-  'regional or global stakes. Editorial, impersonal, serious. No preamble ' +
-  '("This matters because…"), no questions, no calls to action, no markdown, ' +
-  'no quotes. One sentence only.';
+// The pure helpers (`WHY_MATTERS_SYSTEM`, `buildWhyMattersUserPrompt` (aliased
+// to `buildWhyMattersPrompt` for backcompat), `parseWhyMatters`, `hashBriefStory`)
+// live in `shared/brief-llm-core.js` so the Vercel-edge endpoint
+// (`api/internal/brief-why-matters.ts`) can import them without pulling in
+// `node:crypto`. See the `shared/` → `scripts/shared/` mirror convention.
 
 /**
- * Deterministic 16-char hex hash of the five story fields that flow
- * into both buildWhyMattersPrompt and buildStoryDescriptionPrompt.
+ * Resolve a `whyMatters` sentence for one story.
  *
- * Keying only on headline/source/severity (as an earlier draft did)
- * leaves `category` and `country` out of the cache identity, which is
- * wrong: those fields appear in the user prompt, and if a story's
- * classification or geocoding is corrected upstream we must re-LLM
- * rather than serve the pre-correction prose. whyMatters bumped to v2
- * cache prefix when this was tightened; description launched on v1
- * with the same hash material.
+ * Three-layer graceful degradation:
+ *   1. `deps.callAnalystWhyMatters(story)` — the analyst-context edge
+ *      endpoint (brief:llm:whymatters:v3 cache lives there). Preferred.
+ *   2. Legacy direct-Gemini chain: cacheGet (v2) → callLLM → cacheSet.
+ *      Runs whenever the analyst call is missing, returns null, or throws.
+ *   3. Caller (enrichBriefEnvelopeWithLLM) uses the baseline stub if
+ *      this function returns null.
  *
- * The two prompts share the same hash because they cover the same
- * inputs — cache separation is enforced via the distinct key prefixes
- * (`brief:llm:whymatters:v2:` vs `brief:llm:description:v1:`). Keeping
- * a single helper prevents silent drift if a future field is added to
- * one prompt and forgotten in the other.
- *
- * @param {{ headline: string; source: string; threatLevel: string; category: string; country: string }} story
- */
-function hashBriefStory(story) {
-  const material = [
-    story.headline ?? '',
-    story.source ?? '',
-    story.threatLevel ?? '',
-    story.category ?? '',
-    story.country ?? '',
-  ].join('||');
-  return createHash('sha256').update(material).digest('hex').slice(0, 16);
-}
-
-/**
- * @param {{ headline: string; source: string; threatLevel: string; category: string; country: string }} story
- * @returns {{ system: string; user: string }}
- */
-export function buildWhyMattersPrompt(story) {
-  const user = [
-    `Headline: ${story.headline}`,
-    `Source: ${story.source}`,
-    `Severity: ${story.threatLevel}`,
-    `Category: ${story.category}`,
-    `Country: ${story.country}`,
-    '',
-    'One editorial sentence on why this matters:',
-  ].join('\n');
-  return { system: WHY_MATTERS_SYSTEM, user };
-}
-
-/**
- * Parse + validate the LLM response into a single editorial sentence.
- * Returns null when the output is obviously wrong (empty, boilerplate
- * preamble that survived stripReasoningPreamble, too short / too long).
- *
- * @param {unknown} text
- * @returns {string | null}
- */
-export function parseWhyMatters(text) {
-  if (typeof text !== 'string') return null;
-  let s = text.trim();
-  if (!s) return null;
-  // Drop surrounding quotes if the model insisted.
-  s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
-  // Take the first sentence only. Keep terminal punctuation.
-  const match = s.match(/^[^.!?]+[.!?]/);
-  const sentence = match ? match[0].trim() : s;
-  if (sentence.length < 30 || sentence.length > 400) return null;
-  // Reject the stub itself — if the LLM echoed it back verbatim we
-  // don't want to cache that as "enrichment".
-  if (/^story flagged by your sensitivity/i.test(sentence)) return null;
-  return sentence;
-}
-
-/**
- * Resolve a `whyMatters` sentence for one story via cache → LLM.
- * Returns null on any failure; caller falls back to the stub.
+ * Returns null on all-layer failure.
  *
  * @param {object} story
  * @param {{
  *   callLLM: (system: string, user: string, opts: object) => Promise<string|null>;
  *   cacheGet: (key: string) => Promise<unknown>;
  *   cacheSet: (key: string, value: unknown, ttlSec: number) => Promise<void>;
+ *   callAnalystWhyMatters?: (story: object) => Promise<string|null>;
  * }} deps
  */
 export async function generateWhyMatters(story, deps) {
-  // v2: hash now covers the full prompt (headline/source/severity/
-  // category/country) — see hashBriefStory() comment.
-  const key = `brief:llm:whymatters:v2:${hashBriefStory(story)}`;
+  // Priority path: analyst endpoint. It owns its own cache (v3) so
+  // the cron doesn't touch Redis when the endpoint handles the story.
+  if (typeof deps.callAnalystWhyMatters === 'function') {
+    try {
+      const analystOut = await deps.callAnalystWhyMatters(story);
+      if (typeof analystOut === 'string' && analystOut.length > 0) {
+        const parsed = parseWhyMatters(analystOut);
+        if (parsed) return parsed;
+        console.warn('[brief-llm] callAnalystWhyMatters → fallback: analyst returned unparseable prose');
+      } else {
+        console.warn('[brief-llm] callAnalystWhyMatters → fallback: null/empty response');
+      }
+    } catch (err) {
+      console.warn(
+        `[brief-llm] callAnalystWhyMatters → fallback: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // Fallback path: legacy direct-Gemini chain with the v2 cache.
+  // v2 coexists with the endpoint's v3 cache during the rollout window;
+  // entries expire in ≤24h so there's no long-term cross-contamination.
+  const key = `brief:llm:whymatters:v2:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
@@ -231,7 +198,7 @@ export async function generateStoryDescription(story, deps) {
   // Shares hashBriefStory() with whyMatters — the key prefix
   // (`brief:llm:description:v1:`) is what separates the two cache
   // namespaces; the material is the same five fields.
-  const key = `brief:llm:description:v1:${hashBriefStory(story)}`;
+  const key = `brief:llm:description:v1:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string') {

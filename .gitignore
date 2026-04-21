@@ -25,6 +25,11 @@ ideas/
 docs/internal/
 docs/ideation/
 internal/
+# Exception: api/internal/ hosts Vercel edge endpoints that must be tracked
+# (e.g. api/internal/brief-why-matters.ts — RELAY_SHARED_SECRET-auth'd
+# endpoints for internal callers like the Railway digest cron).
+!api/internal/
+!api/internal/**
 test-results/
 src-tauri/sidecar/node/*
 !src-tauri/sidecar/node/.gitkeep
