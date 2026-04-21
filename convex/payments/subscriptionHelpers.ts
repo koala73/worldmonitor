@@ -296,6 +296,11 @@ export async function handleSubscriptionActive(
     // insert a userReferralCredits row crediting the sharer. The
     // `else` branch guards against double-crediting on webhook
     // replays — existing subscription rows skip this path.
+    //
+    // `affonso_referral` is the Dodo ↔ Affonso vendor contract key —
+    // DO NOT RENAME here or on the write side in checkout.ts. A
+    // rename desyncs writer/reader and silently breaks every
+    // conversion-path credit.
     const referralCode = data.metadata?.affonso_referral;
     if (typeof referralCode === "string" && referralCode.length > 0) {
       const referrer = await ctx.db

@@ -110,6 +110,8 @@ Errors:
 
 No `referrals` count or `rewardMonths` is returned today — Dodo's `affonso_referral` attribution doesn't yet flow into Convex, and exposing only the waitlist-side count would mislead.
 
+`affonso_referral` is the vendor-contracted metadata key Dodo forwards to Affonso's referral-tracking webhook. The key name is load-bearing — renaming it (to `wm_referral`, `ref`, etc.) silently breaks Dodo→Affonso attribution. See `convex/payments/checkout.ts` and `convex/payments/subscriptionHelpers.ts` for the writer/reader call sites.
+
 ## Waitlist
 
 ### `POST /api/register-interest`

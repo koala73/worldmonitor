@@ -128,6 +128,14 @@ async function _createCheckoutSession(
   metadata.wm_user_id = user.userId;
   metadata.wm_user_id_sig = await signUserId(user.userId);
   if (args.referralCode) {
+    // `affonso_referral` is the Dodo ↔ Affonso vendor-contracted metadata
+    // key — Dodo forwards values on this exact key to Affonso's referral-
+    // tracking webhook. DO NOT RENAME (to `wm_referral`, `referral`,
+    // `ref`, or anything else) without coordinating with Dodo + Affonso;
+    // a rename silently breaks sharer attribution because Affonso stops
+    // receiving the signal and `userReferralCredits` rows are never
+    // created on this conversion path. Mirror read in
+    // `convex/payments/subscriptionHelpers.ts`.
     metadata.affonso_referral = args.referralCode;
   }
 
