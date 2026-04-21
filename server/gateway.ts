@@ -16,7 +16,7 @@ import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
-import { checkEntitlement, getRequiredTier } from './_shared/entitlement-check';
+import { checkEntitlement, getRequiredTier, getEntitlements } from './_shared/entitlement-check';
 import { resolveSessionUserId } from './_shared/auth-session';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
@@ -386,13 +386,29 @@ export function createDomainGateway(
     }
 
     // Bearer role check — authenticated users who bypassed the API key gate still
-    // need a pro role for PREMIUM_RPC_PATHS (entitlement check below handles tier-gated).
+    // need pro access for PREMIUM_RPC_PATHS (entitlement check below handles tier-gated).
+    //
+    // Accept EITHER a Clerk 'pro' role OR a Convex Dodo entitlement with tier >= 1.
+    // Rationale: the Dodo webhook pipeline writes Convex entitlements but does NOT
+    // sync Clerk publicMetadata.role. A paying user whose subscription is active in
+    // Convex will have session.role === 'free' until Clerk is separately updated,
+    // which would otherwise block them on every legacy premium path even though
+    // they've paid. This mirrors the logic in server/_shared/premium-check.ts
+    // (isCallerPremium) so the gateway gate and the per-handler gate agree on who
+    // is premium — a split the 2026-04-17/18 duplicate-subscription incident also
+    // surfaced at the frontend layer (see src/services/panel-gating.ts:11-27).
     if (sessionUserId && !keyCheck.valid && needsLegacyProBearerGate) {
       const authHeader = request.headers.get('Authorization');
       if (authHeader?.startsWith('Bearer ')) {
         const { validateBearerToken } = await import('./auth-session');
         const session = await validateBearerToken(authHeader.slice(7));
-        if (!session.valid || session.role !== 'pro') {
+        let allowed = session.valid && session.role === 'pro';
+        if (!allowed && session.valid && session.userId) {
+          // Fall through to Convex entitlement as the authoritative signal.
+          const ent = await getEntitlements(session.userId);
+          allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
+        }
+        if (!allowed) {
           return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
             status: 403,
             headers: { 'Content-Type': 'application/json', ...corsHeaders },
