@@ -76,7 +76,12 @@ import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignO
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
-import { capturePendingCheckoutIntentFromUrl, resumePendingCheckout } from '@/services/checkout';
+import {
+  capturePendingCheckoutIntentFromUrl,
+  initCheckoutWatchers,
+  resumePendingCheckout,
+  sweepAbandonedCheckoutAttempt,
+} from '@/services/checkout';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -976,6 +981,18 @@ export class App {
     this.state.correlationEngine = correlationEngine;
     this.eventHandlers.setupUnifiedSettings();
     this.eventHandlers.setupAuthWidget();
+    // Wire checkout-attempt lifecycle watchers (sign-out clear) before
+    // any capture/resume path runs, so a stale session from a prior
+    // user can't bleed into the current one.
+    initCheckoutWatchers();
+    // Abandonment sweep: clear long-stale attempt records when the
+    // current page load carries no Dodo return params. Runs before
+    // capture (which repopulates the record for /pro handoff intent).
+    const hasCheckoutReturnParams = (() => {
+      const p = new URL(window.location.href).searchParams;
+      return !!(p.get('subscription_id') || p.get('payment_id'));
+    })();
+    sweepAbandonedCheckoutAttempt(hasCheckoutReturnParams);
     const pendingCheckout = capturePendingCheckoutIntentFromUrl();
     if (pendingCheckout) {
       // Checkout intent from /pro page redirect. Resume immediately if

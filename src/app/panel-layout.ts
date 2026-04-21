@@ -105,7 +105,8 @@ import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/bill
 import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag } from '@/services/checkout';
+import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
@@ -184,11 +185,17 @@ export class PanelLayoutManager implements AppModule {
     //      subscription_id/status URL params and cleans them.
     //   2. Dodo overlay success — setTimeout(reload) with no URL params;
     //      we stash a session flag before the reload and consume it here.
-    const returnedFromCheckoutUrl = handleCheckoutReturn();
+    const returnResult = handleCheckoutReturn();
     const returnedFromOverlay = consumePostCheckoutFlag();
-    const returnedFromCheckout = returnedFromCheckoutUrl || returnedFromOverlay;
+    const returnedFromCheckout = returnResult.kind === 'success' || returnedFromOverlay;
     if (returnedFromCheckout) {
+      // Full-page return cleared its URL params; belt-and-braces clear
+      // of the attempt record here catches the success path where the
+      // overlay handler never ran (direct Dodo redirect).
+      clearCheckoutAttempt('success');
       showCheckoutSuccess();
+    } else if (returnResult.kind === 'failed') {
+      showCheckoutFailureBanner(returnResult.rawStatus);
     }
 
     const userId = getUserId();

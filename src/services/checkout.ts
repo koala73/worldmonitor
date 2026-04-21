@@ -16,6 +16,17 @@ import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 import { openBillingPortal } from './billing';
 import { getCurrentClerkUser, getClerkToken } from './clerk';
+import { subscribeAuthState } from './auth-state';
+import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
+
+export {
+  saveCheckoutAttempt,
+  loadCheckoutAttempt,
+  clearCheckoutAttempt,
+  sweepAbandonedCheckoutAttempt,
+  type CheckoutAttempt,
+  type CheckoutAttemptClearReason,
+} from './checkout-attempt';
 
 const CHECKOUT_PRODUCT_PARAM = 'checkoutProduct';
 const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
@@ -62,6 +73,8 @@ interface PendingCheckoutIntent {
 
 let initialized = false;
 let onSuccessCallback: (() => void) | null = null;
+let _successFired = false;
+let _watchersInitialized = false;
 
 /**
  * Initialize the Dodo overlay SDK. Idempotent -- second+ calls are no-ops.
@@ -83,7 +96,13 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
       switch (event.event_type) {
         case 'checkout.status':
           if (event.data?.status === 'succeeded') {
+            _successFired = true;
             onSuccessCallback?.();
+            // Terminal success: clear both keys. LAST_CHECKOUT_ATTEMPT_KEY
+            // is no longer needed (no retry context required); PENDING is
+            // cleared to avoid auto-opening the overlay on the reload.
+            clearCheckoutAttempt('success');
+            clearPendingCheckoutIntent();
             // Belt-and-braces: reload after the webhook is likely to have
             // landed (median <5s). Mark a session flag so the reloaded page
             // can seed the entitlement transition detector as post-checkout
@@ -96,6 +115,16 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
           }
           break;
         case 'checkout.closed':
+          // Only clear the auto-resume intent. Do NOT clear
+          // LAST_CHECKOUT_ATTEMPT_KEY here — Dodo can emit `closed` BEFORE
+          // the browser navigates to ?status=failed, and the failure
+          // banner on the next page needs the attempt record to populate
+          // the retry CTA. The attempt record will be cleared later by
+          // the terminal path that actually resolves (success, dismissed,
+          // duplicate, or the mount-time abandonment sweep).
+          if (!_successFired) {
+            clearPendingCheckoutIntent();
+          }
           break;
         case 'checkout.error':
           console.error('[checkout] Overlay error:', event.data?.message);
@@ -142,6 +171,32 @@ function clearPendingCheckoutIntent(): void {
   }
 }
 
+/**
+ * Wire lifecycle watchers that need to fire outside the direct
+ * startCheckout() call path. Idempotent.
+ *
+ * Currently: clears both state keys on sign-out so the next signed-in
+ * user never inherits the previous user's checkout intent. The
+ * `auth-state` subscription fires immediately with the current session
+ * on subscribe, so we gate on a null→null transition by tracking the
+ * previously-observed user id.
+ */
+export function initCheckoutWatchers(): void {
+  if (_watchersInitialized) return;
+  _watchersInitialized = true;
+
+  let _lastUserId: string | null = null;
+  subscribeAuthState((state) => {
+    const nextId = state.user?.id ?? null;
+    if (_lastUserId !== null && nextId === null) {
+      // Real sign-out transition.
+      clearCheckoutAttempt('signout');
+      clearPendingCheckoutIntent();
+    }
+    _lastUserId = nextId;
+  });
+}
+
 export function buildCheckoutLaunchUrl(
   productId: string,
   options?: { referralCode?: string; discountCode?: string },
@@ -170,6 +225,15 @@ export function capturePendingCheckoutIntentFromUrl(): PendingCheckoutIntent | n
     discountCode: url.searchParams.get(CHECKOUT_DISCOUNT_PARAM) ?? undefined,
   };
   savePendingCheckoutIntent(intent);
+  // /pro-origin intent captured here also populates the failure-retry
+  // record so a decline on this session's checkout can retry cross-origin.
+  saveCheckoutAttempt({
+    productId,
+    referralCode: intent.referralCode,
+    discountCode: intent.discountCode,
+    startedAt: Date.now(),
+    origin: 'pro',
+  });
 
   url.searchParams.delete(CHECKOUT_PRODUCT_PARAM);
   url.searchParams.delete(CHECKOUT_REFERRAL_PARAM);
@@ -273,6 +337,17 @@ export async function startCheckout(
   }
 
   _checkoutInFlight = true;
+  _successFired = false;
+  // Record the attempt BEFORE the network call so the failure-retry
+  // banner has context even if every subsequent step fails (timeout,
+  // user closes tab before Dodo redirects, SDK crashes, etc.).
+  saveCheckoutAttempt({
+    productId,
+    referralCode: options?.referralCode,
+    discountCode: options?.discountCode,
+    startedAt: Date.now(),
+    origin: 'dashboard',
+  });
   try {
     let token = await getClerkToken();
     if (!token) {
@@ -301,6 +376,7 @@ export async function startCheckout(
       console.error('[checkout] Edge endpoint error:', resp.status, err);
       if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
         clearPendingCheckoutIntent();
+        clearCheckoutAttempt('duplicate');
         await openBillingPortal();
         return false;
       }
