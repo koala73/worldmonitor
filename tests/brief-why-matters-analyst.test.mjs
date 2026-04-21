@@ -359,7 +359,8 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.ok(typeof builder === 'function');
   });
 
-  it('reuses WHY_MATTERS_SYSTEM verbatim', () => {
+  it('uses the analyst v2 system prompt (multi-sentence, grounded)', async () => {
+    const { WHY_MATTERS_ANALYST_SYSTEM_V2 } = await import('../shared/brief-llm-core.js');
     const { system } = builder(story(), {
       worldBrief: 'X',
       countryBrief: '',
@@ -369,10 +370,13 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
       macroSignals: '',
       degraded: false,
     });
-    assert.equal(system, WHY_MATTERS_SYSTEM);
+    assert.equal(system, WHY_MATTERS_ANALYST_SYSTEM_V2);
+    // Contract must still mention the 40–70 word target + grounding rule.
+    assert.match(system, /40–70 words/);
+    assert.match(system, /named person \/ country \/ organization \/ number \/ percentage \/ date \/ city/);
   });
 
-  it('includes the story fields in the same 5-line format', () => {
+  it('includes story fields with the multi-sentence footer', () => {
     const { user } = builder(story(), {
       worldBrief: '',
       countryBrief: '',
@@ -387,7 +391,38 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.match(user, /Severity: critical/);
     assert.match(user, /Category: Geopolitical Risk/);
     assert.match(user, /Country: IR/);
-    assert.match(user, /One editorial sentence on why this matters:$/);
+    assert.match(user, /Write 2–3 sentences \(40–70 words\)/);
+    assert.match(user, /grounded in at least ONE specific/);
+  });
+
+  it('includes story description when present', () => {
+    const storyWithDesc = {
+      ...story(),
+      description: 'Tehran publicly reopened the Strait of Hormuz to commercial shipping today.',
+    };
+    const { user } = builder(storyWithDesc, {
+      worldBrief: '',
+      countryBrief: '',
+      riskScores: '',
+      forecasts: '',
+      marketData: '',
+      macroSignals: '',
+      degraded: false,
+    });
+    assert.match(user, /Description: Tehran publicly reopened/);
+  });
+
+  it('omits description line when field absent', () => {
+    const { user } = builder(story(), {
+      worldBrief: '',
+      countryBrief: '',
+      riskScores: '',
+      forecasts: '',
+      marketData: '',
+      macroSignals: '',
+      degraded: false,
+    });
+    assert.doesNotMatch(user, /Description:/);
   });
 
   it('omits context block when all fields empty', () => {

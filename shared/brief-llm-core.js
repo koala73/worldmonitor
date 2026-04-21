@@ -105,3 +105,69 @@ export async function hashBriefStory(story) {
   }
   return hex.slice(0, 16);
 }
+
+// ── Analyst-path prompt v2 (multi-sentence, grounded) ──────────────────────
+//
+// Shadow-diff on 12 prod stories (2026-04-21) showed the v1 analyst output
+// was indistinguishable from the legacy Gemini-only output: identical
+// single-sentence abstraction-speak ("destabilize / systemic / sovereign
+// risk repricing") with no named actors, metrics, or dates. Root cause:
+// the 18–30 word cap compressed the context's specifics out of the LLM's
+// response. v2 loosens to 40–70 words across 2–3 sentences and REQUIRES
+// the LLM to ground at least one specific reference from the live context.
+
+/**
+ * System prompt for the analyst-path v2 (2–3 sentences, ~40–70 words,
+ * grounded in a specific named actor / metric / date / place drawn
+ * from the live context). Shape nudged toward the WMAnalyst chat voice
+ * (SITUATION → ANALYSIS → optional WATCH) but rendered as plain prose,
+ * no section labels in the output.
+ */
+export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
+  'You are the lead analyst at WorldMonitor Brief, a geopolitical intelligence magazine. ' +
+  'Using the Live WorldMonitor Context AND the story, write 2–3 sentences (40–70 words total) ' +
+  'on why the story matters.\n\n' +
+  'STRUCTURE:\n' +
+  '1. SITUATION — what is happening right now, grounded in a SPECIFIC named actor, ' +
+  'metric, date, or place drawn from the context.\n' +
+  '2. ANALYSIS — the structural consequence (why this forces a repricing, shifts ' +
+  'the balance, triggers a cascade).\n' +
+  '3. (Optional) WATCH — the threshold or indicator to track, if clear from the context.\n\n' +
+  'HARD CONSTRAINTS:\n' +
+  '- Total length 40–70 words across 2–3 sentences.\n' +
+  '- MUST reference at least ONE specific: named person / country / organization / ' +
+  'number / percentage / date / city — drawn from the context, NOT invented.\n' +
+  '- No preamble ("This matters because…", "The importance of…").\n' +
+  '- No markdown, no bullet points, no section labels in the output — plain prose.\n' +
+  '- Editorial, impersonal, serious. No calls to action, no questions, no quotes.';
+
+/**
+ * Parse + validate the analyst-path v2 LLM response. Accepts
+ * multi-sentence output (2–3 sentences), 100–500 chars. Otherwise
+ * same rejection semantics as v1 (stub echo, empty) plus explicit
+ * rejection of preamble boilerplate and leaked section labels.
+ *
+ * Returns null when the output is obviously wrong so the caller can
+ * fall through to the next layer.
+ *
+ * @param {unknown} text
+ * @returns {string | null}
+ */
+export function parseWhyMattersV2(text) {
+  if (typeof text !== 'string') return null;
+  let s = text.trim();
+  if (!s) return null;
+  // Drop surrounding quotes if the model insisted.
+  s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
+  if (s.length < 100 || s.length > 500) return null;
+  // Reject the stub echo (same as v1).
+  if (/^story flagged by your sensitivity/i.test(s)) return null;
+  // Reject common preamble the system prompt explicitly banned.
+  if (/^(this matters because|the importance of|it is important|importantly,|in summary,|to summarize)/i.test(s)) {
+    return null;
+  }
+  // Reject markdown / section-label leakage (we told it to use plain prose).
+  if (/^(#|-|\*|\d+\.\s)/.test(s)) return null;
+  if (/^(situation|analysis|watch)\s*[:\-–—]/i.test(s)) return null;
+  return s;
+}

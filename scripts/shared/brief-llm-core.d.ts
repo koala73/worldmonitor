@@ -24,3 +24,7 @@ export function buildWhyMattersUserPrompt(story: BriefStoryPromptInput): {
 export function parseWhyMatters(text: unknown): string | null;
 
 export function hashBriefStory(story: BriefStoryHashInput): Promise<string>;
+
+// ── v2 (analyst path only) ────────────────────────────────────────────────
+export const WHY_MATTERS_ANALYST_SYSTEM_V2: string;
+export function parseWhyMattersV2(text: unknown): string | null;

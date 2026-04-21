@@ -150,6 +150,25 @@ const BRIEF_WHY_MATTERS_ENDPOINT_URL =
  */
 async function callAnalystWhyMatters(story) {
   if (!RELAY_SECRET) return null;
+  // Forward a trimmed story payload so the endpoint only sees the
+  // fields it validates. `description` is NEW for prompt-v2 — when
+  // upstream has a real one (falls back to headline via
+  // shared/brief-filter.js:134), it gives the LLM a grounded sentence
+  // beyond the headline. Skip when it equals the headline (no signal).
+  const payload = {
+    headline: story.headline ?? '',
+    source: story.source ?? '',
+    threatLevel: story.threatLevel ?? '',
+    category: story.category ?? '',
+    country: story.country ?? '',
+  };
+  if (
+    typeof story.description === 'string' &&
+    story.description.length > 0 &&
+    story.description !== story.headline
+  ) {
+    payload.description = story.description;
+  }
   try {
     const resp = await fetch(BRIEF_WHY_MATTERS_ENDPOINT_URL, {
       method: 'POST',
@@ -164,7 +183,7 @@ async function callAnalystWhyMatters(story) {
         'User-Agent': 'worldmonitor-digest-notifications/1.0',
         Accept: 'application/json',
       },
-      body: JSON.stringify({ story }),
+      body: JSON.stringify({ story: payload }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) {
