@@ -39,7 +39,10 @@ export const config = { runtime: 'edge' };
 import { authenticateInternalRequest } from '../../server/_shared/internal-auth';
 import { normalizeCountryToIso2 } from '../../server/_shared/country-normalize';
 import { assembleBriefStoryContext } from '../../server/worldmonitor/intelligence/v1/brief-story-context';
-import { buildAnalystWhyMattersPrompt } from '../../server/worldmonitor/intelligence/v1/brief-why-matters-prompt';
+import {
+  buildAnalystWhyMattersPrompt,
+  sanitizeStoryFields,
+} from '../../server/worldmonitor/intelligence/v1/brief-why-matters-prompt';
 import { callLlmReasoning } from '../../server/_shared/llm';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, setCachedData, redisPipeline } from '../_upstash-json.js';
@@ -203,7 +206,11 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
       // Provider is pinned via LLM_REASONING_PROVIDER env var (already
       // set to 'openrouter' in prod). `callLlmReasoning` routes through
       // the resolveProviderChain based on that env.
-      validate: (content: string) => parseWhyMatters(content) !== null,
+      // Note: no `validate` option. The post-call parseWhyMatters check
+      // below handles rejection by returning null. Using validate inside
+      // callLlmReasoning would walk the provider chain on parse-reject,
+      // causing duplicate openrouter billings when only one provider is
+      // configured in prod. See todo 245.
     });
     if (!result) return null;
     return parseWhyMatters(result.content);
@@ -215,7 +222,10 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
 
 async function runGeminiPath(story: StoryPayload): Promise<string | null> {
   try {
-    const { system, user } = buildWhyMattersUserPrompt(story);
+    // Sanitize before the edge-safe prompt builder sees any field —
+    // defense-in-depth against prompt injection even under a valid
+    // RELAY_SHARED_SECRET caller (consistent with the analyst path).
+    const { system, user } = buildWhyMattersUserPrompt(sanitizeStoryFields(story));
     const result = await callLlmReasoning({
       messages: [
         { role: 'system', content: system },
@@ -224,7 +234,11 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
       maxTokens: 120,
       temperature: 0.4,
       timeoutMs: 10_000,
-      validate: (content: string) => parseWhyMatters(content) !== null,
+      // Note: no `validate` option. The post-call parseWhyMatters check
+      // below handles rejection by returning null. Using validate inside
+      // callLlmReasoning would walk the provider chain on parse-reject,
+      // causing duplicate openrouter billings when only one provider is
+      // configured in prod. See todo 245.
     });
     if (!result) return null;
     return parseWhyMatters(result.content);
@@ -334,6 +348,7 @@ export default async function handler(req: Request): Promise<Response> {
       whyMatters: cached.whyMatters,
       source: 'cache',
       producedBy: cached.producedBy,
+      hash,
     }, 200);
   }
 
@@ -405,11 +420,13 @@ export default async function handler(req: Request): Promise<Response> {
     whyMatters: string | null;
     source: 'analyst' | 'gemini';
     producedBy: 'analyst' | 'gemini' | null;
+    hash: string;
     shadow?: { analyst: string | null; gemini: string | null };
   } = {
     whyMatters: chosenValue,
     source: chosenProducer,
     producedBy: chosenValue !== null ? chosenProducer : null,
+    hash,
   };
   if (runShadow) {
     response.shadow = { analyst: analystResult, gemini: geminiResult };

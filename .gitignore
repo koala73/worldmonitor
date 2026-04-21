@@ -28,8 +28,12 @@ internal/
 # Exception: api/internal/ hosts Vercel edge endpoints that must be tracked
 # (e.g. api/internal/brief-why-matters.ts — RELAY_SHARED_SECRET-auth'd
 # endpoints for internal callers like the Railway digest cron).
+# Scoped to SOURCE FILE TYPES ONLY so the parent `.env` / secrets ignore
+# rules stay in effect inside this directory. Do NOT widen to `**`.
 !api/internal/
-!api/internal/**
+!api/internal/*.ts
+!api/internal/*.js
+!api/internal/*.mjs
 test-results/
 src-tauri/sidecar/node/*
 !src-tauri/sidecar/node/.gitkeep

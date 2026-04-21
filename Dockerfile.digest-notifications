@@ -56,6 +56,7 @@ COPY scripts/lib/ ./scripts/lib/
 # unrelated shared/* files expands the rebuild watch surface.
 COPY shared/brief-envelope.js shared/brief-envelope.d.ts ./shared/
 COPY shared/brief-filter.js shared/brief-filter.d.ts ./shared/
+COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
 
 # Upstash REST helper (brief compose uses redisPipeline + readRawJson).

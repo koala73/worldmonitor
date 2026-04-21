@@ -140,6 +140,13 @@ const BRIEF_WHY_MATTERS_ENDPOINT_URL =
  * string on success, null on any failure (auth, non-200, parse error,
  * timeout, missing value). The cron's `generateWhyMatters` is
  * responsible for falling through to the direct-Gemini path on null.
+ *
+ * Ground-truth signal: logs `source` (cache|analyst|gemini) and
+ * `producedBy` (analyst|gemini|null) at the call site so the cron's
+ * log stream has a forensic trail of which path actually produced each
+ * story's whyMatters — needed for shadow-diff review and for the
+ * "stop writing v2" decision once analyst coverage is proven.
+ * (See feedback_gate_on_ground_truth_not_configured_state.md.)
  */
 async function callAnalystWhyMatters(story) {
   if (!RELAY_SECRET) return null;
@@ -159,6 +166,14 @@ async function callAnalystWhyMatters(story) {
     }
     const data = await resp.json();
     if (!data || typeof data.whyMatters !== 'string') return null;
+    // Emit the ground-truth provenance at the call site. `source` tells
+    // us cache vs. live; `producedBy` tells us which LLM wrote the
+    // string (or the cached value's original producer on cache hits).
+    const src = typeof data.source === 'string' ? data.source : 'unknown';
+    const producedBy = typeof data.producedBy === 'string' ? data.producedBy : 'unknown';
+    console.log(
+      `[brief-llm] whyMatters source=${src} producedBy=${producedBy} hash=${data.hash ?? 'n/a'}`,
+    );
     return data.whyMatters;
   } catch (err) {
     console.warn(

@@ -13,6 +13,7 @@
  */
 
 import { WHY_MATTERS_SYSTEM } from '../../../../shared/brief-llm-core.js';
+import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import type { BriefStoryContext } from './brief-story-context';
 
 export interface StoryForPrompt {
@@ -21,6 +22,23 @@ export interface StoryForPrompt {
   threatLevel: string;
   category: string;
   country: string;
+}
+
+/**
+ * Sanitize all untrusted string fields before interpolating into the
+ * LLM prompt. Defense-in-depth: the endpoint is already
+ * RELAY_SHARED_SECRET-gated, but repo convention applies
+ * `sanitizeForPrompt` at every LLM boundary regardless of auth tier.
+ * Strips role markers, instruction overrides, control chars, etc.
+ */
+export function sanitizeStoryFields(story: StoryForPrompt): StoryForPrompt {
+  return {
+    headline: sanitizeForPrompt(story.headline),
+    source: sanitizeForPrompt(story.source),
+    threatLevel: sanitizeForPrompt(story.threatLevel),
+    category: sanitizeForPrompt(story.category),
+    country: sanitizeForPrompt(story.country),
+  };
 }
 
 // Total budget for the context block alone (the story fields + prompt
@@ -82,14 +100,15 @@ export function buildAnalystWhyMattersPrompt(
   story: StoryForPrompt,
   context: BriefStoryContext,
 ): { system: string; user: string } {
+  const safe = sanitizeStoryFields(story);
   const contextBlock = buildContextBlock(context);
 
   const storyLines = [
-    `Headline: ${story.headline}`,
-    `Source: ${story.source}`,
-    `Severity: ${story.threatLevel}`,
-    `Category: ${story.category}`,
-    `Country: ${story.country}`,
+    `Headline: ${safe.headline}`,
+    `Source: ${safe.source}`,
+    `Severity: ${safe.threatLevel}`,
+    `Category: ${safe.category}`,
+    `Country: ${safe.country}`,
   ].join('\n');
 
   const sections = [];
