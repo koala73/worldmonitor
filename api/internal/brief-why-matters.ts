@@ -267,7 +267,16 @@ function isEnvelope(v: unknown): v is WhyMattersEnvelope {
 
 // ── Handler ───────────────────────────────────────────────────────────
 
-export default async function handler(req: Request): Promise<Response> {
+// Vercel Edge passes an execution context as the 2nd argument with
+// `waitUntil(promise)` to keep background work alive past the response
+// return. Fire-and-forget without it is unreliable on Edge — the isolate
+// can be frozen mid-write. Optional to stay compatible with local/test
+// harnesses that don't pass a ctx.
+interface EdgeContext {
+  waitUntil?: (promise: Promise<unknown>) => void;
+}
+
+export default async function handler(req: Request, ctx?: EdgeContext): Promise<Response> {
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);
   }
@@ -401,7 +410,10 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
-  // Fire-and-forget shadow record so offline diff has pairs to sample.
+  // Shadow record so offline diff has pairs to sample. Background work on
+  // Edge runtimes MUST be registered with `ctx.waitUntil` — plain unawaited
+  // promises can be frozen when the isolate terminates after the response.
+  // Falls back to fire-and-forget when ctx is absent (local runs / tests).
   if (runShadow) {
     const record = {
       analyst: analystResult,
@@ -409,11 +421,16 @@ export default async function handler(req: Request): Promise<Response> {
       chosen: chosenProducer,
       at: now,
     };
-    // Intentionally not awaited — must not block response.
-    redisPipeline([['SET', shadowKey, JSON.stringify(record), 'EX', String(SHADOW_TTL_SEC)]])
-      .catch(() => {
-        // Silent — shadow is observability, not critical.
-      });
+    const shadowWrite = redisPipeline([
+      ['SET', shadowKey, JSON.stringify(record), 'EX', String(SHADOW_TTL_SEC)],
+    ]).then(() => undefined).catch(() => {
+      // Silent — shadow is observability, not critical.
+    });
+    if (typeof ctx?.waitUntil === 'function') {
+      ctx.waitUntil(shadowWrite);
+    }
+    // When ctx is missing (local harness), the promise is still chained above
+    // so it runs to completion before the caller's await completes.
   }
 
   const response: {

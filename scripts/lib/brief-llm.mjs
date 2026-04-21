@@ -33,6 +33,30 @@ import {
   hashBriefStory,
   parseWhyMatters,
 } from '../../shared/brief-llm-core.js';
+import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
+
+/**
+ * Sanitize the five story fields that flow into buildWhyMattersUserPrompt.
+ * Mirrors server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts
+ * sanitizeStoryFields — the legacy Railway fallback path must apply the
+ * same defense as the analyst endpoint, since this is exactly what runs
+ * when the endpoint misses / returns null / throws.
+ *
+ * Kept local (not promoted to brief-llm-core.js) because llm-sanitize.js
+ * only lives in server/_shared and the edge endpoint already sanitizes
+ * before its own buildWhyMattersUserPrompt call.
+ *
+ * @param {{ headline?: string; source?: string; threatLevel?: string; category?: string; country?: string }} story
+ */
+function sanitizeStoryForPrompt(story) {
+  return {
+    headline: sanitizeForPrompt(story.headline ?? ''),
+    source: sanitizeForPrompt(story.source ?? ''),
+    threatLevel: sanitizeForPrompt(story.threatLevel ?? ''),
+    category: sanitizeForPrompt(story.category ?? ''),
+    country: sanitizeForPrompt(story.country ?? ''),
+  };
+}
 
 // Re-export for backcompat with existing tests / callers.
 export { WHY_MATTERS_SYSTEM, hashBriefStory, parseWhyMatters };
@@ -106,7 +130,10 @@ export async function generateWhyMatters(story, deps) {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
   } catch { /* cache miss is fine */ }
-  const { system, user } = buildWhyMattersPrompt(story);
+  // Sanitize story fields before interpolating into the prompt. The analyst
+  // endpoint already does this; without it the Railway fallback path was an
+  // unsanitized injection vector for any future untrusted `source` / `headline`.
+  const { system, user } = buildWhyMattersPrompt(sanitizeStoryForPrompt(story));
   let text = null;
   try {
     text = await deps.callLLM(system, user, {
