@@ -126,6 +126,11 @@ export function initOverlay(onSuccess?: () => void): void {
       mode: env === 'live_mode' ? 'live' : 'test',
       displayType: 'overlay',
       onEvent: (event: CheckoutEvent) => {
+        // Breadcrumb every event — when a user reports "stuck on spinner
+        // after paying" we need the event log to tell whether we got
+        // `checkout.status=succeeded`, only `checkout.closed`, or
+        // nothing at all. Sentry picks up console.* via integration.
+        console.info('[checkout] dodo event', event.event_type, event.data);
         if (event.event_type === 'checkout.status') {
           const status = (event.data as Record<string, unknown>)?.status
             ?? ((event.data as Record<string, unknown>)?.message as Record<string, unknown>)?.status;
@@ -241,7 +246,7 @@ async function doCheckout(
       },
       body: JSON.stringify({
         productId,
-        returnUrl: 'https://worldmonitor.app',
+        returnUrl: 'https://worldmonitor.app/?wm_checkout=success',
         discountCode: options.discountCode,
         referralCode: options.referralCode,
       }),
@@ -303,7 +308,15 @@ async function doCheckout(
     DodoPayments.Checkout.open({
       checkoutUrl: result.checkout_url,
       options: {
-        manualRedirect: true,
+        // manualRedirect: false — Dodo performs the parent-window
+        // redirect on success, landing at the `returnUrl` we sent to
+        // /api/create-checkout (which carries ?wm_checkout=success).
+        // Relying on the SDK's own redirect avoids a class of bugs
+        // where `checkout.status=succeeded` never reaches our onEvent
+        // (iframe internally navigates to wallet-return, postMessage
+        // gets lost) and the user is stuck on /pro#pricing with the
+        // overlay open.
+        manualRedirect: false,
         themeConfig: {
           dark: {
             bgPrimary: '#0d0d0d',
