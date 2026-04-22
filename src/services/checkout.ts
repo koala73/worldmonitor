@@ -434,9 +434,19 @@ export async function startCheckout(
       classifySyntheticCheckoutError('unauthorized'),
       { productId, action: 'no-user' },
     );
-    // Prefer sign-in inline over a /pro tab. openSignIn is a safe call
-    // even if Clerk isn't loaded (it becomes a no-op).
-    openSignIn();
+    // Honor the `fallbackToPricingPage` contract for the no-user path
+    // too — the original contract was "on any failure with
+    // fallbackToPricingPage=true, route to /pro." Default (true) routes
+    // signed-out panel upsells to the marketing page where they get
+    // full pricing context + a tuned sign-up surface. Callers that
+    // prefer inline sign-in (e.g., the failure-retry banner on the
+    // dashboard) opt out by passing `fallbackToPricingPage: false`.
+    // openSignIn is a safe no-op if Clerk isn't loaded.
+    if (fallbackToPricingPage) {
+      window.location.assign('https://worldmonitor.app/pro');
+    } else {
+      openSignIn();
+    }
     return false;
   }
 
