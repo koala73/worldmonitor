@@ -1009,16 +1009,20 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   // stockholding is defined in days of NET IMPORTS; the net-importer
   // vs net-exporter framings are incomparable, so no global resilience
   // signal can be built from this data. scoreFuelStockDays now returns
-  // coverage=0 + imputationClass='source-failure' for every country,
-  // which drops the dimension from the recovery domain's coverage-
-  // weighted mean. The registry entry stays at tier='experimental' so
-  // the Core coverage gate treats it as out-of-score; the dimension
-  // itself remains registered for structural continuity (PR 4
-  // structural-audit may remove it entirely).
+  // coverage=0 + imputationClass=null for every country (filtered out
+  // of confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS
+  // registry in _dimension-scorers.ts). imputationClass is deliberately
+  // `null` rather than 'source-failure' — a retirement is structural,
+  // not a runtime outage, and surfacing 'source-failure' would manufacture
+  // a false "Source down" label in the widget for every country. The
+  // registry entry stays at tier='experimental' so the Core coverage
+  // gate treats it as out-of-score; the dimension itself remains
+  // registered for structural continuity (PR 4 structural-audit may
+  // remove it entirely).
   {
     id: 'recoveryFuelStockDays',
     dimension: 'fuelStockDays',
-    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=source-failure. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR.',
+    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR.',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 120 },
     weight: 1.0,
