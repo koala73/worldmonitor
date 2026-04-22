@@ -208,12 +208,27 @@ export function initCheckoutWatchers(): void {
     if (!_initialized) {
       _initialized = true;
       _lastUserId = nextId;
+      // Defensive sweep on first snapshot: if the tab loads signed-out,
+      // there's no legitimate owner for any prior checkout state — wipe
+      // pending/post-checkout/attempt so a stale marker from a previous
+      // user (closed tab, session expiry, account switch before reload)
+      // can't leak into the next signed-in user's session. Signed-in
+      // loads preserve state because that user may be returning from a
+      // Dodo redirect mid-flow.
+      if (nextId === null) {
+        clearCheckoutAttempt('signout');
+        clearPendingCheckoutIntent();
+        try { sessionStorage.removeItem(POST_CHECKOUT_FLAG_KEY); } catch { /* ignore */ }
+      }
       return;
     }
     if (nextId !== _lastUserId) {
       // Any user-id change — sign-out, account switch, session rotation.
+      // Must also clear POST_CHECKOUT_FLAG_KEY so a success banner from
+      // the previous user can't fire for the next one on the same tab.
       clearCheckoutAttempt('signout');
       clearPendingCheckoutIntent();
+      try { sessionStorage.removeItem(POST_CHECKOUT_FLAG_KEY); } catch { /* ignore */ }
     }
     _lastUserId = nextId;
   });

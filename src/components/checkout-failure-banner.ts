@@ -77,17 +77,38 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
   document.body.appendChild(banner);
 
   if (hasRetryTarget && attempt) {
-    const retryBtn = document.getElementById('cf-retry-btn');
-    retryBtn?.addEventListener('click', () => {
-      banner.remove();
-      void startCheckout(
-        attempt.productId,
-        {
-          referralCode: attempt.referralCode,
-          discountCode: attempt.discountCode,
-        },
-        { fallbackToPricingPage: false },
-      );
+    const retryBtn = document.getElementById('cf-retry-btn') as HTMLButtonElement | null;
+    retryBtn?.addEventListener('click', async () => {
+      // Do NOT remove the banner yet — keep it mounted so the user has
+      // somewhere to land if retry fails (bad network, Clerk unavailable,
+      // edge endpoint 5xx). Swap retry into a "retrying…" state so the
+      // user sees progress, then only remove on confirmed success. On
+      // failure, re-enable so they can try again or dismiss.
+      if (retryBtn) {
+        retryBtn.disabled = true;
+        retryBtn.setAttribute('aria-busy', 'true');
+        retryBtn.textContent = 'Retrying…';
+      }
+      let succeeded = false;
+      try {
+        succeeded = await startCheckout(
+          attempt.productId,
+          {
+            referralCode: attempt.referralCode,
+            discountCode: attempt.discountCode,
+          },
+          { fallbackToPricingPage: false },
+        );
+      } catch {
+        succeeded = false;
+      }
+      if (succeeded) {
+        banner.remove();
+      } else if (retryBtn) {
+        retryBtn.disabled = false;
+        retryBtn.removeAttribute('aria-busy');
+        retryBtn.textContent = 'Retry';
+      }
     });
   }
 
