@@ -85,7 +85,10 @@ export async function getCachedRawString(key: string): Promise<string | null> {
     const data = (await resp.json()) as { result?: string | null };
     return typeof data.result === 'string' && data.result.length > 0 ? data.result : null;
   } catch (err) {
-    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    // AbortSignal.timeout() throws DOMException name='TimeoutError' (on V8
+    // runtimes incl. Vercel Edge); manual controller.abort() throws 'AbortError'.
+    // Match both so the [REDIS-TIMEOUT] structured log actually fires.
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
     if (isTimeout) console.error(`[REDIS-TIMEOUT] getCachedRawString key=${key} timeoutMs=${REDIS_OP_TIMEOUT_MS}`);
     else console.warn('[redis] getCachedRawString failed:', errMsg(err));
     return null;
@@ -115,12 +118,16 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
     // through unchanged (unwrapEnvelope returns {_seed: null, data: raw}).
     return unwrapEnvelope(JSON.parse(data.result)).data;
   } catch (err) {
-    // AbortError = timeout; structured + errored so log drains (e.g. Sentry via
-    // Vercel integration) pick it up. Large-payload timeouts used to silently
-    // return null and let downstream callers cache zero-state — see
-    // docs/plans/chokepoint-rpc-payload-split.md for the incident that added
-    // this tag.
-    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    // Structured timeout log goes to Sentry via Vercel integration. Large-
+    // payload timeouts used to silently return null and let downstream callers
+    // cache zero-state — see docs/plans/chokepoint-rpc-payload-split.md for
+    // the incident that added this tag.
+    //
+    // AbortSignal.timeout() throws DOMException name='TimeoutError' (on V8
+    // runtimes incl. Vercel Edge); manual controller.abort() throws
+    // 'AbortError'. Checking only 'AbortError' meant the [REDIS-TIMEOUT] log
+    // never fired — every timeout fell through to the generic console.warn.
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
     if (isTimeout) {
       console.error(`[REDIS-TIMEOUT] getCachedJson key=${key} timeoutMs=${REDIS_OP_TIMEOUT_MS}`);
     } else {
