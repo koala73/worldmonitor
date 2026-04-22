@@ -1155,6 +1155,114 @@ async function main() {
     };
   }
 
+  // Acceptance-gate verdict per plan §6. Computed programmatically
+  // from the inputs above so every scorer-changing PR has a
+  // machine-readable pass/fail on every gate. Gate numbering matches
+  // the plan sections literally — do NOT reorder without updating the
+  // plan.
+  //
+  // Thresholds are encoded here (not tunable per-PR) so gate criteria
+  // can't silently soften. Any adjustment requires a PR touching this
+  // file + the plan doc in the same commit.
+  const GATE_THRESHOLDS = {
+    SPEARMAN_VS_BASELINE_MIN: 0.85,
+    MAX_COUNTRY_ABS_DELTA_MAX: 15,
+    COHORT_MEDIAN_SHIFT_MAX: 10,
+  };
+  const gates = [];
+  const addGate = (id, name, status, detail) => {
+    gates.push({ id, name, status, detail });
+  };
+
+  // Gate 1: Spearman vs immediate-prior baseline >= 0.85.
+  if (baselineComparison.status === 'ok') {
+    const s = baselineComparison.spearmanVsBaseline;
+    addGate('gate-1-spearman', 'Spearman vs baseline >= 0.85',
+      s >= GATE_THRESHOLDS.SPEARMAN_VS_BASELINE_MIN ? 'pass' : 'fail',
+      `${s} (floor ${GATE_THRESHOLDS.SPEARMAN_VS_BASELINE_MIN})`);
+  } else {
+    addGate('gate-1-spearman', 'Spearman vs baseline >= 0.85', 'skipped',
+      'baseline unavailable; re-run after PR 0 freeze ships');
+  }
+
+  // Gate 2: No country's overallScore changes by more than 15 points
+  // from the immediate-prior baseline.
+  if (baselineComparison.status === 'ok') {
+    const drift = baselineComparison.maxCountryAbsDelta;
+    addGate('gate-2-country-drift', 'Max country drift vs baseline <= 15 points',
+      drift <= GATE_THRESHOLDS.MAX_COUNTRY_ABS_DELTA_MAX ? 'pass' : 'fail',
+      `${drift}pt (ceiling ${GATE_THRESHOLDS.MAX_COUNTRY_ABS_DELTA_MAX})`);
+  } else {
+    addGate('gate-2-country-drift', 'Max country drift vs baseline <= 15 points', 'skipped',
+      'baseline unavailable');
+  }
+
+  // Gate 6: Cohort median shift vs baseline capped at 10 points.
+  if (baselineComparison.status === 'ok') {
+    const worstCohort = (baselineComparison.cohortShiftVsBaseline ?? [])
+      .filter((c) => !c.skipped && typeof c.medianScoreDeltaVsBaseline === 'number')
+      .reduce((worst, c) => {
+        const abs = Math.abs(c.medianScoreDeltaVsBaseline);
+        return abs > Math.abs(worst?.medianScoreDeltaVsBaseline ?? 0) ? c : worst;
+      }, null);
+    if (worstCohort) {
+      const shift = Math.abs(worstCohort.medianScoreDeltaVsBaseline);
+      addGate('gate-6-cohort-median', 'Cohort median shift vs baseline <= 10 points',
+        shift <= GATE_THRESHOLDS.COHORT_MEDIAN_SHIFT_MAX ? 'pass' : 'fail',
+        `worst: ${worstCohort.cohortId} ${worstCohort.medianScoreDeltaVsBaseline}pt (ceiling ${GATE_THRESHOLDS.COHORT_MEDIAN_SHIFT_MAX})`);
+    } else {
+      addGate('gate-6-cohort-median', 'Cohort median shift vs baseline <= 10 points', 'skipped',
+        'no cohort has baseline overlap');
+    }
+  } else {
+    addGate('gate-6-cohort-median', 'Cohort median shift vs baseline <= 10 points', 'skipped',
+      'baseline unavailable');
+  }
+
+  // Gate 7: Matched-pair within-pair gap signs verified. Any pair
+  // flipping direction or falling below minGap stops the PR.
+  addGate('gate-7-matched-pair', 'Matched-pair within-pair gaps hold expected direction',
+    matchedPairFailures.length === 0 ? 'pass' : 'fail',
+    matchedPairFailures.length === 0
+      ? `${matchedPairSummary.filter((p) => !p.skipped).length}/${matchedPairSummary.filter((p) => !p.skipped).length} pairs pass`
+      : `${matchedPairFailures.length} pair(s) failed: ${matchedPairFailures.map((p) => p.pairId).join(', ')}`);
+
+  // Gate 9: Per-indicator effective-influence baseline present. Sign-
+  // and rank-order correctness against nominal weights is a post-hoc
+  // human-review check; this gate asserts the MEASUREMENT exists,
+  // which is the diagnostic-apparatus pre-requisite from PR 0.
+  addGate('gate-9-effective-influence-baseline',
+    'Per-indicator effective-influence baseline exists (>= 80% of Core implemented)',
+    extractionCoverage.coreTotal > 0 && (extractionCoverage.coreImplemented / extractionCoverage.coreTotal) >= 0.80
+      ? 'pass' : 'fail',
+    `${extractionCoverage.coreImplemented}/${extractionCoverage.coreTotal} Core indicators measurable`);
+
+  // Gate: cohort/pair membership present in scorable universe (not
+  // numbered in plan §6 but is the PR 0 fail-loud addition — if any
+  // cohort/pair endpoint falls out of listScorableCountries, every
+  // other gate is being computed over a silently-partial universe).
+  addGate('gate-universe-integrity', 'All cohort/pair endpoints are in the scorable universe',
+    cohortMissingFromScorable.length === 0 ? 'pass' : 'fail',
+    cohortMissingFromScorable.length === 0
+      ? `${cohortOrPairMembers.size} endpoints verified`
+      : `missing from scorable: ${cohortMissingFromScorable.join(', ')}`);
+
+  const acceptanceGates = {
+    thresholds: GATE_THRESHOLDS,
+    results: gates,
+    summary: {
+      total: gates.length,
+      pass: gates.filter((g) => g.status === 'pass').length,
+      fail: gates.filter((g) => g.status === 'fail').length,
+      skipped: gates.filter((g) => g.status === 'skipped').length,
+    },
+    verdict: gates.some((g) => g.status === 'fail')
+      ? 'BLOCK' // any fail halts the PR per plan §6
+      : gates.some((g) => g.status === 'skipped')
+        ? 'CONDITIONAL' // skipped gates need the missing inputs before final merge
+        : 'PASS',
+  };
+
   const output = {
     comparison: 'currentDomainAggregate_vs_proposedPillarCombined',
     penaltyAlpha: PENALTY_ALPHA,
@@ -1176,7 +1284,9 @@ async function main() {
       meanAbsScoreDelta: Math.round(meanAbsScoreDelta * 100) / 100,
       maxRankAbsDelta,
       matchedPairFailures: matchedPairFailures.length,
+      acceptanceVerdict: acceptanceGates.verdict,
     },
+    acceptanceGates,
     baselineComparison,
     cohortSummary,
     matchedPairSummary,
