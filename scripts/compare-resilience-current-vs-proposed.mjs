@@ -82,6 +82,25 @@ function spearmanCorrelation(ranksA, ranksB) {
   return 1 - (6 * dSqSum) / (n * (n * n - 1));
 }
 
+// Pearson correlation across two equal-length arrays. Used for
+// variable-influence baseline per acceptance gate 8 in the v3 plan.
+function pearsonCorrelation(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return 0;
+  const meanX = xs.reduce((s, v) => s + v, 0) / n;
+  const meanY = ys.reduce((s, v) => s + v, 0) / n;
+  let num = 0, denomX = 0, denomY = 0;
+  for (let i = 0; i < n; i += 1) {
+    const dx = xs[i] - meanX;
+    const dy = ys[i] - meanY;
+    num += dx * dy;
+    denomX += dx * dx;
+    denomY += dy * dy;
+  }
+  const denom = Math.sqrt(denomX * denomY);
+  return denom > 0 ? num / denom : 0;
+}
+
 async function main() {
   const {
     scoreAllDimensions,
@@ -162,11 +181,19 @@ async function main() {
 
     const pillarById = Object.fromEntries(pillars.map((p) => [p.id, p.score]));
 
+    // Retain per-dimension scores on the row so the variable-influence
+    // pass below can correlate each dimension's cross-country variance
+    // against overall score (acceptance gate 8 baseline).
+    const dimensionScores = Object.fromEntries(
+      dimensions.map((d) => [d.id, d.score]),
+    );
+
     rows.push({
       countryCode,
       currentOverallScore: Math.round(currentOverall * 100) / 100,
       proposedOverallScore: Math.round(proposedOverall * 100) / 100,
       scoreDelta: Math.round((proposedOverall - currentOverall) * 100) / 100,
+      dimensionScores,
       pillars: {
         structuralReadiness: Math.round((pillarById['structural-readiness'] ?? 0) * 100) / 100,
         liveShockExposure: Math.round((pillarById['live-shock-exposure'] ?? 0) * 100) / 100,
@@ -281,6 +308,48 @@ async function main() {
 
   const matchedPairFailures = matchedPairSummary.filter((p) => !p.skipped && !p.passes);
 
+  // Variable-influence baseline (Pearson-derivative approximation of
+  // Sobol indices). For every dimension, measures the cross-country
+  // Pearson correlation between that dimension's score and the current
+  // overall score, scaled by the dimension's nominal domain weight.
+  // The scaled correlation is a proxy for "effective influence" —
+  // acceptance gate 8 requires that after any scorer change the
+  // measured effective-influence agree in sign and rank-order with
+  // the assigned nominal weights. Indicators that nominal-weight as
+  // material but measured-effective-influence as near-zero flag a
+  // construct problem (the indicator carries weight but drives no
+  // variance — classic wealth-proxy or saturated-signal behaviour).
+  //
+  // A full Sobol implementation is a PR 0.5 follow-up; this Pearson-
+  // derivative is sufficient to produce the per-indicator baseline
+  // the plan's acceptance gates require.
+  const currentOverallArr = rows.map((r) => r.currentOverallScore);
+  const variableInfluence = RESILIENCE_DIMENSION_ORDER.map((dimId) => {
+    const domainId = RESILIENCE_DIMENSION_DOMAINS[dimId];
+    const domainWeight = domainWeights[domainId] ?? 0;
+    const dimScoresArr = rows.map((r) => r.dimensionScores[dimId] ?? 0);
+    const correlation = pearsonCorrelation(dimScoresArr, currentOverallArr);
+    // Normalize: the influence is the correlation × domain weight.
+    // We don't know the intra-domain weight here without re-threading
+    // the full indicator registry, so this is a domain-level proxy —
+    // sufficient for the construct-problem detector described above.
+    const influence = correlation * domainWeight;
+    const dimScoreMean = dimScoresArr.reduce((s, v) => s + v, 0) / dimScoresArr.length;
+    const dimScoreVariance = dimScoresArr.reduce((s, v) => s + (v - dimScoreMean) ** 2, 0) / dimScoresArr.length;
+    return {
+      dimensionId: dimId,
+      domainId,
+      nominalDomainWeight: domainWeight,
+      pearsonVsOverall: Math.round(correlation * 10000) / 10000,
+      effectiveInfluence: Math.round(influence * 10000) / 10000,
+      dimScoreMean: Math.round(dimScoreMean * 100) / 100,
+      dimScoreVariance: Math.round(dimScoreVariance * 100) / 100,
+    };
+  });
+  // Sort by effective influence desc so the report shows the biggest
+  // drivers first.
+  variableInfluence.sort((a, b) => Math.abs(b.effectiveInfluence) - Math.abs(a.effectiveInfluence));
+
   const output = {
     comparison: 'currentDomainAggregate_vs_proposedPillarCombined',
     penaltyAlpha: PENALTY_ALPHA,
@@ -297,6 +366,7 @@ async function main() {
     },
     cohortSummary,
     matchedPairSummary,
+    variableInfluence,
     topMoversByRank: topMovers.map((r) => ({
       countryCode: r.countryCode,
       currentRank: r.currentRank,

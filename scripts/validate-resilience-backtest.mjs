@@ -29,6 +29,15 @@ loadEnvFile(import.meta.url);
 // Source of truth: server/worldmonitor/resilience/v1/_shared.ts
 const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v10:';
 
+// Mirror of _shared.ts#currentCacheFormula — must stay in lockstep so
+// the backtest only ingests same-formula cache entries. A mixed-formula
+// cohort would confound the recovery-prediction correlations.
+function currentCacheFormulaLocal() {
+  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+  return combine && v2 ? 'pc' : 'd6';
+}
+
 const MIN_SCORED_COUNTRIES = 5;
 
 let _scoreAllDimensions = null;
@@ -188,12 +197,27 @@ function pearsonCorrelation(xs, ys) {
 async function fetchScoresForCountries(url, token, countryCodes) {
   const commands = countryCodes.map((cc) => ['GET', `${RESILIENCE_SCORE_CACHE_PREFIX}${cc}`]);
   const results = await redisPipeline(url, token, commands);
+  const current = currentCacheFormulaLocal();
+  let staleFormulaSkipped = 0;
 
   const scores = new Map();
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = results[i]?.result;
     if (typeof raw !== 'string') continue;
-    try { scores.set(countryCodes[i], JSON.parse(raw)); } catch { /* skip */ }
+    try {
+      const parsed = JSON.parse(raw);
+      // Cross-formula gate: only ingest same-formula entries. A
+      // mixed-formula cohort would produce a meaningless correlation
+      // between baseline resilience and post-shock recovery.
+      if (parsed?._formula !== current) {
+        staleFormulaSkipped++;
+        continue;
+      }
+      scores.set(countryCodes[i], parsed);
+    } catch { /* skip */ }
+  }
+  if (staleFormulaSkipped > 0) {
+    console.warn(`[validate-resilience-backtest] skipped ${staleFormulaSkipped} stale-formula entries (current=${current})`);
   }
   return scores;
 }

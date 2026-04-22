@@ -24,7 +24,7 @@ import { lazyFetchBilateralHs4 } from './_bilateral-hs4-lazy';
 import { ROUTE_IMPACT_KEY } from '../../../_shared/cache-keys';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../_shared/bypass-corridors';
-import { RESILIENCE_SCORE_CACHE_PREFIX } from '../../resilience/v1/_shared';
+import { RESILIENCE_SCORE_CACHE_PREFIX, getCurrentCacheFormula } from '../../resilience/v1/_shared';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 
 const CACHE_TTL_SECONDS = 86400; // 24h
@@ -129,10 +129,20 @@ function emptyResponse(_req: GetRouteImpactRequest, comtradeSource: string): Get
 async function readResilienceScore(iso2: string): Promise<number> {
   try {
     const raw = await getCachedJson(`${RESILIENCE_SCORE_CACHE_PREFIX}${iso2}`, true);
-    if (raw && typeof raw === 'object' && 'overallScore' in (raw as object)) {
-      return (raw as { overallScore: number }).overallScore;
+    if (!raw || typeof raw !== 'object' || !('overallScore' in (raw as object))) {
+      return 0;
     }
-    return 0;
+    // Cross-formula gate: score cache entries written under a different
+    // formula than the current one are stale and must not be served
+    // downstream. Returning 0 here mirrors the not-found case — the
+    // caller (computeImpact) treats 0 as "no resilience signal" and
+    // renders the lane without a resilience modifier. A fresh
+    // per-country rescoring is triggered naturally on the next call
+    // to the resilience handler, so the staleness is self-healing.
+    const tag = (raw as { _formula?: unknown })._formula;
+    const current = getCurrentCacheFormula();
+    if (tag !== current) return 0;
+    return (raw as { overallScore: number }).overallScore;
   } catch {
     return 0;
   }

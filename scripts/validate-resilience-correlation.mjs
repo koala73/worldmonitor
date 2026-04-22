@@ -5,6 +5,17 @@ import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 // Source of truth: server/worldmonitor/resilience/v1/_shared.ts → RESILIENCE_SCORE_CACHE_PREFIX
 const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v10:';
 
+// Mirror of server/worldmonitor/resilience/v1/_shared.ts#currentCacheFormula.
+// Must stay in lockstep with the server-side definition so this script
+// skips cross-formula cache entries for the same reasons the server
+// does — correlations benchmarked against a mixed-formula cohort of
+// d6 + pc entries would be meaningless.
+function currentCacheFormulaLocal() {
+  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+  return combine && v2 ? 'pc' : 'd6';
+}
+
 const REFERENCE_INDICES = {
   ndgain: {
     NO: 0.76, IS: 0.72, NZ: 0.71, DK: 0.74, SE: 0.73, FI: 0.72, CH: 0.73, AU: 0.70,
@@ -79,6 +90,8 @@ function spearmanRho(x, y) {
 async function fetchWorldMonitorScores(url, token, countryCodes) {
   const commands = countryCodes.map((c) => ['GET', `${RESILIENCE_SCORE_CACHE_PREFIX}${c}`]);
   const results = await redisPipeline(url, token, commands);
+  const current = currentCacheFormulaLocal();
+  const skipped = { staleFormula: 0, noOverallScore: 0, malformed: 0 };
 
   const scores = new Map();
   for (let i = 0; i < countryCodes.length; i++) {
@@ -86,10 +99,27 @@ async function fetchWorldMonitorScores(url, token, countryCodes) {
     if (typeof raw !== 'string') continue;
     try {
       const parsed = JSON.parse(raw);
+      // Cross-formula gate: the benchmark/validation scripts run off
+      // live cache entries. A mixed-formula cohort (some countries
+      // scored under d6, others under pc because their cache entries
+      // landed on either side of a flag flip) would produce a
+      // meaningless Spearman. Skip stale-formula entries so the
+      // correlation runs only against same-formula peers.
+      if (parsed?._formula !== current) {
+        skipped.staleFormula++;
+        continue;
+      }
       if (typeof parsed?.overallScore === 'number' && parsed.overallScore > 0) {
         scores.set(countryCodes[i], parsed.overallScore);
+      } else {
+        skipped.noOverallScore++;
       }
-    } catch { /* skip */ }
+    } catch {
+      skipped.malformed++;
+    }
+  }
+  if (skipped.staleFormula > 0) {
+    console.warn(`[validate-resilience-correlation] skipped ${skipped.staleFormula} stale-formula entries (current=${current})`);
   }
   return scores;
 }

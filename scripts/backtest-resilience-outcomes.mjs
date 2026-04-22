@@ -28,6 +28,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const VALIDATION_DIR = join(__dirname, '..', 'docs', 'methodology', 'country-resilience-index', 'validation');
 
 const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v10:';
+
+// Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; see
+// the same comment in scripts/validate-resilience-correlation.mjs for
+// the rationale.
+function currentCacheFormulaLocal() {
+  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+  return combine && v2 ? 'pc' : 'd6';
+}
 const BACKTEST_RESULT_KEY = 'resilience:backtest:outcomes:v1';
 const BACKTEST_TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -214,6 +223,8 @@ async function fetchAllResilienceScores(url, token) {
   const commands = ALL_COUNTRIES.map((cc) => ['GET', `${RESILIENCE_SCORE_CACHE_PREFIX}${cc}`]);
   const batchSize = 50;
   const scores = new Map();
+  const current = currentCacheFormulaLocal();
+  let staleFormulaSkipped = 0;
 
   for (let i = 0; i < commands.length; i += batchSize) {
     const batch = commands.slice(i, i + batchSize);
@@ -225,6 +236,12 @@ async function fetchAllResilienceScores(url, token) {
       if (typeof raw !== 'string') continue;
       try {
         const parsed = JSON.parse(raw);
+        // Cross-formula gate: mixed-formula cohorts would confound
+        // the AUC for recovery-prediction models.
+        if (parsed?._formula !== current) {
+          staleFormulaSkipped++;
+          continue;
+        }
         if (parsed?.overallScore != null) {
           scores.set(batchCodes[j], parsed.overallScore);
         }
@@ -232,6 +249,9 @@ async function fetchAllResilienceScores(url, token) {
     }
   }
 
+  if (staleFormulaSkipped > 0) {
+    console.warn(`[backtest-resilience-outcomes] skipped ${staleFormulaSkipped} stale-formula score entries (current=${current})`);
+  }
   return scores;
 }
 

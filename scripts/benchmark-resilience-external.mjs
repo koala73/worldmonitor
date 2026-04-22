@@ -363,6 +363,15 @@ function median(arr) {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+// Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; a
+// mixed-formula benchmark would produce a meaningless Spearman / Pearson
+// against INFORM / HDI / WRI reference indices.
+function currentCacheFormulaLocal() {
+  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+  return combine && v2 ? 'pc' : 'd6';
+}
+
 async function readWmScoresFromRedis() {
   const { url, token } = getRedisCredentials();
   const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v10')}`, {
@@ -379,8 +388,18 @@ async function readWmScoresFromRedis() {
     return new Map();
   }
   const parsed = JSON.parse(rankingData.result);
+  // Cross-formula gate: the ranking payload carries a `_formula` tag
+  // written by get-resilience-ranking.ts#stampRankingCacheTag. If the
+  // tag disagrees with the current formula (because the flag just
+  // flipped and the ranking cron hasn't rebuilt yet), reject the
+  // ranking rather than benchmarking against a stale-formula cohort.
+  const current = currentCacheFormulaLocal();
+  if (parsed && typeof parsed === 'object' && parsed._formula !== current) {
+    console.warn(`[benchmark] Ranking _formula=${parsed._formula ?? 'undefined'} does not match current=${current} — skipping (stale-formula cache entry)`);
+    return new Map();
+  }
   // The ranking cache stores a GetResilienceRankingResponse object
-  // with { items, greyedOut }, not a bare array.
+  // with { items, greyedOut, _formula }, not a bare array.
   const ranking = Array.isArray(parsed) ? parsed : (parsed?.items ?? []);
   const scores = new Map();
   for (const item of ranking) {
@@ -388,7 +407,7 @@ async function readWmScoresFromRedis() {
       scores.set(item.countryCode, item.overallScore);
     }
   }
-  console.log(`[benchmark] Read ${scores.size} WM resilience scores from Redis`);
+  console.log(`[benchmark] Read ${scores.size} WM resilience scores from Redis (formula=${current})`);
   return scores;
 }
 
