@@ -283,7 +283,8 @@ const EXTRACTION_RULES = {
   importedFossilDependence: { type: 'bulk-v1-country-value', key: 'resilience:fossil-electricity-share:v1' },
   lowCarbonGenerationShare: { type: 'bulk-v1-country-value', key: 'resilience:low-carbon-generation:v1' },
   powerLossesPct: { type: 'bulk-v1-country-value', key: 'resilience:power-losses:v1' },
-  reserveMarginPct: { type: 'bulk-v1-country-value', key: 'resilience:reserve-margin:v1' },
+  // reserveMarginPct deferred per plan §3.1 — no seeder, no registry
+  // entry. Add here when the IEA electricity-balance seeder lands.
 
   // ── governanceInstitutional (all 6 WGI sub-pillars) ─────────────────
   wgiVoiceAccountability: { type: 'static-wgi', code: 'VA.EST' },

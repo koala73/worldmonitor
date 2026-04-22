@@ -506,21 +506,15 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     coverage: 188,
     license: 'open-data',
   },
-  {
-    id: 'reserveMarginPct',
-    dimension: 'energy',
-    description: 'Generation reserve margin (IEA electricity balance). Supply-side headroom. Coverage is sparse outside OECD+G20; imputed where unobserved.',
-    direction: 'higherBetter',
-    goalposts: { worst: 5, best: 25 },
-    weight: 0.1,
-    sourceKey: 'resilience:reserve-margin:v1',
-    scope: 'curated',
-    cadence: 'annual',
-    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    tier: 'experimental',
-    coverage: 60,
-    license: 'non-commercial',
-  },
+  // reserveMarginPct is DEFERRED per plan §3.1 open-question: IEA
+  // electricity-balance data is sparse outside OECD+G20 and the
+  // indicator will likely ship as tier='unmonitored' with weight 0.05
+  // if it lands at all. Registering the indicator before a seeder
+  // exists would orphan its sourceKey in the seed-meta coverage
+  // test. The v2 scorer still READS from resilience:reserve-margin:v1
+  // (key reserved in _dimension-scorers.ts) so the scorer shape
+  // stays stable for the commit that provides data. Add the registry
+  // entry in that follow-up commit.
 
   // ── governanceInstitutional (6 sub-metrics, equal weight) ─────────────────
   {

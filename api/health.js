@@ -188,6 +188,11 @@ const STANDALONE_KEYS = {
   recoveryExternalDebt:     'resilience:recovery:external-debt:v1',
   recoveryImportHhi:        'resilience:recovery:import-hhi:v1',
   recoveryFuelStocks:       'resilience:recovery:fuel-stocks:v1',
+  // PR 1 v2 energy-construct seeds. ON_DEMAND_KEYS until Railway cron
+  // provisions; see below.
+  lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
+  fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
+  powerLosses:              'resilience:power-losses:v1',
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
   goldCbReserves:           'market:gold-cb-reserves:v1',
@@ -379,6 +384,13 @@ const SEED_META = {
   recoveryExternalDebt:    { key: 'seed-meta:resilience:recovery:external-debt',    maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryFuelStocks:      { key: 'seed-meta:resilience:recovery:fuel-stocks',      maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  // PR 1 v2 energy seeds — weekly cron (8d * 1440 = 11520min = 2x interval).
+  // Listed in ON_DEMAND_KEYS below until Railway cron provisions and
+  // the first clean run lands; after that they graduate to the normal
+  // SEED_META staleness check like the recovery seeds above.
+  lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
+  fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
+  powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -401,6 +413,13 @@ const ON_DEMAND_KEYS = new Set([
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
   'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar: stub seeders not yet deployed, keys may be absent
+  // PR 1 v2 energy-construct seeds. TRANSITIONAL: the three seeders
+  // ship with their health registry rows in this PR but Railway cron
+  // is provisioned as a follow-up action. Gated as on-demand until
+  // the first clean run lands; graduate out of this set after ~7 days
+  // of successful production cron runs (verify via
+  // `seed-meta:resilience:{low-carbon-generation,fossil-electricity-share,power-losses}.fetchedAt`).
+  'lowCarbonGeneration', 'fossilElectricityShare', 'powerLosses',
   'displacementPrev', // covered by cascade onto current-year displacement; empty most of the year
   'fxYoy', // TRANSITIONAL (PR #3071): seed-fx-yoy Railway cron deployed manually after merge —
            // gate as on-demand so a deploy-order race or first-cron-run failure doesn't
