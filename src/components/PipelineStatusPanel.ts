@@ -9,15 +9,19 @@ import type {
   PipelineEntry,
   GetPipelineDetailResponse,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { derivePipelinePublicBadge } from '@/shared/pipeline-evidence';
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
 });
 
-// Shape of the raw Redis registry hydrated by bootstrap. Narrowed to
-// ListPipelinesResponse at the seam below.
-interface BootstrapRegistry {
-  pipelines?: Record<string, PipelineEntry>;
+// Shape of the raw Redis registry hydrated by bootstrap. This mirrors
+// scripts/data/pipelines-{gas,oil}.json verbatim — the seeder does NOT
+// transform to wire format. So bootstrap entries are raw objects with
+// no publicBadge field; we derive client-side (same function as server)
+// to match what the RPC will later return on background re-fetch.
+interface RawBootstrapRegistry {
+  pipelines?: Record<string, unknown>;
   classifierVersion?: string;
   updatedAt?: string;
 }
@@ -43,18 +47,102 @@ function capacityLabel(p: PipelineEntry): string {
   return '—';
 }
 
-function badgeChip(badge: string): string {
-  const color = BADGE_COLOR[badge] ?? '#7f8c8d';
-  return `<span class="pp-badge" style="background:${color}">${escapeHtml(badgeLabel(badge))}</span>`;
+function badgeChip(badge: string | undefined): string {
+  const safe = badge && BADGE_COLOR[badge] ? badge : 'disputed';
+  const color = BADGE_COLOR[safe] ?? '#7f8c8d';
+  return `<span class="pp-badge" style="background:${color}">${escapeHtml(badgeLabel(safe))}</span>`;
+}
+
+// Project one raw bootstrap entry into the wire-format PipelineEntry the
+// renderer expects. Defensively coerces every field because Upstash returns
+// `unknown` and the source JSON can drift. Mirrors the server-side
+// projectPipeline() in server/worldmonitor/supply-chain/v1/list-pipelines.ts
+// so pre- and post-RPC renders produce the same badges.
+function projectRawPipeline(raw: unknown): PipelineEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === 'string' ? r.id : '';
+  if (!id) return null;
+
+  const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
+  const num = (v: unknown, d = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+  const latLon = (v: unknown): { lat: number; lon: number } => {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const o = v as Record<string, unknown>;
+      return { lat: num(o.lat), lon: num(o.lon) };
+    }
+    return { lat: 0, lon: 0 };
+  };
+
+  const evRaw = r.evidence as Record<string, unknown> | undefined;
+  const operatorStatement =
+    evRaw && typeof evRaw.operatorStatement === 'object' && evRaw.operatorStatement
+      ? {
+          text: str((evRaw.operatorStatement as Record<string, unknown>).text),
+          url: str((evRaw.operatorStatement as Record<string, unknown>).url),
+          date: str((evRaw.operatorStatement as Record<string, unknown>).date),
+        }
+      : undefined;
+  const sanctionRefs = Array.isArray(evRaw?.sanctionRefs)
+    ? (evRaw.sanctionRefs as unknown[]).map(s => {
+        const o = (s ?? {}) as Record<string, unknown>;
+        return { authority: str(o.authority), listId: str(o.listId), date: str(o.date), url: str(o.url) };
+      })
+    : [];
+
+  const ev = evRaw
+    ? {
+        physicalState: str(evRaw.physicalState, 'unknown'),
+        physicalStateSource: str(evRaw.physicalStateSource, 'operator'),
+        operatorStatement,
+        commercialState: str(evRaw.commercialState, 'unknown'),
+        sanctionRefs,
+        lastEvidenceUpdate: str(evRaw.lastEvidenceUpdate),
+        classifierVersion: str(evRaw.classifierVersion, 'v1'),
+        classifierConfidence: num(evRaw.classifierConfidence, 0),
+      }
+    : undefined;
+
+  // Derive the public badge client-side so bootstrap first-paint matches
+  // what the RPC will return on background refresh. Same deterministic
+  // function; identical inputs produce identical outputs.
+  const publicBadge = derivePipelinePublicBadge(ev);
+
+  return {
+    id,
+    name: str(r.name),
+    operator: str(r.operator),
+    commodityType: str(r.commodityType),
+    fromCountry: str(r.fromCountry),
+    toCountry: str(r.toCountry),
+    transitCountries: Array.isArray(r.transitCountries)
+      ? (r.transitCountries as unknown[]).map(t => str(t))
+      : [],
+    capacityBcmYr: num(r.capacityBcmYr),
+    capacityMbd: num(r.capacityMbd),
+    lengthKm: num(r.lengthKm),
+    inService: num(r.inService),
+    startPoint: latLon(r.startPoint),
+    endPoint: latLon(r.endPoint),
+    waypoints: Array.isArray(r.waypoints) ? (r.waypoints as unknown[]).map(latLon) : [],
+    evidence: ev,
+    publicBadge,
+  };
 }
 
 function buildBootstrapResponse(
-  gas: BootstrapRegistry | undefined,
-  oil: BootstrapRegistry | undefined,
+  gas: RawBootstrapRegistry | undefined,
+  oil: RawBootstrapRegistry | undefined,
 ): ListPipelinesResponse | null {
   const pipelines: PipelineEntry[] = [];
-  if (gas?.pipelines) pipelines.push(...Object.values(gas.pipelines));
-  if (oil?.pipelines) pipelines.push(...Object.values(oil.pipelines));
+  for (const reg of [gas, oil]) {
+    if (!reg?.pipelines) continue;
+    for (const raw of Object.values(reg.pipelines)) {
+      const projected = projectRawPipeline(raw);
+      if (projected) pipelines.push(projected);
+    }
+  }
   if (pipelines.length === 0) return null;
   return {
     pipelines,
@@ -86,8 +174,8 @@ export class PipelineStatusPanel extends Panel {
     try {
       // Bootstrap hydration lane — instant render on first paint from the two
       // registries published by scripts/seed-pipelines-{gas,oil}.mjs.
-      const gas = getHydratedData('pipelinesGas') as BootstrapRegistry | undefined;
-      const oil = getHydratedData('pipelinesOil') as BootstrapRegistry | undefined;
+      const gas = getHydratedData('pipelinesGas') as RawBootstrapRegistry | undefined;
+      const oil = getHydratedData('pipelinesOil') as RawBootstrapRegistry | undefined;
       const hydrated = buildBootstrapResponse(gas, oil);
       if (hydrated) {
         this.data = hydrated;
