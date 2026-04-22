@@ -711,8 +711,19 @@ export function showCheckoutSuccess(
 
   const initial = computeInitialBannerState(isEntitled());
   if (initial === 'active') {
+    // Already entitled at mount (e.g., returned to the page after the
+    // watcher-reload already flipped lock state, or Convex cache hit
+    // before any transition could fire). The 'active' branch previously
+    // sat forever with "Premium activated — reloading…" because:
+    //   - onEntitlementChange listener below only fires on transitions,
+    //     and we're already in steady pro state — no transition to
+    //     observe.
+    //   - No auto-dismiss / timeout existed for the fast-path.
+    // Treat this like a classic confirmation: show active text and
+    // auto-dismiss on the CLASSIC_AUTO_DISMISS_MS window so the user
+    // gets closure instead of a banner that hangs until a hard refresh.
     setBannerText(banner, 'active');
-    // No auto-dismiss: the entitlement watcher's reload navigates away.
+    setTimeout(() => dismissBanner(banner), CLASSIC_AUTO_DISMISS_MS);
     return;
   }
 
