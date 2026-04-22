@@ -401,6 +401,21 @@ Sentry.init({
     // origin. Empty stacks are NOT suppressed because we cannot confirm the error didn't
     // come from our own code (OOM, stack overflow, network failures all commonly arrive
     // without frames even when our code triggered them).
+    // iOS Safari WKWebView throws `UnknownError: Cannot inject key into script value`
+    // at the native bridge when a non-structurally-cloneable value is passed to a
+    // bridge API (history.pushState, IndexedDB, etc.). The throw is native; a first-
+    // party caller is always on the stack, so the generic `!hasFirstParty` gate below
+    // misses it. Scope to excType==='UnknownError' — that type name is WebKit-only and
+    // cannot originate from our TypeScript (WORLDMONITOR-NM).
+    if (excType === 'UnknownError' && /Cannot inject key into script value/.test(msg)) return null;
+    // Convex SDK re-auth race: during a WebSocket reconnect, `BaseConvexClient.
+    // tryToReauthenticate` can read `this.authState.config.fetchToken` while
+    // authState is transitioning out of `authenticated` state. Known Convex
+    // internal; we use the SDK as-is. Gate by the exact function name so we
+    // don't mask a genuine first-party `fetchToken` regression
+    // (WORLDMONITOR-NJ).
+    if (/Cannot read properties of undefined \(reading 'fetchToken'\)/.test(msg)
+        && frames.some(f => /tryToReauthenticate/.test(f.function ?? ''))) return null;
     if (hasAnyStack && !hasFirstParty && (
       /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
       || /Maximum call stack size exceeded/.test(msg)

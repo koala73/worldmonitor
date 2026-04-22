@@ -363,6 +363,52 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'All-maplibre first-party tile fetch failure must still reach Sentry');
   });
 
+  it('suppresses iOS Safari WKWebView "Cannot inject key into script value" regardless of first-party frame', () => {
+    // The native throw always lands in a first-party caller; the existing
+    // !hasFirstParty gate missed it. `UnknownError` type name is WebKit-only
+    // so scoping on excType is safe (WORLDMONITOR-NM).
+    const event = makeEvent('Cannot inject key into script value', 'UnknownError', [
+      { filename: '/assets/panels-Dt68xLlT.js', lineno: 20, function: 'bootstrap' },
+    ]);
+    assert.equal(beforeSend(event), null, 'iOS Safari WKWebView native bridge error should be suppressed');
+  });
+
+  it('does NOT suppress "Cannot inject key into script value" from non-UnknownError exc types', () => {
+    // Guards against a future first-party TypeError happening to share the
+    // message text — the UnknownError type is the only WebKit-native proof.
+    const event = makeEvent('Cannot inject key into script value', 'TypeError', [
+      { filename: '/assets/panels-Dt68xLlT.js', lineno: 20, function: 'bootstrap' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'Non-UnknownError must still reach Sentry');
+  });
+
+  it('suppresses Convex re-auth race on fetchToken (stack has tryToReauthenticate)', () => {
+    // Convex SDK BaseConvexClient.tryToReauthenticate reads authState.config.fetchToken
+    // during WebSocket reconnect when authState.config is still undefined. Known SDK
+    // internal, not actionable in our code (WORLDMONITOR-NJ).
+    const event = makeEvent(
+      "Cannot read properties of undefined (reading 'fetchToken')",
+      'TypeError',
+      [
+        { filename: '/assets/index-DSkSc57y.js', lineno: 2, function: 'ze.tryToReauthenticate' },
+      ],
+    );
+    assert.equal(beforeSend(event), null, 'Convex re-auth race should be suppressed');
+  });
+
+  it('does NOT suppress "reading fetchToken" undefined when no tryToReauthenticate frame is present', () => {
+    // A real first-party regression that happens to read a `.fetchToken` property
+    // must still reach Sentry — only the Convex internal path is suppressed.
+    const event = makeEvent(
+      "Cannot read properties of undefined (reading 'fetchToken')",
+      'TypeError',
+      [
+        { filename: '/assets/panels-DogeMxo_.js', lineno: 25, function: 'MyAuthBridge.load' },
+      ],
+    );
+    assert.ok(beforeSend(event) !== null, 'First-party fetchToken regression must reach Sentry');
+  });
+
   it('does NOT suppress setPointerCapture NotFoundError when no frame context is present', () => {
     // Defensive: if Sentry strips context, we err on the side of surfacing.
     const event = makeEvent(
