@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ListPipelines returns the full oil and/or gas pipeline registry with
+// evidence-based status per asset. Registry is curated (see
+// docs/methodology/pipelines.mdx) and refreshed weekly by
+// scripts/seed-pipelines-{gas,oil}.mjs. Typical consumer: PipelineStatusPanel
+// rendering the DeckGL PathLayer.
+//
+// The public badge is DERIVED from the evidence bundle server-side at
+// read time — callers MUST use `public_badge` for display, not invent
+// their own derivation from `evidence` fields. This keeps the atlas and
+// MCP clients consistent and versioned together.
+message ListPipelinesRequest {
+  // Filter to one commodity. Omit (or pass empty) to receive both.
+  string commodity_type = 1 [(sebuf.http.query) = {name: "commodityType"}];
+}
+
+message ListPipelinesResponse {
+  repeated PipelineEntry pipelines = 1;
+  string fetched_at = 2;
+  string classifier_version = 3;
+  bool upstream_unavailable = 4;
+}
+
+// GetPipelineDetail returns a single pipeline with its full evidence bundle.
+// Evidence surface here is richer than ListPipelinesResponse — the list view
+// is designed for the map layer's compact shape; detail is designed for the
+// click-through drawer.
+message GetPipelineDetailRequest {
+  string pipeline_id = 1 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "pipelineId"}
+  ];
+}
+
+message GetPipelineDetailResponse {
+  PipelineEntry pipeline = 1;
+  // Revision entries from the auto-revision log for this asset. Sorted
+  // newest-first. Empty on first load of a newly-added pipeline.
+  repeated PipelineRevisionEntry revisions = 2;
+  string fetched_at = 3;
+  bool unavailable = 4;
+}
+
+message PipelineEntry {
+  string id = 1;
+  string name = 2;
+  string operator = 3;
+  // Either "gas" or "oil".
+  string commodity_type = 4;
+  string from_country = 5;                 // ISO 3166-1 alpha-2
+  string to_country = 6;                   // ISO 3166-1 alpha-2
+  repeated string transit_countries = 7;
+  double capacity_bcm_yr = 8;              // Gas only; 0 when commodity_type=oil
+  double capacity_mbd = 9;                 // Oil only; 0 when commodity_type=gas
+  int32 length_km = 10;                    // 0 if unknown
+  int32 in_service = 11;                   // Year; 0 if unknown / planned
+  LatLon start_point = 12;
+  LatLon end_point = 13;
+  repeated LatLon waypoints = 14;          // Optional; if empty, renderer draws a straight line
+  PipelineEvidence evidence = 15;
+  // Server-derived public badge. One of:
+  //   "flowing" | "reduced" | "offline" | "disputed"
+  string public_badge = 16;
+}
+
+message LatLon {
+  double lat = 1;
+  double lon = 2;
+}
+
+message PipelineEvidence {
+  // One of: "flowing" | "reduced" | "offline" | "unknown"
+  string physical_state = 1;
+  // One of: "operator" | "regulator" | "press" | "satellite" | "ais-relay"
+  string physical_state_source = 2;
+  OperatorStatement operator_statement = 3;
+  // One of: "under_contract" | "expired" | "suspended" | "unknown"
+  string commercial_state = 4;
+  repeated SanctionRef sanction_refs = 5;
+  string last_evidence_update = 6;         // ISO8601
+  string classifier_version = 7;
+  double classifier_confidence = 8;        // 0..1
+}
+
+message OperatorStatement {
+  string text = 1;
+  string url = 2;
+  string date = 3;                         // ISO8601
+}
+
+message SanctionRef {
+  string authority = 1;                    // "EU" | "US" | "UK" | etc.
+  string list_id = 2;                      // Regulation number / list identifier
+  string date = 3;                         // ISO8601
+  string url = 4;
+}
+
+message PipelineRevisionEntry {
+  string date = 1;                         // ISO8601
+  string field_changed = 2;
+  string previous_value = 3;
+  string new_value = 4;
+  // One of: "classifier" | "source" | "decay" | "override"
+  string trigger = 5;
+  repeated string sources_used = 6;
+  string classifier_version = 7;
+}

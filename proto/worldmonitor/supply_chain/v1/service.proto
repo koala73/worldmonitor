@@ -16,6 +16,7 @@ import "worldmonitor/supply_chain/v1/get_multi_sector_cost_shock.proto";
 import "worldmonitor/supply_chain/v1/get_sector_dependency.proto";
 import "worldmonitor/supply_chain/v1/get_route_explorer_lane.proto";
 import "worldmonitor/supply_chain/v1/get_route_impact.proto";
+import "worldmonitor/supply_chain/v1/list_pipelines.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -86,5 +87,19 @@ service SupplyChainService {
 
   rpc GetRouteImpact(GetRouteImpactRequest) returns (GetRouteImpactResponse) {
     option (sebuf.http.config) = {path: "/get-route-impact", method: HTTP_METHOD_GET};
+  }
+
+  // ListPipelines returns the curated oil & gas pipeline registry for the
+  // Energy Atlas PathLayer. Public badges are DERIVED from evidence bundles
+  // server-side and versioned (classifier_version). Free-tier; see
+  // docs/methodology/pipelines.mdx for data + classifier spec.
+  rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse) {
+    option (sebuf.http.config) = {path: "/list-pipelines", method: HTTP_METHOD_GET};
+  }
+
+  // GetPipelineDetail returns a single pipeline with full evidence bundle
+  // + auto-revision-log entries. Loaded lazily on drawer open.
+  rpc GetPipelineDetail(GetPipelineDetailRequest) returns (GetPipelineDetailResponse) {
+    option (sebuf.http.config) = {path: "/get-pipeline-detail", method: HTTP_METHOD_GET};
   }
 }

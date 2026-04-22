@@ -477,6 +477,77 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-pipelines:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListPipelines
+            description: |-
+                ListPipelines returns the curated oil & gas pipeline registry for the
+                 Energy Atlas PathLayer. Public badges are DERIVED from evidence bundles
+                 server-side and versioned (classifier_version). Free-tier; see
+                 docs/methodology/pipelines.mdx for data + classifier spec.
+            operationId: ListPipelines
+            parameters:
+                - name: commodityType
+                  in: query
+                  description: Filter to one commodity. Omit (or pass empty) to receive both.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListPipelinesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-pipeline-detail:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetPipelineDetail
+            description: |-
+                GetPipelineDetail returns a single pipeline with full evidence bundle
+                 + auto-revision-log entries. Loaded lazily on drawer open.
+            operationId: GetPipelineDetail
+            parameters:
+                - name: pipelineId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetPipelineDetailResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1462,4 +1533,180 @@ components:
                     type: number
                     format: double
                 primaryChokepointId:
+                    type: string
+        ListPipelinesRequest:
+            type: object
+            properties:
+                commodityType:
+                    type: string
+                    description: Filter to one commodity. Omit (or pass empty) to receive both.
+            description: |-
+                ListPipelines returns the full oil and/or gas pipeline registry with
+                 evidence-based status per asset. Registry is curated (see
+                 docs/methodology/pipelines.mdx) and refreshed weekly by
+                 scripts/seed-pipelines-{gas,oil}.mjs. Typical consumer: PipelineStatusPanel
+                 rendering the DeckGL PathLayer.
+
+                 The public badge is DERIVED from the evidence bundle server-side at
+                 read time — callers MUST use `public_badge` for display, not invent
+                 their own derivation from `evidence` fields. This keeps the atlas and
+                 MCP clients consistent and versioned together.
+        ListPipelinesResponse:
+            type: object
+            properties:
+                pipelines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PipelineEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        PipelineEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                operator:
+                    type: string
+                commodityType:
+                    type: string
+                    description: Either "gas" or "oil".
+                fromCountry:
+                    type: string
+                toCountry:
+                    type: string
+                transitCountries:
+                    type: array
+                    items:
+                        type: string
+                capacityBcmYr:
+                    type: number
+                    format: double
+                capacityMbd:
+                    type: number
+                    format: double
+                lengthKm:
+                    type: integer
+                    format: int32
+                inService:
+                    type: integer
+                    format: int32
+                startPoint:
+                    $ref: '#/components/schemas/LatLon'
+                endPoint:
+                    $ref: '#/components/schemas/LatLon'
+                waypoints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LatLon'
+                evidence:
+                    $ref: '#/components/schemas/PipelineEvidence'
+                publicBadge:
+                    type: string
+                    description: |-
+                        Server-derived public badge. One of:
+                           "flowing" | "reduced" | "offline" | "disputed"
+        LatLon:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+        PipelineEvidence:
+            type: object
+            properties:
+                physicalState:
+                    type: string
+                    description: 'One of: "flowing" | "reduced" | "offline" | "unknown"'
+                physicalStateSource:
+                    type: string
+                    description: 'One of: "operator" | "regulator" | "press" | "satellite" | "ais-relay"'
+                operatorStatement:
+                    $ref: '#/components/schemas/OperatorStatement'
+                commercialState:
+                    type: string
+                    description: 'One of: "under_contract" | "expired" | "suspended" | "unknown"'
+                sanctionRefs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SanctionRef'
+                lastEvidenceUpdate:
+                    type: string
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+        OperatorStatement:
+            type: object
+            properties:
+                text:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+        SanctionRef:
+            type: object
+            properties:
+                authority:
+                    type: string
+                listId:
+                    type: string
+                date:
+                    type: string
+                url:
+                    type: string
+        GetPipelineDetailRequest:
+            type: object
+            properties:
+                pipelineId:
+                    type: string
+            required:
+                - pipelineId
+            description: |-
+                GetPipelineDetail returns a single pipeline with its full evidence bundle.
+                 Evidence surface here is richer than ListPipelinesResponse — the list view
+                 is designed for the map layer's compact shape; detail is designed for the
+                 click-through drawer.
+        GetPipelineDetailResponse:
+            type: object
+            properties:
+                pipeline:
+                    $ref: '#/components/schemas/PipelineEntry'
+                revisions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PipelineRevisionEntry'
+                fetchedAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        PipelineRevisionEntry:
+            type: object
+            properties:
+                date:
+                    type: string
+                fieldChanged:
+                    type: string
+                previousValue:
+                    type: string
+                newValue:
+                    type: string
+                trigger:
+                    type: string
+                    description: 'One of: "classifier" | "source" | "decay" | "override"'
+                sourcesUsed:
+                    type: array
+                    items:
+                        type: string
+                classifierVersion:
                     type: string

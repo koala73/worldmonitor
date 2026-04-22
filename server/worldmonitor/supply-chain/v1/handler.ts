@@ -13,6 +13,8 @@ import { getMultiSectorCostShock } from './get-multi-sector-cost-shock';
 import { getSectorDependency } from './get-sector-dependency';
 import { getRouteExplorerLane } from './get-route-explorer-lane';
 import { getRouteImpact } from './get-route-impact';
+import { listPipelines } from './list-pipelines';
+import { getPipelineDetail } from './get-pipeline-detail';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
@@ -28,4 +30,6 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   getSectorDependency,
   getRouteExplorerLane,
   getRouteImpact,
+  listPipelines,
+  getPipelineDetail,
 };

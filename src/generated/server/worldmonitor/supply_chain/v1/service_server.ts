@@ -382,6 +382,86 @@ export interface StrategicProduct {
   primaryChokepointId: string;
 }
 
+export interface ListPipelinesRequest {
+  commodityType: string;
+}
+
+export interface ListPipelinesResponse {
+  pipelines: PipelineEntry[];
+  fetchedAt: string;
+  classifierVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface PipelineEntry {
+  id: string;
+  name: string;
+  operator: string;
+  commodityType: string;
+  fromCountry: string;
+  toCountry: string;
+  transitCountries: string[];
+  capacityBcmYr: number;
+  capacityMbd: number;
+  lengthKm: number;
+  inService: number;
+  startPoint?: LatLon;
+  endPoint?: LatLon;
+  waypoints: LatLon[];
+  evidence?: PipelineEvidence;
+  publicBadge: string;
+}
+
+export interface LatLon {
+  lat: number;
+  lon: number;
+}
+
+export interface PipelineEvidence {
+  physicalState: string;
+  physicalStateSource: string;
+  operatorStatement?: OperatorStatement;
+  commercialState: string;
+  sanctionRefs: SanctionRef[];
+  lastEvidenceUpdate: string;
+  classifierVersion: string;
+  classifierConfidence: number;
+}
+
+export interface OperatorStatement {
+  text: string;
+  url: string;
+  date: string;
+}
+
+export interface SanctionRef {
+  authority: string;
+  listId: string;
+  date: string;
+  url: string;
+}
+
+export interface GetPipelineDetailRequest {
+  pipelineId: string;
+}
+
+export interface GetPipelineDetailResponse {
+  pipeline?: PipelineEntry;
+  revisions: PipelineRevisionEntry[];
+  fetchedAt: string;
+  unavailable: boolean;
+}
+
+export interface PipelineRevisionEntry {
+  date: string;
+  fieldChanged: string;
+  previousValue: string;
+  newValue: string;
+  trigger: string;
+  sourcesUsed: string[];
+  classifierVersion: string;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -446,6 +526,8 @@ export interface SupplyChainServiceHandler {
   getSectorDependency(ctx: ServerContext, req: GetSectorDependencyRequest): Promise<GetSectorDependencyResponse>;
   getRouteExplorerLane(ctx: ServerContext, req: GetRouteExplorerLaneRequest): Promise<GetRouteExplorerLaneResponse>;
   getRouteImpact(ctx: ServerContext, req: GetRouteImpactRequest): Promise<GetRouteImpactResponse>;
+  listPipelines(ctx: ServerContext, req: ListPipelinesRequest): Promise<ListPipelinesResponse>;
+  getPipelineDetail(ctx: ServerContext, req: GetPipelineDetailRequest): Promise<GetPipelineDetailResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -1016,6 +1098,100 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getRouteImpact(ctx, body);
           return new Response(JSON.stringify(result as GetRouteImpactResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/list-pipelines",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListPipelinesRequest = {
+            commodityType: params.get("commodityType") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listPipelines", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listPipelines(ctx, body);
+          return new Response(JSON.stringify(result as ListPipelinesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-pipeline-detail",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetPipelineDetailRequest = {
+            pipelineId: params.get("pipelineId") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getPipelineDetail", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getPipelineDetail(ctx, body);
+          return new Response(JSON.stringify(result as GetPipelineDetailResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
