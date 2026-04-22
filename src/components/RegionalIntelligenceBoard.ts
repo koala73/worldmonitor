@@ -54,11 +54,20 @@ export class RegionalIntelligenceBoard extends Panel {
   /**
    * Tracks the last-seen entitlement so the auth subscription re-fires the
    * RPC only on a false→true transition, not on every unrelated auth state
-   * update (session refresh, unrelated user prefs). The subscription teardown
-   * handle is intentionally discarded — this panel lives for the app's
-   * lifetime and Panel has no destroy hook.
+   * update (session refresh, unrelated user prefs).
    */
   private lastHadPremium = false;
+  /**
+   * Handle for the `subscribeAuthState` listener, so `destroy()` can
+   * unsubscribe. Without this, recreating the panel (e.g. on framework
+   * swap or layout teardown → re-init) would leak listeners that still
+   * hold a reference to the destroyed instance's `this` — every old
+   * subscriber would call `loadCurrent()` / `renderEmpty()` on a stale
+   * DOM tree on every future auth event. Panel.destroy IS called from
+   * panel-layout teardown (panel-layout.ts:293, App.ts:1156); the
+   * previous "Panel has no destroy hook" comment was wrong.
+   */
+  private authUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super({
@@ -99,7 +108,7 @@ export class RegionalIntelligenceBoard extends Panel {
     // session hasn't resolved at panel-construction time would see
     // renderEmpty() and then stay empty forever even after sign-in, because
     // nothing else triggers loadCurrent for the current region.
-    subscribeAuthState(() => {
+    this.authUnsubscribe = subscribeAuthState(() => {
       const hasPremium = hasPremiumAccess();
       if (hasPremium && !this.lastHadPremium) {
         this.lastHadPremium = true;
@@ -120,6 +129,18 @@ export class RegionalIntelligenceBoard extends Panel {
     this.currentRegion = regionId;
     this.selector.value = regionId;
     await this.loadCurrent();
+  }
+
+  override destroy(): void {
+    this.authUnsubscribe?.();
+    this.authUnsubscribe = null;
+    // Invalidate any in-flight loadCurrent: the existing sequence guard
+    // (see `isLatestSequence` checks) drops responses whose sequence no
+    // longer matches `latestSequence`. Bumping it here ensures a pending
+    // getRegionalSnapshot that resolves after destroy doesn't try to
+    // render into a detached DOM tree.
+    this.latestSequence += 1;
+    super.destroy();
   }
 
   private async loadCurrent(): Promise<void> {
