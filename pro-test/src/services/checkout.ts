@@ -138,8 +138,24 @@ async function doCheckout(
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
-
+  // Best-effort visual bridge between Clerk modal close and Dodo
+  // overlay paint. Covers two common sources of blank-screen feel:
+  //   1. Auto-resume after sign-in fires doCheckout synchronously; the
+  //      Clerk modal's close animation leaves a visual void until the
+  //      Dodo overlay paints, which requires a lazy SDK import and an
+  //      /api/create-checkout round-trip.
+  //   2. Direct click from an already-signed-in user still incurs the
+  //      SDK lazy-load + network latency before the overlay appears.
+  // Unmount is best-effort — the Dodo SDK exposes no "overlay visible"
+  // event, so `DodoPayments.Checkout.open()` returning is the closest
+  // proxy we have. A 10s safety fallback shows a toast instead of
+  // leaving the interstitial wedged if the SDK or network hangs.
   try {
+    // Mount INSIDE try so any future code added before `mountCheckout-
+    // Interstitial()` throwing can't leak the overlay (the previous
+    // layout put the mount above the try, which was brittle to
+    // refactors).
+    mountCheckoutInterstitial();
     const token = await getAuthToken();
     if (!token) {
       console.error('[checkout] No auth token after retry');
@@ -249,7 +265,95 @@ async function doCheckout(
     return false;
   } finally {
     checkoutInFlight = false;
+    unmountCheckoutInterstitial();
   }
+}
+
+const INTERSTITIAL_ID = 'wm-checkout-interstitial';
+const INTERSTITIAL_SAFETY_MS = 10_000;
+let interstitialSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+
+function mountCheckoutInterstitial(): void {
+  if (document.getElementById(INTERSTITIAL_ID)) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = INTERSTITIAL_ID;
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+  Object.assign(overlay.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '99990',
+    background: 'rgba(10, 10, 10, 0.82)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '16px',
+    color: '#e8e8e8',
+    fontSize: '14px',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace",
+    transition: 'opacity 0.2s ease',
+    opacity: '0',
+  });
+  overlay.innerHTML = `
+    <div style="width:36px;height:36px;border:3px solid rgba(68,255,136,0.2);border-top-color:#44ff88;border-radius:50%;animation:wm-checkout-spin 0.8s linear infinite;"></div>
+    <div>Opening checkout…</div>
+    <style>@keyframes wm-checkout-spin { to { transform: rotate(360deg); } }</style>
+  `;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+
+  interstitialSafetyTimer = setTimeout(() => {
+    unmountCheckoutInterstitial();
+    showCheckoutLoadingToast();
+  }, INTERSTITIAL_SAFETY_MS);
+}
+
+function unmountCheckoutInterstitial(): void {
+  if (interstitialSafetyTimer) {
+    clearTimeout(interstitialSafetyTimer);
+    interstitialSafetyTimer = null;
+  }
+  // If the 10s safety timer already fired, the overlay was swapped for
+  // a "Still loading…" toast. Once the checkout settles (success,
+  // failure, or user-close), that toast is stale — actively remove it
+  // so the user isn't staring at a false in-progress indicator after
+  // Dodo has already opened or the request has errored.
+  const toast = document.getElementById('wm-checkout-loading-toast');
+  if (toast) toast.remove();
+
+  const overlay = document.getElementById(INTERSTITIAL_ID);
+  if (!overlay) return;
+  overlay.style.opacity = '0';
+  setTimeout(() => overlay.remove(), 200);
+}
+
+function showCheckoutLoadingToast(): void {
+  const id = 'wm-checkout-loading-toast';
+  if (document.getElementById(id)) return;
+  const toast = document.createElement('div');
+  toast.id = id;
+  toast.setAttribute('role', 'alert');
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '99995',
+    background: 'rgba(20, 20, 20, 0.95)',
+    color: '#e8e8e8',
+    padding: '10px 18px',
+    borderRadius: '6px',
+    border: '1px solid #2a2a2a',
+    fontSize: '13px',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace",
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+  });
+  toast.textContent = 'Still loading, please wait…';
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 5_000);
 }
 
 async function getAuthToken(): Promise<string | null> {
