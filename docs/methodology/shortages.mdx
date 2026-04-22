@@ -1,0 +1,85 @@
+---
+title: "Fuel Shortage Alert Methodology"
+description: "How World Monitor classifies and publishes fuel shortage alerts (jet, petrol, diesel, heating oil) using an automated evidence-threshold pipeline."
+---
+
+## What we track
+
+Four product categories, two severity tiers, global coverage:
+
+| Product   | `watch` tier | `confirmed` tier |
+|-----------|--------------|------------------|
+| Jet fuel  | ✓ | ✓ |
+| Petrol    | ✓ | ✓ |
+| Diesel    | ✓ | ✓ |
+| Heating oil | ✓ | ✓ (winter only) |
+
+Price spikes alone are not shortage signals. We key on physical supply constraints: flight cancellations, station closures, formal rationing, import cuts.
+
+## Fully automated — no human review queue
+
+WorldMonitor runs every classifier fully automated. Shortage tiers are no exception. Quality comes from **tiered evidence thresholds + an LLM second-pass sanity check + auto-decay of stale rows**, not from a human reviewer.
+
+### Watch tier (automated)
+
+One credible source:
+
+- A regulator announcement (EPRA, NMDPRA, OGRA, CAA UK, DGCA), **or**
+- An airline / airport operational bulletin, **or**
+- A national wire story with ≥ 1 corroborating observation
+
+### Confirmed tier (automated, stricter bar)
+
+The `watch → confirmed` promotion requires:
+
+- **Two distinct outlets + one regulator**, or
+- **Three distinct outlets**, or
+- **One regulator + a direct operational-impact signal** (flight cancellation in an airline feed, formal rationing announcement, station-closure list)
+
+AND — the LLM second-pass must agree with the promotion. If the LLM disagrees, the row stays at `watch` until the threshold is exceeded with additional sources.
+
+### Auto-decay
+
+- `confirmed` without new corroborating signal in 7 days → auto-demotes to `watch`
+- `watch` without new signal in 14 days → auto-removed
+
+Stale shortages never persist silently. Every demotion writes to the public revision log.
+
+## Evidence transparency
+
+Every public shortage row exposes its `evidenceSources[]` inline — you can read the sources the classifier used. This is what makes WorldMonitor's shortage registry defensible without an editorial queue.
+
+For any `confirmed` row, the panel surfaces:
+
+- Outlet / regulator names
+- Source dates
+- Classifier version + confidence
+
+Agents (MCP clients) receive the same structured evidence via `listActiveFuelShortages` (landing in Release 2).
+
+## Root-cause attribution
+
+Every shortage row carries a cause chain, not just a severity:
+
+- `chokepoint` — physical supply constraint traced to a chokepoint status change
+- `pipeline_disruption` — specific pipeline in the registry is offline
+- `sanction` — new sanctions authority list triggered an import cut
+- `upstream_refinery` — refinery turnaround or outage
+- `logistics` — port / rail / truck bottleneck
+- `policy` — deliberate government restriction
+
+## Break-glass overrides
+
+A `energy_asset_overrides` table exists for the rare case where a reader emails a demonstrably wrong classification. Overrides are admin-only writes and are NOT on the critical path — the default flow is fully automated. Every override writes to the revision log.
+
+## Known limits
+
+- Non-English regulator feeds surface with some lag; we're adding them incrementally.
+- "Watch" tier in a politically-noisy country can churn — that's intentional; readers can filter to `confirmed` only if they want the stricter view.
+- Heating-oil shortages are seasonal and under-reported in wire coverage; winter months have higher signal.
+
+## Corrections
+
+Public revision log at [`/corrections`](/corrections). Every tier change ships
+with its trigger (`classifier` / `source` / `decay` / `override`) and the
+sources used. Corrections land on the next classifier pass (max 6 hours).

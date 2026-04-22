@@ -87,6 +87,10 @@
               "ai-intelligence",
               "country-instability-index",
               "methodology/country-resilience-index",
+              "methodology/chokepoints",
+              "methodology/pipelines",
+              "methodology/storage",
+              "methodology/shortages",
               "geographic-convergence",
               "strategic-risk",
               "algorithms"

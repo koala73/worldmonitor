@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { fetchChokepointStatus } from '@/services/supply-chain';
+import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
 // Ordering for the atlas strip: highest-volume chokepoints first.
@@ -108,15 +109,22 @@ export class ChokepointStripPanel extends Panel {
         </div>`;
     }).join('');
 
-    const footer = this.data.fetchedAt
-      ? `<div class="cp-strip-footer">Updated ${escapeHtml(new Date(this.data.fetchedAt).toLocaleString())} · Portwatch DWT + AIS</div>`
-      : '';
+    const nAis = ordered.reduce((sum, cp) => sum + (cp.aisDisruptions ?? 0), 0);
+    const footer = attributionFooterHtml({
+      sourceType: 'ais',
+      method: 'Portwatch DWT + AIS calibration',
+      sampleSize: nAis || undefined,
+      sampleLabel: 'AIS disruption signals',
+      updatedAt: this.data.fetchedAt,
+      creditName: 'EIA World Oil Transit Chokepoints',
+    });
 
     this.setContent(`
       <div class="cp-strip-wrap">
         <div class="cp-strip">${chips}</div>
         ${footer}
       </div>
+      ${ATTRIBUTION_FOOTER_CSS}
       <style>
         .cp-strip-wrap { padding: 4px 0; }
         .cp-strip { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -135,7 +143,6 @@ export class ChokepointStripPanel extends Panel {
         .cp-chip-name { font-weight: 600; color: var(--text, #eee); display: flex; align-items: center; gap: 4px; }
         .cp-chip-warn { background:#e74c3c;color:#fff;border-radius:9px;padding:0 5px;font-size:9px;font-weight:700; }
         .cp-chip-flow { color: var(--text-dim, #888); font-size: 10px; }
-        .cp-strip-footer { margin-top: 8px; font-size: 9px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
       </style>
     `);
   }

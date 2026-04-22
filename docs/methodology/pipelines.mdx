@@ -1,0 +1,70 @@
+---
+title: "Pipeline Registry Methodology"
+description: "How World Monitor curates and attributes status for the world's oil and gas pipelines shown on the Energy Atlas."
+---
+
+## Scope
+
+Release 1 launches with a curated registry of critical oil & gas pipelines, not a claim of global completeness:
+
+- ~75 critical gas pipelines (Nord Stream 1/2, TurkStream, Yamal, Brotherhood/Soyuz, Power of Siberia, Qatar–UAE Dolphin, Medgaz, Langeled, Europipe I/II, Franpipe, etc.)
+- ~75 critical oil pipelines (Druzhba N/S, CPC, ESPO, BTC, Trans-Alaska, Habshan–Fujairah, Keystone, Kirkuk–Ceyhan, Baku–Supsa, etc.)
+
+Curation bias is toward pipelines with active geopolitical exposure, not theoretical global completeness. Expansion is a post-launch decision.
+
+## Data sources
+
+- **[Global Energy Monitor](https://globalenergymonitor.org) — Oil & Gas Pipeline Tracker** (CC-BY 4.0). Primary source for geometry, capacity, operator, country list.
+- **ENTSOG Transparency Platform** (public API) — EU gas pipeline nominations and sendout.
+- **Operator technical documentation** — route schematics, capacity plates, force-majeure notices.
+- **Regulator filings** — per-jurisdiction filings where applicable.
+
+Every pipeline carries at least one primary source reference.
+
+## Evidence schema (not conclusions)
+
+We do not publish a bare `sanctions_blocked` or `political_cutoff` label. Public badges are derived server-side from an evidence bundle per pipeline:
+
+```ts
+{
+  physicalState: 'flowing' | 'reduced' | 'offline' | 'unknown',
+  physicalStateSource: 'ais-relay' | 'operator' | 'satellite' | 'press',
+  operatorStatement: { text, url, date } | null,
+  commercialState: 'under_contract' | 'expired' | 'suspended' | 'unknown',
+  sanctionRefs: [{ authority, listId, date, url }, ...],
+  lastEvidenceUpdate: ISO8601,
+  classifierVersion: 'vN',
+  classifierConfidence: 0..1
+}
+```
+
+The visible `publicBadge` (`flowing | reduced | offline | disputed`) is a deterministic function with freshness weights. When a pipeline reopens or a sanctions list changes, the evidence fields update and the badge re-derives automatically. We ship the evidence; the badge is a convenience view of it.
+
+## How public badges move
+
+Any transition that flips a public status writes an append-only entry to the public revision log at [`/corrections`](/corrections). Each entry records:
+
+- `{ assetId, fieldChanged, previousValue, newValue, trigger, sourcesUsed[], classifierVersion }`
+
+No human review queue gates the transition — quality comes from the tiered evidence threshold + an LLM second-pass sanity check + auto-decay of stale evidence. The classifier's version string ships with every public badge so scientific reproducibility is possible.
+
+## Freshness SLA
+
+- Pipeline registry fields (geometry, operator, capacity): 35 days
+- Pipeline public badge (derived state): 24 hours; auto-decay to `stale` at 48 h and excluded from "active disruptions" counts after 7 days
+
+## Known limits
+
+- Geometry is simplified (not engineering-grade routing). Do not use for field operations.
+- Flow direction is advertised but not always calibrated to metered reality; relative state (flowing / reduced / offline) is more reliable than absolute mb/d.
+- Sanction references are evidence, not legal interpretation. Every `sanctionRefs` entry cites the authority; the interpretation of whether a sanction "blocks" flow is made explicit in the evidence bundle, never implicit in a badge label.
+
+## Attribution
+
+Pipeline-registry data derived from [Global Energy Monitor](https://globalenergymonitor.org) (CC-BY 4.0), with additional operator and regulator material incorporated under fair-use for news reporting.
+
+## Corrections
+
+See the public revision log at [`/corrections`](/corrections). Spot a wrong
+status? Open a GitHub issue or email the address in the atlas footer — we
+update on the next classifier pass, typically within 6 hours.
