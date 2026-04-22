@@ -227,53 +227,36 @@ describe('resilience dimension scorers', () => {
       `coverage should be ~0.45 (only sanctions loaded), got ${score.coverage}`);
   });
 
-  it('scoreCurrencyExternal: non-BIS country with no IMF data falls back to curated_list_absent (score 50)', async () => {
-    // BIS loaded, IMF macro also null — no inflation proxy available → curated_list_absent imputation.
-    const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
-      return null; // economic:imf:macro:v1 also null
-    };
-    const score = await scoreCurrencyExternal('MZ', reader); // Mozambique not in BIS
-    assert.equal(score.score, 50, 'curated_list_absent must impute score=50 when IMF also missing');
+  it('scoreCurrencyExternal: no IMF and no reserves → curated_list_absent imputation (score 50)', async () => {
+    // PR 3 §3.5: BIS retired. Without IMF inflation or WB reserves,
+    // scorer falls through to IMPUTE.bisEer (kept for snapshot continuity).
+    const reader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreCurrencyExternal('MZ', reader);
+    assert.equal(score.score, 50, 'curated_list_absent must impute score=50 when IMF+reserves missing');
     assert.equal(score.coverage, 0.3, 'curated_list_absent certaintyCoverage=0.3');
   });
 
-  it('scoreCurrencyExternal: non-BIS country with IMF inflation uses inflation proxy (coverage 0.45)', async () => {
-    // BIS loaded, IMF macro has inflation → use inflation proxy instead of curated_list_absent.
+  it('scoreCurrencyExternal: IMF inflation only (no reserves) uses inflation proxy (coverage 0.55)', async () => {
+    // PR 3 §3.5: BIS retired. IMF inflation alone gives inflation-only path (0.55).
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
       if (key === 'economic:imf:macro:v2') return { countries: { MZ: { inflationPct: 8, currentAccountPct: -5, year: 2024 } } };
       return null;
     };
     const score = await scoreCurrencyExternal('MZ', reader);
     // normalizeLowerBetter(min(8,50), 0, 50) = (50-8)/50*100 = 84
     assert.equal(score.score, 84, 'low-inflation country gets high currency score via IMF proxy');
-    assert.equal(score.coverage, 0.45, 'IMF inflation proxy coverage=0.45 (better than pure imputation)');
+    assert.equal(score.coverage, 0.55, 'IMF inflation only (no reserves) → coverage 0.55');
   });
 
-  it('scoreCurrencyExternal: non-BIS country with hyperinflation is capped at score 0', async () => {
+  it('scoreCurrencyExternal: hyperinflation is capped at score 0 (inflation-only path)', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
       if (key === 'economic:imf:macro:v2') return { countries: { ZW: { inflationPct: 250, currentAccountPct: -8, year: 2024 } } };
       return null;
     };
     const score = await scoreCurrencyExternal('ZW', reader);
     // min(250, 50) = 50 → normalizeLowerBetter(50, 0, 50) = 0
     assert.equal(score.score, 0, 'hyperinflation ≥50% is capped → score 0');
-    assert.equal(score.coverage, 0.45, 'hyperinflation still gets IMF proxy coverage=0.45');
-  });
-
-  it('scoreCurrencyExternal: BIS outage + IMF inflation present → uses proxy with coverage=0.35', async () => {
-    // BIS seed is completely down (null), but IMF macro is available.
-    // The inflation proxy should still be applied — BIS outage must not block the IMF path.
-    const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'economic:imf:macro:v2') return { countries: { MZ: { inflationPct: 6, currentAccountPct: -2, year: 2024 } } };
-      return null; // economic:bis:eer:v1 null = BIS seed outage
-    };
-    const score = await scoreCurrencyExternal('MZ', reader);
-    // normalizeLowerBetter(min(6,50), 0, 50) = (50-6)/50*100 = 88
-    assert.equal(score.score, 88, 'BIS outage must not block IMF inflation proxy');
-    assert.equal(score.coverage, 0.35, 'BIS outage reduces proxy coverage to 0.35 (primary source unavailable)');
+    assert.equal(score.coverage, 0.55, 'hyperinflation still gets IMF inflation-only coverage 0.55');
   });
 
   it('scoreCurrencyExternal: both BIS and IMF null → curated_list_absent imputation (T1.7)', async () => {
@@ -308,9 +291,9 @@ describe('resilience dimension scorers', () => {
     assert.ok(withReserves.coverage > 0, 'coverage must be positive with BIS + reserves');
   });
 
-  it('scoreCurrencyExternal: non-BIS country with good reserves scores higher than with bad reserves', async () => {
+  it('scoreCurrencyExternal: good reserves score higher than bad reserves (inflation+reserves path)', async () => {
+    // PR 3 §3.5: BIS retired. inflation+reserves path → coverage 0.85.
     const makeReader = (months: number) => async (key: string): Promise<unknown | null> => {
-      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
       if (key === 'economic:imf:macro:v2') return { countries: { MZ: { inflationPct: 15, currentAccountPct: -5, year: 2024 } } };
       if (key === 'resilience:static:MZ') return { fxReservesMonths: { source: 'worldbank', months, year: 2023 } };
       return null;
@@ -319,7 +302,7 @@ describe('resilience dimension scorers', () => {
     const badRes = await scoreCurrencyExternal('MZ', makeReader(1.5));
     assert.ok(goodRes.score > badRes.score, `good reserves (${goodRes.score}) must score higher than bad (${badRes.score})`);
     assert.equal(goodRes.coverage, badRes.coverage, 'coverage should be the same when both have inflation+reserves');
-    assert.equal(goodRes.coverage, 0.55, 'non-BIS with inflation+reserves gets coverage=0.55');
+    assert.equal(goodRes.coverage, 0.85, 'inflation+reserves path gets coverage=0.85');
   });
 
   it('scoreMacroFiscal: IMF current account loaded, surplus country scores higher than deficit', async () => {

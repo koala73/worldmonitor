@@ -108,11 +108,49 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     license: 'non-commercial',
   },
 
-  // ── currencyExternal (3 sub-metrics, plus IMF inflation fallback for non-BIS) ─
+  // ── currencyExternal ─────────────────────────────────────────────────────
+  // PR 3 §3.5 point 3 rebalanced the dimension's core scoring:
+  //   - BIS-dependent signals (fxVolatility, fxDeviation) moved to
+  //     tier='experimental'. BIS EER covers ~64 economies, which is too
+  //     narrow for a world-ranking Core signal. They remain in the registry
+  //     for drill-down / enrichment panels but scoreCurrencyExternal no
+  //     longer reads them.
+  //   - Core scoring is now: inflationStability (IMF CPI, ~185 countries)
+  //     at weight 0.6, fxReservesAdequacy (WB FI.RES.TOTL.MO, ~188 countries)
+  //     at weight 0.4. Both are global-coverage, so every country gets the
+  //     same construct regardless of BIS membership.
+  {
+    id: 'inflationStability',
+    dimension: 'currencyExternal',
+    description: 'IMF CPI inflation (lower is better). Global-coverage primary signal for currency stability. Core input to scoreCurrencyExternal under PR 3 §3.5. A future PR may upgrade this to a 5-year inflation-volatility computation once the seeder tracks the series; headline inflation is a reasonable first-cut for stability ranking.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 50, best: 0 },
+    weight: 0.6,
+    sourceKey: 'economic:imf:macro:v2',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 185,
+    license: 'open-data',
+  },
+  {
+    id: 'fxReservesAdequacy',
+    dimension: 'currencyExternal',
+    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO). Global-coverage core signal for currency stability; paired with inflationStability in scoreCurrencyExternal after PR 3 §3.5 rebalancing.',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 12 },
+    weight: 0.4,
+    sourceKey: 'resilience:static:*',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
+  },
   {
     id: 'fxVolatility',
     dimension: 'currencyExternal',
-    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12)). Fallback chain when BIS absent: (1) IMF inflation + WB reserves proxy, (2) IMF inflation alone, (3) reserves alone, (4) conservative imputation.',
+    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12)). Enrichment-only for the ~64 BIS-tracked economies after PR 3 §3.5 — NOT read by scoreCurrencyExternal. Available via drill-down panels only.',
     direction: 'lowerBetter',
     goalposts: { worst: 50, best: 0 },
     weight: 0.6,
@@ -120,17 +158,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'monthly',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    // BIS REER is curated (~60 countries). Demoted to Enrichment by the
-    // Phase 2 A4 coverage gate; the IMF inflation + WB reserves fallback
-    // chain still feeds the Core fxReservesAdequacy signal globally.
-    tier: 'enrichment',
+    tier: 'experimental',
     coverage: 60,
     license: 'non-commercial',
   },
   {
     id: 'fxDeviation',
     dimension: 'currencyExternal',
-    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index). Fallback chain when BIS absent: (1) IMF inflation + WB reserves proxy, (2) IMF inflation alone, (3) reserves alone, (4) conservative imputation.',
+    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index). Enrichment-only for the ~64 BIS-tracked economies after PR 3 §3.5 — NOT read by scoreCurrencyExternal. Available via drill-down panels only.',
     direction: 'lowerBetter',
     goalposts: { worst: 35, best: 0 },
     weight: 0.25,
@@ -138,24 +173,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'monthly',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    // BIS REER curated source, same coverage limitation as fxVolatility.
-    tier: 'enrichment',
+    tier: 'experimental',
     coverage: 60,
     license: 'non-commercial',
-  },
-  {
-    id: 'fxReservesAdequacy',
-    dimension: 'currencyExternal',
-    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO). Supplementary metric for BIS countries (weight 0.15), primary metric alongside IMF inflation for non-BIS countries (~160 countries).',
-    direction: 'higherBetter',
-    goalposts: { worst: 1, best: 12 },
-    weight: 0.15,
-    sourceKey: 'resilience:static:*',
-    scope: 'global',
-    cadence: 'annual',
-    tier: 'core',
-    coverage: 188,
-    license: 'open-data',
   },
 
   // ── tradeSanctions (4 sub-metrics) ────────────────────────────────────────

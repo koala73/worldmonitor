@@ -96,8 +96,11 @@ describe('resilience scorer contracts', () => {
       return [domainId, average];
     }));
 
+    // PR 3 §3.5: economic 68.33 → 66.33 after currencyExternal was rebuilt
+    // on IMF inflation + WB reserves (no BIS). US's currencyExternal score
+    // shifts slightly vs the old BIS-composite path.
     assert.deepEqual(domainAverages, {
-      economic: 68.33,
+      economic: 66.33,
       infrastructure: 79,
       energy: 80,
       'social-governance': 61.75,
@@ -132,14 +135,15 @@ describe('resilience scorer contracts', () => {
 
     // PR 3 §3.5: 62.64 → 63.63 after fuelStockDays retirement (coverage=0
     // drops it from baselineDims coverage-weighted mean; the remaining
-    // baseline+mixed dims re-weight slightly higher).
+    // baseline+mixed dims re-weight slightly higher). currencyExternal
+    // rebuild is stress-only, so baselineScore is unaffected by that.
     assert.equal(baselineScore, 63.63);
-    // PR 3 §3.5: 65.84 → 67.85 after fuelStockDays retirement (same
-    // coverage-weighted re-weighting as baselineScore, applied to
-    // stress+mixed dims). stressFactor updates in lockstep:
-    //   1 - 67.85/100 = 0.3215, clamped to 0.5.
-    assert.equal(stressScore, 67.85);
-    assert.equal(stressFactor, 0.3215);
+    // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
+    // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
+    // shifts and US stress score moves). stressFactor updates in lockstep:
+    //   1 - 67.21/100 = 0.3279, clamped to 0.5.
+    assert.equal(stressScore, 67.21);
+    assert.equal(stressFactor, 0.3279);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
@@ -151,10 +155,10 @@ describe('resilience scorer contracts', () => {
         return round(cwMean) * getResilienceDomainWeight(domainId);
       }).reduce((sum, v) => sum + v, 0),
     );
-    // PR 3 §3.5: 65.57 → 65.82 after fuelStockDays was retired (coverage=0
-    // drops the dimension from the recovery domain's coverage-weighted
-    // mean; remaining recovery dimensions pick up the share).
-    assert.equal(overallScore, 65.82);
+    // PR 3 §3.5: 65.57 → 65.82 (fuelStockDays retirement) → 65.52
+    // (currencyExternal rebuild shifts economic domain coverage-weighted
+    // score slightly, pulling overall down by 0.30).
+    assert.equal(overallScore, 65.52);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -225,7 +229,9 @@ describe('resilience scorer contracts', () => {
     );
 
     assert.ok(expected > 0, 'overall should be positive');
-    assert.equal(expected, 65.82, 'overallScore should match sum(domainScore * domainWeight); 65.57 → 65.82 after PR 3 §3.5 fuelStockDays retirement');
+    // PR 3 §3.5: 65.82 (after fuelStockDays retirement) → 65.52 after
+    // currencyExternal rebuilt on IMF inflation + WB reserves (no BIS).
+    assert.equal(expected, 65.52, 'overallScore should match sum(domainScore * domainWeight); 65.82 → 65.52 after PR 3 §3.5 currencyExternal rebuild');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

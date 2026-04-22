@@ -242,9 +242,13 @@ const EXTRACTION_RULES = {
   householdDebtService: { type: 'not-implemented', reason: 'BIS DSR curated series needs per-country quarterly DSR selection matching the scorer window' },
 
   // ── currencyExternal ────────────────────────────────────────────────
+  // PR 3 §3.5: BIS retired from core; inflationStability (IMF macro) is
+  // the new primary with reserves secondary. fxVolatility/fxDeviation
+  // stay experimental-only (BIS monthly-change math not exported).
+  inflationStability: { type: 'imf-macro-country-field', field: 'inflationPct' },
+  fxReservesAdequacy: { type: 'static-path', path: ['fxReservesMonths', 'months'] },
   fxVolatility: { type: 'not-implemented', reason: 'BIS REER annualized volatility needs scorer monthly-change std-dev; helper not exported' },
   fxDeviation: { type: 'not-implemented', reason: 'BIS REER absolute deviation from 100 needs scorer latest-value selection; helper not exported' },
-  fxReservesAdequacy: { type: 'static-path', path: ['fxReservesMonths', 'months'] },
 
   // ── tradeSanctions ──────────────────────────────────────────────────
   sanctionCount: { type: 'sanctions-count' },
