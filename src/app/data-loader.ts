@@ -471,8 +471,8 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
       }
 
-      // Trade policy data (FULL and FINANCE only)
-      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity') {
+      // Trade policy + supply-chain data (FULL, FINANCE, COMMODITY, ENERGY variants use supply-chain surface)
+      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
         if (shouldLoad('trade-policy')) {
           tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
         }
@@ -1621,7 +1621,9 @@ export class DataLoaderManager implements AppModule {
         frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
         newsCategories: SITE_VARIANT === 'commodity'
           ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
-          : undefined,
+          : SITE_VARIANT === 'energy'
+            ? ['energy', 'energy-markets', 'oil-gas-news', 'pipeline-news', 'lng-news']
+            : undefined,
       });
 
       if (this.dailyBriefGeneration !== gen) return;

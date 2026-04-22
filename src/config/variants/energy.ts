@@ -1,7 +1,8 @@
 // Energy variant - energy.worldmonitor.app
-// Purpose-built energy atlas: chokepoints, pipelines, storage, fuel shortages,
-// disruption timeline. Reuses existing energy panels; adds pipeline/storage/shortage
-// registries in subsequent PRs on feat/energy-atlas-release-1.
+// NOTE: This file is a structured canonical description for reference. The runtime
+// wiring lives in src/config/panels.ts (ENERGY_PANELS, ENERGY_MAP_LAYERS,
+// ENERGY_MOBILE_MAP_LAYERS) — modify both if the variant shape changes. Parallel
+// to commodity.ts / finance.ts / tech.ts / happy.ts / full.ts orphans.
 // See docs/internal/global-energy-flow-parity-and-surpass.md for the full plan.
 import type { PanelConfig, MapLayers } from '@/types';
 import type { VariantConfig } from './base';

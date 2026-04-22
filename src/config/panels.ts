@@ -901,6 +901,155 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 };
 
 // ============================================
+// ENERGY variant — energy.worldmonitor.app
+// Pipelines, storage, chokepoints, fuel shortages, disruption timeline.
+// See docs/internal/global-energy-flow-parity-and-surpass.md (not committed).
+// ============================================
+const ENERGY_PANELS: Record<string, PanelConfig> = {
+  map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
+  'live-news': { name: 'Energy Headlines', enabled: true, priority: 1 },
+  insights: { name: 'AI Energy Insights', enabled: true, priority: 1 },
+  // Energy complex — existing panels reused at launch
+  'energy-complex': { name: 'Oil & Gas Complex', enabled: true, priority: 1 },
+  'oil-inventories': { name: 'Oil & Gas Inventories', enabled: true, priority: 1 },
+  hormuz: { name: 'Strait of Hormuz Tracker', enabled: true, priority: 1 },
+  'energy-crisis': { name: 'Energy Crisis Policy Tracker', enabled: true, priority: 1 },
+  'fuel-prices': { name: 'Retail Fuel Prices', enabled: true, priority: 1 },
+  'renewable-energy': { name: 'Renewable Energy', enabled: true, priority: 2 },
+  // Markets relevant to energy
+  commodities: { name: 'Energy Commodities (WTI, Brent, NatGas)', enabled: true, priority: 1 },
+  energy: { name: 'Energy Markets News', enabled: true, priority: 1 },
+  'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
+  // Supply-chain & chokepoint context
+  'supply-chain': { name: 'Chokepoints & Routes', enabled: true, priority: 1 },
+  'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 2 },
+  // Gulf / OPEC
+  'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 2 },
+  'gcc-investments': { name: 'GCC Energy Investments', enabled: true, priority: 2 },
+  // Climate — demand driver (HDD / CDD future use)
+  climate: { name: 'Climate & Weather Impact', enabled: true, priority: 2 },
+  // Tracking
+  monitors: { name: 'My Monitors', enabled: true, priority: 3 },
+  'world-clock': { name: 'World Clock', enabled: true, priority: 3 },
+  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+};
+
+const ENERGY_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
+  satellites: false,
+  conflicts: false,
+  bases: false,
+  cables: false,
+  pipelines: true,        // First-class energy asset (Week 2 registry lands here)
+  hotspots: false,
+  ais: true,              // Tanker positions at chokepoints
+  nuclear: false,
+  irradiators: false,
+  sanctions: true,        // Energy sanctions flows
+  weather: true,
+  economic: false,
+  waterways: true,        // Strategic chokepoints (Hormuz, Suez, Bab el-Mandeb, etc.)
+  outages: true,          // Power / energy system status
+  cyberThreats: false,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: true,          // Earthquakes near energy infrastructure
+  spaceports: false,
+  minerals: true,         // Critical-minerals + energy-transition overlap
+  fires: true,            // Fires near energy infrastructure / oilfields
+  // Data source layers
+  ucdpEvents: false,
+  displacement: false,
+  climate: true,
+  // Tech layers (disabled)
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  // Finance layers (energy hubs = commodity hubs for our purposes)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: true,
+  gulfInvestments: false,
+  // Happy variant layers (disabled)
+  positiveEvents: false,
+  kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
+  tradeRoutes: true,
+  iranAttacks: false,
+  ciiChoropleth: false,
+  resilienceScore: false,
+  dayNight: false,
+  // Commodity layers — selected (energy-relevant subset)
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: true,   // LNG import/export + crude terminals
+  webcams: false,
+  diseaseOutbreaks: false,
+};
+
+const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
+  satellites: false,
+  conflicts: false,
+  bases: false,
+  cables: false,
+  pipelines: true,
+  hotspots: false,
+  ais: false,
+  nuclear: false,
+  irradiators: false,
+  sanctions: false,
+  weather: false,
+  economic: false,
+  waterways: true,
+  outages: false,
+  cyberThreats: false,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: true,
+  spaceports: false,
+  minerals: false,
+  fires: false,
+  ucdpEvents: false,
+  displacement: false,
+  climate: false,
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
+  positiveEvents: false,
+  kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
+  tradeRoutes: false,
+  iranAttacks: false,
+  ciiChoropleth: false,
+  resilienceScore: false,
+  dayNight: false,
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: true,
+  webcams: false,
+  diseaseOutbreaks: false,
+};
+
+// ============================================
 // UNIFIED PANEL REGISTRY
 // ============================================
 
@@ -908,6 +1057,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,
   ...COMMODITY_PANELS,
+  ...ENERGY_PANELS,
   ...TECH_PANELS,
   ...FINANCE_PANELS,
   ...FULL_PANELS,
@@ -919,6 +1069,7 @@ export const VARIANT_DEFAULTS: Record<string, string[]> = {
   tech:      Object.keys(TECH_PANELS),
   finance:   Object.keys(FINANCE_PANELS),
   commodity: Object.keys(COMMODITY_PANELS),
+  energy:    Object.keys(ENERGY_PANELS),
   happy:     Object.keys(HAPPY_PANELS),
 };
 
@@ -941,6 +1092,11 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
     map:         { name: 'Commodity Map' },
     'live-news': { name: 'Commodity Headlines' },
     insights:    { name: 'AI Commodity Insights' },
+  },
+  energy: {
+    map:         { name: 'Energy Atlas Map' },
+    'live-news': { name: 'Energy Headlines' },
+    insights:    { name: 'AI Energy Insights' },
   },
   happy: {
     map:         { name: 'World Map' },
@@ -988,25 +1144,29 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = Object.fromEntries(
   )
 );
 
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
-  ? HAPPY_MAP_LAYERS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_MAP_LAYERS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_MAP_LAYERS 
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+  ? HAPPY_MAP_LAYERS
+  : SITE_VARIANT === 'tech'
+    ? TECH_MAP_LAYERS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_MAP_LAYERS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MAP_LAYERS
-        : FULL_MAP_LAYERS;
+        : SITE_VARIANT === 'energy'
+          ? ENERGY_MAP_LAYERS
+          : FULL_MAP_LAYERS;
 
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
-  ? HAPPY_MOBILE_MAP_LAYERS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_MOBILE_MAP_LAYERS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_MOBILE_MAP_LAYERS 
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+  ? HAPPY_MOBILE_MAP_LAYERS
+  : SITE_VARIANT === 'tech'
+    ? TECH_MOBILE_MAP_LAYERS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_MOBILE_MAP_LAYERS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MOBILE_MAP_LAYERS
-        : FULL_MOBILE_MAP_LAYERS;
+        : SITE_VARIANT === 'energy'
+          ? ENERGY_MOBILE_MAP_LAYERS
+          : FULL_MOBILE_MAP_LAYERS;
 
 /** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
 export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
