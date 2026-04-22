@@ -23,13 +23,29 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
 const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 
-// Band anchors from the release-gate tests (tests/resilience-release-gate.test.mts).
-// Countries in the high-anchor set must never drop below 70 in a published
-// snapshot; countries in the low-anchor set must never climb above 45.
+// Band anchors from the release-gate tests (tests/resilience-release-gate.test.mts
+// and tests/resilience-pillar-combine-activation.test.mts).
+// Floors/ceilings depend on the methodology formula the snapshot was
+// captured under — the pillar-combined form is non-compensatory so its
+// scale is compressed; the 6-domain legacy form is compensatory and
+// runs ~13 points hotter.
 const HIGH_BAND_ANCHORS = new Set(['NO', 'CH', 'DK', 'IS', 'FI', 'SE', 'NZ']);
 const LOW_BAND_ANCHORS = new Set(['YE', 'SO', 'SD', 'CD']);
-const HIGH_BAND_FLOOR = 70;
-const LOW_BAND_CEILING = 45;
+
+const METHODOLOGY_BANDS: Record<string, { highFloor: number; lowCeiling: number }> = {
+  'domain-weighted-6d': { highFloor: 70, lowCeiling: 45 },
+  'pillar-combined-penalized-v1': { highFloor: 60, lowCeiling: 40 },
+};
+
+function resolveBands(methodologyFormula: string | undefined): { highFloor: number; lowCeiling: number } {
+  // Unknown / unspecified formulas fall through to the 6-domain bands
+  // (the production default at the time of writing). If a future
+  // snapshot uses a new formula id, adding an entry to
+  // METHODOLOGY_BANDS above is the one-line fix; until then we assume
+  // the legacy bands rather than silently under-validating.
+  return METHODOLOGY_BANDS[methodologyFormula ?? 'domain-weighted-6d']
+    ?? METHODOLOGY_BANDS['domain-weighted-6d']!;
+}
 
 interface PublishedRow {
   rank: number;
@@ -53,6 +69,7 @@ interface SnapshotPublished {
   capturedAt: string;
   commitSha: string;
   schemaVersion: string;
+  methodologyFormula?: string;
   methodology: {
     domainCount: number;
     dimensionCount: number;
@@ -82,14 +99,49 @@ interface SnapshotLive {
   greyedOut: Array<{ countryCode: string; overallCoverage: number }>;
 }
 
-type Snapshot = SnapshotPublished | SnapshotLive;
+interface ProjectedRow {
+  rankInSample: number;
+  countryCode: string;
+  countryName: string;
+  proposedOverallScore: number;
+  currentOverallScore: number;
+  scoreDelta: number;
+}
+
+interface SnapshotProjected {
+  capturedAt: string;
+  commitSha: string;
+  schemaVersion: string;
+  methodologyFormula: string;
+  methodology: {
+    domainCount: number;
+    dimensionCount: number;
+    pillarCount: number;
+    greyOutThreshold: number;
+  };
+  sampleSize: number;
+  tables: {
+    topTenInSample: ProjectedRow[];
+    bottomTenInSample: ProjectedRow[];
+    majorEconomiesInSample: ProjectedRow[];
+  };
+  totals: { rankedCountriesInSample: number };
+}
+
+type Snapshot = SnapshotPublished | SnapshotLive | SnapshotProjected;
 
 function isLive(snapshot: Snapshot): snapshot is SnapshotLive {
   return Array.isArray((snapshot as SnapshotLive).items);
 }
 
+function isProjected(snapshot: Snapshot): snapshot is SnapshotProjected {
+  const tables = (snapshot as SnapshotProjected).tables;
+  return !!tables && Array.isArray(tables.topTenInSample);
+}
+
 function isPublished(snapshot: Snapshot): snapshot is SnapshotPublished {
-  return (snapshot as SnapshotPublished).tables != null;
+  const tables = (snapshot as SnapshotPublished).tables;
+  return !!tables && Array.isArray(tables.topTen);
 }
 
 function loadSnapshots(): { filename: string; snapshot: Snapshot }[] {
@@ -99,8 +151,17 @@ function loadSnapshots(): { filename: string; snapshot: Snapshot }[] {
   } catch {
     return [];
   }
+  // Matches three shapes:
+  //   resilience-ranking-YYYY-MM-DD.json
+  //     → published or live capture (the authoritative shape)
+  //   resilience-ranking-<slug>-YYYY-MM-DD.json
+  //     → projected / preview snapshot (e.g. pillar-combined-projected)
+  //       Auto-discovered so the projected artifact does not slip
+  //       through unvalidated. Slug must be hyphenated, start with an
+  //       alpha char, and live before the date.
+  const RANKING_SNAPSHOT_RE = /^resilience-ranking-(?:[a-z][a-z0-9-]*-)?\d{4}-\d{2}-\d{2}\.json$/;
   return entries
-    .filter((name) => /^resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+    .filter((name) => RANKING_SNAPSHOT_RE.test(name))
     .sort()
     .map((filename) => ({
       filename,
@@ -205,22 +266,24 @@ describe('resilience-ranking snapshots', () => {
           assert.ok(unique.size >= Math.max(snapshot.tables.topTen.length, snapshot.tables.bottomTen.length));
         });
 
-        it('high-band anchors appearing in topTen stay above the release-gate floor', () => {
+        it('high-band anchors appearing in topTen stay above the release-gate floor (methodology-aware)', () => {
+          const { highFloor } = resolveBands(snapshot.methodologyFormula);
           for (const row of snapshot.tables.topTen) {
             if (!HIGH_BAND_ANCHORS.has(row.countryCode)) continue;
             assert.ok(
-              row.overallScore >= HIGH_BAND_FLOOR,
-              `${row.countryCode} (${row.countryName}) is a high-band anchor and must stay ≥${HIGH_BAND_FLOOR}, got ${row.overallScore}`,
+              row.overallScore >= highFloor,
+              `${row.countryCode} (${row.countryName}) is a high-band anchor and must stay ≥${highFloor} under "${snapshot.methodologyFormula ?? 'domain-weighted-6d'}", got ${row.overallScore}`,
             );
           }
         });
 
-        it('low-band anchors appearing in bottomTen stay below the release-gate ceiling', () => {
+        it('low-band anchors appearing in bottomTen stay below the release-gate ceiling (methodology-aware)', () => {
+          const { lowCeiling } = resolveBands(snapshot.methodologyFormula);
           for (const row of snapshot.tables.bottomTen) {
             if (!LOW_BAND_ANCHORS.has(row.countryCode)) continue;
             assert.ok(
-              row.overallScore <= LOW_BAND_CEILING,
-              `${row.countryCode} (${row.countryName}) is a low-band anchor and must stay ≤${LOW_BAND_CEILING}, got ${row.overallScore}`,
+              row.overallScore <= lowCeiling,
+              `${row.countryCode} (${row.countryName}) is a low-band anchor and must stay ≤${lowCeiling} under "${snapshot.methodologyFormula ?? 'domain-weighted-6d'}", got ${row.overallScore}`,
             );
           }
         });
@@ -293,21 +356,128 @@ describe('resilience-ranking snapshots', () => {
           assert.equal(snapshot.totals.greyedOutCount, snapshot.greyedOut.length);
         });
 
-        it('live band anchors sit in their expected bands (structural sanity)', () => {
+        it('live band anchors sit in their expected bands (methodology-aware structural sanity)', () => {
+          const { highFloor, lowCeiling } = resolveBands((snapshot as SnapshotLive & { methodologyFormula?: string }).methodologyFormula);
           for (const item of snapshot.items) {
             if (HIGH_BAND_ANCHORS.has(item.countryCode)) {
               assert.ok(
-                item.overallScore >= HIGH_BAND_FLOOR,
-                `${item.countryCode} is a high-band anchor but scored ${item.overallScore} (< ${HIGH_BAND_FLOOR}) at rank ${item.rank}`,
+                item.overallScore >= highFloor,
+                `${item.countryCode} is a high-band anchor but scored ${item.overallScore} (< ${highFloor}) at rank ${item.rank}`,
               );
             }
             if (LOW_BAND_ANCHORS.has(item.countryCode)) {
               assert.ok(
-                item.overallScore <= LOW_BAND_CEILING,
-                `${item.countryCode} is a low-band anchor but scored ${item.overallScore} (> ${LOW_BAND_CEILING}) at rank ${item.rank}`,
+                item.overallScore <= lowCeiling,
+                `${item.countryCode} is a low-band anchor but scored ${item.overallScore} (> ${lowCeiling}) at rank ${item.rank}`,
               );
             }
           }
+        });
+      }
+
+      if (isProjected(snapshot)) {
+        // Projected snapshots are preview artifacts built from a
+        // sample (e.g. the 52-country sensitivity capture) against the
+        // proposed formula. They carry in-sample ranks, not global
+        // ranks, and use different table keys (topTenInSample rather
+        // than topTen) to avoid being mistaken for authoritative
+        // captures. Still validated here so the artifact does not ship
+        // with broken shape or out-of-band scores.
+
+        it('projected snapshot declares a known methodologyFormula', () => {
+          const known = new Set(['domain-weighted-6d', 'pillar-combined-penalized-v1']);
+          assert.ok(
+            known.has(snapshot.methodologyFormula),
+            `projected snapshot methodologyFormula="${snapshot.methodologyFormula}" must be one of [${[...known].join(', ')}]; add it to METHODOLOGY_BANDS at the top of this file when introducing a new formula id`,
+          );
+        });
+
+        it('projected topTenInSample ranks are 1..10, scores descend, every score in (0, 100)', () => {
+          const rows = snapshot.tables.topTenInSample;
+          assert.equal(rows.length, 10);
+          for (let i = 0; i < rows.length; i++) {
+            assert.equal(rows[i]!.rankInSample, i + 1, `topTenInSample[${i}].rankInSample should be ${i + 1}, got ${rows[i]!.rankInSample}`);
+            assert.ok(
+              rows[i]!.proposedOverallScore > 0 && rows[i]!.proposedOverallScore < 100,
+              `${rows[i]!.countryCode} proposedOverallScore=${rows[i]!.proposedOverallScore} must be in (0, 100)`,
+            );
+            if (i > 0) {
+              assert.ok(
+                rows[i]!.proposedOverallScore <= rows[i - 1]!.proposedOverallScore,
+                `topTenInSample must be monotonically non-increasing at in-sample rank ${rows[i]!.rankInSample}: ${rows[i - 1]!.proposedOverallScore} → ${rows[i]!.proposedOverallScore}`,
+              );
+            }
+          }
+        });
+
+        it('projected bottomTenInSample ranks are contiguous and descend in score', () => {
+          const rows = snapshot.tables.bottomTenInSample;
+          assert.equal(rows.length, 10);
+          for (let i = 1; i < rows.length; i++) {
+            assert.equal(
+              rows[i]!.rankInSample,
+              rows[i - 1]!.rankInSample + 1,
+              `bottomTenInSample ranks must be contiguous: ${rows[i - 1]!.rankInSample} then ${rows[i]!.rankInSample}`,
+            );
+            assert.ok(
+              rows[i]!.proposedOverallScore <= rows[i - 1]!.proposedOverallScore,
+              `bottomTenInSample scores must not increase with worsening rank: ${rows[i - 1]!.countryCode}=${rows[i - 1]!.proposedOverallScore} then ${rows[i]!.countryCode}=${rows[i]!.proposedOverallScore}`,
+            );
+          }
+          assert.equal(
+            rows[rows.length - 1]!.rankInSample,
+            snapshot.totals.rankedCountriesInSample,
+            `bottomTenInSample.last.rankInSample=${rows[rows.length - 1]!.rankInSample} must equal totals.rankedCountriesInSample=${snapshot.totals.rankedCountriesInSample}`,
+          );
+        });
+
+        it('projected scoreDelta equals proposed − current to within rounding', () => {
+          const all = [
+            ...snapshot.tables.topTenInSample,
+            ...snapshot.tables.bottomTenInSample,
+            ...snapshot.tables.majorEconomiesInSample,
+          ];
+          for (const row of all) {
+            const expected = Math.round((row.proposedOverallScore - row.currentOverallScore) * 100) / 100;
+            assert.ok(
+              Math.abs(row.scoreDelta - expected) < 0.02,
+              `${row.countryCode} scoreDelta=${row.scoreDelta} must equal proposed − current = ${expected}`,
+            );
+          }
+        });
+
+        it('projected band anchors sit in their expected bands under the declared methodology', () => {
+          const { highFloor, lowCeiling } = resolveBands(snapshot.methodologyFormula);
+          for (const row of snapshot.tables.topTenInSample) {
+            if (!HIGH_BAND_ANCHORS.has(row.countryCode)) continue;
+            assert.ok(
+              row.proposedOverallScore >= highFloor,
+              `${row.countryCode} is a high-band anchor in topTenInSample but scored ${row.proposedOverallScore} (< ${highFloor}) under "${snapshot.methodologyFormula}"`,
+            );
+          }
+          for (const row of snapshot.tables.bottomTenInSample) {
+            if (!LOW_BAND_ANCHORS.has(row.countryCode)) continue;
+            assert.ok(
+              row.proposedOverallScore <= lowCeiling,
+              `${row.countryCode} is a low-band anchor in bottomTenInSample but scored ${row.proposedOverallScore} (> ${lowCeiling}) under "${snapshot.methodologyFormula}"`,
+            );
+          }
+        });
+
+        it('projected snapshot does not confuse itself with a live-universe capture', () => {
+          // Two structural guards so a projected snapshot cannot
+          // silently slip into the authoritative slot: it must NOT
+          // carry the full-universe top/bottom keys, and its file
+          // slug must identify it as a preview.
+          assert.equal(
+            (snapshot as unknown as SnapshotPublished).tables?.topTen,
+            undefined,
+            'projected snapshots must not also expose tables.topTen (reserved for authoritative captures)',
+          );
+          assert.ok(
+            filename !== `resilience-ranking-${snapshot.capturedAt}.json`,
+            `projected snapshots must use a slug-prefixed filename, got ${filename}`,
+          );
         });
       }
     });

@@ -5,11 +5,16 @@ description: "Real-time resilience scoring for ~220 countries across 6 domains a
 
 The WorldMonitor Country Resilience Index (CRI) scores every country in the world on a 0-100 scale, combining long-run structural capacity with current operational stress to produce an actionable resilience metric. Rather than relying on static country risk ratings, the CRI updates every 6 hours from official and authoritative sources and exposes full provenance, coverage, and imputation context so analysts can see exactly *why* a score moved and how much of it is real data versus imputed.
 
-This document is the v1.0 reference for the live product. A planned v2.0 upgrade will rebuild the top-level shape into three pillars (structural readiness, live shock exposure, recovery capacity) with a partly non-compensatory aggregation, and ship an annual Reference Edition at citation quality. That work is tracked in a separate reference-grade upgrade plan and is not yet shipped; everything documented below describes the **current shipping behavior**.
+This document describes the **currently shipping** behavior of the index. The versioning has two independent axes:
+
+- **Response shape**: `schemaVersion: "2.0"` is the current default. Every response carries a real coverage-weighted `pillars[]` array regrouping the six domains into structural readiness / live shock exposure / recovery capacity. The legacy `schemaVersion: "1.0"` shape (pillars empty) remains available via the `RESILIENCE_SCHEMA_V2_ENABLED=false` env flag for one release cycle.
+- **Scoring formula**: the top-level `overall_score` is the six-domain weighted aggregate (the v1 compensatory formula). The v2 non-compensatory pillar-combined formula with a min-pillar penalty is defined, validated (see Pillar-combined score activation below), and wired behind the `RESILIENCE_PILLAR_COMBINE_ENABLED` flag, but its default is `false` — activation is an explicit operator action rather than a code deploy. The annual Reference Edition at citation quality is a separate Phase 3 deliverable and is not yet shipped.
+
+Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 19 dimensions × 3 pillars, and the 6-domain weighted `overall_score`. When an operator flips the pillar-combined flag on, the subsection on [Pillar-combined score activation](#pillar-combined-score-activation-flag-gated-default-off) documents what changes.
 
 ## In the dashboard
 
-CRI is surfaced across three places in the product, all driven from the same v1.0 score described below:
+CRI is surfaced across three places in the product, all driven from the same currently-shipping score:
 
 - **Resilience widget** — a standalone panel (component: `src/components/ResilienceWidget.ts`) that ranks countries by resilience score with filter and search affordances. Reach it from Cmd+K by typing *resilience*.
 - **Country Deep-Dive** — inside the per-country drill-down panel, CRI appears alongside CII (Country Instability Index) as a structural complement to the short-horizon stress signal. CII and CRI are intentionally **not interchangeable**: CII answers "how much stress is on this country right now?"; CRI answers "how well-positioned is this country to absorb and recover from shocks?"
@@ -384,9 +389,9 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v9:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v9` | JSON | 6 hours | `buildResilienceRanking`, only when all countries are scored | `getResilienceRanking` handler |
-| `resilience:history:v4:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
+| `resilience:score:v10:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v10` | JSON | 6 hours | `buildResilienceRanking`, only when all countries are scored | `getResilienceRanking` handler |
+| `resilience:history:v5:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
 | `resilience:intervals:v1:{countryCode}` | JSON | 6 hours | `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) |
 | `seed-meta:resilience:static` | JSON | 2 hours | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
 | `resilience:static:{countryCode}` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | scorer for all baseline signals (WGI, WHO, FAO, GPI, RSF, and so on) |
@@ -394,7 +399,7 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 ### dataVersion semantics
 
-The `dataVersion` field on every `GetResilienceScoreResponse` is the ISO date of the `fetchedAt` timestamp stored in `seed-meta:resilience:static`. It reflects the most recent successful run of the Railway static-seed job; the widget renders it in the footer as `Data YYYY-MM-DD`.
+The `dataVersion` field on every `GetResilienceScoreResponse` is the ISO date of the `fetchedAt` timestamp stored in `seed-meta:resilience:static`. It reflects the most recent successful run of the Railway static-seed job; the widget renders it in the footer as `Seed date YYYY-MM-DD`. The label is narrower than "Data" because live inputs (conflict events, sanctions, prices) can refresh at their own cadence after the static bundle runs — per-dimension freshness is surfaced separately via the freshness badge in the confidence grid.
 
 ### Reproducing a score by hand
 
@@ -452,7 +457,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 
 ### v2.0 (April 2026) — Phase 2 structural rebuild
 
-**Current published version.** Phase 2 of the reference-grade upgrade plan (`docs/internal/country-resilience-upgrade-plan.md`). Rebuilds the top-level shape from five flat domains into three pillars (structural readiness, live shock exposure, recovery capacity) with a partly non-compensatory aggregation, adds a recovery capacity pillar with six new dimensions, and ships a full validation suite (cross-index benchmark, outcome backtest, sensitivity analysis).
+**Current published version** (shape). Phase 2 of the reference-grade upgrade plan (`docs/internal/country-resilience-upgrade-plan.md`). The response-shape rebuild is live: every response now carries a real coverage-weighted `pillars[]` array regrouping the six domains into structural readiness, live shock exposure, and recovery capacity. The recovery domain adds six new dimensions, and a full validation suite (cross-index benchmark, outcome backtest, sensitivity analysis) gates the activation. The top-level `overall_score` is still computed by the six-domain weighted aggregate (v1 formula); the partly non-compensatory pillar-combined `overall_score` is defined, tested, and flag-gated (see [Pillar-combined score activation](#pillar-combined-score-activation-flag-gated-default-off)), but `RESILIENCE_PILLAR_COMBINE_ENABLED` defaults to `false` so operators can schedule the flip with a proper migration message.
 
 - **T2.1** (#2977): Three-pillar schema added to proto and OpenAPI. `schemaVersion: "2.0"` feature flag introduced with backward-compatible `"1.0"` fallback path for one release cycle. Response now carries a `pillars` array alongside existing `domains`.
 - **T2.2a** (#2979): Signal tiering registry committed. Every indicator tagged Core, Enrichment, or Experimental with per-signal coverage percentage and license audit status. Registry enforced by CI linter.
@@ -492,7 +497,17 @@ The plan's non-compensatory pillar combine is the methodologically stronger form
 
 **Interpretation**: Rank order is strongly preserved on the 52-country sample (Spearman 0.9863 clears the ≥0.90 bar typically required for a rank-stable methodology change). The ranking *shape* — who is top-10, who is bottom-10, Lebanon below South Africa, Norway above the US — does not materially change. However, every country's absolute score drops on average ~11 points because the penalty factor is always ≤ 1, and imbalanced countries with one very weak pillar (Syria, Afghanistan, Venezuela, Russia) drop the most (15-19 points). Balanced top-tier countries (Switzerland, Sweden, Denmark, Iceland, Norway) drop the least (5-7 points). This is the intended behavior: the penalty punishes pillar imbalance, and pillar imbalance is strongly correlated with state fragility.
 
-**What this means for activation**: the rank-stability evidence supports flipping the default — there is no statistical reason to keep the legacy compensatory form. The blocker is messaging, not correctness: publishing "US = 52.65" the day after publishing "US = 65.4" without a v2.0 methodology note would look like a regression instead of a rigor upgrade. Activation is therefore scheduled as a single PR that (a) flips the default behind `RESILIENCE_PILLAR_COMBINE_ENABLED`, (b) re-anchors the release-gate bands (the current 70/35 thresholds map to roughly 60/25 in the pillar-combined scale), (c) publishes a refreshed frozen ranking snapshot, and (d) ships a methodology-change note alongside the widget. Until that PR lands, the published `overall_score` is the 6-domain weighted aggregate documented above.
+**Activation sequence**: the rank-stability evidence supports flipping the default — there is no statistical reason to keep the legacy compensatory form. The blocker is messaging: publishing "US = 54.50" the day after publishing "US = 68.26" without a methodology note would look like a regression instead of a rigor upgrade. The pillar-combine activation PR wires the following so the flip is a single env-var change with no code deploy required:
+
+1. **Feature flag**: `RESILIENCE_PILLAR_COMBINE_ENABLED`, read dynamically from `process.env` per call. Default `false`. Set to `true` in Vercel env + Railway env to activate.
+2. **Cache invalidation**: per-country score cache bumped from `resilience:score:v9:` to `resilience:score:v10:`, ranking cache bumped from `resilience:ranking:v9` to `resilience:ranking:v10`, and score-history bumped from `resilience:history:v4:` to `resilience:history:v5:`. The version bumps are a clean-slate guard; the actual cross-formula isolation is the `_formula` tag written into every cached score / ranking payload and the `:d6` / `:pc` suffix on every history sorted-set member, checked at read time so a flag flip forces a rebuild without waiting for TTLs.
+3. **Methodology-aware level thresholds**: `classifyResilienceLevel` reads `isPillarCombineEnabled()` and switches the high/medium cutoffs from 70/40 (6-domain) to 60/30 (pillar-combined). Without this, scale compression alone would demote FI (75.64 → 68.60) and NZ (76.26 → 67.93) from "high" to "medium" purely because the formula changed, not because anything about the country changed. The re-anchored cutoffs preserve the qualitative label for every country whose old label was correct.
+4. **Re-anchored release-gate bands**: `tests/resilience-pillar-combine-activation.test.mts` pins high-band anchors (NO, CH, DK) at ≥ 60 (vs the 6-domain formula's ≥ 70 floor) and low-band anchors (YE, SO) at ≤ 40 (vs ≤ 45). The snapshot test reads `methodologyFormula` from each snapshot and applies the matching bands. The live sample numbers confirm the bands hold with margin: NO proposed ≈ 71.59 (≥ 60 by 11 points), YE ≈ 27.36 (≤ 40 by 13 points).
+5. **Projected snapshot**: `docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` carries the top/bottom/major-economies tables at the proposed formula so reviewers can preview the post-activation ranking before flipping the flag. Once the flag is on in production, run `scripts/freeze-resilience-ranking.mjs` to capture the authoritative full-universe snapshot.
+
+Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the `resilience:score:v10:*`, `resilience:ranking:v10`, and `resilience:history:v5:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
+
+Until operators set the flag, `overall_score` remains the 6-domain weighted aggregate documented above.
 
 ### Scorecard (v2.0 self-assessment)
 
