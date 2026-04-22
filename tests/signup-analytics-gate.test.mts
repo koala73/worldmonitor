@@ -1,15 +1,15 @@
 import { describe, it, beforeEach, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Stub window.sessionStorage before importing the module under test —
-// the analytics module's in-memory helpers touch sessionStorage during
-// their execution path, and node:test runs without a DOM.
+// Stub window.localStorage before importing the module under test —
+// the signup dedupe uses localStorage (cross-tab scope) and node:test
+// runs without a DOM.
 const _store = new Map<string, string>();
 before(() => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
-      sessionStorage: {
+      localStorage: {
         getItem: (k: string) => _store.get(k) ?? null,
         setItem: (k: string, v: string) => { _store.set(k, v); },
         removeItem: (k: string) => { _store.delete(k); },

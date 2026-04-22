@@ -212,18 +212,29 @@ export const FRESH_SIGNUP_WINDOW_MS = 60_000;
 const FRESH_SIGNUP_CLOCK_SKEW_MS = 5_000;
 
 /**
- * sessionStorage-backed fire-once guard. Keyed by user id so an account
- * switch within the same tab still gets a signup track for the new user
- * if they just created their account. Read/write are try/catched because
- * sessionStorage throws in private-mode / quota-exceeded / disabled-
- * storage scenarios; we fail open (track, don't persist) rather than
- * swallow signups.
+ * localStorage-backed fire-once guard, keyed by user id. Originally used
+ * sessionStorage but sessionStorage is per-TAB — a user who signs up and
+ * then opens a second tab on the app within the 60s createdAt freshness
+ * window would fire a second trackSignUp from that fresh tab's
+ * `_lastAuth=null → user` transition. localStorage is shared across
+ * tabs in the same browser profile, so once any tab marks the user as
+ * tracked, no other tab for the same user will re-fire.
+ *
+ * Keyed per user id so account switches within the same browser still
+ * correctly track each user's first signup (rare but valid). The key
+ * never needs to be cleaned up because Clerk user ids are effectively
+ * unique forever — a deleted user's key is harmless and the storage
+ * footprint is trivial (one byte per user who ever signed up here).
+ *
+ * Read/write are try/catched because storage throws in private-mode /
+ * quota-exceeded / disabled scenarios; we fail open (track, don't
+ * persist) rather than swallow signups.
  */
 const SIGNUP_TRACKED_KEY_PREFIX = 'wm-signup-tracked:';
 
 export function hasTrackedSignupInSession(userId: string): boolean {
   try {
-    return window.sessionStorage.getItem(SIGNUP_TRACKED_KEY_PREFIX + userId) === '1';
+    return window.localStorage.getItem(SIGNUP_TRACKED_KEY_PREFIX + userId) === '1';
   } catch {
     return false;
   }
@@ -231,7 +242,7 @@ export function hasTrackedSignupInSession(userId: string): boolean {
 
 export function markSignupTrackedInSession(userId: string): void {
   try {
-    window.sessionStorage.setItem(SIGNUP_TRACKED_KEY_PREFIX + userId, '1');
+    window.localStorage.setItem(SIGNUP_TRACKED_KEY_PREFIX + userId, '1');
   } catch {
     // Storage unavailable — we'll just risk a single double-count on
     // reload instead of crashing analytics init.
