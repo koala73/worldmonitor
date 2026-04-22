@@ -30,8 +30,8 @@ The first-publication repair is sequenced as PR 0 → PR 1 → PR 3 → PR 2 →
 2. **Gas and coal penalized as vulnerability even when domestic.** Current `gasShare` / `coalShare` penalties conflate fossil-dominance with fossil-import-dependence. Replaced in PR 1 with a single `importedFossilDependence` composite using World Bank `EG.IMP.CONS.ZS` × `EG.ELC.FOSL.ZS` under the **Option B (power-system framing)** decision documented in the Energy Domain section.
 3. **No nuclear credit in `scoreEnergy`.** Nuclear-heavy generation scores no points despite firm low-carbon characteristics. Fixed in PR 1 by collapsing `renewShare` + new nuclear share into a single `lowCarbonGenerationShare` indicator sourced from World Bank `EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS`.
 4. **Sovereign-wealth buffers invisible to `reserveAdequacy`.** Current dimension only sees central-bank reserves; SWF assets are not counted. Fixed in PR 2 by splitting the dimension into `liquidReserveAdequacy` + `sovereignFiscalBuffer` with a three-component haircut (access × liquidity × transparency) and a saturating transform.
-5. **Dead and regional-only signals in the global core score.** `fuelStockDays` (100% imputed globally), `euGasStorageStress` (EU-only), and `currencyExternal` (BIS 64-economy coverage) currently carry material weight despite insufficient coverage for a world ranking. Retired or scoped regional-only in PR 3.
-6. **No coverage-based weight cap.** A dimension at 30% observed coverage carries the same weight as one at 95%. Fixed in PR 3 with a CI-enforced rule: no indicator with observed coverage below 70% may exceed 5% nominal weight or 5% effective influence.
+5. **Dead and regional-only signals in the global core score.** ~~`fuelStockDays` (100% imputed globally), `euGasStorageStress` (EU-only), and `currencyExternal` (BIS 64-economy coverage) currently carry material weight despite insufficient coverage for a world ranking.~~ **Landed in PR 3 §3.5**: `fuelStockDays` permanently retired (coverage=0, source-failure for every country); `currencyExternal` rebuilt on IMF inflation + WB reserves (no BIS); BIS `fxVolatility` + `fxDeviation` demoted to experimental tier; `externalDebtCoverage` re-goalposted from (0..5) to (0..2) per Greenspan-Guidotti to stop saturating at 100.
+6. **No coverage-based weight cap.** ~~A dimension at 30% observed coverage carries the same weight as one at 95%.~~ **Landed in PR 3 §3.6**: CI-enforced gate (`tests/resilience-coverage-influence-gate.test.mts`) fails the build if any core indicator with coverage < 137 countries (70% of the ~195 universe) carries more than 5% nominal weight in the overall score. The effective-influence half runs via `scripts/validate-resilience-sensitivity.mjs` as a committed artifact.
 
 Each item maps to an acceptance gate and a spec in the repair plan. Until PR 1–PR 3 land, published rankings reflect the current construct and should be read in that context.
 
@@ -84,13 +84,16 @@ Each dimension is scored from 0-100 using a weighted blend of its sub-metrics. B
 
 #### Currency & External
 
+PR 3 §3.5 point 2 retired the BIS-backed core construct. BIS REER and DSR cover only the 64 BIS-reporting economies, so the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for ~130 of 195 countries. The rebuilt dimension uses two globally-covered World Bank / IMF series.
+
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| fxVolatility | Annualized BIS real effective exchange rate volatility | Lower is better | 50 - 0 | 0.60 | BIS | Monthly |
-| fxDeviation | Absolute deviation of BIS real EER from equilibrium (100) | Lower is better | 35 - 0 | 0.25 | BIS | Monthly |
-| fxReservesAdequacy | Total reserves in months of imports (World Bank FI.RES.TOTL.MO) | Higher is better | 1 - 12 | 0.15 | World Bank | Annual |
+| inflationStability | Headline consumer inflation, % YoY (IMF WEO); primary signal for currency stability globally | Lower is better | 50 - 0 | 0.60 | IMF | Annual |
+| fxReservesAdequacy | Total reserves in months of imports (World Bank FI.RES.TOTL.MO) | Higher is better | 1 - 12 | 0.40 | World Bank | Annual |
 
-For non-BIS countries (~160 countries), a fallback chain applies: (1) IMF inflation + World Bank reserves proxy, (2) IMF inflation alone, (3) reserves alone, (4) conservative imputation (score 50, certainty 0.3).
+Coverage ladder (post-PR-3): both present → 0.85; inflation only → 0.55; reserves only → 0.40; neither → 0.30 (curated_list_absent imputation, subject to source-failure re-tagging on adapter outage).
+
+Retained as experimental (enrichment-only, ~64 BIS-reporting countries): `fxVolatility` (annualized BIS REER volatility, 50-0 goalpost) and `fxDeviation` (absolute deviation of BIS REER from 100, 35-0). These do not contribute to the core overall score; they surface on the country drill-down for BIS-tracked economies.
 
 #### Trade & Sanctions
 
@@ -262,11 +265,15 @@ State continuity is a derived dimension: it reads from existing WGI, UCDP, and d
 
 #### Fuel Stock Days
 
+PR 3 §3.5 point 1 permanently retired `fuelStockDays` from the core overall score. The dimension remains registered for schema continuity but pins at `coverage=0`, `score=50`, `imputationClass=source-failure` for every country — so the coverage-weighted aggregation skips it in every domain average.
+
+Why retired: fuel-stock disclosure is an IEA/OECD-member obligation covering ~45 countries. Every non-member was imputed via `unmonitored` (score 50, coverage 0.30). Combined with its 1/6 share of the recovery domain, this was the single largest "construct-absent-for-most-of-the-world" carrier in the scorer — the primary reason UAE landed at rank 69 with `energy=53, reserveAdequacy=25, fuelStockDays=50/unmonitored` in the pre-repair audit.
+
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| recoveryFuelStockDays | Days of fuel stock cover (IEA Oil Stocks / EIA Weekly Petroleum Status) | Higher is better | 0 - 120 | 1.00 | IEA/EIA | Monthly |
+| recoveryFuelStockDays | Days of fuel stock cover (IEA Oil Stocks / EIA Weekly Petroleum Status) — **experimental tier, not part of core score** | Higher is better | 0 - 120 | 1.00 | IEA/EIA | Monthly |
 
-Fuel stock days is an Enrichment-tier signal (coverage ~45 countries, IEA/OECD members). Countries without fuel stock data are imputed with the `unmonitored` class.
+The seeder still runs on its weekly schedule so the data surfaces on IEA/OECD-member country drill-downs. It stays retired from the core score unless a globally-comparable concept (strategic-reserve disclosure mandated across >180 countries) emerges.
 
 ## Normalization
 
@@ -575,6 +582,17 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 - **Indicator deferred in PR 1:** `reserveMarginPct` — IEA electricity-balance seeder is out of scope per plan §3.1 open-question. Redis key name + scorer-plumbing slot reserved for the commit that ships the seeder.
 - **New seeders (weekly):** `seed-low-carbon-generation.mjs` (EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS), `seed-fossil-electricity-share.mjs` (EG.ELC.FOSL.ZS), `seed-power-reliability.mjs` (EG.ELC.LOSS.ZS). Bundled by `seed-bundle-resilience-energy-v2.mjs` for a single Railway cron service. Net-energy-imports (`EG.IMP.CONS.ZS`) is NOT a new seeder — it reuses the existing `seed-resilience-static.mjs` path. All three new seed keys are gated as `ON_DEMAND_KEYS` in `api/health.js` until Railway cron provisions and the first clean run lands; graduate out of the set after ~7 days of clean runs.
 - **Acceptance gates (plan §6):** Spearman vs baseline >= 0.85; no country moves >15 points; matched-pair gap signs verified; cohort median shifts capped at 10 points; per-indicator effective influence measured via the PR 0 apparatus. Results committed as `docs/snapshots/resilience-ranking-live-post-pr1-<date>.json` and `docs/snapshots/resilience-energy-v2-acceptance-<date>.json` at flag-flip time.
+
+### v2.2 (April 2026) — PR 3 dead-signal cleanup
+
+**Status: landing.** PR 3 in the resilience repair plan (`docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md`). Addresses plan §3.5 (dead signals and regional-only signals in the core score) and §3.6 (coverage-based nominal-weight cap). Unlike PR 1, no flag — changes apply immediately because the retired constructs were never producing global signal.
+
+- **§3.5 point 1 — `fuelStockDays` permanently retired from the core score.** IEA/EIA fuel-stock disclosure covers ~45 OECD-member countries; every other country was imputed `unmonitored`. `scoreFuelStockDays` now pins at `score=50, coverage=0, imputationClass='source-failure'` for every country, so the coverage-weighted aggregation excludes it from recovery-domain averages. The `recoveryFuelStockDays` registry entry remains (tier=`experimental`) so the data surfaces on IEA-member drill-downs. Re-retention requires a globally-comparable strategic-reserve disclosure concept (>180 countries) to emerge.
+- **§3.5 point 2 — `currencyExternal` rebuilt on IMF inflation + WB reserves.** BIS REER / DSR covered only the 64 BIS-reporting economies; the old composite fell through to curated_list_absent (coverage 0.3) or a thin IMF proxy (coverage 0.45) for ~130 of 195 countries. New dimension: `inflationStability` (IMF WEO headline inflation, weight 0.60) + `fxReservesAdequacy` (WB reserves in months, weight 0.40). Coverage ladder: both=0.85, inflation-only=0.55, reserves-only=0.40, neither=0.30. Legacy `fxVolatility` + `fxDeviation` kept as `tier='experimental'` on country drill-downs for the 64 BIS economies.
+- **§3.5 point 3 — `externalDebtCoverage` re-goalposted from (0..5) to (0..2).** The old goalpost made ratios < 0.5 all score above 90, saturating at 100 across the full 9-country probe (including stressed states). New goalpost is anchored on Greenspan-Guidotti: ratio=1.0 (short-term debt matches reserves = reserve inadequacy threshold) → score 50; ratio=2.0 (double the threshold = acute rollover-shock exposure) → score 0. Ratios above 2.0 clamp to 0.
+- **§3.6 — Coverage-and-influence gate on indicator weight.** `tests/resilience-coverage-influence-gate.test.mts` fails the build if any core indicator with observed coverage below 70% of the ~195-country universe (<137 countries) carries more than 5% nominal weight in the overall score. The effective-influence half (variance-explained, Pearson-derivative) runs through `scripts/validate-resilience-sensitivity.mjs` and is committed as an artifact per plan §5 acceptance-criterion 9.
+- **Acceptance gates (plan §6):** Spearman vs prior-state >= 0.85, no country swings >5 points from PR 1 state (plan §3.5 deliverable row 4), all release-gate anchors hold, matched-pair directions verified. Sensitivity rerun and post-PR-3 snapshot committed as `docs/snapshots/resilience-ranking-live-post-pr3-<date>.json` at flag-flip/ranking-refresh time.
+- **Construct-audit updates:** `docs/methodology/indicator-sources.yaml` updates `recoveryDebtToReserves.constructStatus` from `dead-signal` to `observed-mechanism` citing the Greenspan-Guidotti anchor.
 
 ### Editorial notes
 
