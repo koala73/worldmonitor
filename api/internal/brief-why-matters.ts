@@ -215,7 +215,13 @@ function validateStoryBody(raw: unknown): ValidationOk | ValidationErr {
 async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise<string | null> {
   try {
     const context = await assembleBriefStoryContext({ iso2, category: story.category });
-    const { system, user } = buildAnalystWhyMattersPrompt(story, context);
+    const { system, user, policyLabel } = buildAnalystWhyMattersPrompt(story, context);
+    // One line per call so we can verify in Vercel logs that humanitarian
+    // / aviation stories are NOT seeing marketData, without dumping the
+    // full prompt (which would include upstream-provided text).
+    console.log(
+      `[brief-why-matters] analyst gate policy=${policyLabel} category="${story.category}" promptLen=${user.length}`,
+    );
     const result = await callLlmReasoning({
       messages: [
         { role: 'system', content: system },
@@ -362,16 +368,23 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
 
   // Cache identity.
   const hash = await hashBriefStory(story);
-  // v5: `hashBriefStory` now includes `description` as a prompt input
-  // so same-story + different description no longer collide on a single
-  // cache entry (P1 caught in PR #3269 review — endpoint could serve
-  // prose grounded in a PREVIOUS caller's description). Bumping v4→v5
-  // invalidates the short-lived v4 entries written under the buggy
-  // 5-field hash so fresh output lands on the next cron tick.
-  const cacheKey = `brief:llm:whymatters:v5:${hash}`;
-  // Shadow v2→v3 for the same reason — any v2 comparison pairs may be
-  // grounded in the wrong description, so the A/B was noisy.
-  const shadowKey = `brief:llm:whymatters:shadow:v3:${hash}`;
+  // v6: category-gated context + prompt-level RELEVANCE RULE (2026-04-22).
+  // Shadow review of 15 v2 pairs showed the analyst pattern-matching the
+  // loudest context numbers (VIX, forecast probabilities, FX stress) into
+  // every story regardless of editorial fit. Fix ships two layers:
+  //   1. structural — buildContextBlock now only exposes sections that are
+  //      editorially relevant to the story's category (humanitarian stories
+  //      don't see market data, aviation doesn't see macro, etc.).
+  //   2. prompt — WHY_MATTERS_ANALYST_SYSTEM_V2 adds a RELEVANCE RULE that
+  //      explicitly permits grounding in headline/description actors when
+  //      no context fact is a clean fit.
+  // Either layer changes the output distribution enough that v5 prose must
+  // be invalidated — otherwise half the tick's stories would still return
+  // the formulaic v5 strings for up to 24h until TTL.
+  const cacheKey = `brief:llm:whymatters:v6:${hash}`;
+  // Shadow v3→v4 for the same reason — a mid-rollout shadow record
+  // comparing v5-analyst vs gemini is not useful once v6 is live.
+  const shadowKey = `brief:llm:whymatters:shadow:v4:${hash}`;
 
   // Cache read. Any infrastructure failure → treat as miss (logged).
   let cached: WhyMattersEnvelope | null = null;
