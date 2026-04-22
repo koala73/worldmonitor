@@ -65,6 +65,43 @@ export function isPillarCombineEnabled(): boolean {
   return (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 
+// PR 1 of the resilience repair plan (docs/plans/2026-04-22-001-fix-
+// resilience-scorer-structural-bias-plan.md §3.1–§3.3): activation
+// flag for the v2 energy construct. Default is `false` so activation
+// is an explicit operator action.
+//
+// When off (default): `scoreEnergy` uses the legacy inputs
+// (energyImportDependency, gasShare, coalShare, renewShare,
+// electricityConsumption, gasStorageStress, energyPriceStress) and
+// published rankings are unchanged.
+//
+// When on: `scoreEnergy` uses the v2 inputs under the Option B
+// (power-system security) framing:
+//   - importedFossilDependence = EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100
+//   - lowCarbonGenerationShare = EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS
+//   - powerLossesPct           = EG.ELC.LOSS.ZS
+//   - reserveMarginPct         = IEA electricity balance
+//   - euGasStorageStress       = legacy gasStorageStress scoped to EU
+//   - energyPriceStress        = retained at 0.15 weight
+// Retired under v2: electricityConsumption, gasShare, coalShare,
+// renewShare, and the legacy energyImportDependency scorer input
+// (still seeded; just not used by scoreEnergy v2 because it's been
+// absorbed into importedFossilDependence).
+//
+// Read dynamically rather than captured at module load so tests can
+// flip `process.env.RESILIENCE_ENERGY_V2_ENABLED` per-case without
+// re-importing the module.
+//
+// Cache invalidation: energy dimension scores are embedded in the
+// overall score, so flipping this flag requires either bumping
+// RESILIENCE_SCORE_CACHE_PREFIX or waiting for the 6h TTL to clear.
+// The current PR 1 plan stages the flag flip AFTER an acceptance-
+// gate rerun that produces a fresh post-flip snapshot; the cache
+// prefix bump lands in the commit that performs the acceptance run.
+export function isEnergyV2Enabled(): boolean {
+  return (process.env.RESILIENCE_ENERGY_V2_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 // Ranking TTL must exceed the cron interval (6h) by enough to tolerate one
 // missed/slow cron tick. With TTL==cron_interval, writing near the end of a

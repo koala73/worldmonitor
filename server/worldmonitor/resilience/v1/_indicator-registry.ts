@@ -455,6 +455,73 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     license: 'open-data',
   },
 
+  // ── PR 1 energy-construct v2 (tier='experimental' until RESILIENCE_ENERGY_V2_ENABLED ──
+  // flips default-on and seeders land). Indicators are registered so
+  // the per-indicator harness in scripts/compare-resilience-current-vs-
+  // proposed.mjs can begin tracking them, but the 'experimental' tier
+  // keeps them OUT of the Core coverage gate (>=180 countries required
+  // per Phase 2 A4) until seed coverage is confirmed at flag-flip.
+  {
+    id: 'importedFossilDependence',
+    dimension: 'energy',
+    description: 'Composite: fossil share of electricity (EG.ELC.FOSL.ZS) × max(net energy imports % of primary energy use, 0) / 100. Lower is better. Replaces gasShare + coalShare + dependency under the Option B (power-system security) framing.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 100, best: 0 },
+    weight: 0.35,
+    sourceKey: 'resilience:fossil-electricity-share:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    tier: 'experimental',
+    coverage: 190,
+    license: 'open-data',
+  },
+  {
+    id: 'lowCarbonGenerationShare',
+    dimension: 'energy',
+    description: 'Nuclear + renewable share of electricity generation (EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS). Absorbs the legacy renewShare and adds nuclear credit.',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 80 },
+    weight: 0.2,
+    sourceKey: 'resilience:low-carbon-generation:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 30, certainty: 0.3 },
+    tier: 'experimental',
+    coverage: 190,
+    license: 'open-data',
+  },
+  {
+    id: 'powerLossesPct',
+    dimension: 'energy',
+    description: 'Electric power transmission + distribution losses (World Bank EG.ELC.LOSS.ZS). Direct grid-integrity measure.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 25, best: 3 },
+    weight: 0.1,
+    sourceKey: 'resilience:power-losses:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    tier: 'experimental',
+    coverage: 188,
+    license: 'open-data',
+  },
+  {
+    id: 'reserveMarginPct',
+    dimension: 'energy',
+    description: 'Generation reserve margin (IEA electricity balance). Supply-side headroom. Coverage is sparse outside OECD+G20; imputed where unobserved.',
+    direction: 'higherBetter',
+    goalposts: { worst: 5, best: 25 },
+    weight: 0.1,
+    sourceKey: 'resilience:reserve-margin:v1',
+    scope: 'curated',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    tier: 'experimental',
+    coverage: 60,
+    license: 'non-commercial',
+  },
+
   // ── governanceInstitutional (6 sub-metrics, equal weight) ─────────────────
   {
     id: 'wgiVoiceAccountability',

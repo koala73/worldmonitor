@@ -275,6 +275,15 @@ const EXTRACTION_RULES = {
   gasStorageStress: { type: 'gas-storage-field', field: 'fillPct' },
   energyPriceStress: { type: 'not-implemented', reason: 'Scorer input is a global mean across commodity price changes; no per-country variance' },
   electricityConsumption: { type: 'static-wb-infrastructure', code: 'EG.USE.ELEC.KH.PC' },
+  // PR 1 v2 energy indicators — `tier: 'experimental'` until seeders
+  // land. The extractor reads the same bulk-payload shape the scorer
+  // reads: { countries: { [ISO2]: { value, year } } }. When seed is
+  // absent the pairedSampleSize drops to 0 and Pearson returns 0,
+  // surfacing the "no influence yet" state in the harness output.
+  importedFossilDependence: { type: 'bulk-v1-country-value', key: 'resilience:fossil-electricity-share:v1' },
+  lowCarbonGenerationShare: { type: 'bulk-v1-country-value', key: 'resilience:low-carbon-generation:v1' },
+  powerLossesPct: { type: 'bulk-v1-country-value', key: 'resilience:power-losses:v1' },
+  reserveMarginPct: { type: 'bulk-v1-country-value', key: 'resilience:reserve-margin:v1' },
 
   // ── governanceInstitutional (all 6 WGI sub-pillars) ─────────────────
   wgiVoiceAccountability: { type: 'static-wgi', code: 'VA.EST' },
@@ -426,6 +435,15 @@ const SIMPLE_EXTRACTORS = {
     const direct = sanctionsCounts?.[countryCode];
     return typeof direct === 'number' ? direct : null;
   },
+  // Shape: { countries: { [ISO2]: { value, year } } }. Used by the
+  // PR 1 v2 energy seeders. The key is specified per-rule so the
+  // dispatcher can route multiple bulk-v1 payloads through one
+  // extractor.
+  'bulk-v1-country-value': (rule, { bulkV1 }, countryCode) => {
+    const payload = bulkV1?.[rule.key];
+    const entry = payload?.countries?.[countryCode];
+    return typeof entry?.value === 'number' ? entry.value : null;
+  },
 };
 
 // Aggregator extractors wire through exported scorer helpers so the
@@ -512,12 +530,22 @@ async function readExtractionSources(countryCode, reader) {
   // the same resolver so the harness pulls the same payload the scorer
   // would at the moment of execution.
   const currentYear = new Date().getFullYear();
+  // PR 1 v2 energy bulk keys. Fetched once per country (the memoized
+  // reader de-dupes; these bulk payloads aren't country-scoped in the
+  // key, so all 220 country iterations share one fetch per key.)
+  const BULK_V1_KEYS = [
+    'resilience:fossil-electricity-share:v1',
+    'resilience:low-carbon-generation:v1',
+    'resilience:power-losses:v1',
+    'resilience:reserve-margin:v1',
+  ];
   const [
     staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
     externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
     nationalDebt, sanctionsCounts,
     cyber, outages, gps, ucdp, unrest, newsThreat, displacement,
     socialVelocity, tradeRestrictions, tradeBarriers,
+    ...bulkV1Payloads
   ] = await Promise.all([
     reader(`resilience:static:${countryCode}`),
     reader(`energy:mix:v1:${countryCode}`),
@@ -541,13 +569,16 @@ async function readExtractionSources(countryCode, reader) {
     reader('intelligence:social:reddit:v1'),
     reader('trade:restrictions:v1:tariff-overview:50'),
     reader('trade:barriers:v1:tariff-gap:50'),
+    ...BULK_V1_KEYS.map((k) => reader(k)),
   ]);
+  const bulkV1 = Object.fromEntries(BULK_V1_KEYS.map((k, i) => [k, bulkV1Payloads[i]]));
   return {
     staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
     externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
     nationalDebt, sanctionsCounts,
     cyber, outages, gps, ucdp, unrest, newsThreat, displacement,
     socialVelocity, tradeRestrictions, tradeBarriers,
+    bulkV1,
   };
 }
 

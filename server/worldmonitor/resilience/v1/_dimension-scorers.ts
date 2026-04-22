@@ -260,6 +260,51 @@ const RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY = 'resilience:recovery:external-debt
 const RESILIENCE_RECOVERY_IMPORT_HHI_KEY = 'resilience:recovery:import-hhi:v1';
 const RESILIENCE_RECOVERY_FUEL_STOCKS_KEY = 'resilience:recovery:fuel-stocks:v1';
 
+// PR 1 energy-construct v2 seed keys (plan §3.1–§3.3). Written by
+// scripts/seed-low-carbon-generation.mjs, scripts/seed-fossil-
+// electricity-share.mjs, scripts/seed-power-reliability.mjs.
+// Read by scoreEnergy only when isEnergyV2Enabled() is true; until
+// the seeders land, the keys are absent and the v2 scorer path
+// degrades gracefully (returns null per sub-indicator, which the
+// weightedBlend handles via the normal coverage/imputation path).
+//
+// Shape (all three): { updatedAt: ISO, countries: { [ISO2]: { value: number, year: number | null } } }
+// Values are percent (0-100). Composites like importedFossilDependence
+// are computed at score time, not pre-aggregated in the seed.
+const RESILIENCE_LOW_CARBON_GEN_KEY = 'resilience:low-carbon-generation:v1';
+const RESILIENCE_FOSSIL_ELEC_SHARE_KEY = 'resilience:fossil-electricity-share:v1';
+const RESILIENCE_POWER_LOSSES_KEY = 'resilience:power-losses:v1';
+// reserveMarginPct has no seeder yet (IEA electricity-balance data is
+// curated/partial). The v2 scorer reads from this key but the seeder
+// is explicitly deferred per plan §3.1 open-question: "if half the
+// world is imputed, does the 0.10 survive the §6 coverage-and-
+// influence gate? Probably not. Likely ships as imputationClass:
+// 'unmonitored' with weight 0.05." The key name is reserved so the
+// scorer shape is stable for the commit that does provide data.
+const RESILIENCE_RESERVE_MARGIN_KEY = 'resilience:reserve-margin:v1';
+
+// EU country set for `euGasStorageStress` in the v2 energy construct.
+// GIE AGSI+ covers EU member states + a few neighbours; non-EU
+// countries get weight 0 on this signal (not null) so the denominator
+// re-normalises correctly per plan §3.5. Kept local to this file to
+// match the GIE coverage observed at seed time. EFTA members (NO, CH,
+// IS) + UK are included because GIE publishes their storage too.
+const EU_GAS_STORAGE_COUNTRIES = new Set([
+  'AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI',
+  'FR', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT',
+  'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK',
+  'NO', 'CH', 'IS', 'GB', // EFTA + UK
+]);
+
+// Local flag reader for the PR 1 v2 energy construct. The canonical
+// definition lives in _shared.ts#isEnergyV2Enabled with full comments;
+// this private duplicate avoids a circular import (_shared.ts already
+// imports from this module). Both readers consult the SAME env var so
+// the contract is a single source of truth.
+function isEnergyV2EnabledLocal(): boolean {
+  return (process.env.RESILIENCE_ENERGY_V2_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
 const COUNTRY_NAME_ALIASES = new Map<string, Set<string>>();
 for (const [name, iso2] of Object.entries(countryNames as Record<string, string>)) {
   const code = String(iso2 || '').toUpperCase();
@@ -1027,9 +1072,13 @@ export async function scoreInfrastructure(
   ]);
 }
 
-export async function scoreEnergy(
+// Legacy energy scorer. Default path. Kept intact for one release
+// cycle so flipping `RESILIENCE_ENERGY_V2_ENABLED=false` reverts to
+// byte-identical scoring behaviour for every country in the published
+// snapshot.
+async function scoreEnergyLegacy(
   countryCode: string,
-  reader: ResilienceSeedReader = defaultSeedReader,
+  reader: ResilienceSeedReader,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, energyPricesRaw, energyMixRaw, storageRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -1078,6 +1127,110 @@ export async function scoreEnergy(
     { score: exposedEnergyStress,                                                                           weight: 0.10 },
     { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30 },
   ]);
+}
+
+// PR 1 v2 energy scorer under Option B (power-system security framing).
+// Activated when RESILIENCE_ENERGY_V2_ENABLED=true. Reads from the
+// PR 1 seed keys (low-carbon generation, fossil-electricity share,
+// power losses, reserve margin). Missing inputs degrade gracefully —
+// `weightedBlend` handles null scores per the normal coverage/
+// imputation path, and the v2 indicators ship `tier: 'experimental'`
+// in the registry so the Core coverage gate doesn't fire while
+// seeders are being provisioned.
+//
+// Composite construction:
+//   importedFossilDependence = fossilElectricityShare × max(netImports, 0) / 100
+//     where fossilElectricityShare is `resilience:fossil-electricity-share:v1`
+//     and netImports is the legacy `iea.energyImportDependency.value`
+//     (EG.IMP.CONS.ZS) read from the existing static seed; we reuse
+//     rather than re-seed per plan §3.2.
+//
+// euGasStorageStress: per plan §3.5 point 2, the signal is renamed
+// and scoped to EU members only. Non-EU countries contribute `null`
+// (not 0) so the weighted blend re-normalises without penalising
+// them for a regional-only signal.
+async function scoreEnergyV2(
+  countryCode: string,
+  reader: ResilienceSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const [
+    staticRecord, energyPricesRaw, storageRaw,
+    fossilShareRaw, lowCarbonRaw, powerLossesRaw, reserveMarginRaw,
+  ] = await Promise.all([
+    readStaticCountry(countryCode, reader),
+    reader(RESILIENCE_ENERGY_PRICES_KEY),
+    reader(`energy:gas-storage:v1:${countryCode}`),
+    reader(RESILIENCE_FOSSIL_ELEC_SHARE_KEY),
+    reader(RESILIENCE_LOW_CARBON_GEN_KEY),
+    reader(RESILIENCE_POWER_LOSSES_KEY),
+    reader(RESILIENCE_RESERVE_MARGIN_KEY),
+  ]);
+
+  // Per-country value lookup on the bulk-payload shape emitted by the
+  // three PR 1 seeders: { countries: { [ISO2]: { value, year } } }.
+  const bulkValue = (raw: unknown): number | null => {
+    const entry = (raw as { countries?: Record<string, { value?: number }> } | null)
+      ?.countries?.[countryCode];
+    return typeof entry?.value === 'number' ? entry.value : null;
+  };
+
+  const fossilElectricityShare = bulkValue(fossilShareRaw);
+  const lowCarbonGenerationShare = bulkValue(lowCarbonRaw);
+  const powerLosses = bulkValue(powerLossesRaw);
+  const reserveMargin = bulkValue(reserveMarginRaw);
+  const netImports = safeNum(staticRecord?.iea?.energyImportDependency?.value);
+
+  // importedFossilDependence composite. `max(netImports, 0)` collapses
+  // net-exporter cases (negative EG.IMP.CONS.ZS) to zero per plan §3.2.
+  // Division by 100 keeps the product in the [0, 100] range expected
+  // by normalizeLowerBetter.
+  const importedFossilDependence = fossilElectricityShare != null && netImports != null
+    ? fossilElectricityShare * Math.max(netImports, 0) / 100
+    : null;
+
+  // euGasStorageStress — same transform as legacy storageStress, but
+  // null outside the EU so non-EU countries don't get penalised for a
+  // regional-only signal.
+  const storageFillPct = storageRaw != null && typeof storageRaw === 'object'
+    ? (() => {
+        const raw = (storageRaw as Record<string, unknown>).fillPct;
+        return raw != null ? safeNum(raw) : null;
+      })()
+    : null;
+  const euStorageStress = EU_GAS_STORAGE_COUNTRIES.has(countryCode) && storageFillPct != null
+    ? Math.min(1, Math.max(0, (80 - storageFillPct) / 80))
+    : null;
+
+  // energyPriceStress retains its exposure-modulated form but weights
+  // to 0.15 under v2. Exposure is now derived from fossil share of
+  // electricity generation (Option B framing) rather than overall
+  // energy import dependency.
+  const energyStress = getEnergyPriceStress(energyPricesRaw);
+  const energyStressScore = energyStress == null ? null : normalizeLowerBetter(energyStress, 0, 25);
+  const exposure = fossilElectricityShare != null
+    ? Math.min(Math.max(fossilElectricityShare / 60, 0), 1.0)
+    : 0.5;
+  const exposedEnergyStress = energyStressScore == null
+    ? null
+    : energyStressScore * exposure + 100 * (1 - exposure);
+
+  return weightedBlend([
+    { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35 },
+    { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80),  weight: 0.20 },
+    { score: powerLosses              == null ? null : normalizeLowerBetter(powerLosses, 3, 25),                weight: 0.10 },
+    { score: reserveMargin            == null ? null : normalizeHigherBetter(reserveMargin, 5, 25),             weight: 0.10 },
+    { score: euStorageStress          == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100),     weight: 0.10 },
+    { score: exposedEnergyStress,                                                                                weight: 0.15 },
+  ]);
+}
+
+export async function scoreEnergy(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  return isEnergyV2EnabledLocal()
+    ? scoreEnergyV2(countryCode, reader)
+    : scoreEnergyLegacy(countryCode, reader);
 }
 
 export async function scoreGovernanceInstitutional(
