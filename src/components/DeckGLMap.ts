@@ -58,12 +58,12 @@ import { H3HexagonLayer, TripsLayer } from '@deck.gl/geo-layers';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
-import { getHydratedData } from '@/services/bootstrap';
 import {
   derivePipelinePublicBadge,
   type PipelineEvidenceInput,
   type PipelinePublicBadge,
 } from '@/shared/pipeline-evidence';
+import { getCachedPipelineRegistries } from '@/shared/pipeline-registry-store';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
@@ -1943,6 +1943,8 @@ export class DeckGLMap {
   // hasn't hydrated yet (e.g. variant switch before the fetch completes).
   private createEnergyPipelinesLayer(): PathLayer {
     const cacheKey = 'pipelines-layer';
+    const highlightedPipelines = this.highlightedAssets.pipeline;
+    const highlightSignature = this.getSetSignature(highlightedPipelines);
 
     interface RawEntry {
       id?: string; name?: string; commodityType?: string;
@@ -1961,8 +1963,14 @@ export class DeckGLMap {
       badge: PipelinePublicBadge;
     }
 
-    const gas = getHydratedData('pipelinesGas') as { pipelines?: Record<string, RawEntry> } | undefined;
-    const oil = getHydratedData('pipelinesOil') as { pipelines?: Record<string, RawEntry> } | undefined;
+    // Read through the shared store instead of getHydratedData directly —
+    // getHydratedData is single-use (deletes on first read), and this same
+    // data is also consumed by PipelineStatusPanel. The store memoizes so
+    // both consumers see identical data regardless of mount order.
+    const { gas, oil } = getCachedPipelineRegistries() as {
+      gas: { pipelines?: Record<string, RawEntry> } | undefined;
+      oil: { pipelines?: Record<string, RawEntry> } | undefined;
+    };
     const rawEntries: RawEntry[] = [
       ...Object.values(gas?.pipelines ?? {}),
       ...Object.values(oil?.pipelines ?? {}),
@@ -2000,6 +2008,7 @@ export class DeckGLMap {
       })
       .filter((p): p is EnergyPipeline => p != null);
 
+    const HIGHLIGHT_COLOR: [number, number, number, number] = [255, 100, 100, 240];
     const badgeColor = (b: PipelinePublicBadge): [number, number, number, number] => {
       switch (b) {
         case 'flowing':  return [46, 204, 113, 200];  // green
@@ -2013,11 +2022,21 @@ export class DeckGLMap {
       id: cacheKey,
       data,
       getPath: d => d.points,
-      getColor: d => badgeColor(d.badge),
-      getWidth: d => (d.badge === 'offline' || d.badge === 'disputed') ? 3 : 2,
+      getColor: d => highlightedPipelines.has(d.id) ? HIGHLIGHT_COLOR : badgeColor(d.badge),
+      getWidth: d => {
+        if (highlightedPipelines.has(d.id)) return 4;
+        return (d.badge === 'offline' || d.badge === 'disputed') ? 3 : 2;
+      },
       widthMinPixels: 1.5,
       widthMaxPixels: 6,
       pickable: true,
+      // updateTriggers make DeckGL recompute per-path getColor/getWidth
+      // when the highlight set changes; without this, flashAssets() /
+      // highlightAssets() would have no visible effect on the energy layer.
+      updateTriggers: {
+        getColor: highlightSignature,
+        getWidth: highlightSignature,
+      },
       onClick: info => {
         const obj = info?.object as EnergyPipeline | undefined;
         if (!obj?.id) return false;
@@ -2035,7 +2054,11 @@ export class DeckGLMap {
       },
     });
 
-    this.layerCache.set(cacheKey, layer);
+    // Intentionally NOT caching this layer: the underlying registries can
+    // update via setCachedPipelineRegistries() when the panel's RPC lands,
+    // and cached layers keyed only on highlightSignature would serve stale
+    // data. With ~25 critical-asset pipelines, rebuild cost per render is
+    // trivial (far cheaper than a stale-data UI bug).
     return layer;
   }
 
@@ -3862,15 +3885,23 @@ export class DeckGLMap {
       case 'cables-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${t('components.deckgl.tooltip.underseaCable')}</div>` };
       case 'pipelines-layer': {
-        const pipelineType = String(obj.type || '').toLowerCase();
-        const pipelineTypeLabel = pipelineType === 'oil'
+        // Energy variant emits objects with {commodityType, badge}; other
+        // variants emit the static-config shape {type}. Differentiate by
+        // checking for the evidence-derived badge field.
+        const hasBadge = typeof obj.badge === 'string';
+        const commodity = hasBadge ? String(obj.commodityType || '').toLowerCase() : String(obj.type || '').toLowerCase();
+        const commodityLabel = commodity === 'oil'
           ? t('popups.pipeline.types.oil')
-          : pipelineType === 'gas'
+          : commodity === 'gas'
             ? t('popups.pipeline.types.gas')
-            : pipelineType === 'products'
+            : commodity === 'products'
               ? t('popups.pipeline.types.products')
-              : `${text(obj.type)} ${t('components.deckgl.tooltip.pipeline')}`;
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${pipelineTypeLabel}</div>` };
+              : `${text(commodity)} ${t('components.deckgl.tooltip.pipeline')}`.trim();
+        if (hasBadge) {
+          const badge = String(obj.badge).toUpperCase();
+          return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel} · <strong>${text(badge)}</strong></div>` };
+        }
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel}</div>` };
       }
       case 'conflict-zones-layer': {
         const props = obj.properties || obj;

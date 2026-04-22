@@ -1,6 +1,5 @@
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
@@ -14,6 +13,11 @@ import {
   pickNewerClassifierVersion,
   pickNewerIsoTimestamp,
 } from '@/shared/pipeline-evidence';
+import {
+  getCachedPipelineRegistries,
+  setCachedPipelineRegistries,
+  type RawPipelineRegistry,
+} from '@/shared/pipeline-registry-store';
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -24,11 +28,12 @@ const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
 // transform to wire format. So bootstrap entries are raw objects with
 // no publicBadge field; we derive client-side (same function as server)
 // to match what the RPC will later return on background re-fetch.
-interface RawBootstrapRegistry {
-  pipelines?: Record<string, unknown>;
-  classifierVersion?: string;
-  updatedAt?: string;
-}
+// Alias for the shared store's raw-registry type. Kept as a local alias so
+// existing inline call sites read cleanly. Both the panel and DeckGLMap go
+// through the same shared store (pipeline-registry-store.ts) because
+// getHydratedData is single-use and would drain on whichever consumer read
+// first, forcing the other off its hydration path.
+type RawBootstrapRegistry = RawPipelineRegistry;
 
 const BADGE_COLOR: Record<string, string> = {
   flowing:  '#2ecc71',
@@ -198,21 +203,34 @@ export class PipelineStatusPanel extends Panel {
 
   public async fetchData(): Promise<void> {
     try {
-      // Bootstrap hydration lane — instant render on first paint from the two
-      // registries published by scripts/seed-pipelines-{gas,oil}.mjs.
-      const gas = getHydratedData('pipelinesGas') as RawBootstrapRegistry | undefined;
-      const oil = getHydratedData('pipelinesOil') as RawBootstrapRegistry | undefined;
+      // Bootstrap hydration lane via the shared store. Reads once across all
+      // consumers (this panel + DeckGLMap energy pipeline layer); returns the
+      // cached values on subsequent calls instead of draining bootstrap data.
+      const { gas, oil } = getCachedPipelineRegistries();
       const hydrated = buildBootstrapResponse(gas, oil);
       if (hydrated) {
         this.data = hydrated;
         this.render();
         // Kick a fresh RPC in the background for any post-deploy badge
         // re-derivation (classifier-version bumps, evidence changes since
-        // bootstrap was stamped).
+        // bootstrap was stamped). When the RPC lands, mirror the fresh
+        // classifierVersion + updatedAt into the shared store so the map's
+        // next re-render uses the newer stamps too — prevents map/panel
+        // drift during rollouts.
         void client.listPipelines({ commodityType: '' }).then(live => {
           if (!this.element?.isConnected || !live?.pipelines?.length) return;
           this.data = live;
           this.render();
+          // Back-propagate RPC freshness into the store so map layers see
+          // the same data. We keep the raw-JSON shape (`pipelines` as a
+          // Record<id, PipelineEntry>) so the projection logic downstream
+          // doesn't care whether it came from bootstrap or RPC.
+          const toRecord = (filterCommodity: string): Record<string, PipelineEntry> =>
+            Object.fromEntries(live.pipelines.filter(p => p.commodityType === filterCommodity).map(p => [p.id, p]));
+          setCachedPipelineRegistries({
+            gas: { pipelines: toRecord('gas'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+            oil: { pipelines: toRecord('oil'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+          });
         }).catch(() => {});
         return;
       }
@@ -225,6 +243,14 @@ export class PipelineStatusPanel extends Panel {
       }
       this.data = live;
       this.render();
+      // Same store back-propagation as the bootstrap lane — prime the cache
+      // so the DeckGLMap energy layer has registry data on the cold path.
+      const toRecord = (filterCommodity: string): Record<string, PipelineEntry> =>
+        Object.fromEntries(live.pipelines.filter(p => p.commodityType === filterCommodity).map(p => [p.id, p]));
+      setCachedPipelineRegistries({
+        gas: { pipelines: toRecord('gas'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+        oil: { pipelines: toRecord('oil'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+      });
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
