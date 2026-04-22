@@ -908,6 +908,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 const ENERGY_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
   'chokepoint-strip': { name: 'Chokepoint Status', enabled: true, priority: 1 },
+  'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 1 },
   'live-news': { name: 'Energy Headlines', enabled: true, priority: 1 },
   insights: { name: 'AI Energy Insights', enabled: true, priority: 1 },
   // Energy complex — existing panels reused at launch

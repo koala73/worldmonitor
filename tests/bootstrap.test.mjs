@@ -263,11 +263,6 @@ describe('Bootstrap key hydration coverage', () => {
       // fetch in CountryDeepDivePanel (housing cycle tile), not through the
       // getHydratedData session cache — fetched on-click per country.
       'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
-      // Pipeline registries — PipelineStatusPanel consumer lands in the
-      // next PR on feat/energy-atlas-pipelines (Day 7-8). Bootstrap is wired
-      // now so the seeded Redis keys are hydrated on first paint once the
-      // panel ships, instead of racing the variant load.
-      'pipelinesGas', 'pipelinesOil',
     ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;

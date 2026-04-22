@@ -88,6 +88,7 @@ export * from './PositioningPanel';
 export * from './GoldIntelligencePanel';
 export { HormuzPanel } from './HormuzPanel';
 export { ChokepointStripPanel } from './ChokepointStripPanel';
+export { PipelineStatusPanel } from './PipelineStatusPanel';
 export * from './ClimateNewsPanel';
 export * from './DiseaseOutbreaksPanel';
 export * from './SocialVelocityPanel';
