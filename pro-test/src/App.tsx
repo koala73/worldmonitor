@@ -1211,10 +1211,23 @@ const EnterprisePage = () => (
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
-  // Initialize Dodo checkout overlay with success handler
+  // Initialize Dodo checkout overlay with success handler.
+  //
+  // On overlay success, the buyer needs to be bridged from /pro to the
+  // main dashboard where their newly-minted entitlement actually
+  // unlocks panels. Two changes vs the original 3-second blind reload:
+  //
+  //   1. Explicit "Go to dashboard now →" button so engaged buyers
+  //      don't wait out the auto-redirect timer.
+  //   2. Auto-redirect is 1500ms (down from 3000ms) — fast enough to
+  //      feel responsive without clipping the confirmation reading time.
+  //   3. Redirect target carries `?wm_checkout=success` so the dashboard
+  //      side (handleCheckoutReturn in src/services/checkout-return.ts)
+  //      recognizes this as a post-purchase landing and triggers the
+  //      extended-unlock banner from PR-4, instead of rendering a
+  //      default dashboard with no context.
   useEffect(() => {
     initOverlay(() => {
-      // Show success banner
       const banner = document.createElement('div');
       Object.assign(banner.style, {
         position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
@@ -1222,11 +1235,42 @@ export default function App() {
         color: '#fff', fontWeight: '600', fontSize: '14px', textAlign: 'center',
         boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'opacity 0.4s ease, transform 0.4s ease',
         transform: 'translateY(-100%)', opacity: '0',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px',
       });
-      banner.textContent = 'Payment received! Unlocking your premium features...';
+
+      const target = 'https://worldmonitor.app/?wm_checkout=success';
+      let navigated = false;
+      const goToDashboard = () => {
+        if (navigated) return;
+        navigated = true;
+        window.location.href = target;
+      };
+
+      const message = document.createElement('span');
+      message.textContent = 'Payment received! Unlocking your premium features…';
+
+      const cta = document.createElement('button');
+      cta.type = 'button';
+      cta.textContent = 'Go to dashboard now →';
+      Object.assign(cta.style, {
+        background: '#ffffff',
+        color: '#16a34a',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '6px 12px',
+        fontSize: '12px',
+        fontWeight: '700',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      });
+      cta.addEventListener('click', goToDashboard);
+
+      banner.appendChild(message);
+      banner.appendChild(cta);
       document.body.appendChild(banner);
       requestAnimationFrame(() => { banner.style.transform = 'translateY(0)'; banner.style.opacity = '1'; });
-      setTimeout(() => { window.location.href = 'https://worldmonitor.app'; }, 3000);
+
+      setTimeout(goToDashboard, 1500);
     });
   }, []);
 
