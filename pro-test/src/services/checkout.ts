@@ -130,13 +130,25 @@ export function initOverlay(onSuccess?: () => void): void {
         // after paying" we need the event log to tell whether we got
         // `checkout.status=succeeded`, only `checkout.closed`, or
         // nothing at all. Sentry picks up console.* via integration.
-        console.info('[checkout] dodo event', event.event_type, event.data);
-        if (event.event_type === 'checkout.status') {
-          const status = (event.data as Record<string, unknown>)?.status
-            ?? ((event.data as Record<string, unknown>)?.message as Record<string, unknown>)?.status;
-          if (status === 'succeeded') {
-            onSuccess?.();
-          }
+        //
+        // Only log known-safe fields (event_type, status). Dodo's
+        // event.data can include customer PII (email, billing address,
+        // payment_id) depending on event type, and anything logged here
+        // lands in Sentry breadcrumbs via the console integration.
+        const data = event.data as Record<string, unknown> | undefined;
+        const status = data?.status
+          ?? (data?.message as Record<string, unknown> | undefined)?.status;
+        console.info('[checkout] dodo event', event.event_type,
+          status !== undefined ? { status } : undefined);
+        if (event.event_type === 'checkout.status' && status === 'succeeded') {
+          // Best-effort: with `manualRedirect: false` the SDK performs
+          // `window.location.href = redirect_to` on a sibling
+          // `checkout.redirect` event, and that navigation can race
+          // with this callback. Callers should treat any side effects
+          // here as a bonus, not a guarantee. The authoritative success
+          // path is the `?wm_checkout=success` bridge on
+          // worldmonitor.app that the SDK's redirect lands on.
+          onSuccess?.();
         }
       },
     });
