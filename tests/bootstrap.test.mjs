@@ -263,6 +263,10 @@ describe('Bootstrap key hydration coverage', () => {
       // fetch in CountryDeepDivePanel (housing cycle tile), not through the
       // getHydratedData session cache — fetched on-click per country.
       'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+      // storageFacilities panel lands Day 10; the key is already seeded +
+      // hydrated so the data is visible in the RPC handler. Remove from this
+      // set when StorageFacilityMapPanel is wired up in src/.
+      'storageFacilities',
     ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;

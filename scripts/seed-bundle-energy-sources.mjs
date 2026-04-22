@@ -23,4 +23,9 @@ await runBundle('energy-sources', [
   // data in scripts/data/pipelines-{gas,oil}.json.
   { label: 'Pipelines-Gas', script: 'seed-pipelines-gas.mjs', seedMetaKey: 'energy:pipelines-gas', canonicalKey: 'energy:pipelines:gas:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
   { label: 'Pipelines-Oil', script: 'seed-pipelines-oil.mjs', seedMetaKey: 'energy:pipelines-oil', canonicalKey: 'energy:pipelines:oil:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
+  // Storage facilities registry (UGS + SPR + LNG + crude hubs). Curated JSON
+  // at scripts/data/storage-facilities.json; shared helpers in
+  // scripts/_storage-facility-registry.mjs. Weekly cadence — registry is
+  // near-static; badge derivation happens at read-time in the RPC handler.
+  { label: 'Storage-Facilities', script: 'seed-storage-facilities.mjs', seedMetaKey: 'energy:storage-facilities', canonicalKey: 'energy:storage-facilities:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
 ]);
