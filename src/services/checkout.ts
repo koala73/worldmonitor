@@ -694,10 +694,18 @@ function reportCheckoutError(
       serverMessage: error.serverMessage,
     },
   };
-  if (caught) {
-    Sentry.captureException(caught, payload);
-  } else {
-    Sentry.captureMessage(`Checkout error: ${error.code}`, payload);
+  // 'no-user' is a pre-auth redirect flow, not an error — user clicked upgrade
+  // before signing up and is routed to signup/pricing. Reporting it to Sentry
+  // adds inbox noise without signal (Clerk conversion analytics already tracks
+  // this funnel). session_expired / other codes still emit so mid-flight auth
+  // drops remain visible.
+  const skipSentry = context.action === 'no-user';
+  if (!skipSentry) {
+    if (caught) {
+      Sentry.captureException(caught, payload);
+    } else {
+      Sentry.captureMessage(`Checkout error: ${error.code}`, payload);
+    }
   }
   const logger = level === 'info' ? console.info : console.error;
   logger(

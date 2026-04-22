@@ -310,6 +310,19 @@ Sentry.init({
     if (/reading '(?:type|pathType|count)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count)'\)/.test(msg)) {
       if (!hasFirstParty) return null;
     }
+    // deck.gl/maplibre internal null-access on Layer.isHidden during render (Safari 26.4 beta,
+    // empty stacks, preceded by DeckGLMap map-error breadcrumbs). Our first-party `isHidden`
+    // lives on SmartPollContext in runtime.ts — any access there would produce frames, so gate
+    // on !hasFirstParty to preserve signal on a real poller regression (WORLDMONITOR-NR).
+    if (/undefined is not an object \(evaluating '\w{1,3}\.isHidden'\)|Cannot read properties of undefined \(reading 'isHidden'\)/.test(msg)) {
+      if (!hasFirstParty) return null;
+    }
+    // Short minified ReferenceError from Safari ("Can't find variable: ss"). With an empty stack
+    // and no first-party frames, this is userscript/extension injection. Our own minified bundle
+    // would keep frames via the source-mapped assets/*.js chunks; if the SDK strips them, the
+    // stack is non-empty. Bound var length to 1–2 to avoid masking a real "foo is not defined"
+    // that happens to hit the unhandledrejection path (WORLDMONITOR-NQ).
+    if (!hasFirstParty && frames.length === 0 && /^Can't find variable: \w{1,2}$/.test(msg)) return null;
     // Suppress minified Three.js/globe.gl crashes (e.g. "l is undefined" in raycast, "b is undefined" in update/initGlobe)
     if (/^\w{1,2} is (?:undefined|not an object)$/.test(msg) && frames.length > 0) {
       if (frames.some(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '') && /(raycast|update|initGlobe|traverse|render)/.test(f.function ?? ''))) return null;
