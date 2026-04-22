@@ -462,6 +462,85 @@ export interface PipelineRevisionEntry {
   classifierVersion: string;
 }
 
+export interface ListStorageFacilitiesRequest {
+  facilityType: string;
+}
+
+export interface ListStorageFacilitiesResponse {
+  facilities: StorageFacilityEntry[];
+  fetchedAt: string;
+  classifierVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface StorageFacilityEntry {
+  id: string;
+  name: string;
+  operator: string;
+  facilityType: string;
+  country: string;
+  location?: StorageLatLon;
+  capacityTwh: number;
+  capacityMb: number;
+  capacityMtpa: number;
+  workingCapacityUnit: string;
+  inService: number;
+  evidence?: StorageEvidence;
+  publicBadge: string;
+}
+
+export interface StorageLatLon {
+  lat: number;
+  lon: number;
+}
+
+export interface StorageEvidence {
+  physicalState: string;
+  physicalStateSource: string;
+  operatorStatement?: StorageOperatorStatement;
+  commercialState: string;
+  sanctionRefs: StorageSanctionRef[];
+  fillDisclosed: boolean;
+  fillSource: string;
+  lastEvidenceUpdate: string;
+  classifierVersion: string;
+  classifierConfidence: number;
+}
+
+export interface StorageOperatorStatement {
+  text: string;
+  url: string;
+  date: string;
+}
+
+export interface StorageSanctionRef {
+  authority: string;
+  listId: string;
+  date: string;
+  url: string;
+}
+
+export interface GetStorageFacilityDetailRequest {
+  facilityId: string;
+}
+
+export interface GetStorageFacilityDetailResponse {
+  facility?: StorageFacilityEntry;
+  revisions: StorageFacilityRevisionEntry[];
+  fetchedAt: string;
+  unavailable: boolean;
+}
+
+export interface StorageFacilityRevisionEntry {
+  date: string;
+  fieldChanged: string;
+  previousValue: string;
+  newValue: string;
+  trigger: string;
+  sourcesUsed: string[];
+  classifierVersion: string;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -528,6 +607,8 @@ export interface SupplyChainServiceHandler {
   getRouteImpact(ctx: ServerContext, req: GetRouteImpactRequest): Promise<GetRouteImpactResponse>;
   listPipelines(ctx: ServerContext, req: ListPipelinesRequest): Promise<ListPipelinesResponse>;
   getPipelineDetail(ctx: ServerContext, req: GetPipelineDetailRequest): Promise<GetPipelineDetailResponse>;
+  listStorageFacilities(ctx: ServerContext, req: ListStorageFacilitiesRequest): Promise<ListStorageFacilitiesResponse>;
+  getStorageFacilityDetail(ctx: ServerContext, req: GetStorageFacilityDetailRequest): Promise<GetStorageFacilityDetailResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -1192,6 +1273,100 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getPipelineDetail(ctx, body);
           return new Response(JSON.stringify(result as GetPipelineDetailResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/list-storage-facilities",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListStorageFacilitiesRequest = {
+            facilityType: params.get("facilityType") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listStorageFacilities", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listStorageFacilities(ctx, body);
+          return new Response(JSON.stringify(result as ListStorageFacilitiesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-storage-facility-detail",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetStorageFacilityDetailRequest = {
+            facilityId: params.get("facilityId") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getStorageFacilityDetail", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getStorageFacilityDetail(ctx, body);
+          return new Response(JSON.stringify(result as GetStorageFacilityDetailResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

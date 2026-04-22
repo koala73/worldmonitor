@@ -669,6 +669,9 @@ export interface MapLayers {
   webcams: boolean;
   // Health layers
   diseaseOutbreaks: boolean;
+  // Energy variant layers (new — optional so existing MapLayers literals
+  // across all other variants remain valid without touching them).
+  storageFacilities?: boolean;
 }
 
 export interface AIDataCenter {

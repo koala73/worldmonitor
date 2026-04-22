@@ -64,6 +64,12 @@ import {
   type PipelinePublicBadge,
 } from '@/shared/pipeline-evidence';
 import { getCachedPipelineRegistries } from '@/shared/pipeline-registry-store';
+import {
+  deriveStoragePublicBadge,
+  type StorageEvidenceInput,
+  type StoragePublicBadge,
+} from '@/shared/storage-evidence';
+import { getCachedStorageFacilityRegistry } from '@/shared/storage-facility-registry-store';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
@@ -1510,6 +1516,17 @@ export class DeckGLMap {
       this.layerCache.delete('pipelines-layer');
     }
 
+    // Storage facilities layer (energy variant only). Registry is seeded
+    // weekly by scripts/seed-storage-facilities.mjs; colors by derived
+    // publicBadge identical to the panel's evidence deriver so first-paint
+    // map dots match panel status exactly.
+    if (SITE_VARIANT === 'energy' && mapLayers.storageFacilities) {
+      const storageLayer = this.createEnergyStorageLayer();
+      if (storageLayer) layers.push(storageLayer);
+    } else {
+      this.layerCache.delete('storage-facilities-layer');
+    }
+
     // Conflict zones layer
     if (mapLayers.conflicts) {
       layers.push(this.createConflictZonesLayer());
@@ -2060,6 +2077,124 @@ export class DeckGLMap {
     // data. With ~25 critical-asset pipelines, rebuild cost per render is
     // trivial (far cheaper than a stale-data UI bug).
     return layer;
+  }
+
+  /**
+   * Storage facilities scatterplot layer (energy variant only). Reads
+   * through the shared store so this layer and StorageFacilityMapPanel
+   * both see the same bootstrap-hot registry without racing on
+   * getHydratedData's single-use drain.
+   *
+   * Dot radius = log(capacity) so Ras Laffan (77 Mtpa) visually dominates
+   * Chiren (6.5 TWh) without blowing out small sites to invisibility.
+   * Color = derived publicBadge, same deriver as the server handler.
+   */
+  private createEnergyStorageLayer(): ScatterplotLayer | null {
+    const cacheKey = 'storage-facilities-layer';
+
+    interface RawEntry {
+      id?: string; name?: string; operator?: string;
+      facilityType?: string; country?: string;
+      location?: { lat?: number; lon?: number };
+      capacityTwh?: number; capacityMb?: number; capacityMtpa?: number;
+      evidence?: StorageEvidenceInput;
+    }
+    interface EnergyStorageDot {
+      id: string;
+      name: string;
+      operator: string;
+      facilityType: string;
+      country: string;
+      position: [number, number];
+      capacityDisplay: string;
+      radius: number;
+      badge: StoragePublicBadge;
+    }
+
+    const { registry } = getCachedStorageFacilityRegistry() as {
+      registry: { facilities?: Record<string, RawEntry> } | undefined;
+    };
+    const rawEntries: RawEntry[] = Object.values(registry?.facilities ?? {});
+    if (rawEntries.length === 0) return null;
+
+    const data: EnergyStorageDot[] = rawEntries
+      .map(raw => {
+        const id = typeof raw.id === 'string' ? raw.id : '';
+        if (!id) return null;
+        const loc = raw.location;
+        if (!loc || typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return null;
+
+        // Capacity → radius. Each facility type has its own unit, so
+        // normalize to a common "relative size" before log — Mtpa is
+        // already the largest numerically; TWh and Mb are comparable.
+        let cap = 0;
+        let capDisplay = '—';
+        if (raw.facilityType === 'ugs' && typeof raw.capacityTwh === 'number' && raw.capacityTwh > 0) {
+          cap = raw.capacityTwh;
+          capDisplay = `${raw.capacityTwh.toFixed(1)} TWh`;
+        } else if ((raw.facilityType === 'spr' || raw.facilityType === 'crude_tank_farm')
+                   && typeof raw.capacityMb === 'number' && raw.capacityMb > 0) {
+          cap = raw.capacityMb;
+          capDisplay = `${raw.capacityMb.toLocaleString()} Mb`;
+        } else if ((raw.facilityType === 'lng_export' || raw.facilityType === 'lng_import')
+                   && typeof raw.capacityMtpa === 'number' && raw.capacityMtpa > 0) {
+          cap = raw.capacityMtpa;
+          capDisplay = `${raw.capacityMtpa.toFixed(1)} Mtpa`;
+        }
+        // log-scale radius so small sites stay visible; floor + ceiling to
+        // keep hit targets reasonable at all zoom levels.
+        const radius = Math.max(6000, Math.min(26000, 5000 + Math.log(Math.max(cap, 1)) * 5500));
+
+        return {
+          id,
+          name: raw.name || id,
+          operator: raw.operator || '',
+          facilityType: raw.facilityType || 'unknown',
+          country: raw.country || '',
+          position: [loc.lon, loc.lat] as [number, number],
+          capacityDisplay: capDisplay,
+          radius,
+          badge: deriveStoragePublicBadge(raw.evidence),
+        } as EnergyStorageDot;
+      })
+      .filter((d): d is EnergyStorageDot => d != null);
+
+    const badgeColor = (b: StoragePublicBadge): [number, number, number, number] => {
+      switch (b) {
+        case 'operational': return [46, 204, 113, 220];  // green
+        case 'reduced':     return [243, 156, 18, 230];  // amber
+        case 'offline':     return [231, 76, 60, 240];   // red
+        case 'disputed':    return [155, 89, 182, 230];  // purple
+      }
+    };
+
+    return new ScatterplotLayer<EnergyStorageDot>({
+      id: cacheKey,
+      data,
+      getPosition: d => d.position,
+      getFillColor: d => badgeColor(d.badge),
+      getRadius: d => d.radius,
+      stroked: true,
+      getLineColor: [255, 255, 255, 200],
+      lineWidthMinPixels: 1,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 28,
+      pickable: true,
+      onClick: info => {
+        const obj = info?.object as EnergyStorageDot | undefined;
+        if (!obj?.id) return false;
+        // Dispatch to StorageFacilityMapPanel — same loose-coupling
+        // pattern as the pipelines layer.
+        try {
+          window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+            detail: { facilityId: obj.id },
+          }));
+        } catch {
+          // Silent no-op on non-browser runtimes.
+        }
+        return true;
+      },
+    });
   }
 
   private buildConflictZoneGeoJson(): GeoJSON.FeatureCollection {
@@ -3902,6 +4037,16 @@ export class DeckGLMap {
           return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel} · <strong>${text(badge)}</strong></div>` };
         }
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel}</div>` };
+      }
+      case 'storage-facilities-layer': {
+        const typeLabel = {
+          ugs: 'UGS', spr: 'SPR',
+          lng_export: 'LNG export', lng_import: 'LNG import',
+          crude_tank_farm: 'Crude hub',
+        }[String(obj.facilityType)] ?? text(obj.facilityType);
+        const badge = String(obj.badge || 'disputed').toUpperCase();
+        const cap = text(obj.capacityDisplay || '—');
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${typeLabel} · ${text(obj.country)} · ${cap}<br/><strong>${text(badge)}</strong></div>` };
       }
       case 'conflict-zones-layer': {
         const props = obj.properties || obj;

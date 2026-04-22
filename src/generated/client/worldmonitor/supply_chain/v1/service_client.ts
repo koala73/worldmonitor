@@ -462,6 +462,85 @@ export interface PipelineRevisionEntry {
   classifierVersion: string;
 }
 
+export interface ListStorageFacilitiesRequest {
+  facilityType: string;
+}
+
+export interface ListStorageFacilitiesResponse {
+  facilities: StorageFacilityEntry[];
+  fetchedAt: string;
+  classifierVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface StorageFacilityEntry {
+  id: string;
+  name: string;
+  operator: string;
+  facilityType: string;
+  country: string;
+  location?: StorageLatLon;
+  capacityTwh: number;
+  capacityMb: number;
+  capacityMtpa: number;
+  workingCapacityUnit: string;
+  inService: number;
+  evidence?: StorageEvidence;
+  publicBadge: string;
+}
+
+export interface StorageLatLon {
+  lat: number;
+  lon: number;
+}
+
+export interface StorageEvidence {
+  physicalState: string;
+  physicalStateSource: string;
+  operatorStatement?: StorageOperatorStatement;
+  commercialState: string;
+  sanctionRefs: StorageSanctionRef[];
+  fillDisclosed: boolean;
+  fillSource: string;
+  lastEvidenceUpdate: string;
+  classifierVersion: string;
+  classifierConfidence: number;
+}
+
+export interface StorageOperatorStatement {
+  text: string;
+  url: string;
+  date: string;
+}
+
+export interface StorageSanctionRef {
+  authority: string;
+  listId: string;
+  date: string;
+  url: string;
+}
+
+export interface GetStorageFacilityDetailRequest {
+  facilityId: string;
+}
+
+export interface GetStorageFacilityDetailResponse {
+  facility?: StorageFacilityEntry;
+  revisions: StorageFacilityRevisionEntry[];
+  fetchedAt: string;
+  unavailable: boolean;
+}
+
+export interface StorageFacilityRevisionEntry {
+  date: string;
+  fieldChanged: string;
+  previousValue: string;
+  newValue: string;
+  trigger: string;
+  sourcesUsed: string[];
+  classifierVersion: string;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -894,6 +973,56 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetPipelineDetailResponse;
+  }
+
+  async listStorageFacilities(req: ListStorageFacilitiesRequest, options?: SupplyChainServiceCallOptions): Promise<ListStorageFacilitiesResponse> {
+    let path = "/api/supply-chain/v1/list-storage-facilities";
+    const params = new URLSearchParams();
+    if (req.facilityType != null && req.facilityType !== "") params.set("facilityType", String(req.facilityType));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListStorageFacilitiesResponse;
+  }
+
+  async getStorageFacilityDetail(req: GetStorageFacilityDetailRequest, options?: SupplyChainServiceCallOptions): Promise<GetStorageFacilityDetailResponse> {
+    let path = "/api/supply-chain/v1/get-storage-facility-detail";
+    const params = new URLSearchParams();
+    if (req.facilityId != null && req.facilityId !== "") params.set("facilityId", String(req.facilityId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetStorageFacilityDetailResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

@@ -17,6 +17,7 @@ import "worldmonitor/supply_chain/v1/get_sector_dependency.proto";
 import "worldmonitor/supply_chain/v1/get_route_explorer_lane.proto";
 import "worldmonitor/supply_chain/v1/get_route_impact.proto";
 import "worldmonitor/supply_chain/v1/list_pipelines.proto";
+import "worldmonitor/supply_chain/v1/list_storage_facilities.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -101,5 +102,20 @@ service SupplyChainService {
   // + auto-revision-log entries. Loaded lazily on drawer open.
   rpc GetPipelineDetail(GetPipelineDetailRequest) returns (GetPipelineDetailResponse) {
     option (sebuf.http.config) = {path: "/get-pipeline-detail", method: HTTP_METHOD_GET};
+  }
+
+  // ListStorageFacilities returns the curated strategic storage registry
+  // (UGS + SPR + LNG + crude tank farms) for the Energy Atlas DeckGL
+  // ScatterplotLayer. Public badges are DERIVED from evidence bundles
+  // server-side and versioned (classifier_version). Free-tier; see
+  // docs/methodology/storage.mdx.
+  rpc ListStorageFacilities(ListStorageFacilitiesRequest) returns (ListStorageFacilitiesResponse) {
+    option (sebuf.http.config) = {path: "/list-storage-facilities", method: HTTP_METHOD_GET};
+  }
+
+  // GetStorageFacilityDetail returns a single facility with full evidence
+  // bundle + revision log. Loaded lazily on drawer open.
+  rpc GetStorageFacilityDetail(GetStorageFacilityDetailRequest) returns (GetStorageFacilityDetailResponse) {
+    option (sebuf.http.config) = {path: "/get-storage-facility-detail", method: HTTP_METHOD_GET};
   }
 }

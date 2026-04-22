@@ -548,6 +548,81 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-storage-facilities:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListStorageFacilities
+            description: |-
+                ListStorageFacilities returns the curated strategic storage registry
+                 (UGS + SPR + LNG + crude tank farms) for the Energy Atlas DeckGL
+                 ScatterplotLayer. Public badges are DERIVED from evidence bundles
+                 server-side and versioned (classifier_version). Free-tier; see
+                 docs/methodology/storage.mdx.
+            operationId: ListStorageFacilities
+            parameters:
+                - name: facilityType
+                  in: query
+                  description: |-
+                    Filter to one facility type. Accepts:
+                       "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
+                     Omit (or pass empty) to receive all types.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListStorageFacilitiesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-storage-facility-detail:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetStorageFacilityDetail
+            description: |-
+                GetStorageFacilityDetail returns a single facility with full evidence
+                 bundle + revision log. Loaded lazily on drawer open.
+            operationId: GetStorageFacilityDetail
+            parameters:
+                - name: facilityId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetStorageFacilityDetailResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1691,6 +1766,193 @@ components:
                 unavailable:
                     type: boolean
         PipelineRevisionEntry:
+            type: object
+            properties:
+                date:
+                    type: string
+                fieldChanged:
+                    type: string
+                previousValue:
+                    type: string
+                newValue:
+                    type: string
+                trigger:
+                    type: string
+                    description: 'One of: "classifier" | "source" | "decay" | "override"'
+                sourcesUsed:
+                    type: array
+                    items:
+                        type: string
+                classifierVersion:
+                    type: string
+        ListStorageFacilitiesRequest:
+            type: object
+            properties:
+                facilityType:
+                    type: string
+                    description: |-
+                        Filter to one facility type. Accepts:
+                           "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
+                         Omit (or pass empty) to receive all types.
+            description: |-
+                ListStorageFacilities returns the curated strategic storage registry
+                 (underground gas storage, strategic petroleum reserves, LNG terminals,
+                 crude tank farms) with evidence-based status per asset. Registry is
+                 curated (see docs/methodology/storage.mdx) and refreshed weekly by
+                 scripts/seed-storage-facilities.mjs. Typical consumer:
+                 StorageFacilityMapPanel rendering the DeckGL ScatterplotLayer.
+
+                 Like pipelines, the public badge is DERIVED from the evidence bundle
+                 server-side at read time. Callers MUST use `public_badge` for display
+                 rather than inventing their own derivation from `evidence` fields, so
+                 the atlas and MCP clients stay consistent and versioned together.
+        ListStorageFacilitiesResponse:
+            type: object
+            properties:
+                facilities:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StorageFacilityEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        StorageFacilityEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                operator:
+                    type: string
+                facilityType:
+                    type: string
+                    description: 'One of: "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"'
+                country:
+                    type: string
+                location:
+                    $ref: '#/components/schemas/StorageLatLon'
+                capacityTwh:
+                    type: number
+                    format: double
+                    description: |-
+                        Working capacity in the facility's native unit (see working_capacity_unit).
+                         Exactly ONE of these is populated per facility, chosen by facility_type:
+                           ugs                              → capacity_twh
+                           spr, crude_tank_farm             → capacity_mb
+                           lng_export, lng_import           → capacity_mtpa
+                capacityMb:
+                    type: number
+                    format: double
+                capacityMtpa:
+                    type: number
+                    format: double
+                workingCapacityUnit:
+                    type: string
+                    description: 'One of: "TWh" | "Mb" | "Mtpa"'
+                inService:
+                    type: integer
+                    format: int32
+                evidence:
+                    $ref: '#/components/schemas/StorageEvidence'
+                publicBadge:
+                    type: string
+                    description: |-
+                        Server-derived public badge. One of:
+                           "operational" | "reduced" | "offline" | "disputed"
+        StorageLatLon:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+        StorageEvidence:
+            type: object
+            properties:
+                physicalState:
+                    type: string
+                    description: 'One of: "operational" | "reduced" | "offline" | "under_construction" | "unknown"'
+                physicalStateSource:
+                    type: string
+                    description: 'One of: "operator" | "regulator" | "press" | "satellite" | "ais-relay"'
+                operatorStatement:
+                    $ref: '#/components/schemas/StorageOperatorStatement'
+                commercialState:
+                    type: string
+                    description: 'One of: "under_contract" | "expired" | "suspended" | "unknown"'
+                sanctionRefs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StorageSanctionRef'
+                fillDisclosed:
+                    type: boolean
+                    description: |-
+                        Whether working-gas / stock-level fill is publicly disclosed for this
+                         asset. LNG export terminals, for instance, tend NOT to disclose; UGS
+                         sites in Europe are required to disclose via GIE AGSI+.
+                fillSource:
+                    type: string
+                    description: |-
+                        Source of the disclosed fill series ("GIE AGSI+", "EIA SPR weekly
+                         stock report", etc.). Empty when fill_disclosed=false.
+                lastEvidenceUpdate:
+                    type: string
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+        StorageOperatorStatement:
+            type: object
+            properties:
+                text:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+        StorageSanctionRef:
+            type: object
+            properties:
+                authority:
+                    type: string
+                listId:
+                    type: string
+                date:
+                    type: string
+                url:
+                    type: string
+        GetStorageFacilityDetailRequest:
+            type: object
+            properties:
+                facilityId:
+                    type: string
+            required:
+                - facilityId
+            description: |-
+                GetStorageFacilityDetail returns a single facility with its full evidence
+                 bundle + revision log. Revisions land in Week 3 alongside the disruption
+                 event log (Week 3 milestone — empty array in v1).
+        GetStorageFacilityDetailResponse:
+            type: object
+            properties:
+                facility:
+                    $ref: '#/components/schemas/StorageFacilityEntry'
+                revisions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StorageFacilityRevisionEntry'
+                fetchedAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        StorageFacilityRevisionEntry:
             type: object
             properties:
                 date:

@@ -15,6 +15,8 @@ import { getRouteExplorerLane } from './get-route-explorer-lane';
 import { getRouteImpact } from './get-route-impact';
 import { listPipelines } from './list-pipelines';
 import { getPipelineDetail } from './get-pipeline-detail';
+import { listStorageFacilities } from './list-storage-facilities';
+import { getStorageFacilityDetail } from './get-storage-facility-detail';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
@@ -32,4 +34,6 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   getRouteImpact,
   listPipelines,
   getPipelineDetail,
+  listStorageFacilities,
+  getStorageFacilityDetail,
 };
