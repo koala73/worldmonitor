@@ -494,10 +494,10 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'powerLossesPct',
     dimension: 'energy',
-    description: 'Electric power transmission + distribution losses (World Bank EG.ELC.LOSS.ZS). Direct grid-integrity measure.',
+    description: 'Electric power transmission + distribution losses (World Bank EG.ELC.LOSS.ZS). Direct grid-integrity measure. Weight is 0.20 in PR 1 — it temporarily absorbs the deferred reserveMarginPct slot (plan §3.1 open-question); when the IEA electricity-balance seeder lands, split 0.10 back out and restore reserveMarginPct at 0.10. Keep this field in lockstep with scoreEnergyV2 in _dimension-scorers.ts, because the PR 0 compare harness copies spec.weight into nominalWeight for gate-9 reporting.',
     direction: 'lowerBetter',
     goalposts: { worst: 25, best: 3 },
-    weight: 0.1,
+    weight: 0.2,
     sourceKey: 'resilience:power-losses:v1',
     scope: 'global',
     cadence: 'annual',
