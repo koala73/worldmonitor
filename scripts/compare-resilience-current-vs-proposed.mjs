@@ -206,6 +206,81 @@ async function main() {
   const meanAbsScoreDelta = rows.reduce((s, r) => s + Math.abs(r.scoreDelta), 0) / rows.length;
   const maxRankAbsDelta = Math.max(...rows.map((r) => r.rankAbsDelta));
 
+  // Cohort + matched-pair summaries (PR 0 fairness-audit harness). Imports
+  // lazily so the script stays runnable when the configs move/rename.
+  const { RESILIENCE_COHORTS } = await import('../tests/helpers/resilience-cohorts.mts');
+  const { MATCHED_PAIRS } = await import('../tests/helpers/resilience-matched-pairs.mts');
+  const rowsByCc = new Map(rows.map((r) => [r.countryCode, r]));
+
+  function median(values) {
+    if (values.length === 0) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  }
+
+  const cohortSummary = RESILIENCE_COHORTS.map((cohort) => {
+    const members = cohort.countryCodes
+      .map((cc) => rowsByCc.get(cc))
+      .filter((r) => r != null);
+    if (members.length === 0) {
+      return { cohortId: cohort.id, inSample: 0, skipped: true };
+    }
+    const deltas = members.map((m) => m.scoreDelta);
+    const rankDeltas = members.map((m) => m.rankDelta);
+    const sortedByDelta = [...members].sort((a, b) => b.scoreDelta - a.scoreDelta);
+    return {
+      cohortId: cohort.id,
+      label: cohort.label,
+      inSample: members.length,
+      medianScoreDelta: Math.round(median(deltas) * 100) / 100,
+      medianAbsScoreDelta: Math.round(median(deltas.map((d) => Math.abs(d))) * 100) / 100,
+      maxRankAbsDelta: Math.max(...rankDeltas.map((d) => Math.abs(d))),
+      biggestClimber: sortedByDelta[0] != null
+        ? { countryCode: sortedByDelta[0].countryCode, scoreDelta: sortedByDelta[0].scoreDelta, rankDelta: sortedByDelta[0].rankDelta }
+        : null,
+      biggestDrop: sortedByDelta.at(-1) != null
+        ? { countryCode: sortedByDelta.at(-1).countryCode, scoreDelta: sortedByDelta.at(-1).scoreDelta, rankDelta: sortedByDelta.at(-1).rankDelta }
+        : null,
+      middleMover: sortedByDelta[Math.floor(sortedByDelta.length / 2)] != null
+        ? {
+            countryCode: sortedByDelta[Math.floor(sortedByDelta.length / 2)].countryCode,
+            scoreDelta: sortedByDelta[Math.floor(sortedByDelta.length / 2)].scoreDelta,
+            rankDelta: sortedByDelta[Math.floor(sortedByDelta.length / 2)].rankDelta,
+          }
+        : null,
+    };
+  });
+
+  const matchedPairSummary = MATCHED_PAIRS.map((pair) => {
+    const higher = rowsByCc.get(pair.higherExpected);
+    const lower = rowsByCc.get(pair.lowerExpected);
+    if (!higher || !lower) {
+      return { pairId: pair.id, skipped: true, reason: `pair member missing from sample: ${!higher ? pair.higherExpected : pair.lowerExpected}` };
+    }
+    const minGap = pair.minGap ?? 3;
+    const currentGap = higher.currentOverallScore - lower.currentOverallScore;
+    const proposedGap = higher.proposedOverallScore - lower.proposedOverallScore;
+    const expectedDirectionHeld = proposedGap > 0;
+    const gapAtLeastMin = proposedGap >= minGap;
+    return {
+      pairId: pair.id,
+      axis: pair.axis,
+      higherExpected: pair.higherExpected,
+      lowerExpected: pair.lowerExpected,
+      minGap,
+      currentGap: Math.round(currentGap * 100) / 100,
+      proposedGap: Math.round(proposedGap * 100) / 100,
+      expectedDirectionHeld,
+      gapAtLeastMin,
+      // Gate: if either flag is false, this pair fails the matched-pair
+      // acceptance check and the PR stops.
+      passes: expectedDirectionHeld && gapAtLeastMin,
+    };
+  });
+
+  const matchedPairFailures = matchedPairSummary.filter((p) => !p.skipped && !p.passes);
+
   const output = {
     comparison: 'currentDomainAggregate_vs_proposedPillarCombined',
     penaltyAlpha: PENALTY_ALPHA,
@@ -218,7 +293,10 @@ async function main() {
       meanScoreDelta: Math.round(meanScoreDelta * 100) / 100,
       meanAbsScoreDelta: Math.round(meanAbsScoreDelta * 100) / 100,
       maxRankAbsDelta,
+      matchedPairFailures: matchedPairFailures.length,
     },
+    cohortSummary,
+    matchedPairSummary,
     topMoversByRank: topMovers.map((r) => ({
       countryCode: r.countryCode,
       currentRank: r.currentRank,

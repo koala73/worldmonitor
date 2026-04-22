@@ -12,6 +12,29 @@ This document describes the **currently shipping** behavior of the index. The ve
 
 Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 19 dimensions × 3 pillars, and the 6-domain weighted `overall_score`. When an operator flips the pillar-combined flag on, the subsection on [Pillar-combined score activation](#pillar-combined-score-activation-flag-gated-default-off) documents what changes.
 
+## Construct contract
+
+Country Resilience measures **absolute national shock-absorption and recovery capacity at a point in time**. It does not adjust for income level. Development-adjacent indicators enter only when they measure a direct resilience mechanism. Those indicators use threshold or saturating transforms so the score rewards functional capacity, not affluence itself. Peer-relative over- and under-performance will be published separately as an analytical overlay, not inside the core score.
+
+The scorer will treat development as relevant only where it creates a direct and measurable shock-absorption mechanism. Pure level-of-affluence proxies are excluded. Development-relative overperformance will be reported separately and will not alter the ordinal country ranking.
+
+Every indicator in the scorer passes a single **mechanism test**: *what direct shock channel does this measure?* If the only answer is "this country is rich," the indicator is excluded from the core score regardless of its historical correlation with resilience outcomes. If the answer is "capacity X absorbs shock Y," the indicator can enter but must use a threshold or saturating transform so it rewards the mechanism rather than the level of resource that drives it.
+
+The mechanism-test classification per indicator is documented in `docs/methodology/indicator-sources.yaml`. The repair plan in `docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md` identifies the indicators that currently fail the test (tagged `wealth-proxy`) and the sequenced PR work to replace them.
+
+## Known construct limitations (in repair)
+
+The first-publication repair is sequenced as PR 0 → PR 1 → PR 3 → PR 2 → PR 4 under the plan above. At the time of writing (PR 0 shipping), the following six construct errors are known and scheduled:
+
+1. **`electricityConsumption` is a wealth proxy, not a resilience signal.** Weight 0.30 on the `energy` dimension; rewards per-capita load rather than grid-integrity capacity. Replaced in PR 1 with `powerLossesPct`, `reserveMarginPct`, and `accessToElectricityPct` (the last moved to the `infrastructure` domain).
+2. **Gas and coal penalized as vulnerability even when domestic.** Current `gasShare` / `coalShare` penalties conflate fossil-dominance with fossil-import-dependence. Replaced in PR 1 with a single `importedFossilDependence` composite using World Bank `EG.IMP.CONS.ZS`.
+3. **No nuclear credit in `scoreEnergy`.** Nuclear-heavy generation scores no points despite firm low-carbon characteristics. Fixed in PR 1 by collapsing `renewShare` + new `nuclearShare` into a single `lowCarbonGenerationShare` indicator.
+4. **Sovereign-wealth buffers invisible to `reserveAdequacy`.** Current dimension only sees central-bank reserves; SWF assets are not counted. Fixed in PR 2 by splitting the dimension into `liquidReserveAdequacy` + `sovereignFiscalBuffer` with a three-component haircut (access × liquidity × transparency) and a saturating transform.
+5. **Dead and regional-only signals in the global core score.** `fuelStockDays` (100% imputed globally), `euGasStorageStress` (EU-only), and `currencyExternal` (BIS 64-economy coverage) currently carry material weight despite insufficient coverage for a world ranking. Retired or scoped regional-only in PR 3.
+6. **No coverage-based weight cap.** A dimension at 30% observed coverage carries the same weight as one at 95%. Fixed in PR 3 with a CI-enforced rule: no indicator with observed coverage below 70% may exceed 5% nominal weight or 5% effective influence.
+
+Each item maps to an acceptance gate and a spec in the repair plan. Until PR 1–PR 3 land, published rankings reflect the current construct and should be read in that context.
+
 ## In the dashboard
 
 CRI is surfaced across three places in the product, all driven from the same currently-shipping score:
