@@ -210,6 +210,29 @@ function spearmanCorrelation(ranksA, ranksB) {
 // adding a new indicator to INDICATOR_REGISTRY flags this table via
 // the "unregistered indicator" branch in buildIndicatorExtractionPlan.
 
+// The rules below use exported scorer helpers wherever the indicator
+// is an event-window aggregate or needs per-country name matching.
+// This avoids duplicating scorer math in the harness — any drift
+// between harness and scorer is impossible by construction.
+//
+// Three Core indicators remain `not-implemented` for structural
+// reasons (NOT missing code — the scorer inputs are genuinely global
+// scalars with no per-country variance to correlate):
+//   - shippingStress: scorer reads a global stressScore and combines
+//     it with each country's tradeExposure. The raw indicator has
+//     zero per-country variance; Pearson(indicator, overall) is 0/NaN.
+//   - transitDisruption: scorer takes `mean(...)` across all transit
+//     corridor summaries → single global scalar with the same
+//     no-variance problem.
+//   - energyPriceStress: scorer reads a global mean absolute price
+//     change across commodities → same no-variance problem.
+// These three are per-country ONLY via trade/energy exposure ratios,
+// which is a derived signal (in a different indicator entirely).
+//
+// Two more (fxVolatility, fxDeviation) remain unimplemented because
+// they need monthly time-series math on BIS REER series that the
+// harness shouldn't duplicate without a helper export.
+
 const EXTRACTION_RULES = {
   // ── macroFiscal ─────────────────────────────────────────────────────
   govRevenuePct: { type: 'imf-macro-country-field', field: 'govRevenuePct' },
@@ -219,30 +242,30 @@ const EXTRACTION_RULES = {
   householdDebtService: { type: 'not-implemented', reason: 'BIS DSR curated series needs per-country quarterly DSR selection matching the scorer window' },
 
   // ── currencyExternal ────────────────────────────────────────────────
-  fxVolatility: { type: 'not-implemented', reason: 'BIS REER annualized volatility requires the scorer monthly-change std-dev computation' },
-  fxDeviation: { type: 'not-implemented', reason: 'BIS REER absolute deviation from 100 requires the scorer latest-value selection' },
+  fxVolatility: { type: 'not-implemented', reason: 'BIS REER annualized volatility needs scorer monthly-change std-dev; helper not exported' },
+  fxDeviation: { type: 'not-implemented', reason: 'BIS REER absolute deviation from 100 needs scorer latest-value selection; helper not exported' },
   fxReservesAdequacy: { type: 'static-path', path: ['fxReservesMonths', 'months'] },
 
   // ── tradeSanctions ──────────────────────────────────────────────────
   sanctionCount: { type: 'sanctions-count' },
-  tradeRestrictions: { type: 'not-implemented', reason: 'WTO tariff-overview requires IN_FORCE weighting + curated top-50 reporter filter matching the scorer' },
-  tradeBarriers: { type: 'not-implemented', reason: 'WTO tariff-gap requires notifying-country aggregation matching the scorer' },
+  tradeRestrictions: { type: 'count-trade-restrictions' },
+  tradeBarriers: { type: 'count-trade-barriers' },
   appliedTariffRate: { type: 'static-path', path: ['appliedTariffRate', 'value'] },
 
-  // ── cyberDigital ────────────────────────────────────────────────────
-  cyberThreats: { type: 'not-implemented', reason: 'Severity-weighted threat count needs scorer critical/high/medium/low weighting' },
-  internetOutages: { type: 'not-implemented', reason: 'Outage penalty needs scorer total/major/partial weighting' },
-  gpsJamming: { type: 'not-implemented', reason: 'GPS jamming hex penalty needs scorer high/medium weighting' },
+  // ── cyberDigital (scorer-aggregated event streams) ──────────────────
+  cyberThreats: { type: 'summarize-cyber' },
+  internetOutages: { type: 'summarize-outages-penalty' },
+  gpsJamming: { type: 'summarize-gps-penalty' },
 
   // ── logisticsSupply ─────────────────────────────────────────────────
   roadsPavedLogistics: { type: 'static-wb-infrastructure', code: 'IS.ROD.PAVE.ZS' },
-  shippingStress: { type: 'not-implemented', reason: 'Global shipping-stress score is not per-country; Pearson against overall is ill-defined' },
-  transitDisruption: { type: 'not-implemented', reason: 'Transit-corridor disruption requires per-country route aggregation matching the scorer' },
+  shippingStress: { type: 'not-implemented', reason: 'Scorer input is a global stressScore applied to every country; no per-country variance to correlate' },
+  transitDisruption: { type: 'not-implemented', reason: 'Scorer input is a global mean across transit corridor summaries; no per-country variance' },
 
   // ── infrastructure ──────────────────────────────────────────────────
   electricityAccess: { type: 'static-wb-infrastructure', code: 'EG.ELC.ACCS.ZS' },
   roadsPavedInfra: { type: 'static-wb-infrastructure', code: 'IS.ROD.PAVE.ZS' },
-  infraOutages: { type: 'not-implemented', reason: 'Same aggregation as cyberDigital.internetOutages' },
+  infraOutages: { type: 'summarize-outages-penalty' },
 
   // ── energy ──────────────────────────────────────────────────────────
   energyImportDependency: { type: 'static-path', path: ['iea', 'energyImportDependency', 'value'] },
@@ -250,12 +273,10 @@ const EXTRACTION_RULES = {
   coalShare: { type: 'energy-mix-field', field: 'coalShare' },
   renewShare: { type: 'energy-mix-field', field: 'renewShare' },
   gasStorageStress: { type: 'gas-storage-field', field: 'fillPct' },
-  energyPriceStress: { type: 'not-implemented', reason: 'Commodity energy price stress is a global average, not per-country' },
+  energyPriceStress: { type: 'not-implemented', reason: 'Scorer input is a global mean across commodity price changes; no per-country variance' },
   electricityConsumption: { type: 'static-wb-infrastructure', code: 'EG.USE.ELEC.KH.PC' },
 
   // ── governanceInstitutional (all 6 WGI sub-pillars) ─────────────────
-  // Static-record keys are World-Bank WGI standard codes; see
-  // scripts/seed-resilience-static.mjs#WGI_INDICATORS.
   wgiVoiceAccountability: { type: 'static-wgi', code: 'VA.EST' },
   wgiPoliticalStability: { type: 'static-wgi', code: 'PV.EST' },
   wgiGovernmentEffectiveness: { type: 'static-wgi', code: 'GE.EST' },
@@ -265,17 +286,17 @@ const EXTRACTION_RULES = {
 
   // ── socialCohesion ──────────────────────────────────────────────────
   gpiScore: { type: 'static-path', path: ['gpi', 'score'] },
-  displacementTotal: { type: 'not-implemented', reason: 'Displacement summary is year-scoped bulk key; needs scorer year selection' },
-  displacementHosted: { type: 'not-implemented', reason: 'Displacement-hosted counterpart; same year-scoped bulk aggregation' },
-  unrestEvents: { type: 'not-implemented', reason: 'ACLED-style unrest aggregation requires scorer event-count windowing' },
+  displacementTotal: { type: 'displacement-field', field: 'totalDisplaced' },
+  displacementHosted: { type: 'displacement-field', field: 'hostTotal' },
+  unrestEvents: { type: 'summarize-unrest' },
 
   // ── borderSecurity / stateContinuity conflict-events (event-window) ─
-  ucdpConflict: { type: 'not-implemented', reason: 'UCDP events need scorer event-count windowing and severity weighting' },
+  ucdpConflict: { type: 'summarize-ucdp' },
 
   // ── informationCognitive ────────────────────────────────────────────
   rsfPressFreedom: { type: 'static-path', path: ['rsf', 'score'] },
-  socialVelocity: { type: 'not-implemented', reason: 'Reddit social velocity is cross-post aggregated; not per-country scalar' },
-  newsThreatScore: { type: 'not-implemented', reason: 'News threat summary requires scorer severity weighting' },
+  socialVelocity: { type: 'summarize-social-velocity' },
+  newsThreatScore: { type: 'news-threat-score' },
 
   // ── healthPublicService ─────────────────────────────────────────────
   hospitalBeds: { type: 'static-who', code: 'hospitalBeds' },
@@ -299,85 +320,163 @@ const EXTRACTION_RULES = {
 
   // ── stateContinuity derived signals ─────────────────────────────────
   recoveryWgiContinuity: { type: 'static-wgi-mean' },
-  recoveryConflictPressure: { type: 'not-implemented', reason: 'Derived from UCDP conflict; depends on ucdpConflict extraction' },
-  recoveryDisplacementVelocity: { type: 'not-implemented', reason: 'Derived from displacement summary; depends on displacementTotal/Hosted extraction' },
+  recoveryConflictPressure: { type: 'summarize-ucdp' },
+  recoveryDisplacementVelocity: { type: 'displacement-field', field: 'totalDisplaced' },
 };
 
-function applyExtractionRule(rule, sources, countryCode) {
+// Shape-family dispatch tables. Each extractor takes (rule, sources,
+// countryCode, scorerHelpers) and returns a number or null. Splitting
+// the dispatcher this way keeps each function's cyclomatic complexity
+// below the biome ceiling (the original monolithic switch exceeded it).
+
+const STATIC_EXTRACTORS = {
+  'static-path': (rule, { staticRecord }) => {
+    let cursor = staticRecord;
+    for (const k of rule.path) cursor = cursor?.[k];
+    return typeof cursor === 'number' ? cursor : null;
+  },
+  'static-wb-infrastructure': (rule, { staticRecord }) =>
+    staticRecord?.infrastructure?.indicators?.[rule.code]?.value ?? null,
+  'static-wgi': (rule, { staticRecord }) =>
+    staticRecord?.wgi?.indicators?.[rule.code]?.value ?? null,
+  'static-wgi-mean': (_rule, { staticRecord }) => {
+    const entries = Object.values(staticRecord?.wgi?.indicators ?? {})
+      .map((e) => (typeof e?.value === 'number' ? e.value : null))
+      .filter((v) => v != null);
+    if (entries.length === 0) return null;
+    return entries.reduce((s, v) => s + v, 0) / entries.length;
+  },
+  'static-who': (rule, { staticRecord }) =>
+    staticRecord?.who?.indicators?.[rule.code]?.value ?? null,
+};
+
+const SIMPLE_EXTRACTORS = {
+  'energy-mix-field': (rule, { energyMix }) =>
+    typeof energyMix?.[rule.field] === 'number' ? energyMix[rule.field] : null,
+  'gas-storage-field': (rule, { gasStorage }) =>
+    typeof gasStorage?.[rule.field] === 'number' ? gasStorage[rule.field] : null,
+  'recovery-country-field': (rule, sources, countryCode) => {
+    const bulkByKey = {
+      'resilience:recovery:fiscal-space:v1': sources.fiscalSpace,
+      'resilience:recovery:reserve-adequacy:v1': sources.reserveAdequacy,
+      'resilience:recovery:external-debt:v1': sources.externalDebt,
+      'resilience:recovery:import-hhi:v1': sources.importHhi,
+      'resilience:recovery:fuel-stocks:v1': sources.fuelStocks,
+    };
+    const entry = bulkByKey[rule.key]?.countries?.[countryCode];
+    return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
+  },
+  'imf-macro-country-field': (rule, { imfMacro }, countryCode) => {
+    const entry = imfMacro?.countries?.[countryCode];
+    return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
+  },
+  'imf-labor-country-field': (rule, { imfLabor }, countryCode) => {
+    const entry = imfLabor?.countries?.[countryCode];
+    return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
+  },
+  'national-debt': (rule, { nationalDebt }, countryCode) => {
+    if (!Array.isArray(nationalDebt)) return null;
+    const found = nationalDebt.find(
+      (e) => e?.iso2 === countryCode || e?.countryCode === countryCode,
+    );
+    return typeof found?.[rule.field] === 'number' ? found[rule.field] : null;
+  },
+  'sanctions-count': (_rule, { sanctionsCounts }, countryCode) => {
+    const direct = sanctionsCounts?.[countryCode];
+    return typeof direct === 'number' ? direct : null;
+  },
+};
+
+// Aggregator extractors wire through exported scorer helpers so the
+// per-country aggregation math never drifts between harness + scorer.
+function extractSummarizeCyber(_rule, { cyber }, countryCode, { summarizeCyber }) {
+  if (!summarizeCyber || cyber == null) return null;
+  const { weightedCount } = summarizeCyber(cyber, countryCode);
+  return weightedCount > 0 ? weightedCount : null;
+}
+function extractOutagesPenalty(_rule, { outages }, countryCode, { summarizeOutages }) {
+  if (!summarizeOutages || outages == null) return null;
+  const { total, major, partial } = summarizeOutages(outages, countryCode);
+  const penalty = total * 4 + major * 2 + partial;
+  return penalty > 0 ? penalty : null;
+}
+function extractGpsPenalty(_rule, { gps }, countryCode, { summarizeGps }) {
+  if (!summarizeGps || gps == null) return null;
+  const { high, medium } = summarizeGps(gps, countryCode);
+  const penalty = high * 3 + medium;
+  return penalty > 0 ? penalty : null;
+}
+function extractSummarizeUcdp(_rule, { ucdp }, countryCode, { summarizeUcdp }) {
+  if (!summarizeUcdp || ucdp == null) return null;
+  const { eventCount } = summarizeUcdp(ucdp, countryCode);
+  return eventCount > 0 ? eventCount : null;
+}
+function extractSummarizeUnrest(_rule, { unrest }, countryCode, { summarizeUnrest }) {
+  if (!summarizeUnrest || unrest == null) return null;
+  const { unrestCount } = summarizeUnrest(unrest, countryCode);
+  return unrestCount > 0 ? unrestCount : null;
+}
+function extractSocialVelocity(_rule, { socialVelocity }, countryCode, { summarizeSocialVelocity }) {
+  if (!summarizeSocialVelocity || socialVelocity == null) return null;
+  const v = summarizeSocialVelocity(socialVelocity, countryCode);
+  return v > 0 ? v : null;
+}
+function extractDisplacementField(rule, { displacement }, countryCode, { getCountryDisplacement }) {
+  if (!getCountryDisplacement || displacement == null) return null;
+  const entry = getCountryDisplacement(displacement, countryCode);
+  return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
+}
+function extractNewsThreat(_rule, { newsThreat }, countryCode, { getThreatSummaryScore }) {
+  if (!getThreatSummaryScore || newsThreat == null) return null;
+  return getThreatSummaryScore(newsThreat, countryCode);
+}
+function extractTradeRestrictions(_rule, { tradeRestrictions }, countryCode, { countTradeRestrictions }) {
+  if (!countTradeRestrictions || tradeRestrictions == null) return null;
+  const count = countTradeRestrictions(tradeRestrictions, countryCode);
+  return count > 0 ? count : null;
+}
+function extractTradeBarriers(_rule, { tradeBarriers }, countryCode, { countTradeBarriers }) {
+  if (!countTradeBarriers || tradeBarriers == null) return null;
+  const count = countTradeBarriers(tradeBarriers, countryCode);
+  return count > 0 ? count : null;
+}
+
+const AGGREGATE_EXTRACTORS = {
+  'summarize-cyber': extractSummarizeCyber,
+  'summarize-outages-penalty': extractOutagesPenalty,
+  'summarize-gps-penalty': extractGpsPenalty,
+  'summarize-ucdp': extractSummarizeUcdp,
+  'summarize-unrest': extractSummarizeUnrest,
+  'summarize-social-velocity': extractSocialVelocity,
+  'displacement-field': extractDisplacementField,
+  'news-threat-score': extractNewsThreat,
+  'count-trade-restrictions': extractTradeRestrictions,
+  'count-trade-barriers': extractTradeBarriers,
+};
+
+function applyExtractionRule(rule, sources, countryCode, scorerHelpers = {}) {
   if (!rule || rule.type === 'not-implemented') return null;
-  const {
-    staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
-    externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
-    nationalDebt, sanctionsCounts,
-  } = sources;
-  switch (rule.type) {
-    case 'static-path': {
-      let cursor = staticRecord;
-      for (const k of rule.path) cursor = cursor?.[k];
-      return typeof cursor === 'number' ? cursor : null;
-    }
-    case 'static-wb-infrastructure':
-      return staticRecord?.infrastructure?.indicators?.[rule.code]?.value ?? null;
-    case 'static-wgi':
-      return staticRecord?.wgi?.indicators?.[rule.code]?.value ?? null;
-    case 'static-wgi-mean': {
-      const entries = Object.values(staticRecord?.wgi?.indicators ?? {})
-        .map((entry) => (typeof entry?.value === 'number' ? entry.value : null))
-        .filter((v) => v != null);
-      if (entries.length === 0) return null;
-      return entries.reduce((s, v) => s + v, 0) / entries.length;
-    }
-    case 'static-who':
-      return staticRecord?.who?.indicators?.[rule.code]?.value ?? null;
-    case 'energy-mix-field':
-      return typeof energyMix?.[rule.field] === 'number' ? energyMix[rule.field] : null;
-    case 'gas-storage-field':
-      return typeof gasStorage?.[rule.field] === 'number' ? gasStorage[rule.field] : null;
-    case 'recovery-country-field': {
-      const bulkByKey = {
-        'resilience:recovery:fiscal-space:v1': fiscalSpace,
-        'resilience:recovery:reserve-adequacy:v1': reserveAdequacy,
-        'resilience:recovery:external-debt:v1': externalDebt,
-        'resilience:recovery:import-hhi:v1': importHhi,
-        'resilience:recovery:fuel-stocks:v1': fuelStocks,
-      };
-      const bulk = bulkByKey[rule.key];
-      const entry = bulk?.countries?.[countryCode];
-      return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
-    }
-    case 'imf-macro-country-field': {
-      const entry = imfMacro?.countries?.[countryCode];
-      return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
-    }
-    case 'imf-labor-country-field': {
-      const entry = imfLabor?.countries?.[countryCode];
-      return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
-    }
-    case 'national-debt': {
-      // economic:national-debt:v1 is an array of { iso3?, iso2?, debtToGdp?, annualGrowth? }
-      if (!Array.isArray(nationalDebt)) return null;
-      const found = nationalDebt.find((e) => e?.iso2 === countryCode || e?.countryCode === countryCode);
-      return typeof found?.[rule.field] === 'number' ? found[rule.field] : null;
-    }
-    case 'sanctions-count': {
-      // sanctions:country-counts:v1 shape tolerates either {countries:{ISO2:n}} or {ISO2:n}.
-      const direct = sanctionsCounts?.[countryCode];
-      const nested = sanctionsCounts?.countries?.[countryCode];
-      if (typeof direct === 'number') return direct;
-      if (typeof nested === 'number') return nested;
-      if (typeof nested?.count === 'number') return nested.count;
-      return null;
-    }
-    default:
-      return null;
-  }
+  const staticFn = STATIC_EXTRACTORS[rule.type];
+  if (staticFn) return staticFn(rule, sources, countryCode);
+  const simpleFn = SIMPLE_EXTRACTORS[rule.type];
+  if (simpleFn) return simpleFn(rule, sources, countryCode);
+  const aggFn = AGGREGATE_EXTRACTORS[rule.type];
+  if (aggFn) return aggFn(rule, sources, countryCode, scorerHelpers);
+  return null;
 }
 
 async function readExtractionSources(countryCode, reader) {
+  // Displacement summary is year-scoped — the scorer reads the current
+  // calendar year (see _dimension-scorers#scoreSocialCohesion). We use
+  // the same resolver so the harness pulls the same payload the scorer
+  // would at the moment of execution.
+  const currentYear = new Date().getFullYear();
   const [
     staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
     externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
     nationalDebt, sanctionsCounts,
+    cyber, outages, gps, ucdp, unrest, newsThreat, displacement,
+    socialVelocity, tradeRestrictions, tradeBarriers,
   ] = await Promise.all([
     reader(`resilience:static:${countryCode}`),
     reader(`energy:mix:v1:${countryCode}`),
@@ -391,11 +490,23 @@ async function readExtractionSources(countryCode, reader) {
     reader('economic:imf:labor:v1'),
     reader('economic:national-debt:v1'),
     reader('sanctions:country-counts:v1'),
+    reader('cyber:threats:v2'),
+    reader('infra:outages:v1'),
+    reader('intelligence:gpsjam:v2'),
+    reader('conflict:ucdp-events:v1'),
+    reader('unrest:events:v1'),
+    reader('news:threat:summary:v1'),
+    reader(`displacement:summary:v1:${currentYear}`),
+    reader('intelligence:social:reddit:v1'),
+    reader('trade:restrictions:v1:tariff-overview:50'),
+    reader('trade:barriers:v1:tariff-gap:50'),
   ]);
   return {
     staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
     externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
     nationalDebt, sanctionsCounts,
+    cyber, outages, gps, ucdp, unrest, newsThreat, displacement,
+    socialVelocity, tradeRestrictions, tradeBarriers,
   };
 }
 
@@ -458,6 +569,7 @@ function pearsonCorrelation(xs, ys) {
 }
 
 async function main() {
+  const scorerMod = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
   const {
     scoreAllDimensions,
     RESILIENCE_DIMENSION_ORDER,
@@ -465,7 +577,31 @@ async function main() {
     getResilienceDomainWeight,
     RESILIENCE_DOMAIN_ORDER,
     createMemoizedSeedReader,
-  } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+    // Scorer helpers passed through to applyExtractionRule so per-
+    // indicator aggregation uses the scorer's own math (zero drift).
+    summarizeCyber,
+    summarizeOutages,
+    summarizeGps,
+    summarizeUcdp,
+    summarizeUnrest,
+    summarizeSocialVelocity,
+    getCountryDisplacement,
+    getThreatSummaryScore,
+    countTradeRestrictions,
+    countTradeBarriers,
+  } = scorerMod;
+  const scorerHelpers = {
+    summarizeCyber,
+    summarizeOutages,
+    summarizeGps,
+    summarizeUcdp,
+    summarizeUnrest,
+    summarizeSocialVelocity,
+    getCountryDisplacement,
+    getThreatSummaryScore,
+    countTradeRestrictions,
+    countTradeBarriers,
+  };
 
   const {
     listScorableCountries,
@@ -535,7 +671,7 @@ async function main() {
 
     const sources = await readExtractionSources(countryCode, sharedReader);
     for (const plan of implementedRules) {
-      const value = applyExtractionRule(plan.rule, sources, countryCode);
+      const value = applyExtractionRule(plan.rule, sources, countryCode, scorerHelpers);
       if (value == null || !Number.isFinite(value)) continue;
       perIndicatorValues[plan.indicator].push({ countryCode, value });
     }

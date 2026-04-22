@@ -605,7 +605,7 @@ function getLatestDebtEntry(raw: unknown, countryCode: string): NationalDebtEntr
   return null;
 }
 
-function countTradeRestrictions(raw: unknown, countryCode: string): number {
+export function countTradeRestrictions(raw: unknown, countryCode: string): number {
   const restrictions: TradeRestriction[] = Array.isArray((raw as { restrictions?: unknown[] } | null)?.restrictions)
     ? ((raw as { restrictions?: TradeRestriction[] }).restrictions ?? [])
     : [];
@@ -617,7 +617,7 @@ function countTradeRestrictions(raw: unknown, countryCode: string): number {
   }, 0);
 }
 
-function countTradeBarriers(raw: unknown, countryCode: string): number {
+export function countTradeBarriers(raw: unknown, countryCode: string): number {
   const barriers: TradeBarrier[] = Array.isArray((raw as { barriers?: unknown[] } | null)?.barriers)
     ? ((raw as { barriers?: TradeBarrier[] }).barriers ?? [])
     : [];
@@ -630,7 +630,7 @@ function isInWtoReporterSet(raw: unknown, countryCode: string): boolean {
   return reporters.includes(countryCode);
 }
 
-function summarizeOutages(raw: unknown, countryCode: string): { total: number; major: number; partial: number } {
+export function summarizeOutages(raw: unknown, countryCode: string): { total: number; major: number; partial: number } {
   const outages: InternetOutage[] = Array.isArray((raw as { outages?: unknown[] } | null)?.outages)
     ? ((raw as { outages?: InternetOutage[] }).outages ?? [])
     : [];
@@ -648,7 +648,7 @@ function summarizeOutages(raw: unknown, countryCode: string): { total: number; m
   }, { total: 0, major: 0, partial: 0 });
 }
 
-function summarizeGps(raw: unknown, countryCode: string): { high: number; medium: number } {
+export function summarizeGps(raw: unknown, countryCode: string): { high: number; medium: number } {
   const hexes: GpsJamHex[] = Array.isArray((raw as { hexes?: unknown[] } | null)?.hexes)
     ? ((raw as { hexes?: GpsJamHex[] }).hexes ?? [])
     : [];
@@ -664,7 +664,7 @@ function summarizeGps(raw: unknown, countryCode: string): { high: number; medium
   }, { high: 0, medium: 0 });
 }
 
-function summarizeCyber(raw: unknown, countryCode: string): { weightedCount: number } {
+export function summarizeCyber(raw: unknown, countryCode: string): { weightedCount: number } {
   const threats: CyberThreat[] = Array.isArray((raw as { threats?: unknown[] } | null)?.threats)
     ? ((raw as { threats?: CyberThreat[] }).threats ?? [])
     : [];
@@ -683,7 +683,7 @@ function summarizeCyber(raw: unknown, countryCode: string): { weightedCount: num
   };
 }
 
-function summarizeUnrest(raw: unknown, countryCode: string): { unrestCount: number; fatalities: number } {
+export function summarizeUnrest(raw: unknown, countryCode: string): { unrestCount: number; fatalities: number } {
   const events: UnrestEvent[] = Array.isArray((raw as { events?: unknown[] } | null)?.events)
     ? ((raw as { events?: UnrestEvent[] }).events ?? [])
     : [];
@@ -697,7 +697,7 @@ function summarizeUnrest(raw: unknown, countryCode: string): { unrestCount: numb
   }, { unrestCount: 0, fatalities: 0 });
 }
 
-function summarizeUcdp(raw: unknown, countryCode: string): { eventCount: number; deaths: number; typeWeight: number } {
+export function summarizeUcdp(raw: unknown, countryCode: string): { eventCount: number; deaths: number; typeWeight: number } {
   const events: UcdpEvent[] = Array.isArray((raw as { events?: unknown[] } | null)?.events)
     ? ((raw as { events?: UcdpEvent[] }).events ?? [])
     : [];
@@ -711,20 +711,20 @@ function summarizeUcdp(raw: unknown, countryCode: string): { eventCount: number;
   }, { eventCount: 0, deaths: 0, typeWeight: 0 });
 }
 
-function getCountryDisplacement(raw: unknown, countryCode: string): CountryDisplacement | null {
+export function getCountryDisplacement(raw: unknown, countryCode: string): CountryDisplacement | null {
   const summary = (raw as { summary?: { countries?: CountryDisplacement[] } } | null)?.summary;
   const countries = Array.isArray(summary?.countries) ? summary.countries : [];
   return countries.find((entry) => matchesCountryIdentifier(entry.code, countryCode)) ?? null;
 }
 
-function summarizeSocialVelocity(raw: unknown, countryCode: string): number {
+export function summarizeSocialVelocity(raw: unknown, countryCode: string): number {
   const posts: SocialVelocityPost[] = Array.isArray((raw as { posts?: unknown[] } | null)?.posts)
     ? ((raw as { posts?: SocialVelocityPost[] }).posts ?? [])
     : [];
   return posts.reduce((sum, post) => sum + (matchesCountryText(post.title, countryCode) ? (safeNum(post.velocityScore) ?? 0) : 0), 0);
 }
 
-function getThreatSummaryScore(raw: unknown, countryCode: string): number | null {
+export function getThreatSummaryScore(raw: unknown, countryCode: string): number | null {
   if (!raw || typeof raw !== 'object') return null;
   const byCountry = (raw as Record<string, unknown>).byCountry ?? raw; // backward-compat: old payload was a flat ISO2 map
   const counts = (byCountry as Record<string, Record<string, number>>)?.[countryCode.toUpperCase()];

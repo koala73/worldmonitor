@@ -85,17 +85,36 @@ test('all construct-risk indicators flagged by the repair plan are implemented',
 });
 
 test('core-tier indicator coverage meets a minimum floor', () => {
-  // Drives the extractionCoverage summary in the output. The floor is
-  // intentionally conservative so adding a new Core-tier indicator
-  // without an extractor triggers a failing test instead of silently
-  // shrinking influence coverage.
+  // Drives the extractionCoverage summary in the output. Floor raised
+  // after wiring the exported scorer-aggregate helpers (summarizeCyber,
+  // summarizeOutages, summarizeGps, summarizeUcdp, summarizeUnrest,
+  // getThreatSummaryScore, getCountryDisplacement, countTradeRestrictions,
+  // countTradeBarriers). The only Core-tier indicators still unextracted
+  // are those whose scorer inputs are genuinely global scalars
+  // (shippingStress, transitDisruption, energyPriceStress) or require
+  // unexported time-series helpers (fxVolatility, fxDeviation,
+  // aquastatWaterAvailability, householdDebtService, etc.).
   const plan = buildIndicatorExtractionPlan(INDICATOR_REGISTRY);
   const coreTotal = plan.filter((p) => p.tier === 'core').length;
   const coreImplemented = plan.filter((p) => p.tier === 'core' && p.extractionStatus === 'implemented').length;
   assert.ok(
-    coreImplemented / coreTotal >= 0.45,
-    `core-tier extraction coverage fell below 45%: ${coreImplemented}/${coreTotal}`,
+    coreImplemented / coreTotal >= 0.80,
+    `core-tier extraction coverage fell below 80%: ${coreImplemented}/${coreTotal}`,
   );
+});
+
+test('the three "no per-country variance" indicators stay not-implemented with correct reason', () => {
+  // shippingStress / transitDisruption / energyPriceStress are
+  // scorer-level GLOBAL scalars — Pearson(global, overall) is 0 or
+  // NaN by construction. They must NOT be marked implemented: any
+  // future implementation that appears to extract them is wrong
+  // unless it re-expresses them as per-country effective contribution.
+  const plan = buildIndicatorExtractionPlan(INDICATOR_REGISTRY);
+  const byId = Object.fromEntries(plan.map((p) => [p.indicator, p]));
+  for (const id of ['shippingStress', 'transitDisruption', 'energyPriceStress']) {
+    assert.equal(byId[id]?.extractionStatus, 'not-implemented', `${id} should stay not-implemented (no per-country variance)`);
+    assert.match(byId[id].reason, /no per-country variance|global/i);
+  }
 });
 
 test('applyExtractionRule — static-path navigates nested object fields', () => {
@@ -140,4 +159,46 @@ test('applyExtractionRule — missing values return null (pairwise-drop contract
 test('applyExtractionRule — not-implemented rules short-circuit to null', () => {
   const rule = { type: 'not-implemented', reason: 'test' };
   assert.equal(applyExtractionRule(rule, {}, 'AE'), null);
+});
+
+test('applyExtractionRule — summarize-cyber wires through exported scorer helper', () => {
+  const rule = { type: 'summarize-cyber' };
+  const cyber = { threats: [{ country: 'AE', severity: 'CRITICALITY_LEVEL_CRITICAL' }] };
+  // Pass a stub helper to prove the rule dispatches through it.
+  const helpers = {
+    summarizeCyber: (raw, cc) => ({
+      weightedCount: raw.threats.filter((t) => t.country === cc).length * 3,
+    }),
+  };
+  assert.equal(applyExtractionRule(rule, { cyber }, 'AE', helpers), 3);
+  // Without the helper available, rule falls back to null.
+  assert.equal(applyExtractionRule(rule, { cyber }, 'AE', {}), null);
+});
+
+test('applyExtractionRule — summarize-outages-penalty computes 4/2/1 weighting', () => {
+  const rule = { type: 'summarize-outages-penalty' };
+  const outages = { outages: [] };
+  const helpers = {
+    summarizeOutages: () => ({ total: 1, major: 2, partial: 3 }),
+  };
+  // penalty = 1*4 + 2*2 + 3*1 = 11
+  assert.equal(applyExtractionRule(rule, { outages }, 'AE', helpers), 11);
+});
+
+test('applyExtractionRule — displacement-field reads per-country entry by field name', () => {
+  const rule = { type: 'displacement-field', field: 'totalDisplaced' };
+  const displacement = {};
+  const helpers = {
+    getCountryDisplacement: () => ({ totalDisplaced: 12345, hostTotal: 678 }),
+  };
+  assert.equal(applyExtractionRule(rule, { displacement }, 'SY', helpers), 12345);
+});
+
+test('applyExtractionRule — count-trade-restrictions uses scorer-exported counter', () => {
+  const rule = { type: 'count-trade-restrictions' };
+  const tradeRestrictions = { restrictions: [] };
+  const helpers = { countTradeRestrictions: () => 5 };
+  assert.equal(applyExtractionRule(rule, { tradeRestrictions }, 'AE', helpers), 5);
+  // Zero coerces to null (pairwise-drop contract for empty signals).
+  assert.equal(applyExtractionRule(rule, { tradeRestrictions }, 'AE', { countTradeRestrictions: () => 0 }), null);
 });
