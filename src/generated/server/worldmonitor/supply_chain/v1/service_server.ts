@@ -541,6 +541,59 @@ export interface StorageFacilityRevisionEntry {
   classifierVersion: string;
 }
 
+export interface ListFuelShortagesRequest {
+  country: string;
+  product: string;
+  severity: string;
+}
+
+export interface ListFuelShortagesResponse {
+  shortages: FuelShortageEntry[];
+  fetchedAt: string;
+  classifierVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface FuelShortageEntry {
+  id: string;
+  country: string;
+  product: string;
+  severity: string;
+  firstSeen: string;
+  lastConfirmed: string;
+  resolvedAt: string;
+  impactTypes: string[];
+  causeChain: string[];
+  shortDescription: string;
+  evidence?: FuelShortageEvidence;
+}
+
+export interface FuelShortageEvidence {
+  evidenceSources: FuelShortageEvidenceSource[];
+  firstRegulatorConfirmation: string;
+  classifierVersion: string;
+  classifierConfidence: number;
+  lastEvidenceUpdate: string;
+}
+
+export interface FuelShortageEvidenceSource {
+  authority: string;
+  title: string;
+  url: string;
+  date: string;
+  sourceType: string;
+}
+
+export interface GetFuelShortageDetailRequest {
+  shortageId: string;
+}
+
+export interface GetFuelShortageDetailResponse {
+  shortage?: FuelShortageEntry;
+  fetchedAt: string;
+  unavailable: boolean;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -609,6 +662,8 @@ export interface SupplyChainServiceHandler {
   getPipelineDetail(ctx: ServerContext, req: GetPipelineDetailRequest): Promise<GetPipelineDetailResponse>;
   listStorageFacilities(ctx: ServerContext, req: ListStorageFacilitiesRequest): Promise<ListStorageFacilitiesResponse>;
   getStorageFacilityDetail(ctx: ServerContext, req: GetStorageFacilityDetailRequest): Promise<GetStorageFacilityDetailResponse>;
+  listFuelShortages(ctx: ServerContext, req: ListFuelShortagesRequest): Promise<ListFuelShortagesResponse>;
+  getFuelShortageDetail(ctx: ServerContext, req: GetFuelShortageDetailRequest): Promise<GetFuelShortageDetailResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -1367,6 +1422,102 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getStorageFacilityDetail(ctx, body);
           return new Response(JSON.stringify(result as GetStorageFacilityDetailResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/list-fuel-shortages",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListFuelShortagesRequest = {
+            country: params.get("country") ?? "",
+            product: params.get("product") ?? "",
+            severity: params.get("severity") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listFuelShortages", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listFuelShortages(ctx, body);
+          return new Response(JSON.stringify(result as ListFuelShortagesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-fuel-shortage-detail",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetFuelShortageDetailRequest = {
+            shortageId: params.get("shortageId") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getFuelShortageDetail", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getFuelShortageDetail(ctx, body);
+          return new Response(JSON.stringify(result as GetFuelShortageDetailResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

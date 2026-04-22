@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ListFuelShortages returns the global fuel-shortage alert registry.
+// v1 is seeded from a curated JSON file (scripts/data/fuel-shortages.json);
+// post-launch it's extended automatically by the proactive-intelligence
+// classifier. Severity is the CLASSIFIER OUTPUT ("confirmed" or "watch"),
+// not a client-side derivation — we ship the evidence alongside so agents
+// and humans can audit the grounds for a severity label.
+//
+// See docs/methodology/shortages.mdx for the evidence-threshold spec.
+message ListFuelShortagesRequest {
+  // Filter to one ISO 3166-1 alpha-2 country. Omit for global.
+  string country = 1 [(sebuf.http.query) = {name: "country"}];
+  // Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
+  // Omit for all products.
+  string product = 2 [(sebuf.http.query) = {name: "product"}];
+  // Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.
+  string severity = 3 [(sebuf.http.query) = {name: "severity"}];
+}
+
+message ListFuelShortagesResponse {
+  repeated FuelShortageEntry shortages = 1;
+  string fetched_at = 2;
+  string classifier_version = 3;
+  bool upstream_unavailable = 4;
+}
+
+// GetFuelShortageDetail returns a single shortage with full evidence
+// bundle + citation timeline. Loaded lazily on drawer open.
+message GetFuelShortageDetailRequest {
+  string shortage_id = 1 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "shortageId"}
+  ];
+}
+
+message GetFuelShortageDetailResponse {
+  FuelShortageEntry shortage = 1;
+  string fetched_at = 2;
+  bool unavailable = 3;
+}
+
+message FuelShortageEntry {
+  string id = 1;
+  string country = 2;                          // ISO 3166-1 alpha-2
+  // One of: "petrol" | "diesel" | "jet" | "heating_oil"
+  string product = 3;
+  // One of: "confirmed" | "watch"  (classifier output — not a client-side derivation)
+  string severity = 4;
+  string first_seen = 5;                       // ISO8601
+  string last_confirmed = 6;                   // ISO8601
+  // Empty string when not yet resolved.
+  string resolved_at = 7;
+  // Observable consumer-facing impacts. Subset of:
+  //   "stations_closed" | "rationing" | "flights_cancelled" | "import_cut" | "price_spike"
+  repeated string impact_types = 8;
+  // Contributing root causes, ordered primary-first. Subset of:
+  //   "upstream_refinery" | "logistics" | "policy" | "chokepoint" |
+  //   "sanction" | "war" | "import_cut"
+  repeated string cause_chain = 9;
+  string short_description = 10;
+  FuelShortageEvidence evidence = 11;
+}
+
+message FuelShortageEvidence {
+  repeated FuelShortageEvidenceSource evidence_sources = 1;
+  // ISO date of the first regulator confirmation, if any. Empty when
+  // severity is "watch" on press-only signal.
+  string first_regulator_confirmation = 2;
+  string classifier_version = 3;
+  double classifier_confidence = 4;            // 0..1
+  string last_evidence_update = 5;             // ISO8601
+}
+
+message FuelShortageEvidenceSource {
+  string authority = 1;                        // e.g. "NMDPRA", "Reuters", "OGRA"
+  string title = 2;
+  string url = 3;
+  string date = 4;                             // ISO8601
+  // One of: "regulator" | "operator" | "press" | "ais-relay" | "satellite"
+  string source_type = 5;
+}

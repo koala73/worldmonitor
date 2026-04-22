@@ -263,6 +263,10 @@ describe('Bootstrap key hydration coverage', () => {
       // fetch in CountryDeepDivePanel (housing cycle tile), not through the
       // getHydratedData session cache — fetched on-click per country.
       'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+      // fuelShortages panel lands Day 12; registry is seeded + hydrated so
+      // RPC handler has data. Remove from this set when FuelShortagePanel
+      // wires up in src/.
+      'fuelShortages',
     ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;

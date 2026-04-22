@@ -28,4 +28,7 @@ await runBundle('energy-sources', [
   // scripts/_storage-facility-registry.mjs. Weekly cadence — registry is
   // near-static; badge derivation happens at read-time in the RPC handler.
   { label: 'Storage-Facilities', script: 'seed-storage-facilities.mjs', seedMetaKey: 'energy:storage-facilities', canonicalKey: 'energy:storage-facilities:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
+  // Fuel-shortage registry (v1 curated seed — classifier extends post-launch).
+  // Daily cadence because shortages move faster than registry assets.
+  { label: 'Fuel-Shortages', script: 'seed-fuel-shortages.mjs', seedMetaKey: 'energy:fuel-shortages', canonicalKey: 'energy:fuel-shortages:v1', intervalMs: DAY, timeoutMs: 60_000 },
 ]);

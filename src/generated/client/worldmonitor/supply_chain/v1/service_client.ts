@@ -541,6 +541,59 @@ export interface StorageFacilityRevisionEntry {
   classifierVersion: string;
 }
 
+export interface ListFuelShortagesRequest {
+  country: string;
+  product: string;
+  severity: string;
+}
+
+export interface ListFuelShortagesResponse {
+  shortages: FuelShortageEntry[];
+  fetchedAt: string;
+  classifierVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface FuelShortageEntry {
+  id: string;
+  country: string;
+  product: string;
+  severity: string;
+  firstSeen: string;
+  lastConfirmed: string;
+  resolvedAt: string;
+  impactTypes: string[];
+  causeChain: string[];
+  shortDescription: string;
+  evidence?: FuelShortageEvidence;
+}
+
+export interface FuelShortageEvidence {
+  evidenceSources: FuelShortageEvidenceSource[];
+  firstRegulatorConfirmation: string;
+  classifierVersion: string;
+  classifierConfidence: number;
+  lastEvidenceUpdate: string;
+}
+
+export interface FuelShortageEvidenceSource {
+  authority: string;
+  title: string;
+  url: string;
+  date: string;
+  sourceType: string;
+}
+
+export interface GetFuelShortageDetailRequest {
+  shortageId: string;
+}
+
+export interface GetFuelShortageDetailResponse {
+  shortage?: FuelShortageEntry;
+  fetchedAt: string;
+  unavailable: boolean;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -1023,6 +1076,58 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetStorageFacilityDetailResponse;
+  }
+
+  async listFuelShortages(req: ListFuelShortagesRequest, options?: SupplyChainServiceCallOptions): Promise<ListFuelShortagesResponse> {
+    let path = "/api/supply-chain/v1/list-fuel-shortages";
+    const params = new URLSearchParams();
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.product != null && req.product !== "") params.set("product", String(req.product));
+    if (req.severity != null && req.severity !== "") params.set("severity", String(req.severity));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListFuelShortagesResponse;
+  }
+
+  async getFuelShortageDetail(req: GetFuelShortageDetailRequest, options?: SupplyChainServiceCallOptions): Promise<GetFuelShortageDetailResponse> {
+    let path = "/api/supply-chain/v1/get-fuel-shortage-detail";
+    const params = new URLSearchParams();
+    if (req.shortageId != null && req.shortageId !== "") params.set("shortageId", String(req.shortageId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFuelShortageDetailResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

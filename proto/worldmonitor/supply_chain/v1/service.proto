@@ -18,6 +18,7 @@ import "worldmonitor/supply_chain/v1/get_route_explorer_lane.proto";
 import "worldmonitor/supply_chain/v1/get_route_impact.proto";
 import "worldmonitor/supply_chain/v1/list_pipelines.proto";
 import "worldmonitor/supply_chain/v1/list_storage_facilities.proto";
+import "worldmonitor/supply_chain/v1/list_fuel_shortages.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -117,5 +118,18 @@ service SupplyChainService {
   // bundle + revision log. Loaded lazily on drawer open.
   rpc GetStorageFacilityDetail(GetStorageFacilityDetailRequest) returns (GetStorageFacilityDetailResponse) {
     option (sebuf.http.config) = {path: "/get-storage-facility-detail", method: HTTP_METHOD_GET};
+  }
+
+  // ListFuelShortages returns the global fuel-shortage alert registry.
+  // Severity is CLASSIFIER OUTPUT not a client derivation. Curated v1;
+  // classifier-extended post-launch. Free tier.
+  rpc ListFuelShortages(ListFuelShortagesRequest) returns (ListFuelShortagesResponse) {
+    option (sebuf.http.config) = {path: "/list-fuel-shortages", method: HTTP_METHOD_GET};
+  }
+
+  // GetFuelShortageDetail returns a single shortage with full evidence
+  // bundle and citation timeline. Loaded lazily on drawer open.
+  rpc GetFuelShortageDetail(GetFuelShortageDetailRequest) returns (GetFuelShortageDetailResponse) {
+    option (sebuf.http.config) = {path: "/get-fuel-shortage-detail", method: HTTP_METHOD_GET};
   }
 }

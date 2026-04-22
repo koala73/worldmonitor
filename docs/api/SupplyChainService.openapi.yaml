@@ -623,6 +623,90 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-fuel-shortages:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListFuelShortages
+            description: |-
+                ListFuelShortages returns the global fuel-shortage alert registry.
+                 Severity is CLASSIFIER OUTPUT not a client derivation. Curated v1;
+                 classifier-extended post-launch. Free tier.
+            operationId: ListFuelShortages
+            parameters:
+                - name: country
+                  in: query
+                  description: Filter to one ISO 3166-1 alpha-2 country. Omit for global.
+                  required: false
+                  schema:
+                    type: string
+                - name: product
+                  in: query
+                  description: |-
+                    Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
+                     Omit for all products.
+                  required: false
+                  schema:
+                    type: string
+                - name: severity
+                  in: query
+                  description: 'Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListFuelShortagesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-fuel-shortage-detail:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetFuelShortageDetail
+            description: |-
+                GetFuelShortageDetail returns a single shortage with full evidence
+                 bundle and citation timeline. Loaded lazily on drawer open.
+            operationId: GetFuelShortageDetail
+            parameters:
+                - name: shortageId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFuelShortageDetailResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1972,3 +2056,130 @@ components:
                         type: string
                 classifierVersion:
                     type: string
+        ListFuelShortagesRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Filter to one ISO 3166-1 alpha-2 country. Omit for global.
+                product:
+                    type: string
+                    description: |-
+                        Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
+                         Omit for all products.
+                severity:
+                    type: string
+                    description: 'Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.'
+            description: |-
+                ListFuelShortages returns the global fuel-shortage alert registry.
+                 v1 is seeded from a curated JSON file (scripts/data/fuel-shortages.json);
+                 post-launch it's extended automatically by the proactive-intelligence
+                 classifier. Severity is the CLASSIFIER OUTPUT ("confirmed" or "watch"),
+                 not a client-side derivation — we ship the evidence alongside so agents
+                 and humans can audit the grounds for a severity label.
+
+                 See docs/methodology/shortages.mdx for the evidence-threshold spec.
+        ListFuelShortagesResponse:
+            type: object
+            properties:
+                shortages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FuelShortageEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        FuelShortageEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                country:
+                    type: string
+                product:
+                    type: string
+                    description: 'One of: "petrol" | "diesel" | "jet" | "heating_oil"'
+                severity:
+                    type: string
+                    description: 'One of: "confirmed" | "watch"  (classifier output — not a client-side derivation)'
+                firstSeen:
+                    type: string
+                lastConfirmed:
+                    type: string
+                resolvedAt:
+                    type: string
+                    description: Empty string when not yet resolved.
+                impactTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Observable consumer-facing impacts. Subset of:
+                               "stations_closed" | "rationing" | "flights_cancelled" | "import_cut" | "price_spike"
+                causeChain:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Contributing root causes, ordered primary-first. Subset of:
+                               "upstream_refinery" | "logistics" | "policy" | "chokepoint" |
+                               "sanction" | "war" | "import_cut"
+                shortDescription:
+                    type: string
+                evidence:
+                    $ref: '#/components/schemas/FuelShortageEvidence'
+        FuelShortageEvidence:
+            type: object
+            properties:
+                evidenceSources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FuelShortageEvidenceSource'
+                firstRegulatorConfirmation:
+                    type: string
+                    description: |-
+                        ISO date of the first regulator confirmation, if any. Empty when
+                         severity is "watch" on press-only signal.
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+                lastEvidenceUpdate:
+                    type: string
+        FuelShortageEvidenceSource:
+            type: object
+            properties:
+                authority:
+                    type: string
+                title:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+                sourceType:
+                    type: string
+                    description: 'One of: "regulator" | "operator" | "press" | "ais-relay" | "satellite"'
+        GetFuelShortageDetailRequest:
+            type: object
+            properties:
+                shortageId:
+                    type: string
+            required:
+                - shortageId
+            description: |-
+                GetFuelShortageDetail returns a single shortage with full evidence
+                 bundle + citation timeline. Loaded lazily on drawer open.
+        GetFuelShortageDetailResponse:
+            type: object
+            properties:
+                shortage:
+                    $ref: '#/components/schemas/FuelShortageEntry'
+                fetchedAt:
+                    type: string
+                unavailable:
+                    type: boolean

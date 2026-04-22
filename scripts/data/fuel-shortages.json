@@ -1,0 +1,333 @@
+{
+  "source": "Curated from regulator advisories (NMDPRA, OGRA, EPRA, CAA), IEA monthly reports, operator press releases, and major-wire coverage",
+  "methodologyUrl": "/docs/methodology/shortages",
+  "version": "v1",
+  "referenceYear": 2026,
+  "classifierVersion": "v1",
+  "shortages": {
+    "pk-petrol-2026-q1": {
+      "id": "pk-petrol-2026-q1",
+      "country": "PK",
+      "product": "petrol",
+      "severity": "confirmed",
+      "firstSeen": "2026-01-12T00:00:00Z",
+      "lastConfirmed": "2026-04-15T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["stations_closed", "rationing"],
+      "causeChain": ["policy", "logistics"],
+      "shortDescription": "Retail petrol shortages across Punjab and Sindh from LC-approval delays for imports.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "OGRA", "title": "Retail supply advisory", "url": "https://www.ogra.org.pk/", "date": "2026-03-28", "sourceType": "regulator" },
+          { "authority": "Reuters", "title": "Pakistan fuel queues return", "url": "https://www.reuters.com/world/asia-pacific/", "date": "2026-03-10", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2026-03-28",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88,
+        "lastEvidenceUpdate": "2026-04-15T00:00:00Z"
+      }
+    },
+    "lk-petrol-2026-q1": {
+      "id": "lk-petrol-2026-q1",
+      "country": "LK",
+      "product": "petrol",
+      "severity": "watch",
+      "firstSeen": "2026-02-20T00:00:00Z",
+      "lastConfirmed": "2026-04-10T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["logistics"],
+      "shortDescription": "CPC ration quotas reduced across several districts; queues reported in Colombo suburbs.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Ceylon Petroleum Corporation", "title": "Quota revision notice", "url": "https://ceypetco.gov.lk/", "date": "2026-04-05", "sourceType": "operator" },
+          { "authority": "Daily Mirror", "title": "Fuel queues lengthen", "url": "https://www.dailymirror.lk/", "date": "2026-04-08", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": null,
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.72,
+        "lastEvidenceUpdate": "2026-04-10T00:00:00Z"
+      }
+    },
+    "ng-petrol-2026-q1": {
+      "id": "ng-petrol-2026-q1",
+      "country": "NG",
+      "product": "petrol",
+      "severity": "confirmed",
+      "firstSeen": "2026-01-05T00:00:00Z",
+      "lastConfirmed": "2026-04-18T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["stations_closed", "rationing"],
+      "causeChain": ["upstream_refinery", "logistics"],
+      "shortDescription": "NNPC supply gaps; PMS (petrol) queues in Abuja, Lagos, Port Harcourt.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "NMDPRA", "title": "PMS supply monitoring bulletin", "url": "https://nmdpra.gov.ng/", "date": "2026-04-10", "sourceType": "regulator" },
+          { "authority": "Premium Times", "title": "Petrol queues continue", "url": "https://www.premiumtimesng.com/", "date": "2026-04-12", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-10",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.9,
+        "lastEvidenceUpdate": "2026-04-18T00:00:00Z"
+      }
+    },
+    "cu-diesel-2026-q1": {
+      "id": "cu-diesel-2026-q1",
+      "country": "CU",
+      "product": "diesel",
+      "severity": "confirmed",
+      "firstSeen": "2025-11-01T00:00:00Z",
+      "lastConfirmed": "2026-04-20T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing", "import_cut"],
+      "causeChain": ["import_cut", "policy"],
+      "shortDescription": "Severe country-wide diesel shortfalls tied to reduced Venezuelan crude deliveries.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "MINCEX", "title": "Fuel import deliveries", "url": "https://www.mincex.gob.cu/", "date": "2026-04-01", "sourceType": "regulator" },
+          { "authority": "Reuters", "title": "Cuba tightens fuel rationing", "url": "https://www.reuters.com/world/americas/", "date": "2026-03-15", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-01",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.92,
+        "lastEvidenceUpdate": "2026-04-20T00:00:00Z"
+      }
+    },
+    "ve-petrol-2026-q1": {
+      "id": "ve-petrol-2026-q1",
+      "country": "VE",
+      "product": "petrol",
+      "severity": "confirmed",
+      "firstSeen": "2024-06-01T00:00:00Z",
+      "lastConfirmed": "2026-04-15T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["stations_closed", "rationing"],
+      "causeChain": ["upstream_refinery", "sanction"],
+      "shortDescription": "Chronic gasoline shortages outside Caracas tied to PDVSA refinery runs + OFAC constraints.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "PDVSA", "title": "Production bulletin", "url": "https://www.pdvsa.com/", "date": "2026-04-05", "sourceType": "operator" },
+          { "authority": "AP", "title": "Venezuelans queue hours for gas", "url": "https://apnews.com/", "date": "2026-03-28", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2024-06-15",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.94,
+        "lastEvidenceUpdate": "2026-04-15T00:00:00Z"
+      }
+    },
+    "lb-fuel-2026-q1": {
+      "id": "lb-fuel-2026-q1",
+      "country": "LB",
+      "product": "diesel",
+      "severity": "confirmed",
+      "firstSeen": "2023-07-01T00:00:00Z",
+      "lastConfirmed": "2026-04-18T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["policy", "logistics"],
+      "shortDescription": "Persistent diesel shortages for private generator fleet keeping grid coverage.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Ministry of Energy and Water", "title": "Generator fuel allocation", "url": "https://www.energyandwater.gov.lb/", "date": "2026-03-20", "sourceType": "regulator" },
+          { "authority": "L'Orient Today", "title": "Fuel crunch persists", "url": "https://today.lorientlejour.com/", "date": "2026-04-02", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2023-07-15",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.9,
+        "lastEvidenceUpdate": "2026-04-18T00:00:00Z"
+      }
+    },
+    "zw-petrol-2026-q1": {
+      "id": "zw-petrol-2026-q1",
+      "country": "ZW",
+      "product": "petrol",
+      "severity": "watch",
+      "firstSeen": "2026-03-01T00:00:00Z",
+      "lastConfirmed": "2026-04-12T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["logistics"],
+      "shortDescription": "ZERA advisory on delivery delays; some stations intermittent.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "ZERA", "title": "Fuel availability bulletin", "url": "https://www.zera.co.zw/", "date": "2026-04-05", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-05",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.7,
+        "lastEvidenceUpdate": "2026-04-12T00:00:00Z"
+      }
+    },
+    "ar-diesel-2026-q1": {
+      "id": "ar-diesel-2026-q1",
+      "country": "AR",
+      "product": "diesel",
+      "severity": "watch",
+      "firstSeen": "2026-02-10T00:00:00Z",
+      "lastConfirmed": "2026-04-14T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["logistics"],
+      "shortDescription": "Harvest-season diesel demand outpacing supply in Pampa provinces.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "YPF", "title": "Agricultural diesel allocation", "url": "https://www.ypf.com/", "date": "2026-04-04", "sourceType": "operator" },
+          { "authority": "La Nación", "title": "Escasez de gasoil en el campo", "url": "https://www.lanacion.com.ar/", "date": "2026-03-18", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": null,
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.68,
+        "lastEvidenceUpdate": "2026-04-14T00:00:00Z"
+      }
+    },
+    "ir-petrol-2026-q1": {
+      "id": "ir-petrol-2026-q1",
+      "country": "IR",
+      "product": "petrol",
+      "severity": "watch",
+      "firstSeen": "2026-03-20T00:00:00Z",
+      "lastConfirmed": "2026-04-15T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["upstream_refinery"],
+      "shortDescription": "Reported quota reductions at card-activated pumps; refinery turnarounds.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "NIOPDC", "title": "Quota notice", "url": "https://www.niopdc.ir/", "date": "2026-04-01", "sourceType": "operator" }
+        ],
+        "firstRegulatorConfirmation": null,
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.65,
+        "lastEvidenceUpdate": "2026-04-15T00:00:00Z"
+      }
+    },
+    "bo-diesel-2026-q1": {
+      "id": "bo-diesel-2026-q1",
+      "country": "BO",
+      "product": "diesel",
+      "severity": "confirmed",
+      "firstSeen": "2025-10-01T00:00:00Z",
+      "lastConfirmed": "2026-04-19T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["stations_closed", "rationing"],
+      "causeChain": ["import_cut", "policy"],
+      "shortDescription": "YPFB diesel import shortfalls; country-wide trucker queues and freight disruption.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "YPFB", "title": "Comunicado sobre abastecimiento", "url": "https://www.ypfb.gob.bo/", "date": "2026-04-10", "sourceType": "operator" },
+          { "authority": "Bloomberg", "title": "Bolivia fuel crisis deepens", "url": "https://www.bloomberg.com/news/", "date": "2026-04-05", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2025-10-15",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.93,
+        "lastEvidenceUpdate": "2026-04-19T00:00:00Z"
+      }
+    },
+    "ng-diesel-2026-q1": {
+      "id": "ng-diesel-2026-q1",
+      "country": "NG",
+      "product": "diesel",
+      "severity": "watch",
+      "firstSeen": "2026-02-01T00:00:00Z",
+      "lastConfirmed": "2026-04-16T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["upstream_refinery"],
+      "shortDescription": "AGO (diesel) pricing and availability pressure tracked alongside PMS supply bulletins.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "NMDPRA", "title": "AGO supply monitoring", "url": "https://nmdpra.gov.ng/", "date": "2026-04-12", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-12",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.7,
+        "lastEvidenceUpdate": "2026-04-16T00:00:00Z"
+      }
+    },
+    "ke-petrol-2026-q1": {
+      "id": "ke-petrol-2026-q1",
+      "country": "KE",
+      "product": "petrol",
+      "severity": "watch",
+      "firstSeen": "2026-03-05T00:00:00Z",
+      "lastConfirmed": "2026-04-13T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["logistics"],
+      "shortDescription": "Mombasa-Nairobi pipeline throughput advisory; select Nairobi stations limited.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "EPRA", "title": "Supply advisory", "url": "https://www.epra.go.ke/", "date": "2026-04-08", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-08",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.7,
+        "lastEvidenceUpdate": "2026-04-13T00:00:00Z"
+      }
+    },
+    "pa-diesel-2026-q1": {
+      "id": "pa-diesel-2026-q1",
+      "country": "PA",
+      "product": "jet",
+      "severity": "watch",
+      "firstSeen": "2026-03-22T00:00:00Z",
+      "lastConfirmed": "2026-04-14T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["flights_cancelled"],
+      "causeChain": ["logistics"],
+      "shortDescription": "Jet fuel delivery delays at Tocumen; intermittent airline tanker prioritization.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "AAC", "title": "Panama aviation fuel bulletin", "url": "https://www.aeronautica.gob.pa/", "date": "2026-04-05", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-05",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.62,
+        "lastEvidenceUpdate": "2026-04-14T00:00:00Z"
+      }
+    },
+    "eg-diesel-2026-q1": {
+      "id": "eg-diesel-2026-q1",
+      "country": "EG",
+      "product": "diesel",
+      "severity": "watch",
+      "firstSeen": "2026-02-15T00:00:00Z",
+      "lastConfirmed": "2026-04-17T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["policy"],
+      "shortDescription": "Government-set pricing cap vs import cost; intermittent diesel availability at stations.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "EGPC", "title": "Supply update", "url": "https://www.egpc.com.eg/", "date": "2026-04-10", "sourceType": "operator" },
+          { "authority": "Ahram Online", "title": "Diesel supply constrained", "url": "https://english.ahram.org.eg/", "date": "2026-04-01", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": null,
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.68,
+        "lastEvidenceUpdate": "2026-04-17T00:00:00Z"
+      }
+    },
+    "by-petrol-2026-q1": {
+      "id": "by-petrol-2026-q1",
+      "country": "BY",
+      "product": "petrol",
+      "severity": "watch",
+      "firstSeen": "2026-03-01T00:00:00Z",
+      "lastConfirmed": "2026-04-11T00:00:00Z",
+      "resolvedAt": null,
+      "impactTypes": ["rationing"],
+      "causeChain": ["sanction"],
+      "shortDescription": "Mozyr/Naftan refinery turnaround + export restrictions; consumer-facing pricing friction.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Belneftekhim", "title": "Refinery status", "url": "https://www.belneftekhim.by/", "date": "2026-04-02", "sourceType": "operator" }
+        ],
+        "firstRegulatorConfirmation": null,
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.6,
+        "lastEvidenceUpdate": "2026-04-11T00:00:00Z"
+      }
+    }
+  }
+}
