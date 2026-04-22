@@ -7,7 +7,10 @@ import type {
   ListPipelinesResponse,
   PipelineEntry,
   GetPipelineDetailResponse,
+  ListEnergyDisruptionsResponse,
+  EnergyDisruptionEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
 import {
   derivePipelinePublicBadge,
   pickNewerClassifierVersion,
@@ -169,6 +172,10 @@ export class PipelineStatusPanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetPipelineDetailResponse | null = null;
   private detailLoading = false;
+  // Disruption events for the currently-open pipeline. Fetched lazily
+  // alongside getPipelineDetail. undefined = not yet fetched;
+  // empty array = fetched and no events on file.
+  private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ pipelineId?: string }>).detail?.pipelineId;
     if (!id || !this.element?.isConnected) return;
@@ -261,11 +268,16 @@ export class PipelineStatusPanel extends Panel {
   private async loadDetail(pipelineId: string): Promise<void> {
     this.selectedId = pipelineId;
     this.detailLoading = true;
+    this.detailEvents = undefined;
     this.render();
     try {
-      const d = await client.getPipelineDetail({ pipelineId });
+      const [d, events] = await Promise.all([
+        client.getPipelineDetail({ pipelineId }),
+        client.listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }),
+      ]);
       if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
       this.detail = d;
+      this.detailEvents = (events as ListEnergyDisruptionsResponse)?.events ?? [];
       this.detailLoading = false;
       this.render();
     } catch {
@@ -285,7 +297,34 @@ export class PipelineStatusPanel extends Panel {
   private closeDetail(): void {
     this.selectedId = null;
     this.detail = null;
+    this.detailEvents = undefined;
     this.render();
+  }
+
+  private renderDisruptionTimeline(): string {
+    if (this.detailEvents === undefined) return '';
+    if (this.detailEvents.length === 0) {
+      return `<div class="pp-evidence">
+        <div class="pp-sub" style="margin-bottom:6px">Disruption timeline</div>
+        <div class="pp-ev-item pp-sub">No disruption events on file for this asset.</div>
+      </div>`;
+    }
+    const items = this.detailEvents.map(ev => {
+      const window = escapeHtml(formatEventWindow(ev.startAt, ev.endAt));
+      const cap = formatCapacityOffline(ev.capacityOfflineBcmYr, ev.capacityOfflineMbd);
+      const capLine = cap ? ` · ${escapeHtml(cap)} offline` : '';
+      const causes = (ev.causeChain && ev.causeChain.length > 0)
+        ? ` · ${escapeHtml(ev.causeChain.join(' → '))}`
+        : '';
+      return `<div class="pp-ev-item">
+        <strong>${escapeHtml(ev.eventType || 'event')}</strong> · ${window}${capLine}${causes}
+        <div class="pp-sub" style="margin-top:2px">${escapeHtml(ev.shortDescription || '')}</div>
+      </div>`;
+    }).join('');
+    return `<div class="pp-evidence">
+      <div class="pp-sub" style="margin-bottom:6px">Disruption timeline (${this.detailEvents.length})</div>
+      ${items}
+    </div>`;
   }
 
   private render(): void {
@@ -445,6 +484,7 @@ export class PipelineStatusPanel extends Panel {
           ${sanctionItems}
           ${ev?.classifierVersion ? `<div class="pp-ev-item pp-sub">Classifier ${escapeHtml(ev.classifierVersion)} · confidence ${Math.round((ev.classifierConfidence ?? 0) * 100)}%</div>` : ''}
         </div>
+        ${this.renderDisruptionTimeline()}
       </div>`;
   }
 }

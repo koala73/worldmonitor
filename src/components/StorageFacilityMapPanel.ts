@@ -7,7 +7,10 @@ import type {
   ListStorageFacilitiesResponse,
   StorageFacilityEntry,
   GetStorageFacilityDetailResponse,
+  ListEnergyDisruptionsResponse,
+  EnergyDisruptionEntry,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { formatEventWindow, formatCapacityOffline } from '@/shared/disruption-timeline';
 import { deriveStoragePublicBadge } from '@/shared/storage-evidence';
 import {
   getCachedStorageFacilityRegistry,
@@ -163,6 +166,7 @@ export class StorageFacilityMapPanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetStorageFacilityDetailResponse | null = null;
   private detailLoading = false;
+  private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
     if (!id || !this.element?.isConnected) return;
@@ -248,11 +252,16 @@ export class StorageFacilityMapPanel extends Panel {
   private async loadDetail(facilityId: string): Promise<void> {
     this.selectedId = facilityId;
     this.detailLoading = true;
+    this.detailEvents = undefined;
     this.render();
     try {
-      const d = await client.getStorageFacilityDetail({ facilityId });
+      const [d, events] = await Promise.all([
+        client.getStorageFacilityDetail({ facilityId }),
+        client.listEnergyDisruptions({ assetId: facilityId, assetType: 'storage', ongoingOnly: false }),
+      ]);
       if (!this.element?.isConnected || this.selectedId !== facilityId) return;
       this.detail = d;
+      this.detailEvents = (events as ListEnergyDisruptionsResponse)?.events ?? [];
       this.detailLoading = false;
       this.render();
     } catch {
@@ -270,7 +279,34 @@ export class StorageFacilityMapPanel extends Panel {
   private closeDetail(): void {
     this.selectedId = null;
     this.detail = null;
+    this.detailEvents = undefined;
     this.render();
+  }
+
+  private renderDisruptionTimeline(): string {
+    if (this.detailEvents === undefined) return '';
+    if (this.detailEvents.length === 0) {
+      return `<div class="sf-evidence">
+        <div class="sf-sub" style="margin-bottom:6px">Disruption timeline</div>
+        <div class="sf-ev-item sf-sub">No disruption events on file for this asset.</div>
+      </div>`;
+    }
+    const items = this.detailEvents.map(ev => {
+      const window = escapeHtml(formatEventWindow(ev.startAt, ev.endAt));
+      const cap = formatCapacityOffline(ev.capacityOfflineBcmYr, ev.capacityOfflineMbd);
+      const capLine = cap ? ` · ${escapeHtml(cap)} offline` : '';
+      const causes = (ev.causeChain && ev.causeChain.length > 0)
+        ? ` · ${escapeHtml(ev.causeChain.join(' → '))}`
+        : '';
+      return `<div class="sf-ev-item">
+        <strong>${escapeHtml(ev.eventType || 'event')}</strong> · ${window}${capLine}${causes}
+        <div class="sf-sub" style="margin-top:2px">${escapeHtml(ev.shortDescription || '')}</div>
+      </div>`;
+    }).join('');
+    return `<div class="sf-evidence">
+      <div class="sf-sub" style="margin-bottom:6px">Disruption timeline (${this.detailEvents.length})</div>
+      ${items}
+    </div>`;
   }
 
   private render(): void {
@@ -432,6 +468,7 @@ export class StorageFacilityMapPanel extends Panel {
           ${sanctionItems}
           ${ev?.classifierVersion ? `<div class="sf-ev-item sf-sub">Classifier ${escapeHtml(ev.classifierVersion)} · confidence ${Math.round((ev.classifierConfidence ?? 0) * 100)}%</div>` : ''}
         </div>
+        ${this.renderDisruptionTimeline()}
       </div>`;
   }
 }

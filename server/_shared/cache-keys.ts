@@ -73,6 +73,7 @@ export const PIPELINES_GAS_KEY = 'energy:pipelines:gas:v1';
 export const PIPELINES_OIL_KEY = 'energy:pipelines:oil:v1';
 export const STORAGE_FACILITIES_KEY = 'energy:storage-facilities:v1';
 export const FUEL_SHORTAGES_KEY = 'energy:fuel-shortages:v1';
+export const ENERGY_DISRUPTIONS_KEY = 'energy:disruptions:v1';
 export const REFINERY_INPUTS_KEY = 'economic:refinery-inputs:v1';
 
 /**
@@ -224,6 +225,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   pipelinesOil:         'energy:pipelines:oil:v1',
   storageFacilities:    'energy:storage-facilities:v1',
   fuelShortages:        'energy:fuel-shortages:v1',
+  energyDisruptions:    'energy:disruptions:v1',
   energyCrisisPolicies: 'energy:crisis-policies:v1',
   aaiiSentiment:        'market:aaii-sentiment:v1',
   breadthHistory:       'market:breadth-history:v1',
@@ -297,6 +299,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   pipelinesOil: 'slow',
   storageFacilities: 'slow',
   fuelShortages: 'slow',
+  energyDisruptions: 'slow',
   energyCrisisPolicies: 'slow',
   aaiiSentiment: 'slow',
   breadthHistory: 'slow',

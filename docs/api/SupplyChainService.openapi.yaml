@@ -707,6 +707,57 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-energy-disruptions:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListEnergyDisruptions
+            description: |-
+                ListEnergyDisruptions returns the disruption event log for pipelines
+                 and storage facilities. Supports per-asset or per-asset-type filtering
+                 so panel drawers can fetch a scoped timeline without pulling the
+                 full registry.
+            operationId: ListEnergyDisruptions
+            parameters:
+                - name: assetId
+                  in: query
+                  description: |-
+                    Filter to one asset. Omit for all. When set, also narrows to the
+                     matching asset_type if provided.
+                  required: false
+                  schema:
+                    type: string
+                - name: assetType
+                  in: query
+                  description: 'Filter to one asset type. Accepts: "pipeline" | "storage".'
+                  required: false
+                  schema:
+                    type: string
+                - name: ongoingOnly
+                  in: query
+                  description: If true, only return events with endAt empty (still ongoing).
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListEnergyDisruptionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -2183,3 +2234,101 @@ components:
                     type: string
                 unavailable:
                     type: boolean
+        ListEnergyDisruptionsRequest:
+            type: object
+            properties:
+                assetId:
+                    type: string
+                    description: |-
+                        Filter to one asset. Omit for all. When set, also narrows to the
+                         matching asset_type if provided.
+                assetType:
+                    type: string
+                    description: 'Filter to one asset type. Accepts: "pipeline" | "storage".'
+                ongoingOnly:
+                    type: boolean
+                    description: If true, only return events with endAt empty (still ongoing).
+            description: |-
+                ListEnergyDisruptions returns the energy disruption event log — state
+                 transitions for pipelines and storage facilities (sabotage, sanction,
+                 maintenance, mechanical, weather, commercial, war). Each event ties
+                 back to an assetId seeded by the pipeline or storage registry, so the
+                 panel drawer can render an asset-scoped timeline without a second RPC.
+
+                 v1 is seeded from a curated JSON file (scripts/data/energy-disruptions.json);
+                 post-launch the classifier in proactive-intelligence.mjs extends this
+                 key with state transitions auto-derived from evidence-field changes.
+
+                 See docs/methodology/disruptions.mdx.
+        ListEnergyDisruptionsResponse:
+            type: object
+            properties:
+                events:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EnergyDisruptionEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        EnergyDisruptionEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                assetId:
+                    type: string
+                    description: Maps to a pipeline or storage-facility id seeded elsewhere.
+                assetType:
+                    type: string
+                    description: 'One of: "pipeline" | "storage"'
+                eventType:
+                    type: string
+                    description: |-
+                        One of: "sabotage" | "sanction" | "maintenance" | "mechanical" |
+                                 "weather" | "commercial" | "war" | "other"
+                startAt:
+                    type: string
+                endAt:
+                    type: string
+                    description: Empty string when event is still ongoing.
+                capacityOfflineBcmYr:
+                    type: number
+                    format: double
+                    description: Headline-offline capacity (contextual — 0 when not applicable).
+                capacityOfflineMbd:
+                    type: number
+                    format: double
+                causeChain:
+                    type: array
+                    items:
+                        type: string
+                        description: Contributing causes, primary-first.
+                shortDescription:
+                    type: string
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EnergyDisruptionSource'
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+                lastEvidenceUpdate:
+                    type: string
+        EnergyDisruptionSource:
+            type: object
+            properties:
+                authority:
+                    type: string
+                title:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+                sourceType:
+                    type: string

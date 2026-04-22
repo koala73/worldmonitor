@@ -19,6 +19,7 @@ import { listStorageFacilities } from './list-storage-facilities';
 import { getStorageFacilityDetail } from './get-storage-facility-detail';
 import { listFuelShortages } from './list-fuel-shortages';
 import { getFuelShortageDetail } from './get-fuel-shortage-detail';
+import { listEnergyDisruptions } from './list-energy-disruptions';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
@@ -40,4 +41,5 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   getStorageFacilityDetail,
   listFuelShortages,
   getFuelShortageDetail,
+  listEnergyDisruptions,
 };

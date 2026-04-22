@@ -106,6 +106,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-storage-facility-detail': 'static',
   '/api/supply-chain/v1/list-fuel-shortages': 'medium',
   '/api/supply-chain/v1/get-fuel-shortage-detail': 'medium',
+  '/api/supply-chain/v1/list-energy-disruptions': 'medium',
   '/api/economic/v1/get-fred-series': 'static',
   '/api/economic/v1/get-bls-series': 'daily',
   '/api/economic/v1/get-energy-prices': 'static',

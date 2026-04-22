@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListEnergyDisruptions returns the energy disruption event log — state
+// transitions for pipelines and storage facilities (sabotage, sanction,
+// maintenance, mechanical, weather, commercial, war). Each event ties
+// back to an assetId seeded by the pipeline or storage registry, so the
+// panel drawer can render an asset-scoped timeline without a second RPC.
+//
+// v1 is seeded from a curated JSON file (scripts/data/energy-disruptions.json);
+// post-launch the classifier in proactive-intelligence.mjs extends this
+// key with state transitions auto-derived from evidence-field changes.
+//
+// See docs/methodology/disruptions.mdx.
+message ListEnergyDisruptionsRequest {
+  // Filter to one asset. Omit for all. When set, also narrows to the
+  // matching asset_type if provided.
+  string asset_id = 1 [(sebuf.http.query) = {name: "assetId"}];
+  // Filter to one asset type. Accepts: "pipeline" | "storage".
+  string asset_type = 2 [(sebuf.http.query) = {name: "assetType"}];
+  // If true, only return events with endAt empty (still ongoing).
+  bool ongoing_only = 3 [(sebuf.http.query) = {name: "ongoingOnly"}];
+}
+
+message ListEnergyDisruptionsResponse {
+  repeated EnergyDisruptionEntry events = 1;
+  string fetched_at = 2;
+  string classifier_version = 3;
+  bool upstream_unavailable = 4;
+}
+
+message EnergyDisruptionEntry {
+  string id = 1;
+  // Maps to a pipeline or storage-facility id seeded elsewhere.
+  string asset_id = 2;
+  // One of: "pipeline" | "storage"
+  string asset_type = 3;
+  // One of: "sabotage" | "sanction" | "maintenance" | "mechanical" |
+  //         "weather" | "commercial" | "war" | "other"
+  string event_type = 4;
+  string start_at = 5;                        // ISO8601
+  // Empty string when event is still ongoing.
+  string end_at = 6;
+  // Headline-offline capacity (contextual — 0 when not applicable).
+  double capacity_offline_bcm_yr = 7;
+  double capacity_offline_mbd = 8;
+  // Contributing causes, primary-first.
+  repeated string cause_chain = 9;
+  string short_description = 10;
+  repeated EnergyDisruptionSource sources = 11;
+  string classifier_version = 12;
+  double classifier_confidence = 13;          // 0..1
+  string last_evidence_update = 14;           // ISO8601
+}
+
+message EnergyDisruptionSource {
+  string authority = 1;
+  string title = 2;
+  string url = 3;
+  string date = 4;                            // ISO8601
+  string source_type = 5;                     // "regulator" | "operator" | "press" | "ais-relay" | "satellite"
+}

@@ -1,0 +1,227 @@
+{
+  "source": "Curated from operator press releases, regulator filings, OFAC/EU sanctions lists, and major-wire coverage. Each event ties back to a seeded asset in pipelines-gas/oil.json or storage-facilities.json.",
+  "methodologyUrl": "/docs/methodology/disruptions",
+  "version": "v1",
+  "referenceYear": 2026,
+  "classifierVersion": "v1",
+  "events": {
+    "nord-stream-1-sabotage-2022": {
+      "id": "nord-stream-1-sabotage-2022",
+      "assetId": "nord-stream-1",
+      "assetType": "pipeline",
+      "eventType": "sabotage",
+      "startAt": "2022-09-26T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 55,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "Submarine explosions rupture both Nord Stream 1 and 2 pipelines in Baltic Sea; operator declares force majeure.",
+      "sources": [
+        { "authority": "Nord Stream AG", "title": "Operator statement on incidents", "url": "https://www.nord-stream.com/press-info/", "date": "2022-09-27", "sourceType": "operator" },
+        { "authority": "BBC", "title": "Nord Stream explosions: What we know", "url": "https://www.bbc.com/news/world-europe-63044747", "date": "2022-09-29", "sourceType": "press" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.98,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "nord-stream-2-sabotage-2022": {
+      "id": "nord-stream-2-sabotage-2022",
+      "assetId": "nord-stream-2",
+      "assetType": "pipeline",
+      "eventType": "sabotage",
+      "startAt": "2022-09-26T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 55,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "NS2 damaged alongside NS1; pipeline was never commercially operational due to German regulatory freeze.",
+      "sources": [
+        { "authority": "Danish Energy Agency", "title": "Leak observations", "url": "https://ens.dk/en", "date": "2022-09-27", "sourceType": "regulator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.97,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "druzhba-n-poland-halt-2023": {
+      "id": "druzhba-n-poland-halt-2023",
+      "assetId": "druzhba-north",
+      "assetType": "pipeline",
+      "eventType": "sanction",
+      "startAt": "2023-02-25T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0.3,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Poland and Germany halt crude flows from Russia; Druzhba North branch unused for commercial deliveries.",
+      "sources": [
+        { "authority": "EU Council", "title": "8th sanctions package on Russia", "url": "https://www.consilium.europa.eu/en/policies/sanctions/", "date": "2023-02-25", "sourceType": "regulator" },
+        { "authority": "Reuters", "title": "Germany, Poland cease Druzhba crude imports", "url": "https://www.reuters.com/business/energy/", "date": "2023-01-03", "sourceType": "press" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.95,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "cpc-force-majeure-2022": {
+      "id": "cpc-force-majeure-2022",
+      "assetId": "cpc-pipeline",
+      "assetType": "pipeline",
+      "eventType": "mechanical",
+      "startAt": "2022-03-22T00:00:00Z",
+      "endAt": "2022-04-22T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0.8,
+      "causeChain": ["logistics", "war"],
+      "shortDescription": "CPC's Novorossiysk loading buoys damaged in storm + war tensions; operator declares one-month force majeure.",
+      "sources": [
+        { "authority": "Caspian Pipeline Consortium", "title": "Buoy damage notice", "url": "https://www.cpc.ru/", "date": "2022-03-23", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.92,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "turkstream-maintenance-2024": {
+      "id": "turkstream-maintenance-2024",
+      "assetId": "turkstream",
+      "assetType": "pipeline",
+      "eventType": "maintenance",
+      "startAt": "2024-06-24T00:00:00Z",
+      "endAt": "2024-07-09T00:00:00Z",
+      "capacityOfflineBcmYr": 31.5,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Annual planned maintenance on both strings; supply suspended for ~2 weeks, resumed on schedule.",
+      "sources": [
+        { "authority": "Gazprom", "title": "Maintenance notice", "url": "https://www.gazprom.com/press/news/", "date": "2024-06-20", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.96,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "yamal-belarus-halt-2022": {
+      "id": "yamal-belarus-halt-2022",
+      "assetId": "yamal-europe",
+      "assetType": "pipeline",
+      "eventType": "sanction",
+      "startAt": "2022-05-12T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 33,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Russia cuts flows over EuRoPol GAZ sanctions; Yamal-Europe reversed to Poland→Belarus virtual reverse flow.",
+      "sources": [
+        { "authority": "PGNiG", "title": "Yamal flows halted", "url": "https://pgnig.pl/", "date": "2022-05-12", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.94,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "rehden-gas-sanction-2022": {
+      "id": "rehden-gas-sanction-2022",
+      "assetId": "rehden",
+      "assetType": "storage",
+      "eventType": "sanction",
+      "startAt": "2022-04-01T00:00:00Z",
+      "endAt": "2022-06-14T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Germany placed Gazprom Germania (operator of Rehden) under BNetzA trusteeship; operator sanctioned, facility regained access under new operator.",
+      "sources": [
+        { "authority": "BNetzA", "title": "Trusteeship decision", "url": "https://www.bundesnetzagentur.de/", "date": "2022-04-04", "sourceType": "regulator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.93,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "arctic-lng-2-sanction-2023": {
+      "id": "arctic-lng-2-sanction-2023",
+      "assetId": "arctic-lng-2",
+      "assetType": "storage",
+      "eventType": "sanction",
+      "startAt": "2023-11-02T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sanction"],
+      "shortDescription": "OFAC designates Arctic LNG 2 LLC; foreign partners withdraw. Operations continue but commercial exports suspended.",
+      "sources": [
+        { "authority": "US Treasury OFAC", "title": "SDN designation — Arctic LNG 2 LLC", "url": "https://home.treasury.gov/news/press-releases/jy1871", "date": "2023-11-02", "sourceType": "regulator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.96,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "espo-attack-2025": {
+      "id": "espo-attack-2025",
+      "assetId": "espo",
+      "assetType": "pipeline",
+      "eventType": "sabotage",
+      "startAt": "2025-08-14T00:00:00Z",
+      "endAt": "2025-08-18T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 1.6,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "Drone strikes on Tynda and Bamovsk pumping stations; four-day throughput reduction to Daqing.",
+      "sources": [
+        { "authority": "Transneft", "title": "Pumping station incident", "url": "https://www.transneft.ru/", "date": "2025-08-15", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.88,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "btc-fire-2008": {
+      "id": "btc-fire-2008",
+      "assetId": "btc",
+      "assetType": "pipeline",
+      "eventType": "mechanical",
+      "startAt": "2008-08-05T00:00:00Z",
+      "endAt": "2008-08-25T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 1.0,
+      "causeChain": ["sabotage"],
+      "shortDescription": "BTC pipeline fire in Turkey; 20-day outage, claimed by PKK. Historical reference event.",
+      "sources": [
+        { "authority": "BP", "title": "BTC incident update", "url": "https://www.bp.com/en/global/corporate/news-and-insights/", "date": "2008-08-06", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.95,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "sabine-pass-hurricane-2024": {
+      "id": "sabine-pass-hurricane-2024",
+      "assetId": "sabine-pass",
+      "assetType": "storage",
+      "eventType": "weather",
+      "startAt": "2024-07-08T00:00:00Z",
+      "endAt": "2024-07-12T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Hurricane Beryl forces temporary shutdown and evacuation; minimal cargo delay, no lasting impact.",
+      "sources": [
+        { "authority": "Cheniere Energy", "title": "Operational update", "url": "https://www.cheniere.com/", "date": "2024-07-09", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.9,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "power-of-siberia-ramp-2023": {
+      "id": "power-of-siberia-ramp-2023",
+      "assetId": "power-of-siberia",
+      "assetType": "pipeline",
+      "eventType": "commercial",
+      "startAt": "2023-01-01T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "Flow volumes ramping toward 38 bcm/yr contracted level. Commercial / capacity-ramp event, not an outage.",
+      "sources": [
+        { "authority": "Gazprom", "title": "Power of Siberia throughput milestone", "url": "https://www.gazprom.com/projects/power-of-siberia/", "date": "2023-01-15", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.88,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    }
+  }
+}

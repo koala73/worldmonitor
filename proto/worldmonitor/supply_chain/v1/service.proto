@@ -19,6 +19,7 @@ import "worldmonitor/supply_chain/v1/get_route_impact.proto";
 import "worldmonitor/supply_chain/v1/list_pipelines.proto";
 import "worldmonitor/supply_chain/v1/list_storage_facilities.proto";
 import "worldmonitor/supply_chain/v1/list_fuel_shortages.proto";
+import "worldmonitor/supply_chain/v1/list_energy_disruptions.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -131,5 +132,13 @@ service SupplyChainService {
   // bundle and citation timeline. Loaded lazily on drawer open.
   rpc GetFuelShortageDetail(GetFuelShortageDetailRequest) returns (GetFuelShortageDetailResponse) {
     option (sebuf.http.config) = {path: "/get-fuel-shortage-detail", method: HTTP_METHOD_GET};
+  }
+
+  // ListEnergyDisruptions returns the disruption event log for pipelines
+  // and storage facilities. Supports per-asset or per-asset-type filtering
+  // so panel drawers can fetch a scoped timeline without pulling the
+  // full registry.
+  rpc ListEnergyDisruptions(ListEnergyDisruptionsRequest) returns (ListEnergyDisruptionsResponse) {
+    option (sebuf.http.config) = {path: "/list-energy-disruptions", method: HTTP_METHOD_GET};
   }
 }

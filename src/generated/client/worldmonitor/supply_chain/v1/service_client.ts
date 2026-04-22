@@ -594,6 +594,44 @@ export interface GetFuelShortageDetailResponse {
   unavailable: boolean;
 }
 
+export interface ListEnergyDisruptionsRequest {
+  assetId: string;
+  assetType: string;
+  ongoingOnly: boolean;
+}
+
+export interface ListEnergyDisruptionsResponse {
+  events: EnergyDisruptionEntry[];
+  fetchedAt: string;
+  classifierVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface EnergyDisruptionEntry {
+  id: string;
+  assetId: string;
+  assetType: string;
+  eventType: string;
+  startAt: string;
+  endAt: string;
+  capacityOfflineBcmYr: number;
+  capacityOfflineMbd: number;
+  causeChain: string[];
+  shortDescription: string;
+  sources: EnergyDisruptionSource[];
+  classifierVersion: string;
+  classifierConfidence: number;
+  lastEvidenceUpdate: string;
+}
+
+export interface EnergyDisruptionSource {
+  authority: string;
+  title: string;
+  url: string;
+  date: string;
+  sourceType: string;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -1128,6 +1166,33 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetFuelShortageDetailResponse;
+  }
+
+  async listEnergyDisruptions(req: ListEnergyDisruptionsRequest, options?: SupplyChainServiceCallOptions): Promise<ListEnergyDisruptionsResponse> {
+    let path = "/api/supply-chain/v1/list-energy-disruptions";
+    const params = new URLSearchParams();
+    if (req.assetId != null && req.assetId !== "") params.set("assetId", String(req.assetId));
+    if (req.assetType != null && req.assetType !== "") params.set("assetType", String(req.assetType));
+    if (req.ongoingOnly) params.set("ongoingOnly", String(req.ongoingOnly));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListEnergyDisruptionsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

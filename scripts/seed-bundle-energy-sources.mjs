@@ -31,4 +31,10 @@ await runBundle('energy-sources', [
   // Fuel-shortage registry (v1 curated seed — classifier extends post-launch).
   // Daily cadence because shortages move faster than registry assets.
   { label: 'Fuel-Shortages', script: 'seed-fuel-shortages.mjs', seedMetaKey: 'energy:fuel-shortages', canonicalKey: 'energy:fuel-shortages:v1', intervalMs: DAY, timeoutMs: 60_000 },
+  // Energy disruption event log — state-machine history of pipeline/storage
+  // outages (sabotage, sanction, maintenance, etc.). Feeds the timeline in
+  // PipelineStatusPanel and StorageFacilityMapPanel drawers. Weekly cadence
+  // because curated events are mostly historical; classifier extends daily
+  // post-launch.
+  { label: 'Energy-Disruptions', script: 'seed-energy-disruptions.mjs', seedMetaKey: 'energy:disruptions', canonicalKey: 'energy:disruptions:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
 ]);

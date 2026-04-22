@@ -594,6 +594,44 @@ export interface GetFuelShortageDetailResponse {
   unavailable: boolean;
 }
 
+export interface ListEnergyDisruptionsRequest {
+  assetId: string;
+  assetType: string;
+  ongoingOnly: boolean;
+}
+
+export interface ListEnergyDisruptionsResponse {
+  events: EnergyDisruptionEntry[];
+  fetchedAt: string;
+  classifierVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface EnergyDisruptionEntry {
+  id: string;
+  assetId: string;
+  assetType: string;
+  eventType: string;
+  startAt: string;
+  endAt: string;
+  capacityOfflineBcmYr: number;
+  capacityOfflineMbd: number;
+  causeChain: string[];
+  shortDescription: string;
+  sources: EnergyDisruptionSource[];
+  classifierVersion: string;
+  classifierConfidence: number;
+  lastEvidenceUpdate: string;
+}
+
+export interface EnergyDisruptionSource {
+  authority: string;
+  title: string;
+  url: string;
+  date: string;
+  sourceType: string;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -664,6 +702,7 @@ export interface SupplyChainServiceHandler {
   getStorageFacilityDetail(ctx: ServerContext, req: GetStorageFacilityDetailRequest): Promise<GetStorageFacilityDetailResponse>;
   listFuelShortages(ctx: ServerContext, req: ListFuelShortagesRequest): Promise<ListFuelShortagesResponse>;
   getFuelShortageDetail(ctx: ServerContext, req: GetFuelShortageDetailRequest): Promise<GetFuelShortageDetailResponse>;
+  listEnergyDisruptions(ctx: ServerContext, req: ListEnergyDisruptionsRequest): Promise<ListEnergyDisruptionsResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -1518,6 +1557,55 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getFuelShortageDetail(ctx, body);
           return new Response(JSON.stringify(result as GetFuelShortageDetailResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/list-energy-disruptions",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListEnergyDisruptionsRequest = {
+            assetId: params.get("assetId") ?? "",
+            assetType: params.get("assetType") ?? "",
+            ongoingOnly: params.get("ongoingOnly") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listEnergyDisruptions", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listEnergyDisruptions(ctx, body);
+          return new Response(JSON.stringify(result as ListEnergyDisruptionsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
