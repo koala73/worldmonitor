@@ -18,6 +18,7 @@ import { generateWhyMatters } from '../scripts/lib/brief-llm.mjs';
 import {
   hashBriefStory,
   parseWhyMatters,
+  parseWhyMattersV2,
   WHY_MATTERS_SYSTEM,
 } from '../shared/brief-llm-core.js';
 
@@ -124,6 +125,106 @@ describe('cache key identity', () => {
       const h = await hashBriefStory(story({ [f]: `${story()[f]}X` }));
       assert.notEqual(h, baseline, `${f} must be part of cache identity`);
     }
+  });
+});
+
+// ── parseWhyMattersV2 — analyst-path output validator ───────────────────
+//
+// This is the only output-validation gate between the analyst LLM and
+// the cache envelope: if it returns null the whole response falls back
+// to the gemini layer. Its rejection rules differ from v1 (100–500
+// char range, multi-sentence preamble list, section-label check) and
+// were not previously covered by unit tests (greptile P2, PR #3281).
+
+describe('parseWhyMattersV2 — analyst output validator', () => {
+  const VALID_MULTI =
+    "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
+    'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters.';
+
+  it('accepts a valid 2-sentence, ~40–70 word output', () => {
+    const out = parseWhyMattersV2(VALID_MULTI);
+    assert.equal(out, VALID_MULTI);
+  });
+
+  it('accepts a valid 3-sentence output with optional WATCH arc', () => {
+    const three =
+      "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
+      'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters. ' +
+      'Watch IMF commentary in the next 48 hours for cascading guidance.';
+    assert.equal(parseWhyMattersV2(three), three);
+  });
+
+  it('rejects output under the 100-char minimum (distinguishes it from v1)', () => {
+    // v1 accepts short outputs; v2 requires 100+ chars so the model has
+    // room for SITUATION + ANALYSIS. A short string is "too terse".
+    assert.equal(parseWhyMattersV2('Short sentence under 100 chars.'), null);
+    assert.equal(parseWhyMattersV2('x'.repeat(99)), null);
+    // Boundary: exactly 100 passes.
+    assert.equal(typeof parseWhyMattersV2('x'.repeat(100)), 'string');
+  });
+
+  it('rejects output over the 500-char cap (prevents runaway essays)', () => {
+    assert.equal(parseWhyMattersV2('x'.repeat(501)), null);
+    // Boundary: exactly 500 passes.
+    assert.equal(typeof parseWhyMattersV2('x'.repeat(500)), 'string');
+  });
+
+  it('rejects banned preamble phrases (v2-specific)', () => {
+    for (const preamble of [
+      'This matters because the Strait of Hormuz closure would halt 20% of global oil supply right now and this is very important for analysts.',
+      'The importance of this event is that oil tankers cannot transit the strait, which forces a global supply rerouting and price shock.',
+      'It is important to note that Iran has blockaded a critical global shipping chokepoint with real consequences for supply.',
+      'Importantly, the closure of the Strait of Hormuz disrupts roughly 20% of global seaborne oil flows starting April 21.',
+      'In summary, the analyst sees this as a major geopolitical escalation with wide-reaching market and security implications.',
+      'To summarize, the blockade represents a sharp departure from the prior six months of relative calm in the Persian Gulf region.',
+    ]) {
+      assert.equal(parseWhyMattersV2(preamble), null, `should reject preamble: "${preamble.slice(0, 40)}..."`);
+    }
+  });
+
+  it('rejects section-label leaks (SITUATION/ANALYSIS/WATCH prefixes)', () => {
+    for (const leak of [
+      'SITUATION: Iran has closed the Strait of Hormuz effective April 21, halting roughly 20% of seaborne global oil supply today.',
+      'ANALYSIS — the disruption forces an immediate global sovereign risk repricing across Gulf exporters including Saudi Arabia and UAE.',
+      'Watch: IMF commentary for the next 48 hours should give the earliest signal on the cascading global guidance implications.',
+    ]) {
+      assert.equal(parseWhyMattersV2(leak), null, `should reject label leak: "${leak.slice(0, 40)}..."`);
+    }
+  });
+
+  it('rejects markdown leakage (bullets, headers, numbered lists)', () => {
+    for (const md of [
+      '# The closure of the Strait of Hormuz is the single most material geopolitical event of the quarter for sovereign credit.',
+      '- Iran has blockaded the Strait of Hormuz, halting roughly 20% of the world seaborne oil on April 21 effective immediately.',
+      '* The closure of the Strait of Hormuz halts roughly 20% of the world seaborne oil, which forces an immediate price shock today.',
+      '1. The closure of the Strait of Hormuz halts roughly 20% of seaborne global oil, which forces an immediate sovereign risk repricing.',
+    ]) {
+      assert.equal(parseWhyMattersV2(md), null, `should reject markdown: "${md.slice(0, 40)}..."`);
+    }
+  });
+
+  it('rejects the stub echo (same as v1)', () => {
+    const stub =
+      'Story flagged by your sensitivity settings — the analyst could not find a clean grounding fact and returned the pre-canned fallback.';
+    assert.equal(parseWhyMattersV2(stub), null);
+  });
+
+  it('trims surrounding quote marks the model sometimes wraps output in', () => {
+    const quoted = `"${VALID_MULTI}"`;
+    assert.equal(parseWhyMattersV2(quoted), VALID_MULTI);
+    const smart = `\u201C${VALID_MULTI}\u201D`;
+    assert.equal(parseWhyMattersV2(smart), VALID_MULTI);
+  });
+
+  it('rejects non-string inputs (defensive)', () => {
+    for (const v of [null, undefined, 123, {}, [], true]) {
+      assert.equal(parseWhyMattersV2(v), null, `should reject ${typeof v}`);
+    }
+  });
+
+  it('rejects whitespace-only strings', () => {
+    assert.equal(parseWhyMattersV2(''), null);
+    assert.equal(parseWhyMattersV2('   \n\t  '), null);
   });
 });
 
@@ -296,7 +397,12 @@ describe('endpoint validation contract', () => {
   // test regression on the endpoint flow (see "endpoint end-to-end" below).
   const VALID_THREAT = new Set(['critical', 'high', 'medium', 'low']);
   const CAPS = { headline: 400, source: 120, category: 80, country: 80 };
-  const MAX_BODY_BYTES = 4096;
+  // Must match `api/internal/brief-why-matters.ts:116` — bumped to 8192 in
+  // PR #3269 to accommodate v2 output + description. If this ever drifts
+  // again, the bloated-fixture assertion below silently passes for
+  // payloads in the (OLD_VALUE, NEW_VALUE] range that the real endpoint
+  // now accepts (greptile P2, PR #3281).
+  const MAX_BODY_BYTES = 8192;
 
   function validate(raw) {
     if (!raw || typeof raw !== 'object') return { ok: false, msg: 'body' };
@@ -364,7 +470,9 @@ describe('endpoint validation contract', () => {
         ...story(),
         // Artificial oversize payload — would need headline cap bypassed
         // to reach in practice, but the total body-byte cap must still fire.
-        extra: 'x'.repeat(5000),
+        // Sized well above MAX_BODY_BYTES (8192) so a future bump doesn't
+        // silently invalidate the assertion.
+        extra: 'x'.repeat(10_000),
       },
     };
     assert.ok(measureBytes(bloated) > MAX_BODY_BYTES, 'fixture is oversize');
