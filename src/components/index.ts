@@ -90,6 +90,7 @@ export { HormuzPanel } from './HormuzPanel';
 export { ChokepointStripPanel } from './ChokepointStripPanel';
 export { PipelineStatusPanel } from './PipelineStatusPanel';
 export { StorageFacilityMapPanel } from './StorageFacilityMapPanel';
+export { FuelShortagePanel } from './FuelShortagePanel';
 export * from './ClimateNewsPanel';
 export * from './DiseaseOutbreaksPanel';
 export * from './SocialVelocityPanel';

@@ -68,6 +68,7 @@ import {
   ChokepointStripPanel,
   PipelineStatusPanel,
   StorageFacilityMapPanel,
+  FuelShortagePanel,
   MacroTilesPanel,
   FSIPanel,
   YieldCurvePanel,
@@ -887,6 +888,7 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('chokepoint-strip', () => new ChokepointStripPanel());
     this.createPanel('pipeline-status', () => new PipelineStatusPanel());
     this.createPanel('storage-facility-map', () => new StorageFacilityMapPanel());
+    this.createPanel('fuel-shortages', () => new FuelShortagePanel());
     this.createPanel('polymarket', () => new PredictionPanel());
 
     this.createNewsPanel('gov', 'panels.gov');
