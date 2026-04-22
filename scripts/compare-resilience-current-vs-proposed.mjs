@@ -20,8 +20,15 @@
 // updated in lockstep.
 
 import { loadEnvFile } from './_seed-utils.mjs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RESILIENCE_COHORTS } from '../tests/helpers/resilience-cohorts.mts';
 import { MATCHED_PAIRS } from '../tests/helpers/resilience-matched-pairs.mts';
+
+const __filename = fileURLToPath(import.meta.url);
+const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
+const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 
 loadEnvFile(import.meta.url);
 
@@ -96,12 +103,107 @@ function rankCountries(scores) {
   return ranks;
 }
 
+// Auto-discover the most recent pre-repair baseline snapshot committed
+// by PR 0. Acceptance gates 2 + 6 + 7 from the plan compare post-change
+// scoring against a LOCKED BEFORE-STATE, not against the in-process
+// proposed formula. Without this discovery, the script can only compare
+// two formulas from the same checkout — and cannot prove "no country
+// moved >15 points vs baseline" or "cohort median shift vs baseline"
+// for later scorer PRs.
+//
+// Matches files named `resilience-ranking-live-pre-repair-<date>.json`
+// (the PR 0 freeze) or `resilience-ranking-live-post-<pr>-<date>.json`
+// (later PR captures). Returns null if no baseline is present — the
+// caller then skips the baselineComparison block rather than failing.
+function loadMostRecentBaselineSnapshot() {
+  if (!existsSync(SNAPSHOT_DIR)) return null;
+  let entries;
+  try {
+    entries = readdirSync(SNAPSHOT_DIR);
+  } catch {
+    return null;
+  }
+  const candidates = entries
+    .filter((name) => /^resilience-ranking-(live-pre-repair|live-post-.*)-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+    .sort();
+  if (candidates.length === 0) return null;
+  const latest = candidates.at(-1);
+  const raw = readFileSync(path.join(SNAPSHOT_DIR, latest), 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed.items)) return null;
+  return {
+    filename: latest,
+    capturedAt: parsed.capturedAt,
+    commitSha: parsed.commitSha,
+    scoresByCountry: Object.fromEntries(
+      parsed.items.map((item) => [item.countryCode, item.overallScore]),
+    ),
+    greyedOutCountries: new Set((parsed.greyedOut ?? []).map((g) => g.countryCode)),
+  };
+}
+
 function spearmanCorrelation(ranksA, ranksB) {
   const keys = Object.keys(ranksA).filter((k) => k in ranksB);
   const n = keys.length;
   if (n < 2) return 1;
   const dSqSum = keys.reduce((s, k) => s + (ranksA[k] - ranksB[k]) ** 2, 0);
   return 1 - (6 * dSqSum) / (n * (n * n - 1));
+}
+
+// Per-indicator extraction. Acceptance gate 8 in the plan requires
+// effective-influence-by-INDICATOR (not by dimension), so the harness
+// must peek inside each scorer's input data to correlate individual
+// indicators with the overall score. Covers the twelve indicators the
+// repair plan specifically names as construct-risk (energy mix shares,
+// electricityConsumption, energy import dependency, WGI mean,
+// reserveMonths, and the four recovery-fiscal indicators). Additional
+// indicators can be added to this map in PR 0.5 follow-ups.
+async function extractIndicatorValues(countryCode, reader) {
+  const [staticRecord, energyMix, fiscalSpace, reserveAdequacy, externalDebt, importHhi] = await Promise.all([
+    reader(`resilience:static:${countryCode}`),
+    reader(`energy:mix:v1:${countryCode}`),
+    reader('resilience:recovery:fiscal-space:v1'),
+    reader('resilience:recovery:reserve-adequacy:v1'),
+    reader('resilience:recovery:external-debt:v1'),
+    reader('resilience:recovery:import-hhi:v1'),
+  ]);
+
+  const fiscalEntry = (fiscalSpace?.countries ?? {})[countryCode] ?? null;
+  const reserveEntry = (reserveAdequacy?.countries ?? {})[countryCode] ?? null;
+  const debtEntry = (externalDebt?.countries ?? {})[countryCode] ?? null;
+  const hhiEntry = (importHhi?.countries ?? {})[countryCode] ?? null;
+
+  const wgiValues = Object.values(staticRecord?.wgi?.indicators ?? {})
+    .map((entry) => (typeof entry?.value === 'number' ? entry.value : null))
+    .filter((v) => v != null);
+  const wgiMean = wgiValues.length > 0
+    ? wgiValues.reduce((s, v) => s + v, 0) / wgiValues.length
+    : null;
+
+  return {
+    // Energy indicators — four of the six indicators PR 1 §3.1–§3.2
+    // explicitly overturns or re-bases. Per-indicator influence here
+    // gives PR 1 the baseline for the effective-influence comparison
+    // acceptance gate 8 requires.
+    gasShare: typeof energyMix?.gasShare === 'number' ? energyMix.gasShare : null,
+    coalShare: typeof energyMix?.coalShare === 'number' ? energyMix.coalShare : null,
+    renewShare: typeof energyMix?.renewShare === 'number' ? energyMix.renewShare : null,
+    electricityConsumption: staticRecord?.infrastructure?.indicators?.['EG.USE.ELEC.KH.PC']?.value ?? null,
+    energyImportDependency: staticRecord?.iea?.energyImportDependency?.value ?? null,
+    // Governance signal — high nominal weight, needs to show commensurate
+    // effective influence in the baseline.
+    wgiMean,
+    // Recovery-fiscal indicators — Japan-debt construct problem (§4.4)
+    // and external-debt saturation (§4.3) both depend on these showing
+    // up in the per-indicator baseline so PR 3 / PR 4 can detect
+    // their fixes.
+    govRevenuePct: fiscalEntry?.govRevenuePct ?? null,
+    fiscalBalancePct: fiscalEntry?.fiscalBalancePct ?? null,
+    debtToGdpPct: fiscalEntry?.debtToGdpPct ?? null,
+    reserveMonths: reserveEntry?.reserveMonths ?? null,
+    debtToReservesRatio: debtEntry?.debtToReservesRatio ?? null,
+    importHhi: hhiEntry?.hhi ?? null,
+  };
 }
 
 // Pearson correlation across two equal-length arrays. Used for
@@ -153,11 +255,27 @@ async function main() {
   const scorableCountries = await listScorableCountries();
   const validSample = SAMPLE.filter((c) => scorableCountries.includes(c));
 
+  // Load the frozen pre-PR-0 baseline before scoring so we can compute
+  // baseline-delta gates (acceptance gates 2, 6, 7). If no baseline
+  // exists yet (first run under PR 0), we still emit the comparison
+  // output but mark the baselineComparison block `unavailable` so the
+  // caller can detect missing-baseline vs passed-baseline.
+  const baseline = loadMostRecentBaselineSnapshot();
+
   const sharedReader = createMemoizedSeedReader();
   const rows = [];
+  // Per-indicator value collection across the sample. Filled in the
+  // scoring loop so we don't open two passes over the country list.
+  const perIndicatorValues = {};
 
   for (const countryCode of validSample) {
     const scoreMap = await scoreAllDimensions(countryCode, sharedReader);
+
+    const indicatorValues = await extractIndicatorValues(countryCode, sharedReader);
+    for (const [indicator, value] of Object.entries(indicatorValues)) {
+      if (value == null || !Number.isFinite(value)) continue;
+      (perIndicatorValues[indicator] ??= []).push({ countryCode, value });
+    }
 
     // Build the same ResilienceDimension shape production uses. Only
     // `id`, `score`, and `coverage` are read by buildDomainList /
@@ -372,6 +490,153 @@ async function main() {
   // drivers first.
   variableInfluence.sort((a, b) => Math.abs(b.effectiveInfluence) - Math.abs(a.effectiveInfluence));
 
+  // Per-indicator effective influence. Acceptance gate 8 requires the
+  // comparison to distinguish between "dimension is highly correlated
+  // because its inputs matter" and "dimension is highly correlated
+  // because ONE wealth-proxy input dominates". We therefore also
+  // correlate each individual indicator with the current overall
+  // score. Countries with a null reading are dropped pairwise per
+  // indicator, so indicators with sparse coverage still get reported
+  // but carry a `pairedSampleSize` field callers can gate on.
+  const scoreByCc = new Map(rows.map((r) => [r.countryCode, r.currentOverallScore]));
+  const perIndicatorInfluence = Object.entries(perIndicatorValues).map(
+    ([indicator, observations]) => {
+      const xs = [];
+      const ys = [];
+      for (const { countryCode, value } of observations) {
+        const overall = scoreByCc.get(countryCode);
+        if (overall == null) continue;
+        xs.push(value);
+        ys.push(overall);
+      }
+      const correlation = pearsonCorrelation(xs, ys);
+      return {
+        indicator,
+        pairedSampleSize: xs.length,
+        pearsonVsOverall: Math.round(correlation * 10000) / 10000,
+        effectiveInfluence: Math.round(correlation * 10000) / 10000,
+      };
+    },
+  );
+  perIndicatorInfluence.sort(
+    (a, b) => Math.abs(b.effectiveInfluence) - Math.abs(a.effectiveInfluence),
+  );
+
+  // Baseline comparison. Compares today's currentOverallScore against
+  // the locked baseline snapshot the plan pins for acceptance gates 2,
+  // 6, and 7. If no baseline exists (first PR 0 run), emit an explicit
+  // `unavailable` marker so downstream acceptance tooling can detect
+  // the state difference rather than treating it as a pass.
+  let baselineComparison;
+  if (!baseline) {
+    baselineComparison = {
+      status: 'unavailable',
+      reason:
+        'No baseline snapshot found in docs/snapshots/. Expected resilience-ranking-live-pre-repair-<date>.json from PR 0 freeze.',
+    };
+  } else {
+    const baselineScores = baseline.scoresByCountry;
+    const overlapping = rows
+      .map((r) => ({
+        countryCode: r.countryCode,
+        currentOverallScore: r.currentOverallScore,
+        baselineOverallScore: baselineScores[r.countryCode],
+      }))
+      .filter((r) => typeof r.baselineOverallScore === 'number');
+
+    const scoreDrifts = overlapping.map((r) => ({
+      countryCode: r.countryCode,
+      currentOverallScore: r.currentOverallScore,
+      baselineOverallScore: Math.round(r.baselineOverallScore * 100) / 100,
+      scoreDelta: Math.round((r.currentOverallScore - r.baselineOverallScore) * 100) / 100,
+      scoreAbsDelta: Math.abs(Math.round((r.currentOverallScore - r.baselineOverallScore) * 100) / 100),
+    }));
+
+    const maxCountryAbsDelta = scoreDrifts.reduce((max, d) => Math.max(max, d.scoreAbsDelta), 0);
+    const biggestDrifts = [...scoreDrifts]
+      .sort((a, b) => b.scoreAbsDelta - a.scoreAbsDelta)
+      .slice(0, 10);
+
+    // Spearman vs baseline over the overlap (both ranking universes
+    // restricted to the shared country set so newly-added or newly-
+    // removed countries can't skew the correlation).
+    const currentOverlap = Object.fromEntries(
+      overlapping.map((r) => [r.countryCode, r.currentOverallScore]),
+    );
+    const baselineOverlap = Object.fromEntries(
+      overlapping.map((r) => [r.countryCode, r.baselineOverallScore]),
+    );
+    const spearmanVsBaseline = spearmanCorrelation(
+      rankCountries(currentOverlap),
+      rankCountries(baselineOverlap),
+    );
+
+    // Cohort median shift vs baseline (the plan's effective cohort
+    // gate). A cohort whose median score has drifted by more than the
+    // plan's +/-5 tolerance flags for audit even if Spearman looks fine.
+    const cohortShiftVsBaseline = RESILIENCE_COHORTS.map((cohort) => {
+      const members = cohort.countryCodes
+        .map((cc) => {
+          const row = rowsByCc.get(cc);
+          const base = baselineScores[cc];
+          if (!row || typeof base !== 'number') return null;
+          return { countryCode: cc, delta: row.currentOverallScore - base };
+        })
+        .filter((m) => m != null);
+      if (members.length === 0) {
+        return { cohortId: cohort.id, inSample: 0, skipped: true };
+      }
+      return {
+        cohortId: cohort.id,
+        label: cohort.label,
+        inSample: members.length,
+        medianScoreDeltaVsBaseline: Math.round(median(members.map((m) => m.delta)) * 100) / 100,
+      };
+    });
+
+    // Matched-pair gap change vs baseline. For each pair, compare the
+    // higher-minus-lower gap today against the same gap in the frozen
+    // baseline so construct changes that reverse a pair can be flagged
+    // explicitly (the matched-pair table above is current-vs-proposed;
+    // this block is current-vs-baseline).
+    const matchedPairGapChange = MATCHED_PAIRS.map((pair) => {
+      const higherBase = baselineScores[pair.higherExpected];
+      const lowerBase = baselineScores[pair.lowerExpected];
+      const higher = rowsByCc.get(pair.higherExpected);
+      const lower = rowsByCc.get(pair.lowerExpected);
+      if (
+        typeof higherBase !== 'number' ||
+        typeof lowerBase !== 'number' ||
+        !higher ||
+        !lower
+      ) {
+        return { pairId: pair.id, skipped: true };
+      }
+      const baselineGap = higherBase - lowerBase;
+      const currentGap = higher.currentOverallScore - lower.currentOverallScore;
+      return {
+        pairId: pair.id,
+        axis: pair.axis,
+        baselineGap: Math.round(baselineGap * 100) / 100,
+        currentGap: Math.round(currentGap * 100) / 100,
+        gapChange: Math.round((currentGap - baselineGap) * 100) / 100,
+      };
+    });
+
+    baselineComparison = {
+      status: 'ok',
+      baselineFile: baseline.filename,
+      baselineCapturedAt: baseline.capturedAt,
+      baselineCommitSha: baseline.commitSha,
+      overlapSize: overlapping.length,
+      spearmanVsBaseline: Math.round(spearmanVsBaseline * 10000) / 10000,
+      maxCountryAbsDelta: Math.round(maxCountryAbsDelta * 100) / 100,
+      biggestDriftsVsBaseline: biggestDrifts,
+      cohortShiftVsBaseline,
+      matchedPairGapChange,
+    };
+  }
+
   const output = {
     comparison: 'currentDomainAggregate_vs_proposedPillarCombined',
     penaltyAlpha: PENALTY_ALPHA,
@@ -386,9 +651,11 @@ async function main() {
       maxRankAbsDelta,
       matchedPairFailures: matchedPairFailures.length,
     },
+    baselineComparison,
     cohortSummary,
     matchedPairSummary,
     variableInfluence,
+    perIndicatorInfluence,
     topMoversByRank: topMovers.map((r) => ({
       countryCode: r.countryCode,
       currentRank: r.currentRank,
