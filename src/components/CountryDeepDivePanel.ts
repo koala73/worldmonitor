@@ -1165,6 +1165,123 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (data.jodiOilAvailable || data.jodiGasAvailable) {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
+
+    // Atlas exposure: pipelines, storage, shortages, disruptions filtered
+    // to this country. Reads from the same bootstrap-hydrated stores as
+    // the Energy Atlas variant, so the count is free when data is warm
+    // and silently absent when a user is on a variant that doesn't
+    // pre-hydrate those keys.
+    this.renderAtlasExposure();
+  }
+
+  private renderAtlasExposure(): void {
+    if (!this.energyBody) return;
+    const iso2 = this.currentCode;
+    if (!iso2 || iso2.length !== 2) return;
+
+    // Late-import so non-energy variants can tree-shake these modules at
+    // build time if the Atlas panels aren't bundled. Static imports are
+    // safe here because all four stores are pure client caches.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    import('@/shared/pipeline-registry-store').then(({ getCachedPipelineRegistries }) => {
+      const { gas, oil } = getCachedPipelineRegistries() as {
+        gas: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;
+        oil: { pipelines?: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[]; name?: string; id?: string }> } | undefined;
+      };
+      const touches = (p: { fromCountry?: string; toCountry?: string; transitCountries?: string[] }): boolean =>
+        p.fromCountry === iso2 || p.toCountry === iso2 ||
+        (Array.isArray(p.transitCountries) && p.transitCountries.includes(iso2));
+      const pipes = [
+        ...Object.values(gas?.pipelines ?? {}).filter(touches),
+        ...Object.values(oil?.pipelines ?? {}).filter(touches),
+      ];
+      if (pipes.length > 0) {
+        this.appendAtlasRow(
+          `Pipelines touching ${iso2}`,
+          `${pipes.length} pipeline${pipes.length === 1 ? '' : 's'}`,
+          pipes.map(p => ({
+            id: p.id || '',
+            label: p.name || p.id || '',
+            event: 'energy:open-pipeline-detail',
+            detail: { pipelineId: p.id },
+          })),
+        );
+      }
+    }).catch(() => {});
+
+    import('@/shared/storage-facility-registry-store').then(({ getCachedStorageFacilityRegistry }) => {
+      const { registry } = getCachedStorageFacilityRegistry() as {
+        registry: { facilities?: Record<string, { country?: string; name?: string; id?: string }> } | undefined;
+      };
+      const facilities = Object.values(registry?.facilities ?? {}).filter(f => f.country === iso2);
+      if (facilities.length > 0) {
+        this.appendAtlasRow(
+          `Storage in ${iso2}`,
+          `${facilities.length} facilit${facilities.length === 1 ? 'y' : 'ies'}`,
+          facilities.map(f => ({
+            id: f.id || '',
+            label: f.name || f.id || '',
+            event: 'energy:open-storage-facility-detail',
+            detail: { facilityId: f.id },
+          })),
+        );
+      }
+    }).catch(() => {});
+
+    import('@/shared/fuel-shortage-registry-store').then(({ getCachedFuelShortageRegistry }) => {
+      const { registry } = getCachedFuelShortageRegistry() as {
+        registry: { shortages?: Record<string, { country?: string; product?: string; severity?: string; id?: string; shortDescription?: string }> } | undefined;
+      };
+      const shortages = Object.values(registry?.shortages ?? {}).filter(s => s.country === iso2);
+      if (shortages.length > 0) {
+        const confirmedCount = shortages.filter(s => s.severity === 'confirmed').length;
+        const severityLine = confirmedCount > 0
+          ? `${confirmedCount} confirmed · ${shortages.length - confirmedCount} watch`
+          : `${shortages.length} watch`;
+        this.appendAtlasRow(
+          `Fuel shortages in ${iso2}`,
+          severityLine,
+          shortages.map(s => ({
+            id: s.id || '',
+            label: `${s.product || ''} — ${s.shortDescription || ''}`.trim(),
+            event: 'energy:open-fuel-shortage-detail',
+            detail: { shortageId: s.id },
+          })),
+        );
+      }
+    }).catch(() => {});
+  }
+
+  private appendAtlasRow(
+    title: string,
+    summary: string,
+    items: Array<{ id: string; label: string; event: string; detail: Record<string, string | undefined> }>,
+  ): void {
+    if (!this.energyBody || items.length === 0) return;
+    const section = this.el('div', '');
+    section.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)';
+    const header = this.el('div', '');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px';
+    header.append(this.el('div', 'cdp-subtitle', title));
+    header.append(this.el('div', 'cdp-economic-source', summary));
+    section.append(header);
+    for (const it of items.slice(0, 5)) {
+      const row = this.el('div', '');
+      row.style.cssText = 'font-size:11px;color:#ddd;padding:2px 0;cursor:pointer';
+      row.textContent = it.label || it.id;
+      row.addEventListener('click', () => {
+        if (!it.id) return;
+        try {
+          window.dispatchEvent(new CustomEvent(it.event, { detail: it.detail }));
+        } catch { /* Non-browser runtime no-op */ }
+      });
+      section.append(row);
+    }
+    if (items.length > 5) {
+      const more = this.el('div', 'cdp-economic-source', `+${items.length - 5} more`);
+      section.append(more);
+    }
+    this.energyBody.append(section);
   }
 
   private buildDonutSvg(
