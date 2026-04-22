@@ -501,6 +501,20 @@ export async function startCheckout(
         await openBillingPortal();
         return false;
       }
+      // 401 / 403 from /api/create-checkout means the Clerk session we
+      // sent is invalid or expired. A toast alone is a dead end —
+      // the user needs to re-auth to retry. Save the intent and reopen
+      // sign-in inline so the post-auth Clerk listener can auto-resume
+      // the exact checkout without manual re-click.
+      if (error.code === 'unauthorized' || error.code === 'session_expired') {
+        savePendingCheckoutIntent({
+          productId,
+          referralCode: options?.referralCode,
+          discountCode: options?.discountCode,
+        });
+        openSignIn();
+        return false;
+      }
       renderCheckoutErrorSurface(error, fallbackToPricingPage);
       return false;
     }
