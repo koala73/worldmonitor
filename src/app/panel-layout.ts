@@ -65,6 +65,7 @@ import {
   DisasterCorrelationPanel,
   DefensePatentsPanel,
   HormuzPanel,
+  ChokepointStripPanel,
   MacroTilesPanel,
   FSIPanel,
   YieldCurvePanel,
@@ -851,6 +852,7 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('energy-complex', () => new EnergyComplexPanel());
     this.createPanel('oil-inventories', () => new OilInventoriesPanel());
     this.createPanel('energy-crisis', () => new EnergyCrisisPanel());
+    this.createPanel('chokepoint-strip', () => new ChokepointStripPanel());
     this.createPanel('polymarket', () => new PredictionPanel());
 
     this.createNewsPanel('gov', 'panels.gov');

@@ -907,15 +907,16 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 // ============================================
 const ENERGY_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
+  'chokepoint-strip': { name: 'Chokepoint Status', enabled: true, priority: 1 },
   'live-news': { name: 'Energy Headlines', enabled: true, priority: 1 },
   insights: { name: 'AI Energy Insights', enabled: true, priority: 1 },
   // Energy complex — existing panels reused at launch
   'energy-complex': { name: 'Oil & Gas Complex', enabled: true, priority: 1 },
   'oil-inventories': { name: 'Oil & Gas Inventories', enabled: true, priority: 1 },
-  hormuz: { name: 'Strait of Hormuz Tracker', enabled: true, priority: 1 },
+  'hormuz-tracker': { name: 'Strait of Hormuz Tracker', enabled: true, priority: 1 },
   'energy-crisis': { name: 'Energy Crisis Policy Tracker', enabled: true, priority: 1 },
   'fuel-prices': { name: 'Retail Fuel Prices', enabled: true, priority: 1 },
-  'renewable-energy': { name: 'Renewable Energy', enabled: true, priority: 2 },
+  renewable: { name: 'Renewable Energy', enabled: true, priority: 2 },
   // Markets relevant to energy
   commodities: { name: 'Energy Commodities (WTI, Brent, NatGas)', enabled: true, priority: 1 },
   energy: { name: 'Energy Markets News', enabled: true, priority: 1 },
