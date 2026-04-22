@@ -82,6 +82,7 @@ import {
   resumePendingCheckout,
   sweepAbandonedCheckoutAttempt,
 } from '@/services/checkout';
+import { captureReferralFromUrl } from '@/services/referral-capture';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -981,6 +982,12 @@ export class App {
     this.state.correlationEngine = correlationEngine;
     this.eventHandlers.setupUnifiedSettings();
     this.eventHandlers.setupAuthWidget();
+    // Capture any ?ref= / ?wm_referral= from the URL into localStorage
+    // and strip from the visible URL. Runs BEFORE the pending-checkout
+    // capture so a /pro?ref=X&checkoutProduct=Y landing preserves both
+    // signals. Pure read of current URL — no-op when neither param is
+    // present.
+    captureReferralFromUrl();
     // Wire checkout-attempt lifecycle watchers (sign-out clear) before
     // any capture/resume path runs, so a stale session from a prior
     // user can't bleed into the current one.

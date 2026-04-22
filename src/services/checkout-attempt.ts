@@ -19,6 +19,8 @@
  * and breaks Node test runners on import).
  */
 
+import { clearReferralOnAttribution } from './referral-capture';
+
 export const LAST_CHECKOUT_ATTEMPT_KEY = 'wm-last-checkout-attempt';
 
 export interface CheckoutAttempt {
@@ -76,11 +78,23 @@ export function loadCheckoutAttempt(): CheckoutAttempt | null {
   }
 }
 
-export function clearCheckoutAttempt(_reason: CheckoutAttemptClearReason): void {
+export function clearCheckoutAttempt(reason: CheckoutAttemptClearReason): void {
   try {
     sessionStorage.removeItem(LAST_CHECKOUT_ATTEMPT_KEY);
   } catch {
     // Ignore storage failures.
+  }
+  // Referral attribution is retired in TWO terminal cases:
+  //   - `success`: the share has been credited — clear so the same
+  //     code can't credit a second purchase from this user.
+  //   - `signout`: the session is ending (or being rotated to a new
+  //     user). Leaving the referral intact would attribute user B's
+  //     future purchase to the sharer who sent user A the link —
+  //     cross-user referral leak.
+  // Other reasons (duplicate, dismissed) leave the ref in place so
+  // the user can retry their own purchase without losing attribution.
+  if (reason === 'success' || reason === 'signout') {
+    clearReferralOnAttribution();
   }
 }
 

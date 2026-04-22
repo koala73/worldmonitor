@@ -56,6 +56,32 @@ function getRefCode(): string | undefined {
   return params.get('ref') || undefined;
 }
 
+/**
+ * Carry the current visit's referral code into a dashboard-target URL.
+ * Ensures `/pro?ref=X` → hero "try the dashboard" click propagates the
+ * code to the dashboard, where captureReferralFromUrl() in App.ts
+ * persists it to localStorage for a later in-dashboard upgrade. Writes
+ * with the `wm_referral=` name because the dashboard uses that going
+ * forward; the /pro page itself still accepts `ref=` for inbound
+ * compatibility with existing share links.
+ *
+ * Validates against the same charset as the dashboard's `isValidCode`
+ * (alphanumeric + `-` + `_`, ≤64 chars) so a hostile `/pro?ref=` value
+ * doesn't briefly appear in the dashboard URL on arrival before the
+ * dashboard-side validator strips it. Invalid codes return the URL
+ * unchanged so the link still works without attribution.
+ */
+const REFERRAL_CODE_REGEX = /^[a-zA-Z0-9_-]+$/;
+function isValidRefCode(code: string): boolean {
+  return code.length > 0 && code.length <= 64 && REFERRAL_CODE_REGEX.test(code);
+}
+
+function appendRefToUrl(url: string, refCode: string | undefined): string {
+  if (!refCode || !isValidRefCode(refCode)) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}wm_referral=${encodeURIComponent(refCode)}`;
+}
+
 function openSignIn(): void {
   ensureClerk().then(c => c.openSignIn()).catch((err) => {
     console.error('[auth] Failed to open sign in:', err);
@@ -301,7 +327,7 @@ const Hero = () => {
           </div>
 
           <div className="flex items-center justify-center mt-4">
-            <a href="https://worldmonitor.app" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+            <a href={appendRefToUrl("https://worldmonitor.app", getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
               {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </a>
           </div>
@@ -472,7 +498,7 @@ const LivePreview = () => (
           </div>
           <span className="font-mono text-xs text-wm-muted ml-2">{t('livePreview.windowTitle')}</span>
           <a
-            href="https://worldmonitor.app"
+            href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
             target="_blank"
             rel="noreferrer"
             className="ml-auto text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1"
@@ -502,7 +528,7 @@ const LivePreview = () => (
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-wm-bg/80 via-transparent to-transparent" />
           <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-auto">
             <a
-              href="https://worldmonitor.app"
+              href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
