@@ -172,6 +172,7 @@ function useProEntitlement(signedIn: boolean): { isPro: boolean; isChecked: bool
         if (!cancelled) setState({ isPro: data.isPro === true, isChecked: true });
       } catch (err) {
         console.error('[auth] Failed to check pro entitlement:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
         if (!cancelled) setState({ isPro: false, isChecked: true });
       }
     })();

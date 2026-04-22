@@ -251,6 +251,13 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
+    {
+      "path": "api/me/entitlement.ts",
+      "category": "internal-helper",
+      "reason": "Thin wrapper over the canonical server/_shared/premium-check.ts isCallerPremium helper — returns { isPro: boolean } for the /pro marketing bundle so it can swap upgrade CTAs for a dashboard link when the visitor is already a paying Pro user. Not a product data API: the authoritative gates live in panel-gating.ts (frontend), isCallerPremium (per-handler), and gateway.ts PREMIUM_RPC_PATHS (Bearer gate). This endpoint exists purely to let the separate pro-test bundle (no Convex client, no gateway client) ask the same question without reimplementing the two-signal check. Shape is unversioned by design — flip a boolean and ship.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
 
     {
       "path": "api/latest-brief.ts",
