@@ -132,6 +132,56 @@ function useClerkUser(): { user: UserResource | null; isLoaded: boolean } {
 }
 
 /**
+ * Returns `isPro: true` when the signed-in visitor has an active Pro
+ * entitlement, either via Clerk pro role OR a Convex Dodo subscription
+ * (tier >= 1). Queries /api/me/entitlement, which runs the same
+ * two-signal `isCallerPremium` check every other premium gate uses —
+ * so this is authoritative, not a Clerk-metadata-only approximation
+ * (Clerk `publicMetadata.plan` is not written by our webhook pipeline).
+ *
+ * Resolves to `isPro: false` for signed-out visitors and on any fetch
+ * error — the /pro page stays in "upgrade pitch" mode rather than
+ * hiding the purchase path on a flaky network.
+ */
+function useProEntitlement(signedIn: boolean): { isPro: boolean; isChecked: boolean } {
+  const [state, setState] = useState<{ isPro: boolean; isChecked: boolean }>({ isPro: false, isChecked: false });
+
+  useEffect(() => {
+    if (!signedIn) {
+      setState({ isPro: false, isChecked: true });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const clerk = await ensureClerk();
+        const token = await clerk.session?.getToken().catch(() => null);
+        if (!token) {
+          if (!cancelled) setState({ isPro: false, isChecked: true });
+          return;
+        }
+        const resp = await fetch(`${API_BASE}/me/entitlement`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (!resp.ok) {
+          if (!cancelled) setState({ isPro: false, isChecked: true });
+          return;
+        }
+        const data = await resp.json() as { isPro?: boolean };
+        if (!cancelled) setState({ isPro: data.isPro === true, isChecked: true });
+      } catch (err) {
+        console.error('[auth] Failed to check pro entitlement:', err);
+        if (!cancelled) setState({ isPro: false, isChecked: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [signedIn]);
+
+  return state;
+}
+
+/**
  * Mounts Clerk's native UserButton (avatar + dropdown with profile + sign
  * out) into a DOM node. Using Clerk's built-in widget avoids reimplementing
  * a signed-in UI from scratch and inherits theming from the existing
@@ -190,6 +240,14 @@ const Logo = () => (
 /* ─── 0. Navbar ─── */
 const Navbar = () => {
   const { user, isLoaded } = useClerkUser();
+  const { isPro, isChecked } = useProEntitlement(!!user);
+  // Show "Go to Dashboard" instead of "Upgrade to Pro" once we confirm
+  // the visitor is already a paying customer. Until the entitlement
+  // check completes we keep the upgrade CTA in place — a signed-in
+  // free user would see a one-frame flash otherwise, which is less
+  // annoying than showing "Go to Dashboard" for half a second to a
+  // visitor who hasn't paid.
+  const showGoToDashboard = isLoaded && !!user && isChecked && isPro;
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -214,9 +272,18 @@ const Navbar = () => {
                 {t('nav.signIn')}
               </button>
             ))}
-          <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
-            {t('nav.upgradeToPro')}
-          </a>
+          {showGoToDashboard ? (
+            <a
+              href="https://worldmonitor.app"
+              className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
+            >
+              {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
+          ) : (
+            <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+              {t('nav.upgradeToPro')}
+            </a>
+          )}
         </div>
       </div>
     </nav>
@@ -286,10 +353,16 @@ const SignalBars = () => {
 
 const Hero = () => {
   const { user, isLoaded } = useClerkUser();
+  const { isPro, isChecked } = useProEntitlement(!!user);
   // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
   // Hide it once auth state confirms; falls back to just the "Choose Plan"
   // CTA which is the relevant action for returning users anyway.
   const showSignIn = isLoaded && !user;
+  // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
+  // is already Pro — same reasoning as the nav swap, and also removes
+  // the #pricing anchor jump which is actively misleading for a paying
+  // customer.
+  const showGoToDashboard = isLoaded && !!user && isChecked && isPro;
   return (
     <section className="pt-28 pb-12 px-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
@@ -316,9 +389,15 @@ const Hero = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
-            <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
-              {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
-            </a>
+            {showGoToDashboard ? (
+              <a href="https://worldmonitor.app" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+                {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </a>
+            ) : (
+              <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+                {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </a>
+            )}
             {showSignIn && (
               <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
                 {t('hero.signIn')}
