@@ -164,6 +164,11 @@ export class PipelineStatusPanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetPipelineDetailResponse | null = null;
   private detailLoading = false;
+  private openDetailHandler = (ev: Event): void => {
+    const id = (ev as CustomEvent<{ pipelineId?: string }>).detail?.pipelineId;
+    if (!id || !this.element?.isConnected) return;
+    void this.loadDetail(id);
+  };
 
   constructor() {
     super({
@@ -175,6 +180,20 @@ export class PipelineStatusPanel extends Panel {
         'evidence (operator statements, sanction refs, commercial state, physical signals) — ' +
         'see /docs/methodology/pipelines for the classifier spec.',
     });
+    // Listen for DeckGLMap pipeline clicks. Loose coupling via window event
+    // keeps the map and the panel decoupled — if the panel isn't mounted, the
+    // event is a no-op. If both exist, a map click opens this drawer on the
+    // same pipeline id.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('energy:open-pipeline-detail', this.openDetailHandler);
+    }
+  }
+
+  public destroy(): void {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('energy:open-pipeline-detail', this.openDetailHandler);
+    }
+    super.destroy?.();
   }
 
   public async fetchData(): Promise<void> {

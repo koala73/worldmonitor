@@ -58,6 +58,12 @@ import { H3HexagonLayer, TripsLayer } from '@deck.gl/geo-layers';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
+import { getHydratedData } from '@/services/bootstrap';
+import {
+  derivePipelinePublicBadge,
+  type PipelineEvidenceInput,
+  type PipelinePublicBadge,
+} from '@/shared/pipeline-evidence';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
@@ -1493,9 +1499,13 @@ export class DeckGLMap {
       this.layerCache.delete('cables-layer');
     }
 
-    // Pipelines layer
+    // Pipelines layer. Energy variant uses the evidence-backed registry
+    // (seed-pipelines-{gas,oil}.mjs) and colors by derived publicBadge;
+    // other variants keep the static PIPELINES config colored by type.
     if (mapLayers.pipelines) {
-      layers.push(this.createPipelinesLayer());
+      layers.push(SITE_VARIANT === 'energy'
+        ? this.createEnergyPipelinesLayer()
+        : this.createPipelinesLayer());
     } else {
       this.layerCache.delete('pipelines-layer');
     }
@@ -1919,6 +1929,112 @@ export class DeckGLMap {
     });
 
     this.lastPipelineHighlightSignature = highlightSignature;
+    this.layerCache.set(cacheKey, layer);
+    return layer;
+  }
+
+  // Energy-variant override for the pipelines map layer. Instead of the
+  // static PIPELINES config (colored by oil/gas type), this reads the
+  // evidence-backed pipeline registries seeded by scripts/seed-pipelines-
+  // {gas,oil}.mjs and colors each path by its derived publicBadge —
+  // flowing/reduced/offline/disputed. Click dispatches an
+  // `open-pipeline-detail` window event that PipelineStatusPanel listens
+  // for to open its drawer. Falls back to the static layer if bootstrap
+  // hasn't hydrated yet (e.g. variant switch before the fetch completes).
+  private createEnergyPipelinesLayer(): PathLayer {
+    const cacheKey = 'pipelines-layer';
+
+    interface RawEntry {
+      id?: string; name?: string; commodityType?: string;
+      startPoint?: { lat?: number; lon?: number };
+      endPoint?:   { lat?: number; lon?: number };
+      waypoints?:  Array<{ lat?: number; lon?: number }>;
+      operator?: string;
+      evidence?: PipelineEvidenceInput;
+    }
+    interface EnergyPipeline {
+      id: string;
+      name: string;
+      operator: string;
+      commodityType: string;
+      points: Array<[number, number]>;
+      badge: PipelinePublicBadge;
+    }
+
+    const gas = getHydratedData('pipelinesGas') as { pipelines?: Record<string, RawEntry> } | undefined;
+    const oil = getHydratedData('pipelinesOil') as { pipelines?: Record<string, RawEntry> } | undefined;
+    const rawEntries: RawEntry[] = [
+      ...Object.values(gas?.pipelines ?? {}),
+      ...Object.values(oil?.pipelines ?? {}),
+    ];
+
+    // Bootstrap not hydrated yet → fall back to the static layer so the
+    // map always has some representation of the pipelines toggle.
+    if (rawEntries.length === 0) return this.createPipelinesLayer();
+
+    const data: EnergyPipeline[] = rawEntries
+      .map(raw => {
+        const id = typeof raw.id === 'string' ? raw.id : '';
+        if (!id) return null;
+        const start = raw.startPoint;
+        const end = raw.endPoint;
+        if (!start || !end || typeof start.lat !== 'number' || typeof start.lon !== 'number' ||
+            typeof end.lat !== 'number' || typeof end.lon !== 'number') return null;
+        const points: Array<[number, number]> = [[start.lon, start.lat]];
+        if (Array.isArray(raw.waypoints)) {
+          for (const wp of raw.waypoints) {
+            if (wp && typeof wp.lat === 'number' && typeof wp.lon === 'number') {
+              points.push([wp.lon, wp.lat]);
+            }
+          }
+        }
+        points.push([end.lon, end.lat]);
+        return {
+          id,
+          name: raw.name || id,
+          operator: raw.operator || '',
+          commodityType: raw.commodityType || 'gas',
+          points,
+          badge: derivePipelinePublicBadge(raw.evidence),
+        } as EnergyPipeline;
+      })
+      .filter((p): p is EnergyPipeline => p != null);
+
+    const badgeColor = (b: PipelinePublicBadge): [number, number, number, number] => {
+      switch (b) {
+        case 'flowing':  return [46, 204, 113, 200];  // green
+        case 'reduced':  return [243, 156, 18, 220];  // amber
+        case 'offline':  return [231, 76, 60, 230];   // red
+        case 'disputed': return [155, 89, 182, 220];  // purple
+      }
+    };
+
+    const layer = new PathLayer<EnergyPipeline>({
+      id: cacheKey,
+      data,
+      getPath: d => d.points,
+      getColor: d => badgeColor(d.badge),
+      getWidth: d => (d.badge === 'offline' || d.badge === 'disputed') ? 3 : 2,
+      widthMinPixels: 1.5,
+      widthMaxPixels: 6,
+      pickable: true,
+      onClick: info => {
+        const obj = info?.object as EnergyPipeline | undefined;
+        if (!obj?.id) return false;
+        // Emit an event; PipelineStatusPanel listens and opens its drawer.
+        // Cross-component coupling stays loose — no direct reference to the
+        // panel class, and if the panel isn't mounted the event is a no-op.
+        try {
+          window.dispatchEvent(new CustomEvent('energy:open-pipeline-detail', {
+            detail: { pipelineId: obj.id },
+          }));
+        } catch {
+          // Non-browser / tauri edge cases — silent no-op.
+        }
+        return true;
+      },
+    });
+
     this.layerCache.set(cacheKey, layer);
     return layer;
   }
