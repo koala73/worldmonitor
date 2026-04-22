@@ -3,7 +3,7 @@ import type { MapLayers } from '@/types';
 import { isDesktopRuntime } from '@/services/runtime';
 
 export type MapRenderer = 'flat' | 'globe';
-export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity';
+export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
 
 const _desktop = isDesktopRuntime();
 
@@ -116,6 +116,14 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'minerals', 'pipelines', 'waterways', 'tradeRoutes',
     'ais', 'economic', 'fires', 'climate',
     'resilienceScore', 'natural', 'weather', 'outages', 'sanctions', 'dayNight',
+  ],
+  energy: [
+    // Core energy infrastructure — mirror of ENERGY_MAP_LAYERS in panels.ts
+    'pipelines', 'waterways', 'commodityPorts', 'commodityHubs',
+    'ais', 'tradeRoutes', 'minerals',
+    // Energy-adjacent context
+    'sanctions', 'fires', 'climate', 'weather', 'outages', 'natural',
+    'resilienceScore', 'dayNight',
   ],
 };
 

@@ -1622,7 +1622,7 @@ export class DataLoaderManager implements AppModule {
         newsCategories: SITE_VARIANT === 'commodity'
           ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
           : SITE_VARIANT === 'energy'
-            ? ['energy', 'energy-markets', 'oil-gas-news', 'pipeline-news', 'lng-news']
+            ? ['live-news', 'energy', 'supply-chain']
             : undefined,
       });
 
