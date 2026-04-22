@@ -1,29 +1,16 @@
 /**
- * Unit tests for the banner state helpers. DOM-level transitions
- * (pending → active → timeout) are async + event-driven and are
- * covered by manual verification per the plan; this locks the pure
- * decision we CAN exercise in plain TS so future refactors don't
- * silently flip the mount-time behavior.
+ * Unit tests for the banner timing constants. DOM-level state transitions
+ * (pending → active → timeout) are async + event-driven and are covered
+ * by manual verification.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  computeInitialBannerState,
   EXTENDED_UNLOCK_TIMEOUT_MS,
   CLASSIC_AUTO_DISMISS_MS,
 } from '../src/services/checkout-banner-state.ts';
-
-describe('computeInitialBannerState', () => {
-  it('returns "pending" when the user is not yet entitled', () => {
-    assert.equal(computeInitialBannerState(false), 'pending');
-  });
-
-  it('returns "active" when the user is already entitled at mount time', () => {
-    assert.equal(computeInitialBannerState(true), 'active');
-  });
-});
 
 describe('banner timing constants', () => {
   it('EXTENDED_UNLOCK_TIMEOUT_MS is 30s — covers webhook/propagation long tail', () => {

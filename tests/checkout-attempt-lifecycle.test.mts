@@ -1,12 +1,11 @@
 /**
- * Exercises the save/load/clear primitives for LAST_CHECKOUT_ATTEMPT_KEY
- * and the abandonment sweep. The key invariant under test is the two-key
- * separation: Primitive A's PENDING_CHECKOUT_KEY and LAST_CHECKOUT_ATTEMPT_KEY
- * have different terminal-clear triggers (see the plan's Primitive A section).
+ * Exercises the save/load/clear primitives for LAST_CHECKOUT_ATTEMPT_KEY.
+ * The two-key separation (attempt record vs pending auto-resume intent)
+ * and the 24h staleness gate are the invariants under test.
  *
  * Only pure storage helpers are exercised here — startCheckout() and the
  * Dodo overlay event handlers require a browser/SDK environment and are
- * covered by manual + E2E paths per the PR plan.
+ * covered by manual + E2E paths.
  */
 
 import { describe, it, beforeEach, before, after } from 'node:test';
@@ -58,12 +57,8 @@ beforeEach(() => {
   _sessionStorage.clear();
 });
 
-const {
-  saveCheckoutAttempt,
-  loadCheckoutAttempt,
-  clearCheckoutAttempt,
-  sweepAbandonedCheckoutAttempt,
-} = await import('../src/services/checkout-attempt.ts');
+const checkout = await import('../src/services/checkout-attempt.ts');
+const { saveCheckoutAttempt, loadCheckoutAttempt, clearCheckoutAttempt } = checkout;
 
 describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
   it('round-trips a fresh attempt', () => {
@@ -71,12 +66,10 @@ describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
       productId: 'pdt_X',
       referralCode: 'abc',
       startedAt: Date.now(),
-      origin: 'dashboard',
     });
     const loaded = loadCheckoutAttempt();
     assert.equal(loaded?.productId, 'pdt_X');
     assert.equal(loaded?.referralCode, 'abc');
-    assert.equal(loaded?.origin, 'dashboard');
   });
 
   it('returns null when nothing stored', () => {
@@ -91,7 +84,7 @@ describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
   it('returns null for stored records missing productId', () => {
     _sessionStorage.setItem(
       LAST_CHECKOUT_ATTEMPT_KEY,
-      JSON.stringify({ startedAt: Date.now(), origin: 'dashboard' }),
+      JSON.stringify({ startedAt: Date.now() }),
     );
     assert.equal(loadCheckoutAttempt(), null);
   });
@@ -101,7 +94,6 @@ describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
     saveCheckoutAttempt({
       productId: 'pdt_X',
       startedAt: twentyFiveHoursAgo,
-      origin: 'dashboard',
     });
     assert.equal(loadCheckoutAttempt(), null);
   });
@@ -111,7 +103,6 @@ describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
     saveCheckoutAttempt({
       productId: 'pdt_X',
       startedAt: twentyThreeHoursAgo,
-      origin: 'pro',
     });
     assert.equal(loadCheckoutAttempt()?.productId, 'pdt_X');
   });
@@ -119,18 +110,16 @@ describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
 
 describe('clearCheckoutAttempt', () => {
   it('clears the stored record regardless of reason', () => {
-    const reasons: Array<'success' | 'duplicate' | 'signout' | 'dismissed' | 'abandoned'> = [
+    const reasons: Array<'success' | 'duplicate' | 'signout' | 'dismissed'> = [
       'success',
       'duplicate',
       'signout',
       'dismissed',
-      'abandoned',
     ];
     for (const reason of reasons) {
       saveCheckoutAttempt({
         productId: 'pdt_X',
         startedAt: Date.now(),
-        origin: 'dashboard',
       });
       clearCheckoutAttempt(reason);
       assert.equal(loadCheckoutAttempt(), null, `reason=${reason} should clear the record`);
@@ -139,52 +128,5 @@ describe('clearCheckoutAttempt', () => {
 
   it('is safe to call with no record present', () => {
     assert.doesNotThrow(() => clearCheckoutAttempt('success'));
-  });
-});
-
-describe('sweepAbandonedCheckoutAttempt', () => {
-  it('does not clear when return params are present (failed-redirect race guard)', () => {
-    const oldAttempt = {
-      productId: 'pdt_X',
-      startedAt: Date.now() - 40 * 60 * 1000, // 40min old, past abandon cutoff
-      origin: 'dashboard' as const,
-    };
-    saveCheckoutAttempt(oldAttempt);
-    // hasReturnParams = true means the page carries ?status=failed (or
-    // similar) — we must NOT clear because the failure banner is about
-    // to consume the attempt record to populate retry.
-    sweepAbandonedCheckoutAttempt(true);
-    assert.equal(loadCheckoutAttempt()?.productId, 'pdt_X');
-  });
-
-  it('clears records older than 30min when no return params', () => {
-    saveCheckoutAttempt({
-      productId: 'pdt_X',
-      startedAt: Date.now() - 45 * 60 * 1000,
-      origin: 'dashboard',
-    });
-    sweepAbandonedCheckoutAttempt(false);
-    assert.equal(loadCheckoutAttempt(), null);
-  });
-
-  it('preserves records younger than 30min when no return params', () => {
-    saveCheckoutAttempt({
-      productId: 'pdt_X',
-      startedAt: Date.now() - 5 * 60 * 1000,
-      origin: 'dashboard',
-    });
-    sweepAbandonedCheckoutAttempt(false);
-    assert.equal(loadCheckoutAttempt()?.productId, 'pdt_X');
-  });
-
-  it('clears malformed records defensively', () => {
-    _sessionStorage.setItem(LAST_CHECKOUT_ATTEMPT_KEY, '{not json');
-    sweepAbandonedCheckoutAttempt(false);
-    assert.equal(_sessionStorage.getItem(LAST_CHECKOUT_ATTEMPT_KEY), null);
-  });
-
-  it('is a no-op when nothing is stored', () => {
-    sweepAbandonedCheckoutAttempt(false);
-    assert.equal(loadCheckoutAttempt(), null);
   });
 });

@@ -23,19 +23,6 @@ export const EXTENDED_UNLOCK_TIMEOUT_MS = 30_000;
 export const CLASSIC_AUTO_DISMISS_MS = 5_000;
 
 /**
- * Decide the initial banner state at mount time.
- *
- * If the user already has pro entitlement when the banner fires
- * (e.g., the post-reload `consumePostCheckoutFlag` path where the
- * entitlement watcher already flipped true), skip "pending" and go
- * straight to "active" so the banner doesn't falsely suggest the
- * webhook is still in flight.
- */
-export function computeInitialBannerState(entitledNow: boolean): CheckoutSuccessBannerState {
-  return entitledNow ? 'active' : 'pending';
-}
-
-/**
  * Mask an email address for display in the success banner so the
  * full address isn't rendered in plaintext (privacy — a top-of-
  * viewport banner can be screen-shared, photographed, or recorded).

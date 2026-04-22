@@ -1,5 +1,5 @@
 /**
- * Primitive A — checkout attempt lifecycle (retry context store).
+ * Checkout attempt lifecycle — retry context store.
  *
  * Separate from `PENDING_CHECKOUT_KEY` in checkout.ts because the two
  * keys have different terminal-clear rules:
@@ -28,29 +28,22 @@ export interface CheckoutAttempt {
   referralCode?: string;
   discountCode?: string;
   startedAt: number;
-  origin: 'dashboard' | 'pro';
 }
 
 export type CheckoutAttemptClearReason =
   | 'success'
   | 'duplicate'
   | 'signout'
-  | 'dismissed'
-  | 'abandoned';
+  | 'dismissed';
 
 /**
  * Maximum age of a saved attempt before we treat it as stale and
  * ignore on read. Generous (24h) so a user declined this morning can
  * return this afternoon and retry the exact product they picked.
+ * This is the SOLE staleness gate — there is no separate abandonment
+ * sweep; records older than this are ignored by `loadCheckoutAttempt`.
  */
 export const CHECKOUT_ATTEMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Silent-abandon cutoff for the mount-time sweep. Older than this AND
- * no Dodo return params on the current URL → treat as abandoned and
- * clear so a much-later visit doesn't resurface a stale retry banner.
- */
-export const CHECKOUT_ATTEMPT_ABANDONED_MS = 30 * 60 * 1000;
 
 export function saveCheckoutAttempt(attempt: CheckoutAttempt): void {
   try {
@@ -95,26 +88,5 @@ export function clearCheckoutAttempt(reason: CheckoutAttemptClearReason): void {
   // the user can retry their own purchase without losing attribution.
   if (reason === 'success' || reason === 'signout') {
     clearReferralOnAttribution();
-  }
-}
-
-/**
- * Mount-time defensive cleanup. Caller passes `hasReturnParams` so we
- * never clear an attempt that a freshly-loaded ?status=failed URL is
- * about to consume (the failed-redirect race).
- */
-export function sweepAbandonedCheckoutAttempt(hasReturnParams: boolean): void {
-  if (hasReturnParams) return;
-  try {
-    const raw = sessionStorage.getItem(LAST_CHECKOUT_ATTEMPT_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as CheckoutAttempt;
-    const age = Date.now() - (parsed?.startedAt ?? 0);
-    if (age > CHECKOUT_ATTEMPT_ABANDONED_MS) {
-      sessionStorage.removeItem(LAST_CHECKOUT_ATTEMPT_KEY);
-    }
-  } catch {
-    // Malformed record — clear defensively.
-    try { sessionStorage.removeItem(LAST_CHECKOUT_ATTEMPT_KEY); } catch { /* noop */ }
   }
 }

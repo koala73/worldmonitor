@@ -240,6 +240,15 @@ export class PanelLayoutManager implements AppModule {
     // transition detector would swallow that snapshot as "legacy-pro" and
     // the user would see locked panels until a manual refresh — exactly the
     // symptom that caused the 2026-04-17/18 duplicate-subscription incident.
+    //
+    // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — the watcher is the SOLE
+    // automatic reload source for post-checkout success (the overlay
+    // handler in checkout.ts deliberately does NOT reload). If PR #3163's
+    // fix to `skipInitialSnapshot` is ever reverted, this detector
+    // swallows the activation silently and users see locked panels for
+    // 30s until the extended-unlock timeout fires a manual-refresh CTA.
+    // Regression guard: tests/entitlement-transition.test.mts locks the
+    // "incident sequence" semantics; see mirror marker in checkout.ts.
     let lastEntitled: boolean | null = returnedFromCheckout ? false : null;
     this.unsubscribeEntitlementChange = onEntitlementChange(() => {
       const entitled = isEntitled();

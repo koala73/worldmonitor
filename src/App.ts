@@ -80,7 +80,6 @@ import {
   capturePendingCheckoutIntentFromUrl,
   initCheckoutWatchers,
   resumePendingCheckout,
-  sweepAbandonedCheckoutAttempt,
 } from '@/services/checkout';
 import { captureReferralFromUrl } from '@/services/referral-capture';
 import {
@@ -992,14 +991,12 @@ export class App {
     // any capture/resume path runs, so a stale session from a prior
     // user can't bleed into the current one.
     initCheckoutWatchers();
-    // Abandonment sweep: clear long-stale attempt records when the
-    // current page load carries no Dodo return params. Runs before
-    // capture (which repopulates the record for /pro handoff intent).
-    const hasCheckoutReturnParams = (() => {
-      const p = new URL(window.location.href).searchParams;
-      return !!(p.get('subscription_id') || p.get('payment_id'));
-    })();
-    sweepAbandonedCheckoutAttempt(hasCheckoutReturnParams);
+    // Stale attempt records are ignored by loadCheckoutAttempt() via
+    // the 24h TTL — no separate sweep needed. The attempt record's
+    // only consumer (the failure-retry banner) runs handleCheckoutReturn
+    // synchronously during panel-layout mount, which is after the
+    // captureePendingCheckoutIntentFromUrl repopulates it for any /pro
+    // handoff — so no race exists that would want to sweep pre-capture.
     const pendingCheckout = capturePendingCheckoutIntentFromUrl();
     if (pendingCheckout) {
       // Checkout intent from /pro page redirect. Resume immediately if
