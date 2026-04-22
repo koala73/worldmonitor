@@ -136,10 +136,22 @@ export function initAuthAnalytics(): void {
       // would conflate "opened the sign-up modal" with "completed the flow";
       // gating on createdAt freshness captures the successful-completion
       // signal we actually want to measure.
+      //
+      // Durable fire-once guard: `_lastAuth` resets to null on every page
+      // load, so without a persisted marker the null→user transition looks
+      // identical on the completion reload and on any reload within the
+      // 60s freshness window. We'd re-fire trackSignUp on every tab
+      // refresh until createdAt ages out, inflating the signup count.
+      // sessionStorage scopes the marker to the browser tab — tight enough
+      // that re-install / new session reliably re-counts, wide enough that
+      // a reload mid-signup doesn't double-count.
       if (
+        nextUserId !== null &&
+        !hasTrackedSignupInSession(nextUserId) &&
         isLikelyFreshSignup(prevUserId, nextUserId, getClerkUserCreatedAt(), Date.now())
       ) {
         trackSignUp('clerk');
+        markSignupTrackedInSession(nextUserId);
       }
     }
     _lastAuth = state;
@@ -198,6 +210,33 @@ export const FRESH_SIGNUP_WINDOW_MS = 60_000;
  * unrealistically far in the future) are rejected as malformed.
  */
 const FRESH_SIGNUP_CLOCK_SKEW_MS = 5_000;
+
+/**
+ * sessionStorage-backed fire-once guard. Keyed by user id so an account
+ * switch within the same tab still gets a signup track for the new user
+ * if they just created their account. Read/write are try/catched because
+ * sessionStorage throws in private-mode / quota-exceeded / disabled-
+ * storage scenarios; we fail open (track, don't persist) rather than
+ * swallow signups.
+ */
+const SIGNUP_TRACKED_KEY_PREFIX = 'wm-signup-tracked:';
+
+export function hasTrackedSignupInSession(userId: string): boolean {
+  try {
+    return window.sessionStorage.getItem(SIGNUP_TRACKED_KEY_PREFIX + userId) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markSignupTrackedInSession(userId: string): void {
+  try {
+    window.sessionStorage.setItem(SIGNUP_TRACKED_KEY_PREFIX + userId, '1');
+  } catch {
+    // Storage unavailable — we'll just risk a single double-count on
+    // reload instead of crashing analytics init.
+  }
+}
 
 export function isLikelyFreshSignup(
   prevUserId: string | null,

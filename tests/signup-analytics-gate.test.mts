@@ -1,7 +1,29 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isLikelyFreshSignup, FRESH_SIGNUP_WINDOW_MS } from '../src/services/analytics.ts';
+// Stub window.sessionStorage before importing the module under test —
+// the analytics module's in-memory helpers touch sessionStorage during
+// their execution path, and node:test runs without a DOM.
+const _store = new Map<string, string>();
+before(() => {
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: (k: string) => _store.get(k) ?? null,
+        setItem: (k: string, v: string) => { _store.set(k, v); },
+        removeItem: (k: string) => { _store.delete(k); },
+      },
+    },
+  });
+});
+
+const {
+  isLikelyFreshSignup,
+  FRESH_SIGNUP_WINDOW_MS,
+  hasTrackedSignupInSession,
+  markSignupTrackedInSession,
+} = await import('../src/services/analytics.ts');
 
 const NOW = 1_700_000_000_000;
 
@@ -48,5 +70,31 @@ describe('isLikelyFreshSignup', () => {
     // 10 minutes in the future is not clock skew — it's a bug or a
     // malicious client-side clock. Must not fire trackSignUp.
     assert.equal(isLikelyFreshSignup(null, 'user_new', NOW + 10 * 60 * 1000, NOW), false);
+  });
+});
+
+describe('signup tracking session marker', () => {
+  beforeEach(() => {
+    _store.clear();
+  });
+
+  it('starts as not tracked', () => {
+    assert.equal(hasTrackedSignupInSession('user_X'), false);
+  });
+
+  it('mark → has returns true for same user', () => {
+    markSignupTrackedInSession('user_X');
+    assert.equal(hasTrackedSignupInSession('user_X'), true);
+  });
+
+  it('tracked state is keyed per user (account switch re-counts)', () => {
+    markSignupTrackedInSession('user_X');
+    assert.equal(hasTrackedSignupInSession('user_Y'), false);
+  });
+
+  it('tracked marker persists across multiple reads (idempotent)', () => {
+    markSignupTrackedInSession('user_X');
+    assert.equal(hasTrackedSignupInSession('user_X'), true);
+    assert.equal(hasTrackedSignupInSession('user_X'), true);
   });
 });
