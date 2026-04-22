@@ -18,6 +18,7 @@ import { generateWhyMatters } from '../scripts/lib/brief-llm.mjs';
 import {
   hashBriefStory,
   parseWhyMatters,
+  parseWhyMattersV2,
   WHY_MATTERS_SYSTEM,
 } from '../shared/brief-llm-core.js';
 
@@ -124,6 +125,106 @@ describe('cache key identity', () => {
       const h = await hashBriefStory(story({ [f]: `${story()[f]}X` }));
       assert.notEqual(h, baseline, `${f} must be part of cache identity`);
     }
+  });
+});
+
+// ── parseWhyMattersV2 — analyst-path output validator ───────────────────
+//
+// This is the only output-validation gate between the analyst LLM and
+// the cache envelope: if it returns null the whole response falls back
+// to the gemini layer. Its rejection rules differ from v1 (100–500
+// char range, multi-sentence preamble list, section-label check) and
+// were not previously covered by unit tests (greptile P2, PR #3281).
+
+describe('parseWhyMattersV2 — analyst output validator', () => {
+  const VALID_MULTI =
+    "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
+    'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters.';
+
+  it('accepts a valid 2-sentence, ~40–70 word output', () => {
+    const out = parseWhyMattersV2(VALID_MULTI);
+    assert.equal(out, VALID_MULTI);
+  });
+
+  it('accepts a valid 3-sentence output with optional WATCH arc', () => {
+    const three =
+      "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
+      'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters. ' +
+      'Watch IMF commentary in the next 48 hours for cascading guidance.';
+    assert.equal(parseWhyMattersV2(three), three);
+  });
+
+  it('rejects output under the 100-char minimum (distinguishes it from v1)', () => {
+    // v1 accepts short outputs; v2 requires 100+ chars so the model has
+    // room for SITUATION + ANALYSIS. A short string is "too terse".
+    assert.equal(parseWhyMattersV2('Short sentence under 100 chars.'), null);
+    assert.equal(parseWhyMattersV2('x'.repeat(99)), null);
+    // Boundary: exactly 100 passes.
+    assert.equal(typeof parseWhyMattersV2('x'.repeat(100)), 'string');
+  });
+
+  it('rejects output over the 500-char cap (prevents runaway essays)', () => {
+    assert.equal(parseWhyMattersV2('x'.repeat(501)), null);
+    // Boundary: exactly 500 passes.
+    assert.equal(typeof parseWhyMattersV2('x'.repeat(500)), 'string');
+  });
+
+  it('rejects banned preamble phrases (v2-specific)', () => {
+    for (const preamble of [
+      'This matters because the Strait of Hormuz closure would halt 20% of global oil supply right now and this is very important for analysts.',
+      'The importance of this event is that oil tankers cannot transit the strait, which forces a global supply rerouting and price shock.',
+      'It is important to note that Iran has blockaded a critical global shipping chokepoint with real consequences for supply.',
+      'Importantly, the closure of the Strait of Hormuz disrupts roughly 20% of global seaborne oil flows starting April 21.',
+      'In summary, the analyst sees this as a major geopolitical escalation with wide-reaching market and security implications.',
+      'To summarize, the blockade represents a sharp departure from the prior six months of relative calm in the Persian Gulf region.',
+    ]) {
+      assert.equal(parseWhyMattersV2(preamble), null, `should reject preamble: "${preamble.slice(0, 40)}..."`);
+    }
+  });
+
+  it('rejects section-label leaks (SITUATION/ANALYSIS/WATCH prefixes)', () => {
+    for (const leak of [
+      'SITUATION: Iran has closed the Strait of Hormuz effective April 21, halting roughly 20% of seaborne global oil supply today.',
+      'ANALYSIS — the disruption forces an immediate global sovereign risk repricing across Gulf exporters including Saudi Arabia and UAE.',
+      'Watch: IMF commentary for the next 48 hours should give the earliest signal on the cascading global guidance implications.',
+    ]) {
+      assert.equal(parseWhyMattersV2(leak), null, `should reject label leak: "${leak.slice(0, 40)}..."`);
+    }
+  });
+
+  it('rejects markdown leakage (bullets, headers, numbered lists)', () => {
+    for (const md of [
+      '# The closure of the Strait of Hormuz is the single most material geopolitical event of the quarter for sovereign credit.',
+      '- Iran has blockaded the Strait of Hormuz, halting roughly 20% of the world seaborne oil on April 21 effective immediately.',
+      '* The closure of the Strait of Hormuz halts roughly 20% of the world seaborne oil, which forces an immediate price shock today.',
+      '1. The closure of the Strait of Hormuz halts roughly 20% of seaborne global oil, which forces an immediate sovereign risk repricing.',
+    ]) {
+      assert.equal(parseWhyMattersV2(md), null, `should reject markdown: "${md.slice(0, 40)}..."`);
+    }
+  });
+
+  it('rejects the stub echo (same as v1)', () => {
+    const stub =
+      'Story flagged by your sensitivity settings — the analyst could not find a clean grounding fact and returned the pre-canned fallback.';
+    assert.equal(parseWhyMattersV2(stub), null);
+  });
+
+  it('trims surrounding quote marks the model sometimes wraps output in', () => {
+    const quoted = `"${VALID_MULTI}"`;
+    assert.equal(parseWhyMattersV2(quoted), VALID_MULTI);
+    const smart = `\u201C${VALID_MULTI}\u201D`;
+    assert.equal(parseWhyMattersV2(smart), VALID_MULTI);
+  });
+
+  it('rejects non-string inputs (defensive)', () => {
+    for (const v of [null, undefined, 123, {}, [], true]) {
+      assert.equal(parseWhyMattersV2(v), null, `should reject ${typeof v}`);
+    }
+  });
+
+  it('rejects whitespace-only strings', () => {
+    assert.equal(parseWhyMattersV2(''), null);
+    assert.equal(parseWhyMattersV2('   \n\t  '), null);
   });
 });
 
@@ -296,7 +397,12 @@ describe('endpoint validation contract', () => {
   // test regression on the endpoint flow (see "endpoint end-to-end" below).
   const VALID_THREAT = new Set(['critical', 'high', 'medium', 'low']);
   const CAPS = { headline: 400, source: 120, category: 80, country: 80 };
-  const MAX_BODY_BYTES = 4096;
+  // Must match `api/internal/brief-why-matters.ts:116` — bumped to 8192 in
+  // PR #3269 to accommodate v2 output + description. If this ever drifts
+  // again, the bloated-fixture assertion below silently passes for
+  // payloads in the (OLD_VALUE, NEW_VALUE] range that the real endpoint
+  // now accepts (greptile P2, PR #3281).
+  const MAX_BODY_BYTES = 8192;
 
   function validate(raw) {
     if (!raw || typeof raw !== 'object') return { ok: false, msg: 'body' };
@@ -364,7 +470,9 @@ describe('endpoint validation contract', () => {
         ...story(),
         // Artificial oversize payload — would need headline cap bypassed
         // to reach in practice, but the total body-byte cap must still fire.
-        extra: 'x'.repeat(5000),
+        // Sized well above MAX_BODY_BYTES (8192) so a future bump doesn't
+        // silently invalidate the assertion.
+        extra: 'x'.repeat(10_000),
       },
     };
     assert.ok(measureBytes(bloated) > MAX_BODY_BYTES, 'fixture is oversize');
@@ -477,6 +585,210 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     // Total user prompt should be bounded. Per plan: context budget ~1700
     // + story fields + footer ~250 → under 2.5KB.
     assert.ok(user.length < 2500, `prompt should be bounded; got ${user.length} chars`);
+  });
+});
+
+// ── Category-gated context (2026-04-22 formulaic-grounding fix) ──────
+//
+// Shadow-diff of 15 v2 pairs showed the analyst pattern-matching loud
+// context numbers (VIX, top forecast probability, MidEast FX stress)
+// into every story regardless of editorial fit. The structural fix is
+// to only feed editorially-relevant context bundles per category; the
+// prompt-level RELEVANCE RULE is a second-layer guard.
+//
+// These tests pin the category → sections map so a future "loosen this
+// one little thing" edit can't silently re-introduce market metrics
+// into humanitarian stories.
+
+describe('sectionsForCategory — structural relevance gating', () => {
+  let sectionsForCategory;
+  let builder;
+  it('loads', async () => {
+    const mod = await import('../server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts');
+    sectionsForCategory = mod.sectionsForCategory;
+    builder = mod.buildAnalystWhyMattersPrompt;
+    assert.ok(typeof sectionsForCategory === 'function');
+  });
+
+  it('market/commodity/finance → includes marketData + forecasts, excludes riskScores', () => {
+    for (const cat of ['Energy', 'Commodity Squeeze', 'Market Activity', 'Financial Stress', 'Oil Markets', 'Trade Policy']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'market', `${cat} should match market policy`);
+      assert.ok(sections.includes('marketData'), `${cat} should include marketData`);
+      assert.ok(sections.includes('forecasts'), `${cat} should include forecasts`);
+      assert.ok(sections.includes('macroSignals'), `${cat} should include macroSignals`);
+      assert.ok(!sections.includes('riskScores'), `${cat} should NOT include riskScores`);
+    }
+  });
+
+  it('humanitarian → excludes marketData AND forecasts (the #1 drift pattern)', () => {
+    for (const cat of ['Humanitarian Crisis', 'Refugee Flow', 'Civil Unrest', 'Social Upheaval', 'Rights Violation', 'Aid Delivery', 'Migration']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'humanitarian', `${cat} should match humanitarian policy`);
+      assert.ok(!sections.includes('marketData'), `${cat} must NOT include marketData`);
+      assert.ok(!sections.includes('forecasts'), `${cat} must NOT include forecasts`);
+      assert.ok(!sections.includes('macroSignals'), `${cat} must NOT include macroSignals`);
+      assert.ok(sections.includes('riskScores'), `${cat} should include riskScores`);
+    }
+  });
+
+  it('geopolitical → includes forecasts + riskScores, excludes marketData', () => {
+    for (const cat of ['Geopolitical Risk', 'Military Posture', 'Conflict', 'War', 'Terrorism', 'Security', 'Nuclear Policy', 'Defense']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'geopolitical', `${cat} should match geopolitical policy`);
+      assert.ok(sections.includes('forecasts'), `${cat} should include forecasts`);
+      assert.ok(sections.includes('riskScores'), `${cat} should include riskScores`);
+      assert.ok(!sections.includes('marketData'), `${cat} must NOT include marketData`);
+      assert.ok(!sections.includes('macroSignals'), `${cat} must NOT include macroSignals`);
+    }
+  });
+
+  it('diplomacy → riskScores only, no markets/forecasts', () => {
+    for (const cat of ['Diplomacy', 'Negotiations', 'Summit Meetings', 'Sanctions']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'diplomacy', `${cat} should match diplomacy policy`);
+      assert.ok(sections.includes('riskScores'), `${cat} should include riskScores`);
+      assert.ok(!sections.includes('marketData'), `${cat} must NOT include marketData`);
+      assert.ok(!sections.includes('forecasts'), `${cat} must NOT include forecasts`);
+    }
+  });
+
+  it('tech → riskScores only, no markets/forecasts/macro', () => {
+    for (const cat of ['Tech Policy', 'Cyber Attack', 'AI Regulation', 'Artificial Intelligence', 'Algorithm Abuse', 'Autonomous Systems']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'tech', `${cat} should match tech policy`);
+      assert.ok(sections.includes('riskScores'), `${cat} should include riskScores`);
+      assert.ok(!sections.includes('marketData'), `${cat} must NOT include marketData`);
+      assert.ok(!sections.includes('forecasts'), `${cat} must NOT include forecasts`);
+    }
+  });
+
+  it('aviation / airspace / drone → riskScores only, NO markets/forecasts/macro (PR #3281 review fix)', () => {
+    // Reviewer caught that aviation was named in the RELEVANCE RULE as a
+    // category banned from off-topic metrics, but had no structural
+    // regex entry — so "Aviation Incident" / "Airspace Closure" / etc.
+    // fell through to DEFAULT_SECTIONS and still got all 6 bundles
+    // including marketData + forecasts + macroSignals. Direct repro
+    // test so a future regex rewrite can't silently regress.
+    for (const cat of ['Aviation Incident', 'Airspace Closure', 'Plane Crash', 'Flight Disruption', 'Drone Incursion', 'Aircraft Shot Down']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'aviation', `${cat} should match aviation policy`);
+      assert.ok(sections.includes('riskScores'), `${cat} should include riskScores`);
+      assert.ok(!sections.includes('marketData'), `${cat} must NOT include marketData`);
+      assert.ok(!sections.includes('forecasts'), `${cat} must NOT include forecasts`);
+      assert.ok(!sections.includes('macroSignals'), `${cat} must NOT include macroSignals`);
+    }
+  });
+
+  it('unknown / empty category → default (all 6 sections, backcompat)', () => {
+    for (const cat of ['', 'General', 'Sports Event', 'Unknown Thing']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'default', `"${cat}" should fall through to default`);
+      // Default must include everything — prevents a regression where
+      // a refactor accidentally empties the default.
+      for (const k of ['worldBrief', 'countryBrief', 'riskScores', 'forecasts', 'macroSignals', 'marketData']) {
+        assert.ok(sections.includes(k), `default policy should include ${k}`);
+      }
+    }
+  });
+
+  it('RELEVANCE RULE categories have structural coverage (no prompt-only guards)', () => {
+    // Meta-invariant: every category named in the system prompt's
+    // RELEVANCE RULE as banned-from-off-topic-metrics MUST have a
+    // matching policy entry. A prompt-only guard is too soft — models
+    // follow inline instructions imperfectly. If someone adds a new
+    // category to the prompt, this test fires until they add a regex.
+    for (const cat of ['Humanitarian Crisis', 'Aviation Incident', 'Diplomatic Summit', 'Cyber Attack']) {
+      const { policyLabel } = sectionsForCategory(cat);
+      assert.notEqual(
+        policyLabel,
+        'default',
+        `"${cat}" is named in WHY_MATTERS_ANALYST_SYSTEM_V2 as banned from market metrics — it must have a structural policy, not fall through to default`,
+      );
+    }
+  });
+
+  it('non-string / null / undefined category → default fallback (defensive)', () => {
+    for (const cat of [null, undefined, 123, {}, []]) {
+      const { policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'default', `non-string ${JSON.stringify(cat)} should fall through to default`);
+    }
+  });
+
+  it('buildAnalystWhyMattersPrompt — humanitarian story must not see marketData or forecasts', () => {
+    const humanitarian = {
+      headline: 'Rwanda hosts fresh Congolese refugees',
+      source: 'UNHCR',
+      threatLevel: 'high',
+      category: 'Humanitarian Crisis',
+      country: 'RW',
+    };
+    const fullContext = {
+      worldBrief: 'Global migration pressure is at a decade high.',
+      countryBrief: 'Rwanda has absorbed 100K refugees this quarter.',
+      riskScores: 'Risk index 62/100 (elevated).',
+      forecasts: 'Top forecast: Congo ceasefire holds (72% by Q3).',
+      // Use distinctive values that would never appear in the guardrail
+      // text — the guardrail mentions "VIX value" / "FX reading" in the
+      // abstract, so we assert on the concrete numeric fingerprint.
+      marketData: 'VIX-READING-19-50. EUR/USD 1.0732. Gold $2,380.',
+      macroSignals: 'MidEastFxStressSentinel-77.',
+      degraded: false,
+    };
+    const { user, policyLabel } = builder(humanitarian, fullContext);
+    assert.equal(policyLabel, 'humanitarian');
+    // Structural guarantee: the distinctive context values physically
+    // cannot appear in the prompt because we didn't pass them to the LLM.
+    assert.doesNotMatch(user, /VIX-READING-19-50/, 'humanitarian prompt must not include marketData sentinel');
+    assert.doesNotMatch(user, /EUR\/USD/, 'humanitarian prompt must not include FX pair');
+    assert.doesNotMatch(user, /Top forecast/, 'humanitarian prompt must not include forecasts');
+    assert.doesNotMatch(user, /MidEastFxStressSentinel/, 'humanitarian prompt must not include macro signals');
+    assert.doesNotMatch(user, /## Market Data/, 'humanitarian prompt must not have a Market Data section heading');
+    assert.doesNotMatch(user, /## Forecasts/, 'humanitarian prompt must not have a Forecasts section heading');
+    assert.doesNotMatch(user, /## Macro Signals/, 'humanitarian prompt must not have a Macro Signals section heading');
+    // But country + risk framing must survive.
+    assert.match(user, /Rwanda has absorbed/);
+    assert.match(user, /Risk index/);
+  });
+
+  it('buildAnalystWhyMattersPrompt — market story DOES see marketData', () => {
+    const marketStory = {
+      headline: 'Crude oil jumps 4% on Houthi tanker strike',
+      source: 'FT',
+      threatLevel: 'high',
+      category: 'Energy',
+      country: 'YE',
+    };
+    const ctx = {
+      worldBrief: 'Red Sea shipping activity down 35% YoY.',
+      countryBrief: 'Yemen remains active conflict zone.',
+      riskScores: 'Risk index 88/100.',
+      forecasts: 'Top forecast: Houthi attacks continue (83%).',
+      marketData: 'Brent $87.40. VIX 19.50. USD/SAR flat.',
+      macroSignals: 'Shipping-stress index at 3-month high.',
+      degraded: false,
+    };
+    const { user, policyLabel } = builder(marketStory, ctx);
+    assert.equal(policyLabel, 'market');
+    assert.match(user, /Brent/);
+    assert.match(user, /Shipping-stress/);
+    assert.match(user, /Top forecast/);
+    // Market policy excludes riskScores — the LLM would otherwise tack
+    // on a "country risk 88/100" into every commodity story.
+    assert.doesNotMatch(user, /Risk index 88/);
+  });
+
+  it('buildAnalystWhyMattersPrompt — prompt footer includes relevance guardrail', () => {
+    const { user } = builder(
+      { headline: 'X', source: 'Y', threatLevel: 'low', category: 'General', country: 'US' },
+      { worldBrief: '', countryBrief: '', riskScores: '', forecasts: '', marketData: '', macroSignals: '', degraded: false },
+    );
+    // Guardrail phrases — if any of these drops out, the prompt-level
+    // second-layer guard is broken and we're back to the formulaic v5
+    // behavior for any story that still hits the default policy.
+    assert.match(user, /DO NOT force/i, 'guardrail phrase "DO NOT force" must be in footer');
+    assert.match(user, /off-topic market metric|VIX|forecast probability/i);
+    assert.match(user, /named actor, place, date, or figure/);
   });
 });
 

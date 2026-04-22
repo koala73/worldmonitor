@@ -9,7 +9,7 @@ import type {
 
 export type { ScoreInterval };
 
-import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson, runRedisPipeline, setCachedJson } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { detectTrend, round } from '../../../_shared/resilience-stats';
 import {
@@ -34,17 +34,36 @@ import { buildPillarList } from './_pillar-membership';
 // back to the Phase 1 shape (`schemaVersion: "1.0"`, `pillars: []`) —
 // retained as an emergency opt-out for one release cycle.
 //
-// IMPORTANT: `overallScore` is STILL computed as the 6-domain weighted
-// aggregate (Σ domain.score * domain.weight, weights sum to 1.00) in both
-// modes. A pillar-combined score with a min-pillar penalty is defined
-// below (`penalizedPillarScore`) and exercised by
-// scripts/validate-resilience-sensitivity.mjs; the activation that
-// switches `overallScore` to the pillar combine is a separate PR.
-//
 // `baselineScore`, `stressScore`, `stressFactor`, etc. remain populated
 // in both modes for widget + map layer + Country Brief consumers.
 export const RESILIENCE_SCHEMA_V2_ENABLED =
   (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+
+// Phase 2 T2.3 activation: feature flag that switches `overallScore`
+// from the 6-domain weighted aggregate (legacy compensatory form) to
+// the 3-pillar combined form with the min-pillar penalty term defined
+// by `penalizedPillarScore` below. Default is `false` so activation is
+// an explicit operator action; the sensitivity + current-vs-proposed
+// comparison in `docs/snapshots/resilience-pillar-sensitivity-*.json`
+// is the input for that decision. When flipped to `true`:
+//   - `overallScore` = penalizedPillarScore(pillars), α=0.5 (pillar
+//     weights 0.40 / 0.35 / 0.25 per the plan).
+//   - Published numbers drop ~13 points on average across the
+//     52-country sample; Spearman vs the 6-domain ranking is 0.9935.
+//
+// Read dynamically rather than captured at module load so tests can
+// flip `process.env.RESILIENCE_PILLAR_COMBINE_ENABLED` per-case without
+// re-importing the module. Under Node production the env does not
+// change mid-process so the per-call read is a couple of instructions.
+//
+// Cache invalidation: the score cache prefix is bumped on every
+// flag-visible behavior change (see RESILIENCE_SCORE_CACHE_PREFIX
+// above). Do not flip this flag without also bumping the cache
+// prefix or waiting for the 6h TTL to expire — otherwise legacy
+// 6-domain scores will be served from cache after activation.
+export function isPillarCombineEnabled(): boolean {
+  return (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+}
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 // Ranking TTL must exceed the cron interval (6h) by enough to tolerate one
@@ -54,9 +73,37 @@ export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 // full cron-cycle of headroom — ensureRankingPresent() still refreshes on
 // every cron, so under normal operation the key stays well above TTL=0.
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v9:';
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v4:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v9';
+// Bumped from v9 to v10 in the pillar-combined activation PR. Provides
+// a clean slate at PR deploy so no pre-PR cache entries (whose payloads
+// lack the `_formula` tag) can leak through on activation day. NOTE:
+// the version bump alone is NOT sufficient to isolate formulas — the
+// flag defaults to off, so v10 is populated with 6-domain entries long
+// before anyone flips RESILIENCE_PILLAR_COMBINE_ENABLED=true. The real
+// cross-formula guard is the in-payload `_formula` marker written by
+// `buildResilienceScore`, read by `ensureResilienceScoreCached` and
+// `getCachedResilienceScores` to reject stale-formula hits at serve
+// time. See the `CacheFormulaTag` comment block.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v10:';
+// Bumped from v4 to v5 in the pillar-combined activation PR. Provides
+// a clean slate at PR deploy so pre-PR history points (which were
+// written without a formula tag) do not mix with tagged points. NOTE:
+// the version bump alone is NOT sufficient because the flag defaults
+// to off, so v5 accumulates d6-tagged entries during the default-off
+// window. The real cross-formula guard is the `:d6` / `:pc` suffix on
+// each sorted-set member written by `appendHistory` and filtered by
+// `buildResilienceScore` before change30d / trend are computed. Legacy
+// untagged members (from older deploys that happen to survive on v4
+// readers) decode as `d6` — matching the only formula that existed
+// before this PR — so the filter stays correct in either direction.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v5:';
+// Bumped in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v9 → v10) for
+// a clean slate at PR deploy. As with the score prefix, the version
+// bump is a belt — the suspenders are the `_formula` tag on the
+// ranking payload itself, written via stampRankingCacheTag and read
+// via rankingCacheTagMatches in the ranking handler, which force a
+// recompute-and-publish on a cross-formula cache hit rather than
+// serving the stale ranking for up to the 12h ranking TTL.
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v10';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -65,9 +112,28 @@ const RANK_STABLE_MAX_INTERVAL_WIDTH = 8;
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
 const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0.40;
 
+// Cache formula tag. Stored inside score + ranking JSON payloads and as
+// a suffix in history sorted-set member strings so the reader can reject
+// or filter cross-formula entries at serve time. This is the actual
+// isolation mechanism; the v9→v10 score/ranking and v4→v5 history key
+// version bumps only provide a clean-slate at PR deploy and do NOT by
+// themselves protect against the default-off-then-activate path —
+// default-off writes land in the new v10/v5 namespace tagged as 'd6',
+// and only the in-payload tag check forces a rebuild / filter on flip.
+type CacheFormulaTag = 'd6' | 'pc';
+
+function currentCacheFormula(): CacheFormulaTag {
+  // Mirrors the gating in buildResilienceScore's overallScore branch so
+  // the tag we stamp on write equals the formula actually used. If
+  // schemaV2 is off or the pillar combine flag is off, writes tag 'd6'
+  // and reads require 'd6' — matching the 6-domain aggregate code path.
+  return isPillarCombineEnabled() && RESILIENCE_SCHEMA_V2_ENABLED ? 'pc' : 'd6';
+}
+
 interface ResilienceHistoryPoint {
   date: string;
   score: number;
+  formula: CacheFormulaTag;
 }
 
 interface ResilienceStaticIndex {
@@ -106,9 +172,31 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Level thresholds are methodology-aware. The pillar-combined formula
+// compresses the scale (~11-point mean drop across the 52-country live
+// sample), so the legacy 70/40 thresholds misclassify top-tier countries
+// as "medium" purely because the scale got compressed rather than
+// because anything changed about the country (FI 75.64 → 68.60 and NZ
+// 76.26 → 67.93 in the live sample both straddle the legacy 70 floor).
+// The pillar-combined thresholds 60/30 are re-anchored against the live
+// sample so the qualitative label stays stable for every country whose
+// old label was correct; the 52-country sensitivity capture confirms
+// all 7 high-band anchors stay ≥60 and all fragile-state anchors stay
+// ≤30. Kept narrow: only the two thresholds move; the three-label
+// taxonomy (high/medium/low) and downstream UI consumers are
+// unchanged.
+const LEVEL_THRESHOLDS_BY_FORMULA = {
+  'domain-weighted-6d':          { high: 70, medium: 40 },
+  'pillar-combined-penalized-v1': { high: 60, medium: 30 },
+} as const;
+
 function classifyResilienceLevel(score: number): string {
-  if (score >= 70) return 'high';
-  if (score >= 40) return 'medium';
+  const formula = isPillarCombineEnabled() && RESILIENCE_SCHEMA_V2_ENABLED
+    ? 'pillar-combined-penalized-v1'
+    : 'domain-weighted-6d';
+  const { high, medium } = LEVEL_THRESHOLDS_BY_FORMULA[formula];
+  if (score >= high) return 'high';
+  if (score >= medium) return 'medium';
   return 'low';
 }
 
@@ -183,18 +271,28 @@ function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] 
   });
 }
 
+// Sorted-set member format: `YYYY-MM-DD:SCORE[:FORMULA]`. The optional
+// formula tag is either 'd6' or 'pc'. Legacy untagged members predate
+// the pillar-combined activation and are implicitly 'd6' (the only
+// formula in use before this PR). On activation, readHistory callers
+// filter by `currentCacheFormula()` so a 30-day window of d6 points is
+// not silently compared against a fresh pc point (which would
+// manufacture a ranking-wide fake-negative change30d / false "falling"
+// trend on day one).
 function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   if (!Array.isArray(raw)) return [];
   const history: ResilienceHistoryPoint[] = [];
 
   for (let index = 0; index < raw.length; index += 2) {
     const member = String(raw[index] || '');
-    const separatorIndex = member.indexOf(':');
-    if (separatorIndex < 0) continue;
-    const date = member.slice(0, separatorIndex);
-    const score = Number(member.slice(separatorIndex + 1));
+    const parts = member.split(':');
+    if (parts.length < 2) continue;
+    const date = parts[0]!;
+    const score = Number(parts[1]);
+    const rawFormula = parts[2];
+    const formula: CacheFormulaTag = rawFormula === 'pc' ? 'pc' : 'd6';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(score)) continue;
-    history.push({ date, score });
+    history.push({ date, score, formula });
   }
 
   return history.sort((left, right) => left.date.localeCompare(right.date));
@@ -212,10 +310,20 @@ async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[
   return parseHistoryPoints(result[0]?.result);
 }
 
-async function appendHistory(countryCode: string, overallScore: number): Promise<void> {
+async function appendHistory(
+  countryCode: string,
+  overallScore: number,
+  formula: CacheFormulaTag,
+): Promise<void> {
   const dateScore = Number(todayIsoDate().replace(/-/g, ''));
+  // Member format `YYYY-MM-DD:SCORE:FORMULA` — see parseHistoryPoints
+  // above for the reader. The formula tag is required because the v4→v5
+  // history prefix bump happens at PR deploy, not at flag flip, so the
+  // v5 series accumulates d6-tagged entries during the default-off
+  // window; only the per-member tag lets the reader correctly filter
+  // those out when the pillar-combined formula later activates.
   await runRedisPipeline([
-    ['ZADD', historyKey(countryCode), dateScore, `${todayIsoDate()}:${round(overallScore)}`],
+    ['ZADD', historyKey(countryCode), dateScore, `${todayIsoDate()}:${round(overallScore)}:${formula}`],
     ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
   ]);
 }
@@ -249,7 +357,26 @@ async function buildResilienceScore(
   const baselineScore = round(coverageWeightedMean(baselineDims));
   const stressScore = round(coverageWeightedMean(stressDims));
   const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
-  const overallScore = round(domains.reduce((sum, d) => sum + d.score * d.weight, 0));
+  // Phase 2 T2.3 activation: `overallScore` is either the legacy
+  // 6-domain weighted aggregate (compensatory, `Σ domain.score *
+  // domain.weight`) or the pillar-combined penalized form (non-
+  // compensatory, `penalizedPillarScore(pillars)`), controlled by
+  // `RESILIENCE_PILLAR_COMBINE_ENABLED` + `RESILIENCE_SCHEMA_V2_ENABLED`.
+  // We only activate the pillar combine when v2 is on because the
+  // pillar list is empty under v1 and `penalizedPillarScore([])` returns
+  // 0 — that would silently zero every country's score if the flags
+  // were out of sync.
+  const domainAggregate = round(domains.reduce((sum, d) => sum + d.score * d.weight, 0));
+  const pillarEligible = isPillarCombineEnabled() && RESILIENCE_SCHEMA_V2_ENABLED && pillars.length > 0;
+  const overallScore = pillarEligible
+    ? round(penalizedPillarScore(pillars.map((p) => ({ score: p.score, weight: p.weight }))))
+    : domainAggregate;
+  // Tag MUST match the branch that actually computed overallScore so
+  // the reader's stale-formula check in ensureResilienceScoreCached
+  // correctly rejects cross-formula cache entries when the env flag
+  // flips later. currentCacheFormula() reads the same two flags, so
+  // the derivation is intentionally redundant-by-agreement.
+  const formula: CacheFormulaTag = pillarEligible ? 'pc' : 'd6';
 
   const totalImputed = dimensions.reduce((sum, d) => sum + (d.imputedWeight ?? 0), 0);
   const totalObserved = dimensions.reduce((sum, d) => sum + (d.observedWeight ?? 0), 0);
@@ -257,12 +384,18 @@ async function buildResilienceScore(
     ? round(totalImputed / (totalImputed + totalObserved), 4)
     : 0;
 
+  // Filter history to the CURRENT formula only. Points tagged with the
+  // other formula are excluded from change30d / trend so the first
+  // post-flip score is not diffed against a 30-day window of the other
+  // formula's values (which would emit a fake-negative change30d and
+  // a false "falling" trend across the ranking on activation day).
   const history = (await readHistory(normalizedCountryCode))
+    .filter((point) => point.formula === formula)
     .filter((point) => point.date !== todayIsoDate());
   const scoreSeries = [...history.map((point) => point.score), overallScore];
   const oldestScore = history[0]?.score;
 
-  await appendHistory(normalizedCountryCode, overallScore);
+  await appendHistory(normalizedCountryCode, overallScore, formula);
 
   return {
     countryCode: normalizedCountryCode,
@@ -280,6 +413,37 @@ async function buildResilienceScore(
     pillars,
     schemaVersion: '2.0',
   };
+}
+
+// The shape we actually store in Redis. Extends the public response type
+// with a `_formula` marker so the reader can reject cross-formula cache
+// entries when `RESILIENCE_PILLAR_COMBINE_ENABLED` flips later. The
+// marker is stripped before the payload crosses back to callers.
+type CachedScorePayload = GetResilienceScoreResponse & { _formula?: CacheFormulaTag };
+
+function stripCacheMeta(payload: CachedScorePayload): GetResilienceScoreResponse {
+  const { _formula: _drop, ...rest } = payload;
+  void _drop;
+  return rest;
+}
+
+// Exposed helpers so the ranking handler can apply the same
+// stale-formula invalidation to its own cache key. Kept in this module
+// alongside the score versions so the tag convention has one source of
+// truth; a diverging derivation elsewhere would re-introduce the cross-
+// formula drift this whole pattern is meant to prevent.
+export function getCurrentCacheFormula(): CacheFormulaTag {
+  return currentCacheFormula();
+}
+
+export function stampRankingCacheTag<T extends object>(payload: T): T & { _formula: CacheFormulaTag } {
+  return { ...payload, _formula: currentCacheFormula() };
+}
+
+export function rankingCacheTagMatches(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const tag = (payload as { _formula?: unknown })._formula;
+  return tag === currentCacheFormula();
 }
 
 export async function ensureResilienceScoreCached(countryCode: string, reader?: ResilienceSeedReader): Promise<GetResilienceScoreResponse> {
@@ -306,44 +470,68 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     };
   }
 
-  let cached = await cachedFetchJson<GetResilienceScoreResponse>(
-    scoreCacheKey(normalizedCountryCode),
+  const current = currentCacheFormula();
+  const cacheKey = scoreCacheKey(normalizedCountryCode);
+
+  let cached = await cachedFetchJson<CachedScorePayload>(
+    cacheKey,
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
-    () => buildResilienceScore(normalizedCountryCode, reader),
+    async () => {
+      const built = await buildResilienceScore(normalizedCountryCode, reader);
+      // Tag with the formula buildResilienceScore actually used so
+      // downstream readers can reject cross-formula entries.
+      return { ...built, _formula: current };
+    },
     300,
-  ) ?? {
-    countryCode: normalizedCountryCode,
-    overallScore: 0,
-    baselineScore: 0,
-    stressScore: 0,
-    stressFactor: 0.5,
-    level: 'unknown',
-    domains: [],
-    trend: 'stable',
-    change30d: 0,
-    lowConfidence: true,
-    imputationShare: 0,
-    dataVersion: '',
-    // Phase 2 T2.1: cachedFetchJson-null fallback. Stays on the v1 shape
-    // because there are no domains to wrap into pillars here.
-    pillars: [],
-    schemaVersion: '1.0',
-  };
+  );
+
+  // Stale-formula guard. On activation day (flag flip), cached entries
+  // from the previous formula are still in Redis under the same key
+  // (v10 bump happens at PR deploy, not at flip time). The `_formula`
+  // tag we wrote on the cached payload lets us detect and overwrite
+  // the stale entry at read time. Without this, a 6-hour post-flip
+  // window would keep serving legacy scores. Legacy untagged entries
+  // (pre-PR writes that happen to survive the v9→v10 bump via
+  // external writers) are treated as stale-formula and rebuilt.
+  if (cached && cached._formula !== current) {
+    const rebuilt = await buildResilienceScore(normalizedCountryCode, reader);
+    cached = { ...rebuilt, _formula: current };
+    await setCachedJson(cacheKey, cached, RESILIENCE_SCORE_CACHE_TTL_SECONDS);
+  }
+
+  let payload: GetResilienceScoreResponse = cached
+    ? stripCacheMeta(cached)
+    : {
+        countryCode: normalizedCountryCode,
+        overallScore: 0,
+        baselineScore: 0,
+        stressScore: 0,
+        stressFactor: 0.5,
+        level: 'unknown',
+        domains: [],
+        trend: 'stable',
+        change30d: 0,
+        lowConfidence: true,
+        imputationShare: 0,
+        dataVersion: '',
+        pillars: [],
+        schemaVersion: '1.0',
+      };
 
   const scoreInterval = await readScoreInterval(normalizedCountryCode);
   if (scoreInterval) {
-    cached = { ...cached, scoreInterval };
+    payload = { ...payload, scoreInterval };
   }
 
   // P1 fix: the cache always stores the v2 superset (pillars + schemaVersion='2.0').
   // When the flag is off, strip pillars and downgrade schemaVersion so consumers
   // see the v1 shape. Flag flips take effect immediately, no 6h TTL wait.
   if (!RESILIENCE_SCHEMA_V2_ENABLED) {
-    cached.pillars = [];
-    cached.schemaVersion = '1.0';
+    payload.pillars = [];
+    payload.schemaVersion = '1.0';
   }
 
-  return cached;
+  return payload;
 }
 
 export async function listScorableCountries(): Promise<string[]> {
@@ -361,6 +549,7 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
 
   const results = await runRedisPipeline(normalized.map((countryCode) => ['GET', scoreCacheKey(countryCode)]));
   const scores = new Map<string, GetResilienceScoreResponse>();
+  const current = currentCacheFormula();
 
   for (let index = 0; index < normalized.length; index += 1) {
     const countryCode = normalized[index]!;
@@ -369,14 +558,32 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
     try {
       // Envelope-aware: resilience score keys are written by seed-resilience-scores
       // in contract mode (PR 2). unwrapEnvelope is a no-op on legacy bare-shape.
-      const parsed = unwrapEnvelope(JSON.parse(raw)).data as GetResilienceScoreResponse;
+      const parsed = unwrapEnvelope(JSON.parse(raw)).data as CachedScorePayload;
       if (!parsed) continue;
+      // Stale-formula skip: this bulk read feeds the ranking handler,
+      // which mirrors the single-country cache miss path. Leaving the
+      // country out of `scores` causes the ranking handler's
+      // warmMissingResilienceScores step to rebuild it with the current
+      // formula, producing a coherent same-formula ranking. Without
+      // this filter, a flip would serve a mixed-formula ranking for
+      // up to the 6h score TTL.
+      //
+      // IMPORTANT: the condition intentionally matches `undefined` too
+      // (not `parsed._formula && parsed._formula !== current`). Legacy
+      // untagged entries carry no `_formula` — they were written by a
+      // pre-PR code path or by an external writer that has not been
+      // updated — and must be treated as stale so the ranking warm
+      // path rebuilds them with the current tag. The `&&` short-circuit
+      // would admit them and re-introduce the cross-formula drift the
+      // whole cache-tag strategy is meant to prevent.
+      if (parsed._formula !== current) continue;
+      const publicPayload = stripCacheMeta(parsed);
       // P1 fix: cached payload is always v2 superset. Gate on serve.
       if (!RESILIENCE_SCHEMA_V2_ENABLED) {
-        parsed.pillars = [];
-        parsed.schemaVersion = '1.0';
+        publicPayload.pillars = [];
+        publicPayload.schemaVersion = '1.0';
       }
-      scores.set(countryCode, parsed);
+      scores.set(countryCode, publicPayload);
     } catch {
       // Ignore malformed cache entries and let the caller decide whether to warm them.
     }
@@ -500,10 +707,15 @@ export async function warmMissingResilienceScores(
   // pipeline body small enough to land well under the timeout while still
   // making one round-trip per batch.
   const SET_BATCH = 30;
+  const current = currentCacheFormula();
   const allSetCommands = scores.map(({ cc, score }) => [
     'SET',
     scoreCacheKey(cc),
-    JSON.stringify(score),
+    // Stamp the formula tag on the written payload so the bulk-read
+    // path in getCachedResilienceScores can filter stale entries after
+    // a flag flip. Without this tag, warmed-then-flipped entries would
+    // be served as-is until the 6h TTL expired.
+    JSON.stringify({ ...score, _formula: current } satisfies CachedScorePayload),
     'EX',
     String(RESILIENCE_SCORE_CACHE_TTL_SECONDS),
   ]);
