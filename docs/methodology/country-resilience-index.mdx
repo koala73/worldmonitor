@@ -26,9 +26,9 @@ This PR (the diagnostic freeze) does not change any scoring behaviour. It ships 
 
 The first-publication repair is sequenced as PR 0 → PR 1 → PR 3 → PR 2 → PR 4 under the plan above. At the time of writing (PR 0 shipping), the following six construct errors are known and scheduled:
 
-1. **`electricityConsumption` is a wealth proxy, not a resilience signal.** Weight 0.30 on the `energy` dimension; rewards per-capita load rather than grid-integrity capacity. Replaced in PR 1 with `powerLossesPct`, `reserveMarginPct`, and `accessToElectricityPct` (the last moved to the `infrastructure` domain).
-2. **Gas and coal penalized as vulnerability even when domestic.** Current `gasShare` / `coalShare` penalties conflate fossil-dominance with fossil-import-dependence. Replaced in PR 1 with a single `importedFossilDependence` composite using World Bank `EG.IMP.CONS.ZS`.
-3. **No nuclear credit in `scoreEnergy`.** Nuclear-heavy generation scores no points despite firm low-carbon characteristics. Fixed in PR 1 by collapsing `renewShare` + new `nuclearShare` into a single `lowCarbonGenerationShare` indicator.
+1. **`electricityConsumption` is a wealth proxy, not a resilience signal.** Weight 0.30 on the `energy` dimension; rewards per-capita load rather than grid-integrity capacity. Replaced in PR 1 with `powerLossesPct`, `reserveMarginPct`, and `accessToElectricityPct` (the last moved to the `infrastructure` domain). **Status:** PR 1 lands the v2 construct behind the `RESILIENCE_ENERGY_V2_ENABLED` flag (default off); the indicator set is documented under the Energy Domain section below.
+2. **Gas and coal penalized as vulnerability even when domestic.** Current `gasShare` / `coalShare` penalties conflate fossil-dominance with fossil-import-dependence. Replaced in PR 1 with a single `importedFossilDependence` composite using World Bank `EG.IMP.CONS.ZS` × `EG.ELC.FOSL.ZS` under the **Option B (power-system framing)** decision documented in the Energy Domain section.
+3. **No nuclear credit in `scoreEnergy`.** Nuclear-heavy generation scores no points despite firm low-carbon characteristics. Fixed in PR 1 by collapsing `renewShare` + new nuclear share into a single `lowCarbonGenerationShare` indicator sourced from World Bank `EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS`.
 4. **Sovereign-wealth buffers invisible to `reserveAdequacy`.** Current dimension only sees central-bank reserves; SWF assets are not counted. Fixed in PR 2 by splitting the dimension into `liquidReserveAdequacy` + `sovereignFiscalBuffer` with a three-component haircut (access × liquidity × transparency) and a saturating transform.
 5. **Dead and regional-only signals in the global core score.** `fuelStockDays` (100% imputed globally), `euGasStorageStress` (EU-only), and `currencyExternal` (BIS 64-economy coverage) currently carry material weight despite insufficient coverage for a world ranking. Retired or scoped regional-only in PR 3.
 6. **No coverage-based weight cap.** A dimension at 30% observed coverage carries the same weight as one at 95%. Fixed in PR 3 with a CI-enforced rule: no indicator with observed coverage below 70% may exceed 5% nominal weight or 5% effective influence.
@@ -135,6 +135,10 @@ Sanctions use piecewise normalization: 0 entities = score 100, 1-10 = 90-75, 11-
 
 #### Energy
 
+The `energy` dimension is in the middle of the PR 1 construct repair (plan §3.1–§3.3). Two indicator sets coexist for one release cycle: the **legacy construct** is currently live, and the **v2 construct** ships behind the `RESILIENCE_ENERGY_V2_ENABLED` flag (default off). Active set is determined by the flag at score time; mirrors how `schemaVersion: "2.0"` was staged.
+
+**Legacy construct (current default).** Carries three known `wealth-proxy` / denominator-mismatch flaws tracked in `docs/methodology/indicator-sources.yaml` and in "Known construct limitations" at the top of this page.
+
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
 | energyImportDependency | IEA energy import dependency (% of supply from imports) | Lower is better | 100 - 0 | 0.25 | IEA | Annual |
@@ -144,6 +148,19 @@ Sanctions use piecewise normalization: 0 entities = score 100, 1-10 = 90-75, 11-
 | gasStorageStress | Gas storage fill stress: (80 - fillPct) / 80, clamped [0,1] | Lower is better | 100 - 0 | 0.10 | GIE AGSI+ | Daily |
 | energyPriceStress | Mean absolute energy price change across commodities | Lower is better | 25 - 0 | 0.10 | Energy prices | Daily |
 | electricityConsumption | Per-capita electricity consumption (kWh/year, World Bank EG.USE.ELEC.KH.PC) | Higher is better | 200 - 8000 | 0.30 | World Bank | Annual |
+
+**v2 construct (framing decision: Option B, power-system security).** Under v2 the dimension measures **power-system security**, not total-energy security. Electricity grids are the dominant short-horizon shock-transmission channel; transport-fuel security enters via `fuelStockDays`-successor work, and industrial energy security enters via transition-risk indicators on the `economic` domain. The framing choice is what lets the v2 indicator set share one denominator: percent of electricity generation, not percent of primary energy supply. Any future reversal to Option A (primary-energy framing) would require rebuilding `lowCarbonGenerationShare` and `euGasStorageStress` on IEA/BP primary-energy data — out of scope for PR 1.
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| importedFossilDependence | `EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100`: fossil share of electricity × net-energy-import share, net exporters collapsed to 0 | Lower is better | 100 - 0 | 0.35 | World Bank | Annual |
+| lowCarbonGenerationShare | Nuclear + renewable share of electricity (`EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS`) | Higher is better | 0 - 80 | 0.20 | World Bank | Annual |
+| powerLossesPct | Electric power transmission + distribution losses (`EG.ELC.LOSS.ZS`). Direct grid-integrity measure | Lower is better | 25 - 3 | 0.10 | World Bank | Annual |
+| reserveMarginPct | Generation reserve margin (IEA electricity balance, imputed where unobserved) | Higher is better | 5 - 25 | 0.10 | IEA | Annual |
+| euGasStorageStress | Same transform as `gasStorageStress`, scoped to EU-only (weight 0 for non-EU) | Lower is better | 100 - 0 | 0.10 | GIE AGSI+ | Daily |
+| energyPriceStress | Mean absolute energy price change across commodities | Lower is better | 25 - 0 | 0.15 | Energy prices | Daily |
+
+Retired under v2: `electricityConsumption` (wealth proxy, §3.1 of repair plan), `gasShare` / `coalShare` / `energyImportDependency` (replaced by `importedFossilDependence`, §3.2), `renewShare` (absorbed into `lowCarbonGenerationShare`, §3.3). `electricityAccess` moves from `energy` to the `infrastructure` domain under v2, where it acts as a grid-collapse threshold signal rather than an affluence proxy.
 
 ### Social & Governance Domain (weight 0.19)
 
@@ -546,6 +563,16 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 | **Timeliness** | 7.0 | 13 stress-side indicators at realtime/daily cadence. Language normalization corrects for source-density bias. Recovery capacity adds monthly reserve + debt signals. Gap: structural sources still annual (WGI/GPI/RSF/WHO). Phase 3 reference-edition split formalizes annual vs rolling cadences per pillar. |
 
 **Phase 2 acceptance gate status: met.** All three required thresholds (Validation >= 8.0, Data >= 9.0, Architecture >= 9.0) are satisfied. The gaps flagged in each axis are tracked against Phase 3 tasks in the upgrade plan.
+
+### v2.1 (April 2026) — PR 1 energy construct repair (flag-gated)
+
+**Status: landing.** PR 1 in the resilience repair plan (`docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md`). Addresses construct errors §3.1, §3.2, §3.3 in one coherent PR. Lands behind `RESILIENCE_ENERGY_V2_ENABLED` (default off) so published rankings remain on the pre-repair construct until the flag flips.
+
+- **Framing decision: Option B (power-system security).** The `energy` dimension under v2 measures power-system security, not total-energy security. See Energy Domain section above for rationale and future-reversal cost.
+- **Indicators retired:** `electricityConsumption` (wealth proxy), `gasShare` / `coalShare` / `dependency` (replaced by `importedFossilDependence`), `renewShare` (absorbed into `lowCarbonGenerationShare`).
+- **Indicators added:** `importedFossilDependence` (`EG.IMP.CONS.ZS × EG.ELC.FOSL.ZS`), `lowCarbonGenerationShare` (`EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS`), `powerLossesPct` (`EG.ELC.LOSS.ZS`), `reserveMarginPct` (IEA electricity balance). `accessToElectricityPct` moves to the `infrastructure` domain where it acts as a grid-collapse threshold.
+- **New seeders (weekly):** `seed-low-carbon-generation.mjs`, `seed-net-energy-imports.mjs`, `seed-power-reliability.mjs`. Each seeder is health-tracked; the indicators ship `imputationClass: 'unmonitored'` with ON_DEMAND_KEYS status until Railway cron provisions and the acceptance-gate reruns pass.
+- **Acceptance gates (plan §6):** Spearman vs baseline >= 0.85; no country moves >15 points; matched-pair gap signs verified; cohort median shifts capped at 10 points; per-indicator effective influence measured via the PR 0 apparatus. Results committed as `docs/snapshots/resilience-ranking-live-post-pr1-<date>.json` and `docs/snapshots/resilience-energy-v2-acceptance-<date>.json` at flag-flip time.
 
 ### Editorial notes
 
