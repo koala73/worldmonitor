@@ -69,6 +69,18 @@ interface PendingCheckoutIntent {
   productId: string;
   referralCode?: string;
   discountCode?: string;
+  /**
+   * User id who saved this intent, or null if saved anonymously (the
+   * common "click Buy, get sign-in modal" path). On resume, we only
+   * fire the auto-checkout if:
+   *   - savedByUserId === current user id (mid-flow redirect return), OR
+   *   - savedByUserId === null AND current user is authenticated
+   *     (anonymous intent → user just signed up/in — THIS IS the
+   *     auto-resume case)
+   * Anything else (A saved, B is now signed in) is a cross-user leak
+   * and the intent is discarded.
+   */
+  savedByUserId?: string | null;
 }
 
 let initialized = false;
@@ -270,6 +282,11 @@ export function capturePendingCheckoutIntentFromUrl(): PendingCheckoutIntent | n
     productId,
     referralCode: url.searchParams.get(CHECKOUT_REFERRAL_PARAM) ?? undefined,
     discountCode: url.searchParams.get(CHECKOUT_DISCOUNT_PARAM) ?? undefined,
+    // Stamp the owning user id at save time so a later load in the
+    // same tab by a different user can discard this intent instead of
+    // auto-resuming it. null = saved anonymously (the click-sign-in
+    // flow), which is fair game for the first signed-in user.
+    savedByUserId: getCurrentClerkUser()?.id ?? null,
   };
   savePendingCheckoutIntent(intent);
   // /pro-origin intent captured here also populates the failure-retry
@@ -301,11 +318,22 @@ export async function resumePendingCheckout(options?: {
   }
 
   const clerkUser = getCurrentClerkUser();
-  console.log(`[checkout] resumePendingCheckout: intent=${intent.productId}, clerkUser=${clerkUser?.id ?? 'null'}, hasOpenAuth=${!!options?.openAuth}`);
+  console.log(`[checkout] resumePendingCheckout: intent=${intent.productId}, clerkUser=${clerkUser?.id ?? 'null'}, savedBy=${intent.savedByUserId ?? 'anon'}, hasOpenAuth=${!!options?.openAuth}`);
 
   if (!clerkUser?.id) {
     console.log('[checkout] resumePendingCheckout: no Clerk user, opening auth');
     options?.openAuth?.();
+    return false;
+  }
+
+  // Cross-user leak guard: drop the intent if it was saved by a
+  // different signed-in user. Anonymous saves (savedByUserId === null
+  // OR missing for legacy intents pre-fix) are fair game for the
+  // now-signed-in user — that's the auto-resume case.
+  const savedBy = intent.savedByUserId;
+  if (savedBy != null && savedBy !== clerkUser.id) {
+    console.log('[checkout] resumePendingCheckout: intent belongs to different user, discarding');
+    clearPendingCheckoutIntent();
     return false;
   }
 
