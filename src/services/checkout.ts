@@ -28,6 +28,7 @@ import {
 } from './checkout-errors';
 import { showCheckoutErrorToast } from './checkout-error-toast';
 import { decideNoUserPathOutcome } from './checkout-no-user-policy';
+import { shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
   CLASSIC_AUTO_DISMISS_MS,
@@ -694,13 +695,7 @@ function reportCheckoutError(
       serverMessage: error.serverMessage,
     },
   };
-  // 'no-user' is a pre-auth redirect flow, not an error — user clicked upgrade
-  // before signing up and is routed to signup/pricing. Reporting it to Sentry
-  // adds inbox noise without signal (Clerk conversion analytics already tracks
-  // this funnel). session_expired / other codes still emit so mid-flight auth
-  // drops remain visible.
-  const skipSentry = context.action === 'no-user';
-  if (!skipSentry) {
+  if (!shouldSkipSentryForAction(context.action)) {
     if (caught) {
       Sentry.captureException(caught, payload);
     } else {

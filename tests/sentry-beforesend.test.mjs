@@ -554,4 +554,68 @@ describe('existing beforeSend filters', () => {
     ]);
     assert.ok(beforeSend(event) !== null, 'first-party onmessage regression must surface');
   });
+
+  // WORLDMONITOR-NR: deck.gl/maplibre internal null-access on Layer.isHidden
+  // during render (Safari 26.4 beta, empty stacks preceded by DeckGLMap map-error
+  // breadcrumbs). `\w{1,3}\.isHidden` is gated on !hasFirstParty so a genuine
+  // SmartPollContext.isHidden regression in runtime.ts still surfaces.
+  it('suppresses "evaluating \'Ue.isHidden\'" with empty stack (deck.gl/Safari internal)', () => {
+    const event = makeEvent("undefined is not an object (evaluating 'Ue.isHidden')", 'TypeError', []);
+    assert.equal(beforeSend(event), null, 'deck.gl isHidden null-access with empty stack should be suppressed');
+  });
+
+  it('suppresses Cannot-read-isHidden with only vendor frames', () => {
+    const event = makeEvent("Cannot read properties of undefined (reading 'isHidden')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'Layer.render' },
+    ]);
+    assert.equal(beforeSend(event), null, 'deck.gl vendor-only isHidden crash should be suppressed');
+  });
+
+  it('does NOT suppress ".isHidden" crashes with first-party frames (SmartPollContext regression)', () => {
+    // src/services/runtime.ts owns SmartPollContext.isHidden. A real regression
+    // there would carry a first-party frame — must surface.
+    const event = makeEvent("Cannot read properties of undefined (reading 'isHidden')", 'TypeError', [
+      firstPartyFrame('src/services/runtime.ts', 'SmartPoller.tick'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party SmartPollContext.isHidden regression must reach Sentry');
+  });
+
+  it('does NOT suppress ".isHidden" errors on longer-name symbols (bounded char class)', () => {
+    // Filter is scoped to `\w{1,3}` to match minified short names. A 4+ char
+    // symbol like `myLayer.isHidden` should NOT match this filter (it'd hit
+    // the broader !hasFirstParty network/runtime gate instead, which requires
+    // specific shapes — isHidden isn't on that list).
+    const event = makeEvent("undefined is not an object (evaluating 'myLayer.isHidden')", 'TypeError', []);
+    assert.ok(beforeSend(event) !== null, '4+ char symbol accessing .isHidden must still surface');
+  });
+
+  // WORLDMONITOR-NQ: Safari short-var ReferenceError ("Can't find variable: ss")
+  // from userscript/extension injection. Gated on empty stack + !hasFirstParty +
+  // 1–2 char var name so a real "foo is not defined" from our code still surfaces.
+  it("suppresses \"Can't find variable: ss\" with empty stack", () => {
+    const event = makeEvent("Can't find variable: ss", 'Error', []);
+    assert.equal(beforeSend(event), null, 'Short-var Safari ReferenceError with empty stack should be suppressed');
+  });
+
+  it("suppresses \"Can't find variable: x\" (single char)", () => {
+    const event = makeEvent("Can't find variable: x", 'Error', []);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it("does NOT suppress \"Can't find variable: ss\" when first-party frames are present", () => {
+    // A real minified first-party ReferenceError would carry frames. We never
+    // want to silently drop that.
+    const event = makeEvent("Can't find variable: ss", 'Error', [
+      firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadTab'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party short-var ReferenceError must surface');
+  });
+
+  it("does NOT suppress longer variable names (3+ chars) — shape outside char class", () => {
+    // Only `\w{1,2}` matches. `foo` is 3 chars, falls through — meaningful
+    // first-party misses (e.g. helper name typo) still surface.
+    const event = makeEvent("Can't find variable: foo", 'Error', []);
+    assert.ok(beforeSend(event) !== null, '3+ char variable names must surface');
+  });
+
 });
