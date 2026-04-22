@@ -415,21 +415,11 @@ export async function startCheckout(
 
   const user = getCurrentClerkUser();
   if (!user) {
-    // No-user path: save both keys before opening sign-in so the
-    // post-signin Clerk listener auto-resumes the exact checkout.
-    // LAST_CHECKOUT_ATTEMPT also powers the failure-retry banner if
-    // the user abandons sign-in but returns later in the session.
     const intent = {
       productId,
       referralCode: options?.referralCode,
       discountCode: options?.discountCode,
     };
-    savePendingCheckoutIntent(intent);
-    saveCheckoutAttempt({
-      ...intent,
-      startedAt: Date.now(),
-      origin: 'dashboard',
-    });
     reportCheckoutError(
       classifySyntheticCheckoutError('unauthorized'),
       { productId, action: 'no-user' },
@@ -441,10 +431,29 @@ export async function startCheckout(
     // full pricing context + a tuned sign-up surface. Callers that
     // prefer inline sign-in (e.g., the failure-retry banner on the
     // dashboard) opt out by passing `fallbackToPricingPage: false`.
-    // openSignIn is a safe no-op if Clerk isn't loaded.
+    //
+    // CRITICAL: only save pending/attempt state on the INLINE sign-in
+    // path. When redirecting to /pro, the user starts a fresh flow on
+    // the marketing page with its own URL-param intent mechanism —
+    // saving sessionStorage here creates a stale intent that a later,
+    // unrelated sign-in on the dashboard would auto-resume (reviewer
+    // flagged this as a cross-session leak).
     if (fallbackToPricingPage) {
+      // Fire-and-forget redirect to /pro. /pro's own flow handles
+      // intent via URL params + its own sessionStorage once the user
+      // reaches the pricing page and clicks there.
       window.location.assign('https://worldmonitor.app/pro');
     } else {
+      // Inline sign-in path: save pending so the post-auth Clerk
+      // listener can auto-resume the exact checkout, and save attempt
+      // so the failure-retry banner has context if sign-in is
+      // abandoned within this session.
+      savePendingCheckoutIntent(intent);
+      saveCheckoutAttempt({
+        ...intent,
+        startedAt: Date.now(),
+        origin: 'dashboard',
+      });
       openSignIn();
     }
     return false;
