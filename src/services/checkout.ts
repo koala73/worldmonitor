@@ -27,6 +27,7 @@ import {
   type CheckoutErrorCode,
 } from './checkout-errors';
 import { showCheckoutErrorToast } from './checkout-error-toast';
+import { decideNoUserPathOutcome } from './checkout-no-user-policy';
 
 export {
   saveCheckoutAttempt,
@@ -424,30 +425,16 @@ export async function startCheckout(
       classifySyntheticCheckoutError('unauthorized'),
       { productId, action: 'no-user' },
     );
-    // Honor the `fallbackToPricingPage` contract for the no-user path
-    // too — the original contract was "on any failure with
-    // fallbackToPricingPage=true, route to /pro." Default (true) routes
-    // signed-out panel upsells to the marketing page where they get
-    // full pricing context + a tuned sign-up surface. Callers that
-    // prefer inline sign-in (e.g., the failure-retry banner on the
-    // dashboard) opt out by passing `fallbackToPricingPage: false`.
-    //
-    // CRITICAL: only save pending/attempt state on the INLINE sign-in
-    // path. When redirecting to /pro, the user starts a fresh flow on
-    // the marketing page with its own URL-param intent mechanism —
-    // saving sessionStorage here creates a stale intent that a later,
-    // unrelated sign-in on the dashboard would auto-resume (reviewer
-    // flagged this as a cross-session leak).
-    if (fallbackToPricingPage) {
-      // Fire-and-forget redirect to /pro. /pro's own flow handles
-      // intent via URL params + its own sessionStorage once the user
-      // reaches the pricing page and clicks there.
-      window.location.assign('https://worldmonitor.app/pro');
+    // Pure policy decision lives in checkout-no-user-policy.ts; tested
+    // against regression in tests/checkout-no-user-policy.test.mts. The
+    // contract: redirect path MUST NOT write sessionStorage (would
+    // create a stale dashboard intent that a later unrelated sign-in
+    // would auto-resume); inline path MUST write so the post-auth
+    // Clerk listener can resume the exact checkout.
+    const outcome = decideNoUserPathOutcome(fallbackToPricingPage);
+    if (outcome.kind === 'redirect-pro') {
+      window.location.assign(outcome.redirectUrl);
     } else {
-      // Inline sign-in path: save pending so the post-auth Clerk
-      // listener can auto-resume the exact checkout, and save attempt
-      // so the failure-retry banner has context if sign-in is
-      // abandoned within this session.
       savePendingCheckoutIntent(intent);
       saveCheckoutAttempt({
         ...intent,
