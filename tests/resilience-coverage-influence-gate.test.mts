@@ -39,10 +39,32 @@ const NOMINAL_WEIGHT_CAP = 0.05; // 5%
 //   × dimension share of domain
 //   × domain weight in overall score.
 //
-// The scorer aggregates dimensions by coverage-weighted mean, so each
-// dimension contributes roughly 1/N of its domain when all are observed.
-// This is the worst-case (highest) bound on nominal influence — a
-// dimension that loses coverage contributes less, not more, than this.
+// `dimension share of domain` is NOT 1/N_total — the scorer aggregates
+// by coverage-weighted mean (server/worldmonitor/resilience/v1/_shared.ts
+// coverageWeightedMean), so a dimension that pins at coverage=0 drops
+// out of the denominator and the surviving dimensions' shares go UP,
+// not down. PR 3 commit 1 retires fuelStockDays by pinning its scorer
+// at coverage=0 for every country — so in the current live state the
+// recovery domain has 5 contributing dimensions (not 6), and each core
+// recovery indicator's nominal share is 1/5 × 0.25 = 5%, not the
+// 1/6 × 0.25 = 4.17% a naive N-based count would report.
+//
+// We therefore count "effective contributing dimensions" per domain:
+// dimensions that have at least one tier='core' indicator in the
+// registry. A dimension with only experimental/enrichment indicators
+// (e.g. fuelStockDays, post-retirement) scores coverage=0 in the core
+// path and is excluded from the coverage-weighted domain mean, so it
+// does not dilute the core dimensions' shares.
+//
+// This still under-estimates the WORST case — a live source-failure
+// run can drop a usually-contributing dimension to coverage=0, further
+// raising surviving dimensions' shares. The worst-case upper bound is
+// indicator.weight × domain_weight (single surviving dimension, 1/1
+// share). Enforcing THAT bound would fail most indicators, so we
+// enforce the baseline (all core-bearing dimensions present) here and
+// rely on the sensitivity-script's effective-influence output (plan
+// §3.6 second half, plan §5 acceptance item 9) to catch the dynamic
+// case.
 //
 // Indicator weights within a dimension are normalized to sum to 1 for
 // non-experimental tiers (enforced by the indicator-registry test).
@@ -52,14 +74,26 @@ function dimensionsInDomain(domainId: ResilienceDomainId): ResilienceDimensionId
     .filter((dimId) => RESILIENCE_DIMENSION_DOMAINS[dimId] === domainId);
 }
 
+function coreBearingDimensions(domainId: ResilienceDomainId): Set<ResilienceDimensionId> {
+  const dimsInDomain = new Set(dimensionsInDomain(domainId));
+  const withCore = new Set<ResilienceDimensionId>();
+  for (const entry of INDICATOR_REGISTRY) {
+    if (entry.tier === 'core' && dimsInDomain.has(entry.dimension)) {
+      withCore.add(entry.dimension);
+    }
+  }
+  return withCore;
+}
+
 function nominalOverallWeight(indicator: typeof INDICATOR_REGISTRY[number]): number {
   const domainId = RESILIENCE_DIMENSION_DOMAINS[indicator.dimension];
   if (domainId == null) return 0;
   const domainWeight = getResilienceDomainWeight(domainId);
-  const dimensionsCount = dimensionsInDomain(domainId).length;
-  // Equal-share-per-dimension upper bound (actual runtime weight is
-  // ≤ this when some dimensions drop out on coverage).
-  const dimensionShare = dimensionsCount > 0 ? 1 / dimensionsCount : 0;
+  // Count only dimensions that have ≥1 core indicator — retired or
+  // all-experimental dimensions contribute coverage=0 to the scorer and
+  // are excluded from the coverage-weighted domain mean.
+  const contributing = coreBearingDimensions(domainId).size;
+  const dimensionShare = contributing > 0 ? 1 / contributing : 0;
   return indicator.weight * dimensionShare * domainWeight;
 }
 
@@ -100,6 +134,39 @@ describe('resilience coverage-and-influence gate (PR 3 §3.6)', () => {
     const sensScript = join(here, '..', 'scripts', 'validate-resilience-sensitivity.mjs');
     assert.ok(existsSync(sensScript),
       `plan §3.6 effective-influence half is enforced by ${sensScript} — file is missing`);
+  });
+
+  it('retired dimensions (coverage=0 for every country) do not count in the per-domain share denominator', () => {
+    // Regression guard for the §3.6 gate math. When PR 3 commit 1
+    // pinned fuelStockDays at coverage=0, the coverage-weighted domain
+    // aggregation raised the surviving recovery dimensions' shares from
+    // 1/6 to 1/5. Any gate that uses 1/N_total as the divisor will
+    // under-report nominal influence and can silently pass a regression
+    // that drives a low-coverage indicator above the 5% cap.
+    //
+    // This test asserts the helper correctly excludes all-experimental
+    // dimensions from the share denominator.
+    const recoveryDimsTotal = dimensionsInDomain('recovery').length;
+    const recoveryCoreBearing = coreBearingDimensions('recovery').size;
+    assert.ok(recoveryCoreBearing < recoveryDimsTotal,
+      `expected at least one recovery dimension to be all-non-core (post-fuelStockDays-retirement); got ${recoveryCoreBearing}/${recoveryDimsTotal}. If this flips, the fuelStockDays retirement was reverted and §3.6 math assumptions need review.`);
+
+    // Explicit: fuelStockDays is the dimension we retired. Confirm it
+    // has zero core indicators.
+    const fuelStockCoreCount = INDICATOR_REGISTRY.filter(
+      (e) => e.dimension === 'fuelStockDays' && e.tier === 'core',
+    ).length;
+    assert.equal(fuelStockCoreCount, 0,
+      'fuelStockDays must have zero core indicators post-PR 3 §3.5 retirement. If this fails, un-retire must be intentional + the gate math reviewed.');
+
+    // And the recovery-domain core indicators should each compute 5%
+    // under the corrected formula (1.0 × 1/5 × 0.25), not 4.17%.
+    const debtToReserves = INDICATOR_REGISTRY.find((e) => e.id === 'recoveryDebtToReserves');
+    assert.ok(debtToReserves != null, 'recoveryDebtToReserves must exist');
+    const computed = nominalOverallWeight(debtToReserves!);
+    // 0.05 exactly, allow fp wiggle
+    assert.ok(Math.abs(computed - 0.05) < 1e-9,
+      `recoveryDebtToReserves nominal weight should be 0.05 (1.0 × 1/5 × 0.25) post-retirement; got ${computed}. If this is 0.0417, the share denominator is using 1/6 instead of 1/5 — fuelStockDays retirement is not being excluded.`);
   });
 
   it('reports the current nominal-weight distribution for audit', () => {
