@@ -18,9 +18,9 @@ Country Resilience measures **absolute national shock-absorption and recovery ca
 
 The scorer will treat development as relevant only where it creates a direct and measurable shock-absorption mechanism. Pure level-of-affluence proxies are excluded. Development-relative overperformance will be reported separately and will not alter the ordinal country ranking.
 
-Every indicator in the scorer passes a single **mechanism test**: *what direct shock channel does this measure?* If the only answer is "this country is rich," the indicator is excluded from the core score regardless of its historical correlation with resilience outcomes. If the answer is "capacity X absorbs shock Y," the indicator can enter but must use a threshold or saturating transform so it rewards the mechanism rather than the level of resource that drives it.
+Every indicator in the scorer is being evaluated against a single **mechanism test**: *what direct shock channel does this measure?* An indicator whose only answer is "this country is rich" is excluded from the core score regardless of its historical correlation with resilience outcomes. An indicator whose answer is "capacity X absorbs shock Y" can enter but must use a threshold or saturating transform so it rewards the mechanism rather than the level of resource that drives it.
 
-The mechanism-test classification per indicator is documented in `docs/methodology/indicator-sources.yaml`. The repair plan in `docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md` identifies the indicators that currently fail the test (tagged `wealth-proxy`) and the sequenced PR work to replace them.
+This PR (the diagnostic freeze) does not change any scoring behaviour. It ships the mechanism-test framework and the apparatus to measure compliance; it does not claim compliance. Several indicators in the current scorer fail the test (notably `electricityConsumption`, `gasShare` / `coalShare` as flat domestic-fossil penalties, and `WHO per-capita health spend`). They are tagged `wealth-proxy` or equivalent in `docs/methodology/indicator-sources.yaml` and scheduled for replacement in PR 1 / PR 4 of the repair plan. Published rankings today reflect the pre-repair scorer; the mechanism-test contract applies fully only after PR 4.
 
 ## Known construct limitations (in repair)
 

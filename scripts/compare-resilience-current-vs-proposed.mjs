@@ -20,18 +20,40 @@
 // updated in lockstep.
 
 import { loadEnvFile } from './_seed-utils.mjs';
+import { RESILIENCE_COHORTS } from '../tests/helpers/resilience-cohorts.mts';
+import { MATCHED_PAIRS } from '../tests/helpers/resilience-matched-pairs.mts';
 
 loadEnvFile(import.meta.url);
 
-// Same 52-country sample the sensitivity script uses so the two outputs
-// are directly comparable.
-const SAMPLE = [
+// Historical 52-country sensitivity seed. Preserved as a baseline so
+// the comparison shape stays recognisable to the existing sensitivity
+// pipeline, but EXTENDED below with the full union of every cohort
+// member and every matched-pair endpoint. Without the union, PR 0's
+// acceptance gates silently skip small-island-importers (zero cohort
+// members in the 52-country seed) and sg-vs-ch (Singapore not in the
+// seed) — the apparatus claims to measure what it does not actually
+// measure.
+const HISTORICAL_SENSITIVITY_SEED = [
   'NO','IS','NZ','DK','SE','FI','CH','AU','CA',
   'US','DE','GB','FR','JP','KR','IT','ES','PL',
   'BR','MX','TR','TH','MY','CN','IN','ZA','EG',
   'PK','NG','KE','BD','VN','PH','ID','UA','RU',
   'AF','YE','SO','HT','SS','CF','SD','ML','NE','TD','SY','IQ','MM','VE','IR','ET',
 ];
+
+// The authoritative sample is the union of the historical seed + every
+// country referenced by a cohort definition + every matched-pair
+// endpoint. Running the comparison over a subset would mean cohort
+// medians and pair gap checks would be computed over partial coverage
+// and fail quietly — exactly the construct problem PR 0 is supposed to
+// make impossible.
+const cohortUnion = new Set(RESILIENCE_COHORTS.flatMap((c) => c.countryCodes));
+const pairEndpoints = new Set(MATCHED_PAIRS.flatMap((p) => [p.higherExpected, p.lowerExpected]));
+const SAMPLE = [...new Set([
+  ...HISTORICAL_SENSITIVITY_SEED,
+  ...cohortUnion,
+  ...pairEndpoints,
+])];
 
 // Mirrors `_shared.ts#coverageWeightedMean`. Kept local because the
 // production helper is not exported.
@@ -233,10 +255,10 @@ async function main() {
   const meanAbsScoreDelta = rows.reduce((s, r) => s + Math.abs(r.scoreDelta), 0) / rows.length;
   const maxRankAbsDelta = Math.max(...rows.map((r) => r.rankAbsDelta));
 
-  // Cohort + matched-pair summaries (PR 0 fairness-audit harness). Imports
-  // lazily so the script stays runnable when the configs move/rename.
-  const { RESILIENCE_COHORTS } = await import('../tests/helpers/resilience-cohorts.mts');
-  const { MATCHED_PAIRS } = await import('../tests/helpers/resilience-matched-pairs.mts');
+  // Cohort + matched-pair summaries (PR 0 fairness-audit harness).
+  // RESILIENCE_COHORTS and MATCHED_PAIRS are imported at the top of
+  // this module so the SAMPLE union can include every cohort member
+  // and every matched-pair endpoint — see the comment on SAMPLE above.
   const rowsByCc = new Map(rows.map((r) => [r.countryCode, r]));
 
   function median(values) {
