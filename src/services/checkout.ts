@@ -24,6 +24,7 @@ import {
   classifyThrownCheckoutError,
   type CheckoutError,
   type CheckoutErrorBody,
+  type CheckoutErrorCode,
 } from './checkout-errors';
 import { showCheckoutErrorToast } from './checkout-error-toast';
 
@@ -499,6 +500,23 @@ export async function startCheckout(
       openCheckout(result.checkout_url);
       return true;
     }
+    // 200 OK but no checkout_url is a server contract violation (the
+    // edge relayer returned success but the payload is unusable). Used
+    // to silently `return false` — the user saw nothing happen and the
+    // bug was invisible in Sentry. Classify as service_unavailable
+    // (closest accurate user-facing copy) and tag action so engineers
+    // can filter this specific contract violation in Sentry. httpStatus
+    // stays 200 — we want the actual status the server returned, not a
+    // synthetic 5xx that would mask the real anomaly.
+    const missingUrlError: CheckoutError = {
+      code: 'service_unavailable',
+      userMessage: 'Checkout is temporarily unavailable. Please try again in a moment.',
+      serverMessage: 'Server returned 200 without a checkout_url',
+      httpStatus: resp.status,
+      retryable: true,
+    };
+    reportCheckoutError(missingUrlError, { productId, action: 'missing-checkout-url' });
+    renderCheckoutErrorSurface(missingUrlError, fallbackToPricingPage);
     return false;
   } catch (err) {
     const error = classifyThrownCheckoutError(err);
@@ -514,14 +532,28 @@ export async function startCheckout(
  * Capture a checkout error to Sentry with structured context. Raw
  * server-generated text is attached as `extra.serverMessage` — never
  * surfaces to the user.
+ *
+ * Unauthorized / session_expired are *expected* user states (nobody
+ * signed in yet, Clerk session aged out) rather than engineering
+ * failures. They fire on every free-tier pricing click, so reporting
+ * them at `error` level would drown Sentry in non-actionable noise.
+ * Capture them at `info` so the funnel is still observable without
+ * triggering alerts. Everything else stays at `error`.
  */
+type SentryLevel = 'error' | 'info';
+const INFO_LEVEL_CODES: ReadonlySet<CheckoutErrorCode> = new Set([
+  'unauthorized',
+  'session_expired',
+]);
+
 function reportCheckoutError(
   error: CheckoutError,
   context: { productId: string; action: string },
   caught?: unknown,
 ): void {
+  const level: SentryLevel = INFO_LEVEL_CODES.has(error.code) ? 'info' : 'error';
   const payload = {
-    level: 'error' as const,
+    level,
     tags: {
       component: 'dodo-checkout',
       action: context.action,
@@ -538,7 +570,8 @@ function reportCheckoutError(
   } else {
     Sentry.captureMessage(`Checkout error: ${error.code}`, payload);
   }
-  console.error(
+  const logger = level === 'info' ? console.info : console.error;
+  logger(
     `[checkout] ${error.code}${error.httpStatus ? ` (HTTP ${error.httpStatus})` : ''}`,
     error.serverMessage ?? '',
   );
