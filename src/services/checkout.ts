@@ -223,12 +223,22 @@ export function initCheckoutWatchers(): void {
       return;
     }
     if (nextId !== _lastUserId) {
-      // Any user-id change — sign-out, account switch, session rotation.
-      // Must also clear POST_CHECKOUT_FLAG_KEY so a success banner from
-      // the previous user can't fire for the next one on the same tab.
-      clearCheckoutAttempt('signout');
-      clearPendingCheckoutIntent();
-      try { sessionStorage.removeItem(POST_CHECKOUT_FLAG_KEY); } catch { /* ignore */ }
+      const isSignIn = _lastUserId === null && nextId !== null;
+      if (isSignIn) {
+        // null→user transition is a sign-IN, NOT a sign-OUT. The whole
+        // point of pending/attempt state is to survive a sign-in so the
+        // post-auth auto-resume listener can fire the deferred checkout.
+        // Clearing here would race the resume listener and kill the
+        // flow — reviewer flagged this as a subscriber-order bug.
+        // Do NOT clear pending / post-checkout on sign-in.
+      } else {
+        // Everything else — sign-out, account switch (A→B), session
+        // rotation — must wipe all checkout state so the next user
+        // never inherits the previous user's intent/flag/attempt.
+        clearCheckoutAttempt('signout');
+        clearPendingCheckoutIntent();
+        try { sessionStorage.removeItem(POST_CHECKOUT_FLAG_KEY); } catch { /* ignore */ }
+      }
     }
     _lastUserId = nextId;
   });
