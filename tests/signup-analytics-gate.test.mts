@@ -37,12 +37,16 @@ describe('isLikelyFreshSignup', () => {
     assert.equal(isLikelyFreshSignup('user_x', 'user_x', NOW - 500, NOW), false);
   });
 
-  it('returns false when createdAt is in the future (clock skew guard)', () => {
-    // Future createdAt means nowMs - createdAtMs is negative, which <= window.
-    // This is actually accepted by the predicate — document the behavior:
-    // Clerk createdAt coming from the server is authoritative; minor client
-    // clock skew should not block analytics. Real future-dated accounts do
-    // not exist in practice.
+  it('accepts tiny forward clock skew (createdAt slightly ahead of now)', () => {
+    // Clerk's server clock can be up to a few seconds ahead of a
+    // client clock. A createdAt 500ms in the future is a real-world
+    // clock-skew case and should count as fresh.
     assert.equal(isLikelyFreshSignup(null, 'user_new', NOW + 500, NOW), true);
+  });
+
+  it('rejects createdAt unrealistically far in the future (malformed)', () => {
+    // 10 minutes in the future is not clock skew — it's a bug or a
+    // malicious client-side clock. Must not fire trackSignUp.
+    assert.equal(isLikelyFreshSignup(null, 'user_new', NOW + 10 * 60 * 1000, NOW), false);
   });
 });

@@ -191,6 +191,14 @@ export const FRESH_SIGNUP_WINDOW_MS = 60_000;
  * inside this function — callers pass both, so tests can pin time and
  * user state.
  */
+/**
+ * Lower bound for clock skew. A createdAt earlier-than-now by up to
+ * this amount is treated as "now" for freshness purposes — tolerates
+ * client clocks that lag the server. Bigger negatives (createdAt
+ * unrealistically far in the future) are rejected as malformed.
+ */
+const FRESH_SIGNUP_CLOCK_SKEW_MS = 5_000;
+
 export function isLikelyFreshSignup(
   prevUserId: string | null,
   nextUserId: string | null,
@@ -200,7 +208,11 @@ export function isLikelyFreshSignup(
   if (prevUserId !== null) return false;
   if (nextUserId === null) return false;
   if (createdAtMs === null) return false;
-  return nowMs - createdAtMs <= FRESH_SIGNUP_WINDOW_MS;
+  const age = nowMs - createdAtMs;
+  // Accept:   -5s  ≤ age ≤ 60s  (brief clock skew tolerance + fresh window)
+  // Reject: < -5s (createdAt unrealistically far in the future — malformed)
+  //         > 60s (returning user, not a fresh signup)
+  return age >= -FRESH_SIGNUP_CLOCK_SKEW_MS && age <= FRESH_SIGNUP_WINDOW_MS;
 }
 
 export function trackSignOut(): void {
