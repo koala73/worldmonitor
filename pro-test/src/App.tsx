@@ -14,7 +14,7 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
-import { initOverlay, ensureClerk } from './services/checkout';
+import { initOverlay, ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
@@ -1272,6 +1272,10 @@ export default function App() {
 
       setTimeout(goToDashboard, 1500);
     });
+    // Consume checkout intent from URL (set by afterSignInUrl on the
+    // checkout-initiated sign-in). No-op for any other /pro entry
+    // point; strips params before any await so a reload can't re-fire.
+    void tryResumeCheckoutFromUrl();
   }, []);
 
   useEffect(() => {

@@ -15,11 +15,50 @@ const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 
 const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace";
 
+import {
+  parseCheckoutIntentFromSearch,
+  stripCheckoutIntentFromSearch,
+  buildCheckoutReturnUrl,
+} from './checkout-intent-url';
+
 let clerk: InstanceType<typeof Clerk> | null = null;
-let pendingProductId: string | null = null;
-let pendingOptions: { referralCode?: string; discountCode?: string } | null = null;
 let checkoutInFlight = false;
 let clerkLoadPromise: Promise<InstanceType<typeof Clerk>> | null = null;
+
+/**
+ * Phase machine for the checkout flow. Only `creating_checkout` drives
+ * UI lock state. `awaiting_auth` is intentionally not exposed — while
+ * the Clerk modal is open the pricing section is covered by the modal
+ * backdrop, so a service-level UI signal for that window adds no user-
+ * visible value and creates lifecycle-recovery problems (watchdogs,
+ * DOM polling, false-positive focus events). Keeping the pricing page
+ * idle during auth means cancellation needs no recovery path — the UI
+ * is already in the right state.
+ *
+ *   idle:               no checkout in progress; all CTAs clickable
+ *   creating_checkout:  post-auth, inside doCheckout's try/finally;
+ *                       the clicked tier's CTA shows spinner, siblings
+ *                       stay clickable (any click simply updates intent)
+ */
+export type CheckoutPhase =
+  | { kind: 'idle' }
+  | { kind: 'creating_checkout'; productId: string };
+
+let _phase: CheckoutPhase = { kind: 'idle' };
+const phaseSubscribers = new Set<(phase: CheckoutPhase) => void>();
+
+function setPhase(phase: CheckoutPhase): void {
+  _phase = phase;
+  for (const cb of phaseSubscribers) {
+    try { cb(phase); } catch (err) { console.error('[checkout] phase subscriber threw:', err); }
+  }
+}
+
+export function subscribeCheckoutPhase(cb: (phase: CheckoutPhase) => void): () => void {
+  phaseSubscribers.add(cb);
+  cb(_phase);
+  return () => { phaseSubscribers.delete(cb); };
+}
 
 export async function ensureClerk(): Promise<InstanceType<typeof Clerk>> {
   if (clerk) return clerk;
@@ -65,17 +104,18 @@ async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
   // and bypass the retry path.
   clerk = instance;
 
-  // Auto-resume checkout after sign-in
-  clerk.addListener(() => {
-    if (clerk?.user && pendingProductId) {
-      const pid = pendingProductId;
-      const opts = pendingOptions;
-      pendingProductId = null;
-      pendingOptions = null;
-      doCheckout(pid, opts ?? {});
-    }
-  });
-
+  // NO addListener-based auto-resume. That was the source of the
+  // surprise-purchase bug: any sign-in event (checkout-initiated OR
+  // generic "Sign In" CTA on /pro) would fire the listener; with
+  // module-scoped pendingProductId the stale intent from a dismissed
+  // checkout modal would run when the user signed in later for
+  // unrelated reasons.
+  //
+  // Intent is bound to the specific sign-in attempt via Clerk's
+  // afterSignInUrl / afterSignUpUrl (see startCheckout). On dismissal
+  // there's no redirect; only successful sign-in FROM OUR openSignIn
+  // call navigates to a URL carrying the intent params. Generic sign-
+  // in paths don't set these URLs, so they can't trigger resume.
   return clerk;
 }
 
@@ -116,20 +156,44 @@ export async function startCheckout(
   }
 
   if (!c.user) {
-    pendingProductId = productId;
-    pendingOptions = options ?? null;
+    // Intent travels via afterSignInUrl / afterSignUpUrl — bound to
+    // THIS specific openSignIn call. On successful sign-in, Clerk
+    // navigates to the returnUrl which carries the checkout intent
+    // in its query string; tryResumeCheckoutFromUrl picks it up on
+    // page load. On dismissal, Clerk performs no navigation, so no
+    // resume. Other /pro sign-in paths don't set these URLs, so they
+    // can't trigger surprise purchases.
+    const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
     try {
-      c.openSignIn();
+      c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
     } catch (err) {
       console.error('[checkout] Failed to open sign in:', err);
       Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-sign-in' } });
-      pendingProductId = null;
-      pendingOptions = null;
     }
     return false;
   }
 
   return doCheckout(productId, options ?? {});
+}
+
+export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
+  const intent = parseCheckoutIntentFromSearch(window.location.search);
+  if (!intent) return false;
+
+  // Strip BEFORE any await so a fast reload sees the clean URL.
+  const cleanSearch = stripCheckoutIntentFromSearch(window.location.search);
+  const cleanUrl = window.location.pathname + cleanSearch + window.location.hash;
+  window.history.replaceState({}, '', cleanUrl);
+
+  let c: InstanceType<typeof Clerk>;
+  try {
+    c = await ensureClerk();
+  } catch {
+    return false;
+  }
+  if (!c.user) return false;
+  const { productId, referralCode, discountCode } = intent;
+  return doCheckout(productId, { referralCode, discountCode });
 }
 
 async function doCheckout(
@@ -138,6 +202,13 @@ async function doCheckout(
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
+  // Phase transitions to creating_checkout ONLY here, not in
+  // startCheckout's no-user branch. This narrow window (post-auth,
+  // edge call + Dodo SDK import + overlay open) is the only time the
+  // pricing page is visible AND the checkout is mid-work, so it's the
+  // only time the clicked CTA should show a spinner.
+  setPhase({ kind: 'creating_checkout', productId });
+
   // Best-effort visual bridge between Clerk modal close and Dodo
   // overlay paint. Covers two common sources of blank-screen feel:
   //   1. Auto-resume after sign-in fires doCheckout synchronously; the
@@ -266,6 +337,7 @@ async function doCheckout(
   } finally {
     checkoutInFlight = false;
     unmountCheckoutInterstitial();
+    setPhase({ kind: 'idle' });
   }
 }
 

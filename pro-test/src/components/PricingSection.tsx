@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Check, ArrowRight, Zap } from 'lucide-react';
-import { startCheckout } from '../services/checkout';
+import { Check, ArrowRight, Zap, Loader2 } from 'lucide-react';
+import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../services/checkout';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
@@ -82,10 +82,22 @@ function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
 
 export function PricingSection({ refCode }: { refCode?: string }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
+  // Loading state is driven by the service's checkout phase. Only the
+  // `creating_checkout` phase (post-auth, inside doCheckout) disables
+  // the clicked CTA. During the Clerk modal window, phase stays idle —
+  // the modal backdrop is the user's feedback, so locking the pricing
+  // section underneath adds no value and creates recovery problems
+  // (watchdogs, DOM polling) that we don't need.
+  const [phase, setPhase] = useState<CheckoutPhase>({ kind: 'idle' });
+  const loadingProductId = phase.kind === 'creating_checkout' ? phase.productId : null;
   const TIERS = usePricingData();
 
+  useEffect(() => subscribeCheckoutPhase(setPhase), []);
+
+  // checkoutInFlight in the service guards concurrent doCheckout runs.
+  // The handler is fire-and-forget — no local loading state to manage.
   const handleCheckout = useCallback((productId: string) => {
-    startCheckout(productId, { referralCode: refCode });
+    void startCheckout(productId, { referralCode: refCode });
   }, [refCode]);
 
   return (
@@ -113,7 +125,12 @@ export function PricingSection({ refCode }: { refCode?: string }) {
             Pick the tier that fits your mission.
           </motion.p>
 
-          {/* Billing toggle */}
+          {/* Billing toggle — disabled while a checkout is active.
+              Switching billing mid-flight would change cta.productId
+              out from under the active checkout, making the spinner
+              vanish from the tier the user clicked. Locking the toggle
+              during the flow is the simplest correct behavior: the
+              user committed to a plan by clicking Checkout. */}
           <motion.div
             className="inline-flex items-center gap-3 bg-wm-card border border-wm-border rounded-sm p-1"
             initial={{ opacity: 0, y: 10 }}
@@ -123,7 +140,8 @@ export function PricingSection({ refCode }: { refCode?: string }) {
           >
             <button
               onClick={() => setBilling('monthly')}
-              className={`px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider transition-colors ${
+              disabled={loadingProductId !== null}
+              className={`px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 billing === 'monthly'
                   ? 'bg-wm-green text-wm-bg font-bold'
                   : 'text-wm-muted hover:text-wm-text'
@@ -133,12 +151,17 @@ export function PricingSection({ refCode }: { refCode?: string }) {
             </button>
             <button
               onClick={() => setBilling('annual')}
-              className={`px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider transition-colors flex items-center gap-2 ${
+              disabled={loadingProductId !== null}
+              className={`px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider transition-colors flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60 ${
                 billing === 'annual'
                   ? 'bg-wm-green text-wm-bg font-bold'
                   : 'text-wm-muted hover:text-wm-text'
               }`}
             >
+              {/* Lock billing toggle ONLY during creating_checkout (narrow
+                  post-auth window). Through the Clerk modal the toggle
+                  is covered by the backdrop anyway; locking during the
+                  modal was unnecessary. */}
               Annual
               <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${
                 billing === 'annual'
@@ -220,18 +243,38 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                   >
                     {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
                   </a>
-                ) : (
-                  <button
-                    onClick={() => handleCheckout(cta.productId)}
-                    className={`block w-full text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors cursor-pointer ${
-                      tier.highlighted
-                        ? 'bg-wm-green text-wm-bg hover:bg-green-400'
-                        : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
-                    }`}
-                  >
-                    {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
-                  </button>
-                )}
+                ) : (() => {
+                  const isLoading = loadingProductId === cta.productId;
+                  // Only the clicked tier disables during creating_checkout.
+                  // Sibling tiers stay clickable; if the user changes their
+                  // mind mid-flow, their next click simply updates the
+                  // pending intent. The pricing page is never hard-locked.
+                  return (
+                    <button
+                      onClick={() => handleCheckout(cta.productId)}
+                      disabled={isLoading}
+                      aria-busy={isLoading || undefined}
+                      className={`block w-full text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
+                        isLoading ? 'cursor-wait opacity-70' : 'cursor-pointer'
+                      } ${
+                        tier.highlighted
+                          ? 'bg-wm-green text-wm-bg hover:bg-green-400'
+                          : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
+                      }`}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 inline-block mr-2 animate-spin" aria-hidden="true" />
+                          <span>Opening…</span>
+                        </>
+                      ) : (
+                        <>
+                          {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
+                        </>
+                      )}
+                    </button>
+                  );
+                })()}
               </motion.div>
             );
           })}
