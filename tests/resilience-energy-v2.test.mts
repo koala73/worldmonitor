@@ -30,12 +30,10 @@ type EnergyReaderOverrides = {
   fossilElectricityShare?: number | null;
   lowCarbonGenerationShare?: number | null;
   powerLosses?: number | null;
-  reserveMargin?: number | null;
   // Allow explicitly returning null for entire bulk payload.
   fossilBulk?: unknown;
   lowCarbonBulk?: unknown;
   lossesBulk?: unknown;
-  marginBulk?: unknown;
 };
 
 function makeBulk(iso: string, value: number | null | undefined): unknown {
@@ -62,9 +60,6 @@ function makeEnergyReader(iso: string, overrides: EnergyReaderOverrides = {}): R
     }
     if (key === 'resilience:power-losses:v1') {
       return overrides.lossesBulk ?? makeBulk(iso, overrides.powerLosses ?? 10);
-    }
-    if (key === 'resilience:reserve-margin:v1') {
-      return overrides.marginBulk ?? makeBulk(iso, overrides.reserveMargin ?? 15);
     }
     return null;
   };
@@ -166,10 +161,28 @@ describe('scoreEnergy — RESILIENCE_ENERGY_V2_ENABLED=true', () => {
 
   it('missing v2 seed inputs degrade gracefully (no throw, coverage < 1.0)', async () => {
     const allMissing = await scoreEnergy(TEST_ISO2, makeEnergyReader(TEST_ISO2, {
-      fossilBulk: null, lowCarbonBulk: null, lossesBulk: null, marginBulk: null,
+      fossilBulk: null, lowCarbonBulk: null, lossesBulk: null,
     }));
     // Score may be null/low but must NOT throw. Coverage should be
     // well below 1.0 because most inputs are absent.
     assert.ok(allMissing.coverage < 1.0, `all-missing coverage should be < 1.0, got ${allMissing.coverage}`);
+  });
+
+  it('reserveMarginPct is NOT read in v2 path (deferred per plan §3.1)', async () => {
+    // Regression guard: a future commit that adds a reserveMargin
+    // reader to scoreEnergyV2 without landing its seeder would
+    // silently renormalize weights on flag-on. This test pins the
+    // explicit exclusion: changing the reserve-margin Redis key
+    // content must have zero effect on the score.
+    const baseline = await scoreEnergy(TEST_ISO2, makeEnergyReader(TEST_ISO2));
+    const customReader: ResilienceSeedReader = async (key: string) => {
+      if (key === 'resilience:reserve-margin:v1') {
+        return { countries: { [TEST_ISO2]: { value: 99, year: 2024 } } };
+      }
+      return (await makeEnergyReader(TEST_ISO2)(key));
+    };
+    const withReserveMargin = await scoreEnergy(TEST_ISO2, customReader);
+    assert.equal(baseline.score, withReserveMargin.score,
+      'reserve-margin key contents must not affect the v2 score until the indicator re-ships');
   });
 });

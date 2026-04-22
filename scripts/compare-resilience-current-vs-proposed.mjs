@@ -280,7 +280,16 @@ const EXTRACTION_RULES = {
   // reads: { countries: { [ISO2]: { value, year } } }. When seed is
   // absent the pairedSampleSize drops to 0 and Pearson returns 0,
   // surfacing the "no influence yet" state in the harness output.
-  importedFossilDependence: { type: 'bulk-v1-country-value', key: 'resilience:fossil-electricity-share:v1' },
+  // importedFossilDependence is a SCORER-LEVEL COMPOSITE, not a direct
+  // seed-key read: scoreEnergyV2 computes
+  //   fossilElectricityShare × max(netImports, 0) / 100
+  // where netImports is staticRecord.iea.energyImportDependency.value.
+  // Measuring only fossilShare underreports effective influence for
+  // net importers (whose composite is modulated by netImports) and
+  // zeros out the signal entirely for net exporters. The extractor
+  // therefore has to recompute the same composite; the shape family
+  // below reads BOTH inputs per country and applies the same math.
+  importedFossilDependence: { type: 'imported-fossil-dependence-composite' },
   lowCarbonGenerationShare: { type: 'bulk-v1-country-value', key: 'resilience:low-carbon-generation:v1' },
   powerLossesPct: { type: 'bulk-v1-country-value', key: 'resilience:power-losses:v1' },
   // reserveMarginPct deferred per plan §3.1 — no seeder, no registry
@@ -445,6 +454,23 @@ const SIMPLE_EXTRACTORS = {
     const entry = payload?.countries?.[countryCode];
     return typeof entry?.value === 'number' ? entry.value : null;
   },
+  // Mirrors scoreEnergyV2's `importedFossilDependence` composite:
+  //   fossilElectricityShare × max(netImports, 0) / 100
+  // fossilElectricityShare lives in the PR 1 bulk key; netImports
+  // reuses the legacy resilience:static.iea.energyImportDependency.value
+  // (EG.IMP.CONS.ZS) that the static seeder already publishes. This
+  // extractor MUST stay in lockstep with the scorer — drift between
+  // the two breaks gate-9's effective-influence interpretation.
+  'imported-fossil-dependence-composite': (_rule, { staticRecord, bulkV1 }, countryCode) => {
+    const fossilPayload = bulkV1?.['resilience:fossil-electricity-share:v1'];
+    const fossilEntry = fossilPayload?.countries?.[countryCode];
+    const fossilShare = typeof fossilEntry?.value === 'number' ? fossilEntry.value : null;
+    const netImports = typeof staticRecord?.iea?.energyImportDependency?.value === 'number'
+      ? staticRecord.iea.energyImportDependency.value
+      : null;
+    if (fossilShare == null || netImports == null) return null;
+    return fossilShare * Math.max(netImports, 0) / 100;
+  },
 };
 
 // Aggregator extractors wire through exported scorer helpers so the
@@ -538,7 +564,9 @@ async function readExtractionSources(countryCode, reader) {
     'resilience:fossil-electricity-share:v1',
     'resilience:low-carbon-generation:v1',
     'resilience:power-losses:v1',
-    'resilience:reserve-margin:v1',
+    // resilience:reserve-margin:v1 intentionally omitted — no seeder,
+    // no registry entry, per plan §3.1 deferral. Add when the IEA
+    // electricity-balance seeder lands.
   ];
   const [
     staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,

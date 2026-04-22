@@ -155,12 +155,13 @@ The `energy` dimension is in the middle of the PR 1 construct repair (plan §3.1
 |---|---|---|---|---|---|---|
 | importedFossilDependence | `EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100`: fossil share of electricity × net-energy-import share, net exporters collapsed to 0 | Lower is better | 100 - 0 | 0.35 | World Bank | Annual |
 | lowCarbonGenerationShare | Nuclear + renewable share of electricity (`EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS`) | Higher is better | 0 - 80 | 0.20 | World Bank | Annual |
-| powerLossesPct | Electric power transmission + distribution losses (`EG.ELC.LOSS.ZS`). Direct grid-integrity measure | Lower is better | 25 - 3 | 0.10 | World Bank | Annual |
-| reserveMarginPct | Generation reserve margin (IEA electricity balance, imputed where unobserved) | Higher is better | 5 - 25 | 0.10 | IEA | Annual |
+| powerLossesPct | Electric power transmission + distribution losses (`EG.ELC.LOSS.ZS`). Direct grid-integrity measure. Weight temporarily absorbs `reserveMarginPct`'s 0.10 until the latter's IEA seeder lands. | Lower is better | 25 - 3 | 0.20 | World Bank | Annual |
 | euGasStorageStress | Same transform as `gasStorageStress`, scoped to EU-only (weight 0 for non-EU) | Lower is better | 100 - 0 | 0.10 | GIE AGSI+ | Daily |
 | energyPriceStress | Mean absolute energy price change across commodities | Lower is better | 25 - 0 | 0.15 | Energy prices | Daily |
 
 Retired under v2: `electricityConsumption` (wealth proxy, §3.1 of repair plan), `gasShare` / `coalShare` / `energyImportDependency` (replaced by `importedFossilDependence`, §3.2), `renewShare` (absorbed into `lowCarbonGenerationShare`, §3.3). `electricityAccess` moves from `energy` to the `infrastructure` domain under v2, where it acts as a grid-collapse threshold signal rather than an affluence proxy.
+
+**Deferred under v2 (plan §3.1 open-question):** `reserveMarginPct` does not ship in PR 1. IEA electricity-balance coverage is sparse outside OECD+G20; the indicator will likely ship at `tier='unmonitored'` with weight 0.05 if it lands at all. Its Redis key is reserved in `_dimension-scorers.ts`; when a seeder lands, split 0.10 out of `powerLossesPct` and add `reserveMarginPct` at 0.10 in the scorer blend.
 
 ### Social & Governance Domain (weight 0.19)
 

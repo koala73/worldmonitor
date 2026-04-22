@@ -274,14 +274,17 @@ const RESILIENCE_RECOVERY_FUEL_STOCKS_KEY = 'resilience:recovery:fuel-stocks:v1'
 const RESILIENCE_LOW_CARBON_GEN_KEY = 'resilience:low-carbon-generation:v1';
 const RESILIENCE_FOSSIL_ELEC_SHARE_KEY = 'resilience:fossil-electricity-share:v1';
 const RESILIENCE_POWER_LOSSES_KEY = 'resilience:power-losses:v1';
-// reserveMarginPct has no seeder yet (IEA electricity-balance data is
-// curated/partial). The v2 scorer reads from this key but the seeder
-// is explicitly deferred per plan §3.1 open-question: "if half the
-// world is imputed, does the 0.10 survive the §6 coverage-and-
-// influence gate? Probably not. Likely ships as imputationClass:
-// 'unmonitored' with weight 0.05." The key name is reserved so the
-// scorer shape is stable for the commit that does provide data.
-const RESILIENCE_RESERVE_MARGIN_KEY = 'resilience:reserve-margin:v1';
+// reserveMarginPct is DEFERRED per plan §3.1 open-question: IEA
+// electricity-balance coverage is sparse outside OECD+G20 and the
+// indicator may ship at `tier='unmonitored'` with weight 0.05 if it
+// ships at all. Neither scorer v2 nor any consumer reads a
+// `resilience:reserve-margin:v1` key today. When the seeder lands:
+//   1. Reintroduce a `RESILIENCE_RESERVE_MARGIN_KEY` constant here,
+//   2. Split 0.10 out of scoreEnergyV2's powerLossesPct weight and
+//      add reserveMargin at 0.10,
+//   3. Add the indicator back to INDICATOR_REGISTRY + EXTRACTION_RULES.
+// Until then the key name is a reservation in comment form only; the
+// typecheck refuses to ship a declared-but-unread constant.
 
 // EU country set for `euGasStorageStress` in the v2 energy construct.
 // GIE AGSI+ covers EU member states + a few neighbours; non-EU
@@ -1153,9 +1156,16 @@ async function scoreEnergyV2(
   countryCode: string,
   reader: ResilienceSeedReader,
 ): Promise<ResilienceDimensionScore> {
+  // reserveMarginPct is DEFERRED per plan §3.1 (IEA coverage too sparse;
+  // open-question whether the indicator ships at all). Its 0.10 weight
+  // is absorbed into powerLossesPct (→ 0.20) so the v2 blend remains
+  // grid-integrity-weighted. When a reserve-margin seeder eventually
+  // lands, split 0.10 back out of powerLosses and add reserveMargin
+  // here at 0.10. The Redis key RESILIENCE_RESERVE_MARGIN_KEY stays
+  // reserved in this file for that commit.
   const [
     staticRecord, energyPricesRaw, storageRaw,
-    fossilShareRaw, lowCarbonRaw, powerLossesRaw, reserveMarginRaw,
+    fossilShareRaw, lowCarbonRaw, powerLossesRaw,
   ] = await Promise.all([
     readStaticCountry(countryCode, reader),
     reader(RESILIENCE_ENERGY_PRICES_KEY),
@@ -1163,7 +1173,6 @@ async function scoreEnergyV2(
     reader(RESILIENCE_FOSSIL_ELEC_SHARE_KEY),
     reader(RESILIENCE_LOW_CARBON_GEN_KEY),
     reader(RESILIENCE_POWER_LOSSES_KEY),
-    reader(RESILIENCE_RESERVE_MARGIN_KEY),
   ]);
 
   // Per-country value lookup on the bulk-payload shape emitted by the
@@ -1177,7 +1186,6 @@ async function scoreEnergyV2(
   const fossilElectricityShare = bulkValue(fossilShareRaw);
   const lowCarbonGenerationShare = bulkValue(lowCarbonRaw);
   const powerLosses = bulkValue(powerLossesRaw);
-  const reserveMargin = bulkValue(reserveMarginRaw);
   const netImports = safeNum(staticRecord?.iea?.energyImportDependency?.value);
 
   // importedFossilDependence composite. `max(netImports, 0)` collapses
@@ -1217,8 +1225,7 @@ async function scoreEnergyV2(
   return weightedBlend([
     { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35 },
     { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80),  weight: 0.20 },
-    { score: powerLosses              == null ? null : normalizeLowerBetter(powerLosses, 3, 25),                weight: 0.10 },
-    { score: reserveMargin            == null ? null : normalizeHigherBetter(reserveMargin, 5, 25),             weight: 0.10 },
+    { score: powerLosses              == null ? null : normalizeLowerBetter(powerLosses, 3, 25),                weight: 0.20 },
     { score: euStorageStress          == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100),     weight: 0.10 },
     { score: exposedEnergyStress,                                                                                weight: 0.15 },
   ]);

@@ -203,6 +203,41 @@ test('applyExtractionRule — count-trade-restrictions uses scorer-exported coun
   assert.equal(applyExtractionRule(rule, { tradeRestrictions }, 'AE', { countTradeRestrictions: () => 0 }), null);
 });
 
+test('applyExtractionRule — imported-fossil-dependence recomputes the scorer composite', () => {
+  // PR 1 §3.2: the scorer computes
+  //   importedFossilDependence = fossilElectricityShare × max(netImports, 0) / 100
+  // Extractor MUST recompute the same composite, otherwise gate-9's
+  // effective-influence measurement for this indicator is wrong for
+  // every net-exporter (composite collapses to 0) and under-reports
+  // every net-importer (modulated by netImports).
+  const rule = { type: 'imported-fossil-dependence-composite' };
+
+  // Net importer: fossilShare 80% × max(60, 0) / 100 = 48
+  const netImporter = {
+    staticRecord: { iea: { energyImportDependency: { value: 60 } } },
+    bulkV1: {
+      'resilience:fossil-electricity-share:v1': { countries: { AE: { value: 80 } } },
+    },
+  };
+  assert.equal(applyExtractionRule(rule, netImporter, 'AE'), 48);
+
+  // Net exporter: max(-40, 0) = 0 → composite = 0 regardless of fossilShare
+  const netExporter = {
+    staticRecord: { iea: { energyImportDependency: { value: -40 } } },
+    bulkV1: {
+      'resilience:fossil-electricity-share:v1': { countries: { NO: { value: 90 } } },
+    },
+  };
+  assert.equal(applyExtractionRule(rule, netExporter, 'NO'), 0);
+
+  // Missing either input → null
+  assert.equal(applyExtractionRule(rule, { staticRecord: null, bulkV1: {} }, 'XX'), null);
+  assert.equal(applyExtractionRule(rule, {
+    staticRecord: { iea: { energyImportDependency: { value: 50 } } },
+    bulkV1: { 'resilience:fossil-electricity-share:v1': { countries: {} } },
+  }, 'XX'), null);
+});
+
 test('applyExtractionRule — aquastat stress vs availability gated by indicator tag', () => {
   // Mirror scoreAquastatValue in _dimension-scorers.ts: both indicators
   // share .aquastat.value, but the .aquastat.indicator tag classifies
