@@ -15,6 +15,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
 import { ConvexHttpClient } from 'convex/browser';
+import { api } from '../convex/_generated/api';
 import { validateBearerToken } from '../server/auth-session';
 
 export default async function handler(req: Request): Promise<Response> {
@@ -56,8 +57,7 @@ export default async function handler(req: Request): Promise<Response> {
     const variant = url.searchParams.get('variant') ?? 'full';
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const prefs = await client.query('userPreferences:getPreferences' as any, { variant });
+      const prefs = await client.query(api.userPreferences.getPreferences, { variant });
       return jsonResponse(prefs ?? null, 200, cors);
     } catch (err) {
       console.error('[user-prefs] GET error:', err);
@@ -82,8 +82,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await client.mutation('userPreferences:setPreferences' as any, {
+    const result = await client.mutation(api.userPreferences.setPreferences, {
       variant: body.variant,
       data: body.data,
       expectedSyncVersion: body.expectedSyncVersion,
