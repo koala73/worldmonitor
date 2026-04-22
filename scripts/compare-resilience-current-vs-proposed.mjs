@@ -32,35 +32,16 @@ const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 
 loadEnvFile(import.meta.url);
 
-// Historical 52-country sensitivity seed. Preserved as a baseline so
-// the comparison shape stays recognisable to the existing sensitivity
-// pipeline, but EXTENDED below with the full union of every cohort
-// member and every matched-pair endpoint. Without the union, PR 0's
-// acceptance gates silently skip small-island-importers (zero cohort
-// members in the 52-country seed) and sg-vs-ch (Singapore not in the
-// seed) — the apparatus claims to measure what it does not actually
-// measure.
-const HISTORICAL_SENSITIVITY_SEED = [
-  'NO','IS','NZ','DK','SE','FI','CH','AU','CA',
-  'US','DE','GB','FR','JP','KR','IT','ES','PL',
-  'BR','MX','TR','TH','MY','CN','IN','ZA','EG',
-  'PK','NG','KE','BD','VN','PH','ID','UA','RU',
-  'AF','YE','SO','HT','SS','CF','SD','ML','NE','TD','SY','IQ','MM','VE','IR','ET',
-];
-
-// The authoritative sample is the union of the historical seed + every
-// country referenced by a cohort definition + every matched-pair
-// endpoint. Running the comparison over a subset would mean cohort
-// medians and pair gap checks would be computed over partial coverage
-// and fail quietly — exactly the construct problem PR 0 is supposed to
-// make impossible.
-const cohortUnion = new Set(RESILIENCE_COHORTS.flatMap((c) => c.countryCodes));
-const pairEndpoints = new Set(MATCHED_PAIRS.flatMap((p) => [p.higherExpected, p.lowerExpected]));
-const SAMPLE = [...new Set([
-  ...HISTORICAL_SENSITIVITY_SEED,
-  ...cohortUnion,
-  ...pairEndpoints,
-])];
+// Scoring and acceptance gates run over the FULL scorable universe
+// (listScorableCountries() from _shared.ts) — no curated SAMPLE is
+// used. Earlier revisions computed drift / Spearman / cohort / pair
+// checks on a 52-country sensitivity seed (+ cohort union); that
+// missed regressions in any country outside the seed. RESILIENCE_COHORTS
+// and MATCHED_PAIRS are still imported because the cohort/pair
+// diagnostic blocks below are naturally scoped to their defined
+// memberships, and we use them to report cohortMissingFromScorable
+// (any cohort/pair endpoint that listScorableCountries refuses to
+// score — fail-loud instead of silent drop).
 
 // Mirrors `_shared.ts#coverageWeightedMean`. Kept local because the
 // production helper is not exported.
@@ -187,60 +168,274 @@ function spearmanCorrelation(ranksA, ranksB) {
   return 1 - (6 * dSqSum) / (n * (n * n - 1));
 }
 
-// Per-indicator extraction. Acceptance gate 8 in the plan requires
-// effective-influence-by-INDICATOR (not by dimension), so the harness
-// must peek inside each scorer's input data to correlate individual
-// indicators with the overall score. Covers the twelve indicators the
-// repair plan specifically names as construct-risk (energy mix shares,
-// electricityConsumption, energy import dependency, WGI mean,
-// reserveMonths, and the four recovery-fiscal indicators). Additional
-// indicators can be added to this map in PR 0.5 follow-ups.
-async function extractIndicatorValues(countryCode, reader) {
-  const [staticRecord, energyMix, fiscalSpace, reserveAdequacy, externalDebt, importHhi] = await Promise.all([
+// Per-indicator extraction registry. Acceptance gate 8 in the plan
+// requires effective-influence-by-INDICATOR (not by dimension) across
+// the scorer. The registry below is built from INDICATOR_REGISTRY at
+// runtime: every entry in INDICATOR_REGISTRY gets a row here with an
+// explicit extractionStatus, so indicators that cannot be deterministi-
+// cally extracted from raw Redis (event-window aggregates, Monte-Carlo
+// style summaries, etc.) are NOT silently omitted — they appear in
+// `perIndicatorInfluence[]` with `extractionStatus: 'not-implemented'`
+// and a reason string. This keeps the acceptance apparatus honest:
+// later PRs can see exactly which indicators are covered, which are
+// gaps, and which ones they need to instrument in scorer trace hooks.
+//
+// Shape families covered deterministically (extractionStatus:
+// 'implemented'):
+//
+//   A) resilience:static:{ISO2} + dotted sub-path (WB code / WGI /
+//      WHO / FAO / GPI / RSF / IEA / tradeToGdp / fxReservesMonths /
+//      appliedTariffRate)
+//   B) energy:mix:v1:{ISO2} scalar field
+//   C) energy:gas-storage:v1:{ISO2} scalar field
+//   D) resilience:recovery:<name>:v1 bulk key, .countries[ISO2].<field>
+//   E) economic:imf:macro:v2 bulk key, .countries[ISO2].<field>
+//   F) economic:imf:labor:v1 bulk key, .countries[ISO2].<field>
+//   G) economic:national-debt:v1 bulk key, .countries[ISO2].<field>
+//
+// Indicators whose source key is an aggregate-event stream (UCDP
+// events, unrest events, cyber threats, GPS jamming hexes, internet
+// outages, displacement summary, supply-chain shipping / transit
+// stress, trade restrictions / barriers, sanctions counts, energy
+// price stress, social Reddit, BIS DSR / EER, news threat summary)
+// cannot be deterministically reduced to a single per-country scalar
+// without re-running the scorer's own windowing / severity-weighting
+// math, which would duplicate production logic and drift. These are
+// marked `extractionStatus: 'not-implemented'` with a reason; later
+// PRs can either expose a scorer trace hook, or add dedicated
+// extractors here if the aggregation is simple enough to safely
+// duplicate.
+//
+// EXTRACTION_RULES is keyed by the registry's indicator `id` field, so
+// adding a new indicator to INDICATOR_REGISTRY flags this table via
+// the "unregistered indicator" branch in buildIndicatorExtractionPlan.
+
+const EXTRACTION_RULES = {
+  // ── macroFiscal ─────────────────────────────────────────────────────
+  govRevenuePct: { type: 'imf-macro-country-field', field: 'govRevenuePct' },
+  debtGrowthRate: { type: 'national-debt', field: 'annualGrowth' },
+  currentAccountPct: { type: 'imf-macro-country-field', field: 'currentAccountPct' },
+  unemploymentPct: { type: 'imf-labor-country-field', field: 'unemploymentPct' },
+  householdDebtService: { type: 'not-implemented', reason: 'BIS DSR curated series needs per-country quarterly DSR selection matching the scorer window' },
+
+  // ── currencyExternal ────────────────────────────────────────────────
+  fxVolatility: { type: 'not-implemented', reason: 'BIS REER annualized volatility requires the scorer monthly-change std-dev computation' },
+  fxDeviation: { type: 'not-implemented', reason: 'BIS REER absolute deviation from 100 requires the scorer latest-value selection' },
+  fxReservesAdequacy: { type: 'static-path', path: ['fxReservesMonths', 'months'] },
+
+  // ── tradeSanctions ──────────────────────────────────────────────────
+  sanctionCount: { type: 'sanctions-count' },
+  tradeRestrictions: { type: 'not-implemented', reason: 'WTO tariff-overview requires IN_FORCE weighting + curated top-50 reporter filter matching the scorer' },
+  tradeBarriers: { type: 'not-implemented', reason: 'WTO tariff-gap requires notifying-country aggregation matching the scorer' },
+  appliedTariffRate: { type: 'static-path', path: ['appliedTariffRate', 'value'] },
+
+  // ── cyberDigital ────────────────────────────────────────────────────
+  cyberThreats: { type: 'not-implemented', reason: 'Severity-weighted threat count needs scorer critical/high/medium/low weighting' },
+  internetOutages: { type: 'not-implemented', reason: 'Outage penalty needs scorer total/major/partial weighting' },
+  gpsJamming: { type: 'not-implemented', reason: 'GPS jamming hex penalty needs scorer high/medium weighting' },
+
+  // ── logisticsSupply ─────────────────────────────────────────────────
+  roadsPavedLogistics: { type: 'static-wb-infrastructure', code: 'IS.ROD.PAVE.ZS' },
+  shippingStress: { type: 'not-implemented', reason: 'Global shipping-stress score is not per-country; Pearson against overall is ill-defined' },
+  transitDisruption: { type: 'not-implemented', reason: 'Transit-corridor disruption requires per-country route aggregation matching the scorer' },
+
+  // ── infrastructure ──────────────────────────────────────────────────
+  electricityAccess: { type: 'static-wb-infrastructure', code: 'EG.ELC.ACCS.ZS' },
+  roadsPavedInfra: { type: 'static-wb-infrastructure', code: 'IS.ROD.PAVE.ZS' },
+  infraOutages: { type: 'not-implemented', reason: 'Same aggregation as cyberDigital.internetOutages' },
+
+  // ── energy ──────────────────────────────────────────────────────────
+  energyImportDependency: { type: 'static-path', path: ['iea', 'energyImportDependency', 'value'] },
+  gasShare: { type: 'energy-mix-field', field: 'gasShare' },
+  coalShare: { type: 'energy-mix-field', field: 'coalShare' },
+  renewShare: { type: 'energy-mix-field', field: 'renewShare' },
+  gasStorageStress: { type: 'gas-storage-field', field: 'fillPct' },
+  energyPriceStress: { type: 'not-implemented', reason: 'Commodity energy price stress is a global average, not per-country' },
+  electricityConsumption: { type: 'static-wb-infrastructure', code: 'EG.USE.ELEC.KH.PC' },
+
+  // ── governanceInstitutional (all 6 WGI sub-pillars) ─────────────────
+  // Static-record keys are World-Bank WGI standard codes; see
+  // scripts/seed-resilience-static.mjs#WGI_INDICATORS.
+  wgiVoiceAccountability: { type: 'static-wgi', code: 'VA.EST' },
+  wgiPoliticalStability: { type: 'static-wgi', code: 'PV.EST' },
+  wgiGovernmentEffectiveness: { type: 'static-wgi', code: 'GE.EST' },
+  wgiRegulatoryQuality: { type: 'static-wgi', code: 'RQ.EST' },
+  wgiRuleOfLaw: { type: 'static-wgi', code: 'RL.EST' },
+  wgiControlOfCorruption: { type: 'static-wgi', code: 'CC.EST' },
+
+  // ── socialCohesion ──────────────────────────────────────────────────
+  gpiScore: { type: 'static-path', path: ['gpi', 'score'] },
+  displacementTotal: { type: 'not-implemented', reason: 'Displacement summary is year-scoped bulk key; needs scorer year selection' },
+  displacementHosted: { type: 'not-implemented', reason: 'Displacement-hosted counterpart; same year-scoped bulk aggregation' },
+  unrestEvents: { type: 'not-implemented', reason: 'ACLED-style unrest aggregation requires scorer event-count windowing' },
+
+  // ── borderSecurity / stateContinuity conflict-events (event-window) ─
+  ucdpConflict: { type: 'not-implemented', reason: 'UCDP events need scorer event-count windowing and severity weighting' },
+
+  // ── informationCognitive ────────────────────────────────────────────
+  rsfPressFreedom: { type: 'static-path', path: ['rsf', 'score'] },
+  socialVelocity: { type: 'not-implemented', reason: 'Reddit social velocity is cross-post aggregated; not per-country scalar' },
+  newsThreatScore: { type: 'not-implemented', reason: 'News threat summary requires scorer severity weighting' },
+
+  // ── healthPublicService ─────────────────────────────────────────────
+  hospitalBeds: { type: 'static-who', code: 'hospitalBeds' },
+  uhcIndex: { type: 'static-who', code: 'uhcIndex' },
+  measlesCoverage: { type: 'static-who', code: 'measlesCoverage' },
+
+  // ── foodWater ───────────────────────────────────────────────────────
+  ipcPeopleInCrisis: { type: 'static-path', path: ['fao', 'peopleInCrisis'] },
+  ipcPhase: { type: 'static-path', path: ['fao', 'phase'] },
+  aquastatWaterStress: { type: 'static-path', path: ['aquastat', 'value'] },
+  aquastatWaterAvailability: { type: 'not-implemented', reason: 'AQUASTAT availability has distinct sub-indicator scope from stress; needs separate path resolution' },
+
+  // ── recovery* (seeded bulk keys, deterministic per-country fields) ──
+  recoveryGovRevenue: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'govRevenuePct' },
+  recoveryFiscalBalance: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'fiscalBalancePct' },
+  recoveryDebtToGdp: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'debtToGdpPct' },
+  recoveryReserveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:reserve-adequacy:v1', field: 'reserveMonths' },
+  recoveryDebtToReserves: { type: 'recovery-country-field', key: 'resilience:recovery:external-debt:v1', field: 'debtToReservesRatio' },
+  recoveryImportHhi: { type: 'recovery-country-field', key: 'resilience:recovery:import-hhi:v1', field: 'hhi' },
+  recoveryFuelStockDays: { type: 'recovery-country-field', key: 'resilience:recovery:fuel-stocks:v1', field: 'stockDays' },
+
+  // ── stateContinuity derived signals ─────────────────────────────────
+  recoveryWgiContinuity: { type: 'static-wgi-mean' },
+  recoveryConflictPressure: { type: 'not-implemented', reason: 'Derived from UCDP conflict; depends on ucdpConflict extraction' },
+  recoveryDisplacementVelocity: { type: 'not-implemented', reason: 'Derived from displacement summary; depends on displacementTotal/Hosted extraction' },
+};
+
+function applyExtractionRule(rule, sources, countryCode) {
+  if (!rule || rule.type === 'not-implemented') return null;
+  const {
+    staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
+    externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
+    nationalDebt, sanctionsCounts,
+  } = sources;
+  switch (rule.type) {
+    case 'static-path': {
+      let cursor = staticRecord;
+      for (const k of rule.path) cursor = cursor?.[k];
+      return typeof cursor === 'number' ? cursor : null;
+    }
+    case 'static-wb-infrastructure':
+      return staticRecord?.infrastructure?.indicators?.[rule.code]?.value ?? null;
+    case 'static-wgi':
+      return staticRecord?.wgi?.indicators?.[rule.code]?.value ?? null;
+    case 'static-wgi-mean': {
+      const entries = Object.values(staticRecord?.wgi?.indicators ?? {})
+        .map((entry) => (typeof entry?.value === 'number' ? entry.value : null))
+        .filter((v) => v != null);
+      if (entries.length === 0) return null;
+      return entries.reduce((s, v) => s + v, 0) / entries.length;
+    }
+    case 'static-who':
+      return staticRecord?.who?.indicators?.[rule.code]?.value ?? null;
+    case 'energy-mix-field':
+      return typeof energyMix?.[rule.field] === 'number' ? energyMix[rule.field] : null;
+    case 'gas-storage-field':
+      return typeof gasStorage?.[rule.field] === 'number' ? gasStorage[rule.field] : null;
+    case 'recovery-country-field': {
+      const bulkByKey = {
+        'resilience:recovery:fiscal-space:v1': fiscalSpace,
+        'resilience:recovery:reserve-adequacy:v1': reserveAdequacy,
+        'resilience:recovery:external-debt:v1': externalDebt,
+        'resilience:recovery:import-hhi:v1': importHhi,
+        'resilience:recovery:fuel-stocks:v1': fuelStocks,
+      };
+      const bulk = bulkByKey[rule.key];
+      const entry = bulk?.countries?.[countryCode];
+      return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
+    }
+    case 'imf-macro-country-field': {
+      const entry = imfMacro?.countries?.[countryCode];
+      return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
+    }
+    case 'imf-labor-country-field': {
+      const entry = imfLabor?.countries?.[countryCode];
+      return typeof entry?.[rule.field] === 'number' ? entry[rule.field] : null;
+    }
+    case 'national-debt': {
+      // economic:national-debt:v1 is an array of { iso3?, iso2?, debtToGdp?, annualGrowth? }
+      if (!Array.isArray(nationalDebt)) return null;
+      const found = nationalDebt.find((e) => e?.iso2 === countryCode || e?.countryCode === countryCode);
+      return typeof found?.[rule.field] === 'number' ? found[rule.field] : null;
+    }
+    case 'sanctions-count': {
+      // sanctions:country-counts:v1 shape tolerates either {countries:{ISO2:n}} or {ISO2:n}.
+      const direct = sanctionsCounts?.[countryCode];
+      const nested = sanctionsCounts?.countries?.[countryCode];
+      if (typeof direct === 'number') return direct;
+      if (typeof nested === 'number') return nested;
+      if (typeof nested?.count === 'number') return nested.count;
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
+async function readExtractionSources(countryCode, reader) {
+  const [
+    staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
+    externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
+    nationalDebt, sanctionsCounts,
+  ] = await Promise.all([
     reader(`resilience:static:${countryCode}`),
     reader(`energy:mix:v1:${countryCode}`),
+    reader(`energy:gas-storage:v1:${countryCode}`),
     reader('resilience:recovery:fiscal-space:v1'),
     reader('resilience:recovery:reserve-adequacy:v1'),
     reader('resilience:recovery:external-debt:v1'),
     reader('resilience:recovery:import-hhi:v1'),
+    reader('resilience:recovery:fuel-stocks:v1'),
+    reader('economic:imf:macro:v2'),
+    reader('economic:imf:labor:v1'),
+    reader('economic:national-debt:v1'),
+    reader('sanctions:country-counts:v1'),
   ]);
-
-  const fiscalEntry = fiscalSpace?.countries?.[countryCode] ?? null;
-  const reserveEntry = reserveAdequacy?.countries?.[countryCode] ?? null;
-  const debtEntry = externalDebt?.countries?.[countryCode] ?? null;
-  const hhiEntry = importHhi?.countries?.[countryCode] ?? null;
-
-  const wgiValues = Object.values(staticRecord?.wgi?.indicators ?? {})
-    .map((entry) => (typeof entry?.value === 'number' ? entry.value : null))
-    .filter((v) => v != null);
-  const wgiMean = wgiValues.length > 0
-    ? wgiValues.reduce((s, v) => s + v, 0) / wgiValues.length
-    : null;
-
   return {
-    // Energy indicators — four of the six indicators PR 1 §3.1–§3.2
-    // explicitly overturns or re-bases. Per-indicator influence here
-    // gives PR 1 the baseline for the effective-influence comparison
-    // acceptance gate 8 requires.
-    gasShare: typeof energyMix?.gasShare === 'number' ? energyMix.gasShare : null,
-    coalShare: typeof energyMix?.coalShare === 'number' ? energyMix.coalShare : null,
-    renewShare: typeof energyMix?.renewShare === 'number' ? energyMix.renewShare : null,
-    electricityConsumption: staticRecord?.infrastructure?.indicators?.['EG.USE.ELEC.KH.PC']?.value ?? null,
-    energyImportDependency: staticRecord?.iea?.energyImportDependency?.value ?? null,
-    // Governance signal — high nominal weight, needs to show commensurate
-    // effective influence in the baseline.
-    wgiMean,
-    // Recovery-fiscal indicators — Japan-debt construct problem (§4.4)
-    // and external-debt saturation (§4.3) both depend on these showing
-    // up in the per-indicator baseline so PR 3 / PR 4 can detect
-    // their fixes.
-    govRevenuePct: fiscalEntry?.govRevenuePct ?? null,
-    fiscalBalancePct: fiscalEntry?.fiscalBalancePct ?? null,
-    debtToGdpPct: fiscalEntry?.debtToGdpPct ?? null,
-    reserveMonths: reserveEntry?.reserveMonths ?? null,
-    debtToReservesRatio: debtEntry?.debtToReservesRatio ?? null,
-    importHhi: hhiEntry?.hhi ?? null,
+    staticRecord, energyMix, gasStorage, fiscalSpace, reserveAdequacy,
+    externalDebt, importHhi, fuelStocks, imfMacro, imfLabor,
+    nationalDebt, sanctionsCounts,
   };
+}
+
+// Build the full extraction plan at startup: every entry in
+// INDICATOR_REGISTRY becomes a row in the plan, with status derived
+// from EXTRACTION_RULES. Any indicator present in the registry but
+// missing from EXTRACTION_RULES is flagged as `unregistered-in-harness`
+// so future registry additions can't silently skip influence reporting.
+function buildIndicatorExtractionPlan(indicatorRegistry) {
+  return indicatorRegistry.map((spec) => {
+    const rule = EXTRACTION_RULES[spec.id];
+    if (!rule) {
+      return {
+        indicator: spec.id,
+        dimension: spec.dimension,
+        tier: spec.tier,
+        nominalWeight: spec.weight,
+        extractionStatus: 'unregistered-in-harness',
+        reason: 'Indicator exists in INDICATOR_REGISTRY but has no EXTRACTION_RULES entry; add one or explicitly mark not-implemented',
+      };
+    }
+    if (rule.type === 'not-implemented') {
+      return {
+        indicator: spec.id,
+        dimension: spec.dimension,
+        tier: spec.tier,
+        nominalWeight: spec.weight,
+        extractionStatus: 'not-implemented',
+        reason: rule.reason,
+      };
+    }
+    return {
+      indicator: spec.id,
+      dimension: spec.dimension,
+      tier: spec.tier,
+      nominalWeight: spec.weight,
+      extractionStatus: 'implemented',
+      rule,
+    };
+  });
 }
 
 // Pearson correlation across two equal-length arrays. Used for
@@ -284,13 +479,33 @@ async function main() {
     PILLAR_WEIGHTS,
   } = await import('../server/worldmonitor/resilience/v1/_pillar-membership.ts');
 
+  const { INDICATOR_REGISTRY } = await import(
+    '../server/worldmonitor/resilience/v1/_indicator-registry.ts'
+  );
+
   const domainWeights = {};
   for (const domainId of RESILIENCE_DOMAIN_ORDER) {
     domainWeights[domainId] = getResilienceDomainWeight(domainId);
   }
 
+  // Run the acceptance math over the FULL scorable universe, not a
+  // curated subset. Plan gate 2 ("no country's overallScore changes
+  // by more than 15 points") and the baseline-Spearman check must see
+  // every country in the ranking universe; otherwise a large regression
+  // inside an excluded country passes silently. RESILIENCE_COHORTS and
+  // MATCHED_PAIRS are still used by the cohort/pair diagnostic blocks
+  // (naturally scoped to their memberships); any endpoint those
+  // definitions reference but listScorableCountries refuses to score
+  // is reported in `cohortMissingFromScorable` (fail-loud, not drop).
   const scorableCountries = await listScorableCountries();
-  const validSample = SAMPLE.filter((c) => scorableCountries.includes(c));
+  const scorableUniverse = scorableCountries.slice(); // full universe
+  const cohortOrPairMembers = new Set([
+    ...RESILIENCE_COHORTS.flatMap((c) => c.countryCodes),
+    ...MATCHED_PAIRS.flatMap((p) => [p.higherExpected, p.lowerExpected]),
+  ]);
+  const cohortMissingFromScorable = [...cohortOrPairMembers].filter(
+    (cc) => !scorableCountries.includes(cc),
+  );
 
   // Load the frozen pre-PR-0 baseline before scoring so we can compute
   // baseline-delta gates (acceptance gates 2, 6, 7). If no baseline
@@ -299,19 +514,30 @@ async function main() {
   // caller can detect missing-baseline vs passed-baseline.
   const baseline = loadMostRecentBaselineSnapshot();
 
+  // Finding 3 — per-indicator extraction plan is driven by
+  // INDICATOR_REGISTRY (every Core + Enrichment indicator gets a row)
+  // rather than a hand-picked subset of 12. Indicators whose source
+  // key cannot be reduced to a per-country scalar without duplicating
+  // scorer math get extractionStatus 'not-implemented' with a reason
+  // — so the gap is visible in output, not hidden.
+  const extractionPlan = buildIndicatorExtractionPlan(INDICATOR_REGISTRY);
+  const implementedRules = extractionPlan.filter((p) => p.extractionStatus === 'implemented');
+
   const sharedReader = createMemoizedSeedReader();
   const rows = [];
-  // Per-indicator value collection across the sample. Filled in the
-  // scoring loop so we don't open two passes over the country list.
   const perIndicatorValues = {};
+  for (const plan of implementedRules) {
+    perIndicatorValues[plan.indicator] = [];
+  }
 
-  for (const countryCode of validSample) {
+  for (const countryCode of scorableUniverse) {
     const scoreMap = await scoreAllDimensions(countryCode, sharedReader);
 
-    const indicatorValues = await extractIndicatorValues(countryCode, sharedReader);
-    for (const [indicator, value] of Object.entries(indicatorValues)) {
+    const sources = await readExtractionSources(countryCode, sharedReader);
+    for (const plan of implementedRules) {
+      const value = applyExtractionRule(plan.rule, sources, countryCode);
       if (value == null || !Number.isFinite(value)) continue;
-      (perIndicatorValues[indicator] ??= []).push({ countryCode, value });
+      perIndicatorValues[plan.indicator].push({ countryCode, value });
     }
 
     // Build the same ResilienceDimension shape production uses. Only
@@ -411,9 +637,9 @@ async function main() {
   const maxRankAbsDelta = Math.max(...rows.map((r) => r.rankAbsDelta));
 
   // Cohort + matched-pair summaries (PR 0 fairness-audit harness).
-  // RESILIENCE_COHORTS and MATCHED_PAIRS are imported at the top of
-  // this module so the SAMPLE union can include every cohort member
-  // and every matched-pair endpoint — see the comment on SAMPLE above.
+  // Scoped to the cohort/pair memberships defined in the helpers;
+  // scoring ran over the full scorable universe so every member that
+  // listScorableCountries recognised is already in `rows`.
   const rowsByCc = new Map(rows.map((r) => [r.countryCode, r]));
 
   function median(values) {
@@ -460,7 +686,7 @@ async function main() {
     const higher = rowsByCc.get(pair.higherExpected);
     const lower = rowsByCc.get(pair.lowerExpected);
     if (!higher || !lower) {
-      return { pairId: pair.id, skipped: true, reason: `pair member missing from sample: ${!higher ? pair.higherExpected : pair.lowerExpected}` };
+      return { pairId: pair.id, skipped: true, reason: `pair member missing from scorable universe: ${!higher ? pair.higherExpected : pair.lowerExpected}` };
     }
     const minGap = pair.minGap ?? 3;
     const currentGap = higher.currentOverallScore - lower.currentOverallScore;
@@ -527,37 +753,80 @@ async function main() {
   // drivers first.
   variableInfluence.sort((a, b) => Math.abs(b.effectiveInfluence) - Math.abs(a.effectiveInfluence));
 
-  // Per-indicator effective influence. Acceptance gate 8 requires the
-  // comparison to distinguish between "dimension is highly correlated
-  // because its inputs matter" and "dimension is highly correlated
-  // because ONE wealth-proxy input dominates". We therefore also
-  // correlate each individual indicator with the current overall
-  // score. Countries with a null reading are dropped pairwise per
-  // indicator, so indicators with sparse coverage still get reported
-  // but carry a `pairedSampleSize` field callers can gate on.
+  // Per-indicator effective influence, driven by INDICATOR_REGISTRY
+  // via extractionPlan. Every registered indicator gets a row:
+  //
+  //   - extractionStatus='implemented': Pearson(indicatorValue, overallScore)
+  //     across countries with non-null readings; pairedSampleSize
+  //     reports coverage.
+  //   - extractionStatus='not-implemented': correlation omitted, reason
+  //     surfaced so callers can see why (event-window aggregate,
+  //     global-only scalar, curated sub-series, etc.).
+  //   - extractionStatus='unregistered-in-harness': indicator exists in
+  //     INDICATOR_REGISTRY but EXTRACTION_RULES has no entry, signalling
+  //     a registry addition that skipped this harness.
+  //
+  // The output is sorted by absolute effective influence within the
+  // implemented group, then by dimension id for the other groups so
+  // gaps are legible.
   const scoreByCc = new Map(rows.map((r) => [r.countryCode, r.currentOverallScore]));
-  const perIndicatorInfluence = Object.entries(perIndicatorValues).map(
-    ([indicator, observations]) => {
-      const xs = [];
-      const ys = [];
-      for (const { countryCode, value } of observations) {
-        const overall = scoreByCc.get(countryCode);
-        if (overall == null) continue;
-        xs.push(value);
-        ys.push(overall);
-      }
-      const correlation = pearsonCorrelation(xs, ys);
+  const perIndicatorInfluence = extractionPlan.map((plan) => {
+    if (plan.extractionStatus !== 'implemented') {
       return {
-        indicator,
-        pairedSampleSize: xs.length,
-        pearsonVsOverall: Math.round(correlation * 10000) / 10000,
-        effectiveInfluence: Math.round(correlation * 10000) / 10000,
+        indicator: plan.indicator,
+        dimension: plan.dimension,
+        tier: plan.tier,
+        nominalWeight: plan.nominalWeight,
+        extractionStatus: plan.extractionStatus,
+        reason: plan.reason,
       };
-    },
-  );
-  perIndicatorInfluence.sort(
-    (a, b) => Math.abs(b.effectiveInfluence) - Math.abs(a.effectiveInfluence),
-  );
+    }
+    const observations = perIndicatorValues[plan.indicator] ?? [];
+    const xs = [];
+    const ys = [];
+    for (const { countryCode, value } of observations) {
+      const overall = scoreByCc.get(countryCode);
+      if (overall == null) continue;
+      xs.push(value);
+      ys.push(overall);
+    }
+    const correlation = pearsonCorrelation(xs, ys);
+    return {
+      indicator: plan.indicator,
+      dimension: plan.dimension,
+      tier: plan.tier,
+      nominalWeight: plan.nominalWeight,
+      extractionStatus: 'implemented',
+      pairedSampleSize: xs.length,
+      pearsonVsOverall: Math.round(correlation * 10000) / 10000,
+      effectiveInfluence: Math.round(correlation * 10000) / 10000,
+    };
+  });
+  perIndicatorInfluence.sort((a, b) => {
+    // Implemented entries first (sorted by |influence| desc),
+    // not-implemented/unregistered after (sorted by dimension/id)
+    // so the acceptance-apparatus gap is easy to read at the bottom.
+    const aImpl = a.extractionStatus === 'implemented';
+    const bImpl = b.extractionStatus === 'implemented';
+    if (aImpl !== bImpl) return aImpl ? -1 : 1;
+    if (aImpl) {
+      return Math.abs(b.effectiveInfluence) - Math.abs(a.effectiveInfluence);
+    }
+    const byDim = (a.dimension ?? '').localeCompare(b.dimension ?? '');
+    return byDim !== 0 ? byDim : a.indicator.localeCompare(b.indicator);
+  });
+
+  // Coverage summary for the extraction apparatus itself. PR 0.5 can
+  // track the "not-implemented" and "unregistered-in-harness" lists to
+  // measure progress toward full per-indicator influence coverage.
+  const extractionCoverage = {
+    totalIndicators: extractionPlan.length,
+    implemented: perIndicatorInfluence.filter((p) => p.extractionStatus === 'implemented').length,
+    notImplemented: perIndicatorInfluence.filter((p) => p.extractionStatus === 'not-implemented').length,
+    unregisteredInHarness: perIndicatorInfluence.filter((p) => p.extractionStatus === 'unregistered-in-harness').length,
+    coreImplemented: perIndicatorInfluence.filter((p) => p.extractionStatus === 'implemented' && p.tier === 'core').length,
+    coreTotal: extractionPlan.filter((p) => p.tier === 'core').length,
+  };
 
   // Baseline comparison. Compares today's currentOverallScore against
   // the locked baseline snapshot the plan pins for acceptance gates 2,
@@ -682,8 +951,16 @@ async function main() {
     penaltyAlpha: PENALTY_ALPHA,
     pillarWeights: PILLAR_WEIGHTS,
     domainWeights,
+    // Finding 1 acceptance-apparatus metadata: scoring + acceptance
+    // gates ran over the FULL scorable universe, not a curated sample.
+    // cohortMissingFromScorable surfaces any cohort/pair endpoint that
+    // the scoring registry cannot actually score (e.g. new cohort
+    // addition that slipped past listScorableCountries): fail-loud
+    // instead of silently dropping.
+    scorableUniverseSize: scorableCountries.length,
     sampleSize: rows.length,
     sampleCountries: rows.map((r) => r.countryCode),
+    cohortMissingFromScorable,
     summary: {
       spearmanRankCorrelation: Math.round(spearman * 10000) / 10000,
       meanScoreDelta: Math.round(meanScoreDelta * 100) / 100,
@@ -695,6 +972,7 @@ async function main() {
     cohortSummary,
     matchedPairSummary,
     variableInfluence,
+    extractionCoverage,
     perIndicatorInfluence,
     topMoversByRank: topMovers.map((r) => ({
       countryCode: r.countryCode,
@@ -729,7 +1007,13 @@ async function main() {
 // Export the baseline-snapshot selection helpers so unit tests can
 // verify the ordering contract (pre-repair < post-pr1 < post-pr10, etc.)
 // without having to spin up the full scoring pipeline.
-export { parseBaselineSnapshotMeta, loadMostRecentBaselineSnapshot };
+export {
+  parseBaselineSnapshotMeta,
+  loadMostRecentBaselineSnapshot,
+  EXTRACTION_RULES,
+  buildIndicatorExtractionPlan,
+  applyExtractionRule,
+};
 
 // isMain guard so importing the helpers from a test file does not
 // accidentally trigger the full scoring run. Per the project's
