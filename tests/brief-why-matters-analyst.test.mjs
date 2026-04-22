@@ -663,8 +663,25 @@ describe('sectionsForCategory — structural relevance gating', () => {
     }
   });
 
+  it('aviation / airspace / drone → riskScores only, NO markets/forecasts/macro (PR #3281 review fix)', () => {
+    // Reviewer caught that aviation was named in the RELEVANCE RULE as a
+    // category banned from off-topic metrics, but had no structural
+    // regex entry — so "Aviation Incident" / "Airspace Closure" / etc.
+    // fell through to DEFAULT_SECTIONS and still got all 6 bundles
+    // including marketData + forecasts + macroSignals. Direct repro
+    // test so a future regex rewrite can't silently regress.
+    for (const cat of ['Aviation Incident', 'Airspace Closure', 'Plane Crash', 'Flight Disruption', 'Drone Incursion', 'Aircraft Shot Down']) {
+      const { sections, policyLabel } = sectionsForCategory(cat);
+      assert.equal(policyLabel, 'aviation', `${cat} should match aviation policy`);
+      assert.ok(sections.includes('riskScores'), `${cat} should include riskScores`);
+      assert.ok(!sections.includes('marketData'), `${cat} must NOT include marketData`);
+      assert.ok(!sections.includes('forecasts'), `${cat} must NOT include forecasts`);
+      assert.ok(!sections.includes('macroSignals'), `${cat} must NOT include macroSignals`);
+    }
+  });
+
   it('unknown / empty category → default (all 6 sections, backcompat)', () => {
-    for (const cat of ['', 'General', 'Aviation Incident', 'Unknown Thing']) {
+    for (const cat of ['', 'General', 'Sports Event', 'Unknown Thing']) {
       const { sections, policyLabel } = sectionsForCategory(cat);
       assert.equal(policyLabel, 'default', `"${cat}" should fall through to default`);
       // Default must include everything — prevents a regression where
@@ -672,6 +689,22 @@ describe('sectionsForCategory — structural relevance gating', () => {
       for (const k of ['worldBrief', 'countryBrief', 'riskScores', 'forecasts', 'macroSignals', 'marketData']) {
         assert.ok(sections.includes(k), `default policy should include ${k}`);
       }
+    }
+  });
+
+  it('RELEVANCE RULE categories have structural coverage (no prompt-only guards)', () => {
+    // Meta-invariant: every category named in the system prompt's
+    // RELEVANCE RULE as banned-from-off-topic-metrics MUST have a
+    // matching policy entry. A prompt-only guard is too soft — models
+    // follow inline instructions imperfectly. If someone adds a new
+    // category to the prompt, this test fires until they add a regex.
+    for (const cat of ['Humanitarian Crisis', 'Aviation Incident', 'Diplomatic Summit', 'Cyber Attack']) {
+      const { policyLabel } = sectionsForCategory(cat);
+      assert.notEqual(
+        policyLabel,
+        'default',
+        `"${cat}" is named in WHY_MATTERS_ANALYST_SYSTEM_V2 as banned from market metrics — it must have a structural policy, not fall through to default`,
+      );
     }
   });
 

@@ -135,6 +135,18 @@ const CATEGORY_SECTION_POLICY: Array<{ match: RegExp; sections: SectionKey[]; la
     match: /\b(tech|cyber|a\.?i\b|artificial|algorith|autonom)/i,
     sections: ['worldBrief', 'countryBrief', 'riskScores'],
   },
+  // Aviation / airspace / drones — world narrative + risk, NO market /
+  // forecasts / macro. Named explicitly in the RELEVANCE RULE (shared/
+  // brief-llm-core.js WHY_MATTERS_ANALYST_SYSTEM_V2) — the prior revision
+  // of this file only had the prompt-level guard, so aviation categories
+  // still fell through to DEFAULT_SECTIONS and got all 6 bundles.
+  // Structural fix ensures the LLM physically cannot cite a forecast
+  // probability or VIX reading for an aviation story (PR #3281 review).
+  {
+    label: 'aviation',
+    match: /\b(aviation|airspace|flight\b|aircraft|plane\b|drone)/i,
+    sections: ['worldBrief', 'countryBrief', 'riskScores'],
+  },
 ];
 
 /**
