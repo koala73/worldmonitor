@@ -23,6 +23,11 @@ const PLAN_DISPLAY: Record<string, string> = {
 };
 
 const API_PLANS = new Set(["api_starter", "api_starter_annual", "api_business", "enterprise"]);
+// Allowlist for the Pro welcome shell. Anything outside this set (free, api_*,
+// future tiers) falls back to the neutral "Welcome to {planName}!" shell —
+// safer than a deny-list that would silently opt-in every new plan key added
+// to PLAN_DISPLAY without a matching update here.
+const PRO_PLANS = new Set(["pro_monthly", "pro_annual"]);
 
 async function sendEmail(
   apiKey: string,
@@ -137,24 +142,17 @@ function featureCardsHtml(planKey: string): string {
 }
 
 function userWelcomeHtml(planName: string, planKey: string): string {
-  const isPro = !API_PLANS.has(planKey);
+  const isPro = PRO_PLANS.has(planKey);
   // Pro path: headline leads with the value prop, CTA points at the brief
-  // (the single highest-retention action for a new Pro), and an invite-your-team
-  // block sits above the CTA. API path preserved byte-for-byte from the previous
-  // template pending a separate refresh.
+  // (the single highest-retention action for a new Pro). API path preserved
+  // byte-for-byte from the previous template pending a separate refresh.
+  // Referral block deliberately omitted — the /referrals page + credit-granting
+  // logic are still Phase 9 (Todo #223). Reinstate in a follow-up once live.
   const headline = isPro
     ? `Welcome to ${planName} — your intel, delivered.`
     : `Welcome to ${planName}!`;
   const ctaLabel = isPro ? "Open My Brief" : "Open Dashboard";
   const ctaHref = isPro ? "https://worldmonitor.app/brief" : "https://worldmonitor.app";
-  const referralBlock = isPro
-    ? `
-    <div style="background: #111; border: 1px solid #1a1a1a; padding: 18px 22px; margin-bottom: 24px;">
-      <p style="font-size: 13px; color: #fff; margin: 0 0 6px; font-weight: 700;">Invite your team</p>
-      <p style="font-size: 12px; color: #888; margin: 0 0 10px; line-height: 1.5;">Every teammate who joins earns you a month free.</p>
-      <a href="https://worldmonitor.app/referrals" style="color: #4ade80; font-size: 12px; text-decoration: none;">Get your referral link &rarr;</a>
-    </div>`
-    : "";
   const supportLine = isPro
     ? `<p style="font-size: 11px; color: #666; text-align: center; margin: 0 0 20px;">Questions? Reply to this email or ping <a href="mailto:${ADMIN_EMAIL}" style="color: #4ade80;">${ADMIN_EMAIL}</a>.</p>`
     : "";
@@ -181,7 +179,6 @@ function userWelcomeHtml(planName: string, planKey: string): string {
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 28px;">
       ${featureCardsHtml(planKey)}
     </table>
-    ${referralBlock}
 
     <div style="text-align: center; margin-bottom: 28px;">
       <a href="${ctaHref}" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">${ctaLabel}</a>
