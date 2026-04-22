@@ -306,8 +306,14 @@ const EXTRACTION_RULES = {
   // ── foodWater ───────────────────────────────────────────────────────
   ipcPeopleInCrisis: { type: 'static-path', path: ['fao', 'peopleInCrisis'] },
   ipcPhase: { type: 'static-path', path: ['fao', 'phase'] },
-  aquastatWaterStress: { type: 'static-path', path: ['aquastat', 'value'] },
-  aquastatWaterAvailability: { type: 'not-implemented', reason: 'AQUASTAT availability has distinct sub-indicator scope from stress; needs separate path resolution' },
+  // AQUASTAT: both indicators share `.aquastat.value` but the scorer
+  // splits them by the `.aquastat.indicator` tag keyword. The harness
+  // matches the same branching so each row correlates only against
+  // countries whose AQUASTAT entry is in the matching family —
+  // otherwise availability-country readings would corrupt the stress
+  // Pearson (and vice versa).
+  aquastatWaterStress: { type: 'static-aquastat-stress' },
+  aquastatWaterAvailability: { type: 'static-aquastat-availability' },
 
   // ── recovery* (seeded bulk keys, deterministic per-country fields) ──
   recoveryGovRevenue: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'govRevenuePct' },
@@ -329,6 +335,31 @@ const EXTRACTION_RULES = {
 // the dispatcher this way keeps each function's cyclomatic complexity
 // below the biome ceiling (the original monolithic switch exceeded it).
 
+// AQUASTAT `.aquastat.value` is a single field whose MEANING is carried
+// by the sibling `.aquastat.indicator` tag. scoreAquastatValue() in
+// _dimension-scorers.ts branches the interpretation: stress-family
+// keywords → lowerBetter, availability-family keywords → higherBetter.
+// To match the scorer's classification exactly, the harness gates
+// extraction on the same keyword set, lowercased to match the scorer's
+// normalizeCountryToken path (which lowercases + strips punctuation
+// before the includes() calls at L770-776).
+const AQUASTAT_STRESS_KEYWORDS = ['stress', 'withdrawal', 'dependency'];
+const AQUASTAT_AVAILABILITY_KEYWORDS = ['availability', 'renewable', 'access'];
+
+// Classify the AQUASTAT entry by the scorer's EXACT priority order:
+// stress-family first, then availability-family, then 'unknown'. This
+// mirrors the sequential `if` checks in scoreAquastatValue() so a tag
+// like "stress (withdrawal/availability)" routes to stress, not to
+// availability (even though the tag string contains both keywords).
+function classifyAquastatFamily(staticRecord) {
+  const raw = staticRecord?.aquastat?.indicator;
+  if (typeof raw !== 'string') return 'unknown';
+  const normalized = raw.toLowerCase();
+  if (AQUASTAT_STRESS_KEYWORDS.some((kw) => normalized.includes(kw))) return 'stress';
+  if (AQUASTAT_AVAILABILITY_KEYWORDS.some((kw) => normalized.includes(kw))) return 'availability';
+  return 'unknown';
+}
+
 const STATIC_EXTRACTORS = {
   'static-path': (rule, { staticRecord }) => {
     let cursor = staticRecord;
@@ -348,6 +379,16 @@ const STATIC_EXTRACTORS = {
   },
   'static-who': (rule, { staticRecord }) =>
     staticRecord?.who?.indicators?.[rule.code]?.value ?? null,
+  'static-aquastat-stress': (_rule, { staticRecord }) => {
+    const value = staticRecord?.aquastat?.value;
+    if (typeof value !== 'number') return null;
+    return classifyAquastatFamily(staticRecord) === 'stress' ? value : null;
+  },
+  'static-aquastat-availability': (_rule, { staticRecord }) => {
+    const value = staticRecord?.aquastat?.value;
+    if (typeof value !== 'number') return null;
+    return classifyAquastatFamily(staticRecord) === 'availability' ? value : null;
+  },
 };
 
 const SIMPLE_EXTRACTORS = {

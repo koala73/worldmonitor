@@ -202,3 +202,34 @@ test('applyExtractionRule — count-trade-restrictions uses scorer-exported coun
   // Zero coerces to null (pairwise-drop contract for empty signals).
   assert.equal(applyExtractionRule(rule, { tradeRestrictions }, 'AE', { countTradeRestrictions: () => 0 }), null);
 });
+
+test('applyExtractionRule — aquastat stress vs availability gated by indicator tag', () => {
+  // Mirror scoreAquastatValue in _dimension-scorers.ts: both indicators
+  // share .aquastat.value, but the .aquastat.indicator tag classifies
+  // which family the reading belongs to. A stress-family country must
+  // NOT contribute a reading to the availability extractor, and vice
+  // versa, otherwise the Pearson correlation mixes two different
+  // construct scales.
+  const stressRule = { type: 'static-aquastat-stress' };
+  const availabilityRule = { type: 'static-aquastat-availability' };
+
+  const stressCountry = { staticRecord: { aquastat: { value: 42, indicator: 'Water stress (withdrawal/availability)' } } };
+  const availabilityCountry = { staticRecord: { aquastat: { value: 1500, indicator: 'Renewable water availability per capita' } } };
+  const unknownCountry = { staticRecord: { aquastat: { value: 99, indicator: 'Some unrecognised tag' } } };
+  const missingCountry = { staticRecord: { aquastat: { value: null, indicator: 'stress' } } };
+
+  // Stress-tagged country: only the stress extractor returns the value.
+  assert.equal(applyExtractionRule(stressRule, stressCountry, 'AE'), 42);
+  assert.equal(applyExtractionRule(availabilityRule, stressCountry, 'AE'), null);
+
+  // Availability-tagged country: only the availability extractor returns.
+  assert.equal(applyExtractionRule(availabilityRule, availabilityCountry, 'DE'), 1500);
+  assert.equal(applyExtractionRule(stressRule, availabilityCountry, 'DE'), null);
+
+  // Unknown tag: neither extractor returns (pairwise-drop).
+  assert.equal(applyExtractionRule(stressRule, unknownCountry, 'XX'), null);
+  assert.equal(applyExtractionRule(availabilityRule, unknownCountry, 'XX'), null);
+
+  // Missing value: null regardless of tag.
+  assert.equal(applyExtractionRule(stressRule, missingCountry, 'XX'), null);
+});
