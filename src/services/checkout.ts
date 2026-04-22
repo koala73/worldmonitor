@@ -33,6 +33,7 @@ import {
   CLASSIC_AUTO_DISMISS_MS,
   EXTENDED_UNLOCK_TIMEOUT_MS,
   computeInitialBannerState,
+  maskEmail,
   type CheckoutSuccessBannerState,
 } from './checkout-banner-state';
 import { loadActiveReferral } from './referral-capture';
@@ -42,6 +43,7 @@ import { resolvePlanDisplayName } from './checkout-plan-names';
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
   computeInitialBannerState,
+  maskEmail,
   type CheckoutSuccessBannerState,
 } from './checkout-banner-state';
 
@@ -732,7 +734,7 @@ function renderCheckoutErrorSurface(
  *               warning. Never silently disappears.
  */
 export function showCheckoutSuccess(
-  options?: { waitForEntitlement?: boolean },
+  options?: { waitForEntitlement?: boolean; email?: string | null },
 ): void {
   const existing = document.getElementById('checkout-success-banner');
   if (existing) existing.remove();
@@ -761,7 +763,61 @@ export function showCheckoutSuccess(
     gap: '12px',
   });
 
-  setBannerText(banner, 'pending');
+  // Resolve email lazily. Clerk/auth-state is hydrated asynchronously
+  // in App bootstrap (src/App.ts) AFTER PanelLayoutManager mounts, so
+  // `getAuthState().user?.email` read synchronously at the call site
+  // is usually null on post-reload returns. Wrap the reference in a
+  // mutable container that later transitions can re-read, and
+  // subscribe to auth-state once to update the banner text when email
+  // hydrates.
+  let currentMaskedEmail = maskEmail(options?.email);
+  let unsubscribeAuth: (() => void) | null = null;
+  let emailPollInterval: ReturnType<typeof setInterval> | null = null;
+  let currentState: CheckoutSuccessBannerState = 'pending';
+
+  const applyEmail = (raw: string | null | undefined): boolean => {
+    const next = maskEmail(raw ?? null);
+    if (next && next !== currentMaskedEmail) {
+      currentMaskedEmail = next;
+      setBannerText(banner, currentState, currentMaskedEmail);
+      stopEmailWatchers();
+      return true;
+    }
+    return false;
+  };
+  const stopEmailWatchers = (): void => {
+    unsubscribeAuth?.();
+    unsubscribeAuth = null;
+    if (emailPollInterval) {
+      clearInterval(emailPollInterval);
+      emailPollInterval = null;
+    }
+  };
+
+  if (!currentMaskedEmail) {
+    // Two fallbacks needed. (1) subscribeAuthState should fire when Clerk
+    // hydrates — but auth-state.ts subscribes to clerkInstance at the
+    // moment subscribeAuthState is called; if showCheckoutSuccess runs
+    // BEFORE initClerk() resolves, clerkInstance is null and
+    // subscribeClerk returns a no-op unsubscribe. Nothing re-emits after
+    // Clerk hydrates. (2) Polling getCurrentClerkUser() directly every
+    // 500ms catches the late hydration regardless of auth-state's
+    // subscription timing. Both stop as soon as we get a valid email.
+    unsubscribeAuth = subscribeAuthState((state) => {
+      applyEmail(state.user?.email);
+    });
+    const POLL_MS = 500;
+    const POLL_BUDGET_MS = 15_000;
+    const pollStart = Date.now();
+    emailPollInterval = setInterval(() => {
+      if (Date.now() - pollStart > POLL_BUDGET_MS) {
+        if (emailPollInterval) { clearInterval(emailPollInterval); emailPollInterval = null; }
+        return;
+      }
+      applyEmail(getCurrentClerkUser()?.email);
+    }, POLL_MS);
+  }
+  setBannerText(banner, 'pending', currentMaskedEmail);
   document.body.appendChild(banner);
 
   requestAnimationFrame(() => {
@@ -770,25 +826,26 @@ export function showCheckoutSuccess(
   });
 
   if (!options?.waitForEntitlement) {
-    setTimeout(() => dismissBanner(banner), CLASSIC_AUTO_DISMISS_MS);
+    setTimeout(() => {
+      stopEmailWatchers();
+      dismissBanner(banner);
+    }, CLASSIC_AUTO_DISMISS_MS);
     return;
   }
 
   const initial = computeInitialBannerState(isEntitled());
   if (initial === 'active') {
-    // Already entitled at mount (e.g., returned to the page after the
-    // watcher-reload already flipped lock state, or Convex cache hit
-    // before any transition could fire). The 'active' branch previously
-    // sat forever with "Premium activated — reloading…" because:
-    //   - onEntitlementChange listener below only fires on transitions,
-    //     and we're already in steady pro state — no transition to
-    //     observe.
-    //   - No auto-dismiss / timeout existed for the fast-path.
-    // Treat this like a classic confirmation: show active text and
-    // auto-dismiss on the CLASSIC_AUTO_DISMISS_MS window so the user
-    // gets closure instead of a banner that hangs until a hard refresh.
-    setBannerText(banner, 'active');
-    setTimeout(() => dismissBanner(banner), CLASSIC_AUTO_DISMISS_MS);
+    // Already entitled at mount. Auto-dismiss via CLASSIC_AUTO_DISMISS_MS
+    // (merged from PR-4's fix for the fast-path hang). PR-11 adds the
+    // email-banner handling + email-watcher cleanup so the stop callback
+    // doesn't leak into the tab's lifetime when this fast-path fires
+    // with an email-backfill subscription still active.
+    currentState = 'active';
+    setBannerText(banner, 'active', currentMaskedEmail);
+    setTimeout(() => {
+      stopEmailWatchers();
+      dismissBanner(banner);
+    }, CLASSIC_AUTO_DISMISS_MS);
     return;
   }
 
@@ -797,7 +854,9 @@ export function showCheckoutSuccess(
     if (resolved) return;
     resolved = true;
     unsubscribe();
-    setBannerText(banner, 'timeout');
+    stopEmailWatchers();
+    currentState = 'timeout';
+    setBannerText(banner, 'timeout', currentMaskedEmail);
     Sentry.captureMessage('Checkout entitlement-activation timeout', {
       level: 'warning',
       tags: { component: 'dodo-checkout', action: 'entitlement-timeout' },
@@ -809,15 +868,23 @@ export function showCheckoutSuccess(
     if (!isEntitled()) return;
     resolved = true;
     clearTimeout(timeoutHandle);
-    setBannerText(banner, 'active');
     unsubscribe();
+    stopEmailWatchers();
+    currentState = 'active';
+    setBannerText(banner, 'active', currentMaskedEmail);
   });
 }
 
-function setBannerText(banner: HTMLElement, state: CheckoutSuccessBannerState): void {
+function setBannerText(
+  banner: HTMLElement,
+  state: CheckoutSuccessBannerState,
+  maskedEmail: string | null,
+): void {
   banner.setAttribute('data-entitlement-state', state);
   if (state === 'pending') {
-    banner.textContent = 'Payment received! Unlocking your premium features…';
+    banner.textContent = maskedEmail
+      ? `Payment received! Receipt sent to ${maskedEmail}. Unlocking your premium features…`
+      : 'Payment received! Unlocking your premium features…';
     return;
   }
   if (state === 'active') {

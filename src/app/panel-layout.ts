@@ -198,8 +198,13 @@ export class PanelLayoutManager implements AppModule {
       // reload source). If the user is already entitled on mount the
       // banner goes straight to the "active" state; otherwise it waits
       // up to 30s for the transition before surfacing a manual-refresh
-      // CTA.
-      showCheckoutSuccess({ waitForEntitlement: true });
+      // CTA. `email` is read from auth-state (authoritative on the main
+      // app) and masked in the banner before rendering to keep the raw
+      // address out of screenshots / screen-shares of the banner.
+      showCheckoutSuccess({
+        waitForEntitlement: true,
+        email: getAuthState().user?.email ?? null,
+      });
     } else if (returnResult.kind === 'failed') {
       showCheckoutFailureBanner(returnResult.rawStatus);
     }
@@ -214,8 +219,14 @@ export class PanelLayoutManager implements AppModule {
     // Overlay success fires BEFORE the entitlement-watcher reload. The
     // banner stays mounted through the reload via waitForEntitlement so
     // the user sees visual continuity from "Payment received!" through
-    // "Premium activated" without a blank intermediate state.
-    initCheckoutOverlay(() => showCheckoutSuccess({ waitForEntitlement: true }));
+    // "Premium activated" without a blank intermediate state. Read the
+    // email lazily at fire-time (not at register-time) so a just-signed-
+    // in buyer who completes checkout in the same session still sees
+    // the receipt acknowledgement.
+    initCheckoutOverlay(() => showCheckoutSuccess({
+      waitForEntitlement: true,
+      email: getAuthState().user?.email ?? null,
+    }));
 
     // Reload only on a free→pro transition. Legacy-pro users whose first
     // snapshot is already pro (lastEntitled === null) must not trigger a
