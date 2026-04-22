@@ -103,18 +103,47 @@ function rankCountries(scores) {
   return ranks;
 }
 
-// Auto-discover the most recent pre-repair baseline snapshot committed
-// by PR 0. Acceptance gates 2 + 6 + 7 from the plan compare post-change
-// scoring against a LOCKED BEFORE-STATE, not against the in-process
-// proposed formula. Without this discovery, the script can only compare
-// two formulas from the same checkout — and cannot prove "no country
-// moved >15 points vs baseline" or "cohort median shift vs baseline"
-// for later scorer PRs.
+// Auto-discover the immediate-prior baseline snapshot so scorer PRs
+// can compare against a LOCKED BEFORE-STATE (acceptance gates 2 + 6 + 7)
+// rather than against the in-process proposed formula.
 //
-// Matches files named `resilience-ranking-live-pre-repair-<date>.json`
-// (the PR 0 freeze) or `resilience-ranking-live-post-<pr>-<date>.json`
-// (later PR captures). Returns null if no baseline is present — the
-// caller then skips the baselineComparison block rather than failing.
+// Filename conventions:
+//   resilience-ranking-live-pre-repair-<YYYY-MM-DD>.json     (PR 0 freeze)
+//   resilience-ranking-live-post-pr<N>-<YYYY-MM-DD>.json     (each scorer PR's landing snapshot)
+//
+// Ordering MUST parse out both the PR number and the date, NOT plain
+// filename sort. Plain sort breaks in two ways:
+//   1. Lexical ordering: 'pre' > 'post' alphabetically (`pr...` → 'r' > 'o'),
+//      so `live-pre-repair-2026-04-22` sorts AFTER `live-post-pr1-2026-05-01`,
+//      which means the pre-repair freeze would keep winning even after
+//      post-PR snapshots land.
+//   2. Lexical ordering: `pr10` < `pr9` (digit-by-digit), so the PR-10
+//      snapshot would lose to the PR-9 snapshot.
+//
+// Fix: sort keys are (kind rank desc, prNumber desc, date desc), where
+// kind is `post` (newer than any pre-repair) over `pre-repair`. Among
+// posts, higher PR number wins on numeric comparison; ties broken by
+// date. Returns null if no baseline is present.
+function parseBaselineSnapshotMeta(filename) {
+  const preMatch = /^resilience-ranking-live-pre-repair-(\d{4}-\d{2}-\d{2})\.json$/.exec(filename);
+  if (preMatch) {
+    // kindRank 0 ensures any `post-*` snapshot supersedes every
+    // `pre-repair-*` freeze regardless of date.
+    return { filename, kind: 'pre-repair', kindRank: 0, prNumber: -1, date: preMatch[1] };
+  }
+  const postMatch = /^resilience-ranking-live-post-(.+?)-(\d{4}-\d{2}-\d{2})\.json$/.exec(filename);
+  if (postMatch) {
+    const [, tag, date] = postMatch;
+    const prMatch = /^pr(\d+)$/i.exec(tag);
+    // Unrecognised `post-<tag>` → prNumber 0 so it ranks between
+    // pre-repair and any numbered post-PR snapshot. Better than
+    // silently winning or silently losing; the tag is still printed
+    // back in `baselineFile` so the operator can spot it.
+    return { filename, kind: 'post', kindRank: 1, prNumber: prMatch ? Number(prMatch[1]) : 0, date, tag };
+  }
+  return null;
+}
+
 function loadMostRecentBaselineSnapshot() {
   if (!existsSync(SNAPSHOT_DIR)) return null;
   let entries;
@@ -124,15 +153,23 @@ function loadMostRecentBaselineSnapshot() {
     return null;
   }
   const candidates = entries
-    .filter((name) => /^resilience-ranking-(live-pre-repair|live-post-.*)-\d{4}-\d{2}-\d{2}\.json$/.test(name))
-    .sort();
+    .map(parseBaselineSnapshotMeta)
+    .filter((m) => m != null)
+    .sort((a, b) => {
+      if (a.kindRank !== b.kindRank) return b.kindRank - a.kindRank;
+      if (a.prNumber !== b.prNumber) return b.prNumber - a.prNumber;
+      return b.date.localeCompare(a.date);
+    });
   if (candidates.length === 0) return null;
-  const latest = candidates.at(-1);
-  const raw = readFileSync(path.join(SNAPSHOT_DIR, latest), 'utf8');
+  const latest = candidates[0];
+  const raw = readFileSync(path.join(SNAPSHOT_DIR, latest.filename), 'utf8');
   const parsed = JSON.parse(raw);
   if (!Array.isArray(parsed.items)) return null;
   return {
-    filename: latest,
+    filename: latest.filename,
+    kind: latest.kind,
+    prNumber: latest.prNumber,
+    date: latest.date,
     capturedAt: parsed.capturedAt,
     commitSha: parsed.commitSha,
     scoresByCountry: Object.fromEntries(
@@ -168,10 +205,10 @@ async function extractIndicatorValues(countryCode, reader) {
     reader('resilience:recovery:import-hhi:v1'),
   ]);
 
-  const fiscalEntry = (fiscalSpace?.countries ?? {})[countryCode] ?? null;
-  const reserveEntry = (reserveAdequacy?.countries ?? {})[countryCode] ?? null;
-  const debtEntry = (externalDebt?.countries ?? {})[countryCode] ?? null;
-  const hhiEntry = (importHhi?.countries ?? {})[countryCode] ?? null;
+  const fiscalEntry = fiscalSpace?.countries?.[countryCode] ?? null;
+  const reserveEntry = reserveAdequacy?.countries?.[countryCode] ?? null;
+  const debtEntry = externalDebt?.countries?.[countryCode] ?? null;
+  const hhiEntry = importHhi?.countries?.[countryCode] ?? null;
 
   const wgiValues = Object.values(staticRecord?.wgi?.indicators ?? {})
     .map((entry) => (typeof entry?.value === 'number' ? entry.value : null))
@@ -626,6 +663,9 @@ async function main() {
     baselineComparison = {
       status: 'ok',
       baselineFile: baseline.filename,
+      baselineKind: baseline.kind,
+      baselinePrNumber: baseline.prNumber,
+      baselineDate: baseline.date,
       baselineCapturedAt: baseline.capturedAt,
       baselineCommitSha: baseline.commitSha,
       overlapSize: overlapping.length,
@@ -686,7 +726,29 @@ async function main() {
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
 
-main().catch((err) => {
-  console.error('[compare-resilience-current-vs-proposed] failed:', err);
-  process.exit(1);
-});
+// Export the baseline-snapshot selection helpers so unit tests can
+// verify the ordering contract (pre-repair < post-pr1 < post-pr10, etc.)
+// without having to spin up the full scoring pipeline.
+export { parseBaselineSnapshotMeta, loadMostRecentBaselineSnapshot };
+
+// isMain guard so importing the helpers from a test file does not
+// accidentally trigger the full scoring run. Per the project's
+// feedback_seed_isMain_guard memory: any script that exports functions
+// AND runs work at top level MUST guard the work behind an explicit
+// entrypoint check.
+const invokedAsScript = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return path.resolve(entry) === path.resolve(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsScript) {
+  main().catch((err) => {
+    console.error('[compare-resilience-current-vs-proposed] failed:', err);
+    process.exit(1);
+  });
+}
