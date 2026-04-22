@@ -22,11 +22,11 @@ const PLAN_DISPLAY: Record<string, string> = {
   enterprise: "Enterprise",
 };
 
-const API_PLANS = new Set(["api_starter", "api_starter_annual", "api_business", "enterprise"]);
 // Allowlist for the Pro welcome shell. Anything outside this set (free, api_*,
-// future tiers) falls back to the neutral "Welcome to {planName}!" shell —
-// safer than a deny-list that would silently opt-in every new plan key added
-// to PLAN_DISPLAY without a matching update here.
+// future tiers) falls back to the neutral "Welcome to {planName}!" shell +
+// 4-card generic grid — safer than a deny-list that would silently opt-in
+// every new plan key added to PLAN_DISPLAY without a matching update here.
+// See `featureCardsHtml` and `userWelcomeHtml` for the parallel gates.
 const PRO_PLANS = new Set(["pro_monthly", "pro_annual"]);
 
 async function sendEmail(
@@ -34,14 +34,21 @@ async function sendEmail(
   to: string,
   subject: string,
   html: string,
+  replyTo?: string,
 ): Promise<void> {
+  // FROM is a noreply address, so the welcome email's "Reply to this email"
+  // support copy only routes correctly when we explicitly set reply_to on the
+  // Resend payload. Admin notifications pass no replyTo so replies don't
+  // self-loop back to ADMIN_EMAIL.
+  const payload: Record<string, unknown> = { from: FROM, to: [to], subject, html };
+  if (replyTo) payload.reply_to = replyTo;
   const res = await fetch(RESEND_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -52,7 +59,11 @@ async function sendEmail(
 }
 
 function featureCardsHtml(planKey: string): string {
-  if (API_PLANS.has(planKey)) {
+  // Pro allowlist must match the shell gate in userWelcomeHtml — otherwise a
+  // `free` or unknown-tier user gets the neutral headline + "Open Dashboard"
+  // CTA but still sees the 6-card Pro marketing grid below. API + unknown
+  // tiers fall through to the 4-card generic grid (safe: no Pro-only claims).
+  if (!PRO_PLANS.has(planKey)) {
     return `
       <tr>
         <td style="width: 50%; padding: 12px; vertical-align: top;">
@@ -219,12 +230,15 @@ export const sendSubscriptionEmails = internalAction({
 
     const planName = PLAN_DISPLAY[args.planKey] ?? args.planKey;
 
-    // 1. Welcome email to user
+    // 1. Welcome email to user. reply_to routes "Reply to this email" (in the
+    // Pro support line) to ADMIN_EMAIL — FROM is noreply@ and Gmail honours
+    // Reply-To over From when both are present.
     await sendEmail(
       apiKey,
       args.userEmail,
       `Welcome to World Monitor ${planName}`,
       userWelcomeHtml(planName, args.planKey),
+      ADMIN_EMAIL,
     );
     console.log(`[subscriptionEmails] Welcome email sent to ${args.userEmail}`);
 
