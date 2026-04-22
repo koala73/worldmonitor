@@ -3,6 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { subscribeAuthState } from '@/services/auth-state';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -50,6 +51,15 @@ export class RegionalIntelligenceBoard extends Panel {
    */
   private latestSequence = 0;
 
+  /**
+   * Tracks the last-seen entitlement so the auth subscription re-fires the
+   * RPC only on a false→true transition, not on every unrelated auth state
+   * update (session refresh, unrelated user prefs). The subscription teardown
+   * handle is intentionally discarded — this panel lives for the app's
+   * lifetime and Panel has no destroy hook.
+   */
+  private lastHadPremium = false;
+
   constructor() {
     super({
       id: 'regional-intelligence',
@@ -81,7 +91,28 @@ export class RegionalIntelligenceBoard extends Panel {
     replaceChildren(this.content, h('div', { className: 'rib-shell' }, controls, this.body));
 
     this.renderLoading();
+    this.lastHadPremium = hasPremiumAccess();
     void this.loadCurrent();
+
+    // Re-fire loadCurrent on false→true entitlement transitions (user signs
+    // in / purchases PRO mid-session). Without this, a user whose Clerk
+    // session hasn't resolved at panel-construction time would see
+    // renderEmpty() and then stay empty forever even after sign-in, because
+    // nothing else triggers loadCurrent for the current region.
+    subscribeAuthState(() => {
+      const hasPremium = hasPremiumAccess();
+      if (hasPremium && !this.lastHadPremium) {
+        this.lastHadPremium = true;
+        void this.loadCurrent();
+      } else if (!hasPremium && this.lastHadPremium) {
+        // Entitlement was revoked (sign-out, subscription ended) — blank
+        // the panel so stale data doesn't linger for a user who can no
+        // longer see it. Panel locking separately re-applies via
+        // panel-layout's auth subscription.
+        this.lastHadPremium = false;
+        this.renderEmpty();
+      }
+    });
   }
 
   /** Public API for tests and agent tools: force-load a region directly. */

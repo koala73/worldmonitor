@@ -864,8 +864,27 @@ export class App {
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
+    // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
+    // ONCE on a false→true transition (user signs in / purchase lands mid-session).
+    // Without this, loaders gated behind hasPremiumAccess() at init time (e.g.
+    // loadTradePolicy) would sit empty until the next scheduled refresh — for
+    // trade-policy that's a 10-minute wait post-sign-in. See PR #3295 review.
+    let _prevHadPremium = hasPremiumAccess();
     this.unsubFreeTier = subscribeAuthState((session) => {
       this.enforceFreeTierLimits();
+      const hadPremium = _prevHadPremium;
+      const nowPremium = hasPremiumAccess();
+      if (nowPremium && !hadPremium) {
+        // Entitlement just resolved → fire PRO-gated initial loads that were
+        // skipped at boot. Each loader early-returns if the panel isn't
+        // mounted and re-checks hasPremiumAccess() internally, so these
+        // calls are safe and idempotent. Without this, trade-policy would
+        // sit empty for up to REFRESH_INTERVALS.tradePolicy (~10 min) after
+        // sign-in because the scheduler's viewport gate is the only retry.
+        void this.dataLoader.loadTradePolicy();
+      }
+      _prevHadPremium = nowPremium;
+
       const userId = session.user?.id ?? null;
       if (userId !== null && userId !== _prevUserId) {
         void cloudPrefsSignIn(userId, SITE_VARIANT);
