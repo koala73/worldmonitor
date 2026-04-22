@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
+import { hasPremiumAccess } from '@/services/panel-gating';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -97,6 +98,17 @@ export class RegionalIntelligenceBoard extends Panel {
     // already handles "no data" cases visually; short-circuiting here keeps
     // the /pro console and Sentry quiet from these expected failures.
     if (IS_EMBEDDED_PREVIEW) {
+      this.renderEmpty();
+      return;
+    }
+
+    // Skip premium RPCs for anonymous/free users. Without this the panel
+    // fires get-regional-snapshot on every page load for every visitor and
+    // gets a 401 in the browser console. The panel's `premium: 'locked'`
+    // config + apiKeyPanels entry already keeps it visually hidden until
+    // the user is PRO — this just stops the RPC from firing during the
+    // constructor's `void this.loadCurrent()` before Clerk auth resolves.
+    if (!hasPremiumAccess()) {
       this.renderEmpty();
       return;
     }

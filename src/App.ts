@@ -379,9 +379,9 @@ export class App {
     if (shouldPrime('energy-complex')) {
       primeTask('oil', () => this.dataLoader.loadOilAnalytics());
     }
-    if (shouldPrime('trade-policy')) {
-      primeTask('tradePolicy', () => this.dataLoader.loadTradePolicy());
-    }
+    // trade-policy moved into the _wmAccess block below — see fix for
+    // anonymous 401 bug where loadTradePolicy fired 6 PRO-gated RPCs
+    // unconditionally on every page load.
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
@@ -391,6 +391,9 @@ export class App {
 
     const _wmAccess = hasPremiumAccess();
     if (_wmAccess) {
+      if (shouldPrime('trade-policy')) {
+        primeTask('tradePolicy', () => this.dataLoader.loadTradePolicy());
+      }
       if (shouldPrime('stock-analysis')) {
         primeTask('stockAnalysis', () => this.dataLoader.loadStockAnalysis());
       }
@@ -1356,9 +1359,12 @@ export class App {
       this.refreshScheduler.scheduleRefresh('temporalBaseline', () => this.dataLoader.refreshTemporalBaseline(), REFRESH_INTERVALS.temporalBaseline, () => this.shouldRefreshIntelligence());
     }
 
-    // WTO trade policy data — annual data, poll every 10 min to avoid hammering upstream
+    // WTO trade policy data — annual data, poll every 10 min to avoid hammering upstream.
+    // PRO-gated: the isNearViewport check is a visibility gate, not an entitlement gate,
+    // so without hasPremiumAccess() here we'd still hit the 6 WTO RPCs every poll for
+    // free users once the panel scrolled into view.
     if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
-      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => this.isPanelNearViewport('trade-policy'));
+      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
     }
 

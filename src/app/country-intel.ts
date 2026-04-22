@@ -620,7 +620,12 @@ export class CountryIntelManager implements AppModule {
     });
 
     const unCode = iso2ToComtradeReporterCode(code);
-    if (unCode) {
+    // Trade RPCs (listComtradeFlows + getTariffTrends) are PRO-gated and
+    // 401 for anonymous/free users. Mirror the hasPremiumAccess() guard
+    // already used above for the other premium country-brief cards so we
+    // don't spray the console with 401s on every country click.
+    const hasPremium = hasPremiumAccess(getAuthState());
+    if (unCode && hasPremium) {
       tradeClient.listComtradeFlows({ reporterCode: unCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         const topFlows = (resp.flows || [])
