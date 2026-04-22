@@ -66,16 +66,68 @@ type CtaProps =
   | { type: 'link'; label: string; href: string; external: boolean }
   | { type: 'checkout'; label: string; productId: string };
 
+/**
+ * Is this href pointing back at our own product surface (so a
+ * same-tab navigation is the natural UX), or to something genuinely
+ * off-platform (mailto, external docs) where a new tab is preferred?
+ *
+ * Anchors (`#pricing`) and relative paths are treated as in-product.
+ * `mailto:` / `tel:` and any other-origin http(s) URLs are external.
+ */
+function isInProductHref(href: string): boolean {
+  if (!href || href === '#' || href.startsWith('#')) return true;
+  // Exclude protocol-relative URLs (//cdn.evilhost.com/x) — they LOOK
+  // like leading-slash paths but browsers resolve them to a different
+  // origin. Only true absolute paths (`/foo`, `/foo/bar`) are in-product.
+  if (href.startsWith('/') && !href.startsWith('//')) return true;
+  // Catch relative paths without a leading slash: `pricing`, `./dashboard`,
+  // `../foo`. `new URL('pricing')` throws without a base — those were
+  // hitting the catch branch below and being misclassified as external.
+  // Resolve against the current origin to determine whether the result
+  // lands on our product surface.
+  const looksRelative = !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('//');
+  try {
+    const base = typeof window !== 'undefined' ? window.location.href : 'https://worldmonitor.app/';
+    const url = new URL(href, looksRelative ? base : undefined);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    return url.hostname === 'worldmonitor.app' ||
+           url.hostname.endsWith('.worldmonitor.app') ||
+           // localhost dev-server case so relative CTAs work in pro-test
+           url.hostname === 'localhost' ||
+           url.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
 function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
   if (tier.cta && tier.href && tier.price === 0) {
-    return { type: 'link', label: tier.cta, href: tier.href, external: true };
+    // Free tier on an in-product href (e.g. worldmonitor.app dashboard)
+    // should open in-place. Only send to a new tab when the href is
+    // genuinely off-platform (unusual for free tier but possible).
+    return {
+      type: 'link',
+      label: tier.cta,
+      href: tier.href,
+      external: !isInProductHref(tier.href),
+    };
   }
   if (tier.cta && tier.href && tier.price === null) {
-    return { type: 'link', label: tier.cta, href: tier.href, external: true };
+    // Enterprise is typically `mailto:` → external remains true so the
+    // OS mail client opens in its own window. Any hypothetical in-
+    // product enterprise href would navigate same-tab instead.
+    return {
+      type: 'link',
+      label: tier.cta,
+      href: tier.href,
+      external: !isInProductHref(tier.href),
+    };
   }
   if (tier.monthlyProductId) {
     const productId = (billing === 'annual' && tier.annualProductId) ? tier.annualProductId : tier.monthlyProductId;
-    return { type: 'checkout', label: 'Get Started', productId };
+    // Honor per-tier CTA text from the catalog (e.g. "Start Pro",
+    // "Subscribe") when present; fall back to the generic label.
+    return { type: 'checkout', label: tier.cta ?? 'Get Started', productId };
   }
   return { type: 'link', label: 'Learn More', href: '#', external: false };
 }
