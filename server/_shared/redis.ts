@@ -57,6 +57,41 @@ export async function getRawJson(key: string): Promise<unknown | null> {
   return unwrapEnvelope(JSON.parse(data.result)).data;
 }
 
+/**
+ * Read a key's value as a raw Upstash string — no JSON.parse, no envelope unwrap.
+ * Use when a seeder stores a bare scalar (e.g., a snapshot_id pointer) via
+ * `['SET', key, bareString]` without JSON.stringify. getCachedJson() on these
+ * keys silently returns null because JSON.parse throws on unquoted strings,
+ * and the try/catch swallows the error.
+ *
+ * Always uses the raw (unprefixed) key — matches the seed-script write path
+ * (seeders don't know about the Vercel env-prefix scheme).
+ */
+export async function getCachedRawString(key: string): Promise<string | null> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheGet } = await import('./sidecar-cache');
+    const v = sidecarCacheGet(key);
+    return typeof v === 'string' ? v : null;
+  }
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { result?: string | null };
+    return typeof data.result === 'string' && data.result.length > 0 ? data.result : null;
+  } catch (err) {
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    if (isTimeout) console.error(`[REDIS-TIMEOUT] getCachedRawString key=${key} timeoutMs=${REDIS_OP_TIMEOUT_MS}`);
+    else console.warn('[redis] getCachedRawString failed:', errMsg(err));
+    return null;
+  }
+}
+
 export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const { sidecarCacheGet } = await import('./sidecar-cache');

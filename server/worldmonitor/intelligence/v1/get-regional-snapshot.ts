@@ -24,7 +24,7 @@ import type {
   RegionalNarrative,
   NarrativeSection,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { getCachedJson } from '../../../_shared/redis';
+import { getCachedJson, getCachedRawString } from '../../../_shared/redis';
 
 const LATEST_KEY_PREFIX = 'intelligence:snapshot:v1:';
 const BY_ID_KEY_PREFIX = 'intelligence:snapshot-by-id:v1:';
@@ -485,18 +485,19 @@ export const getRegionalSnapshot: IntelligenceServiceHandler['getRegionalSnapsho
     return {};
   }
 
-  // Step 1: resolve latest pointer -> snapshot_id
+  // Step 1: resolve latest pointer -> snapshot_id.
+  //
+  // The seed writer in scripts/regional-snapshot/persist-snapshot.mjs:60
+  // stores the id via `['SET', latestKey, snapshotId]` — a BARE string, not
+  // JSON-encoded. Using getCachedJson() here silently returned null because
+  // JSON.parse('mena-20260421-steady') throws and the helper's try/catch
+  // swallows the error — left every panel showing "No snapshot available
+  // yet" despite the seed cron running fine every 6h.
+  //
+  // getCachedRawString reads the value as-is with no JSON.parse, matching
+  // the writer's own reader at persist-snapshot.mjs:97.
   const latestKey = `${LATEST_KEY_PREFIX}${regionId}:latest`;
-  const latestRaw = await getCachedJson(latestKey, true);
-  // The seed writer stores the id as a bare string (JSON-encoded). getCachedJson
-  // returns whatever the JSON parser produced, so we handle both shapes.
-  let snapshotId: string | null = null;
-  if (typeof latestRaw === 'string') {
-    snapshotId = latestRaw;
-  } else if (latestRaw && typeof latestRaw === 'object' && 'snapshot_id' in latestRaw) {
-    const candidate = (latestRaw as { snapshot_id?: unknown }).snapshot_id;
-    if (typeof candidate === 'string') snapshotId = candidate;
-  }
+  const snapshotId = await getCachedRawString(latestKey);
   if (!snapshotId) {
     return {};
   }
