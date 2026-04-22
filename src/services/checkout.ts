@@ -94,8 +94,16 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
     displayType: 'overlay',
     onEvent: (event: CheckoutEvent) => {
       switch (event.event_type) {
-        case 'checkout.status':
-          if (event.data?.status === 'succeeded') {
+        case 'checkout.status': {
+          // Dodo SDK has emitted `event.data.status` in some versions and
+          // `event.data.message.status` in others (the /pro build reads both
+          // already; main app was only reading the first, so successes went
+          // unnoticed whenever the SDK used the nested shape). Read both.
+          const rawData = event.data as Record<string, unknown> | undefined;
+          const status = typeof rawData?.status === 'string'
+            ? rawData.status
+            : (rawData?.message as Record<string, unknown> | undefined)?.status;
+          if (status === 'succeeded') {
             _successFired = true;
             onSuccessCallback?.();
             // Terminal success: clear both keys. LAST_CHECKOUT_ATTEMPT_KEY
@@ -114,6 +122,7 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
             setTimeout(() => window.location.reload(), 3_000);
           }
           break;
+        }
         case 'checkout.closed':
           // Only clear the auto-resume intent. Do NOT clear
           // LAST_CHECKOUT_ATTEMPT_KEY here — Dodo can emit `closed` BEFORE
@@ -175,21 +184,34 @@ function clearPendingCheckoutIntent(): void {
  * Wire lifecycle watchers that need to fire outside the direct
  * startCheckout() call path. Idempotent.
  *
- * Currently: clears both state keys on sign-out so the next signed-in
- * user never inherits the previous user's checkout intent. The
- * `auth-state` subscription fires immediately with the current session
- * on subscribe, so we gate on a null→null transition by tracking the
- * previously-observed user id.
+ * Clears per-session checkout state on ANY user-id change:
+ *   - null → user (sign-in): nothing to clear, but initialize baseline.
+ *   - user → null (sign-out): wipe state so the next user doesn't
+ *     inherit it.
+ *   - userA → userB (account switch, Clerk session swap, SSO
+ *     re-attribution): also wipe — accidentally showing user B a retry
+ *     button for user A's failed Pro checkout is worse than losing
+ *     retry context.
+ *
+ * The `auth-state` subscription fires immediately with the current
+ * session on subscribe, so we track the previously-observed id to
+ * distinguish real transitions from the initial snapshot.
  */
 export function initCheckoutWatchers(): void {
   if (_watchersInitialized) return;
   _watchersInitialized = true;
 
   let _lastUserId: string | null = null;
+  let _initialized = false;
   subscribeAuthState((state) => {
     const nextId = state.user?.id ?? null;
-    if (_lastUserId !== null && nextId === null) {
-      // Real sign-out transition.
+    if (!_initialized) {
+      _initialized = true;
+      _lastUserId = nextId;
+      return;
+    }
+    if (nextId !== _lastUserId) {
+      // Any user-id change — sign-out, account switch, session rotation.
       clearCheckoutAttempt('signout');
       clearPendingCheckoutIntent();
     }
