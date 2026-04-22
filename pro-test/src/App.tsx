@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactElement } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, type ReactElement, type ReactNode } from 'react';
 import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
@@ -132,19 +132,25 @@ function useClerkUser(): { user: UserResource | null; isLoaded: boolean } {
 }
 
 /**
- * Returns `isPro: true` when the signed-in visitor has an active Pro
- * entitlement, either via Clerk pro role OR a Convex Dodo subscription
- * (tier >= 1). Queries /api/me/entitlement, which runs the same
- * two-signal `isCallerPremium` check every other premium gate uses —
- * so this is authoritative, not a Clerk-metadata-only approximation
- * (Clerk `publicMetadata.plan` is not written by our webhook pipeline).
+ * Entitlement state shared across /pro — `isPro: true` when the signed-in
+ * visitor has an active Pro entitlement, either via Clerk pro role OR a
+ * Convex Dodo subscription (tier >= 1). The provider below performs
+ * exactly one /api/me/entitlement fetch per page load and makes the
+ * result available via useProEntitlement(); Navbar and Hero (and any
+ * future caller) share a single source of truth, so the nav and hero
+ * can't disagree on transient failures.
  *
- * Resolves to `isPro: false` for signed-out visitors and on any fetch
- * error — the /pro page stays in "upgrade pitch" mode rather than
- * hiding the purchase path on a flaky network.
+ * Defaults to `{ isPro: false, isChecked: false }` for consumers that
+ * render without a provider (e.g. tests) — matches the closed-by-default
+ * stance for unpaid visitors.
  */
-function useProEntitlement(signedIn: boolean): { isPro: boolean; isChecked: boolean } {
-  const [state, setState] = useState<{ isPro: boolean; isChecked: boolean }>({ isPro: false, isChecked: false });
+type ProEntitlementState = { isPro: boolean; isChecked: boolean };
+const ProEntitlementContext = createContext<ProEntitlementState>({ isPro: false, isChecked: false });
+
+function ProEntitlementProvider({ children }: { children: ReactNode }): ReactElement {
+  const { user } = useClerkUser();
+  const signedIn = !!user;
+  const [state, setState] = useState<ProEntitlementState>({ isPro: false, isChecked: false });
 
   useEffect(() => {
     if (!signedIn) {
@@ -155,7 +161,17 @@ function useProEntitlement(signedIn: boolean): { isPro: boolean; isChecked: bool
     (async () => {
       try {
         const clerk = await ensureClerk();
-        const token = await clerk.session?.getToken().catch(() => null);
+        // Clerk can expose `user` before its session-token endpoint is
+        // ready; a first null return is a known transient, not a final
+        // "no token." Retry once after a 2s gap — same pattern as
+        // services/checkout.ts:getAuthToken. Without the retry, a real
+        // Pro user hitting /pro on a cold Clerk load gets a permanent
+        // isPro=false for the whole session.
+        let token = await clerk.session?.getToken().catch(() => null);
+        if (!token) {
+          await new Promise((r) => setTimeout(r, 2000));
+          token = await clerk.session?.getToken().catch(() => null);
+        }
         if (!token) {
           if (!cancelled) setState({ isPro: false, isChecked: true });
           return;
@@ -179,7 +195,11 @@ function useProEntitlement(signedIn: boolean): { isPro: boolean; isChecked: bool
     return () => { cancelled = true; };
   }, [signedIn]);
 
-  return state;
+  return <ProEntitlementContext.Provider value={state}>{children}</ProEntitlementContext.Provider>;
+}
+
+function useProEntitlement(): ProEntitlementState {
+  return useContext(ProEntitlementContext);
 }
 
 /**
@@ -241,7 +261,7 @@ const Logo = () => (
 /* ─── 0. Navbar ─── */
 const Navbar = () => {
   const { user, isLoaded } = useClerkUser();
-  const { isPro, isChecked } = useProEntitlement(!!user);
+  const { isPro, isChecked } = useProEntitlement();
   // Show "Go to Dashboard" instead of "Upgrade to Pro" once we confirm
   // the visitor is already a paying customer. Until the entitlement
   // check completes we keep the upgrade CTA in place — a signed-in
@@ -354,7 +374,7 @@ const SignalBars = () => {
 
 const Hero = () => {
   const { user, isLoaded } = useClerkUser();
-  const { isPro, isChecked } = useProEntitlement(!!user);
+  const { isPro, isChecked } = useProEntitlement();
   // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
   // Hide it once auth state confirms; falls back to just the "Choose Plan"
   // CTA which is the relevant action for returning users anyway.
@@ -1386,26 +1406,28 @@ export default function App() {
   if (page === 'enterprise') return <EnterprisePage />;
 
   return (
-    <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-      <Navbar />
-      <main>
-        <Hero />
-        <SourceMarquee />
-        <Pillars />
-        <WhyUpgrade />
-        <TwoPathSplit />
-        <ProShowcase />
-        <DeliveryDesk />
-        <AudiencePersonas />
-        <SocialProof />
-        <LivePreview />
-        <PricingSection refCode={getRefCode()} />
-        <PricingTable />
-        <ApiSection />
-        <EnterpriseShowcase />
-        <FAQ />
-      </main>
-      <Footer />
-    </div>
+    <ProEntitlementProvider>
+      <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+        <Navbar />
+        <main>
+          <Hero />
+          <SourceMarquee />
+          <Pillars />
+          <WhyUpgrade />
+          <TwoPathSplit />
+          <ProShowcase />
+          <DeliveryDesk />
+          <AudiencePersonas />
+          <SocialProof />
+          <LivePreview />
+          <PricingSection refCode={getRefCode()} />
+          <PricingTable />
+          <ApiSection />
+          <EnterpriseShowcase />
+          <FAQ />
+        </main>
+        <Footer />
+      </div>
+    </ProEntitlementProvider>
   );
 }
