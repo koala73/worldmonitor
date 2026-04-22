@@ -50,11 +50,15 @@ function installRedisFixtures() {
 describe('resilience release gate', () => {
   it('keeps all 19 dimension scorers non-placeholder for the required countries', async () => {
     // PR 3 §3.5: fuelStockDays is retired — scoreFuelStockDays emits
-    // coverage=0 + imputationClass='source-failure' for every country.
-    // The retirement is intentional (construct incomparable across
-    // net importers / net exporters). Allow-list it so the zero-coverage
-    // placeholder check still catches unintended regressions in the
-    // OTHER 18 dimensions.
+    // coverage=0 + imputationClass=null for every country. The retirement
+    // is intentional (construct incomparable across net importers / net
+    // exporters). Allow-list it so the zero-coverage placeholder check
+    // still catches unintended regressions in the OTHER 18 dimensions.
+    //
+    // imputationClass=null (not 'source-failure') because the widget maps
+    // 'source-failure' to a "Source down: upstream seeder failed" label
+    // with a `!` icon — surfacing that for every country on a deliberate
+    // retirement would manufacture a false outage signal.
     const RETIRED_DIMENSIONS = new Set(['fuelStockDays']);
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
@@ -64,7 +68,7 @@ describe('resilience release gate', () => {
         assert.ok(Number.isFinite(score.score), `${countryCode} ${dimensionId} should produce a numeric score`);
         if (RETIRED_DIMENSIONS.has(dimensionId)) {
           assert.equal(score.coverage, 0, `${countryCode} ${dimensionId} is retired and must stay at coverage=0`);
-          assert.equal(score.imputationClass, 'source-failure', `${countryCode} ${dimensionId} retired dimensions must tag source-failure`);
+          assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} retired dimensions must tag null imputationClass (not source-failure)`);
           continue;
         }
         assert.ok(score.coverage > 0, `${countryCode} ${dimensionId} should not fall back to zero-coverage placeholder scoring`);

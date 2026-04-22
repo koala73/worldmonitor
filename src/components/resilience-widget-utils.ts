@@ -1,5 +1,17 @@
 import type { ResilienceScoreResponse } from '@/services/resilience';
 
+// Client-side mirror of the server-side authoritative set
+// (`RESILIENCE_RETIRED_DIMENSIONS` in
+// server/worldmonitor/resilience/v1/_dimension-scorers.ts). Duplicated
+// because the widget module cannot import server code; kept in lockstep
+// by `tests/resilience-retired-dimensions-parity.test.mts`. Retired
+// dimensions are filtered out of the displayed coverage percentage so
+// a deliberate construct retirement does not silently drag the user-
+// facing confidence reading down for every country.
+const RESILIENCE_RETIRED_DIMENSION_IDS: ReadonlySet<string> = new Set([
+  'fuelStockDays',
+]);
+
 // Gated locked-preview fixture rendered when the resilience widget is
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
@@ -144,7 +156,21 @@ export function getResilienceDomainLabel(domainId: string): string {
 
 export function formatResilienceConfidence(data: ResilienceScoreResponse): string {
   if (data.lowConfidence) return 'Low confidence — sparse data';
-  const coverages = data.domains.flatMap((d) => d.dimensions.map((dim) => dim.coverage));
+  // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) from the
+  // displayed coverage percentage. Retirement is structural — the
+  // scorer returns coverage=0 by design and the dimension contributes
+  // zero weight to the domain score server-side — so including it in
+  // a flat client-side mean would drag the displayed percentage down
+  // for every country even though the dimension is not part of the
+  // score. Non-retired coverage=0 dims (genuine data sparsity) stay in
+  // the average because they reflect a real confidence signal for that
+  // country; the server already sets `lowConfidence` when the overall
+  // picture is too sparse, which short-circuits above.
+  const coverages = data.domains.flatMap((d) =>
+    d.dimensions
+      .filter((dim) => !RESILIENCE_RETIRED_DIMENSION_IDS.has(dim.id))
+      .map((dim) => dim.coverage),
+  );
   const avgCoverage = coverages.length > 0
     ? Math.round((coverages.reduce((s, c) => s + c, 0) / coverages.length) * 100)
     : 0;

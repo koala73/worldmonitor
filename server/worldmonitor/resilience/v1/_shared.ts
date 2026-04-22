@@ -17,6 +17,7 @@ import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_TYPES,
   RESILIENCE_DOMAIN_ORDER,
+  RESILIENCE_RETIRED_DIMENSIONS,
   createMemoizedSeedReader,
   getResilienceDomainWeight,
   scoreAllDimensions,
@@ -338,8 +339,22 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   return history.sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function computeLowConfidence(dimensions: ResilienceDimension[], imputationShare: number): boolean {
-  const averageCoverage = mean(dimensions.map((dimension) => dimension.coverage)) ?? 0;
+export function computeLowConfidence(dimensions: ResilienceDimension[], imputationShare: number): boolean {
+  // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) from the
+  // confidence reading. They contribute zero weight to domain scoring
+  // via coverageWeightedMean, so including them in a flat coverage mean
+  // would drag the user-facing confidence signal down for every country
+  // purely because of a deliberate construct retirement.
+  //
+  // IMPORTANT: we do NOT filter by `coverage === 0` because a genuinely
+  // sparse-data country can legitimately produce coverage=0 on non-
+  // retired dims via weightedBlend fall-through, and those coverage=0
+  // entries SHOULD drag the confidence down — that is precisely the
+  // sparse-data signal lowConfidence exists to surface.
+  const scoring = dimensions.filter(
+    (dimension) => !RESILIENCE_RETIRED_DIMENSIONS.has(dimension.id as ResilienceDimensionId),
+  );
+  const averageCoverage = mean(scoring.map((dimension) => dimension.coverage)) ?? 0;
   return averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD || imputationShare > LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD;
 }
 
@@ -634,8 +649,18 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
 
 export const GREY_OUT_COVERAGE_THRESHOLD = 0.40;
 
-function computeOverallCoverage(response: GetResilienceScoreResponse): number {
-  const coverages = response.domains.flatMap((domain) => domain.dimensions.map((dimension) => dimension.coverage));
+export function computeOverallCoverage(response: GetResilienceScoreResponse): number {
+  // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) — their
+  // coverage=0 is structural, not a sparsity signal, and should not
+  // drag down the ranking widget's overallCoverage pill. Non-retired
+  // coverage=0 dims (genuine weightedBlend fall-through) stay in the
+  // average because they reflect real data sparsity for that country.
+  // See `computeLowConfidence` for the matching rationale.
+  const coverages = response.domains.flatMap((domain) =>
+    domain.dimensions
+      .filter((dimension) => !RESILIENCE_RETIRED_DIMENSIONS.has(dimension.id as ResilienceDimensionId))
+      .map((dimension) => dimension.coverage),
+  );
   if (coverages.length === 0) return 0;
   return coverages.reduce((sum, coverage) => sum + coverage, 0) / coverages.length;
 }

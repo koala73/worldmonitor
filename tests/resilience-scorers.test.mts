@@ -61,9 +61,12 @@ describe('resilience scorer contracts', () => {
     //     single source of truth for "no currency data"; null-imputationClass paths
     //     on non-real-data return branches are no longer permitted.
     // PR 3 §3.5: fuelStockDays removed from this set — scoreFuelStockDays
-    // now returns coverage=0 + imputationClass='source-failure' for every
-    // country (retired), so it passes the default coverage=0 assertion
-    // below instead of the T1.7 fall-through assertion.
+    // now returns coverage=0 + imputationClass=null for every country
+    // (retired), so it passes the default coverage=0 assertion below
+    // instead of the T1.7 fall-through assertion. The `null` tag (rather
+    // than 'source-failure') reflects the intentional retirement — see
+    // the widget `formatDimensionConfidence` absent-path which would
+    // otherwise surface a false "Source down" label on every country.
     const coverageZeroExempt = new Set([
       'currencyExternal',
       'fiscalSpace', 'reserveAdequacy', 'externalDebtCoverage',

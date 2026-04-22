@@ -1581,16 +1581,46 @@ export async function scoreStateContinuity(
 // concern. The `recoveryFuelStockDays` indicator is re-tagged as
 // `tier: 'experimental'` in the registry so the Core coverage gate
 // does not consider it active.
+// Authoritative registry of dimensions retired from the core score.
+// Retired dimensions still appear in `RESILIENCE_DIMENSION_ORDER` for
+// structural continuity (tests, pillar membership, registry shape) and
+// their scorers still run (returning coverage=0). This set exists so
+// downstream confidence/coverage averages (`computeLowConfidence`,
+// `computeOverallCoverage`, the widget's `formatResilienceConfidence`)
+// can explicitly exclude retired dims — distinct from coverage=0
+// dimensions that reflect genuine data sparsity, which must still drag
+// the confidence reading down so sparse-data countries stay flagged as
+// low-confidence. See `tests/resilience-confidence-averaging.test.mts`
+// for the exact semantic this set enables.
+//
+// Client-side mirror: `RESILIENCE_RETIRED_DIMENSION_IDS` in
+// `src/components/resilience-widget-utils.ts`. Kept in lockstep via
+// `tests/resilience-retired-dimensions-parity.test.mts`.
+export const RESILIENCE_RETIRED_DIMENSIONS: ReadonlySet<ResilienceDimensionId> = new Set([
+  'fuelStockDays',
+]);
+
 export async function scoreFuelStockDays(
   _countryCode: string,
   _reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
+  // imputationClass is `null` (not 'source-failure') because the dimension
+  // is retired by design, not failing at runtime. 'source-failure' renders
+  // as "Source down: upstream seeder failed" with a `!` icon in the widget
+  // (see IMPUTATION_CLASS_LABELS in src/components/resilience-widget-utils.ts);
+  // surfacing that label for every country would manufacture a false outage
+  // signal for a deliberate construct retirement. The dimension is excluded
+  // from confidence/coverage averages via the `RESILIENCE_RETIRED_DIMENSIONS`
+  // registry filter in `computeLowConfidence`, `computeOverallCoverage`, and
+  // the widget's `formatResilienceConfidence`. The filter is registry-keyed
+  // (not `coverage === 0`) so genuinely sparse-data countries still surface
+  // as low-confidence from non-retired coverage=0 dims.
   return {
     score: 50,
     coverage: 0,
     observedWeight: 0,
     imputedWeight: 0,
-    imputationClass: 'source-failure',
+    imputationClass: null,
     freshness: { lastObservedAtMs: 0, staleness: '' },
   };
 }

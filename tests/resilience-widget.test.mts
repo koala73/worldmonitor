@@ -76,6 +76,45 @@ test('formatResilienceConfidence shows sparse-data copy when low confidence is s
   );
 });
 
+// PR 3 §3.5 follow-up: retired dimensions (fuelStockDays, post-PR-3)
+// return coverage=0 structurally (by design, not by sparsity) and
+// contribute zero weight to domain scoring. The widget's displayed
+// coverage percentage must exclude them — otherwise a deliberate
+// construct retirement would drag the user-facing confidence reading
+// down for every country even though the dimension is not part of the
+// score. Reviewer P1 anchor: US shows avgCoverage=0.8105 with retired
+// dim included vs 0.8556 with retired excluded.
+//
+// Important: the filter is keyed on the retired-dim ID, NOT on
+// `coverage === 0`. A non-retired dimension can legitimately emit
+// coverage=0 on a genuinely sparse-data country (via weightedBlend
+// fall-through), and those entries must continue to drag confidence
+// down — that is the sparse-data signal lowConfidence exists to
+// surface.
+test('formatResilienceConfidence excludes retired dimensions by ID (not by coverage=0)', () => {
+  const withRetired: ResilienceScoreResponse = {
+    ...baseResponse,
+    domains: [
+      { id: 'economic', score: 80, weight: 0.22, dimensions: [
+        { id: 'macroFiscal', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 },
+        // Non-retired dim with coverage=0: must STAY in the average
+        // (genuine data sparsity, not a retirement).
+        { id: 'currencyExternal', score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0 },
+      ] },
+      { id: 'recovery', score: 65, weight: 1.0, dimensions: [
+        { id: 'fiscalSpace', score: 72, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2 },
+        // Retired dimension: coverage=0 is structural; must be excluded.
+        { id: 'fuelStockDays', score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0 },
+      ] },
+    ],
+  };
+  // Average over non-retired entries: (0.9 + 0 + 0.8) / 3 = 0.5667 → 57%.
+  // If fuelStockDays were included: (0.9 + 0 + 0.8 + 0) / 4 = 0.425 → 43%.
+  // If we filtered by coverage=0: (0.9 + 0.8) / 2 = 0.85 → 85% (the
+  // over-aggressive filter that would mask genuine sparsity).
+  assert.equal(formatResilienceConfidence(withRetired), 'Coverage 57% ✓');
+});
+
 test('formatResilienceChange30d preserves explicit sign formatting', () => {
   assert.equal(formatResilienceChange30d(2.41), '30d +2.4');
   assert.equal(formatResilienceChange30d(-1.26), '30d -1.3');
