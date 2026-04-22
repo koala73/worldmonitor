@@ -69,6 +69,8 @@ export const EMBER_ELECTRICITY_KEY_PREFIX = 'energy:ember:v1:';
 export const EMBER_ELECTRICITY_ALL_KEY = 'energy:ember:v1:_all';
 export const SPR_KEY = 'economic:spr:v1';
 export const SPR_POLICIES_KEY = 'energy:spr-policies:v1';
+export const PIPELINES_GAS_KEY = 'energy:pipelines:gas:v1';
+export const PIPELINES_OIL_KEY = 'energy:pipelines:oil:v1';
 export const REFINERY_INPUTS_KEY = 'economic:refinery-inputs:v1';
 
 /**
@@ -216,6 +218,8 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   oilStocksAnalysis:    'energy:oil-stocks-analysis:v1',
   lngVulnerability:     'energy:lng-vulnerability:v1',
   sprPolicies:          'energy:spr-policies:v1',
+  pipelinesGas:         'energy:pipelines:gas:v1',
+  pipelinesOil:         'energy:pipelines:oil:v1',
   energyCrisisPolicies: 'energy:crisis-policies:v1',
   aaiiSentiment:        'market:aaii-sentiment:v1',
   breadthHistory:       'market:breadth-history:v1',
@@ -285,6 +289,8 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   oilStocksAnalysis: 'slow',
   lngVulnerability: 'slow',
   sprPolicies: 'slow',
+  pipelinesGas: 'slow',
+  pipelinesOil: 'slow',
   energyCrisisPolicies: 'slow',
   aaiiSentiment: 'slow',
   breadthHistory: 'slow',
