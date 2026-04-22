@@ -497,11 +497,17 @@ export async function startCheckout(
         await openBillingPortal();
         return false;
       }
-      // 401 / 403 from /api/create-checkout means the Clerk session we
-      // sent is invalid or expired. A toast alone is a dead end —
-      // the user needs to re-auth to retry. Save the intent and reopen
-      // sign-in inline so the post-auth Clerk listener can auto-resume
-      // the exact checkout without manual re-click.
+      // 401 from /api/create-checkout means the Clerk session we sent
+      // is invalid or expired. A toast alone is a dead end — the user
+      // needs to re-auth to retry. Save the intent and reopen sign-in
+      // inline so the post-auth Clerk listener can auto-resume the
+      // exact checkout without manual re-click.
+      //
+      // 403 is intentionally NOT routed here: 403 = valid auth but
+      // forbidden action (banned account, plan-tier mismatch, etc.).
+      // Reopening sign-in would not change the outcome and would
+      // confuse the user. 403 falls through to the normal error
+      // surface (toast) below.
       if (error.code === 'unauthorized' || error.code === 'session_expired') {
         savePendingCheckoutIntent({
           productId,
