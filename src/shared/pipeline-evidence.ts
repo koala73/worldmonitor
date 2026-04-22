@@ -118,3 +118,57 @@ function isStale(iso: string | undefined, nowMs: number): boolean {
   const ageDays = (nowMs - t) / (1000 * 60 * 60 * 24);
   return ageDays > EVIDENCE_STALENESS_DAYS;
 }
+
+/**
+ * Picks the newest classifier version across two registries. Gas and oil
+ * are now seeded by separate Railway cron processes (seed-pipelines-gas.mjs
+ * + seed-pipelines-oil.mjs), so mixed-version rollout windows are a real
+ * expected state — saying "v1/v2" or picking the higher version is
+ * correct; always preferring gas over oil is wrong. Versions are expected
+ * to look like "v1", "v2", etc.; falls back to lexicographic for anything
+ * else so odd data still returns SOMETHING deterministic.
+ */
+export function pickNewerClassifierVersion(
+  a: string | undefined,
+  b: string | undefined,
+): string {
+  const va = (a || '').trim();
+  const vb = (b || '').trim();
+  if (!va) return vb || 'v1';
+  if (!vb) return va;
+  if (va === vb) return va;
+  const numA = parseVNum(va);
+  const numB = parseVNum(vb);
+  if (numA != null && numB != null) {
+    return numA >= numB ? va : vb;
+  }
+  // Fallback: lexicographic; stable and deterministic if not numeric.
+  return va >= vb ? va : vb;
+}
+
+function parseVNum(v: string): number | null {
+  const m = v.match(/^v(\d+)$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Picks the newer ISO8601 timestamp between two candidates. Returns an
+ * ISO string (or empty). Used for aggregate fetchedAt across gas + oil
+ * registries — the two seeders cron independently so the newer cycle
+ * should be the reported timestamp, not whichever arbitrarily comes first.
+ */
+export function pickNewerIsoTimestamp(
+  a: string | undefined,
+  b: string | undefined,
+): string {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  if (Number.isFinite(ta) && Number.isFinite(tb)) {
+    return ta >= tb ? (a || '') : (b || '');
+  }
+  if (Number.isFinite(ta)) return a || '';
+  if (Number.isFinite(tb)) return b || '';
+  return a || b || '';
+}

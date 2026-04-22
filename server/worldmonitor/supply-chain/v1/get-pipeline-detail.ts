@@ -6,6 +6,7 @@ import type {
   PipelineEntry,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { projectPipeline } from './list-pipelines';
+import { pickNewerIsoTimestamp } from '../../../../src/shared/pipeline-evidence';
 
 interface RawRegistry {
   updatedAt?: string;
@@ -63,7 +64,9 @@ export async function getPipelineDetail(
     // Revision log arrives in Week 3 alongside the disruption-event log;
     // see §13 of docs/internal/global-energy-flow-parity-and-surpass.md.
     revisions: [],
-    fetchedAt: gasRaw?.updatedAt || oilRaw?.updatedAt || new Date().toISOString(),
+    // Gas and oil seeders cron independently; report the newer cycle's
+    // timestamp rather than always preferring gas.
+    fetchedAt: pickNewerIsoTimestamp(gasRaw?.updatedAt, oilRaw?.updatedAt) || new Date().toISOString(),
     unavailable: false,
   };
 }

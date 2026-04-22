@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
@@ -9,7 +9,11 @@ import type {
   PipelineEntry,
   GetPipelineDetailResponse,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
-import { derivePipelinePublicBadge } from '@/shared/pipeline-evidence';
+import {
+  derivePipelinePublicBadge,
+  pickNewerClassifierVersion,
+  pickNewerIsoTimestamp,
+} from '@/shared/pipeline-evidence';
 
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -144,10 +148,13 @@ function buildBootstrapResponse(
     }
   }
   if (pipelines.length === 0) return null;
+  // Gas + oil seeders cron independently now — mixed-version / mixed-
+  // timestamp windows are a real rollout state. Actually compare instead
+  // of always preferring gas, matching the server-side aggregation.
   return {
     pipelines,
-    fetchedAt: gas?.updatedAt || oil?.updatedAt || '',
-    classifierVersion: gas?.classifierVersion || oil?.classifierVersion || 'v1',
+    fetchedAt: pickNewerIsoTimestamp(gas?.updatedAt, oil?.updatedAt),
+    classifierVersion: pickNewerClassifierVersion(gas?.classifierVersion, oil?.classifierVersion),
     upstreamUnavailable: false,
   };
 }
@@ -218,6 +225,12 @@ export class PipelineStatusPanel extends Panel {
       this.render();
     } catch {
       if (!this.element?.isConnected) return;
+      // Mirror the same stale-response guard the success path uses: if the
+      // user has already clicked a different pipeline while this one was
+      // in flight, the newer request owns detailLoading / detail state.
+      // Without this guard, a failed A + in-flight B briefly shows
+      // "unavailable" for B's drawer even though B is still loading.
+      if (this.selectedId !== pipelineId) return;
       this.detailLoading = false;
       this.detail = null;
       this.render();
@@ -333,15 +346,31 @@ export class PipelineStatusPanel extends Panel {
     }
 
     const ev = p.evidence;
-    const sanctionItems = (ev?.sanctionRefs ?? []).map(s => `
+    // sanitizeUrl drops disallowed schemes (javascript:, data:, etc.) and
+    // returns '' for invalid URLs; we suppress the <a> entirely when sanitize
+    // rejects, so a bad URL in seeded data can't render an executable link.
+    const sanctionItems = (ev?.sanctionRefs ?? []).map(s => {
+      const safeUrl = sanitizeUrl(s.url || '');
+      const linkLabel = escapeHtml(s.date || 'source');
+      const dateLink = safeUrl
+        ? `<a href="${safeUrl}" target="_blank" rel="noopener">${linkLabel}</a>`
+        : linkLabel;
+      return `
       <div class="pp-ev-item">
         <strong>${escapeHtml(s.authority)}</strong> ${escapeHtml(s.listId || '')} ·
-        <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.date || 'source')}</a>
-      </div>`).join('');
+        ${dateLink}
+      </div>`;
+    }).join('');
     const operatorStatement = ev?.operatorStatement?.text
-      ? `<div class="pp-ev-item"><strong>Operator:</strong> ${escapeHtml(ev.operatorStatement.text)}
-           ${ev.operatorStatement.url ? `· <a href="${escapeHtml(ev.operatorStatement.url)}" target="_blank" rel="noopener">${escapeHtml(ev.operatorStatement.date || 'source')}</a>` : ''}
-         </div>`
+      ? (() => {
+          const safeUrl = sanitizeUrl(ev.operatorStatement?.url || '');
+          const dateLink = safeUrl
+            ? `· <a href="${safeUrl}" target="_blank" rel="noopener">${escapeHtml(ev.operatorStatement?.date || 'source')}</a>`
+            : '';
+          return `<div class="pp-ev-item"><strong>Operator:</strong> ${escapeHtml(ev.operatorStatement.text)}
+           ${dateLink}
+         </div>`;
+        })()
       : '';
 
     const transit = p.transitCountries.length > 0

@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test, describe } from 'node:test';
 import { derivePublicBadge, DERIVER_VERSION } from '../server/worldmonitor/supply-chain/v1/_pipeline-evidence';
+import { pickNewerClassifierVersion, pickNewerIsoTimestamp } from '../src/shared/pipeline-evidence';
 
 const NOW = Date.parse('2026-04-22T12:00:00Z');
 const FRESH = '2026-04-20T00:00:00Z';          // 2 days old — fresh
@@ -142,5 +143,54 @@ describe('derivePublicBadge — versioning', () => {
   test('deterministic — same input produces same output', () => {
     const ev = base({ physicalState: 'reduced' });
     assert.equal(derivePublicBadge(ev, NOW), derivePublicBadge(ev, NOW));
+  });
+});
+
+describe('pickNewerClassifierVersion — real comparison, not gas-preference', () => {
+  test('returns the higher v-numbered version', () => {
+    assert.equal(pickNewerClassifierVersion('v1', 'v2'), 'v2');
+    assert.equal(pickNewerClassifierVersion('v2', 'v1'), 'v2');
+    assert.equal(pickNewerClassifierVersion('v1', 'v10'), 'v10');
+  });
+
+  test('returns unique value when either is missing', () => {
+    assert.equal(pickNewerClassifierVersion('', 'v2'), 'v2');
+    assert.equal(pickNewerClassifierVersion('v2', ''), 'v2');
+    assert.equal(pickNewerClassifierVersion(undefined, undefined), 'v1');
+  });
+
+  test('falls back to lexicographic on non-v-numbered values', () => {
+    assert.equal(pickNewerClassifierVersion('alpha', 'beta'), 'beta');
+  });
+
+  test('gas=v1 + oil=v2 during rollout → v2 (not gas-preference)', () => {
+    assert.equal(pickNewerClassifierVersion('v1', 'v2'), 'v2');
+  });
+});
+
+describe('pickNewerIsoTimestamp — actual timestamp comparison', () => {
+  test('returns the newer ISO', () => {
+    const a = '2026-04-20T00:00:00Z';
+    const b = '2026-04-22T00:00:00Z';
+    assert.equal(pickNewerIsoTimestamp(a, b), b);
+    assert.equal(pickNewerIsoTimestamp(b, a), b);
+  });
+
+  test('returns the valid one when the other is missing / invalid', () => {
+    const valid = '2026-04-22T00:00:00Z';
+    assert.equal(pickNewerIsoTimestamp(valid, undefined), valid);
+    assert.equal(pickNewerIsoTimestamp(undefined, valid), valid);
+    assert.equal(pickNewerIsoTimestamp(valid, 'not-an-iso'), valid);
+  });
+
+  test('both empty → empty string', () => {
+    assert.equal(pickNewerIsoTimestamp(undefined, undefined), '');
+    assert.equal(pickNewerIsoTimestamp('', ''), '');
+  });
+
+  test('oil fresher than gas during rollout → oil timestamp (not gas-preference)', () => {
+    const gasStale = '2026-04-15T00:00:00Z';
+    const oilFresh = '2026-04-22T12:00:00Z';
+    assert.equal(pickNewerIsoTimestamp(gasStale, oilFresh), oilFresh);
   });
 });

@@ -6,6 +6,7 @@ import type {
   PipelineEntry,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { derivePublicBadge } from './_pipeline-evidence';
+import { pickNewerClassifierVersion, pickNewerIsoTimestamp } from '../../../../src/shared/pipeline-evidence';
 
 /**
  * Shape of the JSON emitted by scripts/seed-pipelines-{gas,oil}.mjs.
@@ -131,11 +132,17 @@ export async function listPipelines(
     };
   }
 
-  // Pick the newest classifier version present across the registries we loaded.
-  // Caller can pin to a version by checking the response; future classifier-
-  // version bumps cause visible changes, which is the point.
-  const classifierVersion = gasRaw?.classifierVersion || oilRaw?.classifierVersion || 'v1';
-  const fetchedAt = gasRaw?.updatedAt || oilRaw?.updatedAt || new Date().toISOString();
+  // Pick the newest classifier version present across the registries. Gas
+  // and oil are now seeded by separate Railway cron processes, so a
+  // mixed-version window (gas=v2, oil=v1) during rollouts is a real expected
+  // state — must actually compare, not prefer one side. Same logic for
+  // fetchedAt: the newer seeder cycle is the accurate "last refresh" signal.
+  const classifierVersion = pickNewerClassifierVersion(
+    gasRaw?.classifierVersion,
+    oilRaw?.classifierVersion,
+  );
+  const fetchedAt = pickNewerIsoTimestamp(gasRaw?.updatedAt, oilRaw?.updatedAt)
+    || new Date().toISOString();
 
   return {
     pipelines,
