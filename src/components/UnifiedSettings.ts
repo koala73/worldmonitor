@@ -12,7 +12,7 @@ import { renderNotificationsSettings, type NotificationsSettingsResult } from '@
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange } from '@/services/entitlements';
-import { getSubscription, openBillingPortal } from '@/services/billing';
+import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 
 function showToast(msg: string): void {
@@ -97,7 +97,12 @@ export class UnifiedSettings {
       }
 
       if (target.closest('.manage-billing-btn')) {
-        openBillingPortal();
+        // Pre-reserve the portal tab synchronously inside the click
+        // handler so the popup blocker doesn't suppress the eventual
+        // window.open inside openBillingPortal (which runs after an
+        // await of the Convex action).
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin);
         return;
       }
 

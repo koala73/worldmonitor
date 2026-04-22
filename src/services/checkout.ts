@@ -14,7 +14,7 @@
 import * as Sentry from '@sentry/browser';
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
-import { openBillingPortal } from './billing';
+import { openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
@@ -36,6 +36,8 @@ import {
   type CheckoutSuccessBannerState,
 } from './checkout-banner-state';
 import { loadActiveReferral } from './referral-capture';
+import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
+import { resolvePlanDisplayName } from './checkout-plan-names';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -104,7 +106,26 @@ interface PendingCheckoutIntent {
    * and the intent is discarded.
    */
   savedByUserId?: string | null;
+  /**
+   * Unix-ms when this intent was saved. Stale intents (closed Clerk
+   * modal without signing in, then hours later another sign-in for
+   * unrelated reasons) must not auto-resume checkout — the user's
+   * intent to buy has expired. Loaders apply PENDING_INTENT_TTL_MS
+   * and discard anything older.
+   */
+  savedAt?: number;
 }
+
+/**
+ * Max age of a saved pending-checkout intent before auto-resume is
+ * suppressed. 15 minutes covers a typical sign-in round-trip (read
+ * the dialog, switch to password manager, go through verification)
+ * without leaking into the "unrelated sign-in much later" case that
+ * previously fired a stale checkout. Matches the "user walked away
+ * from the flow" threshold — longer than that and we treat a later
+ * sign-in as unrelated.
+ */
+const PENDING_INTENT_TTL_MS = 15 * 60 * 1000;
 
 let initialized = false;
 let onSuccessCallback: (() => void) | null = null;
@@ -198,7 +219,17 @@ export function destroyCheckoutOverlay(): void {
 function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
   try {
     const raw = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
-    return raw ? (JSON.parse(raw) as PendingCheckoutIntent) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingCheckoutIntent;
+    // TTL gate: reject-and-clear anything older than PENDING_INTENT_TTL_MS.
+    // Covers the "user closed Clerk modal without signing in, signed in
+    // hours later for an unrelated reason" leak. No savedAt means it's
+    // a pre-TTL intent from a prior session — treat as expired too.
+    if (typeof parsed.savedAt !== 'number' || Date.now() - parsed.savedAt > PENDING_INTENT_TTL_MS) {
+      clearPendingCheckoutIntent();
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -206,7 +237,14 @@ function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
 
 function savePendingCheckoutIntent(intent: PendingCheckoutIntent): void {
   try {
-    sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(intent));
+    // Stamp savedAt at write time so the TTL gate in the loader has
+    // something to check. Caller's own savedAt (if any) is preserved
+    // in case they want to record an earlier timestamp.
+    const stamped: PendingCheckoutIntent = {
+      ...intent,
+      savedAt: intent.savedAt ?? Date.now(),
+    };
+    sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(stamped));
   } catch {
     // Ignore storage failures; the current page load still has the URL params.
   }
@@ -514,14 +552,32 @@ export async function startCheckout(
       const body = (await resp.json().catch(() => ({}))) as CheckoutErrorBody;
       const error = classifyHttpCheckoutError(resp.status, body);
       reportCheckoutError(error, { productId, action: 'http-error' });
-      // 409 duplicate-subscription continues to route through the
-      // billing portal (PR-7 will add a user-facing dialog before the
-      // portal hand-off). The taxonomy now classifies the code but we
-      // preserve the current navigation until PR-7.
+      // 409 duplicate-subscription — confirm with the user BEFORE
+      // navigating to the billing portal. Previously the portal opened
+      // silently in a new tab, which was disorienting for users who
+      // didn't know they already had a subscription. Dialog content
+      // uses only the whitelisted plan name (NEVER the raw server
+      // `message` or `displayName` string) per PR-3's taxonomy rule.
       if (error.code === 'duplicate_subscription') {
         clearPendingCheckoutIntent();
         clearCheckoutAttempt('duplicate');
-        await openBillingPortal();
+        const planKey = (body as CheckoutErrorBody & { subscription?: { planKey?: unknown } })
+          ?.subscription?.planKey;
+        const planDisplayName = resolvePlanDisplayName(planKey);
+        showDuplicateSubscriptionDialog({
+          planDisplayName,
+          onConfirm: () => {
+            // Pre-reserve the tab SYNCHRONOUSLY in the click handler
+            // before the async work; popup blockers otherwise suppress
+            // the window.open that would land inside openBillingPortal
+            // after the Convex action round-trip. /pro side was fixed
+            // in this PR; the main-app dashboard path needs the same
+            // fix.
+            const reservedWin = prereserveBillingPortalTab();
+            void openBillingPortal(reservedWin);
+          },
+          onDismiss: () => { /* user stays on the dashboard */ },
+        });
         return false;
       }
       // 401 from /api/create-checkout means the Clerk session we sent

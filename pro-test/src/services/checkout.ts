@@ -165,7 +165,43 @@ async function doCheckout(
       const err = await resp.json().catch(() => ({}));
       console.error('[checkout] Edge error:', resp.status, err);
       if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
-        await openBillingPortal(token, err?.message);
+        // Confirm with the user before taking them to the portal.
+        // Uses the whitelisted plan name ONLY — raw server message is
+        // logged to Sentry above but never rendered. Dialog is inline
+        // here (no shared component with main app — /pro is a separate
+        // build). Same semantics: confirm → new-tab portal, dismiss →
+        // stay in place.
+        //
+        // Token is re-fetched inside onConfirm rather than captured
+        // from this closure: Clerk tokens expire in ~60s and the user
+        // may spend longer than that reading the dialog before clicking.
+        // Using a stale `token` would 401 at /customer-portal.
+        const planKey = err?.subscription?.planKey;
+        showProDuplicateSubscriptionDialog({
+          planDisplayName: resolveProPlanDisplayName(planKey),
+          onConfirm: async () => {
+            // Pre-open the tab SYNCHRONOUSLY inside the click handler
+            // BEFORE any await so the popup blocker treats it as a
+            // genuine user-gesture open. If we waited until after
+            // getAuthToken() + the portal fetch, browsers would
+            // suppress the window.open() because the user gesture was
+            // already consumed.
+            const reservedWin = prereserveBillingPortalTab();
+            const freshToken = await getAuthToken();
+            if (!freshToken) {
+              console.error('[checkout] No token available for billing portal');
+              if (reservedWin && !reservedWin.closed) reservedWin.close();
+              return;
+            }
+            void openBillingPortal(freshToken, reservedWin);
+          },
+          onDismiss: () => { /* stay on /pro */ },
+        });
+        Sentry.captureMessage('Duplicate subscription checkout attempt', {
+          level: 'info',
+          tags: { surface: 'pro-marketing', code: 'duplicate_subscription' },
+          extra: { serverMessage: err?.message },
+        });
       }
       return false;
     }
@@ -227,10 +263,37 @@ async function getAuthToken(): Promise<string | null> {
   return token;
 }
 
-async function openBillingPortal(token: string, message?: string): Promise<void> {
-  if (message) {
-    console.warn('[checkout] Redirecting to billing portal:', message);
-  }
+/**
+ * Pre-open a blank popup window at click-time so the async
+ * `openBillingPortal` below can navigate into it without tripping the
+ * popup blocker. Browsers only trust `window.open()` calls that happen
+ * synchronously inside a user-gesture handler; once we `await` a fetch,
+ * the gesture has been spent and `window.open('https://...')` gets
+ * blocked. Callers MUST call this synchronously in the click handler
+ * BEFORE awaiting anything, then pass the returned handle to
+ * `openBillingPortal`.
+ */
+function prereserveBillingPortalTab(): Window | null {
+  return window.open('', '_blank', 'noopener,noreferrer');
+}
+
+async function openBillingPortal(token: string, preopened?: Window | null): Promise<void> {
+  // Opens in a new tab to match the main-app surface — the /pro page
+  // shouldn't disappear underneath the user when they acknowledge
+  // "yes, take me to the portal."
+  const reservedWin = preopened ?? null;
+  const navigate = (url: string): void => {
+    if (reservedWin && !reservedWin.closed) {
+      reservedWin.location.href = url;
+    } else {
+      // Fallback: no pre-opened tab (direct call path, or browser
+      // already blocked the pre-open). Try to open fresh; if that
+      // ALSO gets blocked, fall back to same-tab navigation as a last
+      // resort so the user isn't stranded.
+      const fresh = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!fresh) window.location.assign(url);
+    }
+  };
 
   try {
     const resp = await fetch(`${API_BASE}/customer-portal`, {
@@ -250,9 +313,113 @@ async function openBillingPortal(token: string, message?: string): Promise<void>
       console.error('[checkout] Customer portal error:', resp.status, result);
     }
 
-    window.location.assign(url);
+    navigate(url);
   } catch (err) {
     console.error('[checkout] Failed to open billing portal:', err);
-    window.location.assign(DODO_PORTAL_FALLBACK_URL);
+    navigate(DODO_PORTAL_FALLBACK_URL);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate-subscription dialog (inline to /pro — separate build from main app)
+// ---------------------------------------------------------------------------
+
+const PRO_PLAN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  pro_monthly: 'Pro Monthly',
+  pro_annual: 'Pro Annual',
+  api_starter: 'API Starter',
+  api_business: 'API Business',
+};
+
+function resolveProPlanDisplayName(planKey: unknown): string {
+  if (typeof planKey !== 'string' || planKey.length === 0) return 'Pro';
+  return PRO_PLAN_DISPLAY_NAMES[planKey] ?? 'Pro';
+}
+
+interface ProDuplicateDialogOptions {
+  planDisplayName: string;
+  onConfirm: () => void;
+  onDismiss: () => void;
+}
+
+const PRO_DUP_DIALOG_ID = 'wm-pro-duplicate-subscription-dialog';
+
+function showProDuplicateSubscriptionDialog(options: ProDuplicateDialogOptions): void {
+  if (document.getElementById(PRO_DUP_DIALOG_ID)) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.id = PRO_DUP_DIALOG_ID;
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  Object.assign(backdrop.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '99990',
+    background: 'rgba(10, 10, 10, 0.72)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+  });
+
+  const card = document.createElement('div');
+  Object.assign(card.style, {
+    background: '#141414',
+    border: '1px solid #2a2a2a',
+    borderRadius: '8px',
+    padding: '20px 22px',
+    maxWidth: '440px',
+    width: '100%',
+    color: '#e8e8e8',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace",
+    boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  });
+
+  card.innerHTML = `
+    <h2 style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Subscription already active</h2>
+    <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;">
+      Your account already has an active ${escapeHtml(options.planDisplayName)} subscription. Open the billing portal to manage it — you won't be charged twice.
+    </p>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button id="${PRO_DUP_DIALOG_ID}-dismiss" type="button" style="background:transparent;color:#aaa;border:1px solid #2a2a2a;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Dismiss</button>
+      <button id="${PRO_DUP_DIALOG_ID}-confirm" type="button" style="background:#44ff88;color:#0a0a0a;border:none;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Open billing portal</button>
+    </div>
+  `;
+
+  backdrop.appendChild(card);
+  // MUST append to document BEFORE attaching listeners via getElementById,
+  // otherwise the ID lookups return null and the buttons are dead.
+  document.body.appendChild(backdrop);
+
+  let resolved = false;
+  const keyHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') dismiss();
+  };
+  const close = () => {
+    document.removeEventListener('keydown', keyHandler, true);
+    backdrop.remove();
+  };
+  const dismiss = () => {
+    if (resolved) return;
+    resolved = true;
+    close();
+    options.onDismiss();
+  };
+
+  document.getElementById(`${PRO_DUP_DIALOG_ID}-confirm`)?.addEventListener('click', () => {
+    if (resolved) return;
+    resolved = true;
+    close();
+    options.onConfirm();
+  });
+  document.getElementById(`${PRO_DUP_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
+  document.addEventListener('keydown', keyHandler, true);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c] ?? c));
 }
