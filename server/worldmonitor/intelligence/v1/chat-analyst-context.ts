@@ -715,20 +715,15 @@ function scoreArticle(title: string, keywords: string[]): number {
  * Search news digests across all core languages for articles matching the
  * user's keywords. Uses getCachedJsonBatch for a single Redis pipeline
  * round-trip instead of N parallel calls. Articles are deduplicated by
- * normalized title prefix before scoring so the same story reported in
- * multiple language feeds does not consume multiple result slots.
+ * normalized title prefix before scoring so the same wire story republished
+ * verbatim across feeds does not consume multiple result slots.
  */
 async function searchDigestByKeywords(keywords: string[]): Promise<string> {
   if (keywords.length === 0) return '';
 
   const digestKeys = DIGEST_LANGUAGES.map(lang => `${DIGEST_KEY_PREFIX}${lang}`);
 
-  let batchResults: Map<string, unknown>;
-  try {
-    batchResults = await getCachedJsonBatch(digestKeys);
-  } catch {
-    return '';
-  }
+  const batchResults = await getCachedJsonBatch(digestKeys);
   if (batchResults.size === 0) return '';
 
   // Merge items from all language digests, deduplicating by title prefix.
@@ -739,8 +734,10 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
     for (const item of items) {
       const title = safeStr(item.title);
       if (!title) continue;
-      // Deduplicate by lowercase title prefix — catches the same event
-      // reported across language editions (e.g. "NATO summit" in EN/FR/DE).
+      // Deduplicate by lowercase title prefix — catches the same wire story
+      // republished verbatim across multiple feeds within the same language
+      // or across languages (e.g. an English AP headline in EN and FR feeds).
+      // Note: genuine translations (different titles) are NOT deduplicated.
       const dedupeKey = title.toLowerCase().slice(0, 80);
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
