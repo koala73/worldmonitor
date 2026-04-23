@@ -7,7 +7,7 @@ description: "How World Monitor curates the disruption event log shown on pipeli
 
 The disruption event log (`energy:disruptions:v1`) is a state-machine history of outages, sanctions, maintenance windows, weather events, and commercial milestones tied to the curated assets in `energy:pipelines:gas:v1`, `energy:pipelines:oil:v1`, and `energy:storage-facilities:v1`.
 
-Release 1 launches with a curated seed of notable historical and ongoing events (Nord Stream 1/2 sabotage, Druzhba sanctions, CPC force majeure, TurkStream maintenance, ESPO drone strikes, Arctic LNG 2 OFAC designation, etc.) tied to the assets that ship in the same registry. Post-launch the classifier in `proactive-intelligence.mjs` extends the log automatically as state transitions appear in the evidence bundle of each asset.
+Release 1 ships a curated seed of notable historical and ongoing events (Nord Stream 1/2 sabotage, Druzhba sanctions, CPC force majeure, TurkStream maintenance, ESPO drone strikes, Arctic LNG 2 OFAC designation, etc.) tied to the assets that ship in the same registry. The log is curated-only today; an automated state-transition classifier was scoped but has not shipped.
 
 ## Data shape
 
@@ -57,8 +57,7 @@ Normal operational variation, routine nominations, and sub-daily flow shifts are
 
 ## How the log is kept fresh
 
-- **Release 1**: curated seed refreshed by `scripts/seed-energy-disruptions.mjs` on a weekly cron.
-- **Post-launch**: the classifier in `proactive-intelligence.mjs` writes new rows when an asset's evidence bundle transitions (e.g. `physicalState: 'flowing' → 'offline'` on a pipeline triggers a `sabotage` or `mechanical` event entry, depending on the accompanying `physicalStateSource` and `sanctionRefs`). Every classifier pass emits to the auto-revision log at `/corrections`.
+- **Curation**: the event log is refreshed by `scripts/seed-energy-disruptions.mjs` on a weekly cron, reading the hand-authored JSON in `scripts/data/energy-disruptions.json`. Rows are reviewed and added by editors as new state transitions surface in the evidence bundle of each asset.
 - **Decay**: ongoing events (where `endAt` is null) whose `lastEvidenceUpdate` is older than 30 days drop to a "stale evidence" treatment in the panel drawer; they do not auto-resolve.
 
 ## Evidence-source discipline

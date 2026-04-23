@@ -10,9 +10,9 @@ import "sebuf/http/annotations.proto";
 // back to an assetId seeded by the pipeline or storage registry, so the
 // panel drawer can render an asset-scoped timeline without a second RPC.
 //
-// v1 is seeded from a curated JSON file (scripts/data/energy-disruptions.json);
-// post-launch the classifier in proactive-intelligence.mjs extends this
-// key with state transitions auto-derived from evidence-field changes.
+// Seeded from a curated JSON file (scripts/data/energy-disruptions.json).
+// An automated state-transition classifier was scoped but not shipped —
+// the log is curated-only today.
 //
 // See docs/methodology/disruptions.mdx.
 message ListEnergyDisruptionsRequest {

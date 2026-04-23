@@ -1,9 +1,8 @@
 // Evidence helpers for the fuel-shortage registry.
 //
-// Unlike pipelines/storage, `severity` here is the CLASSIFIER OUTPUT — not
-// a client-side derivation. The promotion decision (watch → confirmed)
-// lives in the classifier pipeline (proactive-intelligence.mjs post-launch).
-// The registry reader just surfaces what the classifier wrote.
+// `severity` ('watch' | 'confirmed') is a curated field on the row,
+// authored at registry-build time. The reader surfaces it as-is — no
+// client-side promotion/demotion logic.
 //
 // What we DO derive client-side is an evidence-quality hint for the panel:
 // how many regulator/operator sources does this row have, and how fresh

@@ -2,9 +2,7 @@
 // @ts-check
 //
 // Publishes energy:fuel-shortages:v1 from the curated registry in
-// scripts/data/fuel-shortages.json. Post-launch the classifier in
-// proactive-intelligence.mjs extends this key directly — see Week 3 plan
-// §11-12 for the upgrade path.
+// scripts/data/fuel-shortages.json.
 
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
 import {

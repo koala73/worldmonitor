@@ -3,17 +3,15 @@
 // Shared utility module for the fuel-shortage registry used by the Energy
 // Atlas. NOT an entry point — see seed-fuel-shortages.mjs.
 //
-// Data is hand-curated in scripts/data/fuel-shortages.json for v1 launch.
-// Post-launch, proactive-intelligence.mjs will extend this registry with
-// LLM-classified entries from the news pipeline — the shape here is the
-// contract the classifier must conform to (see Week 3 plan §11-12).
+// Data is hand-curated in scripts/data/fuel-shortages.json. An LLM
+// classifier pipeline was scoped but not shipped — the registry is
+// curated-only today.
 //
 // Schema + evidence model documented in docs/methodology/shortages.mdx.
 //
-// Public severity is the raw field — there's no deriver here because
-// 'confirmed' vs 'watch' IS the classifier output, not a transform of it.
-// The evidence threshold that drives promotion/demotion lives in the
-// classifier pipeline, not the registry reader.
+// Public severity ('confirmed' vs 'watch') is a field on the curated
+// row. The registry reader surfaces it as-is — there's no client-side
+// transform and no promotion/demotion logic in this module.
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

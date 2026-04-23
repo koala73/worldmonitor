@@ -457,10 +457,9 @@ async function sendWebhook(userId, webhookEnvelope, event) {
   // Envelope version stays at '1'. Payload gained optional `corroborationCount`
   // on rss_alert (PR #3069) — this is an additive field, backwards-compatible
   // for consumers that don't enforce `additionalProperties: false`. Bumping
-  // version here would have broken parity with the other webhook producers
-  // (scripts/proactive-intelligence.mjs, scripts/seed-digest-notifications.mjs)
-  // which still emit v1, causing the same endpoint to receive mixed envelope
-  // versions per event type.
+  // version here would have broken parity with the other webhook producer
+  // (scripts/seed-digest-notifications.mjs), which still emits v1, causing
+  // the same endpoint to receive mixed envelope versions per event type.
   const payload = JSON.stringify({
     version: '1',
     eventType: event.eventType,

@@ -6,11 +6,11 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // ListFuelShortages returns the global fuel-shortage alert registry.
-// v1 is seeded from a curated JSON file (scripts/data/fuel-shortages.json);
-// post-launch it's extended automatically by the proactive-intelligence
-// classifier. Severity is the CLASSIFIER OUTPUT ("confirmed" or "watch"),
-// not a client-side derivation — we ship the evidence alongside so agents
-// and humans can audit the grounds for a severity label.
+// Seeded from a curated JSON file (scripts/data/fuel-shortages.json).
+// An LLM classifier extension was scoped but not shipped — the registry
+// is curated-only today. Severity ("confirmed" or "watch") is a row
+// field authored at curation time; the evidence is shipped alongside
+// so agents and humans can audit the grounds for a severity label.
 //
 // See docs/methodology/shortages.mdx for the evidence-threshold spec.
 message ListFuelShortagesRequest {

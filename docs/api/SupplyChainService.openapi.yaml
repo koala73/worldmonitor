@@ -2123,11 +2123,11 @@ components:
                     description: 'Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.'
             description: |-
                 ListFuelShortages returns the global fuel-shortage alert registry.
-                 v1 is seeded from a curated JSON file (scripts/data/fuel-shortages.json);
-                 post-launch it's extended automatically by the proactive-intelligence
-                 classifier. Severity is the CLASSIFIER OUTPUT ("confirmed" or "watch"),
-                 not a client-side derivation — we ship the evidence alongside so agents
-                 and humans can audit the grounds for a severity label.
+                 Seeded from a curated JSON file (scripts/data/fuel-shortages.json).
+                 An LLM classifier extension was scoped but not shipped — the registry
+                 is curated-only today. Severity ("confirmed" or "watch") is a row
+                 field authored at curation time; the evidence is shipped alongside
+                 so agents and humans can audit the grounds for a severity label.
 
                  See docs/methodology/shortages.mdx for the evidence-threshold spec.
         ListFuelShortagesResponse:
@@ -2255,9 +2255,9 @@ components:
                  back to an assetId seeded by the pipeline or storage registry, so the
                  panel drawer can render an asset-scoped timeline without a second RPC.
 
-                 v1 is seeded from a curated JSON file (scripts/data/energy-disruptions.json);
-                 post-launch the classifier in proactive-intelligence.mjs extends this
-                 key with state transitions auto-derived from evidence-field changes.
+                 Seeded from a curated JSON file (scripts/data/energy-disruptions.json).
+                 An automated state-transition classifier was scoped but not shipped —
+                 the log is curated-only today.
 
                  See docs/methodology/disruptions.mdx.
         ListEnergyDisruptionsResponse:

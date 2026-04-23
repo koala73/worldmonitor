@@ -4,9 +4,9 @@
 // see seed-energy-disruptions.mjs.
 //
 // Each event ties back to an asset seeded by the pipeline or storage
-// registry (by assetId + assetType). The classifier that keeps this
-// registry fresh post-launch runs in proactive-intelligence.mjs — the
-// shape here is the contract it must conform to.
+// registry (by assetId + assetType). Events are curated in
+// scripts/data/energy-disruptions.json today; a state-transition
+// classifier was scoped but not shipped.
 //
 // Schema documented in docs/methodology/disruptions.mdx.
 
