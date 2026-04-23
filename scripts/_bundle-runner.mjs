@@ -110,12 +110,28 @@ function streamLines(stream, onLine) {
 function spawnSeed(scriptPath, { timeoutMs, label }) {
   return new Promise((resolve) => {
     const t0 = Date.now();
+    // Capture the child's structured `seed_complete` event if emitted, so
+    // the parent can re-emit the key fields on a single bundle-level line.
+    // Railway log ingestion drops child-stdout lines when many seeders log
+    // at similar timestamps (observed across Storage-Facilities /
+    // Energy-Disruptions / Pipelines-Gas in PR #3294 launch run: each
+    // dropped a different subset of Run ID / Mode / seed_complete lines
+    // despite identical code paths). Bundle-level lines survive reliably.
+    let lastSeedComplete = null;
     const child = spawn(process.execPath, [scriptPath], {
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    streamLines(child.stdout, (line) => console.log(`  [${label}] ${line}`));
+    streamLines(child.stdout, (line) => {
+      console.log(`  [${label}] ${line}`);
+      const idx = line.indexOf('{"event":"seed_complete"');
+      if (idx >= 0) {
+        try {
+          lastSeedComplete = JSON.parse(line.slice(idx));
+        } catch { /* malformed JSON — keep previous */ }
+      }
+    });
     streamLines(child.stderr, (line) => console.warn(`  [${label}] ${line}`));
 
     let settled = false;
@@ -156,7 +172,7 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
         // Terminal reason already logged by softKill — just record the outcome.
         settle({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})`, alreadyLogged: true });
       } else if (code === 0) {
-        settle({ elapsed, ok: true });
+        settle({ elapsed, ok: true, seedComplete: lastSeedComplete });
       } else {
         settle({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
       }
@@ -215,11 +231,24 @@ export async function runBundle(label, sections, opts = {}) {
     const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label });
     if (result.ok) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);
+      // Bundle-level per-section summary — emitted from parent stdout so
+      // Railway log ingestion captures it reliably even when child lines
+      // drop. Observability tools should key off this line, not per-section
+      // Run ID / Mode / seed_complete lines which are best-effort only.
+      const sc = result.seedComplete;
+      if (sc && typeof sc === 'object') {
+        console.log(`[Bundle:${label}] section=${section.label} status=OK durationMs=${sc.durationMs ?? ''} records=${sc.recordCount ?? ''} state=${sc.state || 'OK'}`);
+      } else {
+        // Seeder didn't emit seed_complete (legacy non-contract seeders, or
+        // the child's event line was dropped before parsing).
+        console.log(`[Bundle:${label}] section=${section.label} status=OK elapsed=${result.elapsed}s`);
+      }
       ran++;
     } else {
       if (!result.alreadyLogged) {
         console.error(`  [${section.label}] Failed after ${result.elapsed}s: ${result.reason}`);
       }
+      console.log(`[Bundle:${label}] section=${section.label} status=FAILED elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
       failed++;
     }
   }
