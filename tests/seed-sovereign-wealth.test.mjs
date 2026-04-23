@@ -8,6 +8,7 @@ import {
   matchWikipediaRecord,
   parseWikipediaArticleInfobox,
   parseWikipediaRankingsTable,
+  validate,
 } from '../scripts/seed-sovereign-wealth.mjs';
 import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
 
@@ -354,6 +355,87 @@ describe('lookupUsdRate — project-shared FX integration', () => {
     // 434B × 0.74 = 321.16B. Matches SHARED_FX_FALLBACKS.SGD.
     assert.ok(aumUsd > 300_000_000_000 && aumUsd < 340_000_000_000,
       `expected ~US$ 320B, got ${aumUsd}`);
+  });
+});
+
+describe('validate — reject null-object masquerading as object', () => {
+  // `typeof null === 'object'` in JS, so a bare `typeof x === 'object'`
+  // would let { countries: null } through and break downstream. This
+  // test pins the strict non-null check.
+
+  it('rejects { countries: null }', () => {
+    assert.equal(validate({ countries: null }), false);
+  });
+
+  it('rejects missing countries field', () => {
+    assert.equal(validate({}), false);
+    assert.equal(validate(null), false);
+    assert.equal(validate(undefined), false);
+  });
+
+  it('rejects array countries (typeof [] === object too)', () => {
+    assert.equal(validate({ countries: [] }), false);
+  });
+
+  it('accepts empty object (during Railway-cron bake-in window)', () => {
+    assert.equal(validate({ countries: {} }), true);
+  });
+
+  it('accepts populated countries', () => {
+    assert.equal(validate({ countries: { NO: { funds: [] } } }), true);
+  });
+});
+
+describe('parseWikipediaRankingsTable — nested-table depth awareness', () => {
+  // Wikipedia occasionally embeds mini-tables (sort helpers, footnote
+  // boxes) inside a wikitable cell. A lazy `[\s\S]*?</table>` regex
+  // would stop at the FIRST `</table>` and silently drop every row
+  // after the cell containing the nested table. The depth-aware
+  // extractor must walk the full open/close pair.
+
+  it('does not truncate at a nested </table> inside a cell', () => {
+    const html = `
+      <table class="wikitable">
+        <tr><th>Country</th><th>Abbrev.</th><th>Fund</th><th>Assets</th><th>Inception</th></tr>
+        <tr>
+          <td>Norway</td><td>GPF-G</td>
+          <td>Government Pension Fund Global
+            <table class="mini-sort-helper"><tr><td>nested</td></tr></table>
+          </td>
+          <td>2000</td><td>1990</td>
+        </tr>
+        <tr>
+          <td>UAE</td><td>ADIA</td>
+          <td>Abu Dhabi Investment Authority</td>
+          <td>1128</td><td>1976</td>
+        </tr>
+      </table>
+    `;
+    const cache = parseWikipediaRankingsTable(html);
+    // Without depth awareness, ADIA would be silently dropped because
+    // the nested </table> inside GPF-G's cell would close the outer
+    // match at row 1.
+    assert.ok(cache.byAbbrev.get('ADIA')?.[0]?.aum === 1_128_000_000_000,
+      'ADIA must survive — nested </table> in a prior cell should not truncate the wikitable');
+    assert.ok(cache.byAbbrev.get('GPFG')?.[0]?.aum === 2_000_000_000_000);
+  });
+});
+
+describe('parseWikipediaRankingsTable — aumYear accuracy', () => {
+  it('sets aumYear=null for list-article rows (no per-row data-year annotation)', () => {
+    const html = `
+      <table class="wikitable">
+        <tr><th>Country</th><th>Abbrev.</th><th>Fund</th><th>Assets</th><th>Inception</th></tr>
+        <tr><td>Norway</td><td>GPF-G</td><td>Government Pension Fund Global</td><td>2117</td><td>1990</td></tr>
+      </table>
+    `;
+    const cache = parseWikipediaRankingsTable(html);
+    const gpfg = cache.byAbbrev.get('GPFG')?.[0];
+    assert.ok(gpfg);
+    assert.equal(gpfg.aumYear, null,
+      'aumYear must be null — the list article publishes no per-row data-year, and claiming the scrape year would mislead freshness auditors');
+    // Infobox path (Tier 3b) sets a real aumYear from "(YYYY)" tag —
+    // see the separate infobox test block for that contract.
   });
 });
 

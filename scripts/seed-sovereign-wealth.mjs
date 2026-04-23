@@ -238,6 +238,59 @@ function stripHtmlInline(value) {
     .trim();
 }
 
+// Depth-aware extraction of the first `<table class="wikitable...">`
+// content. A simple lazy `[\s\S]*?</table>` would stop at the FIRST
+// `</table>` encountered — but Wikipedia occasionally embeds mini-
+// tables inside a row (sort helpers, footnote boxes). With a lazy
+// match, any nested `</table>` before the real close silently drops
+// all trailing rows. Walk the tag stream and close at matched depth.
+function extractFirstWikitable(html) {
+  const openRe = /<table[^>]*class="[^"]*wikitable[^"]*"[^>]*>/g;
+  const openMatch = openRe.exec(html);
+  if (!openMatch) return null;
+  const innerStart = openMatch.index + openMatch[0].length;
+
+  const tagRe = /<(\/?)table\b[^>]*>/g;
+  tagRe.lastIndex = innerStart;
+  let depth = 1;
+  let m;
+  while ((m = tagRe.exec(html)) !== null) {
+    depth += m[1] === '/' ? -1 : 1;
+    if (depth === 0) return html.slice(innerStart, m.index);
+  }
+  return null; // unclosed table — treat as malformed
+}
+
+// Recursively remove complete nested `<table>…</table>` blocks from the
+// extracted wikitable content before row parsing. Without this pass,
+// the lazy row / cell regexes below bind across nested `</tr>` and
+// `</td>` tags embedded in a cell's inner table, silently dropping the
+// enclosing row. Uses depth tracking so a nested-inside-nested block
+// is still removed as one unit.
+function stripNestedTables(tableInner) {
+  let out = tableInner;
+  // Loop because stripping outer nested may reveal deeper ones; each
+  // iteration strips the outermost complete <table>…</table>.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const openRe = /<table\b[^>]*>/g;
+    const openMatch = openRe.exec(out);
+    if (!openMatch) return out;
+    const innerStart = openMatch.index + openMatch[0].length;
+    const tagRe = /<(\/?)table\b[^>]*>/g;
+    tagRe.lastIndex = innerStart;
+    let depth = 1;
+    let closeEnd = -1;
+    let m;
+    while ((m = tagRe.exec(out)) !== null) {
+      depth += m[1] === '/' ? -1 : 1;
+      if (depth === 0) { closeEnd = m.index + m[0].length; break; }
+    }
+    if (closeEnd === -1) return out; // unclosed nested — stop
+    out = out.slice(0, openMatch.index) + out.slice(closeEnd);
+  }
+}
+
 /**
  * Parse the Wikipedia wikitable HTML into lookup-by-abbrev / lookup-
  * by-fund-name caches. Exported so it can be unit-tested against a
@@ -259,18 +312,20 @@ function stripHtmlInline(value) {
  * rather than letting Map.set silently overwrite.
  *
  * Record: { aum, aumYear, fundName, countryName, inceptionYear }.
+ * aumYear is null for list-article rows because the article does not
+ * publish a per-row data-year annotation; consumers treating aumYear
+ * as authoritative freshness must fall back to the infobox path.
  *
  * @param {string} html full article HTML
  * @returns {{ byAbbrev: Map<string, object[]>, byFundName: Map<string, object[]> }}
  */
 export function parseWikipediaRankingsTable(html) {
-  const tableMatch = html.match(/<table class="wikitable[^"]*"[^>]*>([\s\S]*?)<\/table>/);
-  if (!tableMatch) throw new Error('Wikipedia article: wikitable not found');
-  const tbl = tableMatch[1];
+  const rawTbl = extractFirstWikitable(html);
+  if (rawTbl == null) throw new Error('Wikipedia article: wikitable not found');
+  const tbl = stripNestedTables(rawTbl);
 
   const byAbbrev = new Map();
   const byFundName = new Map();
-  const nowYear = new Date().getFullYear();
 
   const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
   let rowMatch;
@@ -297,7 +352,10 @@ export function parseWikipediaRankingsTable(html) {
     const inceptionYearMatch = inceptionCell.match(/(\d{4})/);
     const inceptionYear = inceptionYearMatch ? parseInt(inceptionYearMatch[1], 10) : null;
 
-    const record = { aum, aumYear: nowYear, fundName, countryName, inceptionYear };
+    // aumYear: null — the list article has no per-row data-year
+    // annotation. Reporting the scrape year would mislead freshness
+    // auditors (figures are usually prior-period).
+    const record = { aum, aumYear: null, fundName, countryName, inceptionYear };
 
     pushIndexed(byAbbrev, normalizeAbbrev(abbrev), record);
     pushIndexed(byFundName, normalizeFundName(fundName), record);
@@ -546,7 +604,17 @@ export async function fetchSovereignWealth() {
 
   for (const [iso2, funds] of groupFundsByCountry(manifest)) {
     const importsEntry = imports[iso2];
-    if (!importsEntry) continue;
+    if (!importsEntry) {
+      // WB `NE.IMP.GNFS.CD` missing for this country (transient outage
+      // or a country with spotty WB coverage). Silently dropping would
+      // let the downstream scorer interpret the absence as "no SWF" and
+      // score 0 with full coverage — substantively wrong. Log it
+      // loudly and surface via the unmatched list so the seed-meta
+      // observer can alert.
+      console.warn(`[seed-sovereign-wealth] ${iso2} skipped: World Bank imports (${IMPORTS_INDICATOR}) missing — cannot compute rawMonths denominator`);
+      for (const fund of funds) unmatched.push(`${fund.country}:${fund.fund} (no WB imports)`);
+      continue;
+    }
 
     const fundRecords = [];
     for (const fund of funds) {
@@ -615,14 +683,20 @@ export async function fetchSovereignWealth() {
   };
 }
 
-function validate(data) {
+export function validate(data) {
   // Tier 3 (Wikipedia) is now live; expected floor = 1 country once any
   // manifest fund matches. We keep the floor lenient (>=0) during the
   // first Railway-cron bake-in window so a transient Wikipedia fetch
   // failure does not poison seed-meta for 30 days (see
   // feedback_strict_floor_validate_fail_poisons_seed_meta.md). Once
   // the seeder has ~7 days of clean runs, tighten to `>= 1`.
-  return typeof data?.countries === 'object';
+  //
+  // Strict null check: `typeof null === 'object'` is true in JS, so a
+  // bare `typeof x === 'object'` would let `{ countries: null }` through
+  // and downstream consumers would crash on property access. Accept
+  // only a non-null plain object.
+  const c = data?.countries;
+  return c != null && typeof c === 'object' && !Array.isArray(c);
 }
 
 // Health-facing record count. Counts ONLY fully-matched countries
