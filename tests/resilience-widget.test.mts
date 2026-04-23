@@ -187,7 +187,7 @@ test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
 // scorer dimension must have a stable display label and a consistent
 // status classification.
 
-test('getResilienceDimensionLabel returns short stable labels for all 19 dimensions', () => {
+test('getResilienceDimensionLabel returns short stable labels for all 21 dimensions', () => {
   assert.equal(getResilienceDimensionLabel('macroFiscal'), 'Macro');
   assert.equal(getResilienceDimensionLabel('currencyExternal'), 'Currency');
   assert.equal(getResilienceDimensionLabel('tradeSanctions'), 'Trade');
@@ -207,9 +207,30 @@ test('getResilienceDimensionLabel returns short stable labels for all 19 dimensi
   assert.equal(getResilienceDimensionLabel('importConcentration'), 'Imports');
   assert.equal(getResilienceDimensionLabel('stateContinuity'), 'Continuity');
   assert.equal(getResilienceDimensionLabel('fuelStockDays'), 'Fuel');
+  // PR 2 §3.4 — new active dimensions. Retired reserveAdequacy's
+  // label stays ('Reserves'), and the live-data replacement
+  // disambiguates with 'Liquid Reserves'.
+  assert.equal(getResilienceDimensionLabel('liquidReserveAdequacy'), 'Liquid Reserves');
+  assert.equal(getResilienceDimensionLabel('sovereignFiscalBuffer'), 'Sovereign Wealth');
   // Unknown dimension IDs fall through to the raw ID so the render
   // never silently drops a row.
   assert.equal(getResilienceDimensionLabel('unknownDim'), 'unknownDim');
+});
+
+// Every ID in RESILIENCE_DIMENSION_ORDER must have a display label —
+// without this coverage the widget silently leaks raw internal IDs
+// into the confidence grid for any new dimension that ships without
+// a matching DIMENSION_LABELS entry (PR #3324 review-catch).
+test('getResilienceDimensionLabel covers every dimension in RESILIENCE_DIMENSION_ORDER', async () => {
+  const { RESILIENCE_DIMENSION_ORDER } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+  const leaks: string[] = [];
+  for (const id of RESILIENCE_DIMENSION_ORDER) {
+    const label = getResilienceDimensionLabel(id);
+    if (label === id) leaks.push(id);
+  }
+  assert.deepEqual(leaks, [],
+    `DIMENSION_LABELS missing entries for: ${leaks.join(', ')}. ` +
+    `Every new dimension must land its user-facing short label in src/components/resilience-widget-utils.ts.`);
 });
 
 test('formatDimensionConfidence classifies observed-heavy dimensions as observed', () => {

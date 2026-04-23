@@ -259,6 +259,12 @@ const DIMENSION_LABELS: Record<string, string> = {
   importConcentration: 'Imports',
   stateContinuity: 'Continuity',
   fuelStockDays: 'Fuel',
+  // PR 2 §3.4 — new active dimensions. Labels chosen to stay short
+  // enough for the 19/21-cell confidence grid without leaking the
+  // internal ID. "Reserves" is already taken by the retired
+  // reserveAdequacy so the replacement disambiguates with "Liquid".
+  liquidReserveAdequacy: 'Liquid Reserves',
+  sovereignFiscalBuffer: 'Sovereign Wealth',
 };
 
 export function getResilienceDimensionLabel(dimensionId: string): string {
