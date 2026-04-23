@@ -13,12 +13,21 @@
       "productClass": "crude",
       "fromCountry": "RU",
       "toCountry": "DE",
-      "transitCountries": ["BY", "PL"],
+      "transitCountries": [
+        "BY",
+        "PL"
+      ],
       "capacityMbd": 1.0,
       "lengthKm": 4000,
       "inService": 1964,
-      "startPoint": { "lat": 52.60, "lon": 49.40 },
-      "endPoint": { "lat": 52.32, "lon": 14.06 },
+      "startPoint": {
+        "lat": 52.6,
+        "lon": 49.4
+      },
+      "endPoint": {
+        "lat": 52.32,
+        "lon": 14.06
+      },
       "evidence": {
         "physicalState": "offline",
         "physicalStateSource": "operator",
@@ -29,7 +38,12 @@
         },
         "commercialState": "suspended",
         "sanctionRefs": [
-          { "authority": "EU", "listId": "Regulation 2022/879 (Russian crude embargo)", "date": "2022-06-03", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879" }
+          {
+            "authority": "EU",
+            "listId": "Regulation 2022/879 (Russian crude embargo)",
+            "date": "2022-06-03",
+            "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -44,19 +58,34 @@
       "productClass": "crude",
       "fromCountry": "RU",
       "toCountry": "HU",
-      "transitCountries": ["BY", "UA", "SK"],
+      "transitCountries": [
+        "BY",
+        "UA",
+        "SK"
+      ],
       "capacityMbd": 0.6,
       "lengthKm": 2400,
       "inService": 1964,
-      "startPoint": { "lat": 52.60, "lon": 49.40 },
-      "endPoint": { "lat": 47.50, "lon": 19.04 },
+      "startPoint": {
+        "lat": 52.6,
+        "lon": 49.4
+      },
+      "endPoint": {
+        "lat": 47.5,
+        "lon": 19.04
+      },
       "evidence": {
         "physicalState": "reduced",
         "physicalStateSource": "press",
         "operatorStatement": null,
         "commercialState": "under_contract",
         "sanctionRefs": [
-          { "authority": "EU", "listId": "Regulation 2022/879 (derogation for landlocked HU/SK/CZ)", "date": "2022-06-03", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879" }
+          {
+            "authority": "EU",
+            "listId": "Regulation 2022/879 (derogation for landlocked HU/SK/CZ)",
+            "date": "2022-06-03",
+            "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -75,8 +104,14 @@
       "capacityMbd": 1.4,
       "lengthKm": 1511,
       "inService": 2001,
-      "startPoint": { "lat": 46.32, "lon": 53.40 },
-      "endPoint": { "lat": 44.72, "lon": 37.77 },
+      "startPoint": {
+        "lat": 46.32,
+        "lon": 53.4
+      },
+      "endPoint": {
+        "lat": 44.72,
+        "lon": 37.77
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -100,15 +135,26 @@
       "capacityMbd": 1.6,
       "lengthKm": 4857,
       "inService": 2009,
-      "startPoint": { "lat": 56.15, "lon": 101.88 },
-      "endPoint": { "lat": 42.66, "lon": 133.05 },
+      "startPoint": {
+        "lat": 56.15,
+        "lon": 101.88
+      },
+      "endPoint": {
+        "lat": 42.66,
+        "lon": 133.05
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
         "operatorStatement": null,
         "commercialState": "under_contract",
         "sanctionRefs": [
-          { "authority": "G7+EU", "listId": "Russian crude price cap ($60/bbl; $47.60 from 2026-02)", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap ($60/bbl; $47.60 from 2026-02)",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -123,12 +169,20 @@
       "productClass": "crude",
       "fromCountry": "AZ",
       "toCountry": "TR",
-      "transitCountries": ["GE"],
+      "transitCountries": [
+        "GE"
+      ],
       "capacityMbd": 1.2,
       "lengthKm": 1768,
       "inService": 2006,
-      "startPoint": { "lat": 40.38, "lon": 49.87 },
-      "endPoint": { "lat": 36.87, "lon": 35.93 },
+      "startPoint": {
+        "lat": 40.38,
+        "lon": 49.87
+      },
+      "endPoint": {
+        "lat": 36.87,
+        "lon": 35.93
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -152,8 +206,14 @@
       "capacityMbd": 2.1,
       "lengthKm": 1287,
       "inService": 1977,
-      "startPoint": { "lat": 70.25, "lon": -148.34 },
-      "endPoint": { "lat": 61.13, "lon": -146.35 },
+      "startPoint": {
+        "lat": 70.25,
+        "lon": -148.34
+      },
+      "endPoint": {
+        "lat": 61.13,
+        "lon": -146.35
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -177,8 +237,14 @@
       "capacityMbd": 1.5,
       "lengthKm": 360,
       "inService": 2012,
-      "startPoint": { "lat": 23.75, "lon": 53.72 },
-      "endPoint": { "lat": 25.12, "lon": 56.36 },
+      "startPoint": {
+        "lat": 23.75,
+        "lon": 53.72
+      },
+      "endPoint": {
+        "lat": 25.12,
+        "lon": 56.36
+      },
       "note": "Strategic Hormuz bypass — rerouted volume during Hormuz disruptions.",
       "evidence": {
         "physicalState": "flowing",
@@ -203,8 +269,14 @@
       "capacityMbd": 0.59,
       "lengthKm": 4324,
       "inService": 2010,
-      "startPoint": { "lat": 53.66, "lon": -113.62 },
-      "endPoint": { "lat": 29.38, "lon": -94.90 },
+      "startPoint": {
+        "lat": 53.66,
+        "lon": -113.62
+      },
+      "endPoint": {
+        "lat": 29.38,
+        "lon": -94.9
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -228,8 +300,14 @@
       "capacityMbd": 1.6,
       "lengthKm": 970,
       "inService": 1977,
-      "startPoint": { "lat": 35.47, "lon": 44.39 },
-      "endPoint": { "lat": 36.87, "lon": 35.93 },
+      "startPoint": {
+        "lat": 35.47,
+        "lon": 44.39
+      },
+      "endPoint": {
+        "lat": 36.87,
+        "lon": 35.93
+      },
       "evidence": {
         "physicalState": "offline",
         "physicalStateSource": "press",
@@ -254,8 +332,14 @@
       "capacityMbd": 0.145,
       "lengthKm": 833,
       "inService": 1999,
-      "startPoint": { "lat": 40.38, "lon": 49.87 },
-      "endPoint": { "lat": 41.95, "lon": 41.75 },
+      "startPoint": {
+        "lat": 40.38,
+        "lon": 49.87
+      },
+      "endPoint": {
+        "lat": 41.95,
+        "lon": 41.75
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -279,8 +363,14 @@
       "capacityMbd": 0.89,
       "lengthKm": 1150,
       "inService": 1953,
-      "startPoint": { "lat": 53.55, "lon": -113.49 },
-      "endPoint": { "lat": 49.28, "lon": -122.95 },
+      "startPoint": {
+        "lat": 53.55,
+        "lon": -113.49
+      },
+      "endPoint": {
+        "lat": 49.28,
+        "lon": -122.95
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -308,15 +398,26 @@
       "capacityMbd": 0.6,
       "lengthKm": 1030,
       "inService": 2011,
-      "startPoint": { "lat": 53.37, "lon": 122.44 },
-      "endPoint": { "lat": 46.80, "lon": 125.02 },
+      "startPoint": {
+        "lat": 53.37,
+        "lon": 122.44
+      },
+      "endPoint": {
+        "lat": 46.8,
+        "lon": 125.02
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
         "operatorStatement": null,
         "commercialState": "under_contract",
         "sanctionRefs": [
-          { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -334,8 +435,14 @@
       "capacityMbd": 3.15,
       "lengthKm": 4625,
       "inService": 1950,
-      "startPoint": { "lat": 53.55, "lon": -113.50 },
-      "endPoint": { "lat": 46.72, "lon": -92.10 },
+      "startPoint": {
+        "lat": 53.55,
+        "lon": -113.5
+      },
+      "endPoint": {
+        "lat": 46.72,
+        "lon": -92.1
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -358,8 +465,14 @@
       "capacityMbd": 0.76,
       "lengthKm": 1660,
       "inService": 2021,
-      "startPoint": { "lat": 53.31, "lon": -109.07 },
-      "endPoint": { "lat": 46.72, "lon": -92.10 },
+      "startPoint": {
+        "lat": 53.31,
+        "lon": -109.07
+      },
+      "endPoint": {
+        "lat": 46.72,
+        "lon": -92.1
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -382,8 +495,14 @@
       "capacityMbd": 0.6,
       "lengthKm": 950,
       "inService": 2014,
-      "startPoint": { "lat": 40.88, "lon": -88.85 },
-      "endPoint": { "lat": 35.97, "lon": -96.77 },
+      "startPoint": {
+        "lat": 40.88,
+        "lon": -88.85
+      },
+      "endPoint": {
+        "lat": 35.97,
+        "lon": -96.77
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -406,8 +525,14 @@
       "capacityMbd": 0.95,
       "lengthKm": 1060,
       "inService": 1976,
-      "startPoint": { "lat": 35.97, "lon": -96.77 },
-      "endPoint": { "lat": 28.98, "lon": -95.37 },
+      "startPoint": {
+        "lat": 35.97,
+        "lon": -96.77
+      },
+      "endPoint": {
+        "lat": 28.98,
+        "lon": -95.37
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -430,8 +555,14 @@
       "capacityMbd": 0.75,
       "lengthKm": 784,
       "inService": 2014,
-      "startPoint": { "lat": 35.97, "lon": -96.77 },
-      "endPoint": { "lat": 29.73, "lon": -93.87 },
+      "startPoint": {
+        "lat": 35.97,
+        "lon": -96.77
+      },
+      "endPoint": {
+        "lat": 29.73,
+        "lon": -93.87
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -454,8 +585,14 @@
       "capacityMbd": 0.193,
       "lengthKm": 1050,
       "inService": 1977,
-      "startPoint": { "lat": 40.88, "lon": -88.85 },
-      "endPoint": { "lat": 35.97, "lon": -96.77 },
+      "startPoint": {
+        "lat": 40.88,
+        "lon": -88.85
+      },
+      "endPoint": {
+        "lat": 35.97,
+        "lon": -96.77
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -478,8 +615,14 @@
       "capacityMbd": 2.8,
       "lengthKm": 320,
       "inService": 1977,
-      "startPoint": { "lat": 29.60, "lon": 32.35 },
-      "endPoint": { "lat": 30.95, "lon": 29.55 },
+      "startPoint": {
+        "lat": 29.6,
+        "lon": 32.35
+      },
+      "endPoint": {
+        "lat": 30.95,
+        "lon": 29.55
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -502,8 +645,14 @@
       "capacityMbd": 5.0,
       "lengthKm": 1200,
       "inService": 1981,
-      "startPoint": { "lat": 26.43, "lon": 50.10 },
-      "endPoint": { "lat": 22.20, "lon": 39.13 },
+      "startPoint": {
+        "lat": 26.43,
+        "lon": 50.1
+      },
+      "endPoint": {
+        "lat": 22.2,
+        "lon": 39.13
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -526,8 +675,14 @@
       "capacityMbd": 1.65,
       "lengthKm": 1200,
       "inService": 1989,
-      "startPoint": { "lat": 30.95, "lon": 47.70 },
-      "endPoint": { "lat": 24.92, "lon": 38.55 },
+      "startPoint": {
+        "lat": 30.95,
+        "lon": 47.7
+      },
+      "endPoint": {
+        "lat": 24.92,
+        "lon": 38.55
+      },
       "evidence": {
         "physicalState": "offline",
         "physicalStateSource": "regulator",
@@ -554,8 +709,14 @@
       "capacityMbd": 0.4,
       "lengthKm": 2228,
       "inService": 2006,
-      "startPoint": { "lat": 47.11, "lon": 51.92 },
-      "endPoint": { "lat": 45.13, "lon": 82.57 },
+      "startPoint": {
+        "lat": 47.11,
+        "lon": 51.92
+      },
+      "endPoint": {
+        "lat": 45.13,
+        "lon": 82.57
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -578,8 +739,14 @@
       "capacityMbd": 0.25,
       "lengthKm": 1070,
       "inService": 2003,
-      "startPoint": { "lat": 9.20, "lon": 15.97 },
-      "endPoint": { "lat": 2.95, "lon": 9.83 },
+      "startPoint": {
+        "lat": 9.2,
+        "lon": 15.97
+      },
+      "endPoint": {
+        "lat": 2.95,
+        "lon": 9.83
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -602,8 +769,14 @@
       "capacityMbd": 0.45,
       "lengthKm": 485,
       "inService": 2003,
-      "startPoint": { "lat": -0.47, "lon": -76.98 },
-      "endPoint": { "lat": -0.95, "lon": -80.73 },
+      "startPoint": {
+        "lat": -0.47,
+        "lon": -76.98
+      },
+      "endPoint": {
+        "lat": -0.95,
+        "lon": -80.73
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -626,8 +799,14 @@
       "capacityMbd": 0.36,
       "lengthKm": 497,
       "inService": 1972,
-      "startPoint": { "lat": -0.07, "lon": -76.88 },
-      "endPoint": { "lat": -0.95, "lon": -80.73 },
+      "startPoint": {
+        "lat": -0.07,
+        "lon": -76.88
+      },
+      "endPoint": {
+        "lat": -0.95,
+        "lon": -80.73
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -646,12 +825,20 @@
       "commodityType": "oil",
       "fromCountry": "IT",
       "toCountry": "DE",
-      "transitCountries": ["AT"],
+      "transitCountries": [
+        "AT"
+      ],
       "capacityMbd": 0.77,
       "lengthKm": 753,
       "inService": 1967,
-      "startPoint": { "lat": 45.67, "lon": 13.76 },
-      "endPoint": { "lat": 48.77, "lon": 11.43 },
+      "startPoint": {
+        "lat": 45.67,
+        "lon": 13.76
+      },
+      "endPoint": {
+        "lat": 48.77,
+        "lon": 11.43
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -670,12 +857,20 @@
       "commodityType": "oil",
       "fromCountry": "HR",
       "toCountry": "HU",
-      "transitCountries": ["RS"],
+      "transitCountries": [
+        "RS"
+      ],
       "capacityMbd": 0.28,
       "lengthKm": 750,
       "inService": 1979,
-      "startPoint": { "lat": 45.15, "lon": 14.60 },
-      "endPoint": { "lat": 47.38, "lon": 19.00 },
+      "startPoint": {
+        "lat": 45.15,
+        "lon": 14.6
+      },
+      "endPoint": {
+        "lat": 47.38,
+        "lon": 19.0
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -698,8 +893,14 @@
       "capacityMbd": 0.9,
       "lengthKm": 354,
       "inService": 1975,
-      "startPoint": { "lat": 56.55, "lon": 3.22 },
-      "endPoint": { "lat": 54.15, "lon": 8.87 },
+      "startPoint": {
+        "lat": 56.55,
+        "lon": 3.22
+      },
+      "endPoint": {
+        "lat": 54.15,
+        "lon": 8.87
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -722,15 +923,26 @@
       "capacityMbd": 1.3,
       "lengthKm": 2700,
       "inService": 2001,
-      "startPoint": { "lat": 56.93, "lon": 52.92 },
-      "endPoint": { "lat": 60.37, "lon": 28.62 },
+      "startPoint": {
+        "lat": 56.93,
+        "lon": 52.92
+      },
+      "endPoint": {
+        "lat": 60.37,
+        "lon": 28.62
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
         "operatorStatement": null,
         "commercialState": "under_contract",
         "sanctionRefs": [
-          { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -748,15 +960,26 @@
       "capacityMbd": 0.75,
       "lengthKm": 1170,
       "inService": 2012,
-      "startPoint": { "lat": 53.38, "lon": 34.33 },
-      "endPoint": { "lat": 59.67, "lon": 28.42 },
+      "startPoint": {
+        "lat": 53.38,
+        "lon": 34.33
+      },
+      "endPoint": {
+        "lat": 59.67,
+        "lon": 28.42
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
         "operatorStatement": null,
         "commercialState": "under_contract",
         "sanctionRefs": [
-          { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -770,12 +993,20 @@
       "commodityType": "oil",
       "fromCountry": "CA",
       "toCountry": "CA",
-      "transitCountries": ["US"],
+      "transitCountries": [
+        "US"
+      ],
       "capacityMbd": 0.54,
       "lengthKm": 1038,
       "inService": 1953,
-      "startPoint": { "lat": 46.75, "lon": -92.10 },
-      "endPoint": { "lat": 42.95, "lon": -83.00 },
+      "startPoint": {
+        "lat": 46.75,
+        "lon": -92.1
+      },
+      "endPoint": {
+        "lat": 42.95,
+        "lon": -83.0
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -802,8 +1033,14 @@
       "capacityMbd": 0.83,
       "lengthKm": 1897,
       "inService": 0,
-      "startPoint": { "lat": 52.28, "lon": -110.83 },
-      "endPoint": { "lat": 40.03, "lon": -97.72 },
+      "startPoint": {
+        "lat": 52.28,
+        "lon": -110.83
+      },
+      "endPoint": {
+        "lat": 40.03,
+        "lon": -97.72
+      },
       "evidence": {
         "physicalState": "unknown",
         "physicalStateSource": "regulator",
@@ -830,8 +1067,14 @@
       "capacityMbd": 0.9,
       "lengthKm": 131,
       "inService": 1982,
-      "startPoint": { "lat": 9.33, "lon": -82.23 },
-      "endPoint": { "lat": 8.27, "lon": -82.80 },
+      "startPoint": {
+        "lat": 9.33,
+        "lon": -82.23
+      },
+      "endPoint": {
+        "lat": 8.27,
+        "lon": -82.8
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -854,8 +1097,14 @@
       "capacityMbd": 0.5,
       "lengthKm": 275,
       "inService": 1960,
-      "startPoint": { "lat": 51.90, "lon": 4.15 },
-      "endPoint": { "lat": 50.13, "lon": 8.78 },
+      "startPoint": {
+        "lat": 51.9,
+        "lon": 4.15
+      },
+      "endPoint": {
+        "lat": 50.13,
+        "lon": 8.78
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -878,8 +1127,14 @@
       "capacityMbd": 0.49,
       "lengthKm": 769,
       "inService": 1962,
-      "startPoint": { "lat": 43.45, "lon": 4.95 },
-      "endPoint": { "lat": 49.01, "lon": 8.40 },
+      "startPoint": {
+        "lat": 43.45,
+        "lon": 4.95
+      },
+      "endPoint": {
+        "lat": 49.01,
+        "lon": 8.4
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -902,8 +1157,14 @@
       "capacityMbd": 0.6,
       "lengthKm": 169,
       "inService": 1975,
-      "startPoint": { "lat": 57.75, "lon": 0.97 },
-      "endPoint": { "lat": 56.95, "lon": -2.23 },
+      "startPoint": {
+        "lat": 57.75,
+        "lon": 0.97
+      },
+      "endPoint": {
+        "lat": 56.95,
+        "lon": -2.23
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -926,8 +1187,14 @@
       "capacityMbd": 0.5,
       "lengthKm": 150,
       "inService": 1978,
-      "startPoint": { "lat": 61.08, "lon": 1.72 },
-      "endPoint": { "lat": 60.48, "lon": -1.30 },
+      "startPoint": {
+        "lat": 61.08,
+        "lon": 1.72
+      },
+      "endPoint": {
+        "lat": 60.48,
+        "lon": -1.3
+      },
       "evidence": {
         "physicalState": "reduced",
         "physicalStateSource": "operator",
@@ -954,12 +1221,18 @@
       "capacityMbd": 0.31,
       "lengthKm": 120,
       "inService": 1960,
-      "startPoint": { "lat": 28.43, "lon": 48.50 },
-      "endPoint": { "lat": 29.08, "lon": 48.13 },
+      "startPoint": {
+        "lat": 28.43,
+        "lon": 48.5
+      },
+      "endPoint": {
+        "lat": 29.08,
+        "lon": 48.13
+      },
       "evidence": {
         "physicalState": "reduced",
         "physicalStateSource": "press",
-        "operatorStatement": null,
+        "operatorStatement": "Operations suspended 2014 over Saudi-Kuwait Neutral Zone operational dispute; partial restart late 2019 but throughput below nameplate per KJO operator statements + Reuters coverage.",
         "commercialState": "under_contract",
         "sanctionRefs": [],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
@@ -978,12 +1251,18 @@
       "capacityMbd": 0.27,
       "lengthKm": 1610,
       "inService": 1999,
-      "startPoint": { "lat": 9.55, "lon": 30.08 },
-      "endPoint": { "lat": 19.57, "lon": 37.18 },
+      "startPoint": {
+        "lat": 9.55,
+        "lon": 30.08
+      },
+      "endPoint": {
+        "lat": 19.57,
+        "lon": 37.18
+      },
       "evidence": {
         "physicalState": "reduced",
         "physicalStateSource": "press",
-        "operatorStatement": null,
+        "operatorStatement": "Repeated conflict-driven shutdowns since 2011 South Sudan independence; most recent halt April 2023 per Sudan Ministry of Energy + Reuters coverage.",
         "commercialState": "under_contract",
         "sanctionRefs": [],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
@@ -1002,8 +1281,14 @@
       "capacityMbd": 0.11,
       "lengthKm": 427,
       "inService": 1994,
-      "startPoint": { "lat": -37.72, "lon": -69.10 },
-      "endPoint": { "lat": -36.77, "lon": -73.05 },
+      "startPoint": {
+        "lat": -37.72,
+        "lon": -69.1
+      },
+      "endPoint": {
+        "lat": -36.77,
+        "lon": -73.05
+      },
       "evidence": {
         "physicalState": "offline",
         "physicalStateSource": "press",
@@ -1030,15 +1315,26 @@
       "capacityMbd": 0.18,
       "lengthKm": 674,
       "inService": 2001,
-      "startPoint": { "lat": 46.48, "lon": 30.73 },
-      "endPoint": { "lat": 50.08, "lon": 25.15 },
+      "startPoint": {
+        "lat": 46.48,
+        "lon": 30.73
+      },
+      "endPoint": {
+        "lat": 50.08,
+        "lon": 25.15
+      },
       "evidence": {
         "physicalState": "offline",
         "physicalStateSource": "press",
         "operatorStatement": null,
         "commercialState": "expired",
         "sanctionRefs": [
-          { "authority": "EU", "listId": "2022/879 (Russian oil embargo, 6th sanctions package)", "date": "2022-06-03", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879" }
+          {
+            "authority": "EU",
+            "listId": "2022/879 (Russian oil embargo, 6th sanctions package)",
+            "date": "2022-06-03",
+            "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -1056,8 +1352,14 @@
       "capacityMbd": 0.35,
       "lengthKm": 115,
       "inService": 2018,
-      "startPoint": { "lat": 25.57, "lon": 49.80 },
-      "endPoint": { "lat": 26.18, "lon": 50.63 },
+      "startPoint": {
+        "lat": 25.57,
+        "lon": 49.8
+      },
+      "endPoint": {
+        "lat": 26.18,
+        "lon": 50.63
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -1080,8 +1382,14 @@
       "capacityMbd": 0.44,
       "lengthKm": 155,
       "inService": 1980,
-      "startPoint": { "lat": 18.03, "lon": -93.15 },
-      "endPoint": { "lat": 17.58, "lon": -93.32 },
+      "startPoint": {
+        "lat": 18.03,
+        "lon": -93.15
+      },
+      "endPoint": {
+        "lat": 17.58,
+        "lon": -93.32
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -1104,8 +1412,14 @@
       "capacityMbd": 0.4,
       "lengthKm": 92,
       "inService": 1971,
-      "startPoint": { "lat": 5.55, "lon": 5.72 },
-      "endPoint": { "lat": 5.35, "lon": 5.35 },
+      "startPoint": {
+        "lat": 5.55,
+        "lon": 5.72
+      },
+      "endPoint": {
+        "lat": 5.35,
+        "lon": 5.35
+      },
       "evidence": {
         "physicalState": "reduced",
         "physicalStateSource": "press",
@@ -1132,8 +1446,14 @@
       "capacityMbd": 0.45,
       "lengthKm": 180,
       "inService": 1965,
-      "startPoint": { "lat": 4.72, "lon": 7.28 },
-      "endPoint": { "lat": 4.43, "lon": 7.17 },
+      "startPoint": {
+        "lat": 4.72,
+        "lon": 7.28
+      },
+      "endPoint": {
+        "lat": 4.43,
+        "lon": 7.17
+      },
       "evidence": {
         "physicalState": "reduced",
         "physicalStateSource": "press",
@@ -1156,12 +1476,20 @@
       "commodityType": "oil",
       "fromCountry": "IQ",
       "toCountry": "IL",
-      "transitCountries": ["JO"],
+      "transitCountries": [
+        "JO"
+      ],
       "capacityMbd": 0.08,
       "lengthKm": 942,
       "inService": 1934,
-      "startPoint": { "lat": 35.47, "lon": 44.40 },
-      "endPoint": { "lat": 32.82, "lon": 35.00 },
+      "startPoint": {
+        "lat": 35.47,
+        "lon": 44.4
+      },
+      "endPoint": {
+        "lat": 32.82,
+        "lon": 35.0
+      },
       "evidence": {
         "physicalState": "offline",
         "physicalStateSource": "regulator",
@@ -1188,8 +1516,14 @@
       "capacityMbd": 0.27,
       "lengthKm": 175,
       "inService": 1981,
-      "startPoint": { "lat": -4.12, "lon": 11.85 },
-      "endPoint": { "lat": -4.77, "lon": 11.85 },
+      "startPoint": {
+        "lat": -4.12,
+        "lon": 11.85
+      },
+      "endPoint": {
+        "lat": -4.77,
+        "lon": 11.85
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -1212,8 +1546,14 @@
       "capacityMbd": 0.216,
       "lengthKm": 1443,
       "inService": 0,
-      "startPoint": { "lat": 2.27, "lon": 31.50 },
-      "endPoint": { "lat": -5.08, "lon": 39.05 },
+      "startPoint": {
+        "lat": 2.27,
+        "lon": 31.5
+      },
+      "endPoint": {
+        "lat": -5.08,
+        "lon": 39.05
+      },
       "evidence": {
         "physicalState": "unknown",
         "physicalStateSource": "operator",
@@ -1240,8 +1580,14 @@
       "capacityMbd": 0.44,
       "lengthKm": 771,
       "inService": 2017,
-      "startPoint": { "lat": 20.15, "lon": 93.53 },
-      "endPoint": { "lat": 24.45, "lon": 98.58 },
+      "startPoint": {
+        "lat": 20.15,
+        "lon": 93.53
+      },
+      "endPoint": {
+        "lat": 24.45,
+        "lon": 98.58
+      },
       "evidence": {
         "physicalState": "flowing",
         "physicalStateSource": "operator",
@@ -1264,15 +1610,26 @@
       "capacityMbd": 0.1,
       "lengthKm": 1330,
       "inService": 1996,
-      "startPoint": { "lat": 40.37, "lon": 50.25 },
-      "endPoint": { "lat": 44.72, "lon": 37.75 },
+      "startPoint": {
+        "lat": 40.37,
+        "lon": 50.25
+      },
+      "endPoint": {
+        "lat": 44.72,
+        "lon": 37.75
+      },
       "evidence": {
         "physicalState": "reduced",
         "physicalStateSource": "press",
         "operatorStatement": null,
         "commercialState": "under_contract",
         "sanctionRefs": [
-          { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
         ],
         "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
         "classifierVersion": "v1",
@@ -1280,205 +1637,804 @@
       }
     },
     "colombia-cano-limon-covenas": {
-      "id": "colombia-cano-limon-covenas", "name": "Caño Limón–Coveñas Pipeline", "operator": "Ecopetrol / Occidental",
-      "commodityType": "oil", "fromCountry": "CO", "toCountry": "CO", "transitCountries": [],
-      "capacityMbd": 0.22, "lengthKm": 785, "inService": 1986,
-      "startPoint": { "lat": 6.95, "lon": -71.33 }, "endPoint": { "lat": 9.40, "lon": -75.68 },
-      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": {
-        "text": "Chronic ELN insurgent sabotage attacks interrupt throughput multiple times annually; 2024 attacks again forced force-majeure declarations.",
-        "url": "https://www.ecopetrol.com.co/", "date": "2024-11-01"
-      }, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+      "id": "colombia-cano-limon-covenas",
+      "name": "Caño Limón–Coveñas Pipeline",
+      "operator": "Ecopetrol / Occidental",
+      "commodityType": "oil",
+      "fromCountry": "CO",
+      "toCountry": "CO",
+      "transitCountries": [],
+      "capacityMbd": 0.22,
+      "lengthKm": 785,
+      "inService": 1986,
+      "startPoint": {
+        "lat": 6.95,
+        "lon": -71.33
+      },
+      "endPoint": {
+        "lat": 9.4,
+        "lon": -75.68
+      },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": {
+          "text": "Chronic ELN insurgent sabotage attacks interrupt throughput multiple times annually; 2024 attacks again forced force-majeure declarations.",
+          "url": "https://www.ecopetrol.com.co/",
+          "date": "2024-11-01"
+        },
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.8
+      }
     },
     "colombia-ocensa": {
-      "id": "colombia-ocensa", "name": "Oleoducto Central (OCENSA)", "operator": "OCENSA (Ecopetrol-led)",
-      "commodityType": "oil", "fromCountry": "CO", "toCountry": "CO", "transitCountries": [],
-      "capacityMbd": 0.65, "lengthKm": 836, "inService": 1997,
-      "startPoint": { "lat": 4.13, "lon": -72.58 }, "endPoint": { "lat": 9.40, "lon": -75.68 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+      "id": "colombia-ocensa",
+      "name": "Oleoducto Central (OCENSA)",
+      "operator": "OCENSA (Ecopetrol-led)",
+      "commodityType": "oil",
+      "fromCountry": "CO",
+      "toCountry": "CO",
+      "transitCountries": [],
+      "capacityMbd": 0.65,
+      "lengthKm": 836,
+      "inService": 1997,
+      "startPoint": {
+        "lat": 4.13,
+        "lon": -72.58
+      },
+      "endPoint": {
+        "lat": 9.4,
+        "lon": -75.68
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
     },
     "peru-norperuano": {
-      "id": "peru-norperuano", "name": "Oleoducto Norperuano", "operator": "Petroperú",
-      "commodityType": "oil", "fromCountry": "PE", "toCountry": "PE", "transitCountries": [],
-      "capacityMbd": 0.2, "lengthKm": 854, "inService": 1977,
-      "startPoint": { "lat": -4.48, "lon": -76.65 }, "endPoint": { "lat": -4.82, "lon": -81.10 },
-      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": {
-        "text": "Recurring spill incidents + indigenous community protests have forced intermittent shutdowns across the jungle sections since 2016.",
-        "url": "https://www.petroperu.com.pe/", "date": "2024-06-01"
-      }, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+      "id": "peru-norperuano",
+      "name": "Oleoducto Norperuano",
+      "operator": "Petroperú",
+      "commodityType": "oil",
+      "fromCountry": "PE",
+      "toCountry": "PE",
+      "transitCountries": [],
+      "capacityMbd": 0.2,
+      "lengthKm": 854,
+      "inService": 1977,
+      "startPoint": {
+        "lat": -4.48,
+        "lon": -76.65
+      },
+      "endPoint": {
+        "lat": -4.82,
+        "lon": -81.1
+      },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": "Norperuano Oleoducto plagued by sabotage + landslides; Petroperú declared multiple force-majeure events 2016-2023 per Petroperú press releases + El Comercio coverage.",
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
     },
     "ecuador-lago-agrio-orellana": {
-      "id": "ecuador-lago-agrio-orellana", "name": "Lago Agrio–Orellana Feeder", "operator": "Petroecuador",
-      "commodityType": "oil", "fromCountry": "EC", "toCountry": "EC", "transitCountries": [],
-      "capacityMbd": 0.08, "lengthKm": 105, "inService": 1975,
-      "startPoint": { "lat": -0.07, "lon": -76.88 }, "endPoint": { "lat": -0.47, "lon": -76.98 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+      "id": "ecuador-lago-agrio-orellana",
+      "name": "Lago Agrio–Orellana Feeder",
+      "operator": "Petroecuador",
+      "commodityType": "oil",
+      "fromCountry": "EC",
+      "toCountry": "EC",
+      "transitCountries": [],
+      "capacityMbd": 0.08,
+      "lengthKm": 105,
+      "inService": 1975,
+      "startPoint": {
+        "lat": -0.07,
+        "lon": -76.88
+      },
+      "endPoint": {
+        "lat": -0.47,
+        "lon": -76.98
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.72
+      }
     },
     "venezuela-anzoategui-puerto-la-cruz": {
-      "id": "venezuela-anzoategui-puerto-la-cruz", "name": "Anzoátegui–Puerto La Cruz Crude Trunk", "operator": "PDVSA",
-      "commodityType": "oil", "fromCountry": "VE", "toCountry": "VE", "transitCountries": [],
-      "capacityMbd": 0.35, "lengthKm": 220, "inService": 1960,
-      "startPoint": { "lat": 9.80, "lon": -63.20 }, "endPoint": { "lat": 10.20, "lon": -64.62 },
-      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [
-        { "authority": "US", "listId": "OFAC Venezuela/PDVSA sanctions", "date": "2019-01-28", "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/venezuela-related-sanctions" }
-      ], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+      "id": "venezuela-anzoategui-puerto-la-cruz",
+      "name": "Anzoátegui–Puerto La Cruz Crude Trunk",
+      "operator": "PDVSA",
+      "commodityType": "oil",
+      "fromCountry": "VE",
+      "toCountry": "VE",
+      "transitCountries": [],
+      "capacityMbd": 0.35,
+      "lengthKm": 220,
+      "inService": 1960,
+      "startPoint": {
+        "lat": 9.8,
+        "lon": -63.2
+      },
+      "endPoint": {
+        "lat": 10.2,
+        "lon": -64.62
+      },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": "PDVSA infrastructure degraded post-2017; throughput reported well below nameplate per S&P Global Platts + Bloomberg PDVSA coverage.",
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          {
+            "authority": "US",
+            "listId": "OFAC Venezuela/PDVSA sanctions",
+            "date": "2019-01-28",
+            "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/venezuela-related-sanctions"
+          }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.72
+      }
     },
     "angola-cabinda-offshore": {
-      "id": "angola-cabinda-offshore", "name": "Cabinda Offshore Export System", "operator": "Sonangol / Chevron",
-      "commodityType": "oil", "fromCountry": "AO", "toCountry": "AO", "transitCountries": [],
-      "capacityMbd": 0.55, "lengthKm": 185, "inService": 1968,
-      "startPoint": { "lat": -5.72, "lon": 12.08 }, "endPoint": { "lat": -5.55, "lon": 12.20 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+      "id": "angola-cabinda-offshore",
+      "name": "Cabinda Offshore Export System",
+      "operator": "Sonangol / Chevron",
+      "commodityType": "oil",
+      "fromCountry": "AO",
+      "toCountry": "AO",
+      "transitCountries": [],
+      "capacityMbd": 0.55,
+      "lengthKm": 185,
+      "inService": 1968,
+      "startPoint": {
+        "lat": -5.72,
+        "lon": 12.08
+      },
+      "endPoint": {
+        "lat": -5.55,
+        "lon": 12.2
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.82
+      }
     },
     "russia-sakhalin-2-crude": {
-      "id": "russia-sakhalin-2-crude", "name": "Sakhalin-2 Crude Export Pipeline", "operator": "Sakhalin Energy (Gazprom-led, post-2022)",
-      "commodityType": "oil", "fromCountry": "RU", "toCountry": "RU", "transitCountries": [],
-      "capacityMbd": 0.18, "lengthKm": 800, "inService": 2008,
-      "startPoint": { "lat": 53.17, "lon": 143.18 }, "endPoint": { "lat": 46.10, "lon": 142.70 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [
-        { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
-      ], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+      "id": "russia-sakhalin-2-crude",
+      "name": "Sakhalin-2 Crude Export Pipeline",
+      "operator": "Sakhalin Energy (Gazprom-led, post-2022)",
+      "commodityType": "oil",
+      "fromCountry": "RU",
+      "toCountry": "RU",
+      "transitCountries": [],
+      "capacityMbd": 0.18,
+      "lengthKm": 800,
+      "inService": 2008,
+      "startPoint": {
+        "lat": 53.17,
+        "lon": 143.18
+      },
+      "endPoint": {
+        "lat": 46.1,
+        "lon": 142.7
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.82
+      }
     },
     "russia-omsk-pavlodar": {
-      "id": "russia-omsk-pavlodar", "name": "Omsk–Pavlodar Crude Pipeline", "operator": "Transneft / KazTransOil",
-      "commodityType": "oil", "fromCountry": "RU", "toCountry": "KZ", "transitCountries": [],
-      "capacityMbd": 0.5, "lengthKm": 1500, "inService": 1977,
-      "startPoint": { "lat": 54.99, "lon": 73.37 }, "endPoint": { "lat": 52.28, "lon": 76.95 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [
-        { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
-      ], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+      "id": "russia-omsk-pavlodar",
+      "name": "Omsk–Pavlodar Crude Pipeline",
+      "operator": "Transneft / KazTransOil",
+      "commodityType": "oil",
+      "fromCountry": "RU",
+      "toCountry": "KZ",
+      "transitCountries": [],
+      "capacityMbd": 0.5,
+      "lengthKm": 1500,
+      "inService": 1977,
+      "startPoint": {
+        "lat": 54.99,
+        "lon": 73.37
+      },
+      "endPoint": {
+        "lat": 52.28,
+        "lon": 76.95
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.8
+      }
     },
     "iran-abadan-isfahan": {
-      "id": "iran-abadan-isfahan", "name": "Abadan–Isfahan Crude Pipeline", "operator": "NIOC",
-      "commodityType": "oil", "fromCountry": "IR", "toCountry": "IR", "transitCountries": [],
-      "capacityMbd": 0.34, "lengthKm": 770, "inService": 1969,
-      "startPoint": { "lat": 30.35, "lon": 48.30 }, "endPoint": { "lat": 32.65, "lon": 51.67 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [
-        { "authority": "US", "listId": "OFAC Iran energy sanctions framework", "date": "2018-08-07", "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/iran-sanctions" }
-      ], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+      "id": "iran-abadan-isfahan",
+      "name": "Abadan–Isfahan Crude Pipeline",
+      "operator": "NIOC",
+      "commodityType": "oil",
+      "fromCountry": "IR",
+      "toCountry": "IR",
+      "transitCountries": [],
+      "capacityMbd": 0.34,
+      "lengthKm": 770,
+      "inService": 1969,
+      "startPoint": {
+        "lat": 30.35,
+        "lon": 48.3
+      },
+      "endPoint": {
+        "lat": 32.65,
+        "lon": 51.67
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          {
+            "authority": "US",
+            "listId": "OFAC Iran energy sanctions framework",
+            "date": "2018-08-07",
+            "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/iran-sanctions"
+          }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.75
+      }
     },
     "iran-neka-tehran": {
-      "id": "iran-neka-tehran", "name": "Neka–Tehran Crude Trunk", "operator": "NIOC",
-      "commodityType": "oil", "fromCountry": "IR", "toCountry": "IR", "transitCountries": [],
-      "capacityMbd": 0.37, "lengthKm": 325, "inService": 2003,
-      "startPoint": { "lat": 36.65, "lon": 53.30 }, "endPoint": { "lat": 35.70, "lon": 51.42 },
-      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [
-        { "authority": "US", "listId": "OFAC Iran energy sanctions framework", "date": "2018-08-07", "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/iran-sanctions" }
-      ], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+      "id": "iran-neka-tehran",
+      "name": "Neka–Tehran Crude Trunk",
+      "operator": "NIOC",
+      "commodityType": "oil",
+      "fromCountry": "IR",
+      "toCountry": "IR",
+      "transitCountries": [],
+      "capacityMbd": 0.37,
+      "lengthKm": 325,
+      "inService": 2003,
+      "startPoint": {
+        "lat": 36.65,
+        "lon": 53.3
+      },
+      "endPoint": {
+        "lat": 35.7,
+        "lon": 51.42
+      },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          {
+            "authority": "US",
+            "listId": "OFAC Iran energy sanctions framework",
+            "date": "2018-08-07",
+            "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/iran-sanctions"
+          }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.72
+      }
     },
     "saudi-abqaiq-yanbu-products": {
-      "id": "saudi-abqaiq-yanbu-products", "name": "Abqaiq–Yanbu Products Line", "operator": "Saudi Aramco",
-      "commodityType": "oil", "fromCountry": "SA", "toCountry": "SA", "transitCountries": [],
-      "capacityMbd": 0.55, "lengthKm": 1170, "inService": 1981,
-      "startPoint": { "lat": 25.93, "lon": 49.67 }, "endPoint": { "lat": 24.08, "lon": 38.08 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+      "id": "saudi-abqaiq-yanbu-products",
+      "name": "Abqaiq–Yanbu Products Line",
+      "operator": "Saudi Aramco",
+      "commodityType": "oil",
+      "fromCountry": "SA",
+      "toCountry": "SA",
+      "transitCountries": [],
+      "capacityMbd": 0.55,
+      "lengthKm": 1170,
+      "inService": 1981,
+      "startPoint": {
+        "lat": 25.93,
+        "lon": 49.67
+      },
+      "endPoint": {
+        "lat": 24.08,
+        "lon": 38.08
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
     },
     "iraq-strategic-pipeline": {
-      "id": "iraq-strategic-pipeline", "name": "Iraq Strategic Pipeline (North–South)", "operator": "Iraq State Oil Marketing Organization (SOMO)",
-      "commodityType": "oil", "fromCountry": "IQ", "toCountry": "IQ", "transitCountries": [],
-      "capacityMbd": 1.4, "lengthKm": 1000, "inService": 1975,
-      "startPoint": { "lat": 35.47, "lon": 44.40 }, "endPoint": { "lat": 30.04, "lon": 47.96 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+      "id": "iraq-strategic-pipeline",
+      "name": "Iraq Strategic Pipeline (North–South)",
+      "operator": "Iraq State Oil Marketing Organization (SOMO)",
+      "commodityType": "oil",
+      "fromCountry": "IQ",
+      "toCountry": "IQ",
+      "transitCountries": [],
+      "capacityMbd": 1.4,
+      "lengthKm": 1000,
+      "inService": 1975,
+      "startPoint": {
+        "lat": 35.47,
+        "lon": 44.4
+      },
+      "endPoint": {
+        "lat": 30.04,
+        "lon": 47.96
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.8
+      }
     },
     "oman-muscat-export": {
-      "id": "oman-muscat-export", "name": "Oman Main Oil Pipeline (Fahud–Mina al-Fahal)", "operator": "Petroleum Development Oman",
-      "commodityType": "oil", "fromCountry": "OM", "toCountry": "OM", "transitCountries": [],
-      "capacityMbd": 1.0, "lengthKm": 320, "inService": 1967,
-      "startPoint": { "lat": 22.38, "lon": 56.50 }, "endPoint": { "lat": 23.55, "lon": 58.57 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+      "id": "oman-muscat-export",
+      "name": "Oman Main Oil Pipeline (Fahud–Mina al-Fahal)",
+      "operator": "Petroleum Development Oman",
+      "commodityType": "oil",
+      "fromCountry": "OM",
+      "toCountry": "OM",
+      "transitCountries": [],
+      "capacityMbd": 1.0,
+      "lengthKm": 320,
+      "inService": 1967,
+      "startPoint": {
+        "lat": 22.38,
+        "lon": 56.5
+      },
+      "endPoint": {
+        "lat": 23.55,
+        "lon": 58.57
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.85
+      }
     },
     "uae-habshan-ruwais": {
-      "id": "uae-habshan-ruwais", "name": "Habshan–Ruwais Crude Trunk", "operator": "ADNOC",
-      "commodityType": "oil", "fromCountry": "AE", "toCountry": "AE", "transitCountries": [],
-      "capacityMbd": 1.1, "lengthKm": 130, "inService": 1982,
-      "startPoint": { "lat": 23.82, "lon": 53.73 }, "endPoint": { "lat": 24.08, "lon": 52.75 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+      "id": "uae-habshan-ruwais",
+      "name": "Habshan–Ruwais Crude Trunk",
+      "operator": "ADNOC",
+      "commodityType": "oil",
+      "fromCountry": "AE",
+      "toCountry": "AE",
+      "transitCountries": [],
+      "capacityMbd": 1.1,
+      "lengthKm": 130,
+      "inService": 1982,
+      "startPoint": {
+        "lat": 23.82,
+        "lon": 53.73
+      },
+      "endPoint": {
+        "lat": 24.08,
+        "lon": 52.75
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
     },
     "mexico-salina-cruz-minatitlan": {
-      "id": "mexico-salina-cruz-minatitlan", "name": "Salina Cruz–Minatitlán Products/Crude Bridge", "operator": "Pemex",
-      "commodityType": "oil", "fromCountry": "MX", "toCountry": "MX", "transitCountries": [],
-      "capacityMbd": 0.28, "lengthKm": 304, "inService": 1977,
-      "startPoint": { "lat": 16.17, "lon": -95.20 }, "endPoint": { "lat": 17.98, "lon": -94.55 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+      "id": "mexico-salina-cruz-minatitlan",
+      "name": "Salina Cruz–Minatitlán Products/Crude Bridge",
+      "operator": "Pemex",
+      "commodityType": "oil",
+      "fromCountry": "MX",
+      "toCountry": "MX",
+      "transitCountries": [],
+      "capacityMbd": 0.28,
+      "lengthKm": 304,
+      "inService": 1977,
+      "startPoint": {
+        "lat": 16.17,
+        "lon": -95.2
+      },
+      "endPoint": {
+        "lat": 17.98,
+        "lon": -94.55
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.75
+      }
     },
     "mexico-madero-cadereyta": {
-      "id": "mexico-madero-cadereyta", "name": "Madero–Cadereyta Crude Feed", "operator": "Pemex",
-      "commodityType": "oil", "fromCountry": "MX", "toCountry": "MX", "transitCountries": [],
-      "capacityMbd": 0.235, "lengthKm": 530, "inService": 1979,
-      "startPoint": { "lat": 22.28, "lon": -97.85 }, "endPoint": { "lat": 25.72, "lon": -99.97 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+      "id": "mexico-madero-cadereyta",
+      "name": "Madero–Cadereyta Crude Feed",
+      "operator": "Pemex",
+      "commodityType": "oil",
+      "fromCountry": "MX",
+      "toCountry": "MX",
+      "transitCountries": [],
+      "capacityMbd": 0.235,
+      "lengthKm": 530,
+      "inService": 1979,
+      "startPoint": {
+        "lat": 22.28,
+        "lon": -97.85
+      },
+      "endPoint": {
+        "lat": 25.72,
+        "lon": -99.97
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
     },
     "india-salaya-mathura": {
-      "id": "india-salaya-mathura", "name": "Salaya–Mathura Crude Pipeline", "operator": "Indian Oil Corporation",
-      "commodityType": "oil", "fromCountry": "IN", "toCountry": "IN", "transitCountries": [],
-      "capacityMbd": 0.5, "lengthKm": 1770, "inService": 1996,
-      "startPoint": { "lat": 22.30, "lon": 69.70 }, "endPoint": { "lat": 27.50, "lon": 77.70 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+      "id": "india-salaya-mathura",
+      "name": "Salaya–Mathura Crude Pipeline",
+      "operator": "Indian Oil Corporation",
+      "commodityType": "oil",
+      "fromCountry": "IN",
+      "toCountry": "IN",
+      "transitCountries": [],
+      "capacityMbd": 0.5,
+      "lengthKm": 1770,
+      "inService": 1996,
+      "startPoint": {
+        "lat": 22.3,
+        "lon": 69.7
+      },
+      "endPoint": {
+        "lat": 27.5,
+        "lon": 77.7
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.85
+      }
     },
     "india-vadinar-kandla": {
-      "id": "india-vadinar-kandla", "name": "Vadinar–Kandla Products Pipeline", "operator": "Indian Oil Corporation",
-      "commodityType": "oil", "fromCountry": "IN", "toCountry": "IN", "transitCountries": [],
-      "capacityMbd": 0.18, "lengthKm": 116, "inService": 1994,
-      "startPoint": { "lat": 22.45, "lon": 69.73 }, "endPoint": { "lat": 23.03, "lon": 70.22 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+      "id": "india-vadinar-kandla",
+      "name": "Vadinar–Kandla Products Pipeline",
+      "operator": "Indian Oil Corporation",
+      "commodityType": "oil",
+      "fromCountry": "IN",
+      "toCountry": "IN",
+      "transitCountries": [],
+      "capacityMbd": 0.18,
+      "lengthKm": 116,
+      "inService": 1994,
+      "startPoint": {
+        "lat": 22.45,
+        "lon": 69.73
+      },
+      "endPoint": {
+        "lat": 23.03,
+        "lon": 70.22
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
     },
     "india-mundra-bhatinda": {
-      "id": "india-mundra-bhatinda", "name": "Mundra–Bhatinda Crude Pipeline", "operator": "HPCL-Mittal Energy (HMEL)",
-      "commodityType": "oil", "fromCountry": "IN", "toCountry": "IN", "transitCountries": [],
-      "capacityMbd": 0.45, "lengthKm": 1014, "inService": 2011,
-      "startPoint": { "lat": 22.83, "lon": 69.72 }, "endPoint": { "lat": 30.21, "lon": 74.95 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+      "id": "india-mundra-bhatinda",
+      "name": "Mundra–Bhatinda Crude Pipeline",
+      "operator": "HPCL-Mittal Energy (HMEL)",
+      "commodityType": "oil",
+      "fromCountry": "IN",
+      "toCountry": "IN",
+      "transitCountries": [],
+      "capacityMbd": 0.45,
+      "lengthKm": 1014,
+      "inService": 2011,
+      "startPoint": {
+        "lat": 22.83,
+        "lon": 69.72
+      },
+      "endPoint": {
+        "lat": 30.21,
+        "lon": 74.95
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.85
+      }
     },
     "china-qinhuangdao-tianjin-huabei": {
-      "id": "china-qinhuangdao-tianjin-huabei", "name": "Qinhuangdao–Tianjin–Huabei Trunk", "operator": "PetroChina",
-      "commodityType": "oil", "fromCountry": "CN", "toCountry": "CN", "transitCountries": [],
-      "capacityMbd": 0.4, "lengthKm": 418, "inService": 1996,
-      "startPoint": { "lat": 39.93, "lon": 119.60 }, "endPoint": { "lat": 39.08, "lon": 117.20 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+      "id": "china-qinhuangdao-tianjin-huabei",
+      "name": "Qinhuangdao–Tianjin–Huabei Trunk",
+      "operator": "PetroChina",
+      "commodityType": "oil",
+      "fromCountry": "CN",
+      "toCountry": "CN",
+      "transitCountries": [],
+      "capacityMbd": 0.4,
+      "lengthKm": 418,
+      "inService": 1996,
+      "startPoint": {
+        "lat": 39.93,
+        "lon": 119.6
+      },
+      "endPoint": {
+        "lat": 39.08,
+        "lon": 117.2
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.8
+      }
     },
     "china-yangzi-hefei-hangzhou": {
-      "id": "china-yangzi-hefei-hangzhou", "name": "Yangzi–Hefei–Hangzhou Products Pipeline", "operator": "Sinopec",
-      "commodityType": "oil", "fromCountry": "CN", "toCountry": "CN", "transitCountries": [],
-      "capacityMbd": 0.2, "lengthKm": 600, "inService": 2005,
-      "startPoint": { "lat": 32.07, "lon": 118.78 }, "endPoint": { "lat": 30.27, "lon": 120.15 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+      "id": "china-yangzi-hefei-hangzhou",
+      "name": "Yangzi–Hefei–Hangzhou Products Pipeline",
+      "operator": "Sinopec",
+      "commodityType": "oil",
+      "fromCountry": "CN",
+      "toCountry": "CN",
+      "transitCountries": [],
+      "capacityMbd": 0.2,
+      "lengthKm": 600,
+      "inService": 2005,
+      "startPoint": {
+        "lat": 32.07,
+        "lon": 118.78
+      },
+      "endPoint": {
+        "lat": 30.27,
+        "lon": 120.15
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.75
+      }
     },
     "russia-komsomolsk-perevoznaya": {
-      "id": "russia-komsomolsk-perevoznaya", "name": "Komsomolsk–Perevoznaya Crude Pipeline (Khabarovsk Krai)", "operator": "Transneft",
-      "commodityType": "oil", "fromCountry": "RU", "toCountry": "RU", "transitCountries": [],
-      "capacityMbd": 0.4, "lengthKm": 1163, "inService": 2009,
-      "startPoint": { "lat": 50.55, "lon": 137.02 }, "endPoint": { "lat": 42.75, "lon": 132.82 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [
-        { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
-      ], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+      "id": "russia-komsomolsk-perevoznaya",
+      "name": "Komsomolsk–Perevoznaya Crude Pipeline (Khabarovsk Krai)",
+      "operator": "Transneft",
+      "commodityType": "oil",
+      "fromCountry": "RU",
+      "toCountry": "RU",
+      "transitCountries": [],
+      "capacityMbd": 0.4,
+      "lengthKm": 1163,
+      "inService": 2009,
+      "startPoint": {
+        "lat": 50.55,
+        "lon": 137.02
+      },
+      "endPoint": {
+        "lat": 42.75,
+        "lon": 132.82
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          {
+            "authority": "G7+EU",
+            "listId": "Russian crude price cap",
+            "date": "2022-12-05",
+            "url": "https://home.treasury.gov/news/press-releases/jy1161"
+          }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
     },
     "south-sudan-kenya-lamu-planned": {
-      "id": "south-sudan-kenya-lamu-planned", "name": "South Sudan–Kenya Lamu Crude Pipeline (LAPSSET, planned)", "operator": "South Sudan Ministry of Petroleum / LAPSSET Corridor Development Authority",
-      "commodityType": "oil", "fromCountry": "SS", "toCountry": "KE", "transitCountries": [],
-      "capacityMbd": 0.45, "lengthKm": 2240, "inService": 0,
-      "startPoint": { "lat": 9.55, "lon": 30.08 }, "endPoint": { "lat": -2.27, "lon": 40.90 },
+      "id": "south-sudan-kenya-lamu-planned",
+      "name": "South Sudan–Kenya Lamu Crude Pipeline (LAPSSET, planned)",
+      "operator": "South Sudan Ministry of Petroleum / LAPSSET Corridor Development Authority",
+      "commodityType": "oil",
+      "fromCountry": "SS",
+      "toCountry": "KE",
+      "transitCountries": [],
+      "capacityMbd": 0.45,
+      "lengthKm": 2240,
+      "inService": 0,
+      "startPoint": {
+        "lat": 9.55,
+        "lon": 30.08
+      },
+      "endPoint": {
+        "lat": -2.27,
+        "lon": 40.9
+      },
       "evidence": {
-        "physicalState": "unknown", "physicalStateSource": "press",
+        "physicalState": "unknown",
+        "physicalStateSource": "press",
         "operatorStatement": {
           "text": "LAPSSET programme (Lamu Port South-Sudan Ethiopia Transport) includes a crude pipeline to reduce South Sudan dependence on Sudan transit. Financing + alignment remain unresolved. Construction not commenced on main trunk.",
-          "url": "https://www.lapsset.go.ke/", "date": "2024-05-01"
+          "url": "https://www.lapsset.go.ke/",
+          "date": "2024-05-01"
         },
-        "commercialState": "unknown", "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.68
+        "commercialState": "unknown",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.68
       }
     },
     "mexico-gulf-coast-pipeline": {
-      "id": "mexico-gulf-coast-pipeline", "name": "Tuxpan–Mexico City Products Pipeline", "operator": "Pemex Logística",
-      "commodityType": "oil", "fromCountry": "MX", "toCountry": "MX", "transitCountries": [],
-      "capacityMbd": 0.12, "lengthKm": 298, "inService": 1974,
-      "startPoint": { "lat": 20.95, "lon": -97.40 }, "endPoint": { "lat": 19.43, "lon": -99.13 },
-      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.68 }
+      "id": "mexico-gulf-coast-pipeline",
+      "name": "Tuxpan–Mexico City Products Pipeline",
+      "operator": "Pemex Logística",
+      "commodityType": "oil",
+      "fromCountry": "MX",
+      "toCountry": "MX",
+      "transitCountries": [],
+      "capacityMbd": 0.12,
+      "lengthKm": 298,
+      "inService": 1974,
+      "startPoint": {
+        "lat": 20.95,
+        "lon": -97.4
+      },
+      "endPoint": {
+        "lat": 19.43,
+        "lon": -99.13
+      },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": "Pemex Gulf pipelines face recurring leaks and clandestine tap theft (huachicol); throughput reduced since 2017 per Pemex annual reports + Reuters Mexico coverage.",
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.68
+      }
     },
     "iraq-bai-hassan": {
-      "id": "iraq-bai-hassan", "name": "Bai Hassan Crude Gathering Line", "operator": "North Oil Company (Iraq)",
-      "commodityType": "oil", "fromCountry": "IQ", "toCountry": "IQ", "transitCountries": [],
-      "capacityMbd": 0.25, "lengthKm": 65, "inService": 1975,
-      "startPoint": { "lat": 35.42, "lon": 43.93 }, "endPoint": { "lat": 35.47, "lon": 44.40 },
-      "evidence": { "physicalState": "flowing", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+      "id": "iraq-bai-hassan",
+      "name": "Bai Hassan Crude Gathering Line",
+      "operator": "North Oil Company (Iraq)",
+      "commodityType": "oil",
+      "fromCountry": "IQ",
+      "toCountry": "IQ",
+      "transitCountries": [],
+      "capacityMbd": 0.25,
+      "lengthKm": 65,
+      "inService": 1975,
+      "startPoint": {
+        "lat": 35.42,
+        "lon": 43.93
+      },
+      "endPoint": {
+        "lat": 35.47,
+        "lon": 44.4
+      },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.72
+      }
     }
   }
 }

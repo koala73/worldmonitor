@@ -235,9 +235,9 @@
     "abqaiq-khurais-drone-strike-2019": {
       "id": "abqaiq-khurais-drone-strike-2019", "assetId": "east-west-saudi", "assetType": "pipeline",
       "eventType": "sabotage", "startAt": "2019-09-14T00:00:00Z", "endAt": "2019-09-25T00:00:00Z",
-      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 5.7,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 5.0,
       "causeChain": ["sabotage", "war"],
-      "shortDescription": "Houthi-claimed drone + cruise missile attack on Abqaiq processing and Khurais field temporarily removed ~50% of Saudi crude processing capacity.",
+      "shortDescription": "Houthi-claimed drone + cruise missile attack on Abqaiq processing and Khurais field temporarily removed ~50% of Saudi crude processing capacity (headline 5.7 mbd figure reflects plant-level loss; capacityOffline capped at linked pipeline 5.0 mbd throughput ceiling).",
       "sources": [
         { "authority": "Saudi Aramco", "title": "Abqaiq attack statement", "url": "https://www.aramco.com/en/news-media/news/2019/abqaiq-khurais-update", "date": "2019-09-14", "sourceType": "operator" },
         { "authority": "Reuters", "title": "Saudi Arabia oil attack", "url": "https://www.reuters.com/article/saudi-aramco-attacks/", "date": "2019-09-14", "sourceType": "press" }
@@ -257,11 +257,11 @@
       "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
     },
     "russia-price-cap-implementation-2022": {
-      "id": "russia-price-cap-implementation-2022", "assetId": "espo", "assetType": "pipeline",
+      "id": "russia-price-cap-implementation-2022", "assetId": "primorsk-crude-terminal", "assetType": "storage",
       "eventType": "sanction", "startAt": "2022-12-05T00:00:00Z", "endAt": null,
       "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
       "causeChain": ["sanction", "policy"],
-      "shortDescription": "G7+EU $60/bbl price cap took effect on Russian seaborne crude; reshaped export routing, shadow-fleet usage expanded.",
+      "shortDescription": "G7+EU $60/bbl price cap took effect on Russian seaborne crude; targeted tanker shipments from Baltic/Black Sea/Arctic export terminals (Primorsk, Ust-Luga, Novorossiysk); reshaped routing, shadow-fleet usage expanded. Linked to Primorsk (largest Baltic crude export terminal); ESPO pipeline leg to China was out of scope.",
       "sources": [ { "authority": "US Treasury OFAC", "title": "Russian crude price cap guidance", "url": "https://home.treasury.gov/news/press-releases/jy1161", "date": "2022-12-05", "sourceType": "regulator" } ],
       "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
     },
