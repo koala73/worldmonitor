@@ -31,6 +31,12 @@ if (isMain) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: MAX_STALE_MIN,
+    // File-read-and-validate seeder: if the container can't load/validate the
+    // registry (stale image, missing data file, shape regression), fail LOUDLY
+    // rather than refreshing seed-meta with recordCount=0. Without this, the
+    // bundle's interval gate silently locks the seeder out for ~7 days after
+    // a single transient validation failure.
+    emptyDataIsFailure: true,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

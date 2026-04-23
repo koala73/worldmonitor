@@ -30,6 +30,9 @@ if (isMain) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: MAX_STALE_MIN,
+    // See seed-pipelines-gas.mjs for rationale — strict validation failure
+    // must leave seed-meta stale so the bundle retries every tick.
+    emptyDataIsFailure: true,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
