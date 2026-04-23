@@ -82,9 +82,13 @@ async function deleteFromIndexedDbByPrefix(prefix: string): Promise<void> {
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor) return;
-
-      store.delete(cursor.primaryKey);
-      cursor.continue();
+      // iOS Safari kills in-flight IDB transactions when the tab backgrounds;
+      // prefix-invalidation is idempotent so swallow TransactionInactiveError
+      // and let the next invalidation call resume.
+      try {
+        store.delete(cursor.primaryKey);
+        cursor.continue();
+      } catch { /* tx died mid-iteration */ }
     };
     request.onerror = () => reject(request.error);
   });
