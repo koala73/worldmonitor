@@ -328,6 +328,177 @@
         "classifierConfidence": 0.6,
         "lastEvidenceUpdate": "2026-04-11T00:00:00Z"
       }
+    },
+    "bd-diesel-2026-q1": {
+      "id": "bd-diesel-2026-q1", "country": "BD", "product": "diesel", "severity": "confirmed",
+      "firstSeen": "2024-08-01T00:00:00Z", "lastConfirmed": "2026-04-18T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["import_cut", "policy"],
+      "shortDescription": "Recurring diesel import-LC delays; Bangladesh Petroleum Corporation rationing at depot level.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "BPC", "title": "Diesel supply bulletin", "url": "https://bpc.gov.bd/", "date": "2026-04-10", "sourceType": "regulator" },
+          { "authority": "Daily Star", "title": "Diesel crunch returns", "url": "https://www.thedailystar.net/", "date": "2026-04-01", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-10", "classifierVersion": "v1", "classifierConfidence": 0.88, "lastEvidenceUpdate": "2026-04-18T00:00:00Z"
+      }
+    },
+    "za-diesel-2026-q1": {
+      "id": "za-diesel-2026-q1", "country": "ZA", "product": "diesel", "severity": "watch",
+      "firstSeen": "2026-02-10T00:00:00Z", "lastConfirmed": "2026-04-12T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["upstream_refinery", "logistics"],
+      "shortDescription": "Loadshedding-driven diesel demand for back-up generators; Sapref / Secunda refinery schedule impacts.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Department of Mineral Resources and Energy", "title": "Fuel supply status", "url": "https://www.dmre.gov.za/", "date": "2026-04-08", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-08", "classifierVersion": "v1", "classifierConfidence": 0.72, "lastEvidenceUpdate": "2026-04-12T00:00:00Z"
+      }
+    },
+    "ao-diesel-2026-q1": {
+      "id": "ao-diesel-2026-q1", "country": "AO", "product": "diesel", "severity": "watch",
+      "firstSeen": "2026-03-01T00:00:00Z", "lastConfirmed": "2026-04-11T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["logistics"],
+      "shortDescription": "Luanda and Benguela diesel queues reported; Sonangol distribution delays.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Sonangol", "title": "Supply advisory", "url": "https://www.sonangol.co.ao/", "date": "2026-04-05", "sourceType": "operator" }
+        ],
+        "firstRegulatorConfirmation": null, "classifierVersion": "v1", "classifierConfidence": 0.68, "lastEvidenceUpdate": "2026-04-11T00:00:00Z"
+      }
+    },
+    "mz-diesel-2026-q1": {
+      "id": "mz-diesel-2026-q1", "country": "MZ", "product": "diesel", "severity": "watch",
+      "firstSeen": "2026-02-15T00:00:00Z", "lastConfirmed": "2026-04-10T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["logistics", "policy"],
+      "shortDescription": "FX-allocation delays for petroleum imports; depot availability inconsistent in Maputo + Beira.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "ARENE (Mozambique Energy Regulator)", "title": "Fuel supply update", "url": "https://arene.gov.mz/", "date": "2026-04-02", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-02", "classifierVersion": "v1", "classifierConfidence": 0.72, "lastEvidenceUpdate": "2026-04-10T00:00:00Z"
+      }
+    },
+    "zm-fuel-2026-q1": {
+      "id": "zm-fuel-2026-q1", "country": "ZM", "product": "diesel", "severity": "watch",
+      "firstSeen": "2026-01-10T00:00:00Z", "lastConfirmed": "2026-04-09T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["import_cut", "policy"],
+      "shortDescription": "Mining sector diesel demand amid FX constraints; TAZAMA pipeline product import sequencing tight.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Energy Regulation Board", "title": "Fuel availability bulletin", "url": "https://www.erb.org.zm/", "date": "2026-04-01", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-01", "classifierVersion": "v1", "classifierConfidence": 0.7, "lastEvidenceUpdate": "2026-04-09T00:00:00Z"
+      }
+    },
+    "mw-diesel-2026-q1": {
+      "id": "mw-diesel-2026-q1", "country": "MW", "product": "diesel", "severity": "watch",
+      "firstSeen": "2026-01-20T00:00:00Z", "lastConfirmed": "2026-04-07T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing", "stations_closed"], "causeChain": ["import_cut"],
+      "shortDescription": "Malawi Energy Regulatory Authority rationing announcements during FX shortfalls.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "MERA (Malawi Energy Regulatory Authority)", "title": "Fuel status", "url": "https://www.mera.mw/", "date": "2026-04-01", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-01", "classifierVersion": "v1", "classifierConfidence": 0.75, "lastEvidenceUpdate": "2026-04-07T00:00:00Z"
+      }
+    },
+    "gh-petrol-2026-q1": {
+      "id": "gh-petrol-2026-q1", "country": "GH", "product": "petrol", "severity": "watch",
+      "firstSeen": "2026-03-05T00:00:00Z", "lastConfirmed": "2026-04-08T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["logistics"],
+      "shortDescription": "NPA import sequencing tightness after Tema port congestion.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "National Petroleum Authority", "title": "Supply advisory", "url": "https://www.npa.gov.gh/", "date": "2026-04-03", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-03", "classifierVersion": "v1", "classifierConfidence": 0.7, "lastEvidenceUpdate": "2026-04-08T00:00:00Z"
+      }
+    },
+    "mm-fuel-oil-2026-q1": {
+      "id": "mm-fuel-oil-2026-q1", "country": "MM", "product": "diesel", "severity": "watch",
+      "firstSeen": "2024-03-01T00:00:00Z", "lastConfirmed": "2026-04-17T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing", "stations_closed"], "causeChain": ["sanction", "import_cut"],
+      "shortDescription": "Post-coup chronic diesel shortages + military-aligned distribution system; parallel market premiums 40-60%. Severity kept at 'watch' because regulator sources under the junta are not independently verifiable — press-only evidence.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Reuters", "title": "Myanmar fuel rationing", "url": "https://www.reuters.com/world/asia-pacific/", "date": "2026-03-01", "sourceType": "press" },
+          { "authority": "Frontier Myanmar", "title": "Parallel market fuel premiums", "url": "https://www.frontiermyanmar.net/", "date": "2026-02-15", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": null, "classifierVersion": "v1", "classifierConfidence": 0.82, "lastEvidenceUpdate": "2026-04-17T00:00:00Z"
+      }
+    },
+    "mn-diesel-2026-q1": {
+      "id": "mn-diesel-2026-q1", "country": "MN", "product": "diesel", "severity": "watch",
+      "firstSeen": "2025-12-10T00:00:00Z", "lastConfirmed": "2026-04-05T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["logistics"],
+      "shortDescription": "Winter-season diesel shortages amid Russian import logistics + extreme cold.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "MRAM (Mineral Resources and Petroleum Authority)", "title": "Winter fuel supply", "url": "https://mram.gov.mn/", "date": "2026-02-15", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-02-15", "classifierVersion": "v1", "classifierConfidence": 0.72, "lastEvidenceUpdate": "2026-04-05T00:00:00Z"
+      }
+    },
+    "co-diesel-2026-q1": {
+      "id": "co-diesel-2026-q1", "country": "CO", "product": "diesel", "severity": "watch",
+      "firstSeen": "2026-02-01T00:00:00Z", "lastConfirmed": "2026-04-06T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing"], "causeChain": ["logistics"],
+      "shortDescription": "Trucker strikes + price-adjustment protests intermittent; distribution disruptions at regional level.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Ministerio de Minas y Energía", "title": "Abastecimiento de combustibles", "url": "https://www.minenergia.gov.co/", "date": "2026-04-01", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2026-04-01", "classifierVersion": "v1", "classifierConfidence": 0.68, "lastEvidenceUpdate": "2026-04-06T00:00:00Z"
+      }
+    },
+    "ua-diesel-2026-q1": {
+      "id": "ua-diesel-2026-q1", "country": "UA", "product": "diesel", "severity": "confirmed",
+      "firstSeen": "2022-03-01T00:00:00Z", "lastConfirmed": "2026-04-19T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing", "price_spike"], "causeChain": ["war", "upstream_refinery"],
+      "shortDescription": "War-driven chronic diesel supply stress; refinery strikes + import corridor constraints.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Ministry of Energy of Ukraine", "title": "Fuel availability", "url": "https://www.mev.gov.ua/", "date": "2026-04-05", "sourceType": "regulator" }
+        ],
+        "firstRegulatorConfirmation": "2022-03-15", "classifierVersion": "v1", "classifierConfidence": 0.92, "lastEvidenceUpdate": "2026-04-19T00:00:00Z"
+      }
+    },
+    "sy-diesel-2026-q1": {
+      "id": "sy-diesel-2026-q1", "country": "SY", "product": "diesel", "severity": "confirmed",
+      "firstSeen": "2020-01-01T00:00:00Z", "lastConfirmed": "2026-04-18T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing", "stations_closed"], "causeChain": ["sanction", "war"],
+      "shortDescription": "Chronic diesel rationing under Caesar Act sanctions + disrupted Iranian credit-line imports.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Syrian Ministry of Oil and Mineral Resources", "title": "Fuel allocation", "url": "https://sana.sy/en/", "date": "2026-04-10", "sourceType": "regulator" },
+          { "authority": "AFP", "title": "Syria queues stretch", "url": "https://www.afp.com/", "date": "2026-03-20", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": "2020-06-17", "classifierVersion": "v1", "classifierConfidence": 0.92, "lastEvidenceUpdate": "2026-04-18T00:00:00Z"
+      }
+    },
+    "sd-diesel-2026-q1": {
+      "id": "sd-diesel-2026-q1", "country": "SD", "product": "diesel", "severity": "watch",
+      "firstSeen": "2023-04-15T00:00:00Z", "lastConfirmed": "2026-04-18T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["rationing", "stations_closed"], "causeChain": ["war", "import_cut"],
+      "shortDescription": "Sudan civil war has disrupted Port Sudan imports + crude transit infrastructure; diesel rationing country-wide. Severity kept at 'watch' until regulator/operator evidence is available — press-only during active conflict.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Reuters", "title": "Sudan fuel shortages worsen", "url": "https://www.reuters.com/world/africa/", "date": "2026-03-25", "sourceType": "press" }
+        ],
+        "firstRegulatorConfirmation": null, "classifierVersion": "v1", "classifierConfidence": 0.88, "lastEvidenceUpdate": "2026-04-18T00:00:00Z"
+      }
+    },
+    "de-heating-oil-2026-q1": {
+      "id": "de-heating-oil-2026-q1", "country": "DE", "product": "heating_oil", "severity": "watch",
+      "firstSeen": "2026-01-15T00:00:00Z", "lastConfirmed": "2026-04-05T00:00:00Z", "resolvedAt": null,
+      "impactTypes": ["price_spike"], "causeChain": ["logistics"],
+      "shortDescription": "Heating-oil delivery slots tightening before winter refill season amid Rhine low-water logistic constraints.",
+      "evidence": {
+        "evidenceSources": [
+          { "authority": "Mineralölwirtschaftsverband (MWV)", "title": "Heizöl supply outlook", "url": "https://www.en2x.de/", "date": "2026-03-30", "sourceType": "operator" }
+        ],
+        "firstRegulatorConfirmation": null, "classifierVersion": "v1", "classifierConfidence": 0.62, "lastEvidenceUpdate": "2026-04-05T00:00:00Z"
+      }
     }
   }
 }
