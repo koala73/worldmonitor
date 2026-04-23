@@ -28,6 +28,7 @@ import {
   releaseLock,
   getRedisCredentials,
 } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -256,6 +257,15 @@ async function upstashGet(key) {
     if (!result?.result) return null;
     try { return JSON.parse(result.result); } catch { return null; }
   } catch { return null; }
+}
+
+// Envelope-aware GET. runSeed wraps canonical keys in `{_seed, data}` when the
+// seeder opts into the seed contract (declareRecords + envelopeMeta) — INTL_KEY
+// is one such key (see runSeed call w/ declareRecords below). Bare values
+// (FAA_KEY, NOTAM_KEY via writeExtraKey w/o envelopeMeta) pass through.
+async function upstashGetUnwrapped(key) {
+  const raw = await upstashGet(key);
+  return unwrapEnvelope(raw).data;
 }
 
 async function upstashSet(key, value, ttlSeconds) {
@@ -565,6 +575,12 @@ async function seedFaaDelays() {
 
 const ICAO_NOTAM_URL = 'https://dataservices.icao.int/api/notams-realtime-list';
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
+// Restrictions: NOTAM Q-codes RA (restricted area) and RO (overfly prohibited)
+// + restricted code45s and text patterns. Mirrors NOTAM_RESTRICTION_QCODES +
+// the restriction-text regex in server/worldmonitor/aviation/v1/_shared.ts:29,
+// :440-444 — keep in lockstep so seeded NOTAM data matches the live RPC's
+// classifier.
+const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
 // Returns: Array of NOTAMs on success, null on quota exhaustion, [] on other errors.
 async function fetchIcaoNotams() {
@@ -607,17 +623,18 @@ async function fetchIcaoNotams() {
 async function seedNotamClosures() {
   if (!process.env.ICAO_API_KEY) {
     console.log('[NOTAM] No ICAO_API_KEY — skipping');
-    return { closedIcaos: [], reasons: {}, quotaExhausted: false, skipped: true };
+    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: false, skipped: true };
   }
   const t0 = Date.now();
   const notams = await fetchIcaoNotams();
   if (notams === null) {
     // Quota exhausted — don't blank the key; signal upstream to touch TTL.
-    return { closedIcaos: [], reasons: {}, quotaExhausted: true, skipped: false };
+    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: true, skipped: false };
   }
 
   const now = Math.floor(Date.now() / 1000);
   const closedSet = new Set();
+  const restrictedSet = new Set();
   const reasons = {};
 
   for (const n of notams) {
@@ -627,17 +644,26 @@ async function seedNotamClosures() {
     const code23 = (n.code23 || '').toUpperCase();
     const code45 = (n.code45 || '').toUpperCase();
     const text = (n.iteme || '').toUpperCase();
-    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) &&
-      (code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW');
+    const closureCode45 = code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW';
+    const restrictionCode45 = code45 === 'RE' || code45 === 'RT';
+    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) && closureCode45;
+    const isRestrictionCode = (NOTAM_RESTRICTION_QCODES.has(code23) || NOTAM_CLOSURE_QCODES.has(code23)) && restrictionCode45;
     const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
+    const isRestrictionText = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/.test(text);
+    // Closure wins over restriction for the same NOTAM (mirrors _shared.ts
+    // if/else chain at line 446-452).
     if (isClosureCode || isClosureText) {
       closedSet.add(icao);
       reasons[icao] = n.iteme || 'Airport closure (NOTAM)';
+    } else if (isRestrictionCode || isRestrictionText) {
+      restrictedSet.add(icao);
+      reasons[icao] = n.iteme || 'Airspace restriction (NOTAM)';
     }
   }
   const closedIcaos = [...closedSet];
-  console.log(`[NOTAM] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { closedIcaos, reasons, quotaExhausted: false, skipped: false };
+  const restrictedIcaos = [...restrictedSet];
+  console.log(`[NOTAM] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures, ${restrictedIcaos.length} restrictions in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return { closedIcaos, restrictedIcaos, reasons, quotaExhausted: false, skipped: false };
 }
 
 // ─── Section 4: Aviation RSS news prewarmer ──────────────────────────────────
@@ -843,9 +869,9 @@ function mergeNotamWithExistingAlert(airport, notamReason, existing, severity = 
 async function writeDelaysBootstrap(intlAlertsOverride) {
   try {
     const [faaPayload, intlPayload, notamPayload] = await Promise.all([
-      upstashGet(FAA_KEY),
-      intlAlertsOverride ? Promise.resolve({ alerts: intlAlertsOverride }) : upstashGet(INTL_KEY),
-      upstashGet(NOTAM_KEY),
+      upstashGetUnwrapped(FAA_KEY),
+      intlAlertsOverride ? Promise.resolve({ alerts: intlAlertsOverride }) : upstashGetUnwrapped(INTL_KEY),
+      upstashGetUnwrapped(NOTAM_KEY),
     ]);
 
     const faaAlerts  = Array.isArray(faaPayload?.alerts)  ? faaPayload.alerts  : [];
@@ -957,12 +983,12 @@ async function runNotamSideCar() {
       }
       await writeExtraKeyWithMeta(
         NOTAM_KEY,
-        { closedIcaos: notam.closedIcaos, reasons: notam.reasons },
+        { closedIcaos: notam.closedIcaos, restrictedIcaos: notam.restrictedIcaos, reasons: notam.reasons },
         NOTAM_TTL,
-        notam.closedIcaos.length,
+        notam.closedIcaos.length + notam.restrictedIcaos.length,
         NOTAM_META_KEY,
       );
-      console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures to ${NOTAM_KEY}`);
+      console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures + ${notam.restrictedIcaos.length} restrictions to ${NOTAM_KEY}`);
       try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
       catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
     } catch (err) {
