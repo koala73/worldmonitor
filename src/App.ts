@@ -1033,6 +1033,20 @@ export class App {
     this.eventHandlers.setupMapLayerHandlers();
     this.countryIntel.init();
 
+    // WebMCP — expose a small set of UI tools to in-page agents.
+    // Feature-detects `navigator.modelContext`; no-ops in browsers without it.
+    // Registered after search+country modules so the bound callbacks have real
+    // targets; tools intentionally route through the same paths a click takes
+    // so paywall/auth gates still apply to agent invocations.
+    void import('@/services/webmcp').then(({ registerWebMcpTools }) => {
+      registerWebMcpTools({
+        openCountryBriefByCode: (code, country) =>
+          this.countryIntel.openCountryBriefByCode(code, country),
+        resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
+        openSearch: () => this.state.searchModal?.open(),
+      });
+    });
+
     // Phase 5: Event listeners + URL sync
     this.eventHandlers.init();
     // Capture deep link params BEFORE URL sync overwrites them

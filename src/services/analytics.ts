@@ -50,6 +50,9 @@ const EVENTS = {
   'mcp-connect-attempt': true,
   'mcp-connect-success': true,
   'mcp-panel-add': true,
+  // WebMCP (in-page agent tool surface)
+  'webmcp-registered': true,
+  'webmcp-tool-invoked': true,
   // Route Explorer
   'route-explorer:opened': true,
   'route-explorer:query': true,
