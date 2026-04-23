@@ -5,7 +5,7 @@
       "service-desc": [
         {
           "href": "https://www.worldmonitor.app/openapi.yaml",
-          "type": "application/yaml"
+          "type": "application/vnd.oai.openapi"
         }
       ],
       "service-doc": [
