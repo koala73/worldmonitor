@@ -29,6 +29,7 @@ const { decrypt } = require('./lib/crypto.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { Resend } = require('resend');
+const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import {
   composeBriefFromDigestStories,
@@ -60,11 +61,15 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
 // Brief/digest is an editorial daily read, not an incident alarm — route it
 // off the `alerts@` mailbox so recipients don't see a scary "alert" from-name
-// in their inbox when an env override drops the display component.
+// in their inbox. normalizeResendSender coerces a bare email address into a
+// "Name <addr>" wrapper at runtime (with a loud warning), so a Railway env
+// like `RESEND_FROM_BRIEF=brief@worldmonitor.app` can't re-introduce the bug
+// that `.env.example` documents.
 const RESEND_FROM =
-  process.env.RESEND_FROM_BRIEF ??
-  process.env.RESEND_FROM_EMAIL ??
-  'WorldMonitor Brief <brief@worldmonitor.app>';
+  normalizeResendSender(
+    process.env.RESEND_FROM_BRIEF ?? process.env.RESEND_FROM_EMAIL,
+    'WorldMonitor Brief',
+  ) ?? 'WorldMonitor Brief <brief@worldmonitor.app>';
 
 if (process.env.DIGEST_CRON_ENABLED === '0') {
   console.log('[digest] DIGEST_CRON_ENABLED=0 — skipping run');
