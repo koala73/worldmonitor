@@ -11,7 +11,8 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
-import { isEntitled, hasFeature, onEntitlementChange } from '@/services/entitlements';
+import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 
@@ -241,6 +242,19 @@ export class UnifiedSettings {
           void this.loadApiKeys();
         }
       }
+      // Replace the upgrade/billing section in place so a paying user who
+      // opened settings before the Convex snapshot arrived sees "Manage
+      // Billing" instead of the stale "Upgrade to Pro" CTA (which, if
+      // clicked, triggers 409 duplicate_subscription). Click handlers are
+      // delegated at overlay level (line ~94), so replacing innerHTML is
+      // sufficient — no rebind needed.
+      const upgradeSection = this.overlay.querySelector('.upgrade-pro-section');
+      if (upgradeSection) {
+        const fresh = document.createElement('template');
+        fresh.innerHTML = this.renderUpgradeSection().trim();
+        const next = fresh.content.firstElementChild;
+        if (next) upgradeSection.replaceWith(next);
+      }
     });
   }
 
@@ -424,6 +438,24 @@ export class UnifiedSettings {
   }
 
   private renderUpgradeSection(): string {
+    // Non-Dodo premium (API key / tester key / Clerk pro role without a
+    // Convex subscription): neither "Upgrade" nor "Manage Billing" is
+    // actionable. Checked FIRST so these users don't get stuck on the
+    // loading placeholder below — their Convex entitlement snapshot may
+    // never arrive at all.
+    if (!isEntitled() && hasPremiumAccess()) {
+      return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
+    }
+    // Signed-in user whose Convex entitlement snapshot has not arrived yet.
+    // Rendering "Upgrade to Pro" in this window is how paying users click
+    // through to /api/create-checkout and hit 409 duplicate_subscription —
+    // same race as the 2026-04-17/18 panel-overlay incident fixed in
+    // panel-gating.ts, different surface. Render a placeholder; the
+    // onEntitlementChange listener in open() swaps it in place once the
+    // snapshot arrives.
+    if (getAuthState().user && getEntitlementState() === null) {
+      return '<div class="upgrade-pro-section upgrade-pro-loading" aria-hidden="true"></div>';
+    }
     if (isEntitled()) {
       const sub = getSubscription();
       const planName = sub?.displayName ?? 'Pro';
