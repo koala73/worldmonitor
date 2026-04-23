@@ -8199,6 +8199,42 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     assert.equal(store[CANONICAL_KEY].generatedAt, newerTs, 'canonical generatedAt preserved');
   });
 
+  it('WD-20b: redisAtomicPatchSimDecorations — patches inside seed-contract envelope ({_seed, data}) and preserves wrapper on write', async () => {
+    // Regression for the production bug observed 2026-04-23 in seed-forecasts-simulation +
+    // seed-forecasts-deep workers logging "Cannot patch canonical key — predictions missing
+    // or not an array" on every successful run. Root cause: PR #3097 (seed-contract envelope
+    // dual-write) wraps the canonical key as {_seed: {...}, data: {predictions: [...]}}, but
+    // the Lua patcher and JS test path read payload.predictions directly → returns 'MISSING'
+    // → simulation decorations never reach the canonical feed → ForecastPanel shows stale or
+    // missing simulation enrichment for entire forecasts.
+    const runTs = Date.now() - 2_000;
+    const store = {
+      [CANONICAL_KEY]: {
+        _seed: { fetchedAt: runTs, recordCount: 1, sourceVersion: 'detectors+llm-pipeline', schemaVersion: 1 },
+        data: {
+          generatedAt: runTs,
+          predictions: [
+            { id: 'fc-env-01', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Enveloped 01' },
+          ],
+        },
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    const byForecastId = { 'fc-env-01': { simulationAdjustment: 0.21, simPathConfidence: 0.87, demotedBySimulation: true } };
+    const status = await redisAtomicPatchSimDecorations('http://test', 'test', CANONICAL_KEY, byForecastId, runTs, 21600);
+
+    assert.ok(status.startsWith('PATCHED:'), `expected PATCHED, got ${status}`);
+    // Envelope wrapper preserved on write — _seed metadata stays intact
+    assert.ok(store[CANONICAL_KEY]._seed, 'envelope _seed wrapper preserved on write');
+    assert.equal(store[CANONICAL_KEY]._seed.recordCount, 1, '_seed metadata fields preserved');
+    // Inner data patched
+    const inner = store[CANONICAL_KEY].data;
+    assert.equal(inner.predictions[0].simulationAdjustment, 0.21, 'sim adjustment applied through envelope');
+    assert.equal(inner.predictions[0].simPathConfidence, 0.87, 'sim confidence applied through envelope');
+    assert.equal(inner.predictions[0].demotedBySimulation, true, 'demotion applied through envelope');
+  });
+
   it('WD-21: writeSimulationDecorations skips side key and canonical patch when existing side key is from a newer run', async () => {
     // Scenario: run B (newer) has already written forecast:sim-decorations:v1.
     // run A (older) finishes late and calls writeSimulationDecorations — must not overwrite.
