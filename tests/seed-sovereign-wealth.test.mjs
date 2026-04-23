@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  FX_TO_USD,
   detectCurrency,
+  lookupUsdRate,
   matchWikipediaRecord,
   parseWikipediaArticleInfobox,
   parseWikipediaRankingsTable,
 } from '../scripts/seed-sovereign-wealth.mjs';
+import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
 
 // Fixture HTML mirrors the structure observed on the shipping
 // Wikipedia "List of sovereign wealth funds" article (captured
@@ -255,7 +256,14 @@ describe('detectCurrency — symbol and code detection', () => {
   });
 });
 
-describe('parseWikipediaArticleInfobox — AUM extraction + FX conversion', () => {
+describe('parseWikipediaArticleInfobox — native value + currency extraction', () => {
+  // Parser returns { valueNative, currencyNative, aumYear } and does
+  // NOT convert to USD — conversion is applied at the seeder level
+  // via the project-shared `getSharedFxRates` cache (see
+  // scripts/_seed-utils.mjs). Keeping the parser FX-free removes a
+  // duplicate copy of the FX table that would drift from the shared
+  // one.
+  //
   // Mirrors the Temasek infobox structure (abridged). Real row:
   // `<tr><th>Total assets</th><td>S$ 434 billion <i>(2025)</i><sup>2</sup></td></tr>`
   const TEMASEK_INFOBOX = `
@@ -269,38 +277,32 @@ describe('parseWikipediaArticleInfobox — AUM extraction + FX conversion', () =
     </body></html>
   `;
 
-  it('extracts AUM from an S$ (SGD) infobox and converts to USD', () => {
+  it('extracts S$ 434 billion as native SGD value + year tag', () => {
     const hit = parseWikipediaArticleInfobox(TEMASEK_INFOBOX);
     assert.ok(hit, 'Temasek infobox should produce a hit');
     assert.equal(hit.currencyNative, 'SGD');
-    assert.equal(hit.fxRate, FX_TO_USD.get('SGD'));
-    // 434 * 1e9 * 0.74 (SGD→USD) = 321.16B USD
-    assert.ok(hit.aum > 300_000_000_000 && hit.aum < 340_000_000_000,
-      `expected ~US$ 320B, got ${hit.aum}`);
+    assert.equal(hit.valueNative, 434_000_000_000);
     assert.equal(hit.aumYear, 2025);
   });
 
-  it('handles USD-native infoboxes without FX conversion', () => {
+  it('handles USD-native infoboxes (currency detected as USD)', () => {
     const html = `<table class="infobox">
       <tr><th>AUM</th><td>US$ 1,500 billion (2025)</td></tr>
     </table>`;
     const hit = parseWikipediaArticleInfobox(html);
     assert.ok(hit);
     assert.equal(hit.currencyNative, 'USD');
-    assert.equal(hit.fxRate, 1.0);
-    assert.equal(hit.aum, 1_500_000_000_000);
+    assert.equal(hit.valueNative, 1_500_000_000_000);
   });
 
-  it('handles Norwegian krone ("NOK 18.7 trillion")', () => {
+  it('parses trillion-unit values (NOK 18.7 trillion)', () => {
     const html = `<table class="infobox">
       <tr><th>Net assets</th><td>NOK 18.7 trillion (2025)</td></tr>
     </table>`;
     const hit = parseWikipediaArticleInfobox(html);
     assert.ok(hit);
     assert.equal(hit.currencyNative, 'NOK');
-    // 18.7T NOK × 0.093 ≈ 1.739T USD
-    assert.ok(hit.aum > 1_700_000_000_000 && hit.aum < 1_800_000_000_000,
-      `expected ~US$ 1.74T, got ${hit.aum}`);
+    assert.equal(hit.valueNative, 18_700_000_000_000);
   });
 
   it('returns null when no AUM-labeled row is present', () => {
@@ -313,21 +315,44 @@ describe('parseWikipediaArticleInfobox — AUM extraction + FX conversion', () =
   it('returns null when the infobox itself is missing', () => {
     assert.equal(parseWikipediaArticleInfobox('<html>no infobox</html>'), null);
   });
+});
 
-  it('skips rows whose currency is not in the FX table (loud, not silent)', () => {
-    // Hypothetical row in a currency we don't have a rate for. Must
-    // return null rather than interpreting as USD — silent wrong-
-    // currency conversion is the failure mode this guards against.
-    const html = `<table class="infobox">
-      <tr><th>Total assets</th><td>ZZZ 500 billion</td></tr>
-    </table>`;
-    // ZZZ has no detected currency; detectCurrency returns null; the
-    // parser falls back to USD. Acceptable behavior given the spec
-    // ("USD default when no symbol"), so this scenario documents the
-    // contract rather than asserting null.
-    const hit = parseWikipediaArticleInfobox(html);
-    assert.ok(hit);
-    assert.equal(hit.currencyNative, 'USD', 'unrecognized currency defaults to USD per documented contract');
+describe('lookupUsdRate — project-shared FX integration', () => {
+  // Verifies the parser → FX conversion pipeline uses the project's
+  // canonical FX source (scripts/_seed-utils.mjs SHARED_FX_FALLBACKS +
+  // getSharedFxRates Redis cache) rather than a duplicate table.
+
+  it('returns 1.0 for USD regardless of rate map', () => {
+    assert.equal(lookupUsdRate('USD', {}), 1.0);
+    assert.equal(lookupUsdRate('USD', null), 1.0);
+    assert.equal(lookupUsdRate('USD', { USD: 999 }), 1.0);
+  });
+
+  it('prefers the live rate map over the static fallback', () => {
+    // Simulate getSharedFxRates returning a fresh Yahoo rate. The static
+    // fallback has SGD=0.74; the live rate could drift (e.g. 0.751).
+    assert.equal(lookupUsdRate('SGD', { SGD: 0.751 }), 0.751);
+  });
+
+  it('falls back to SHARED_FX_FALLBACKS when the live rate is missing', () => {
+    assert.equal(lookupUsdRate('SGD', {}), SHARED_FX_FALLBACKS.SGD);
+    assert.equal(lookupUsdRate('NOK', { EUR: 1.05 }), SHARED_FX_FALLBACKS.NOK);
+  });
+
+  it('returns null for unknown currencies (caller skips the fund)', () => {
+    assert.equal(lookupUsdRate('ZZZ', {}), null);
+    assert.equal(lookupUsdRate('XXX', { XXX: 0 }), null);
+  });
+
+  it('converts Temasek S$ 434B end-to-end via shared fallback table', () => {
+    const hit = parseWikipediaArticleInfobox(`
+      <table class="infobox"><tr><th>Total assets</th><td>S$ 434 billion (2025)</td></tr></table>
+    `);
+    const rate = lookupUsdRate(hit.currencyNative, {});
+    const aumUsd = hit.valueNative * rate;
+    // 434B × 0.74 = 321.16B. Matches SHARED_FX_FALLBACKS.SGD.
+    assert.ok(aumUsd > 300_000_000_000 && aumUsd < 340_000_000_000,
+      `expected ~US$ 320B, got ${aumUsd}`);
   });
 });
 

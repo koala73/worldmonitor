@@ -76,7 +76,7 @@
 // §3.4 "What happens to no-SWF countries"). This is substantively
 // different from IMPUTE fallback (which is "data-source-failed").
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, SHARED_FX_FALLBACKS, getSharedFxRates } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
 
@@ -91,27 +91,19 @@ const WIKIPEDIA_URL = 'https://en.wikipedia.org/wiki/List_of_sovereign_wealth_fu
 export const WIKIPEDIA_SOURCE_ATTRIBUTION =
   'Wikipedia — List of sovereign wealth funds + per-fund articles (CC-BY-SA 4.0)';
 
-// FX conversion table for per-fund Wikipedia infoboxes that report AUM
-// in a local currency. Rates are approximate mid-market values reviewed
-// alongside the quarterly manifest refresh; small FX drift is absorbed by
-// the saturating transform in the scorer
-// (100 × (1 − exp(−effectiveMonths / 12))) so ballpark accuracy suffices.
+// FX conversion uses the project-shared rate cache — Redis
+// `shared:fx-rates:v1` (4h TTL, live Yahoo Finance source) with a static
+// fallback table (`SHARED_FX_FALLBACKS`) that already carries every
+// currency we can plausibly see in an SWF infobox (USD, SGD, NOK, EUR,
+// GBP, AED, SAR, QAR, KWD, …). See scripts/_seed-utils.mjs and
+// scripts/seed-grocery-basket.mjs / scripts/seed-fuel-prices.mjs for
+// the consumer pattern. Small FX drift is absorbed by the saturating
+// transform in the scorer (100 × (1 − exp(−effectiveMonths / 12))), so
+// the shared cache's cadence suffices.
 //
-// When updating these, also bump `FX_RATES_REVIEWED_AT` so a stale rate
-// is visible in the committed seed metadata. Add a new entry only when a
-// manifest fund's infobox reports AUM in a currency not yet listed.
-export const FX_RATES_REVIEWED_AT = '2026-04-23';
-export const FX_TO_USD = new Map([
-  ['USD', 1.0],
-  ['SGD', 0.74],
-  ['NOK', 0.093],
-  ['EUR', 1.05],
-  ['GBP', 1.27],
-  ['AED', 0.272],
-  ['SAR', 0.267],
-  ['KWD', 3.25],
-  ['QAR', 0.275],
-]);
+// Yahoo symbol convention: `<CCY>USD=X` returns the per-1-local-unit
+// value in USD. We build the symbol map dynamically from any currency
+// the infobox parser surfaces.
 
 // Canonical currency code lookup keyed on the symbol / short-code that
 // appears in Wikipedia infoboxes. Each entry maps to an ISO-4217 code
@@ -402,10 +394,17 @@ export function detectCurrency(text) {
 
 /**
  * Parse a Wikipedia infobox HTML fragment for an AUM value. Returns
- * { aum: number (USD), aumYear: number } or null if no usable row.
+ * the NATIVE-currency value plus its ISO-4217 code so the caller can
+ * apply the project-shared FX rates (`getSharedFxRates`) at orchestration
+ * time. Returning raw-native avoids duplicating the FX conversion layer
+ * already maintained in `scripts/_seed-utils.mjs` for seed-grocery-basket,
+ * seed-fuel-prices, seed-bigmac, etc.
  *
- * Exported pure so a committed fixture can exercise both the currency
- * detection and the FX conversion without a live fetch.
+ * Returns { valueNative: number, currencyNative: string, aumYear: number }
+ * or null if no usable row.
+ *
+ * Exported pure so a committed fixture can exercise the parsing + currency
+ * detection without a live fetch.
  */
 export function parseWikipediaArticleInfobox(html) {
   const infoboxMatch = html.match(/<table[^>]*class="[^"]*infobox[^"]*"[^>]*>([\s\S]*?)<\/table>/);
@@ -440,20 +439,31 @@ export function parseWikipediaArticleInfobox(html) {
         : 1_000_000;
     const valueNative = rawNum * unitMultiplier;
 
-    const currency = detectCurrency(valueText) ?? 'USD';
-    const fxRate = FX_TO_USD.get(currency);
-    if (fxRate == null) continue; // unknown currency, skip the row
-    const aumUsd = valueNative * fxRate;
+    const currencyNative = detectCurrency(valueText) ?? 'USD';
 
     const yearMatch = valueText.match(/\((\d{4})\)/);
     const aumYear = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
 
-    return { aum: aumUsd, aumYear, currencyNative: currency, fxRate };
+    return { valueNative, currencyNative, aumYear };
   }
   return null;
 }
 
-async function fetchWikipediaInfobox(fund) {
+/**
+ * Look up the USD-per-unit rate for a currency from the shared FX map.
+ * `fxRates` is the object returned by `getSharedFxRates()` (keys are
+ * ISO-4217 codes). Falls back to SHARED_FX_FALLBACKS for any currency
+ * not in the live map. Returns null if the currency is unknown — the
+ * caller should treat that as "cannot convert, skip this fund" rather
+ * than silently pretending the value is USD.
+ */
+export function lookupUsdRate(currency, fxRates) {
+  if (currency === 'USD') return 1.0;
+  const rate = fxRates?.[currency] ?? SHARED_FX_FALLBACKS[currency];
+  return (rate != null && rate > 0) ? rate : null;
+}
+
+async function fetchWikipediaInfobox(fund, fxRates) {
   const articleUrl = fund.wikipedia?.articleUrl;
   if (!articleUrl) return null;
   const resp = await fetch(articleUrl, {
@@ -470,12 +480,23 @@ async function fetchWikipediaInfobox(fund) {
   const html = await resp.text();
   const hit = parseWikipediaArticleInfobox(html);
   if (!hit) return null;
-  return { aum: hit.aum, aumYear: hit.aumYear, source: 'wikipedia_infobox' };
+  const usdRate = lookupUsdRate(hit.currencyNative, fxRates);
+  if (usdRate == null) {
+    console.warn(`[seed-sovereign-wealth] ${fund.country}:${fund.fund} infobox currency ${hit.currencyNative} has no FX rate; skipping`);
+    return null;
+  }
+  return {
+    aum: hit.valueNative * usdRate,
+    aumYear: hit.aumYear,
+    source: 'wikipedia_infobox',
+    currencyNative: hit.currencyNative,
+    fxRate: usdRate,
+  };
 }
 
 // ── Aggregation ──
 
-async function fetchFundAum(fund, wikipediaCache) {
+async function fetchFundAum(fund, wikipediaCache, fxRates) {
   // Source priority: official → IFSWF → Wikipedia list → Wikipedia
   // per-fund infobox. Short-circuit on first non-null return so the
   // highest-confidence source wins. The infobox sub-tier is last
@@ -488,16 +509,32 @@ async function fetchFundAum(fund, wikipediaCache) {
   if (ifswf) return ifswf;
   const wikipediaList = await fetchWikipediaRanking(fund, wikipediaCache);
   if (wikipediaList) return wikipediaList;
-  const wikipediaInfobox = await fetchWikipediaInfobox(fund);
+  const wikipediaInfobox = await fetchWikipediaInfobox(fund, fxRates);
   if (wikipediaInfobox) return wikipediaInfobox;
   return null;
 }
 
+// Build the fxSymbols map getSharedFxRates expects. We request every
+// currency the infobox parser can reasonably surface — this is a
+// superset of what any single seed run will need, but it keeps the
+// shared Redis FX cache warm for other seeders and costs one Yahoo
+// fetch per uncached ccy. The set matches CURRENCY_SYMBOL_TO_ISO.
+function buildFxSymbolsForSwf() {
+  const ccys = new Set(CURRENCY_SYMBOL_TO_ISO.map(([, iso]) => iso));
+  const symbols = {};
+  for (const ccy of ccys) {
+    if (ccy === 'USD') continue;
+    symbols[ccy] = `${ccy}USD=X`;
+  }
+  return symbols;
+}
+
 export async function fetchSovereignWealth() {
   const manifest = loadSwfManifest();
-  const [imports, wikipediaCache] = await Promise.all([
+  const [imports, wikipediaCache, fxRates] = await Promise.all([
     fetchAnnualImportsUsd(),
     loadWikipediaRankingsCache(),
+    getSharedFxRates(buildFxSymbolsForSwf(), SHARED_FX_FALLBACKS),
   ]);
 
   const countries = {};
@@ -510,7 +547,7 @@ export async function fetchSovereignWealth() {
 
     const fundRecords = [];
     for (const fund of funds) {
-      const aum = await fetchFundAum(fund, wikipediaCache);
+      const aum = await fetchFundAum(fund, wikipediaCache, fxRates);
       if (!aum) {
         unmatched.push(`${fund.country}:${fund.fund}`);
         continue;
@@ -553,7 +590,6 @@ export async function fetchSovereignWealth() {
     seededAt: new Date().toISOString(),
     manifestVersion: manifest.manifestVersion,
     sourceMix,
-    fxRatesReviewedAt: FX_RATES_REVIEWED_AT,
     sourceAttribution: {
       wikipedia: usedWikipedia ? WIKIPEDIA_SOURCE_ATTRIBUTION : undefined,
     },
