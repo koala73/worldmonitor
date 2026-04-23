@@ -15,12 +15,15 @@ const EXPECTED_ENTRIES = [
   { label: 'External-Debt', script: 'seed-recovery-external-debt.mjs', seedMetaKey: 'resilience:recovery:external-debt' },
   { label: 'Import-HHI', script: 'seed-recovery-import-hhi.mjs', seedMetaKey: 'resilience:recovery:import-hhi' },
   { label: 'Fuel-Stocks', script: 'seed-recovery-fuel-stocks.mjs', seedMetaKey: 'resilience:recovery:fuel-stocks' },
+  { label: 'Sovereign-Wealth', script: 'seed-sovereign-wealth.mjs', seedMetaKey: 'resilience:recovery:sovereign-wealth' },
 ];
 
 describe('seed-bundle-resilience-recovery', () => {
-  it('has exactly 5 entries', () => {
+  it(`has exactly ${EXPECTED_ENTRIES.length} entries`, () => {
     const labelMatches = bundleSource.match(/label:\s*'[^']+'/g) ?? [];
-    assert.equal(labelMatches.length, 5, `Expected 5 entries, found ${labelMatches.length}`);
+    assert.equal(labelMatches.length, EXPECTED_ENTRIES.length,
+      `Expected ${EXPECTED_ENTRIES.length} entries, found ${labelMatches.length}. ` +
+      `If you added a new seeder, update EXPECTED_ENTRIES above.`);
   });
 
   for (const entry of EXPECTED_ENTRIES) {
@@ -38,7 +41,8 @@ describe('seed-bundle-resilience-recovery', () => {
 
   it('all entries use 30 * DAY interval', () => {
     const intervalMatches = bundleSource.match(/intervalMs:\s*30\s*\*\s*DAY/g) ?? [];
-    assert.equal(intervalMatches.length, 5, `Expected all 5 entries to use 30 * DAY interval`);
+    assert.equal(intervalMatches.length, EXPECTED_ENTRIES.length,
+      `Expected all ${EXPECTED_ENTRIES.length} entries to use 30 * DAY interval`);
   });
 
   it('imports runBundle and DAY from _bundle-runner.mjs', () => {
