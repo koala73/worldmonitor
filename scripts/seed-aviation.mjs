@@ -18,6 +18,9 @@
  * hosts the /aviationstack live proxy for user-triggered flight lookups.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
   loadEnvFile,
   CHROME_UA,
@@ -862,6 +865,80 @@ function mergeNotamWithExistingAlert(airport, notamReason, existing, severity = 
   };
 }
 
+// Parse src/config/airports.ts as text to recover the live RPC's MONITORED_AIRPORTS
+// registry without a TS build step. The RPC iterates this for "Normal operations"
+// filler; the seeder's local AIRPORTS list is a related-but-different set
+// (carries `sources` for which feed covers each airport, omits some RPC-only
+// entries, has some seeder-only entries). Today the two diverge by ~45 iata codes.
+// We read both at runtime and union them by iata so the bootstrap covers every
+// airport either registry knows about — match RPC output exactly + future-proof
+// against drift in either direction.
+//
+// Memoised: read-once at module load. If parse fails (unexpected file shape, file
+// missing in some packaging), we degrade to seeder's AIRPORTS only and warn —
+// bootstrap is still produced, just without the RPC-only iata coverage.
+let _monitoredAirportsCache = null;
+function loadMonitoredAirportsFromConfigFile() {
+  if (_monitoredAirportsCache !== null) return _monitoredAirportsCache;
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = join(here, '..', 'src', 'config', 'airports.ts');
+    const src = readFileSync(path, 'utf8');
+    const rows = [];
+    // Match rows of shape: { iata: 'XXX', icao: 'YYYY', name: '...', city: '...',
+    // country: '...', lat: N, lon: N, region: '...' }. Allows both single + double
+    // quotes for `name` (some rows use double-quote to embed apostrophes).
+    const rowRe = /\{\s*iata:\s*'([A-Z]{3})'\s*,\s*icao:\s*'([A-Z0-9]{3,4})'\s*,\s*name:\s*(?:'([^']*)'|"([^"]*)")\s*,\s*city:\s*(?:'([^']*)'|"([^"]*)")\s*,\s*country:\s*(?:'([^']*)'|"([^"]*)")\s*,\s*lat:\s*(-?\d+(?:\.\d+)?)\s*,\s*lon:\s*(-?\d+(?:\.\d+)?)\s*,\s*region:\s*'([a-z]+)'\s*\}/g;
+    let m;
+    while ((m = rowRe.exec(src)) !== null) {
+      rows.push({
+        iata:    m[1],
+        icao:    m[2],
+        name:    m[3] ?? m[4],
+        city:    m[5] ?? m[6],
+        country: m[7] ?? m[8],
+        lat:     parseFloat(m[9]),
+        lon:     parseFloat(m[10]),
+        region:  m[11],
+      });
+    }
+    if (rows.length === 0) {
+      console.warn(`[Bootstrap] parsed 0 rows from ${path} — falling back to seeder AIRPORTS only`);
+      _monitoredAirportsCache = [];
+      return _monitoredAirportsCache;
+    }
+    _monitoredAirportsCache = rows;
+    return rows;
+  } catch (err) {
+    console.warn(`[Bootstrap] failed to parse src/config/airports.ts: ${err?.message || err} — falling back to seeder AIRPORTS only`);
+    _monitoredAirportsCache = [];
+    return _monitoredAirportsCache;
+  }
+}
+
+// Union the seeder's AIRPORTS with RPC's MONITORED_AIRPORTS by iata. Seeder rows
+// win on conflict (they have the more recent canonical NOTAM/AviationStack meta).
+// Logs a warning summary on first divergence so registry drift surfaces in cron
+// logs without blocking writes.
+let _filterRegistryWarnLogged = false;
+function buildFillerRegistry() {
+  const monitored = loadMonitoredAirportsFromConfigFile();
+  const byIata = new Map();
+  for (const a of monitored) byIata.set(a.iata, a);
+  for (const a of AIRPORTS)  byIata.set(a.iata, a); // seeder wins on conflict
+  if (!_filterRegistryWarnLogged) {
+    const seederIatas    = new Set(AIRPORTS.map(a => a.iata));
+    const monitoredIatas = new Set(monitored.map(a => a.iata));
+    const monitoredOnly  = [...monitoredIatas].filter(i => !seederIatas.has(i));
+    const seederOnly     = [...seederIatas].filter(i => !monitoredIatas.has(i));
+    if (monitoredOnly.length > 0 || seederOnly.length > 0) {
+      console.warn(`[Bootstrap] registry drift: ${monitoredOnly.length} RPC-only iatas (${monitoredOnly.slice(0, 10).join(',')}${monitoredOnly.length > 10 ? '…' : ''}), ${seederOnly.length} seeder-only iatas (${seederOnly.slice(0, 10).join(',')}${seederOnly.length > 10 ? '…' : ''}). Bootstrap covers union of both (${byIata.size} airports).`);
+    }
+    _filterRegistryWarnLogged = true;
+  }
+  return [...byIata.values()];
+}
+
 // Build + write the page-load bootstrap aggregate. Pass `intlAlertsOverride` to
 // use this-tick's intl from afterPublish (skips the Redis round-trip and avoids
 // a one-tick lag); omit to fall back to the last-good intl in Redis (used by
@@ -881,9 +958,12 @@ async function writeDelaysBootstrap(intlAlertsOverride) {
     const reasons = (notamPayload?.reasons && typeof notamPayload.reasons === 'object') ? notamPayload.reasons : {};
 
     const allAlerts = [...faaAlerts, ...intlAlerts];
+    // Union of seeder AIRPORTS + RPC MONITORED_AIRPORTS so the bootstrap matches
+    // what the live RPC produces even when registries drift.
+    const fillerRegistry = buildFillerRegistry();
     const existingIatas = new Set(allAlerts.map(a => a.iata));
     const applyNotam = (icao, severity, delayType, fallback) => {
-      const airport = AIRPORTS.find(a => a.icao === icao);
+      const airport = fillerRegistry.find(a => a.icao === icao);
       if (!airport) return;
       const reason = reasons[icao] || fallback;
       if (existingIatas.has(airport.iata)) {
@@ -898,7 +978,7 @@ async function writeDelaysBootstrap(intlAlertsOverride) {
     for (const icao of restrictedIcaos) applyNotam(icao, 'major',  'general', 'Airspace restriction (NOTAM)');
 
     const alertedIatas = new Set(allAlerts.map(a => a.iata));
-    for (const airport of AIRPORTS) {
+    for (const airport of fillerRegistry) {
       if (!alertedIatas.has(airport.iata)) allAlerts.push(buildNormalOpsAlert(airport));
     }
 
@@ -1044,6 +1124,12 @@ function publishTransform(data) {
 }
 
 async function afterPublishIntl(data) {
+  // CONTRACT: runSeed forwards the RAW fetchIntl() result here, NOT the
+  // publishTransform()'d shape. fetchIntl returns seedIntlDelays' output
+  // ({ alerts, healthy, skipped, ... }), so data.alerts is the same array
+  // publishTransform wraps into INTL_KEY. If publishTransform ever filters
+  // or mutates alerts (today it's a pass-through wrapper), this bootstrap
+  // write would silently diverge from INTL_KEY — keep them in lockstep.
   try { await dispatchAviationNotifications(data.alerts); }
   catch (e) { console.warn(`[Intl] notify error: ${e?.message || e}`); }
   // Refresh the page-load bootstrap with this-tick intl. The pre-runSeed call
