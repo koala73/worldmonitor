@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildCoverageSummary,
   declareRecords,
   detectCurrency,
   lookupUsdRate,
   matchWikipediaRecord,
   parseWikipediaArticleInfobox,
   parseWikipediaRankingsTable,
+  pickLatestPerCountry,
   validate,
 } from '../scripts/seed-sovereign-wealth.mjs';
 import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
@@ -527,5 +529,143 @@ describe('matchWikipediaRecord — country-disambiguation on abbrev collisions',
     const fund = { country: 'ZZ', fund: 'pif', wikipedia: { abbrev: 'PIF' } };
     assert.equal(matchWikipediaRecord(fund, cache), null,
       'ambiguous match with no country mapping must return null — silent wrong-country match is the exact bug this test guards against');
+  });
+});
+
+describe('pickLatestPerCountry — WB mrv>1 per-country latest-non-null selection', () => {
+  // Shape mirrors the WB /country/all/indicator/... response's second
+  // array. Year order in prod is newest-first per country, but the
+  // picking logic must be order-agnostic so a silent upstream re-order
+  // doesn't pick a stale year. Regression from the 2026-04-23 prod
+  // crash: mrv=1 returned null for KW/QA/AE because they're a year or
+  // two behind NO/SA/SG; mrv=5 + pick-latest fixes it. (PR #3352.)
+  const NO_2024 = { countryiso3code: 'NOR', date: '2024', value: 163_801_535_479 };
+  const NO_2023 = { countryiso3code: 'NOR', date: '2023', value: 157_000_000_000 };
+  const KW_2023 = { countryiso3code: 'KWT', date: '2023', value: 63_424_320_849 };
+  const KW_2024_NULL = { countryiso3code: 'KWT', date: '2024', value: null };
+  const QA_2022 = { countryiso3code: 'QAT', date: '2022', value: 74_520_054_945 };
+  const QA_2024_NULL = { countryiso3code: 'QAT', date: '2024', value: null };
+
+  it('returns the most recent non-null value per country even when mrv=1 would pick a null year', () => {
+    const out = pickLatestPerCountry([KW_2024_NULL, KW_2023, QA_2024_NULL, QA_2022, NO_2024]);
+    assert.deepEqual(out.KW, { importsUsd: 63_424_320_849, year: 2023 });
+    assert.deepEqual(out.QA, { importsUsd: 74_520_054_945, year: 2022 });
+    assert.deepEqual(out.NO, { importsUsd: 163_801_535_479, year: 2024 });
+  });
+
+  it('picks the NEWER year when the array arrives in ascending year order (upstream re-order must not pick stale)', () => {
+    const out = pickLatestPerCountry([NO_2023, NO_2024]);
+    assert.equal(out.NO.year, 2024);
+    assert.equal(out.NO.importsUsd, 163_801_535_479);
+  });
+
+  it('picks the newer year when the array arrives in descending year order (prod-observed ordering)', () => {
+    const out = pickLatestPerCountry([NO_2024, NO_2023]);
+    assert.equal(out.NO.year, 2024);
+    assert.equal(out.NO.importsUsd, 163_801_535_479);
+  });
+
+  it('drops countries with ONLY null values (WB has no data in the lookback window)', () => {
+    const out = pickLatestPerCountry([
+      { countryiso3code: 'XYZ', date: '2024', value: null },
+      { countryiso3code: 'XYZ', date: '2023', value: null },
+    ]);
+    assert.equal(out.XY, undefined);
+  });
+
+  it('drops records with non-positive values (WB sometimes reports 0 for countries with no trade)', () => {
+    const out = pickLatestPerCountry([
+      { countryiso3code: 'NOR', date: '2024', value: 0 },
+      { countryiso3code: 'NOR', date: '2023', value: -100 },
+    ]);
+    assert.equal(out.NO, undefined);
+  });
+
+  it('handles both iso3 and iso2 country codes (bulk endpoint occasionally uses either)', () => {
+    const out = pickLatestPerCountry([
+      { countryiso3code: 'NOR', date: '2024', value: 100 },
+      { country: { id: 'SA' }, date: '2024', value: 200 },
+    ]);
+    assert.equal(out.NO.importsUsd, 100);
+    assert.equal(out.SA.importsUsd, 200);
+  });
+
+  it('enumerates every manifest country in buildCoverageSummary — no silent drops', () => {
+    // Regression-guard: AE was silently dropped in the 2026-04-23 prod run
+    // with no log line explaining why. The fix requires that every
+    // manifest country appear in the summary with an explicit status and
+    // reason.
+    const manifest = {
+      funds: [
+        { country: 'AE', fund: 'adia' },
+        { country: 'AE', fund: 'mubadala' },
+        { country: 'NO', fund: 'gpfg' },
+        { country: 'KW', fund: 'kia' },
+      ],
+    };
+    // Simulate: NO fully matched, AE partial (1 of 2), KW missing due to
+    // no WB imports.
+    const imports = {
+      NO: { importsUsd: 163_000_000_000, year: 2024 },
+      AE: { importsUsd: 481_000_000_000, year: 2023 },
+      // KW absent → summary should show 'missing WB imports'
+    };
+    const countries = {
+      NO: { matchedFunds: 1, expectedFunds: 1, completeness: 1.0 },
+      AE: { matchedFunds: 1, expectedFunds: 2, completeness: 0.5 },
+      // KW absent
+    };
+    const summary = buildCoverageSummary(manifest, imports, countries);
+    assert.equal(summary.expectedCountries, 3);
+    assert.equal(summary.expectedFunds, 4);
+    assert.equal(summary.matchedCountries, 2);
+    assert.equal(summary.matchedFunds, 2);
+    // Sorted alphabetically
+    assert.deepEqual(summary.countryStatuses.map((s) => s.country), ['AE', 'KW', 'NO']);
+    assert.equal(summary.countryStatuses[0].status, 'partial');
+    assert.equal(summary.countryStatuses[1].status, 'missing');
+    assert.equal(summary.countryStatuses[1].reason, 'missing WB imports',
+      'KW had no imports entry — reason must specifically name the WB import denominator, not a generic "missing"');
+    assert.equal(summary.countryStatuses[1].expected, 1,
+      'KW expected field must reflect manifest fund count for this country, even when the country was dropped');
+    assert.equal(summary.countryStatuses[2].status, 'complete');
+  });
+
+  it('labels "no fund AUM matched" distinctly from "missing WB imports" so operators can disambiguate', () => {
+    // If the import denominator IS present but Wikipedia matching fails
+    // for every fund the country owns, the reason must be different —
+    // operator investigates Wikipedia, not WB.
+    const manifest = { funds: [{ country: 'ZZ', fund: 'zz_fund' }] };
+    const imports = { ZZ: { importsUsd: 1_000_000_000, year: 2024 } };
+    const countries = {}; // country dropped because no fund matched
+    const summary = buildCoverageSummary(manifest, imports, countries);
+    assert.equal(summary.countryStatuses[0].status, 'missing');
+    assert.equal(summary.countryStatuses[0].reason, 'no fund AUM matched');
+  });
+
+  it('mirrors the prod scenario that failed on 2026-04-23 — all 6 manifest countries resolve', () => {
+    // Snapshot of the WB mrv=5 response for the 6 manifest countries as
+    // probed on 2026-04-23. If WB's data shape shifts, this fixture
+    // breaks and the seeder's coverage claim needs re-verification.
+    const input = [
+      { countryiso3code: 'NOR', date: '2024', value: 163_801_535_479 },
+      { countryiso3code: 'SAU', date: '2024', value: 317_011_733_333 },
+      { countryiso3code: 'SGP', date: '2024', value: 786_020_626_642 },
+      { countryiso3code: 'ARE', date: '2024', value: null },
+      { countryiso3code: 'ARE', date: '2023', value: 481_851_599_728 },
+      { countryiso3code: 'KWT', date: '2024', value: null },
+      { countryiso3code: 'KWT', date: '2023', value: 63_424_320_849 },
+      { countryiso3code: 'QAT', date: '2024', value: null },
+      { countryiso3code: 'QAT', date: '2023', value: null },
+      { countryiso3code: 'QAT', date: '2022', value: 74_520_054_945 },
+    ];
+    const out = pickLatestPerCountry(input);
+    for (const iso2 of ['NO', 'SA', 'SG', 'AE', 'KW', 'QA']) {
+      assert.ok(out[iso2], `${iso2} must resolve under mrv=5 pick-latest — this is the 8/8 coverage test`);
+    }
+    // AE was the silent-drop country in prod: no log line, no record.
+    // Lock in that mrv=5 recovers it from the 2023 row.
+    assert.equal(out.AE.year, 2023);
+    assert.equal(out.AE.importsUsd, 481_851_599_728);
   });
 });

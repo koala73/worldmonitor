@@ -135,12 +135,50 @@ const CURRENCY_SYMBOL_TO_ISO = [
 
 // ── World Bank: per-country annual imports (denominator for rawMonths) ──
 
+// MRV lookback used in the bulk fetch. WB's `country/all?mrv=1` returns the
+// SAME year across every country (the most recent year that any country
+// reports) with `value: null` for countries that haven't published yet.
+// KW/QA/AE report NE.IMP.GNFS.CD a year or two behind NO/SA/SG, so mrv=1
+// returned null for them in the 2026-04-23 prod run (PR #3352 root cause).
+// mrv=5 gives 5 years and lets us pick the most recent non-null per
+// country, matching what the per-country endpoint returns naturally.
+// Five years is deliberate — one is clearly insufficient, ten is overkill
+// for a denominator that evolves on a yearly cadence (we also report back
+// the year we picked, so the scorer can flag stale ones if it wants).
+const IMPORTS_LOOKBACK_YEARS = 5;
+
+/**
+ * Collapse a WB multi-year bulk response into a per-country map keyed on
+ * most-recent-non-null value. Exported so the mrv=5 + pick-latest logic
+ * is unit-testable without mocking fetch.
+ *
+ * @param {Array<{ countryiso3code?: string, country?: { id?: string }, value: unknown, date: unknown }>} records
+ * @returns {Record<string, { importsUsd: number, year: number }>}
+ */
+export function pickLatestPerCountry(records) {
+  const imports = {};
+  for (const record of records) {
+    const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
+    const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
+    if (!iso2) continue;
+    const value = Number(record?.value);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    const year = Number(record?.date);
+    if (!Number.isFinite(year)) continue;
+    const existing = imports[iso2];
+    if (!existing || year > existing.year) {
+      imports[iso2] = { importsUsd: value, year };
+    }
+  }
+  return imports;
+}
+
 async function fetchAnnualImportsUsd() {
   const pages = [];
   let page = 1;
   let totalPages = 1;
   while (page <= totalPages) {
-    const url = `${WB_BASE}/country/all/indicator/${IMPORTS_INDICATOR}?format=json&per_page=500&page=${page}&mrv=1`;
+    const url = `${WB_BASE}/country/all/indicator/${IMPORTS_INDICATOR}?format=json&per_page=2000&page=${page}&mrv=${IMPORTS_LOOKBACK_YEARS}`;
     const resp = await fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(30_000),
@@ -153,17 +191,7 @@ async function fetchAnnualImportsUsd() {
     pages.push(...records);
     page++;
   }
-  const imports = {};
-  for (const record of pages) {
-    const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
-    const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
-    if (!iso2) continue;
-    const value = Number(record?.value);
-    if (!Number.isFinite(value) || value <= 0) continue;
-    const year = Number(record?.date);
-    imports[iso2] = { importsUsd: value, year: Number.isFinite(year) ? year : null };
-  }
-  return imports;
+  return pickLatestPerCountry(pages);
 }
 
 // ── Tier 1: official disclosure endpoints (per-fund hand-curated) ──
@@ -671,6 +699,14 @@ export async function fetchSovereignWealth() {
     console.warn(`[seed-sovereign-wealth] ${unmatched.length} fund(s) unmatched across all tiers: ${unmatched.join(', ')}`);
   }
 
+  const summary = buildCoverageSummary(manifest, imports, countries);
+  console.log(`[seed-sovereign-wealth] manifest coverage: ${summary.matchedFunds}/${summary.expectedFunds} funds across ${summary.expectedCountries} countries`);
+  for (const row of summary.countryStatuses) {
+    const tag = row.status === 'complete' ? 'OK  ' : row.status === 'partial' ? 'PART' : 'MISS';
+    const extra = row.reason ? ` — ${row.reason}` : '';
+    console.log(`[seed-sovereign-wealth]   ${tag} ${row.country} ${row.matched}/${row.expected}${extra}`);
+  }
+
   const usedWikipedia = sourceMix.wikipedia_list + sourceMix.wikipedia_infobox > 0;
   return {
     countries,
@@ -680,7 +716,58 @@ export async function fetchSovereignWealth() {
     sourceAttribution: {
       wikipedia: usedWikipedia ? WIKIPEDIA_SOURCE_ATTRIBUTION : undefined,
     },
+    summary,
   };
+}
+
+/**
+ * Manifest-vs-seeded coverage summary. Exported so the enumeration logic
+ * is unit-testable — previously, a country that failed (no WB imports +
+ * no Wikipedia match) disappeared silently unless a log line happened to
+ * emit on the specific code path. This function guarantees every
+ * manifest country appears with an explicit status and reason.
+ *
+ * @param {{ funds: Array<{ country: string, fund: string }> }} manifest
+ * @param {Record<string, unknown>} imports Per-country import entries from pickLatestPerCountry
+ * @param {Record<string, { matchedFunds: number, expectedFunds: number, completeness: number }>} countries Seeded country payload
+ */
+export function buildCoverageSummary(manifest, imports, countries) {
+  const expectedFundsTotal = manifest.funds.length;
+  const expectedCountries = new Set(manifest.funds.map((f) => f.country));
+  let matchedFundsTotal = 0;
+  for (const entry of Object.values(countries)) matchedFundsTotal += entry.matchedFunds;
+  const countryStatuses = [];
+  for (const iso2 of expectedCountries) {
+    const entry = countries[iso2];
+    if (entry && entry.completeness === 1.0) {
+      countryStatuses.push({ country: iso2, status: 'complete', matched: entry.matchedFunds, expected: entry.expectedFunds });
+    } else if (entry) {
+      countryStatuses.push({ country: iso2, status: 'partial', matched: entry.matchedFunds, expected: entry.expectedFunds });
+    } else {
+      const reason = imports[iso2] ? 'no fund AUM matched' : 'missing WB imports';
+      countryStatuses.push({
+        country: iso2,
+        status: 'missing',
+        matched: 0,
+        expected: countManifestFundsForCountry(manifest, iso2),
+        reason,
+      });
+    }
+  }
+  countryStatuses.sort((a, b) => a.country.localeCompare(b.country));
+  return {
+    expectedCountries: expectedCountries.size,
+    expectedFunds: expectedFundsTotal,
+    matchedCountries: Object.keys(countries).length,
+    matchedFunds: matchedFundsTotal,
+    countryStatuses,
+  };
+}
+
+function countManifestFundsForCountry(manifest, iso2) {
+  let n = 0;
+  for (const f of manifest.funds) if (f.country === iso2) n++;
+  return n;
 }
 
 export function validate(data) {
