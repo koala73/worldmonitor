@@ -60,6 +60,9 @@
 //         ],
 //         totalEffectiveMonths: <number>,  // Σ per-fund effectiveMonths
 //         annualImports: <number, USD>,    // WB NE.IMP.GNFS.CD, for audit
+//         expectedFunds: <number>,         // manifest count for this country
+//         matchedFunds: <number>,          // funds whose AUM resolved
+//         completeness: <number 0..1>,     // matchedFunds / expectedFunds
 //       }
 //     },
 //     seededAt: <ISO8601>,
@@ -573,10 +576,26 @@ export async function fetchSovereignWealth() {
 
     if (fundRecords.length === 0) continue;
     const totalEffectiveMonths = fundRecords.reduce((s, f) => s + f.effectiveMonths, 0);
+    const expectedFunds = funds.length;
+    const matchedFunds = fundRecords.length;
+    const completeness = matchedFunds / expectedFunds;
+    // `completeness` signals partial-seed on multi-fund countries (AE,
+    // SG). Downstream scorer must derate the country when completeness
+    // < 1.0 — silently emitting partial totalEffectiveMonths would
+    // under-rank countries whose secondary fund transiently drifted on
+    // Wikipedia. The country stays in the payload (so the scorer can
+    // use the partial number for IMPUTE-level coverage), but only
+    // completeness=1.0 countries count toward recordCount / health.
+    if (completeness < 1.0) {
+      console.warn(`[seed-sovereign-wealth] ${iso2} partial: ${matchedFunds}/${expectedFunds} funds matched — completeness=${completeness.toFixed(2)}`);
+    }
     countries[iso2] = {
       funds: fundRecords,
       totalEffectiveMonths,
       annualImports: importsEntry.importsUsd,
+      expectedFunds,
+      matchedFunds,
+      completeness,
     };
   }
 
@@ -606,8 +625,20 @@ function validate(data) {
   return typeof data?.countries === 'object';
 }
 
+// Health-facing record count. Counts ONLY fully-matched countries
+// (completeness === 1.0), so a scraper drift on a secondary fund (e.g.
+// Mubadala while ADIA still matches, or Temasek while GIC still matches)
+// drops the recordCount seed-health signal — catching the partial-seed
+// silent-corruption class that an "any country that has any fund"
+// count would miss. Per-country completeness stays in the payload for
+// the scorer to derate; recordCount is the operational alarm.
 export function declareRecords(data) {
-  return Object.keys(data?.countries || {}).length;
+  const countries = data?.countries ?? {};
+  let fully = 0;
+  for (const entry of Object.values(countries)) {
+    if (entry?.completeness === 1.0) fully++;
+  }
+  return fully;
 }
 
 if (process.argv[1]?.endsWith('seed-sovereign-wealth.mjs')) {
@@ -615,7 +646,10 @@ if (process.argv[1]?.endsWith('seed-sovereign-wealth.mjs')) {
     validateFn: validate,
     ttlSeconds: CACHE_TTL_SECONDS,
     sourceVersion: `swf-manifest-v1-${new Date().getFullYear()}`,
-    recordCount: (data) => Object.keys(data?.countries ?? {}).length,
+    // Health-facing recordCount delegates to declareRecords so the
+    // seed-meta record_count stays consistent with the operational
+    // alarm (only countries whose manifest funds all matched count).
+    recordCount: declareRecords,
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 86400,

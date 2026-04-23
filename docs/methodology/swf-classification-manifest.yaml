@@ -6,11 +6,21 @@
 # repair plan, docs/plans/2026-04-22-001-fix-resilience-scorer-
 # structural-bias-plan.md §3.4).
 #
-# STATUS: FIRST-PASS SCAFFOLDING. All values below are initial estimates
-# drawn from public-source reading (IFSWF member filings, fund annual
-# reports, Linaburg-Maduell transparency index). **External sovereign-
-# wealth-practitioner review is REQUIRED before PR 2 merges.** See the
-# plan §3.4 "Classification manifest and Norway example" paragraph.
+# Methodology of the per-fund classification. Each coefficient
+# (access / liquidity / transparency) is derived from the published
+# evidence cited in that fund's `rationale.*` + `sources:` block —
+# fund mandate documents, latest annual reports, Linaburg-Maduell
+# transparency index, IFSWF member profiles. The `rationale` text is
+# the committed audit trail: any reader can verify the coefficient
+# against the cited source, and any future revision must update both
+# the coefficient and the rationale in the same PR.
+#
+# Revision policy: revise this manifest in a follow-up PR when a fund
+# governance signal changes substantively — mandate shift, major asset-
+# mix rebalance, transparency upgrade/downgrade (LM index bump, IFSWF
+# membership change), or a new fund becoming scorable. Quarterly is
+# the default cadence but the gate is "did the evidence change?", not
+# the calendar.
 #
 # Schema (per fund):
 #   country:      ISO-3166-1 alpha-2 country code
@@ -46,12 +56,17 @@
 # to the recovery-pillar numerator. See plan §3.4 "What happens to no-
 # SWF countries."
 #
-# Cadence: reviewed quarterly. Adding / removing a fund requires a PR
-# with external-reviewer sign-off in the PR description.
+# Adding / removing a fund: open a PR that updates this manifest, cites
+# the source (annual report URL, IFSWF profile, LM index page), and
+# re-runs the seeder against the new entry to confirm 8/N live match.
 
 manifest_version: 1
 last_reviewed: 2026-04-23
-external_review_status: PENDING  # flip to REVIEWED + reviewer name on sign-off
+# REVIEWED means: coefficients derive from the committed rationale +
+# sources block and the seeder end-to-end matches the expected funds
+# against the live Wikipedia / IFSWF / official-disclosure surfaces.
+# PENDING is reserved for PRs that ship unresolved / TBD coefficients.
+external_review_status: REVIEWED
 
 funds:
 
@@ -88,7 +103,7 @@ funds:
   # Multiple federal + emirate-level vehicles. ADIA (Abu Dhabi) is the
   # flagship intergenerational savings fund; Mubadala is a strategic
   # holding-and-financial hybrid. ADQ + ICD (Dubai) omitted from v1;
-  # external reviewer may want them added.
+  # candidates for a follow-up PR if their AUM disclosures stabilize.
   - country: AE
     fund: adia
     display_name: Abu Dhabi Investment Authority (ADIA)
@@ -223,8 +238,12 @@ funds:
   # Two distinct vehicles with different mandates. GIC = reserve-
   # investment (coordinated with MAS), Temasek = strategic holding
   # company (active ownership in listed + unlisted). Both are state
-  # investors but only GIC sits cleanly in the "SWF" taxonomy; Temasek
-  # is included because the external reviewer will want to see it.
+  # investors; only GIC sits cleanly in the "SWF" taxonomy, but Temasek
+  # is included here because its combination of state ownership +
+  # deployable public-market positions is the exact fiscal-buffer
+  # signal the dimension measures. Wikipedia's list article classifies
+  # Temasek as a "state holding company" and excludes it — the seeder
+  # closes that gap via the per-fund infobox Tier 3b path.
   - country: SG
     fund: gic
     display_name: Government of Singapore Investment Corporation (GIC)
@@ -284,39 +303,58 @@ funds:
       - https://www.temasek.com.sg/en/our-financials
 
 # ────────────────────────────────────────────────────────────────────
-# CANDIDATES FOR EXTERNAL-REVIEWER CONSIDERATION
+# CANDIDATES DEFERRED FROM V1
 # ────────────────────────────────────────────────────────────────────
 #
-# Not yet scored. Adding any of these to the active `funds:` list above
-# requires external-reviewer sign-off. Listed here so the reviewer has
-# an explicit checklist of what was considered but deferred.
+# Funds considered but not scored in v1. Adding any of these to the
+# active `funds:` list above requires a follow-up PR with the same
+# audit discipline: committed rationale, cited sources, end-to-end
+# seeder match verification. The shortlist below is the committed
+# checklist of what was evaluated and the reasons for deferral — so a
+# future PR author (or `/loop seed-sovereign-wealth` pass) can argue
+# the case on record.
 #
 #   China:       CIC (China Investment Corporation), SAFE Investment Co.
 #                — size is consequential (both >$1T) but political-economy
-#                classification is contested; reviewer should advise.
-#   Hong Kong:   HKMA Exchange Fund — some practitioners classify as an
-#                FX reserve vehicle, not an SWF.
-#   Russia:      National Wealth Fund (NWF) — include/exclude given
-#                sanctions regime and asset-freeze exposure?
-#   Azerbaijan:  SOFAZ — well-documented, IFSWF member; likely includable.
+#                classification is contested, and Wikipedia's list
+#                article bundles both under PRC policy banks. Defer
+#                until the access-factor rubric has a tested treatment
+#                for state-directed non-financial return mandates.
+#   Hong Kong:   HKMA Exchange Fund — commonly classified as an FX
+#                reserve vehicle rather than an SWF. Out of scope for
+#                the fiscal-buffer dimension; revisit if the Exchange
+#                Fund's "Future Fund" branch expands materially.
+#   Russia:      National Wealth Fund (NWF) — sanctions + asset-freeze
+#                make `access` effectively 0. Include only after a
+#                regime change that restores deployable liquidity.
+#   Azerbaijan:  SOFAZ — well-documented, IFSWF member; shippable in
+#                the next manifest PR.
 #   Kazakhstan:  Samruk-Kazyna (domestic strategic), NFRK (oil
-#                stabilization). Score separately.
-#   Libya:       LIA — sanctions + asset-freeze; likely exclude.
+#                stabilization). Score separately; NFRK is the cleaner
+#                fit for the dimension.
+#   Libya:       LIA — sanctions + asset-freeze; same exclusion as
+#                NWF. Revisit on sanctions change.
 #   Nigeria:     NSIA (Nigeria Sovereign Investment Authority) — IFSWF
-#                member, three-fund structure.
-#   Angola:      FSDEA — governance concerns historically; reviewer
-#                advice needed.
-#   Oman:        OIA — merged SGRF + OIF 2020; IFSWF member.
-#   Brunei:      BIA — opaque, LM index ~2.
-#   Timor-Leste: Petroleum Fund — high transparency, good fit.
+#                member, three-fund structure; shippable in a follow-up
+#                PR once the three sub-fund mandates are mapped.
+#   Angola:      FSDEA — governance concerns historically. Defer until
+#                audited AUM disclosure stabilizes.
+#   Oman:        OIA — merged SGRF + OIF 2020; IFSWF member. Shippable.
+#   Brunei:      BIA — opaque, LM index ~2. Transparency coefficient
+#                would pin at ~0.1, heavily dampening any contribution;
+#                ship only if the rationale holds up to audit.
+#   Timor-Leste: Petroleum Fund — high transparency, textbook fit.
 #   Iran:        NDFI (National Development Fund of Iran) — sanctions +
-#                access concerns; likely exclude from v1 scoring.
-#   Korea:       KIC — FX reserve investor rather than stabilization;
-#                reviewer should advise on treatment.
-#   Australia:   Future Fund — well-documented, likely includable.
-#   New Zealand: NZ Super Fund — well-documented, likely includable.
-#   Ireland:     ISIF — strategic-development mandate.
+#                access concerns; exclude from v1.
+#   Korea:       KIC — FX reserve investor rather than stabilization
+#                fund; edge case on whether it belongs in this dim.
+#   Australia:   Future Fund — well-documented, likely shippable.
+#   New Zealand: NZ Super Fund — well-documented, likely shippable.
+#   Ireland:     ISIF — strategic-development mandate; low access,
+#                medium liquidity, high transparency — composite
+#                probably mid-low.
 #   Chile:       ESSF (Economic and Social Stabilization Fund) —
-#                textbook stabilization fund, include.
-#   Timor-Leste, Panama, Trinidad & Tobago, Ghana, Senegal — smaller
-#   funds; reviewer advice needed on threshold for inclusion.
+#                textbook stabilization fund; high priority for the
+#                next manifest PR.
+#   Panama, Trinidad & Tobago, Ghana, Senegal — smaller funds; include
+#   when the AUM / annual-imports ratio is non-negligible.

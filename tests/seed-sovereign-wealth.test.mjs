@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  declareRecords,
   detectCurrency,
   lookupUsdRate,
   matchWikipediaRecord,
@@ -353,6 +354,53 @@ describe('lookupUsdRate — project-shared FX integration', () => {
     // 434B × 0.74 = 321.16B. Matches SHARED_FX_FALLBACKS.SGD.
     assert.ok(aumUsd > 300_000_000_000 && aumUsd < 340_000_000_000,
       `expected ~US$ 320B, got ${aumUsd}`);
+  });
+});
+
+describe('declareRecords — partial-seed guard for multi-fund countries', () => {
+  // Regression: for multi-fund countries (AE = ADIA + Mubadala,
+  // SG = GIC + Temasek) a single scraper drift would silently publish
+  // a partial totalEffectiveMonths if we counted "any fund matched"
+  // as a successful country-seed. declareRecords MUST only count
+  // countries with completeness === 1.0 so a secondary-fund drift
+  // drops the seed-health record count and triggers the operational
+  // alarm, rather than leaking an under-weighted total into the
+  // ranking.
+
+  it('counts only countries where all manifest funds matched', () => {
+    const data = {
+      countries: {
+        NO: { funds: [{}], expectedFunds: 1, matchedFunds: 1, completeness: 1.0 },
+        AE: { funds: [{}, {}], expectedFunds: 2, matchedFunds: 2, completeness: 1.0 },
+        SG: { funds: [{}], expectedFunds: 2, matchedFunds: 1, completeness: 0.5 }, // partial
+      },
+    };
+    assert.equal(declareRecords(data), 2,
+      'SG (partial, completeness=0.5) must NOT count — recordCount stays at 2, not 3');
+  });
+
+  it('returns 0 when every country is partial', () => {
+    const data = {
+      countries: {
+        AE: { expectedFunds: 2, matchedFunds: 1, completeness: 0.5 },
+        SG: { expectedFunds: 2, matchedFunds: 1, completeness: 0.5 },
+      },
+    };
+    assert.equal(declareRecords(data), 0,
+      'all-partial payload must drop recordCount to 0 — the seed-meta alarm surfaces a degraded run');
+  });
+
+  it('returns 0 on empty / malformed payload', () => {
+    assert.equal(declareRecords({}), 0);
+    assert.equal(declareRecords({ countries: {} }), 0);
+    assert.equal(declareRecords(null), 0);
+    assert.equal(declareRecords(undefined), 0);
+  });
+
+  it('ignores entries lacking the completeness field (defensive)', () => {
+    // Old payload shape (pre-completeness) must not spuriously count.
+    const data = { countries: { XX: { funds: [{}], totalEffectiveMonths: 1 } } };
+    assert.equal(declareRecords(data), 0);
   });
 });
 
