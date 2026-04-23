@@ -1,0 +1,133 @@
+---
+title: "Revision Log (Corrections)"
+description: "Append-only public log of every evidence change and resulting public-badge change across the Energy Atlas registries. The audit surface for WorldMonitor's classifier — every status flip is trackable by source, date, and classifier version."
+---
+
+## What this page is
+
+WorldMonitor's Energy Atlas publishes evidence bundles — not opinions — for
+pipelines, storage facilities, fuel shortages, and disruption events. A
+deterministic, versioned classifier turns those bundles into public badges
+(`flowing` / `reduced` / `offline` / `disputed` for assets;
+`confirmed` / `watch` for shortages).
+
+Every time the classifier changes a public field — because evidence
+updated, because staleness decayed a badge, because a new classifier
+version re-derived an old asset, or because an operator/regulator
+submitted a correction — it writes an append-only entry here.
+
+This is the real audit surface. The evidence registries themselves are
+forward-looking snapshots; this page is the history of how each status
+arrived at where it is today.
+
+## Data shape
+
+Each entry is a row with the following fields:
+
+```ts
+{
+  date: string,                 // ISO8601 — when the change was written
+  assetOrEventId: string,       // matches an id in the pipeline / storage / shortage / disruption registry
+  fieldChanged: string,         // e.g. 'publicBadge', 'physicalState', 'severity', 'evidence.sanctionRefs'
+  previousValue: unknown,       // value before the change
+  newValue: unknown,            // value after the change
+  trigger: 'classifier' | 'source' | 'decay' | 'override',
+  sourcesUsed: string[],        // URLs cited by the classifier for this change
+  classifierVersion: string,    // version that produced newValue (e.g. 'badge-deriver-v1')
+}
+```
+
+### Trigger vocabulary
+
+- **`classifier`** — a routine classifier pass re-derived the field from
+  the current evidence bundle. Most common trigger.
+- **`source`** — a new evidence source arrived (regulator filing, operator
+  press release, sanction list update) and the classifier re-derived
+  accordingly.
+- **`decay`** — the evidence is older than the staleness window
+  (14 days for registry fields, 30 days for shortage evidence) and the
+  classifier demoted a non-positive badge to `disputed` or `watch`.
+- **`override`** — a break-glass manual override was applied. Rare;
+  reserved for demonstrably-wrong classifier outputs a reader has flagged.
+  Overrides carry the same `sourcesUsed` discipline as classifier entries.
+
+## Current state (v1 launch)
+
+The revision log starts empty at launch (2026-04-23). Entries accumulate
+as the classifier in `proactive-intelligence.mjs` runs on its normal
+schedule post-launch and as evidence bundles evolve. Expect the first
+entries to appear within days as:
+
+- Regulator advisories for active fuel shortages update
+- New sanction list additions re-derive pipeline/storage badges
+- Evidence older than the staleness window decays non-positive badges
+
+The log surface pins to the classifier version in effect at write time.
+When a new classifier version ships, prior entries remain readable under
+their original `classifierVersion` — no silent rewrites.
+
+## How to verify a badge
+
+If you see a status on the [Energy Atlas](https://energy.worldmonitor.app)
+that doesn't match what you know to be true, the audit path is:
+
+1. Open the asset drawer (click the pipeline / storage dot / shortage pin).
+2. Read the evidence bundle — every source is linked with publication
+   date and authority (`regulator` / `operator` / `press` / `satellite`).
+3. Cross-reference this page for the derivation history of the current
+   badge.
+4. If all evidence is current and the classifier output still looks
+   wrong, email a correction request (see below). Your source becomes
+   the `sourcesUsed` for an `override` trigger entry.
+
+## Submitting a correction
+
+Corrections from operators, regulators, and researchers are welcomed:
+
+- **Operators** — Corrections about an asset you operate (pipeline,
+  storage facility) are treated as authoritative when accompanied by a
+  public reference (press release, operator statement on your own
+  domain). Email corrections with the URL to `corrections@worldmonitor.app`.
+- **Regulators / agencies** — Corrections from a national regulator are
+  treated the same. Include the regulator identifier in the email body.
+- **Researchers / journalists** — Corrections backed by a
+  publicly-verifiable source (wire coverage, filing, satellite imagery
+  provider) are reviewed and written as `override` entries citing your
+  source URL.
+
+We do **not** accept corrections without a public source URL. The
+revision log contract requires `sourcesUsed` to be non-empty.
+
+## Related methodology
+
+- [Pipeline Registry](/methodology/pipelines) — the `publicBadge`
+  derivation rules for gas and oil pipelines.
+- [Storage Facilities](/methodology/storage) — same for strategic
+  storage assets.
+- [Fuel Shortages](/methodology/shortages) — severity classifier
+  (`watch` → `confirmed`) evidence-threshold spec.
+- [Disruption Event Log](/methodology/disruptions) — state-transition
+  event shape tied back to the asset registries.
+- [Chokepoints](/methodology/chokepoints) — chokepoint status derivation.
+
+## Why we publish this
+
+Most dashboards that classify infrastructure status — "sanctioned",
+"offline", "reduced flow" — treat the classifier's output as the primary
+surface and the evidence as footnotes. WorldMonitor inverts that: the
+evidence bundle is the primary surface; the public badge is a
+deterministic function of it; and every transition is tracked here.
+
+Two consequences:
+
+1. **Agents and MCP clients** consuming the RPCs (`ListPipelines`,
+   `ListStorageFacilities`, `ListFuelShortages`, `ListEnergyDisruptions`)
+   get the same `classifierVersion` field and can pin to a version,
+   reproduce a historical badge, or diff classifier generations.
+2. **Human readers** can verify any status independently. A pipeline
+   labeled `offline` that should read `flowing` can be traced to the
+   evidence field that flipped it, and a correction sent with a public
+   source URL propagates back through the same classifier.
+
+Evidence-first classification only works if the audit trail is public.
+This page is that trail.

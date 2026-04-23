@@ -91,6 +91,8 @@
               "methodology/pipelines",
               "methodology/storage",
               "methodology/shortages",
+              "methodology/disruptions",
+              "corrections",
               "geographic-convergence",
               "strategic-risk",
               "algorithms"
