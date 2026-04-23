@@ -1,6 +1,0 @@
-{
-  "resource": "https://worldmonitor.app",
-  "authorization_servers": ["https://api.worldmonitor.app"],
-  "bearer_methods_supported": ["header"],
-  "scopes_supported": ["mcp"]
-}

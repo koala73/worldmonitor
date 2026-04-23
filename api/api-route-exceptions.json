@@ -38,6 +38,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/oauth-protected-resource.ts",
+      "category": "external-protocol",
+      "reason": "RFC 9728 OAuth Protected Resource metadata. Dynamic per-host to satisfy scanner origin-match rules — shape dictated by RFC 9728.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/discord/oauth/callback.ts",
       "category": "external-protocol",
       "reason": "Discord OAuth redirect target — response is an HTML popup-closer page, query-param shape fixed by Discord.",

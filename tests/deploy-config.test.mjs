@@ -376,72 +376,76 @@ describe('agent readiness: api-catalog + openapi build', () => {
   });
 });
 
-// The MCP endpoint and OAuth protected-resource metadata must share an
-// origin — a scanner or client that enters from a mismatched host sees
-// "this server says its resource lives on a different origin", which
-// violates RFC 9728 and breaks the PRM discovery flow in strict clients.
-// The resource/authorization-server split is intentional: apex serves
-// the MCP transport + resource metadata, api.worldmonitor.app serves
-// the OAuth endpoints. Keep them in lockstep — all resource-side
-// pointers (MCP server-card transport.endpoint, MCP server-card
-// authentication.resource, oauth-protected-resource.resource, and every
-// WWW-Authenticate resource_metadata pointer emitted from api/mcp.ts)
-// must agree, while authorization_servers stays on the api host.
+// The MCP endpoint and OAuth protected-resource metadata must be
+// self-consistent per host. The static file that used to live at
+// public/.well-known/oauth-protected-resource was replaced with a
+// dynamic edge function at api/oauth-protected-resource.ts that
+// derives `resource` and `authorization_servers` from the request
+// Host header, so every origin (apex / www / api) sees same-origin
+// metadata regardless of which host the scanner entered from.
+// Scanners like isitagentready.com (and Cloudflare's reference at
+// mcp.cloudflare.com) enforce that `authorization_servers[*]` share
+// origin with `resource` — this construction guarantees that.
 describe('agent readiness: MCP/OAuth origin alignment', () => {
-  const mcpCard = JSON.parse(
-    readFileSync(resolve(__dirname, '../public/.well-known/mcp/server-card.json'), 'utf-8')
-  );
-  const oauthMeta = JSON.parse(
-    readFileSync(resolve(__dirname, '../public/.well-known/oauth-protected-resource'), 'utf-8')
-  );
-
-  const mcpEndpointOrigin = new URL(mcpCard.transport.endpoint).origin;
-  const resourceOrigin = new URL(oauthMeta.resource).origin;
-
-  it('MCP transport.endpoint origin matches OAuth metadata resource origin', () => {
-    assert.equal(
-      mcpEndpointOrigin,
-      resourceOrigin,
-      'MCP transport.endpoint and OAuth resource must share the same origin'
+  it('oauth-protected-resource edge fn derives resource from request host', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../api/oauth-protected-resource.ts'),
+      'utf-8'
+    );
+    assert.match(
+      source,
+      /const\s+origin\s*=\s*`https:\/\/\$\{host\}`/,
+      'resource must be derived from request host'
+    );
+    assert.match(
+      source,
+      /resource:\s*origin/,
+      'resource field must equal origin'
+    );
+    assert.match(
+      source,
+      /authorization_servers:\s*\[\s*origin\s*\]/,
+      'authorization_servers must equal [origin] (same-origin by construction)'
+    );
+    assert.match(
+      source,
+      /runtime:\s*['"]edge['"]/,
+      'must be edge runtime'
     );
   });
 
-  it('MCP card authentication.resource equals OAuth metadata resource exactly', () => {
-    assert.equal(
-      mcpCard.authentication.resource,
-      oauthMeta.resource,
-      'MCP card authentication.resource must equal OAuth metadata resource'
+  it('MCP server card authentication.resource is a valid https URL on a known host', () => {
+    const mcpCard = JSON.parse(
+      readFileSync(resolve(__dirname, '../public/.well-known/mcp/server-card.json'), 'utf-8')
     );
-  });
-
-  it('authorization_servers stay on api.worldmonitor.app (intentional resource/AS split)', () => {
+    const u = new URL(mcpCard.authentication.resource);
+    assert.equal(u.protocol, 'https:');
     assert.ok(
-      Array.isArray(oauthMeta.authorization_servers) && oauthMeta.authorization_servers.length > 0,
-      'oauth-protected-resource.authorization_servers must be a non-empty array'
+      ['worldmonitor.app', 'www.worldmonitor.app', 'api.worldmonitor.app'].includes(u.host),
+      `unexpected host: ${u.host}`
     );
-    for (const s of oauthMeta.authorization_servers) {
-      assert.equal(
-        new URL(s).origin,
-        'https://api.worldmonitor.app',
-        `authorization_servers entry must stay on api.worldmonitor.app, got: ${s}`
-      );
-    }
   });
 
-  it('api/mcp.ts WWW-Authenticate resource_metadata pointers share origin with oauth-protected-resource', () => {
-    const mcpSource = readFileSync(resolve(__dirname, '../api/mcp.ts'), 'utf-8');
-    const matches = [...mcpSource.matchAll(/resource_metadata="([^"]+)"/g)];
+  it('api/mcp.ts WWW-Authenticate resource_metadata paths resolve to /.well-known/oauth-protected-resource', () => {
+    const source = readFileSync(resolve(__dirname, '../api/mcp.ts'), 'utf-8');
+    const matches = [...source.matchAll(/resource_metadata="([^"]+)"/g)];
     assert.ok(
       matches.length > 0,
-      'api/mcp.ts should emit resource_metadata pointers in its 401 WWW-Authenticate headers'
+      'api/mcp.ts must emit resource_metadata pointers in its 401 WWW-Authenticate headers'
     );
     for (const [, url] of matches) {
-      assert.equal(
-        new URL(url).origin,
-        resourceOrigin,
-        `api/mcp.ts resource_metadata pointer ${url} must share origin with oauth-protected-resource`
-      );
+      const u = new URL(url);
+      assert.equal(u.pathname, '/.well-known/oauth-protected-resource');
+      assert.equal(u.protocol, 'https:');
     }
+  });
+
+  it('vercel.json rewrites /.well-known/oauth-protected-resource to the edge fn', () => {
+    const rewrite = vercelConfig.rewrites.find(
+      (r) => r.source === '/.well-known/oauth-protected-resource'
+    );
+    assert.ok(rewrite, 'expected a rewrite for /.well-known/oauth-protected-resource');
+    assert.equal(rewrite.destination, '/api/oauth-protected-resource');
   });
 });
 
