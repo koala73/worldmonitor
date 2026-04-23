@@ -48,6 +48,7 @@ import {
   readOrchestratorConfig,
 } from './lib/brief-dedup.mjs';
 import { stripSourceSuffix } from './lib/brief-dedup-jaccard.mjs';
+import { writeReplayLog } from './lib/brief-dedup-replay-log.mjs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -392,6 +393,25 @@ async function buildDigest(rule, windowStartMs) {
   const cfg = readOrchestratorConfig(process.env);
   const { reps: dedupedAll, embeddingByHash, logSummary } =
     await deduplicateStories(stories);
+  // Replay log (opt-in via DIGEST_DEDUP_REPLAY_LOG=1). Best-effort — any
+  // failure is swallowed by writeReplayLog. Runs AFTER dedup so the log
+  // captures the real rep + cluster assignments. RuleId omits userId on
+  // purpose: dedup input is shared across users of the same (variant,
+  // lang, sensitivity), and we don't want user identity in log keys.
+  // See docs/brainstorms/2026-04-23-001-brief-dedup-recall-gap.md §5 Phase 1.
+  const tsMs = Date.now();
+  const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
+  void writeReplayLog({
+    stories,
+    reps: dedupedAll,
+    embeddingByHash,
+    cfg,
+    tickContext: {
+      briefTickId: `${ruleKey}:${tsMs}`,
+      ruleId: ruleKey,
+      tsMs,
+    },
+  });
   // Apply the absolute-score floor AFTER dedup so the floor runs on
   // the representative's score (mentionCount-sum doesn't change the
   // score field; the rep is the highest-scoring member of its
