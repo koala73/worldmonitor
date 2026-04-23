@@ -16639,7 +16639,11 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
   if (_testRedisStore) {
     const published = _testRedisStore[canonicalKey] ?? null;
     if (!published || typeof published !== 'object') return 'MISSING';
-    const enveloped = !!published._seed && typeof published.data === 'object' && published.data !== null;
+    // Match Lua's strict `type(payload._seed) == 'table'` / `type(payload.data)
+    // == 'table'` checks — any looser JS guard (e.g., truthy on `_seed: true`)
+    // would mask Lua regressions that bisect on fixture shape.
+    const enveloped = !!published._seed && typeof published._seed === 'object' && !Array.isArray(published._seed)
+      && typeof published.data === 'object' && published.data !== null && !Array.isArray(published.data);
     const inner = enveloped ? published.data : published;
     if (!Array.isArray(inner?.predictions)) return 'MISSING';
     const runTs = typeof runGeneratedAt === 'number' ? runGeneratedAt : 0;
