@@ -359,6 +359,48 @@ const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
   recovery: 0.25,
 };
 
+// Per-dimension weight multipliers applied inside the coverage-weighted
+// mean when aggregating a domain. Defaults to 1.0 (every dim gets the
+// same nominal share, and the coverage-weighted mean's share-denominator
+// reflects how much real data each dim contributes).
+//
+// PR 2 §3.4 — `liquidReserveAdequacy` and `sovereignFiscalBuffer` each
+// carry 0.5 so they sit at ~10% of the recovery-domain score instead of
+// the equal-share 1/6 (~16.7%) the old reserveAdequacy dim implicitly
+// claimed. The plan's target: "liquidReserveAdequacy ~0.10;
+// sovereignFiscalBuffer ~0.10; other recovery dimensions absorb
+// residual." Math check with all 6 active recovery dims at coverage=1:
+//   (1.0×4 + 0.5×2) = 5.0 total weighted coverage
+//   new-dim share    = 0.5 / 5.0 = 0.10 ✓
+//   other-dim share  = 1.0 / 5.0 = 0.20 (the residual-absorbed weight)
+//
+// Retired dims have coverage=0 and so contribute 0 to the numerator /
+// denominator regardless of their weight entry; setting them to 1.0
+// here is fine and keeps the map uniform.
+export const RESILIENCE_DIMENSION_WEIGHTS: Record<ResilienceDimensionId, number> = {
+  macroFiscal: 1.0,
+  currencyExternal: 1.0,
+  tradeSanctions: 1.0,
+  cyberDigital: 1.0,
+  logisticsSupply: 1.0,
+  infrastructure: 1.0,
+  energy: 1.0,
+  governanceInstitutional: 1.0,
+  socialCohesion: 1.0,
+  borderSecurity: 1.0,
+  informationCognitive: 1.0,
+  healthPublicService: 1.0,
+  foodWater: 1.0,
+  fiscalSpace: 1.0,
+  reserveAdequacy: 1.0,          // retired; coverage=0 neutralizes the weight
+  externalDebtCoverage: 1.0,
+  importConcentration: 1.0,
+  stateContinuity: 1.0,
+  fuelStockDays: 1.0,             // retired; coverage=0 neutralizes the weight
+  liquidReserveAdequacy: 0.5,     // PR 2 §3.4 target ~10% recovery share
+  sovereignFiscalBuffer: 0.5,     // PR 2 §3.4 target ~10% recovery share
+};
+
 export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, ResilienceDomainId> = {
   macroFiscal: 'economic',
   currencyExternal: 'economic',

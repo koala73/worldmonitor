@@ -16,6 +16,7 @@ import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_TYPES,
+  RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
   RESILIENCE_RETIRED_DIMENSIONS,
   createMemoizedSeedReader,
@@ -272,10 +273,25 @@ function buildDimensionList(
   }));
 }
 
+// Coverage-weighted mean with an optional per-dimension weight multiplier.
+// Each dim's effective weight is `coverage * dimWeight`, so when all
+// weights default to 1.0 this reduces to the original coverage-weighted
+// mean. PR 2 §3.4 uses the weight channel to dial the two new recovery
+// dims down to ~10% share (see RESILIENCE_DIMENSION_WEIGHTS in
+// _dimension-scorers.ts for the rationale). Retired dims have
+// coverage=0 so they're neutralized at the coverage end; the weight
+// channel stays 1.0 for them in the canonical map.
 function coverageWeightedMean(dimensions: ResilienceDimension[]): number {
-  const totalCoverage = dimensions.reduce((sum, d) => sum + d.coverage, 0);
-  if (!totalCoverage) return 0;
-  return dimensions.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCoverage;
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const d of dimensions) {
+    const w = RESILIENCE_DIMENSION_WEIGHTS[d.id as ResilienceDimensionId] ?? 1.0;
+    const effective = d.coverage * w;
+    totalWeight += effective;
+    weightedSum += d.score * effective;
+  }
+  if (!totalWeight) return 0;
+  return weightedSum / totalWeight;
 }
 
 export const PENALTY_ALPHA = 0.50;

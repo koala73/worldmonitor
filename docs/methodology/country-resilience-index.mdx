@@ -227,6 +227,31 @@ All six WGI indicators are equally weighted.
 
 This domain forms the recovery-capacity pillar. It measures a country's ability to bounce back from an acute shock along fiscal, monetary, trade, institutional, and energy dimensions.
 
+**Per-dimension weights in the recovery domain (PR 2 §3.4).** Four
+core recovery dimensions (`fiscalSpace`, `externalDebtCoverage`,
+`importConcentration`, `stateContinuity`) carry the default weight
+`1.0`. The two PR 2 §3.4 replacements for the retired `reserveAdequacy`
+carry weight `0.5` each:
+
+| Dimension | Weight | Share at full coverage |
+|---|---:|---:|
+| fiscalSpace | 1.0 | 20% |
+| externalDebtCoverage | 1.0 | 20% |
+| importConcentration | 1.0 | 20% |
+| stateContinuity | 1.0 | 20% |
+| liquidReserveAdequacy | 0.5 | 10% |
+| sovereignFiscalBuffer | 0.5 | 10% |
+
+The `0.5` weight on the two new dims caps their combined contribution
+to the recovery score at ~20%, matching the plan's direction that the
+sovereign-wealth signal complement — rather than dominate — the
+classical liquid-reserves and fiscal-space signals. The weights are
+applied via `RESILIENCE_DIMENSION_WEIGHTS` in
+`server/worldmonitor/resilience/v1/_dimension-scorers.ts`;
+`coverageWeightedMean` in `_shared.ts` multiplies each dim's coverage
+by its weight before computing the domain average, so a dim with
+`coverage=0` (retirement) still contributes zero regardless of weight.
+
 #### Fiscal Space
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |

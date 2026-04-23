@@ -6,6 +6,7 @@ import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_SCORERS,
   RESILIENCE_DIMENSION_TYPES,
+  RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
   getResilienceDomainWeight,
   scoreAllDimensions,
@@ -132,10 +133,21 @@ describe('resilience scorer contracts', () => {
     });
 
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
-    function coverageWeightedMean(dims: { score: number; coverage: number }[]) {
-      const totalCov = dims.reduce((s, d) => s + d.coverage, 0);
-      if (!totalCov) return 0;
-      return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+    // Mirror of the production coverage-weighted mean (see
+    // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
+    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS so the expected
+    // values here track the production aggregation after the PR 2 §3.4
+    // recovery-domain weight rebalance.
+    function coverageWeightedMean(dims: { id: string; score: number; coverage: number }[]) {
+      let totalW = 0, sum = 0;
+      for (const d of dims) {
+        const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
+        const effective = d.coverage * w;
+        totalW += effective;
+        sum += d.score * effective;
+      }
+      if (!totalW) return 0;
+      return sum / totalW;
     }
 
     const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
@@ -161,11 +173,13 @@ describe('resilience scorer contracts', () => {
     // PR 2 §3.4: 60.12 → 60.35 — split adds liquidReserveAdequacy
     // (US ≈ 1 month WB reserves → score 18 at cov=1.0) and
     // sovereignFiscalBuffer (IMPUTE at 50 / cov=0.3) into the baseline
-    // coverage-weighted mean. Net effect is a small upward shift
-    // because the retired reserveAdequacy's 50-at-coverage-weighted-1
-    // is replaced by the same total weight split across the two new
-    // dims with different coverage profiles.
-    assert.equal(baselineScore, 60.35);
+    // coverage-weighted mean.
+    // PR 2 §3.4 weight rebalance: 60.35 → 62.17. The two new recovery
+    // dims now carry weight=0.5 (RESILIENCE_DIMENSION_WEIGHTS), so
+    // the low-scoring liquidReserveAdequacy (18) and partial-coverage
+    // sovereignFiscalBuffer (50 × 0.3) contribute ~half as much to
+    // the US baseline aggregate as under the equal-weight default.
+    assert.equal(baselineScore, 62.17);
     // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
     // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
     // shifts and US stress score moves). stressFactor updates in lockstep:
@@ -177,21 +191,31 @@ describe('resilience scorer contracts', () => {
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
         const dimScores = RESILIENCE_DIMENSION_ORDER
           .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === domainId)
-          .map((id) => ({ score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage) }));
-        const totalCov = dimScores.reduce((sum, d) => sum + d.coverage, 0);
-        const cwMean = totalCov ? dimScores.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCov : 0;
+          .map((id) => ({ id, score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage) }));
+        // Mirror production: apply per-dim weight to each dim's
+        // effective coverage before computing the mean.
+        let totalW = 0, sum = 0;
+        for (const d of dimScores) {
+          const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
+          const eff = d.coverage * w;
+          totalW += eff;
+          sum += d.score * eff;
+        }
+        const cwMean = totalW ? sum / totalW : 0;
         return round(cwMean) * getResilienceDomainWeight(domainId);
       }).reduce((sum, v) => sum + v, 0),
     );
     // PR 3 §3.5: 65.57 → 65.82 (fuelStockDays retirement) → 65.52
     // (currencyExternal rebuild) → 63.27 (externalDebtCoverage goalpost
     // tightened 0..5 → 0..2; US recovery-domain contribution drops).
-    // PR 2 §3.4: 63.27 → 63.6 after the reserveAdequacy split. The new
-    // liquidReserveAdequacy at score=18 / coverage=1.0 + sovereign-
-    // FiscalBuffer at score=50 / coverage=0.3 shifts the recovery-
-    // domain coverage-weighted mean upward (retired reserveAdequacy
-    // dropped out with coverage=0), lifting the overall by ~0.33.
-    assert.equal(overallScore, 63.6);
+    // PR 2 §3.4: 63.27 → 63.6 after the reserveAdequacy split.
+    // PR 2 §3.4 weight rebalance: 63.6 → 64.39. The two new recovery
+    // dims (liquidReserveAdequacy @ score=18, sovereignFiscalBuffer @
+    // score=50/cov=0.3) now carry weight=0.5 so they're each ~10% of
+    // the recovery domain instead of the equal-share ~16.7%. The
+    // under-weighted score-18 dim matters less, lifting US's recovery
+    // contribution by ~3 points and the overall by ~0.79.
+    assert.equal(overallScore, 64.39);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -236,10 +260,21 @@ describe('resilience scorer contracts', () => {
     installRedis(RESILIENCE_FIXTURES);
     const scoreMap = await scoreAllDimensions('US');
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
-    function coverageWeightedMean(dims: { score: number; coverage: number }[]) {
-      const totalCov = dims.reduce((s, d) => s + d.coverage, 0);
-      if (!totalCov) return 0;
-      return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+    // Mirror of the production coverage-weighted mean (see
+    // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
+    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS so the expected
+    // values here track the production aggregation after the PR 2 §3.4
+    // recovery-domain weight rebalance.
+    function coverageWeightedMean(dims: { id: string; score: number; coverage: number }[]) {
+      let totalW = 0, sum = 0;
+      for (const d of dims) {
+        const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
+        const effective = d.coverage * w;
+        totalW += effective;
+        sum += d.score * effective;
+      }
+      if (!totalW) return 0;
+      return sum / totalW;
     }
 
     const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
@@ -264,9 +299,10 @@ describe('resilience scorer contracts', () => {
     assert.ok(expected > 0, 'overall should be positive');
     // PR 3 §3.5: 65.82 → 65.52 (currencyExternal rebuild) → 63.27 after
     // externalDebtCoverage goalpost tightened from (0..5) to (0..2).
-    // PR 2 §3.4: 63.27 → 63.6 after reserveAdequacy retirement + the
-    // liquidReserveAdequacy / sovereignFiscalBuffer split.
-    assert.equal(expected, 63.6, 'overallScore should match sum(domainScore * domainWeight); 63.27 → 63.6 after PR 2 §3.4 reserveAdequacy split');
+    // PR 2 §3.4: 63.27 → 63.6 after reserveAdequacy retirement + split.
+    // PR 2 §3.4 weight rebalance: 63.6 → 64.39 after dialing the two
+    // new recovery dims down to weight=0.5 (~10% recovery share each).
+    assert.equal(expected, 64.39, 'overallScore should match sum(domainScore * domainWeight); 63.6 → 64.39 after PR 2 §3.4 recovery-domain weight rebalance');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {
