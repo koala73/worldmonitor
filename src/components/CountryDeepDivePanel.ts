@@ -1230,9 +1230,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     import('@/shared/fuel-shortage-registry-store').then(({ getCachedFuelShortageRegistry }) => {
       const { registry } = getCachedFuelShortageRegistry() as {
-        registry: { shortages?: Record<string, { country?: string; product?: string; severity?: string; id?: string; shortDescription?: string }> } | undefined;
+        registry: { shortages?: Record<string, { country?: string; product?: string; severity?: string; id?: string; shortDescription?: string; resolvedAt?: string | null }> } | undefined;
       };
-      const shortages = Object.values(registry?.shortages ?? {}).filter(s => s.country === iso2);
+      // Exclude resolved shortages — the drill-down counts ACTIVE crises
+      // per country, and rendering resolved rows as active inflates the
+      // confirmed/watch severity line. Classifier writes resolvedAt on
+      // resolution; raw seed uses null.
+      const shortages = Object.values(registry?.shortages ?? {})
+        .filter(s => s.country === iso2 && !s.resolvedAt);
       if (shortages.length > 0) {
         const confirmedCount = shortages.filter(s => s.severity === 'confirmed').length;
         const severityLine = confirmedCount > 0

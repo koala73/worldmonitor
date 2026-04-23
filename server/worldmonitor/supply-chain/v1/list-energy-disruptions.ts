@@ -74,7 +74,14 @@ export async function listEnergyDisruptions(
   req: ListEnergyDisruptionsRequest,
 ): Promise<ListEnergyDisruptionsResponse> {
   const raw = (await getCachedJson(ENERGY_DISRUPTIONS_KEY)) as RawRegistry | null;
-  if (!raw?.events) {
+
+  // upstreamUnavailable fires only on raw-null (Redis returned nothing),
+  // matching the contract enforced by sibling handlers (list-pipelines,
+  // list-storage-facilities, list-fuel-shortages). A partial write where
+  // `raw` exists but `events` is missing is NOT a Redis failure — it's a
+  // producer bug or an empty registry, and the right behavior is to return
+  // an empty list, not claim upstream is down.
+  if (!raw) {
     return {
       events: [],
       fetchedAt: new Date().toISOString(),
@@ -83,7 +90,7 @@ export async function listEnergyDisruptions(
     };
   }
 
-  const events = Object.values(raw.events)
+  const events = Object.values(raw.events ?? {})
     .map(projectDisruption)
     .filter((e): e is EnergyDisruptionEntry => e != null)
     .filter(e => matches(e, req))

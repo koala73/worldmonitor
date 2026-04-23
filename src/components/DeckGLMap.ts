@@ -2225,6 +2225,7 @@ export class DeckGLMap {
     interface RawEntry {
       id?: string; country?: string; product?: string; severity?: string;
       shortDescription?: string;
+      resolvedAt?: string | null;
     }
     interface ShortagePin {
       id: string;
@@ -2238,7 +2239,12 @@ export class DeckGLMap {
     const { registry } = getCachedFuelShortageRegistry() as {
       registry: { shortages?: Record<string, RawEntry> } | undefined;
     };
-    const rawEntries: RawEntry[] = Object.values(registry?.shortages ?? {});
+    // Exclude resolved shortages — a pin on the map is a claim of an
+    // ACTIVE crisis, and rendering resolved entries as active inflates
+    // severity counts and shows stale crisis data. Classifier writes
+    // resolvedAt as ISO string on resolution; raw seed uses null.
+    const rawEntries: RawEntry[] = Object.values(registry?.shortages ?? {})
+      .filter(s => !s.resolvedAt);
     if (rawEntries.length === 0) return null;
 
     // Stack multiple shortages per country by offsetting longitudes.
