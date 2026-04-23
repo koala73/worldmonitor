@@ -492,6 +492,296 @@
         "classifierVersion": "v1",
         "classifierConfidence": 0.75
       }
+    },
+    "bierwang": {
+      "id": "bierwang", "name": "Bierwang Gas Storage", "operator": "Uniper Energy Storage",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 48.15, "lon": 12.32 },
+      "capacityTwh": 14.5, "workingCapacityUnit": "TWh", "inService": 1971,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "etzel-salt-cavern": {
+      "id": "etzel-salt-cavern", "name": "Etzel Gas Storage (salt cavern complex)", "operator": "IVG Caverns / Storengy / EWE",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 53.45, "lon": 7.70 },
+      "capacityTwh": 20.2, "workingCapacityUnit": "TWh", "inService": 1975,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "jemgum": {
+      "id": "jemgum", "name": "Jemgum Gas Storage", "operator": "EWE Gasspeicher / astora",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 53.27, "lon": 7.37 },
+      "capacityTwh": 14.8, "workingCapacityUnit": "TWh", "inService": 2012,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "krummhoern": {
+      "id": "krummhoern", "name": "Krummhörn Gas Storage", "operator": "EWE Gasspeicher",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 53.42, "lon": 7.07 },
+      "capacityTwh": 6.5, "workingCapacityUnit": "TWh", "inService": 1973,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "peckensen": {
+      "id": "peckensen", "name": "Peckensen Gas Storage", "operator": "VNG Gasspeicher",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 52.88, "lon": 11.37 },
+      "capacityTwh": 5.8, "workingCapacityUnit": "TWh", "inService": 2014,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "reckrod": {
+      "id": "reckrod", "name": "Reckrod Gas Storage", "operator": "VNG Gasspeicher",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 50.72, "lon": 9.95 },
+      "capacityTwh": 0.9, "workingCapacityUnit": "TWh", "inService": 1993,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "uelsen": {
+      "id": "uelsen", "name": "Uelsen Gas Storage", "operator": "Wintershall Dea / Gasspeicher Uelsen",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 52.50, "lon": 6.87 },
+      "capacityTwh": 7.4, "workingCapacityUnit": "TWh", "inService": 1979,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "xanten": {
+      "id": "xanten", "name": "Xanten Gas Storage", "operator": "Open Grid Europe / Nuon",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 51.65, "lon": 6.47 },
+      "capacityTwh": 5.2, "workingCapacityUnit": "TWh", "inService": 2008,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "epe-salt-cavern": {
+      "id": "epe-salt-cavern", "name": "Epe Gas Storage (multi-operator salt-cavern complex)", "operator": "Uniper / Nuon / Salzgitter (Epe Kavernengesellschaft)",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 52.18, "lon": 7.02 },
+      "capacityTwh": 22.5, "workingCapacityUnit": "TWh", "inService": 1971,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "alkmaar": {
+      "id": "alkmaar", "name": "Alkmaar Gas Storage", "operator": "TAQA Energy",
+      "facilityType": "ugs", "country": "NL", "location": { "lat": 52.63, "lon": 4.75 },
+      "capacityTwh": 5.9, "workingCapacityUnit": "TWh", "inService": 1997,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "norg": {
+      "id": "norg", "name": "Norg Gas Storage", "operator": "NAM",
+      "facilityType": "ugs", "country": "NL", "location": { "lat": 53.07, "lon": 6.47 },
+      "capacityTwh": 59.2, "workingCapacityUnit": "TWh", "inService": 1997,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.95 }
+    },
+    "zuidwending": {
+      "id": "zuidwending", "name": "Zuidwending Gas Storage", "operator": "EnergyStock (Gasunie)",
+      "facilityType": "ugs", "country": "NL", "location": { "lat": 53.12, "lon": 6.92 },
+      "capacityTwh": 3.1, "workingCapacityUnit": "TWh", "inService": 2011,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "7fields-schonkirchen": {
+      "id": "7fields-schonkirchen", "name": "7Fields / Schönkirchen–Reyersdorf Gas Storage", "operator": "RAG Austria",
+      "facilityType": "ugs", "country": "AT", "location": { "lat": 48.42, "lon": 16.75 },
+      "capacityTwh": 24.6, "workingCapacityUnit": "TWh", "inService": 2001,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "baumgarten-uhs": {
+      "id": "baumgarten-uhs", "name": "Baumgarten Gas Storage", "operator": "OMV Gas Storage",
+      "facilityType": "ugs", "country": "AT", "location": { "lat": 48.37, "lon": 16.87 },
+      "capacityTwh": 13.2, "workingCapacityUnit": "TWh", "inService": 1982,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "puchkirchen": {
+      "id": "puchkirchen", "name": "Puchkirchen Gas Storage", "operator": "RAG Austria",
+      "facilityType": "ugs", "country": "AT", "location": { "lat": 48.05, "lon": 13.47 },
+      "capacityTwh": 6.5, "workingCapacityUnit": "TWh", "inService": 1981,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "chemery": {
+      "id": "chemery", "name": "Chémery Gas Storage", "operator": "Storengy (ENGIE)",
+      "facilityType": "ugs", "country": "FR", "location": { "lat": 47.47, "lon": 1.52 },
+      "capacityTwh": 38.5, "workingCapacityUnit": "TWh", "inService": 1968,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.95 }
+    },
+    "cerville-velaine": {
+      "id": "cerville-velaine", "name": "Cerville-Velaine Gas Storage", "operator": "Storengy (ENGIE)",
+      "facilityType": "ugs", "country": "FR", "location": { "lat": 48.65, "lon": 6.35 },
+      "capacityTwh": 8.5, "workingCapacityUnit": "TWh", "inService": 1970,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "etrez": {
+      "id": "etrez", "name": "Étrez Gas Storage", "operator": "Storengy (ENGIE)",
+      "facilityType": "ugs", "country": "FR", "location": { "lat": 46.30, "lon": 5.12 },
+      "capacityTwh": 4.7, "workingCapacityUnit": "TWh", "inService": 1980,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "manosque": {
+      "id": "manosque", "name": "Manosque Gas Storage (Géosel)", "operator": "Geomethane / Storengy",
+      "facilityType": "ugs", "country": "FR", "location": { "lat": 43.83, "lon": 5.78 },
+      "capacityTwh": 2.5, "workingCapacityUnit": "TWh", "inService": 1993,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "lussagnet": {
+      "id": "lussagnet", "name": "Lussagnet Gas Storage", "operator": "Teréga",
+      "facilityType": "ugs", "country": "FR", "location": { "lat": 43.67, "lon": -0.20 },
+      "capacityTwh": 35, "workingCapacityUnit": "TWh", "inService": 1957,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.95 }
+    },
+    "izaute": {
+      "id": "izaute", "name": "Izaute Gas Storage", "operator": "Teréga",
+      "facilityType": "ugs", "country": "FR", "location": { "lat": 43.62, "lon": -0.15 },
+      "capacityTwh": 8.5, "workingCapacityUnit": "TWh", "inService": 1981,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "minerbio": {
+      "id": "minerbio", "name": "Minerbio Gas Storage", "operator": "Stogit (Snam)",
+      "facilityType": "ugs", "country": "IT", "location": { "lat": 44.78, "lon": 11.50 },
+      "capacityTwh": 45, "workingCapacityUnit": "TWh", "inService": 1973,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.95 }
+    },
+    "ripalta": {
+      "id": "ripalta", "name": "Ripalta Gas Storage", "operator": "Stogit (Snam)",
+      "facilityType": "ugs", "country": "IT", "location": { "lat": 45.52, "lon": 9.72 },
+      "capacityTwh": 18, "workingCapacityUnit": "TWh", "inService": 1964,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "sergnano": {
+      "id": "sergnano", "name": "Sergnano Gas Storage", "operator": "Stogit (Snam)",
+      "facilityType": "ugs", "country": "IT", "location": { "lat": 45.53, "lon": 9.68 },
+      "capacityTwh": 6.5, "workingCapacityUnit": "TWh", "inService": 1984,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "brugherio": {
+      "id": "brugherio", "name": "Brugherio Gas Storage", "operator": "Edison Stoccaggio",
+      "facilityType": "ugs", "country": "IT", "location": { "lat": 45.55, "lon": 9.30 },
+      "capacityTwh": 1.5, "workingCapacityUnit": "TWh", "inService": 1988,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "rough": {
+      "id": "rough", "name": "Rough Gas Storage", "operator": "Centrica Storage",
+      "facilityType": "ugs", "country": "GB", "location": { "lat": 53.83, "lon": 0.90 },
+      "capacityTwh": 9, "workingCapacityUnit": "TWh", "inService": 1985,
+      "evidence": {
+        "physicalState": "reduced", "physicalStateSource": "operator",
+        "operatorStatement": {
+          "text": "Closed 2017 due to well integrity; partial reopening 2022 under temporary license at reduced capacity (~20% of historical). Full restoration under evaluation.",
+          "url": "https://www.centricastorage.co.uk/", "date": "2022-10-17"
+        },
+        "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+",
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88
+      }
+    },
+    "hornsea": {
+      "id": "hornsea", "name": "Hornsea Gas Storage", "operator": "SSE Gas Storage",
+      "facilityType": "ugs", "country": "GB", "location": { "lat": 53.92, "lon": -0.17 },
+      "capacityTwh": 3.3, "workingCapacityUnit": "TWh", "inService": 1979,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "damborice": {
+      "id": "damborice", "name": "Damboříce Gas Storage", "operator": "MND Energy Storage",
+      "facilityType": "ugs", "country": "CZ", "location": { "lat": 48.97, "lon": 17.02 },
+      "capacityTwh": 5, "workingCapacityUnit": "TWh", "inService": 2016,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "lobodice": {
+      "id": "lobodice", "name": "Lobodice Gas Storage", "operator": "RWE Gas Storage CZ",
+      "facilityType": "ugs", "country": "CZ", "location": { "lat": 49.37, "lon": 17.28 },
+      "capacityTwh": 2.6, "workingCapacityUnit": "TWh", "inService": 1965,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "lab-slovakia": {
+      "id": "lab-slovakia", "name": "Láb Gas Storage", "operator": "Nafta a.s.",
+      "facilityType": "ugs", "country": "SK", "location": { "lat": 48.42, "lon": 16.85 },
+      "capacityTwh": 36, "workingCapacityUnit": "TWh", "inService": 1975,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "hajduszoboszlo": {
+      "id": "hajduszoboszlo", "name": "Hajdúszoboszló Gas Storage", "operator": "MOL Magyar Földgáztároló",
+      "facilityType": "ugs", "country": "HU", "location": { "lat": 47.45, "lon": 21.40 },
+      "capacityTwh": 17.8, "workingCapacityUnit": "TWh", "inService": 1987,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "mogilno": {
+      "id": "mogilno", "name": "Mogilno Gas Storage (salt cavern)", "operator": "PGNiG / Gas Storage Poland",
+      "facilityType": "ugs", "country": "PL", "location": { "lat": 52.65, "lon": 17.97 },
+      "capacityTwh": 9.2, "workingCapacityUnit": "TWh", "inService": 2013,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "lille-torup": {
+      "id": "lille-torup", "name": "Lille Torup Gas Storage", "operator": "Gas Storage Denmark (Energinet)",
+      "facilityType": "ugs", "country": "DK", "location": { "lat": 56.78, "lon": 9.30 },
+      "capacityTwh": 4.6, "workingCapacityUnit": "TWh", "inService": 1987,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "incukalns": {
+      "id": "incukalns", "name": "Inčukalns Gas Storage", "operator": "Conexus Baltic Grid",
+      "facilityType": "ugs", "country": "LV", "location": { "lat": 57.10, "lon": 24.68 },
+      "capacityTwh": 24, "workingCapacityUnit": "TWh", "inService": 1968,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "gaviota": {
+      "id": "gaviota", "name": "Gaviota Gas Storage", "operator": "Enagás GTS",
+      "facilityType": "ugs", "country": "ES", "location": { "lat": 43.38, "lon": -2.72 },
+      "capacityTwh": 2.4, "workingCapacityUnit": "TWh", "inService": 1994,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "kasimovskoe": {
+      "id": "kasimovskoe", "name": "Kasimovskoe Gas Storage", "operator": "Gazprom UGS",
+      "facilityType": "ugs", "country": "RU", "location": { "lat": 54.93, "lon": 41.40 },
+      "capacityTwh": 124, "workingCapacityUnit": "TWh", "inService": 1977,
+      "evidence": {
+        "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract",
+        "sanctionRefs": [
+          { "authority": "EU", "listId": "2022/1269 (Gazprom-related energy sanctions)", "date": "2022-10-06", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R1269" }
+        ],
+        "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75
+      }
+    },
+    "freeport-lng": {
+      "id": "freeport-lng", "name": "Freeport LNG Terminal", "operator": "Freeport LNG",
+      "facilityType": "lng_export", "country": "US", "location": { "lat": 28.95, "lon": -95.35 },
+      "capacityMtpa": 15, "workingCapacityUnit": "Mtpa", "inService": 2019,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "cameron-lng": {
+      "id": "cameron-lng", "name": "Cameron LNG Terminal", "operator": "Cameron LNG (Sempra)",
+      "facilityType": "lng_export", "country": "US", "location": { "lat": 29.85, "lon": -93.32 },
+      "capacityMtpa": 12, "workingCapacityUnit": "Mtpa", "inService": 2019,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "cove-point-lng": {
+      "id": "cove-point-lng", "name": "Cove Point LNG Terminal", "operator": "Dominion Energy",
+      "facilityType": "lng_export", "country": "US", "location": { "lat": 38.40, "lon": -76.38 },
+      "capacityMtpa": 5.25, "workingCapacityUnit": "Mtpa", "inService": 2018,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "elba-island-lng": {
+      "id": "elba-island-lng", "name": "Elba Island LNG Terminal", "operator": "Kinder Morgan",
+      "facilityType": "lng_export", "country": "US", "location": { "lat": 32.08, "lon": -81.02 },
+      "capacityMtpa": 2.5, "workingCapacityUnit": "Mtpa", "inService": 2020,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "qalhat-lng": {
+      "id": "qalhat-lng", "name": "Qalhat LNG Terminal (Sur)", "operator": "Oman LNG / Qalhat LNG",
+      "facilityType": "lng_export", "country": "OM", "location": { "lat": 22.52, "lon": 59.53 },
+      "capacityMtpa": 11.4, "workingCapacityUnit": "Mtpa", "inService": 2000,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "adgas-das-island": {
+      "id": "adgas-das-island", "name": "Das Island LNG (ADGAS)", "operator": "ADNOC LNG",
+      "facilityType": "lng_export", "country": "AE", "location": { "lat": 25.15, "lon": 52.87 },
+      "capacityMtpa": 8, "workingCapacityUnit": "Mtpa", "inService": 1977,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "sakhalin-2-lng": {
+      "id": "sakhalin-2-lng", "name": "Sakhalin 2 LNG (Prigorodnoye)", "operator": "Sakhalin Energy (Gazprom-led post-2022)",
+      "facilityType": "lng_export", "country": "RU", "location": { "lat": 46.63, "lon": 142.77 },
+      "capacityMtpa": 9.6, "workingCapacityUnit": "Mtpa", "inService": 2009,
+      "evidence": {
+        "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract",
+        "sanctionRefs": [
+          { "authority": "G7+EU", "listId": "Russian price cap / LNG-related restrictions", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+        ],
+        "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88
+      }
+    },
+    "tangguh-lng": {
+      "id": "tangguh-lng", "name": "Tangguh LNG", "operator": "BP (operator, Pertamina Hulu Energi share)",
+      "facilityType": "lng_export", "country": "ID", "location": { "lat": -2.42, "lon": 133.20 },
+      "capacityMtpa": 11.4, "workingCapacityUnit": "Mtpa", "inService": 2009,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "bontang-lng": {
+      "id": "bontang-lng", "name": "Bontang LNG", "operator": "Badak NGL (Pertamina-led)",
+      "facilityType": "lng_export", "country": "ID", "location": { "lat": 0.13, "lon": 117.50 },
+      "capacityMtpa": 22.5, "workingCapacityUnit": "Mtpa", "inService": 1977,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
     }
   }
 }
