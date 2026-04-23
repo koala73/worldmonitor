@@ -122,8 +122,8 @@ service SupplyChainService {
   }
 
   // ListFuelShortages returns the global fuel-shortage alert registry.
-  // Severity is CLASSIFIER OUTPUT not a client derivation. Curated v1;
-  // classifier-extended post-launch. Free tier.
+  // Curated-only: severity ("confirmed" | "watch") is a row field authored
+  // at curation time, not a client-side derivation. Free tier.
   rpc ListFuelShortages(ListFuelShortagesRequest) returns (ListFuelShortagesResponse) {
     option (sebuf.http.config) = {path: "/list-fuel-shortages", method: HTTP_METHOD_GET};
   }
