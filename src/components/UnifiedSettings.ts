@@ -332,6 +332,15 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    // Mirror close() — without this, a destroy() during the 12s fallback
+    // window leaves the timer live; it fires after teardown and calls
+    // replaceUpgradeSection() against a detached overlay (no-op via the
+    // querySelector early return, but a stray async callback + DOM
+    // reference alive longer than intended).
+    if (this.entitlementReadyTimer) {
+      clearTimeout(this.entitlementReadyTimer);
+      this.entitlementReadyTimer = null;
+    }
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
   }
@@ -530,6 +539,27 @@ export class UnifiedSettings {
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           <button class="manage-billing-btn">Manage Billing</button>
+        </div>
+      `;
+    }
+
+    // Fallback branch: 12s timer fired but Convex never delivered a
+    // snapshot. entitlementReady===true does NOT prove the user is free —
+    // it just means we've given up waiting. A paying user whose auth/query
+    // is simply very slow (beyond the 10s waitForConvexAuth timeout) would
+    // otherwise race into in-modal startCheckout here and reproduce the
+    // 409 duplicate_subscription cascade this PR exists to eliminate.
+    // Render the card with a plain anchor to /pro instead: /pro has its
+    // own entitlement gating on fresh page load, and navigating away is a
+    // no-op for backend subscription state. The `upgrade-pro-cta-link`
+    // class does NOT match the `.upgrade-pro-cta` delegated click handler
+    // (line ~95), so the browser handles the navigation natively.
+    if (getAuthState().user && getEntitlementState() === null) {
+      return `
+        <div class="upgrade-pro-section upgrade-pro-fallback">
+          <div class="upgrade-pro-title">Upgrade to Pro</div>
+          <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
+          <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
         </div>
       `;
     }
