@@ -58,7 +58,13 @@ const CONVEX_SITE_URL =
 const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
-const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@worldmonitor.app>';
+// Brief/digest is an editorial daily read, not an incident alarm — route it
+// off the `alerts@` mailbox so recipients don't see a scary "alert" from-name
+// in their inbox when an env override drops the display component.
+const RESEND_FROM =
+  process.env.RESEND_FROM_BRIEF ??
+  process.env.RESEND_FROM_EMAIL ??
+  'WorldMonitor Brief <brief@worldmonitor.app>';
 
 if (process.env.DIGEST_CRON_ENABLED === '0') {
   console.log('[digest] DIGEST_CRON_ENABLED=0 — skipping run');
