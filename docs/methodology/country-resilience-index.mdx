@@ -237,9 +237,34 @@ This domain forms the recovery-capacity pillar. It measures a country's ability 
 
 #### Reserve Adequacy
 
+PR 2 §3.4 retired `reserveAdequacy` from the core overall score. The dimension remains registered for schema continuity but pins at `coverage=0`, `score=50`, `imputationClass=null` for every country (same shape as the PR 3 `fuelStockDays` retirement — the `null` tag avoids a false "Source down" label in the widget for a deliberate construct retirement). The construct split into two dimensions that separate the liquid-reserves signal from the sovereign-wealth signal: `liquidReserveAdequacy` (below) and `sovereignFiscalBuffer` (below). See the v2.3 changelog entry for the rationale.
+
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| recoveryReserveMonths | Total reserves in months of imports (World Bank FI.RES.TOTL.MO) | Higher is better | 1 - 18 | 1.00 | World Bank | Annual |
+| recoveryReserveMonths | Total reserves in months of imports (World Bank FI.RES.TOTL.MO) — **experimental tier, not part of core score** | Higher is better | 1 - 18 | 1.00 | World Bank | Annual |
+
+#### Liquid Reserve Adequacy
+
+PR 2 §3.4 replacement for the liquid-reserves half of the retired `reserveAdequacy`. Same upstream source (World Bank `FI.RES.TOTL.MO`, total reserves in months of imports) but re-anchored `1..12` months instead of `1..18`. Twelve months is the ballpark IMF "full reserve adequacy" benchmark for a diversified emerging-market importer; the tighter ceiling prevents wealthy commodity-exporters from claiming outsized credit for on-paper reserve stocks that are not the relevant shock-absorption buffer. The sovereign-wealth half of the split lives in `sovereignFiscalBuffer` below.
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoveryLiquidReserveMonths | Total reserves in months of imports (World Bank FI.RES.TOTL.MO), re-anchored 1..12 | Higher is better | 1 - 12 | 1.00 | World Bank | Annual |
+
+#### Sovereign Fiscal Buffer
+
+PR 2 §3.4 new dimension. Measures the per-country deployable fiscal buffer from sovereign wealth fund assets, discounted by a three-component haircut (access × liquidity × transparency) per published fund governance. The composite is:
+
+```
+effectiveMonths = Σ [ (aum / annualImports × 12) × access × liquidity × transparency ]
+score           = 100 × (1 − exp(−effectiveMonths / 12))
+```
+
+The exponential saturation prevents Norway-type outliers (effective months in the 100s) from dominating the recovery pillar out of proportion to their marginal resilience benefit. Countries not in the SWF manifest (`docs/methodology/swf-classification-manifest.yaml`) score `0` with **full coverage** — this is substantive absence, not imputation: a country without a deployable sovereign-wealth buffer legitimately scores lower on this dim than a SWF-holding peer.
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| recoverySovereignWealthEffectiveMonths | Haircut-weighted sovereign-wealth assets in months of imports, saturating | Higher is better | 0 - 60 | 1.00 | Wikipedia SWF list + per-fund articles (CC-BY-SA), haircut by swf-classification-manifest.yaml | Quarterly |
 
 #### External Debt Coverage
 

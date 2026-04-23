@@ -50,16 +50,20 @@ describe('computeOverallCoverage: retired-dim exclusion', () => {
           id: 'recovery',
           dimensions: [
             dim('fiscalSpace', 0.9),
-            dim('reserveAdequacy', 0.8),
-            // Retired: must not pull the average down.
-            dim('fuelStockDays', 0),
+            dim('liquidReserveAdequacy', 0.8),  // active replacement for reserveAdequacy
+            // Retired dims contribute coverage=0 in real payloads; both
+            // must be filtered out so the visible coverage reading
+            // tracks only the active dims.
+            dim('reserveAdequacy', 0),          // retired in PR 2 §3.4
+            dim('fuelStockDays', 0),            // retired in PR 3 §3.5
           ],
         },
       ],
     } as unknown as GetResilienceScoreResponse;
 
-    // (0.9 + 0.8) / 2 = 0.85. With retired included the flat mean
-    // would be (0.9 + 0.8 + 0) / 3 ≈ 0.5667 — the regression shape.
+    // (0.9 + 0.8) / 2 = 0.85 — only the two active dims count.
+    // With retired included the flat mean would be
+    // (0.9 + 0.8 + 0 + 0) / 4 = 0.425 — the regression shape.
     assert.equal(computeOverallCoverage(response).toFixed(4), '0.8500');
   });
 

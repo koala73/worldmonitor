@@ -60,17 +60,25 @@ describe('resilience scorer contracts', () => {
     //     source-failure when the adapter is in seed-meta failedDatasets. This is the
     //     single source of truth for "no currency data"; null-imputationClass paths
     //     on non-real-data return branches are no longer permitted.
-    // PR 3 §3.5: fuelStockDays removed from this set — scoreFuelStockDays
-    // now returns coverage=0 + imputationClass=null for every country
-    // (retired), so it passes the default coverage=0 assertion below
-    // instead of the T1.7 fall-through assertion. The `null` tag (rather
-    // than 'source-failure') reflects the intentional retirement — see
-    // the widget `formatDimensionConfidence` absent-path which would
-    // otherwise surface a false "Source down" label on every country.
+    // PR 3 §3.5: fuelStockDays retired (coverage=0 + imputationClass=null).
+    // PR 2 §3.4: reserveAdequacy retired (same shape). Both pass the
+    // default coverage=0 assertion below instead of the T1.7 fall-through
+    // assertion.
+    //
+    // liquidReserveAdequacy (PR 2 §3.4) is NEW and falls through to
+    // IMPUTE.recoveryLiquidReserveAdequacy (imputationClass=unmonitored)
+    // when its seed is missing — same taxonomy as the other recovery
+    // dims in this set.
+    //
+    // sovereignFiscalBuffer (PR 2 §3.4) falls through to
+    // IMPUTE.recoverySovereignFiscalBuffer when the SWF seed key is
+    // absent entirely. Added here alongside the other recovery
+    // fall-throughs.
     const coverageZeroExempt = new Set([
       'currencyExternal',
-      'fiscalSpace', 'reserveAdequacy', 'externalDebtCoverage',
+      'fiscalSpace', 'externalDebtCoverage',
       'importConcentration', 'stateContinuity',
+      'liquidReserveAdequacy', 'sovereignFiscalBuffer',
     ]);
     for (const [dimensionId, scorer] of Object.entries(RESILIENCE_DIMENSION_SCORERS)) {
       const result = await scorer('US');
@@ -103,13 +111,24 @@ describe('resilience scorer contracts', () => {
     // Recovery 54.83 → 47.33 after externalDebtCoverage goalpost was
     // tightened from (0..5) to (0..2) per §3.5 point 3 (US ratio=1.5
     // now scores 25 instead of 70).
+    //
+    // PR 2 §3.4: recovery 47.33 → 48.75 after the split. The flat mean
+    // now covers 8 dims for US: fiscalSpace=44, reserveAdequacy=50
+    // (retired, coverage=0 but still in the flat mean), externalDebt=25,
+    // importConcentration=88, stateContinuity=65, fuelStockDays=50
+    // (retired, same shape), liquidReserveAdequacy=18 (US has ~1 month
+    // of reserves via WB FI.RES.TOTL.MO normalized 1..12 → 18), and
+    // sovereignFiscalBuffer=50 (IMPUTE fallback until Railway cron
+    // populates the SWF seed; US has no manifest entry). Sum 390 / 8
+    // = 48.75. Coverage-weighted domain aggregation (used by the real
+    // scoring pipeline) is separately verified below.
     assert.deepEqual(domainAverages, {
       economic: 66.33,
       infrastructure: 79,
       energy: 80,
       'social-governance': 61.75,
       'health-food': 60.5,
-      recovery: 47.33,
+      recovery: 48.75,
     });
 
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
@@ -138,9 +157,15 @@ describe('resilience scorer contracts', () => {
     const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
 
     // PR 3 §3.5: 62.64 → 63.63 (fuelStockDays retirement) → 60.12
-    // (externalDebtCoverage goalpost tightened; US score drops from 70
-    // to 25, pulling the coverage-weighted baseline mean down).
-    assert.equal(baselineScore, 60.12);
+    // (externalDebtCoverage goalpost tightened).
+    // PR 2 §3.4: 60.12 → 60.35 — split adds liquidReserveAdequacy
+    // (US ≈ 1 month WB reserves → score 18 at cov=1.0) and
+    // sovereignFiscalBuffer (IMPUTE at 50 / cov=0.3) into the baseline
+    // coverage-weighted mean. Net effect is a small upward shift
+    // because the retired reserveAdequacy's 50-at-coverage-weighted-1
+    // is replaced by the same total weight split across the two new
+    // dims with different coverage profiles.
+    assert.equal(baselineScore, 60.35);
     // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
     // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
     // shifts and US stress score moves). stressFactor updates in lockstep:
@@ -161,7 +186,12 @@ describe('resilience scorer contracts', () => {
     // PR 3 §3.5: 65.57 → 65.82 (fuelStockDays retirement) → 65.52
     // (currencyExternal rebuild) → 63.27 (externalDebtCoverage goalpost
     // tightened 0..5 → 0..2; US recovery-domain contribution drops).
-    assert.equal(overallScore, 63.27);
+    // PR 2 §3.4: 63.27 → 63.6 after the reserveAdequacy split. The new
+    // liquidReserveAdequacy at score=18 / coverage=1.0 + sovereign-
+    // FiscalBuffer at score=50 / coverage=0.3 shifts the recovery-
+    // domain coverage-weighted mean upward (retired reserveAdequacy
+    // dropped out with coverage=0), lifting the overall by ~0.33.
+    assert.equal(overallScore, 63.6);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -234,7 +264,9 @@ describe('resilience scorer contracts', () => {
     assert.ok(expected > 0, 'overall should be positive');
     // PR 3 §3.5: 65.82 → 65.52 (currencyExternal rebuild) → 63.27 after
     // externalDebtCoverage goalpost tightened from (0..5) to (0..2).
-    assert.equal(expected, 63.27, 'overallScore should match sum(domainScore * domainWeight); 65.52 → 63.27 after PR 3 §3.5 externalDebtCoverage re-goalpost');
+    // PR 2 §3.4: 63.27 → 63.6 after reserveAdequacy retirement + the
+    // liquidReserveAdequacy / sovereignFiscalBuffer split.
+    assert.equal(expected, 63.6, 'overallScore should match sum(domainScore * domainWeight); 63.27 → 63.6 after PR 2 §3.4 reserveAdequacy split');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

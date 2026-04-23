@@ -8,8 +8,19 @@ import type { ResilienceScoreResponse } from '@/services/resilience';
 // dimensions are filtered out of the displayed coverage percentage so
 // a deliberate construct retirement does not silently drag the user-
 // facing confidence reading down for every country.
+//
+// Retirement index:
+//   - fuelStockDays    (PR 3 §3.5) — IEA days-of-stock incomparable across
+//                                     net importers vs net exporters.
+//   - reserveAdequacy  (PR 2 §3.4) — superseded by the
+//                                     liquidReserveAdequacy +
+//                                     sovereignFiscalBuffer split.
+//
+// The parity test parses this Set literally, so keep the array contents
+// as string literals only — do not interleave comments between entries.
 const RESILIENCE_RETIRED_DIMENSION_IDS: ReadonlySet<string> = new Set([
   'fuelStockDays',
+  'reserveAdequacy',
 ]);
 
 // Gated locked-preview fixture rendered when the resilience widget is

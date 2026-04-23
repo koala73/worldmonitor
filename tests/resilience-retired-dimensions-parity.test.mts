@@ -31,7 +31,11 @@ function parseClientRetiredIds(): Set<string> {
       'If the constant was renamed or reformatted, update this parser to match.',
     );
   }
-  const ids = match[1]!
+  // Strip line comments (// …) from the array body so a reviewer can
+  // drop an inline rationale without breaking parity. Block comments
+  // inside a const array are unusual enough we don't handle them.
+  const body = match[1]!.replace(/\/\/[^\n]*/g, '');
+  const ids = body
     .split(',')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)

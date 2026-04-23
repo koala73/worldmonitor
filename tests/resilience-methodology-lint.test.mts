@@ -52,6 +52,8 @@ const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   'Import Concentration': 'importConcentration',
   'State Continuity': 'stateContinuity',
   'Fuel Stock Days': 'fuelStockDays',
+  'Liquid Reserve Adequacy': 'liquidReserveAdequacy',
+  'Sovereign Fiscal Buffer': 'sovereignFiscalBuffer',
 };
 
 function findMethodologyFile(): string {

@@ -40,7 +40,10 @@ describe('resilience handlers', () => {
 
     assert.equal(response.countryCode, 'US');
     assert.equal(response.domains.length, 6);
-    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 19);
+    // 19 active + 2 retired (fuelStockDays, reserveAdequacy) = 21. Retired
+    // dims stay in the response for structural continuity; they're
+    // filtered out of confidence averages via RESILIENCE_RETIRED_DIMENSIONS.
+    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 21);
     assert.ok(response.overallScore > 0 && response.overallScore <= 100);
     assert.equal(response.level, response.overallScore >= 70 ? 'high' : response.overallScore >= 40 ? 'medium' : 'low');
     assert.equal(response.trend, 'rising');

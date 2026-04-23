@@ -27,7 +27,7 @@ import { describe, it } from 'node:test';
 
 import {
   scoreEnergy,
-  scoreReserveAdequacy,
+  scoreLiquidReserveAdequacy,
   scoreFiscalSpace,
   scoreExternalDebtCoverage,
   scoreImportConcentration,
@@ -50,12 +50,14 @@ function makeRecoveryReader(keyValueMap: Record<string, unknown>): ResilienceSee
   return async (key: string) => keyValueMap[key] ?? null;
 }
 
-describe('resilience dimension monotonicity — scoreReserveAdequacy', () => {
+// PR 2 §3.4: scoreReserveAdequacy is retired. The monotonicity contract
+// moves to scoreLiquidReserveAdequacy — same source but 1..12 anchor.
+describe('resilience dimension monotonicity — scoreLiquidReserveAdequacy', () => {
   it('higher reserveMonths → higher score', async () => {
-    const low = await scoreReserveAdequacy(TEST_ISO2, makeRecoveryReader({
+    const low = await scoreLiquidReserveAdequacy(TEST_ISO2, makeRecoveryReader({
       'resilience:recovery:reserve-adequacy:v1': { countries: { [TEST_ISO2]: { reserveMonths: 2 } } },
     }));
-    const high = await scoreReserveAdequacy(TEST_ISO2, makeRecoveryReader({
+    const high = await scoreLiquidReserveAdequacy(TEST_ISO2, makeRecoveryReader({
       'resilience:recovery:reserve-adequacy:v1': { countries: { [TEST_ISO2]: { reserveMonths: 12 } } },
     }));
     assert.ok(high.score > low.score, `reserveMonths 2→12 should raise score; got ${low.score} → ${high.score}`);

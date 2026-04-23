@@ -410,6 +410,14 @@ describe('INDICATOR_REGISTRY seed-meta coverage (T1.5 P1 regression lock)', () =
     // writes this. The registry sourceKey economic:energy:v1:all does
     // not strip to this shape, so SOURCE_KEY_META_OVERRIDES maps it.
     'seed-meta:economic:energy-prices',
+    // PR 2 §3.4: seed-sovereign-wealth.mjs writes this via runSeed. Not
+    // yet registered in api/health.js SEED_META — per project memory
+    // feedback_health_required_key_needs_railway_cron_first.md, new
+    // seed keys go through ON_DEMAND_KEYS for ~7 days of clean Railway
+    // cron runs before promotion to SEED_META. A follow-up PR wires
+    // this once the cron has baked in; until then, allowlist it so
+    // the registry consistency check passes.
+    'seed-meta:resilience:recovery:sovereign-wealth',
   ]);
 
   function extractSeedMetaKeys(filePath: string): Set<string> {

@@ -48,22 +48,19 @@ function installRedisFixtures() {
 }
 
 describe('resilience release gate', () => {
-  it('keeps all 19 dimension scorers non-placeholder for the required countries', async () => {
-    // PR 3 §3.5: fuelStockDays is retired — scoreFuelStockDays emits
-    // coverage=0 + imputationClass=null for every country. The retirement
-    // is intentional (construct incomparable across net importers / net
-    // exporters). Allow-list it so the zero-coverage placeholder check
-    // still catches unintended regressions in the OTHER 18 dimensions.
-    //
-    // imputationClass=null (not 'source-failure') because the widget maps
-    // 'source-failure' to a "Source down: upstream seeder failed" label
-    // with a `!` icon — surfacing that for every country on a deliberate
-    // retirement would manufacture a false outage signal.
-    const RETIRED_DIMENSIONS = new Set(['fuelStockDays']);
+  it('keeps all 21 dimension scorers non-placeholder for the required countries', async () => {
+    // PR 3 §3.5 retired fuelStockDays; PR 2 §3.4 retired reserveAdequacy
+    // (superseded by the liquidReserveAdequacy + sovereignFiscalBuffer
+    // split). Both scorers emit coverage=0 + imputationClass=null — the
+    // widget maps 'source-failure' to a "Source down" label, which would
+    // manufacture a false outage signal on every country for a deliberate
+    // construct retirement. Allow-list keeps the zero-coverage placeholder
+    // check enforcing on the OTHER 19 dimensions.
+    const RETIRED_DIMENSIONS = new Set(['fuelStockDays', 'reserveAdequacy']);
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
       const entries = Object.entries(scores);
-      assert.equal(entries.length, 19, `${countryCode} should have all resilience dimensions`);
+      assert.equal(entries.length, 21, `${countryCode} should have all 21 resilience dimensions (19 active + 2 retired kept for structural continuity)`);
       for (const [dimensionId, score] of entries) {
         assert.ok(Number.isFinite(score.score), `${countryCode} ${dimensionId} should produce a numeric score`);
         if (RETIRED_DIMENSIONS.has(dimensionId)) {
@@ -254,7 +251,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
+    assert.equal(allDimensions.length, 21, 'US response should carry all 21 dimensions (19 active + 2 retired)');
     for (const dimension of allDimensions) {
       assert.equal(
         typeof dimension.imputationClass,
@@ -282,7 +279,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
+    assert.equal(allDimensions.length, 21, 'US response should carry all 21 dimensions (19 active + 2 retired)');
     const validLevels = ['', 'fresh', 'aging', 'stale'];
     for (const dimension of allDimensions) {
       assert.ok(dimension.freshness != null, `dimension ${dimension.id} must carry a freshness payload`);

@@ -6,12 +6,12 @@ import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indica
 import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 
 describe('indicator registry', () => {
-  it('covers all 19 dimensions', () => {
+  it('covers all 21 dimensions (19 active + 2 retired)', () => {
     const coveredDimensions = new Set(INDICATOR_REGISTRY.map((i) => i.dimension));
     for (const dimId of RESILIENCE_DIMENSION_ORDER) {
       assert.ok(coveredDimensions.has(dimId), `${dimId} has no indicators in registry`);
     }
-    assert.equal(coveredDimensions.size, 19);
+    assert.equal(coveredDimensions.size, 21);
   });
 
   it('has no duplicate indicator ids', () => {

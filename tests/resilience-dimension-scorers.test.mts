@@ -23,7 +23,9 @@ import {
   scoreFuelStockDays,
   scoreImportConcentration,
   scoreMacroFiscal,
+  scoreLiquidReserveAdequacy,
   scoreReserveAdequacy,
+  scoreSovereignFiscalBuffer,
   scoreSocialCohesion,
   scoreStateContinuity,
   scoreTradeSanctions,
@@ -1100,13 +1102,16 @@ describe('resilience source-failure aggregation (T1.7)', () => {
 
   it('produce plausible country ordering for the recovery-capacity dimensions', async () => {
     const fiscal = await scoreTriple(scoreFiscalSpace);
-    const reserves = await scoreTriple(scoreReserveAdequacy);
+    // PR 2 §3.4: reserveAdequacy retired → test scoreLiquidReserveAdequacy
+    // (the replacement). Same source (WB FI.RES.TOTL.MO) but 1..12 anchor.
+    // Country ordering still holds: NO (14mo) > US (1mo) > YE (imputed).
+    const reserves = await scoreTriple(scoreLiquidReserveAdequacy);
     const extDebt = await scoreTriple(scoreExternalDebtCoverage);
     const importHhi = await scoreTriple(scoreImportConcentration);
     const continuity = await scoreTriple(scoreStateContinuity);
 
     assertOrdered('fiscalSpace', fiscal.no.score, fiscal.us.score, fiscal.ye.score);
-    assertOrdered('reserveAdequacy', reserves.no.score, reserves.us.score, reserves.ye.score);
+    assertOrdered('liquidReserveAdequacy', reserves.no.score, reserves.us.score, reserves.ye.score);
     assertOrdered('externalDebtCoverage', extDebt.no.score, extDebt.us.score, extDebt.ye.score);
     assertOrdered('importConcentration', importHhi.no.score, importHhi.us.score, importHhi.ye.score);
     assertOrdered('stateContinuity', continuity.no.score, continuity.us.score, continuity.ye.score);
@@ -1127,9 +1132,100 @@ describe('resilience source-failure aggregation (T1.7)', () => {
     assert.equal(score.imputedWeight, 1);
   });
 
-  it('scoreReserveAdequacy: high reserves score well', async () => {
+  // PR 2 §3.4 — scoreReserveAdequacy is retired (coverage=0 /
+  // imputationClass=null regardless of seed). The "high reserves score
+  // well" contract moves to scoreLiquidReserveAdequacy with the new
+  // 1..12 anchor. NO's 14 months clamps to the top of the range → 100.
+  it('scoreLiquidReserveAdequacy: high reserves score at the anchor ceiling', async () => {
+    const no = await scoreLiquidReserveAdequacy('NO', fixtureReader);
+    assert.ok(no.score >= 99, `NO with 14 months reserves clamped to 12 should score >=99 on the 1..12 anchor, got ${no.score}`);
+    assert.ok(no.coverage >= 0.99, 'observed-data path must report full coverage');
+    assert.equal(no.imputationClass, null, 'observed-data path must not carry imputation class');
+  });
+
+  it('scoreLiquidReserveAdequacy: missing data returns unmonitored imputation', async () => {
+    const emptyReader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreLiquidReserveAdequacy('XX', emptyReader);
+    assert.equal(score.imputationClass, 'unmonitored');
+    assert.equal(score.observedWeight, 0);
+    assert.equal(score.imputedWeight, 1);
+  });
+
+  // PR 2 §3.4 — retired scoreReserveAdequacy shape. Mirrors the
+  // fuelStockDays retirement test (PR 3 §3.5) — coverage=0 /
+  // imputationClass=null regardless of seed so the confidence /
+  // coverage averages filter it out via RESILIENCE_RETIRED_DIMENSIONS.
+  it('scoreReserveAdequacy: retired — coverage=0 / null imputationClass for every country', async () => {
     const no = await scoreReserveAdequacy('NO', fixtureReader);
-    assert.ok(no.score > 70, `NO with 14 months reserves should score >70, got ${no.score}`);
+    const ye = await scoreReserveAdequacy('YE', fixtureReader);
+    for (const [label, result] of [['NO', no], ['YE', ye]] as const) {
+      assert.equal(result.coverage, 0, `${label}: retired dimension must have coverage=0`);
+      assert.equal(result.observedWeight, 0, `${label}: retired dimension must have observedWeight=0`);
+      assert.equal(result.imputedWeight, 0, `${label}: retired dimension must have imputedWeight=0`);
+      assert.equal(result.imputationClass, null, `${label}: retired dimension must not tag source-failure (intentional retirement, not a runtime outage)`);
+    }
+  });
+
+  // PR 2 §3.4 — scoreSovereignFiscalBuffer has three code paths per
+  // plan §3.4: (1) seed absent → IMPUTE, (2) seed present but country
+  // not in manifest → substantive "no SWF" (score=0, coverage=1.0),
+  // (3) country in payload → saturating transform on
+  // totalEffectiveMonths.
+  describe('scoreSovereignFiscalBuffer — three code paths', () => {
+    it('path 1: seed key absent → IMPUTE fallback', async () => {
+      const emptyReader = async (_key: string): Promise<unknown | null> => null;
+      const score = await scoreSovereignFiscalBuffer('US', emptyReader);
+      assert.equal(score.imputationClass, 'unmonitored');
+      assert.equal(score.observedWeight, 0);
+      assert.equal(score.imputedWeight, 1);
+      assert.equal(score.score, 50);
+    });
+
+    it('path 3: country not in manifest → score=0, coverage=1.0 (substantive absence)', async () => {
+      // Payload present but country missing → no SWF per plan §3.4
+      // "What happens to no-SWF countries." Must NOT fall through to
+      // IMPUTE.
+      const reader = async (_key: string) => ({ countries: { NO: { totalEffectiveMonths: 60, completeness: 1.0 } } });
+      const score = await scoreSovereignFiscalBuffer('US', reader);
+      assert.equal(score.score, 0, 'no-SWF country must score 0');
+      assert.equal(score.coverage, 1.0, 'no-SWF country must report FULL coverage (substantive, not imputed)');
+      assert.equal(score.observedWeight, 1);
+      assert.equal(score.imputedWeight, 0);
+      assert.equal(score.imputationClass, null);
+    });
+
+    it('path 2: country with SWF → saturating transform on totalEffectiveMonths', async () => {
+      // 60 effective months → 100 × (1 − exp(−60/12)) = 100 × (1 − e^-5) ≈ 99.33
+      const reader = async (_key: string) => ({ countries: { NO: { totalEffectiveMonths: 60, completeness: 1.0 } } });
+      const score = await scoreSovereignFiscalBuffer('NO', reader);
+      assert.ok(score.score > 98 && score.score <= 100, `60 effective months should saturate near 100, got ${score.score}`);
+      assert.ok(score.coverage >= 0.99, 'full completeness should map to full coverage');
+      assert.equal(score.observedWeight, 1);
+    });
+
+    it('path 2: partial-scrape country derates coverage by completeness', async () => {
+      // AE = ADIA + Mubadala. If Mubadala's scrape drifts, completeness = 0.5.
+      // The score itself is still the saturating transform on whatever
+      // totalEffectiveMonths we got, but coverage reflects the partial-seed.
+      // Note: `coverage` (certaintyCoverage) is independent of `observedWeight`
+      // in weightedBlend — coverage degrades with completeness, observedWeight
+      // tracks the metric's nominal weight (still 1.0 for a single real-data
+      // metric). The two fields carry different semantics downstream.
+      const reader = async (_key: string) => ({ countries: { AE: { totalEffectiveMonths: 12, completeness: 0.5 } } });
+      const score = await scoreSovereignFiscalBuffer('AE', reader);
+      assert.ok(score.coverage > 0.49 && score.coverage < 0.51,
+        `partial-scrape (completeness=0.5) must derate coverage to ~0.5, got ${score.coverage}`);
+      assert.equal(score.observedWeight, 1, 'observedWeight tracks metric weight (real-data), not completeness');
+      assert.equal(score.imputedWeight, 0);
+    });
+
+    it('path 2: zero effective months → score 0 with observed coverage (fund exists but classification-haircut zeros it out)', async () => {
+      const reader = async (_key: string) => ({ countries: { XX: { totalEffectiveMonths: 0, completeness: 1.0 } } });
+      const score = await scoreSovereignFiscalBuffer('XX', reader);
+      assert.equal(score.score, 0);
+      assert.equal(score.coverage, 1.0);
+      assert.equal(score.observedWeight, 1);
+    });
   });
 
   it('scoreExternalDebtCoverage: low debt-to-reserves ratio scores well', async () => {

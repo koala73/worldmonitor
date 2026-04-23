@@ -905,19 +905,80 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     license: 'open-data',
   },
 
-  // ── reserveAdequacy (1 sub-metric) ───────────────────────────────────────
+  // ── reserveAdequacy (RETIRED in PR 2 §3.4) ───────────────────────────────
+  // Replaced by liquidReserveAdequacy + sovereignFiscalBuffer. The legacy
+  // indicator is kept in the registry at tier='experimental' so drill-
+  // down views that consult the registry by dimension still see
+  // something structural; it does not contribute to the core score.
   {
     id: 'recoveryReserveMonths',
     dimension: 'reserveAdequacy',
-    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO); recovery buffer against external shocks',
+    description: 'RETIRED in PR 2 §3.4. Legacy total-reserves-in-months-of-imports (WB FI.RES.TOTL.MO) at the 1..18 anchor. Does not contribute to the score — scoreReserveAdequacy returns coverage=0 + imputationClass=null. Superseded by recoveryLiquidReserveMonths (same source, re-anchored 1..12) + the new sovereign-wealth indicator.',
     direction: 'higherBetter',
     goalposts: { worst: 1, best: 18 },
     weight: 1.0,
     sourceKey: 'resilience:recovery:reserve-adequacy:v1',
     scope: 'global',
     cadence: 'annual',
+    tier: 'experimental',
+    coverage: 188,
+    license: 'open-data',
+  },
+
+  // ── liquidReserveAdequacy (1 sub-metric) ─────────────────────────────────
+  // PR 2 §3.4 replacement for the liquid-reserves half of the retired
+  // reserveAdequacy. Same source (WB FI.RES.TOTL.MO) but re-anchored
+  // 1..12 months instead of 1..18. Twelve months ≈ IMF "full reserve
+  // adequacy" ballpark for a diversified emerging-market importer.
+  {
+    id: 'recoveryLiquidReserveMonths',
+    dimension: 'liquidReserveAdequacy',
+    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO), re-anchored 1..12 per plan §3.4. Immediate-liquidity buffer against short external shocks, measured at central-bank reserves only — sovereign-wealth assets are scored separately in sovereignFiscalBuffer.',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 12 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:reserve-adequacy:v1',
+    scope: 'global',
+    cadence: 'annual',
     tier: 'core',
     coverage: 188,
+    license: 'open-data',
+  },
+
+  // ── sovereignFiscalBuffer (1 sub-metric) ─────────────────────────────────
+  // PR 2 §3.4 — scored on the SWF haircut manifest. Payload produced by
+  // scripts/seed-sovereign-wealth.mjs (landed in #3305, wired into
+  // Railway cron in #3319). Per-country totalEffectiveMonths is the sum
+  // across a country's manifest funds of (aum / annualImports × 12) ×
+  // (access × liquidity × transparency). Scorer applies a saturating
+  // transform: score = 100 × (1 − exp(−effectiveMonths / 12)) to prevent
+  // Norway-type outliers from dominating the recovery pillar.
+  //
+  // Coverage for the registry entry is the current manifest size (8
+  // funds across NO / AE / SA / KW / QA / SG). Countries NOT in the
+  // manifest score 0 with full coverage (substantive "no SWF" signal,
+  // not imputation) — this is by design per plan §3.4 "What happens to
+  // no-SWF countries."
+  {
+    id: 'recoverySovereignWealthEffectiveMonths',
+    dimension: 'sovereignFiscalBuffer',
+    description: 'Sovereign-wealth fiscal-buffer signal per plan §3.4. Seeded from Wikipedia SWF list + per-fund article infoboxes (CC-BY-SA), haircut by the classification manifest (docs/methodology/swf-classification-manifest.yaml): effectiveMonths = rawSwfMonths × access × liquidity × transparency, summed across a country\'s manifest funds. Scorer applies a saturating transform score = 100 × (1 − exp(−effectiveMonths / 12)).',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 60 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:sovereign-wealth:v1',
+    scope: 'global',
+    cadence: 'quarterly',
+    // tier='experimental' because the manifest ships with 8 funds (< the
+    // 180-country core-tier threshold / 137-country §3.6 gate). Non-SWF
+    // countries are scored meaningfully (0 with full coverage — a
+    // substantive absence, not imputation — per plan §3.4), but the
+    // §3.6 coverage-and-influence gate counts upstream-data coverage,
+    // which is 8. Graduating to 'core' requires expanding the manifest
+    // past 137 entries, which is a follow-up PR after external data
+    // partners are identified.
+    tier: 'experimental',
+    coverage: 8,
     license: 'open-data',
   },
 

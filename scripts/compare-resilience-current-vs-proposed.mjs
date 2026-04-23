@@ -343,9 +343,18 @@ const EXTRACTION_RULES = {
   recoveryFiscalBalance: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'fiscalBalancePct' },
   recoveryDebtToGdp: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'debtToGdpPct' },
   recoveryReserveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:reserve-adequacy:v1', field: 'reserveMonths' },
+  // PR 2 §3.4: replacement for recoveryReserveMonths at the tighter 1..12
+  // anchor. Same seed key + field; the harness extracts the same value
+  // and the scorer applies the new goalpost.
+  recoveryLiquidReserveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:reserve-adequacy:v1', field: 'reserveMonths' },
   recoveryDebtToReserves: { type: 'recovery-country-field', key: 'resilience:recovery:external-debt:v1', field: 'debtToReservesRatio' },
   recoveryImportHhi: { type: 'recovery-country-field', key: 'resilience:recovery:import-hhi:v1', field: 'hhi' },
   recoveryFuelStockDays: { type: 'recovery-country-field', key: 'resilience:recovery:fuel-stocks:v1', field: 'stockDays' },
+  // PR 2 §3.4: SWF seed. Field is totalEffectiveMonths (pre-haircut sum
+  // across a country's manifest funds). Countries without a manifest
+  // entry score 0 via the substantive-no-SWF branch in the scorer;
+  // the harness treats "absent from payload" as 0 for correlation math.
+  recoverySovereignWealthEffectiveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:sovereign-wealth:v1', field: 'totalEffectiveMonths' },
 
   // ── stateContinuity derived signals ─────────────────────────────────
   recoveryWgiContinuity: { type: 'static-wgi-mean' },

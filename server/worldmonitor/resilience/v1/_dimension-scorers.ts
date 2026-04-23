@@ -21,11 +21,15 @@ export type ResilienceDimensionId =
   | 'healthPublicService'
   | 'foodWater'
   | 'fiscalSpace'
-  | 'reserveAdequacy'
+  | 'reserveAdequacy'      // RETIRED in PR 2 §3.4: replaced by
+                            // liquidReserveAdequacy + sovereignFiscalBuffer
+                            // (see RESILIENCE_RETIRED_DIMENSIONS below).
   | 'externalDebtCoverage'
   | 'importConcentration'
   | 'stateContinuity'
-  | 'fuelStockDays';
+  | 'fuelStockDays'
+  | 'liquidReserveAdequacy'    // PR 2 §3.4: WB FI.RES.TOTL.MO, anchors 1..12 months
+  | 'sovereignFiscalBuffer';   // PR 2 §3.4: SWF haircut with saturating transform
 
 export type ResilienceDomainId =
   | 'economic'
@@ -139,6 +143,17 @@ export const IMPUTE = {
   recoveryImportHhi:       { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   recoveryStateContinuity: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   recoveryFuelStocks:      { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  // PR 2 §3.4 — same source as recoveryReserveAdequacy (WB FI.RES.TOTL.MO)
+  // but the new dim re-anchors 1..12 months instead of 1..18. Fallback
+  // coverage identical because the upstream source has not changed.
+  recoveryLiquidReserveAdequacy: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  // PR 2 §3.4 — used when the sovereign-wealth seed key is absent
+  // entirely (Railway cron has not fired yet on a fresh deploy).
+  // Countries NOT in the manifest but payload present are handled
+  // separately by the scorer as "no SWF → score 0, full coverage"
+  // (substantive absence, not imputation — see plan §3.4 "What happens
+  // to no-SWF countries").
+  recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
 } as const satisfies Record<string, ImputationEntry>;
 
 interface StaticIndicatorValue {
@@ -258,6 +273,13 @@ const RESILIENCE_RECOVERY_FISCAL_SPACE_KEY = 'resilience:recovery:fiscal-space:v
 const RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
 const RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY = 'resilience:recovery:external-debt:v1';
 const RESILIENCE_RECOVERY_IMPORT_HHI_KEY = 'resilience:recovery:import-hhi:v1';
+// PR 2 §3.4 — new SWF seed populated by scripts/seed-sovereign-wealth.mjs
+// (landed in #3305, wired into the resilience-recovery Railway bundle in
+// #3319). Per-country shape: { funds: [...], totalEffectiveMonths,
+// annualImports, expectedFunds, matchedFunds, completeness }. Countries
+// not in the manifest are absent from the payload (substantive "no SWF"
+// signal, distinct from the IMPUTE fallback below).
+const RESILIENCE_RECOVERY_SOVEREIGN_WEALTH_KEY = 'resilience:recovery:sovereign-wealth:v1';
 // RESILIENCE_RECOVERY_FUEL_STOCKS_KEY removed in PR 3: scoreFuelStockDays
 // no longer reads any source key. If a new globally-comparable
 // recovery-fuel concept lands in a future PR, add a new key with an
@@ -352,6 +374,8 @@ export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, Resilie
   importConcentration: 'recovery',
   stateContinuity: 'recovery',
   fuelStockDays: 'recovery',
+  liquidReserveAdequacy: 'recovery',
+  sovereignFiscalBuffer: 'recovery',
 };
 
 export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
@@ -369,11 +393,13 @@ export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
   'healthPublicService',
   'foodWater',
   'fiscalSpace',
-  'reserveAdequacy',
+  'reserveAdequacy',       // retired in PR 2 §3.4 — kept in order for structural continuity
   'externalDebtCoverage',
   'importConcentration',
   'stateContinuity',
-  'fuelStockDays',
+  'fuelStockDays',          // retired in PR 3 §3.5
+  'liquidReserveAdequacy',  // new in PR 2 §3.4 — replaces reserveAdequacy
+  'sovereignFiscalBuffer',  // new in PR 2 §3.4 — SWF haircut dimension
 ];
 
 export const RESILIENCE_DOMAIN_ORDER: ResilienceDomainId[] = [
@@ -407,6 +433,8 @@ export const RESILIENCE_DIMENSION_TYPES: Record<ResilienceDimensionId, Resilienc
   importConcentration: 'baseline',
   stateContinuity: 'baseline',
   fuelStockDays: 'mixed',
+  liquidReserveAdequacy: 'baseline',
+  sovereignFiscalBuffer: 'baseline',
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -1442,7 +1470,41 @@ export async function scoreFiscalSpace(
   ]);
 }
 
+// RETIRED in PR 2 §3.4. Superseded by `scoreLiquidReserveAdequacy` +
+// `scoreSovereignFiscalBuffer`. The split was the only honest treatment
+// of the construct: the previous dimension blended "central-bank reserves
+// in months of imports" with an implicit assumption that sovereign wealth
+// funds weren't state-deployable buffers, which systematically under-ranked
+// Norway / Gulf oil states / Singapore. The new two-dimension shape
+// separates the liquid-reserve signal from the SWF haircut signal.
+//
+// Shape mirrors scoreFuelStockDays (PR 3 §3.5 retirement):
+// coverage=0 + imputationClass=null so the confidence/coverage averages
+// filter it out via RESILIENCE_RETIRED_DIMENSIONS. Kept in the scorer
+// map for structural continuity; a future PR can remove the dimension
+// entirely once the cached response shape has bumped.
 export async function scoreReserveAdequacy(
+  _countryCode: string,
+  _reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  return {
+    score: 50,
+    coverage: 0,
+    observedWeight: 0,
+    imputedWeight: 0,
+    imputationClass: null,
+    freshness: { lastObservedAtMs: 0, staleness: '' },
+  };
+}
+
+// PR 2 §3.4 — new dimension replacing the liquid-reserves half of the
+// retired `reserveAdequacy`. Same source (World Bank `FI.RES.TOTL.MO`
+// total reserves in months of imports) but re-anchored to 1..12 months
+// instead of 1..18. The tighter ceiling is per the plan: "Anchors 1–12
+// months." A country at 12+ months clamps at 100; a country at 1 month
+// clamps at 0. Twelve months = ballpark IMF "full reserve adequacy"
+// benchmark for a diversified emerging-market importer.
+export async function scoreLiquidReserveAdequacy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
@@ -1450,16 +1512,95 @@ export async function scoreReserveAdequacy(
   const entry = getRecoveryCountryEntry<RecoveryReserveAdequacyCountry>(raw, countryCode);
   if (!entry || entry.reserveMonths == null) {
     return {
-      score: IMPUTE.recoveryReserveAdequacy.score,
-      coverage: IMPUTE.recoveryReserveAdequacy.certaintyCoverage,
+      score: IMPUTE.recoveryLiquidReserveAdequacy.score,
+      coverage: IMPUTE.recoveryLiquidReserveAdequacy.certaintyCoverage,
       observedWeight: 0,
       imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryReserveAdequacy.imputationClass,
+      imputationClass: IMPUTE.recoveryLiquidReserveAdequacy.imputationClass,
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
   }
   return weightedBlend([
-    { score: normalizeHigherBetter(Math.min(entry.reserveMonths, 18), 1, 18), weight: 1.0 },
+    { score: normalizeHigherBetter(Math.min(entry.reserveMonths, 12), 1, 12), weight: 1.0 },
+  ]);
+}
+
+// PR 2 §3.4 — new SWF haircut dimension. Reads per-country SWF records
+// from `resilience:recovery:sovereign-wealth:v1` (produced by
+// scripts/seed-sovereign-wealth.mjs). Composite:
+//   effectiveMonths = rawSwfMonths × access × liquidity × transparency
+// pre-computed in the seed payload as `totalEffectiveMonths` (sum
+// across a country's manifest funds). Score:
+//   score = 100 × (1 − exp(−effectiveMonths / 12))
+// The exponential saturation prevents Norway-type outliers (effective
+// months in the 100s) from dominating the recovery pillar out of
+// proportion to their marginal resilience benefit.
+//
+// Three code paths:
+//   1. Seed key absent entirely (Railway cron hasn't fired on fresh
+//      deploy) → IMPUTE fallback, score 50 / coverage 0.3 / unmonitored.
+//   2. Seed key present, country in payload → saturating score. Coverage
+//      is derated by `completeness` so a partial-scrape on a multi-fund
+//      country (AE = ADIA + Mubadala, SG = GIC + Temasek) shows up
+//      as lower confidence rather than a silently-understated total.
+//   3. Seed key present, country NOT in payload → the country has no
+//      sovereign wealth fund in the manifest. Per plan §3.4 "What
+//      happens to no-SWF countries": score 0 with FULL coverage (this
+//      is substantive absence, not imputation). The country stays in
+//      the recovery-pillar denominator with weight; 0 × weight = 0 in
+//      the numerator, so it correctly lowers relative recovery score
+//      vs SWF-holding peers.
+interface RecoverySovereignWealthCountry {
+  totalEffectiveMonths?: number | null;
+  completeness?: number | null;
+  annualImports?: number | null;
+}
+interface RecoverySovereignWealthPayload {
+  countries?: Record<string, RecoverySovereignWealthCountry>;
+}
+
+export async function scoreSovereignFiscalBuffer(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  const raw = await reader(RESILIENCE_RECOVERY_SOVEREIGN_WEALTH_KEY);
+  const payload = raw as RecoverySovereignWealthPayload | null | undefined;
+  // Path 1 — seed key absent entirely. IMPUTE.
+  if (!payload || typeof payload !== 'object' || !payload.countries || typeof payload.countries !== 'object') {
+    return {
+      score: IMPUTE.recoverySovereignFiscalBuffer.score,
+      coverage: IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: IMPUTE.recoverySovereignFiscalBuffer.imputationClass,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+  const entry = payload.countries[countryCode.toUpperCase()] ?? null;
+  // Path 3 — seed present, country not in manifest → no SWF.
+  if (!entry) {
+    return {
+      score: 0,
+      coverage: 1.0,
+      observedWeight: 1,
+      imputedWeight: 0,
+      imputationClass: null,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+  // Path 2 — country has SWF(s). Saturating transform on totalEffectiveMonths.
+  const em = typeof entry.totalEffectiveMonths === 'number' && Number.isFinite(entry.totalEffectiveMonths)
+    ? Math.max(0, entry.totalEffectiveMonths)
+    : 0;
+  const score = 100 * (1 - Math.exp(-em / 12));
+  const completeness = typeof entry.completeness === 'number' && Number.isFinite(entry.completeness)
+    ? Math.max(0, Math.min(1, entry.completeness))
+    : 1.0;
+  return weightedBlend([
+    // certaintyCoverage = completeness so partial-scrapes derate confidence
+    // without zeroing the observed weight. The country is still a real
+    // observation — just with fewer of its manifest funds resolved.
+    { score, weight: 1.0, certaintyCoverage: completeness },
   ]);
 }
 
@@ -1598,6 +1739,14 @@ export async function scoreStateContinuity(
 // `tests/resilience-retired-dimensions-parity.test.mts`.
 export const RESILIENCE_RETIRED_DIMENSIONS: ReadonlySet<ResilienceDimensionId> = new Set([
   'fuelStockDays',
+  // PR 2 §3.4 — reserveAdequacy is retired; replaced by the split
+  // { liquidReserveAdequacy, sovereignFiscalBuffer }. The legacy
+  // scorer returns coverage=0 / imputationClass=null (same shape as
+  // scoreFuelStockDays post-retirement) so it's filtered from the
+  // confidence/coverage averages via this registry. Kept in
+  // RESILIENCE_DIMENSION_ORDER for structural continuity (tests,
+  // cached payload shape, registry membership).
+  'reserveAdequacy',
 ]);
 
 export async function scoreFuelStockDays(
@@ -1648,6 +1797,8 @@ ResilienceDimensionId,
   importConcentration: scoreImportConcentration,
   stateContinuity: scoreStateContinuity,
   fuelStockDays: scoreFuelStockDays,
+  liquidReserveAdequacy: scoreLiquidReserveAdequacy,
+  sovereignFiscalBuffer: scoreSovereignFiscalBuffer,
 };
 
 export async function scoreAllDimensions(
