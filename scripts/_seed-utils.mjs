@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// rebuild-trigger: 2026-04-23
 
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
