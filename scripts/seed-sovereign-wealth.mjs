@@ -736,13 +736,19 @@ export function buildCoverageSummary(manifest, imports, countries) {
   const expectedCountries = new Set(manifest.funds.map((f) => f.country));
   let matchedFundsTotal = 0;
   for (const entry of Object.values(countries)) matchedFundsTotal += entry.matchedFunds;
+  // Every status carries a `reason` field so downstream consumers that
+  // iterate the persisted countryStatuses can safely dereference `.reason`
+  // without defensive checks. `complete` and `partial` use `null` to make
+  // the shape uniform; `missing` carries a human-readable string naming
+  // which upstream the operator should investigate (WB imports vs
+  // Wikipedia fund match).
   const countryStatuses = [];
   for (const iso2 of expectedCountries) {
     const entry = countries[iso2];
     if (entry && entry.completeness === 1.0) {
-      countryStatuses.push({ country: iso2, status: 'complete', matched: entry.matchedFunds, expected: entry.expectedFunds });
+      countryStatuses.push({ country: iso2, status: 'complete', matched: entry.matchedFunds, expected: entry.expectedFunds, reason: null });
     } else if (entry) {
-      countryStatuses.push({ country: iso2, status: 'partial', matched: entry.matchedFunds, expected: entry.expectedFunds });
+      countryStatuses.push({ country: iso2, status: 'partial', matched: entry.matchedFunds, expected: entry.expectedFunds, reason: null });
     } else {
       const reason = imports[iso2] ? 'no fund AUM matched' : 'missing WB imports';
       countryStatuses.push({

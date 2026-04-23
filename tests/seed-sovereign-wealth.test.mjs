@@ -566,11 +566,16 @@ describe('pickLatestPerCountry — WB mrv>1 per-country latest-non-null selectio
   });
 
   it('drops countries with ONLY null values (WB has no data in the lookback window)', () => {
+    // Real ISO-3 code required — a fake one (e.g. 'XYZ') is filtered at the
+    // iso3→iso2 lookup stage, never reaching the null-value guard. A
+    // regression that deleted the null check entirely would still leave
+    // this test green. Using NOR forces the record through the lookup
+    // branch so the null-filter is the actual gate under test.
     const out = pickLatestPerCountry([
-      { countryiso3code: 'XYZ', date: '2024', value: null },
-      { countryiso3code: 'XYZ', date: '2023', value: null },
+      { countryiso3code: 'NOR', date: '2024', value: null },
+      { countryiso3code: 'NOR', date: '2023', value: null },
     ]);
-    assert.equal(out.XY, undefined);
+    assert.equal(out.NO, undefined);
   });
 
   it('drops records with non-positive values (WB sometimes reports 0 for countries with no trade)', () => {
@@ -629,6 +634,16 @@ describe('pickLatestPerCountry — WB mrv>1 per-country latest-non-null selectio
     assert.equal(summary.countryStatuses[1].expected, 1,
       'KW expected field must reflect manifest fund count for this country, even when the country was dropped');
     assert.equal(summary.countryStatuses[2].status, 'complete');
+    // Every status entry must carry a `reason` key for uniform shape —
+    // downstream consumers reading the persisted Redis payload iterate
+    // countryStatuses and dereference `.reason` directly. complete/partial
+    // use null; missing uses a string. Guard against regressions that
+    // drop the key on success paths.
+    for (const row of summary.countryStatuses) {
+      assert.ok('reason' in row, `${row.country} (${row.status}): reason key must be present in persisted shape even when there's no error`);
+    }
+    assert.equal(summary.countryStatuses[0].reason, null, 'partial entries use reason=null');
+    assert.equal(summary.countryStatuses[2].reason, null, 'complete entries use reason=null');
   });
 
   it('labels "no fund AUM matched" distinctly from "missing WB imports" so operators can disambiguate', () => {
