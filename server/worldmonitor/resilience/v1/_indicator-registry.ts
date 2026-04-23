@@ -962,7 +962,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'recoverySovereignWealthEffectiveMonths',
     dimension: 'sovereignFiscalBuffer',
-    description: 'Sovereign-wealth fiscal-buffer signal per plan §3.4. Seeded from Wikipedia SWF list + per-fund article infoboxes (CC-BY-SA), haircut by the classification manifest (docs/methodology/swf-classification-manifest.yaml): effectiveMonths = rawSwfMonths × access × liquidity × transparency, summed across a country\'s manifest funds. Scorer applies a saturating transform score = 100 × (1 − exp(−effectiveMonths / 12)).',
+    description: 'Sovereign-wealth fiscal-buffer signal per plan §3.4. Seeded from Wikipedia SWF list + per-fund article infoboxes (CC-BY-SA), haircut by the classification manifest (scripts/shared/swf-classification-manifest.yaml): effectiveMonths = rawSwfMonths × access × liquidity × transparency, summed across a country\'s manifest funds. Scorer applies a saturating transform score = 100 × (1 − exp(−effectiveMonths / 12)).',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 60 },
     weight: 1.0,

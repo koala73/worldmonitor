@@ -1,5 +1,13 @@
 // Loader + validator for the SWF classification manifest at
-// docs/methodology/swf-classification-manifest.yaml.
+// scripts/shared/swf-classification-manifest.yaml.
+//
+// Co-located with the loader so the Railway recovery-bundle container
+// (rootDirectory=scripts/) ships the YAML alongside the code. The file
+// used to live under docs/methodology/ but that path isn't copied into
+// NIXPACKS builds with rootDirectory=scripts/, so the seeder crashed
+// with ENOENT on every Railway tick. Authors can still edit the file
+// directly; docs/methodology/country-resilience-index.mdx links to the
+// new location for external reference.
 //
 // Shared between the seeder (scripts/seed-sovereign-wealth.mjs), the
 // scorer unit tests, and the methodology-doc linter. Keep server-free
@@ -16,7 +24,7 @@ import { dirname, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const MANIFEST_PATH = resolve(here, '../../docs/methodology/swf-classification-manifest.yaml');
+const MANIFEST_PATH = resolve(here, './swf-classification-manifest.yaml');
 
 /**
  * @typedef {Object} SwfClassification

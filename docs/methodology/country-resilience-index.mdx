@@ -285,7 +285,7 @@ effectiveMonths = Σ [ (aum / annualImports × 12) × access × liquidity × tra
 score           = 100 × (1 − exp(−effectiveMonths / 12))
 ```
 
-The exponential saturation prevents Norway-type outliers (effective months in the 100s) from dominating the recovery pillar out of proportion to their marginal resilience benefit. Countries not in the SWF manifest (`docs/methodology/swf-classification-manifest.yaml`) score `0` with **full coverage** — this is substantive absence, not imputation: a country without a deployable sovereign-wealth buffer legitimately scores lower on this dim than a SWF-holding peer.
+The exponential saturation prevents Norway-type outliers (effective months in the 100s) from dominating the recovery pillar out of proportion to their marginal resilience benefit. Countries not in the SWF manifest (`scripts/shared/swf-classification-manifest.yaml`) score `0` with **full coverage** — this is substantive absence, not imputation: a country without a deployable sovereign-wealth buffer legitimately scores lower on this dim than a SWF-holding peer.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
