@@ -26,10 +26,20 @@ const MANIFEST_PATH = resolve(here, '../../docs/methodology/swf-classification-m
  */
 
 /**
+ * @typedef {Object} SwfWikipediaHints
+ * @property {string} [abbrev]   matches the "Abbrev." column on the
+ *                               Wikipedia `List_of_sovereign_wealth_funds`
+ *                               article (case- and punctuation-normalized)
+ * @property {string} [fundName] matches the "Fund name" column
+ */
+
+/**
  * @typedef {Object} SwfManifestEntry
  * @property {string} country       ISO-3166-1 alpha-2
  * @property {string} fund          short fund identifier (stable across runs)
  * @property {string} displayName   human-readable fund name
+ * @property {SwfWikipediaHints} [wikipedia] optional lookup hints for the
+ *                                           Wikipedia fallback scraper
  * @property {SwfClassification} classification
  * @property {{ access: string, liquidity: string, transparency: string }} rationale
  * @property {string[]} sources
@@ -132,10 +142,36 @@ export function validateManifest(raw) {
       assertNonEmptyString(src, `${path}.sources[${srcIdx}]`);
     }
 
+    // Optional wikipedia hints — used by the Wikipedia fallback scraper
+    // in scripts/seed-sovereign-wealth.mjs. Either `abbrev` or
+    // `fund_name` must be present if the block is present (otherwise
+    // the scraper has nothing to match against); both may be present.
+    let wikipedia;
+    if (f.wikipedia != null) {
+      if (typeof f.wikipedia !== 'object') fail(`${path}.wikipedia: expected object`);
+      const w = /** @type {Record<string, unknown>} */ (f.wikipedia);
+      const abbrev = w.abbrev;
+      const fundName = w.fund_name;
+      if (abbrev != null && typeof abbrev !== 'string') {
+        fail(`${path}.wikipedia.abbrev: expected string, got ${JSON.stringify(abbrev)}`);
+      }
+      if (fundName != null && typeof fundName !== 'string') {
+        fail(`${path}.wikipedia.fund_name: expected string, got ${JSON.stringify(fundName)}`);
+      }
+      if (!abbrev && !fundName) {
+        fail(`${path}.wikipedia: at least one of abbrev or fund_name must be provided`);
+      }
+      wikipedia = {
+        ...(abbrev ? { abbrev } : {}),
+        ...(fundName ? { fundName } : {}),
+      };
+    }
+
     return {
       country: f.country,
       fund: f.fund,
       displayName: f.display_name,
+      ...(wikipedia ? { wikipedia } : {}),
       classification: {
         access: c.access,
         liquidity: c.liquidity,
