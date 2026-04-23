@@ -127,6 +127,7 @@ describe('buildReplayRecords — record shape', () => {
     mode: 'embed',
     clustering: 'single',
     cosineThreshold: 0.6,
+    topicGroupingEnabled: true,
     topicThreshold: 0.45,
     entityVetoEnabled: true,
   };
@@ -176,15 +177,29 @@ describe('buildReplayRecords — record shape', () => {
     assert.equal(byHash.get('h3').hasEmbedding, false);
   });
 
-  it('tickConfig snapshot mirrors cfg', () => {
+  it('tickConfig snapshot mirrors cfg (all behaviour-defining fields)', () => {
     const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
     assert.deepEqual(records[0].tickConfig, {
       mode: 'embed',
       clustering: 'single',
       cosineThreshold: 0.6,
+      topicGroupingEnabled: true,
       topicThreshold: 0.45,
       entityVetoEnabled: true,
     });
+  });
+
+  it('serialises topicGroupingEnabled=false distinctly from default', () => {
+    // Regression guard: a tick run with DIGEST_DEDUP_TOPIC_GROUPING=0
+    // must be replay-distinguishable from a normal tick. Prior to this
+    // field being captured, both serialised to the same tickConfig and
+    // downstream replays could not reconstruct the output ordering.
+    const cfgOff = { ...cfg, topicGroupingEnabled: false };
+    const records = buildReplayRecords(stories, reps, new Map(), cfgOff, tickContext);
+    assert.equal(records[0].tickConfig.topicGroupingEnabled, false);
+    // And the default-on tick serialises true, not identical:
+    const recordsOn = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    assert.notDeepEqual(recordsOn[0].tickConfig, records[0].tickConfig);
   });
 
   it('tickContext fields copied onto every record', () => {

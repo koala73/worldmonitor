@@ -117,6 +117,12 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
     mode: cfg?.mode ?? null,
     clustering: cfg?.clustering ?? null,
     cosineThreshold: cfg?.cosineThreshold ?? null,
+    // topicGroupingEnabled gates the post-dedup topic ordering pass in
+    // seed-digest-notifications. Omitting it makes topic-grouping-off
+    // ticks indistinguishable from default ticks at replay time, so
+    // downstream replays can't reconstruct output behaviour for runs
+    // with DIGEST_DEDUP_TOPIC_GROUPING=0. Serialise explicitly.
+    topicGroupingEnabled: cfg?.topicGroupingEnabled ?? null,
     topicThreshold: cfg?.topicThreshold ?? null,
     entityVetoEnabled: cfg?.entityVetoEnabled ?? null,
   };
