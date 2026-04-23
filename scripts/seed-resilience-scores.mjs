@@ -19,8 +19,12 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
   || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v10:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v10';
+// Bumped v10 → v11 in lockstep with server/worldmonitor/resilience/v1/
+// _shared.ts for the PR 2 §3.4 recovery-domain weight rebalance.
+// Seeder and server MUST agree on the prefix or the seeder writes
+// scores the handler will never read.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v11:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v11';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.

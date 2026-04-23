@@ -374,7 +374,7 @@ function currentCacheFormulaLocal() {
 
 async function readWmScoresFromRedis() {
   const { url, token } = getRedisCredentials();
-  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v10')}`, {
+  const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v11')}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
   });

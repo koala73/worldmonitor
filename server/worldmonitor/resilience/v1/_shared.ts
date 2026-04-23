@@ -125,7 +125,13 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // `buildResilienceScore`, read by `ensureResilienceScoreCached` and
 // `getCachedResilienceScores` to reject stale-formula hits at serve
 // time. See the `CacheFormulaTag` comment block.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v10:';
+// v11 bump for PR 2 §3.4 recovery-domain weight rebalance. The
+// `_formula` tag only distinguishes 'd6' vs 'pc' and does NOT detect
+// intra-'d6' coefficient changes like a per-dim weight adjustment, so
+// a bare flag-guard would leave pre-deploy equal-weight scores served
+// for up to the full 6h TTL. Prefix bump forces a clean slate —
+// matches the established v9→v10 pattern for formula-changing deploys.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v11:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -137,7 +143,11 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v10:';
 // untagged members (from older deploys that happen to survive on v4
 // readers) decode as `d6` — matching the only formula that existed
 // before this PR — so the filter stays correct in either direction.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v5:';
+// v6 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v10→v11 for
+// PR 2 §3.4 recovery-domain weight rebalance. Pre-bump history points
+// were written against equal-weight scoring; trend + change30d math
+// mixes them with post-bump points otherwise.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v6:';
 // Bumped in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v9 → v10) for
 // a clean slate at PR deploy. As with the score prefix, the version
 // bump is a belt — the suspenders are the `_formula` tag on the
@@ -145,7 +155,7 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v5:';
 // via rankingCacheTagMatches in the ranking handler, which force a
 // recompute-and-publish on a cross-formula cache hit rather than
 // serving the stale ranking for up to the 12h ranking TTL.
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v10';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v11';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -367,6 +377,16 @@ export function computeLowConfidence(dimensions: ResilienceDimension[], imputati
   // retired dims via weightedBlend fall-through, and those coverage=0
   // entries SHOULD drag the confidence down — that is precisely the
   // sparse-data signal lowConfidence exists to surface.
+  //
+  // INTENTIONALLY NOT weighted by RESILIENCE_DIMENSION_WEIGHTS. The
+  // coverage signal answers a different question from the scoring
+  // aggregation: "how much real data do we have on this country?"
+  // vs "how much does each dim matter to the overall score?" A dim
+  // with coverage=0.3 has sparse data regardless of how little it
+  // contributes to the final number — and the user-facing
+  // "Low confidence" label is about data availability, not score
+  // composition. The asymmetry is deliberate and mirrored in
+  // `computeOverallCoverage` below.
   const scoring = dimensions.filter(
     (dimension) => !RESILIENCE_RETIRED_DIMENSIONS.has(dimension.id as ResilienceDimensionId),
   );
@@ -672,6 +692,14 @@ export function computeOverallCoverage(response: GetResilienceScoreResponse): nu
   // coverage=0 dims (genuine weightedBlend fall-through) stay in the
   // average because they reflect real data sparsity for that country.
   // See `computeLowConfidence` for the matching rationale.
+  //
+  // INTENTIONALLY NOT weighted by RESILIENCE_DIMENSION_WEIGHTS —
+  // same reason as `computeLowConfidence`: this is a data-availability
+  // signal ("how much real data do we have?"), not a score-composition
+  // signal ("how much does each dim matter?"). Applying the scoring
+  // weights would let a dim at weight=0.5 hide half its sparsity
+  // from the overallCoverage pill, which would confuse users reading
+  // the coverage percentage as a data-quality indicator.
   const coverages = response.domains.flatMap((domain) =>
     domain.dimensions
       .filter((dimension) => !RESILIENCE_RETIRED_DIMENSIONS.has(dimension.id as ResilienceDimensionId))
