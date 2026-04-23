@@ -248,7 +248,13 @@ export async function runBundle(label, sections, opts = {}) {
       if (!result.alreadyLogged) {
         console.error(`  [${section.label}] Failed after ${result.elapsed}s: ${result.reason}`);
       }
-      console.log(`[Bundle:${label}] section=${section.label} status=FAILED elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
+      // Emit the FAILED summary to stderr (same stream as the Failed line
+      // and SIGKILL escalation log) so chronological ordering in combined
+      // output is preserved. If we went to stdout here, the line would
+      // appear before those stderr lines when consumers concatenate
+      // stdout+stderr, breaking tests (and log readers) that rely on
+      // signal-escalation ordering.
+      console.error(`[Bundle:${label}] section=${section.label} status=FAILED elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
       failed++;
     }
   }
