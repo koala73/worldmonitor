@@ -16,7 +16,7 @@
       ],
       "status": [
         {
-          "href": "https://api.worldmonitor.app/health",
+          "href": "https://api.worldmonitor.app/api/health",
           "type": "application/json"
         }
       ]

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -278,6 +278,101 @@ describe('brief magazine CSP override', () => {
     ]) {
       assert.ok(csp.includes(directive), `brief CSP missing tight directive: ${directive}`);
     }
+  });
+});
+
+// Agent readiness: RFC 9727 API catalog at /.well-known/api-catalog and
+// the build-time copy of the OpenAPI spec from docs/api/ into public/.
+// These guardrails protect against:
+//   (1) the status endpoint href drifting away from /api/health (the
+//       real JSON endpoint; the apex /health serves the SPA HTML);
+//   (2) variant build scripts dropping the `npm run build:openapi`
+//       prefix and silently shipping web bundles without the spec;
+//   (3) the openapi source under docs/ being deleted without a
+//       matching removal of the build step.
+describe('agent readiness: api-catalog + openapi build', () => {
+  const apiCatalog = JSON.parse(
+    readFileSync(resolve(__dirname, '../public/.well-known/api-catalog'), 'utf-8')
+  );
+  const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
+
+  it('api anchor is first and points at the api host root', () => {
+    assert.equal(apiCatalog.linkset[0].anchor, 'https://api.worldmonitor.app/');
+  });
+
+  it('status href points at /api/health (SPA lives at /health — would 200 HTML and look healthy)', () => {
+    const statusHref = apiCatalog.linkset[0].status[0].href;
+    assert.ok(
+      statusHref.startsWith('https://api.worldmonitor.app'),
+      `status href must be on api.worldmonitor.app, got: ${statusHref}`
+    );
+    assert.ok(
+      statusHref.endsWith('/api/health'),
+      `status href must end with /api/health (real JSON endpoint), got: ${statusHref}`
+    );
+  });
+
+  it('service-desc points at /openapi.yaml with the OpenAPI media type', () => {
+    const serviceDesc = apiCatalog.linkset[0]['service-desc'][0];
+    assert.ok(
+      serviceDesc.href.endsWith('/openapi.yaml'),
+      `service-desc href must end with /openapi.yaml, got: ${serviceDesc.href}`
+    );
+    assert.equal(serviceDesc.type, 'application/vnd.oai.openapi');
+  });
+
+  it('has a second anchor for the MCP server-card', () => {
+    const mcpEntry = apiCatalog.linkset.find((entry) => entry.anchor === 'https://worldmonitor.app/mcp');
+    assert.ok(mcpEntry, 'linkset must contain an anchor for https://worldmonitor.app/mcp');
+    const mcpServiceDesc = mcpEntry['service-desc']?.[0];
+    assert.ok(mcpServiceDesc, 'mcp anchor must have a service-desc entry');
+    assert.ok(
+      mcpServiceDesc.href.endsWith('/.well-known/mcp/server-card.json'),
+      `mcp service-desc href must end with /.well-known/mcp/server-card.json, got: ${mcpServiceDesc.href}`
+    );
+  });
+
+  it('exposes a build:openapi script that copies docs/api → public/openapi.yaml', () => {
+    const buildOpenapi = pkg.scripts['build:openapi'];
+    assert.ok(buildOpenapi, 'package.json must define scripts["build:openapi"]');
+    assert.ok(
+      buildOpenapi.includes('docs/api/worldmonitor.openapi.yaml'),
+      `build:openapi must reference docs/api/worldmonitor.openapi.yaml, got: ${buildOpenapi}`
+    );
+    assert.ok(
+      buildOpenapi.includes('public/openapi.yaml'),
+      `build:openapi must write to public/openapi.yaml, got: ${buildOpenapi}`
+    );
+  });
+
+  it('every web-variant build chains npm run build:openapi', () => {
+    // build:desktop and build:pro are intentionally excluded — Tauri
+    // sidecar builds and the standalone pro-test workspace don't ship
+    // the OpenAPI spec.
+    const webVariants = ['build:full', 'build:tech', 'build:finance', 'build:happy', 'build:commodity'];
+    for (const variant of webVariants) {
+      const script = pkg.scripts[variant];
+      assert.ok(script, `package.json must define scripts["${variant}"]`);
+      assert.ok(
+        script.includes('npm run build:openapi'),
+        `scripts["${variant}"] must chain "npm run build:openapi" so the web bundle ships the spec; got: ${script}`
+      );
+    }
+  });
+
+  it('keeps a prebuild hook so the default `npm run build` path also copies the spec', () => {
+    assert.ok(pkg.scripts.prebuild, 'package.json must define scripts["prebuild"] (default build path uses it)');
+  });
+
+  it('openapi source exists at docs/api/worldmonitor.openapi.yaml', () => {
+    // Catches the class of regression where someone cleans generated
+    // artifacts and forgets to regenerate before committing — the
+    // prebuild step would then fail silently at deploy time.
+    const openapiPath = resolve(__dirname, '../docs/api/worldmonitor.openapi.yaml');
+    assert.ok(
+      existsSync(openapiPath),
+      `docs/api/worldmonitor.openapi.yaml must exist — without it, build:openapi fails at deploy time`
+    );
   });
 });
 
