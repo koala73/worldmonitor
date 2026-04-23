@@ -454,7 +454,14 @@ export class UnifiedSettings {
     // onEntitlementChange listener in open() swaps it in place once the
     // snapshot arrives.
     if (getAuthState().user && getEntitlementState() === null) {
-      return '<div class="upgrade-pro-section upgrade-pro-loading" aria-hidden="true"></div>';
+      // `hidden` so the browser's default `[hidden] { display: none }`
+      // suppresses the empty card — without it, the base `.upgrade-pro-
+      // section` styles (margin + padding + border + surface background
+      // in main.css:22833) paint a visibly empty bordered box during the
+      // Convex cold-load window, which is exactly the state we're trying
+      // to clean up. Element stays queryable for the replaceWith swap in
+      // open().
+      return '<div class="upgrade-pro-section upgrade-pro-loading" hidden aria-hidden="true"></div>';
     }
     if (isEntitled()) {
       const sub = getSubscription();
