@@ -37,11 +37,18 @@ const INTL_KEY         = 'aviation:delays:intl:v3';
 const FAA_KEY          = 'aviation:delays:faa:v1';
 const NOTAM_KEY        = 'aviation:notam:closures:v2';
 const NEWS_KEY         = 'aviation:news::24:v1';
+// Page-load hydration aggregate. Health (api/health.js BOOTSTRAP_KEYS.flightDelays)
+// reads STRLEN here. Historically only written as a 1800s RPC side-effect inside
+// list-airport-delays.ts — quiet user windows >30min would let it expire, tripping
+// EMPTY (CRIT) even with healthy upstream feeds. Now produced canonically by this
+// seeder; RPC keeps its write at the same TTL as a courtesy mid-tick refresh.
+const BOOTSTRAP_KEY = 'aviation:delays-bootstrap:v1';
 
-const INTL_TTL  = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
-const FAA_TTL   = 7_200;  // 2h
-const NOTAM_TTL = 7_200;  // 2h
-const NEWS_TTL  = 2_400;  // 40min
+const INTL_TTL      = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
+const FAA_TTL       = 7_200;  // 2h
+const NOTAM_TTL     = 7_200;  // 2h
+const NEWS_TTL      = 2_400;  // 40min
+const BOOTSTRAP_TTL = 7_200;  // 2h — matches FAA/NOTAM; survives ~4 missed cron ticks
 
 // health.js expects these exact meta keys (api/health.js:222,223,269)
 const INTL_META_KEY  = 'seed-meta:aviation:intl';
@@ -747,6 +754,139 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
   }
 }
 
+// ─── Page-load bootstrap aggregate ───────────────────────────────────────────
+// Mirror of the alerts-array assembly in
+// server/worldmonitor/aviation/v1/list-airport-delays.ts (FAA + intl + NOTAM
+// merge + Normal-operations filler from AIRPORTS). Keep the two builders in
+// lockstep — when the RPC's NOTAM merge / filler shape / enum mapping changes,
+// update both. Enum-string forms here match SEVERITY_MAP/DELAY_TYPE_MAP/REGION_MAP
+// at the top of this file so consumers parse identically to the RPC's output.
+
+const SEV_ORDER = ['normal', 'minor', 'moderate', 'major', 'severe'];
+
+function buildNormalOpsAlert(airport) {
+  return {
+    id: `status-${airport.iata}`,
+    iata: airport.iata,
+    icao: airport.icao,
+    name: airport.name,
+    city: airport.city ?? '',
+    country: airport.country,
+    location: { latitude: airport.lat ?? 0, longitude: airport.lon ?? 0 },
+    region: REGION_MAP[airport.region] ?? 'AIRPORT_REGION_AMERICAS',
+    delayType: 'FLIGHT_DELAY_TYPE_GENERAL',
+    severity: 'FLIGHT_DELAY_SEVERITY_NORMAL',
+    avgDelayMinutes: 0,
+    delayedFlightsPct: 0,
+    cancelledFlights: 0,
+    totalFlights: 0,
+    reason: 'Normal operations',
+    source: 'FLIGHT_DELAY_SOURCE_COMPUTED',
+    updatedAt: Date.now(),
+  };
+}
+
+function buildNotamAlert(airport, reason, severity = 'severe', delayType = 'closure') {
+  const trimmed = reason.length > 200 ? reason.slice(0, 200) + '…' : reason;
+  return {
+    id: `notam-${airport.iata}`,
+    iata: airport.iata,
+    icao: airport.icao,
+    name: airport.name,
+    city: airport.city ?? '',
+    country: airport.country,
+    location: { latitude: airport.lat ?? 0, longitude: airport.lon ?? 0 },
+    region: REGION_MAP[airport.region] ?? 'AIRPORT_REGION_AMERICAS',
+    delayType: DELAY_TYPE_MAP[delayType] ?? 'FLIGHT_DELAY_TYPE_CLOSURE',
+    severity: SEVERITY_MAP[severity] ?? 'FLIGHT_DELAY_SEVERITY_SEVERE',
+    avgDelayMinutes: 0,
+    delayedFlightsPct: 0,
+    cancelledFlights: 0,
+    totalFlights: 0,
+    reason: trimmed,
+    source: 'FLIGHT_DELAY_SOURCE_NOTAM',
+    updatedAt: Date.now(),
+  };
+}
+
+function mergeNotamWithExistingAlert(airport, notamReason, existing, severity = 'severe', delayType = 'closure') {
+  if (!existing || existing.totalFlights === 0) {
+    return buildNotamAlert(airport, notamReason, severity, delayType);
+  }
+  const cancelRate = (existing.cancelledFlights / existing.totalFlights) * 100;
+  const notamCancelSev = cancelRate >= 50 ? 'severe' : cancelRate >= 25 ? 'major' : cancelRate >= 10 ? 'moderate' : 'minor';
+  const existingSevName = (existing.severity ?? '')
+    .replace('FLIGHT_DELAY_SEVERITY_', '').toLowerCase() || 'normal';
+  const effectiveSev = SEV_ORDER[Math.max(
+    SEV_ORDER.indexOf(existingSevName),
+    SEV_ORDER.indexOf(notamCancelSev),
+    SEV_ORDER.indexOf('moderate'), // notamFloor
+  )] ?? 'moderate';
+  const cancelText = `${Math.round(cancelRate)}% cxl`;
+  const reason = `NOTAM: ${notamReason.slice(0, 120)} — ${cancelText}`;
+  const trimmed = reason.length > 200 ? reason.slice(0, 200) + '…' : reason;
+  return {
+    ...existing,
+    id: `notam-${airport.iata}`,
+    severity: SEVERITY_MAP[effectiveSev] ?? 'FLIGHT_DELAY_SEVERITY_MODERATE',
+    delayType: DELAY_TYPE_MAP[delayType] ?? 'FLIGHT_DELAY_TYPE_CLOSURE',
+    reason: trimmed,
+    source: 'FLIGHT_DELAY_SOURCE_NOTAM',
+    updatedAt: Date.now(),
+  };
+}
+
+// Build + write the page-load bootstrap aggregate. Pass `intlAlertsOverride` to
+// use this-tick's intl from afterPublish (skips the Redis round-trip and avoids
+// a one-tick lag); omit to fall back to the last-good intl in Redis (used by
+// the pre-runSeed call so a current-tick intl failure still refreshes bootstrap).
+async function writeDelaysBootstrap(intlAlertsOverride) {
+  try {
+    const [faaPayload, intlPayload, notamPayload] = await Promise.all([
+      upstashGet(FAA_KEY),
+      intlAlertsOverride ? Promise.resolve({ alerts: intlAlertsOverride }) : upstashGet(INTL_KEY),
+      upstashGet(NOTAM_KEY),
+    ]);
+
+    const faaAlerts  = Array.isArray(faaPayload?.alerts)  ? faaPayload.alerts  : [];
+    const intlAlerts = Array.isArray(intlPayload?.alerts) ? intlPayload.alerts : [];
+    const closedIcaos     = Array.isArray(notamPayload?.closedIcaos)     ? notamPayload.closedIcaos     : [];
+    const restrictedIcaos = Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos : [];
+    const reasons = (notamPayload?.reasons && typeof notamPayload.reasons === 'object') ? notamPayload.reasons : {};
+
+    const allAlerts = [...faaAlerts, ...intlAlerts];
+    const existingIatas = new Set(allAlerts.map(a => a.iata));
+    const applyNotam = (icao, severity, delayType, fallback) => {
+      const airport = AIRPORTS.find(a => a.icao === icao);
+      if (!airport) return;
+      const reason = reasons[icao] || fallback;
+      if (existingIatas.has(airport.iata)) {
+        const idx = allAlerts.findIndex(a => a.iata === airport.iata);
+        if (idx >= 0) allAlerts[idx] = mergeNotamWithExistingAlert(airport, reason, allAlerts[idx], severity, delayType);
+      } else {
+        allAlerts.push(buildNotamAlert(airport, reason, severity, delayType));
+        existingIatas.add(airport.iata);
+      }
+    };
+    for (const icao of closedIcaos)     applyNotam(icao, 'severe', 'closure', 'Airport closure (NOTAM)');
+    for (const icao of restrictedIcaos) applyNotam(icao, 'major',  'general', 'Airspace restriction (NOTAM)');
+
+    const alertedIatas = new Set(allAlerts.map(a => a.iata));
+    for (const airport of AIRPORTS) {
+      if (!alertedIatas.has(airport.iata)) allAlerts.push(buildNormalOpsAlert(airport));
+    }
+
+    const ok = await upstashSet(BOOTSTRAP_KEY, { alerts: allAlerts }, BOOTSTRAP_TTL);
+    if (ok) {
+      console.log(`[Bootstrap] wrote ${allAlerts.length} alerts to ${BOOTSTRAP_KEY} (faa=${faaAlerts.length}, intl=${intlAlerts.length}, notam-closed=${closedIcaos.length}, notam-restricted=${restrictedIcaos.length})`);
+    } else {
+      console.warn(`[Bootstrap] SET ${BOOTSTRAP_KEY} returned false`);
+    }
+  } catch (err) {
+    console.warn(`[Bootstrap] build/write error: ${err?.message || err}`);
+  }
+}
+
 // ─── Orchestration ───────────────────────────────────────────────────────────
 // runSeed's primary key = INTL (largest spend, most-consumed). FAA + NOTAM +
 // News are written as "extra keys" after the primary publish. Each has its own
@@ -880,6 +1020,10 @@ function publishTransform(data) {
 async function afterPublishIntl(data) {
   try { await dispatchAviationNotifications(data.alerts); }
   catch (e) { console.warn(`[Intl] notify error: ${e?.message || e}`); }
+  // Refresh the page-load bootstrap with this-tick intl. The pre-runSeed call
+  // in main() already wrote a bootstrap using last-good intl; this overwrite
+  // upgrades it to current.
+  await writeDelaysBootstrap(data?.alerts);
 }
 
 function validate(publishData) {
@@ -896,6 +1040,12 @@ async function main() {
   await runFaaSideCar();
   await runNotamSideCar();
   await runNewsSideCar();
+
+  // Pre-runSeed bootstrap write: ensures the page-load aggregate refreshes even
+  // if intl fetch fails this tick (runSeed's catch-path skips afterPublish).
+  // Uses last-good intl from Redis; afterPublishIntl will overwrite with fresh
+  // intl on success.
+  await writeDelaysBootstrap();
 
   return runSeed('aviation', 'intl', INTL_KEY, fetchIntl, {
     validateFn: validate,
