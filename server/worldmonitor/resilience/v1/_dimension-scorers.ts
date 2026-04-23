@@ -138,14 +138,19 @@ export const IMPUTE = {
   bisCredit:         IMPUTATION.curated_list_absent,
   unhcrDisplacement: { score: 85, certaintyCoverage: 0.6, imputationClass: 'stable-absence' },  // crisis_monitoring_absent, displacement-specific
   recoveryFiscalSpace:     { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
-  recoveryReserveAdequacy: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  // recoveryReserveAdequacy removed in PR 2 §3.4 — the retired
+  // scoreReserveAdequacy stub no longer reads from IMPUTE (it hardcodes
+  // coverage=0 / imputationClass=null per the retirement pattern). The
+  // replacement dimension's IMPUTE entry lives at
+  // `recoveryLiquidReserveAdequacy` below.
   recoveryExternalDebt:    { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   recoveryImportHhi:       { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   recoveryStateContinuity: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   recoveryFuelStocks:      { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
-  // PR 2 §3.4 — same source as recoveryReserveAdequacy (WB FI.RES.TOTL.MO)
-  // but the new dim re-anchors 1..12 months instead of 1..18. Fallback
-  // coverage identical because the upstream source has not changed.
+  // PR 2 §3.4 — same source as the retired reserveAdequacy
+  // (WB FI.RES.TOTL.MO) but the new dim re-anchors 1..12 months instead
+  // of 1..18. Fallback coverage identical because the upstream source
+  // has not changed.
   recoveryLiquidReserveAdequacy: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   // PR 2 §3.4 — used when the sovereign-wealth seed key is absent
   // entirely (Railway cron has not fired yet on a fresh deploy).
