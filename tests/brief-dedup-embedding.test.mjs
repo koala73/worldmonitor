@@ -685,10 +685,52 @@ describe('readOrchestratorConfig — DIGEST_DEDUP_CLUSTERING', () => {
     const cfg = readOrchestratorConfig({ DIGEST_DEDUP_CLUSTERING: 'complete' });
     assert.equal(cfg.clustering, 'complete');
   });
-  it('unrecognised values fall back to single (default, safe)', async () => {
+  it('unrecognised values fall back to COMPLETE (fail-closed kill switch), surfaces invalidClusteringRaw', async () => {
+    // Mirrors the MODE typo contract: a typo like CLUSTERING=complet
+    // during an over-merge incident must NOT silently stick with the
+    // aggressive 'single' merger — that defeats the kill switch. Fall
+    // to the SAFE conservative algorithm ('complete') and surface the
+    // raw value so the typo is visible in logs.
     const { readOrchestratorConfig } = await import('../scripts/lib/brief-dedup.mjs');
-    const cfg = readOrchestratorConfig({ DIGEST_DEDUP_CLUSTERING: 'average' });
-    assert.equal(cfg.clustering, 'single');
+    for (const raw of ['average', 'complet', 'SINGLE ', 'xyz']) {
+      const cfg = readOrchestratorConfig({ DIGEST_DEDUP_CLUSTERING: raw });
+      assert.equal(cfg.clustering, 'complete', `raw=${JSON.stringify(raw)} should fall to complete`);
+      assert.equal(cfg.invalidClusteringRaw, raw.toLowerCase(), `raw=${JSON.stringify(raw)} should surface as invalidClusteringRaw`);
+    }
+  });
+  it('case-insensitive on valid values (single/SINGLE/Complete all work)', async () => {
+    const { readOrchestratorConfig } = await import('../scripts/lib/brief-dedup.mjs');
+    assert.equal(readOrchestratorConfig({ DIGEST_DEDUP_CLUSTERING: 'SINGLE' }).clustering, 'single');
+    assert.equal(readOrchestratorConfig({ DIGEST_DEDUP_CLUSTERING: 'Complete' }).clustering, 'complete');
+    assert.equal(readOrchestratorConfig({ DIGEST_DEDUP_CLUSTERING: 'complete' }).invalidClusteringRaw, null);
+  });
+  it('explicit "single" and unset produce invalidClusteringRaw=null', async () => {
+    const { readOrchestratorConfig } = await import('../scripts/lib/brief-dedup.mjs');
+    for (const env of [{}, { DIGEST_DEDUP_CLUSTERING: 'single' }, { DIGEST_DEDUP_CLUSTERING: '' }]) {
+      const cfg = readOrchestratorConfig(env);
+      assert.equal(cfg.clustering, 'single');
+      assert.equal(cfg.invalidClusteringRaw, null);
+    }
+  });
+  it('explicit "complete" produces invalidClusteringRaw=null', async () => {
+    const { readOrchestratorConfig } = await import('../scripts/lib/brief-dedup.mjs');
+    const cfg = readOrchestratorConfig({ DIGEST_DEDUP_CLUSTERING: 'complete' });
+    assert.equal(cfg.clustering, 'complete');
+    assert.equal(cfg.invalidClusteringRaw, null);
+  });
+  it('deduplicateStories emits warn line on CLUSTERING typo', async () => {
+    const { deduplicateStories } = await import('../scripts/lib/brief-dedup.mjs');
+    const warns = [];
+    await deduplicateStories([], {
+      env: { DIGEST_DEDUP_MODE: 'jaccard', DIGEST_DEDUP_CLUSTERING: 'complet' },
+      warn: (line) => warns.push(line),
+    });
+    // Even the jaccard-kill-switch path must surface the CLUSTERING typo
+    // since the operator intent (conservative path) is valid in both modes.
+    assert.ok(
+      warns.some((w) => /DIGEST_DEDUP_CLUSTERING=complet/.test(w) && /complete-link/.test(w)),
+      `expected typo warn; got: ${JSON.stringify(warns)}`,
+    );
   });
   it('structured logSummary includes clustering=<algo>', async () => {
     const { deduplicateStories } = await import('../scripts/lib/brief-dedup.mjs');

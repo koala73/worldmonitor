@@ -60,6 +60,7 @@ import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
  *   topicGroupingEnabled: boolean,
  *   topicThreshold: number,
  *   invalidModeRaw: string | null,
+ *   invalidClusteringRaw: string | null,
  * }}
  */
 export function readOrchestratorConfig(env = process.env) {
@@ -82,16 +83,30 @@ export function readOrchestratorConfig(env = process.env) {
     invalidModeRaw = modeRaw;
   }
 
-  // DIGEST_DEDUP_CLUSTERING = 'single' (default) | 'complete'.
-  // Single-link chains wire variants that share a strong
-  // intermediate headline (calibrated F1 0.73 vs complete-link 0.53
-  // on real brief output). Flip to 'complete' for instant kill
-  // switch if single-link ever over-merges in production.
+  // DIGEST_DEDUP_CLUSTERING = 'single' (default when unset) | 'complete'.
+  // Single-link chains wire variants that share a strong intermediate
+  // headline (calibrated F1 0.73 vs complete-link 0.53 on real brief
+  // output). 'complete' is the documented kill switch for when single-
+  // link over-merges in production.
+  //
+  // Typo handling mirrors the MODE branch above: an unrecognised value
+  // falls to 'complete' (the SAFE / conservative algorithm), not back
+  // to 'single'. Rationale: if an operator is typing
+  // `DIGEST_DEDUP_CLUSTERING=complet` during an over-merge incident,
+  // silently sticking with the aggressive merger defeats the kill
+  // switch. The invalidClusteringRaw warn surfaces the typo so it's
+  // fixed, but the fail-closed default protects the cron meanwhile.
   const clusteringRaw = (env.DIGEST_DEDUP_CLUSTERING ?? '').toLowerCase();
-  const clustering =
-    clusteringRaw === 'complete' ? 'complete'
-    : clusteringRaw === 'single' || clusteringRaw === '' ? 'single'
-    : 'single';
+  let clustering;
+  let invalidClusteringRaw = null;
+  if (clusteringRaw === '' || clusteringRaw === 'single') {
+    clustering = 'single';
+  } else if (clusteringRaw === 'complete') {
+    clustering = 'complete';
+  } else {
+    clustering = 'complete';
+    invalidClusteringRaw = clusteringRaw;
+  }
 
   const cosineRaw = Number.parseFloat(env.DIGEST_DEDUP_COSINE_THRESHOLD ?? '');
   const cosineThreshold =
@@ -123,6 +138,7 @@ export function readOrchestratorConfig(env = process.env) {
     topicGroupingEnabled,
     topicThreshold,
     invalidModeRaw,
+    invalidClusteringRaw,
   };
 }
 
@@ -158,6 +174,12 @@ export async function deduplicateStories(stories, deps = {}) {
     warn(
       `[digest] dedup unrecognised DIGEST_DEDUP_MODE=${cfg.invalidModeRaw} — ` +
         'falling back to jaccard (safe rollback path). Valid values: embed | jaccard.',
+    );
+  }
+  if (cfg.invalidClusteringRaw !== null) {
+    warn(
+      `[digest] dedup unrecognised DIGEST_DEDUP_CLUSTERING=${cfg.invalidClusteringRaw} — ` +
+        'falling back to complete-link (safe / conservative). Valid values: single | complete.',
     );
   }
 
