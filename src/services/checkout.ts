@@ -134,6 +134,20 @@ let _watchersInitialized = false;
 let _escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 
 /**
+ * Entitlement watchdog tuning (mirrors pro-test/src/services/checkout.ts).
+ *
+ * Dodo's overlay can navigate to `/status/{id}/wallet-return` after a
+ * successful payment (observed on subscription-trial `amount=0` flows)
+ * and never emit `checkout.status` or `checkout.redirect_requested`.
+ * Prior PRs assumed Dodo would emit SOMETHING; the wallet-return path
+ * emits nothing. Watchdog polls our own entitlement endpoint so the
+ * post-checkout cleanup runs from the webhook regardless of what
+ * Dodo's iframe does. See docs/plans/2026-04-23-002-*-plan.md.
+ */
+const WATCHDOG_INTERVAL_MS = 3_000;
+const WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
  * Dodo's hosted overlay has been observed to deadlock: the in-iframe X
  * button hits `GET /api/checkout/sessions/{id}/payment-link` → 404 →
  * unhandled rejection in their React code → Maximum-update-depth render
@@ -178,48 +192,144 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
   // must reset when a new overlay opens. `openCheckout` resets this
   // flag via the exported `resetOverlaySessionState()` helper below.
   let successFired = false;
-  _resetOverlaySession = () => { successFired = false; };
+  let navigationFired = false;
+  let _watchdogId: number | null = null;
+
+  const stopWatchdog = (): void => {
+    if (_watchdogId !== null) {
+      clearInterval(_watchdogId);
+      _watchdogId = null;
+    }
+  };
+
+  _resetOverlaySession = () => {
+    successFired = false;
+    navigationFired = false;
+    stopWatchdog();
+  };
+
+  // Shared terminal-success side effects (run ONCE per overlay session).
+  // Called from: `checkout.status=succeeded` (event path), the
+  // watchdog when entitlement flips to pro (fallback path), and the
+  // watchdog-free `checkout.redirect_requested` handler when it arrives
+  // before status (rare but possible per docs). The `successFired` flag
+  // makes subsequent callers no-op, preserving prior single-fire semantics.
+  //
+  // The entitlement watcher in panel-layout.ts owns the free→pro reload
+  // (REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR; see mirror marker in
+  // panel-layout.ts) — this block does NOT reload or navigate on its own.
+  const runTerminalSuccessSideEffects = (reason: 'event-status' | 'event-redirect' | 'watchdog'): void => {
+    if (successFired) return;
+    successFired = true;
+    stopWatchdog();
+
+    Sentry.addBreadcrumb({
+      category: 'checkout',
+      message: `terminal success (${reason})`,
+      level: 'info',
+      data: { reason },
+    });
+    if (reason === 'watchdog') {
+      // Counter-signal so Dodo's wallet-return deadlock prevalence is
+      // measurable in Sentry. `info` level, not `error`, per
+      // feedback_sentry_level_expected_user_states.
+      Sentry.captureMessage('Dodo wallet-return deadlock — watchdog resolved', {
+        level: 'info',
+        tags: { component: 'dodo-checkout', code: 'watchdog_resolved' },
+      });
+    }
+
+    try {
+      onSuccessCallback?.();
+    } catch (err) {
+      console.error('[checkout] onSuccessCallback threw:', err);
+      Sentry.captureException(err, {
+        tags: { component: 'dodo-checkout', action: 'on-success' },
+      });
+    }
+    // Terminal success: clear both keys. LAST_CHECKOUT_ATTEMPT_KEY
+    // is no longer needed (no retry context required); PENDING is
+    // cleared to avoid auto-opening the overlay on the reload.
+    clearCheckoutAttempt('success');
+    clearPendingCheckoutIntent();
+    // Session flag so the reloaded page seeds the entitlement transition
+    // detector as post-checkout — see comment block preserved from the
+    // original inlined handler below for the full rationale.
+    markPostCheckout();
+  };
+
+  const startWatchdog = (): void => {
+    if (_watchdogId !== null || successFired) return;
+    const startedAt = Date.now();
+    _watchdogId = window.setInterval(async () => {
+      if (successFired) {
+        stopWatchdog();
+        return;
+      }
+      if (Date.now() - startedAt > WATCHDOG_TIMEOUT_MS) {
+        // Hard cap. Do NOT fire success on timeout — if 10min have
+        // passed with no webhook, we'd rather strand the user than
+        // silently promote them via a stale entitlement read.
+        stopWatchdog();
+        return;
+      }
+      try {
+        const token = await getClerkToken();
+        if (!token) return;
+        const resp = await fetch('/api/me/entitlement', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (!resp.ok) return;
+        const body = (await resp.json()) as { isPro?: boolean };
+        if (body.isPro) {
+          runTerminalSuccessSideEffects('watchdog');
+          // Close the stuck overlay so the entitlement watcher's reload
+          // is not hidden behind Dodo's "payment successful" page.
+          safeCloseOverlay();
+        }
+      } catch {
+        // Swallow — poll retries on next tick. Unexpected exceptions
+        // would spam Sentry once every 3s for up to 10 minutes.
+      }
+    }, WATCHDOG_INTERVAL_MS);
+  };
 
   DodoPayments.Initialize({
     mode: env === 'live_mode' ? 'live' : 'test',
     displayType: 'overlay',
     onEvent: (event: CheckoutEvent) => {
       switch (event.event_type) {
+        case 'checkout.opened':
+          // Arm the watchdog at the earliest safe moment. HAR 2026-04-23
+          // confirms `checkout.opened` fires on both the happy path AND
+          // the wallet-return deadlock path; terminal events do not.
+          startWatchdog();
+          break;
         case 'checkout.status': {
           // Docs-documented shape is ONLY `event.data.message.status` —
           // the prior top-level `event.data.status` read was a guess
           // against an older SDK version and most likely never matched.
           // (overlay-checkout.mdx / inline-checkout.mdx, SDK >= 0.109.2).
+          //
+          // Reload ownership: the entitlement watcher in panel-layout.ts
+          // is the SINGLE reload source (fires on free→pro transition).
+          // We no longer schedule a belt-and-braces setTimeout reload
+          // here — that competed with the watcher and made "still
+          // unlocking" UX impossible because the banner was guaranteed
+          // to be wiped at 3s regardless of webhook latency.
+          //
+          // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — the watcher's
+          // first-snapshot seeding depends on PR #3163 (merged
+          // 2026-04-18) having fixed the swallow-first-snapshot bug.
+          // If that PR is ever reverted or its behavior regresses,
+          // tests in tests/entitlement-transition.test.mts will fail
+          // (specifically "simulates the incident sequence" case); see
+          // the mirror marker in panel-layout.ts.
           const rawData = event.data as Record<string, unknown> | undefined;
           const status = (rawData?.message as Record<string, unknown> | undefined)?.status;
           if (status === 'succeeded') {
-            successFired = true;
-            onSuccessCallback?.();
-            // Terminal success: clear both keys. LAST_CHECKOUT_ATTEMPT_KEY
-            // is no longer needed (no retry context required); PENDING is
-            // cleared to avoid auto-opening the overlay on the reload.
-            clearCheckoutAttempt('success');
-            clearPendingCheckoutIntent();
-            // Mark a session flag so the reloaded page seeds the entitlement
-            // transition detector as post-checkout — without this, the
-            // detector would treat the first pro snapshot as "legacy-pro
-            // baseline" and swallow the activation.
-            //
-            // Reload ownership: the entitlement watcher in panel-layout.ts
-            // is the SINGLE reload source (fires on free→pro transition).
-            // We no longer schedule a belt-and-braces setTimeout reload
-            // here — that competed with the watcher and made "still
-            // unlocking" UX impossible because the banner was guaranteed
-            // to be wiped at 3s regardless of webhook latency.
-            //
-            // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — the watcher's
-            // first-snapshot seeding depends on PR #3163 (merged
-            // 2026-04-18) having fixed the swallow-first-snapshot bug.
-            // If that PR is ever reverted or its behavior regresses,
-            // tests in tests/entitlement-transition.test.mts will fail
-            // (specifically "simulates the incident sequence" case); see
-            // the mirror marker in panel-layout.ts.
-            markPostCheckout();
+            runTerminalSuccessSideEffects('event-status');
           }
           break;
         }
@@ -231,6 +341,7 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
           // the retry CTA. The attempt record will be cleared later by
           // the terminal path that actually resolves (success, dismissed,
           // duplicate, or the mount-time abandonment sweep).
+          stopWatchdog();
           if (!successFired) {
             clearPendingCheckoutIntent();
           }
@@ -242,8 +353,17 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
           // fail on Safari with an orphaned about:blank tab; we follow
           // the docs-prescribed handler instead.
           // (overlay-checkout.mdx: "Redirect the customer manually".)
+          //
+          // On the happy path both `checkout.status=succeeded` and
+          // `checkout.redirect_requested` fire — status runs the
+          // markPostCheckout + cleanup side effects, redirect navigates
+          // away. When only redirect_requested fires (no prior status),
+          // we run the side effects here so the post-checkout flag is
+          // set before we navigate.
           const redirectTo = (event.data?.message as Record<string, unknown> | undefined)?.redirect_to as string | undefined;
-          if (redirectTo) {
+          if (!successFired) runTerminalSuccessSideEffects('event-redirect');
+          if (redirectTo && !navigationFired) {
+            navigationFired = true;
             window.location.href = redirectTo;
           }
           break;
@@ -255,6 +375,7 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
           // deadlock bug (payment-link 404 + render loop) never reaches
           // this branch — it traps inside their iframe — but any error
           // that DOES escape should not leave a broken overlay mounted.
+          stopWatchdog();
           safeCloseOverlay();
           break;
       }

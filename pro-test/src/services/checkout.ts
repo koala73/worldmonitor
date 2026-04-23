@@ -119,9 +119,148 @@ async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
   return clerk;
 }
 
+/**
+ * Entitlement watchdog tuning.
+ *
+ * Why this exists at all: Dodo's overlay can navigate to
+ * `/status/{id}/wallet-return` after a successful payment (observed on
+ * subscription-trial `amount=0` flows) and never emit `checkout.status`
+ * or `checkout.redirect_requested` back to the parent. Prior PRs (#3298
+ * flip to manualRedirect:false, #3346 add redirect_requested handler,
+ * #3354 Escape-key close hatch) all depended on Dodo emitting SOMETHING;
+ * the wallet-return path emits nothing. The watchdog polls our own
+ * entitlement endpoint so the post-checkout journey completes from the
+ * webhook regardless of what Dodo's iframe does.
+ *
+ * INTERVAL: 3000ms floor. Below 2s our own pipeline is eventually
+ * consistent (Convex + Upstash webhook latency) so faster polling just
+ * burns Clerk token refreshes. 3s is imperceptible to humans.
+ *
+ * TIMEOUT: 10 minutes. A real user who paid and left the tab open 10min
+ * without the webhook landing has a different problem (Dodo outage,
+ * webhook pipeline broken) — the fix isn't a longer poll.
+ */
+const WATCHDOG_INTERVAL_MS = 3_000;
+const WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000;
+
 export function initOverlay(onSuccess?: () => void): void {
   import('dodopayments-checkout').then(({ DodoPayments }) => {
     const env = import.meta.env.VITE_DODO_ENVIRONMENT;
+
+    // Closure-scoped watchdog + idempotency state. Reset implicitly
+    // on each new overlay open because `checkout.opened` is what starts
+    // the watchdog and `_terminalFired` only gates within one session:
+    // `checkout.closed` clears both. The SDK Initialize is idempotent
+    // per the main-app comment in src/services/checkout.ts, so this
+    // closure wraps the one-and-only live onEvent handler.
+    let _terminalFired = false;
+    let _watchdogId: number | null = null;
+
+    const stopWatchdog = (): void => {
+      if (_watchdogId !== null) {
+        clearInterval(_watchdogId);
+        _watchdogId = null;
+      }
+    };
+
+    const safeCloseOverlay = (): void => {
+      try {
+        if (DodoPayments.Checkout.isOpen?.()) {
+          DodoPayments.Checkout.close();
+        }
+      } catch {
+        // Overlay already gone / SDK mid-teardown.
+      }
+    };
+
+    // Single terminal-success entry point. Both the event handler and
+    // the watchdog route through here so double-fires are impossible.
+    // `redirectTo` optional: the event path supplies Dodo's
+    // redirect_to (which may embed payment_id etc.); the watchdog
+    // path falls back to our canonical success URL.
+    const fireTerminalSuccess = (
+      reason: 'event-status' | 'event-redirect' | 'watchdog',
+      redirectTo?: string,
+    ): void => {
+      if (_terminalFired) return;
+      _terminalFired = true;
+      stopWatchdog();
+
+      Sentry.addBreadcrumb({
+        category: 'checkout',
+        message: `terminal success (${reason})`,
+        level: 'info',
+        data: { reason },
+      });
+
+      // Counter-signal so Dodo's wallet-return deadlock prevalence is
+      // measurable in Sentry. We intentionally log `info`, not `error`
+      // — this is expected handling, not a failure. See
+      // `feedback_sentry_level_expected_user_states`.
+      if (reason === 'watchdog') {
+        Sentry.captureMessage('Dodo wallet-return deadlock — watchdog resolved', {
+          level: 'info',
+          tags: { surface: 'pro-marketing', code: 'watchdog_resolved' },
+        });
+      }
+
+      try {
+        onSuccess?.();
+      } catch (err) {
+        console.error('[checkout] onSuccess threw:', err);
+        Sentry.captureException(err, {
+          tags: { surface: 'pro-marketing', action: 'on-success' },
+        });
+      }
+
+      // The event-redirect path does its OWN navigation using the
+      // URL Dodo supplied (preserves payment_id / subscription_id
+      // query params downstream consumers may read). Watchdog and
+      // event-status paths use the canonical fallback — Dodo's
+      // status endpoint is authoritative for the entitlement; the
+      // URL params are informational at this point.
+      if (reason === 'event-redirect') {
+        window.location.href = redirectTo || 'https://worldmonitor.app/?wm_checkout=success';
+      } else {
+        safeCloseOverlay();
+        window.location.href = 'https://worldmonitor.app/?wm_checkout=success';
+      }
+    };
+
+    const startWatchdog = (): void => {
+      if (_watchdogId !== null || _terminalFired) return;
+      const startedAt = Date.now();
+      _watchdogId = window.setInterval(async () => {
+        if (_terminalFired) {
+          stopWatchdog();
+          return;
+        }
+        if (Date.now() - startedAt > WATCHDOG_TIMEOUT_MS) {
+          // Hard cap. Do NOT fire success on timeout — if 10min have
+          // passed with no webhook, we'd rather strand the user than
+          // silently promote them to pro via a stale entitlement read.
+          stopWatchdog();
+          return;
+        }
+        try {
+          const token = await getAuthToken();
+          if (!token) return;
+          const resp = await fetch(`${API_BASE}/me/entitlement`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(8_000),
+          });
+          if (!resp.ok) return;
+          const body = (await resp.json()) as { isPro?: boolean };
+          if (body.isPro) {
+            fireTerminalSuccess('watchdog');
+          }
+        } catch {
+          // Swallow — poll retries on next tick. Unexpected exceptions
+          // would spam Sentry once every 3s for up to 10 minutes.
+        }
+      }, WATCHDOG_INTERVAL_MS);
+    };
+
     DodoPayments.Initialize({
       mode: env === 'live_mode' ? 'live' : 'test',
       displayType: 'overlay',
@@ -141,6 +280,15 @@ export function initOverlay(onSuccess?: () => void): void {
         console.info('[checkout] dodo event', event.event_type,
           status !== undefined ? { status } : undefined);
 
+        // `checkout.opened` is the only terminal-adjacent event Dodo
+        // emits reliably on BOTH the happy path and the wallet-return
+        // deadlock path (confirmed via HAR 2026-04-23). It's our
+        // earliest safe moment to arm the watchdog.
+        if (event.event_type === 'checkout.opened') {
+          _terminalFired = false;
+          startWatchdog();
+        }
+
         // Dodo's documented `manualRedirect: true` flow emits TWO events
         // on terminal success: `checkout.status` for UI updates, and
         // `checkout.redirect_requested` carrying the URL WE must navigate
@@ -152,7 +300,7 @@ export function initOverlay(onSuccess?: () => void): void {
         // legacy top-level `event.data.status` read was a guess against
         // an older SDK version and most likely never matched.
         if (event.event_type === 'checkout.status' && status === 'succeeded') {
-          onSuccess?.();
+          fireTerminalSuccess('event-status');
         }
         if (event.event_type === 'checkout.redirect_requested') {
           const redirectTo = msg?.redirect_to as string | undefined;
@@ -161,7 +309,12 @@ export function initOverlay(onSuccess?: () => void): void {
           // changelog v1.84.0. Our return_url carries `?wm_checkout=success`
           // so the dashboard bridge (src/services/checkout-return.ts) fires
           // regardless of Dodo's appended params.
-          window.location.href = redirectTo || 'https://worldmonitor.app/?wm_checkout=success';
+          fireTerminalSuccess('event-redirect', redirectTo);
+        }
+        if (event.event_type === 'checkout.closed') {
+          // Cancel path. Do not fire success — user didn't pay, or
+          // the watchdog timed out gracefully.
+          stopWatchdog();
         }
         if (event.event_type === 'checkout.link_expired') {
           // Not user-blocking — log-only for now; follow-up if Sentry
