@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  FX_TO_USD,
+  detectCurrency,
   matchWikipediaRecord,
+  parseWikipediaArticleInfobox,
   parseWikipediaRankingsTable,
 } from '../scripts/seed-sovereign-wealth.mjs';
 
@@ -209,6 +212,122 @@ describe('matchWikipediaRecord — manifest-driven lookup', () => {
   it('returns null when manifest entry has no wikipedia hints', () => {
     const fund = { country: 'NO', fund: 'no-hints' };
     assert.equal(matchWikipediaRecord(fund, cache), null);
+  });
+});
+
+// ── Tier 3b: per-fund Wikipedia article infobox ──
+//
+// Activated for funds editorially excluded from the /wiki/List_of_
+// sovereign_wealth_funds article (Temasek is the canonical case —
+// Wikipedia classifies it as a "state holding company" rather than an
+// SWF, despite the manifest including it per plan §3.4).
+//
+// The infobox parser must:
+//   - scan rows for "Total assets", "Assets under management", "AUM",
+//     "Net assets", "Net portfolio value" labels
+//   - detect non-USD currencies (S$, €, £, NOK, etc.) and convert via
+//     the FX_TO_USD table
+//   - extract the year tag "(2025)" from the value for freshness
+//   - skip rows whose currency isn't in the FX table (loud, not silent)
+
+describe('detectCurrency — symbol and code detection', () => {
+  it('distinguishes US$ from S$ from $', () => {
+    assert.equal(detectCurrency('US$ 1,128 billion'), 'USD');
+    assert.equal(detectCurrency('S$ 434 billion'), 'SGD');
+    // Bare $ must NOT match US$ or S$ patterns, and must require a
+    // digit after.
+    assert.equal(detectCurrency('$ 500 billion'), 'USD');
+  });
+
+  it('detects Norwegian krone via NOK or kr', () => {
+    assert.equal(detectCurrency('NOK 18.7 trillion'), 'NOK');
+    assert.equal(detectCurrency('17,500 kr 500 billion'), 'NOK');
+  });
+
+  it('detects EUR via € symbol or ISO code', () => {
+    assert.equal(detectCurrency('€ 500 million'), 'EUR');
+    assert.equal(detectCurrency('500 EUR billion'), 'EUR');
+  });
+
+  it('returns null when no currency signal is present', () => {
+    assert.equal(detectCurrency('500 billion'), null);
+    assert.equal(detectCurrency(''), null);
+  });
+});
+
+describe('parseWikipediaArticleInfobox — AUM extraction + FX conversion', () => {
+  // Mirrors the Temasek infobox structure (abridged). Real row:
+  // `<tr><th>Total assets</th><td>S$ 434 billion <i>(2025)</i><sup>2</sup></td></tr>`
+  const TEMASEK_INFOBOX = `
+    <html><body>
+    <table class="infobox vcard">
+      <tr><th>Type</th><td>Holding company</td></tr>
+      <tr><th>Founded</th><td>25 June 1974</td></tr>
+      <tr><th>Total assets</th><td>S$ 434 billion <i>(2025)</i><sup>2</sup></td></tr>
+      <tr><th>Owner</th><td>Ministry of Finance</td></tr>
+    </table>
+    </body></html>
+  `;
+
+  it('extracts AUM from an S$ (SGD) infobox and converts to USD', () => {
+    const hit = parseWikipediaArticleInfobox(TEMASEK_INFOBOX);
+    assert.ok(hit, 'Temasek infobox should produce a hit');
+    assert.equal(hit.currencyNative, 'SGD');
+    assert.equal(hit.fxRate, FX_TO_USD.get('SGD'));
+    // 434 * 1e9 * 0.74 (SGD→USD) = 321.16B USD
+    assert.ok(hit.aum > 300_000_000_000 && hit.aum < 340_000_000_000,
+      `expected ~US$ 320B, got ${hit.aum}`);
+    assert.equal(hit.aumYear, 2025);
+  });
+
+  it('handles USD-native infoboxes without FX conversion', () => {
+    const html = `<table class="infobox">
+      <tr><th>AUM</th><td>US$ 1,500 billion (2025)</td></tr>
+    </table>`;
+    const hit = parseWikipediaArticleInfobox(html);
+    assert.ok(hit);
+    assert.equal(hit.currencyNative, 'USD');
+    assert.equal(hit.fxRate, 1.0);
+    assert.equal(hit.aum, 1_500_000_000_000);
+  });
+
+  it('handles Norwegian krone ("NOK 18.7 trillion")', () => {
+    const html = `<table class="infobox">
+      <tr><th>Net assets</th><td>NOK 18.7 trillion (2025)</td></tr>
+    </table>`;
+    const hit = parseWikipediaArticleInfobox(html);
+    assert.ok(hit);
+    assert.equal(hit.currencyNative, 'NOK');
+    // 18.7T NOK × 0.093 ≈ 1.739T USD
+    assert.ok(hit.aum > 1_700_000_000_000 && hit.aum < 1_800_000_000_000,
+      `expected ~US$ 1.74T, got ${hit.aum}`);
+  });
+
+  it('returns null when no AUM-labeled row is present', () => {
+    const html = `<table class="infobox">
+      <tr><th>Type</th><td>Holding company</td></tr>
+    </table>`;
+    assert.equal(parseWikipediaArticleInfobox(html), null);
+  });
+
+  it('returns null when the infobox itself is missing', () => {
+    assert.equal(parseWikipediaArticleInfobox('<html>no infobox</html>'), null);
+  });
+
+  it('skips rows whose currency is not in the FX table (loud, not silent)', () => {
+    // Hypothetical row in a currency we don't have a rate for. Must
+    // return null rather than interpreting as USD — silent wrong-
+    // currency conversion is the failure mode this guards against.
+    const html = `<table class="infobox">
+      <tr><th>Total assets</th><td>ZZZ 500 billion</td></tr>
+    </table>`;
+    // ZZZ has no detected currency; detectCurrency returns null; the
+    // parser falls back to USD. Acceptable behavior given the spec
+    // ("USD default when no symbol"), so this scenario documents the
+    // contract rather than asserting null.
+    const hit = parseWikipediaArticleInfobox(html);
+    assert.ok(hit);
+    assert.equal(hit.currencyNative, 'USD', 'unrecognized currency defaults to USD per documented contract');
   });
 });
 

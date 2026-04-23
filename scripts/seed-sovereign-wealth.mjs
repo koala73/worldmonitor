@@ -49,7 +49,7 @@
 //             fund: 'gpfg',
 //             aum: <number, USD>,
 //             aumYear: <number>,
-//             source: 'official' | 'ifswf' | 'wikipedia',
+//             source: 'official' | 'ifswf' | 'wikipedia_list' | 'wikipedia_infobox',
 //             access: <number 0..1>,
 //             liquidity: <number 0..1>,
 //             transparency: <number 0..1>,
@@ -64,7 +64,10 @@
 //     },
 //     seededAt: <ISO8601>,
 //     manifestVersion: <number>,
-//     sourceMix: { official: <count>, ifswf: <count>, wikipedia: <count> },
+//     sourceMix: {
+//       official: <count>, ifswf: <count>,
+//       wikipedia_list: <count>, wikipedia_infobox: <count>,
+//     },
 //   }
 //
 // Countries WITHOUT an entry in the manifest are absent from this
@@ -86,7 +89,54 @@ const IMPORTS_INDICATOR = 'NE.IMP.GNFS.CD';
 
 const WIKIPEDIA_URL = 'https://en.wikipedia.org/wiki/List_of_sovereign_wealth_funds';
 export const WIKIPEDIA_SOURCE_ATTRIBUTION =
-  'Wikipedia — List of sovereign wealth funds (CC-BY-SA 4.0)';
+  'Wikipedia — List of sovereign wealth funds + per-fund articles (CC-BY-SA 4.0)';
+
+// FX conversion table for per-fund Wikipedia infoboxes that report AUM
+// in a local currency. Rates are approximate mid-market values reviewed
+// alongside the quarterly manifest refresh; small FX drift is absorbed by
+// the saturating transform in the scorer
+// (100 × (1 − exp(−effectiveMonths / 12))) so ballpark accuracy suffices.
+//
+// When updating these, also bump `FX_RATES_REVIEWED_AT` so a stale rate
+// is visible in the committed seed metadata. Add a new entry only when a
+// manifest fund's infobox reports AUM in a currency not yet listed.
+export const FX_RATES_REVIEWED_AT = '2026-04-23';
+export const FX_TO_USD = new Map([
+  ['USD', 1.0],
+  ['SGD', 0.74],
+  ['NOK', 0.093],
+  ['EUR', 1.05],
+  ['GBP', 1.27],
+  ['AED', 0.272],
+  ['SAR', 0.267],
+  ['KWD', 3.25],
+  ['QAR', 0.275],
+]);
+
+// Canonical currency code lookup keyed on the symbol / short-code that
+// appears in Wikipedia infoboxes. Each entry maps to an ISO-4217 code
+// used in FX_TO_USD above. Order matters — "US$" must be tested before
+// "S$" and "$" so a "US$ 100B" row doesn't match the SGD / USD-fallback
+// paths; `detectCurrency` below handles this by scanning longest-first.
+const CURRENCY_SYMBOL_TO_ISO = [
+  ['US$', 'USD'],
+  ['USD', 'USD'],
+  ['S$', 'SGD'],
+  ['SGD', 'SGD'],
+  ['NOK', 'NOK'],
+  ['kr', 'NOK'],  // Norwegian krone — weak signal, only used when
+                   // preceded by a space and no other symbol matches
+  ['€', 'EUR'],
+  ['EUR', 'EUR'],
+  ['£', 'GBP'],
+  ['GBP', 'GBP'],
+  ['AED', 'AED'],
+  ['SAR', 'SAR'],
+  ['KWD', 'KWD'],
+  ['QAR', 'QAR'],
+  ['$', 'USD'],  // Bare `$` defaults to USD — last to avoid shadowing
+                 // `US$` / `S$` / etc.
+];
 
 // ── World Bank: per-country annual imports (denominator for rawMonths) ──
 
@@ -307,20 +357,139 @@ export function matchWikipediaRecord(fund, cache) {
 async function fetchWikipediaRanking(fund, cache) {
   const hit = matchWikipediaRecord(fund, cache);
   if (!hit) return null;
-  return { aum: hit.aum, aumYear: hit.aumYear, source: 'wikipedia' };
+  return { aum: hit.aum, aumYear: hit.aumYear, source: 'wikipedia_list' };
+}
+
+// ── Tier 3b: per-fund Wikipedia article infobox fallback ──
+//
+// Some manifest funds (Temasek is the canonical case) are editorially
+// excluded from Wikipedia's list article. For those, the fund's own
+// Wikipedia article's infobox carries AUM. Infobox layout is relatively
+// stable: a `<table class="infobox ...">` with rows of
+// `<th>Label</th><td>Value</td>`. We look for rows labelled "Total
+// assets" / "Assets under management" / "AUM" / "Net assets" and parse
+// the value.
+
+const INFOBOX_AUM_LABELS = [
+  /^total\s+assets$/i,
+  /^assets\s+under\s+management$/i,
+  /^aum$/i,
+  /^net\s+assets$/i,
+  /^net\s+portfolio\s+value$/i,
+];
+
+/**
+ * Detect the currency in a Wikipedia infobox value string.
+ * Returns an ISO-4217 code (e.g. "SGD") or null if unrecognized.
+ * Scans CURRENCY_SYMBOL_TO_ISO in order so longer/more-specific
+ * prefixes (US$, S$) match before bare `$` / `kr`.
+ */
+export function detectCurrency(text) {
+  const haystack = String(text || '');
+  for (const [symbol, iso] of CURRENCY_SYMBOL_TO_ISO) {
+    // `$` / `kr` are short + could false-match in rich text; require
+    // either a space before or start-of-string immediately before the
+    // token, and a digit (optional space) after.
+    if (symbol === '$' || symbol === 'kr') {
+      const re = new RegExp(`(^|\\s)${symbol.replace(/[$]/g, '\\$')}\\s*\\d`);
+      if (re.test(haystack)) return iso;
+      continue;
+    }
+    if (haystack.includes(symbol)) return iso;
+  }
+  return null;
+}
+
+/**
+ * Parse a Wikipedia infobox HTML fragment for an AUM value. Returns
+ * { aum: number (USD), aumYear: number } or null if no usable row.
+ *
+ * Exported pure so a committed fixture can exercise both the currency
+ * detection and the FX conversion without a live fetch.
+ */
+export function parseWikipediaArticleInfobox(html) {
+  const infoboxMatch = html.match(/<table[^>]*class="[^"]*infobox[^"]*"[^>]*>([\s\S]*?)<\/table>/);
+  if (!infoboxMatch) return null;
+  const box = infoboxMatch[1];
+
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+  let rowMatch;
+  while ((rowMatch = rowRe.exec(box)) !== null) {
+    // Split the row into th (label) + td (value). Either can be missing
+    // or out-of-order in edge cases, so use a two-pass extraction.
+    const label = (rowMatch[1].match(/<th[^>]*>([\s\S]*?)<\/th>/)?.[1] ?? '');
+    const value = (rowMatch[1].match(/<td[^>]*>([\s\S]*?)<\/td>/)?.[1] ?? '');
+    const labelText = stripHtmlInline(label);
+    if (!INFOBOX_AUM_LABELS.some((re) => re.test(labelText))) continue;
+
+    const valueText = stripHtmlInline(value);
+    // Example values:
+    //   "S$ 434 billion (2025) 2"
+    //   "US$ 1,128 billion"
+    //   "€ 500 million"
+    //   "NOK 18.7 trillion (2025)"
+    const numMatch = valueText.match(/([\d,]+(?:\.\d+)?)\s*(trillion|billion|million)/i);
+    if (!numMatch) continue;
+    const rawNum = parseFloat(numMatch[1].replace(/,/g, ''));
+    if (!Number.isFinite(rawNum) || rawNum <= 0) continue;
+    const unit = numMatch[2].toLowerCase();
+    const unitMultiplier = unit === 'trillion'
+      ? 1_000_000_000_000
+      : unit === 'billion'
+        ? 1_000_000_000
+        : 1_000_000;
+    const valueNative = rawNum * unitMultiplier;
+
+    const currency = detectCurrency(valueText) ?? 'USD';
+    const fxRate = FX_TO_USD.get(currency);
+    if (fxRate == null) continue; // unknown currency, skip the row
+    const aumUsd = valueNative * fxRate;
+
+    const yearMatch = valueText.match(/\((\d{4})\)/);
+    const aumYear = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
+
+    return { aum: aumUsd, aumYear, currencyNative: currency, fxRate };
+  }
+  return null;
+}
+
+async function fetchWikipediaInfobox(fund) {
+  const articleUrl = fund.wikipedia?.articleUrl;
+  if (!articleUrl) return null;
+  const resp = await fetch(articleUrl, {
+    headers: {
+      'User-Agent': CHROME_UA,
+      'Accept': 'text/html,application/xhtml+xml',
+    },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resp.ok) {
+    console.warn(`[seed-sovereign-wealth] ${fund.country}:${fund.fund} infobox fetch HTTP ${resp.status}`);
+    return null;
+  }
+  const html = await resp.text();
+  const hit = parseWikipediaArticleInfobox(html);
+  if (!hit) return null;
+  return { aum: hit.aum, aumYear: hit.aumYear, source: 'wikipedia_infobox' };
 }
 
 // ── Aggregation ──
 
 async function fetchFundAum(fund, wikipediaCache) {
-  // Source priority: official → IFSWF → Wikipedia. Short-circuit on
-  // first non-null return so the highest-confidence source wins.
+  // Source priority: official → IFSWF → Wikipedia list → Wikipedia
+  // per-fund infobox. Short-circuit on first non-null return so the
+  // highest-confidence source wins. The infobox sub-tier is last
+  // because it is per-fund fetch (N network round-trips, one per fund
+  // that misses the list article) — amortizing over the list article
+  // cache first minimizes live traffic.
   const official = await fetchOfficialDisclosure(fund);
   if (official) return official;
   const ifswf = await fetchIfswfFiling(fund);
   if (ifswf) return ifswf;
-  const wikipedia = await fetchWikipediaRanking(fund, wikipediaCache);
-  if (wikipedia) return wikipedia;
+  const wikipediaList = await fetchWikipediaRanking(fund, wikipediaCache);
+  if (wikipediaList) return wikipediaList;
+  const wikipediaInfobox = await fetchWikipediaInfobox(fund);
+  if (wikipediaInfobox) return wikipediaInfobox;
   return null;
 }
 
@@ -332,7 +501,7 @@ export async function fetchSovereignWealth() {
   ]);
 
   const countries = {};
-  const sourceMix = { official: 0, ifswf: 0, wikipedia: 0 };
+  const sourceMix = { official: 0, ifswf: 0, wikipedia_list: 0, wikipedia_infobox: 0 };
   const unmatched = [];
 
   for (const [iso2, funds] of groupFundsByCountry(manifest)) {
@@ -378,13 +547,15 @@ export async function fetchSovereignWealth() {
     console.warn(`[seed-sovereign-wealth] ${unmatched.length} fund(s) unmatched across all tiers: ${unmatched.join(', ')}`);
   }
 
+  const usedWikipedia = sourceMix.wikipedia_list + sourceMix.wikipedia_infobox > 0;
   return {
     countries,
     seededAt: new Date().toISOString(),
     manifestVersion: manifest.manifestVersion,
     sourceMix,
+    fxRatesReviewedAt: FX_RATES_REVIEWED_AT,
     sourceAttribution: {
-      wikipedia: sourceMix.wikipedia > 0 ? WIKIPEDIA_SOURCE_ATTRIBUTION : undefined,
+      wikipedia: usedWikipedia ? WIKIPEDIA_SOURCE_ATTRIBUTION : undefined,
     },
   };
 }

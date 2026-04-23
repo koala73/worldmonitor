@@ -256,6 +256,12 @@ funds:
     display_name: Temasek Holdings
     wikipedia:
       fund_name: Temasek Holdings
+      # Temasek is not listed on Wikipedia's /wiki/List_of_sovereign_wealth_funds
+      # (Wikipedia editorially classifies it as a state holding company, not an
+      # SWF — the practitioner classification is contested). Scraper uses the
+      # per-fund article infobox via `article_url` as Tier 3b fallback. Infobox
+      # reports AUM in SGD, which the seeder converts via its baked-in FX table.
+      article_url: https://en.wikipedia.org/wiki/Temasek_Holdings
     classification:
       access: 0.4
       liquidity: 0.5

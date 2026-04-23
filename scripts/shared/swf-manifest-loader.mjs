@@ -27,10 +27,14 @@ const MANIFEST_PATH = resolve(here, '../../docs/methodology/swf-classification-m
 
 /**
  * @typedef {Object} SwfWikipediaHints
- * @property {string} [abbrev]   matches the "Abbrev." column on the
- *                               Wikipedia `List_of_sovereign_wealth_funds`
- *                               article (case- and punctuation-normalized)
- * @property {string} [fundName] matches the "Fund name" column
+ * @property {string} [abbrev]     matches the "Abbrev." column on the
+ *                                 Wikipedia `List_of_sovereign_wealth_funds`
+ *                                 article (case- and punctuation-normalized)
+ * @property {string} [fundName]   matches the "Fund name" column
+ * @property {string} [articleUrl] per-fund Wikipedia article URL used by the
+ *                                 Tier 3b infobox fallback when the list
+ *                                 article does not include the fund
+ *                                 (Temasek is the canonical case)
  */
 
 /**
@@ -146,17 +150,28 @@ export function validateManifest(raw) {
     // in scripts/seed-sovereign-wealth.mjs. Either `abbrev` or
     // `fund_name` must be present if the block is present (otherwise
     // the scraper has nothing to match against); both may be present.
+    // `article_url` is optional and activates the Tier 3b per-fund
+    // infobox fallback.
     let wikipedia;
     if (f.wikipedia != null) {
       if (typeof f.wikipedia !== 'object') fail(`${path}.wikipedia: expected object`);
       const w = /** @type {Record<string, unknown>} */ (f.wikipedia);
       const abbrev = w.abbrev;
       const fundName = w.fund_name;
+      const articleUrl = w.article_url;
       if (abbrev != null && typeof abbrev !== 'string') {
         fail(`${path}.wikipedia.abbrev: expected string, got ${JSON.stringify(abbrev)}`);
       }
       if (fundName != null && typeof fundName !== 'string') {
         fail(`${path}.wikipedia.fund_name: expected string, got ${JSON.stringify(fundName)}`);
+      }
+      if (articleUrl != null) {
+        if (typeof articleUrl !== 'string') {
+          fail(`${path}.wikipedia.article_url: expected string, got ${JSON.stringify(articleUrl)}`);
+        }
+        if (!/^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(articleUrl)) {
+          fail(`${path}.wikipedia.article_url: expected a https://<lang>.wikipedia.org/... URL, got ${JSON.stringify(articleUrl)}`);
+        }
       }
       if (!abbrev && !fundName) {
         fail(`${path}.wikipedia: at least one of abbrev or fund_name must be provided`);
@@ -164,6 +179,7 @@ export function validateManifest(raw) {
       wikipedia = {
         ...(abbrev ? { abbrev } : {}),
         ...(fundName ? { fundName } : {}),
+        ...(articleUrl ? { articleUrl } : {}),
       };
     }
 
