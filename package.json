@@ -136,6 +136,7 @@
     "topojson-client": "^3.1.0",
     "uqr": "^0.1.2",
     "ws": "^8.19.0",
+    "yaml": "^2.8.3",
     "youtubei.js": "^16.0.1"
   },
   "overrides": {
