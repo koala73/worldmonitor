@@ -57,7 +57,7 @@ Normal operational variation, routine nominations, and sub-daily flow shifts are
 
 ## How the log is kept fresh
 
-- **Curation**: the event log is refreshed by `scripts/seed-energy-disruptions.mjs` on a weekly cron, reading the hand-authored JSON in `scripts/data/energy-disruptions.json`. Rows are reviewed and added by editors as new state transitions surface in the evidence bundle of each asset.
+- **Curation**: the event log is refreshed by `scripts/seed-energy-disruptions.mjs` on a weekly cron, reading the hand-authored JSON in `scripts/data/energy-disruptions.json`. Rows are reviewed and added by editors as new state transitions surface in the evidence bundle of each asset. See [`/corrections`](/corrections) for the planned audit-surface shape that will track future automated state-transition entries when/if an auto-classifier lands.
 - **Decay**: ongoing events (where `endAt` is null) whose `lastEvidenceUpdate` is older than 30 days drop to a "stale evidence" treatment in the panel drawer; they do not auto-resolve.
 
 ## Evidence-source discipline
@@ -74,7 +74,7 @@ Every event carries at least one source with a publicly-verifiable URL. `regulat
 
 Every event is versioned with `classifierVersion`. When rules change (new cause enum, new event type, tightened confidence thresholds), the version is bumped and events re-derived. The prior classifier version remains readable via the `classifierVersion` field on the row — no silent rewrites.
 
-Changes are auto-logged at `/corrections` with `{field, previousValue, newValue, trigger, sourcesUsed, classifierVersion}` per entry. This is the real audit surface — the event log itself is forward-looking; the revision log is the history of how the log has evolved.
+Changes are planned to be auto-logged at [`/corrections`](/corrections) with `{field, previousValue, newValue, trigger, sourcesUsed, classifierVersion}` per entry — the designed audit surface. The event log itself is forward-looking; the revision log will be the history of how the log has evolved once the classifier ships.
 
 ## Related methodology
 

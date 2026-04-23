@@ -42,11 +42,13 @@ The visible `publicBadge` (`flowing | reduced | offline | disputed`) is a determ
 
 ## How public badges move
 
-Any transition that flips a public status writes an append-only entry to the public revision log at [`/corrections`](/corrections). Each entry records:
+The designed audit surface is a public revision log that records every transition flipping a public status, as:
 
 - `{ assetId, fieldChanged, previousValue, newValue, trigger, sourcesUsed[], classifierVersion }`
 
 No human review queue gates the transition — quality comes from the tiered evidence threshold + an LLM second-pass sanity check + auto-decay of stale evidence. The classifier's version string ships with every public badge so scientific reproducibility is possible.
+
+**Status (v1 launch):** the revision-log surface is not yet live — see [`/corrections`](/corrections) for the planned shape and current state. The classifier that writes entries ships post-launch. Today, the audit path is the evidence bundle embedded in each RPC response + the methodology on this page.
 
 ## Freshness SLA
 
@@ -65,6 +67,8 @@ Pipeline-registry data derived from [Global Energy Monitor](https://globalenergy
 
 ## Corrections
 
-See the public revision log at [`/corrections`](/corrections). Spot a wrong
-status? Open a GitHub issue or email the address in the atlas footer — we
-update on the next classifier pass, typically within 6 hours.
+See [`/corrections`](/corrections) for the planned revision-log shape
+and submission policy. Spot a wrong status? Open a GitHub issue at the
+[public repository](https://github.com/koala73/worldmonitor/issues).
+Corrections are handled manually today and will flow through the
+automated `override`-trigger path once the classifier ships.

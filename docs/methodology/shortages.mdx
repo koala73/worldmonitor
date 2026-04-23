@@ -80,6 +80,8 @@ A `energy_asset_overrides` table exists for the rare case where a reader emails 
 
 ## Corrections
 
-Public revision log at [`/corrections`](/corrections). Every tier change ships
-with its trigger (`classifier` / `source` / `decay` / `override`) and the
-sources used. Corrections land on the next classifier pass (max 6 hours).
+See [`/corrections`](/corrections) for the planned revision-log shape
+(every tier change will ship with its trigger — `classifier` / `source`
+/ `decay` / `override` — and the sources used). The classifier that
+writes entries ships post-launch; corrections are handled manually
+today via [GitHub issues](https://github.com/koala73/worldmonitor/issues).

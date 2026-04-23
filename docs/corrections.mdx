@@ -1,28 +1,44 @@
 ---
-title: "Revision Log (Corrections)"
-description: "Append-only public log of every evidence change and resulting public-badge change across the Energy Atlas registries. The audit surface for WorldMonitor's classifier — every status flip is trackable by source, date, and classifier version."
+title: "Revision Log (Planned)"
+description: "Specification for the public revision log that will surface every evidence change and public-badge transition across the Energy Atlas registries. The page documents the planned shape and status — the log itself is not yet live."
 ---
 
-## What this page is
+<Note>
+**Status — v1 launch (2026-04-23):** This page documents the planned
+revision-log surface. **The public log itself is not yet live.**
+What ships today on the Energy Atlas: the evidence bundles inside each
+RPC response (`ListPipelines`, `ListStorageFacilities`,
+`ListFuelShortages`, `ListEnergyDisruptions`), and the methodology pages
+that describe how public badges are derived from those bundles. The
+classifier that writes revision-log entries as a byproduct of normal
+operation ships in a post-launch release. Until then:
+`GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`
+return empty arrays, and there is no automated correction-intake path.
+This page exists so the data contract and submission policy are
+documented **before** the surface goes live — not after.
+</Note>
 
-WorldMonitor's Energy Atlas publishes evidence bundles — not opinions — for
-pipelines, storage facilities, fuel shortages, and disruption events. A
-deterministic, versioned classifier turns those bundles into public badges
-(`flowing` / `reduced` / `offline` / `disputed` for assets;
-`confirmed` / `watch` for shortages).
+## What the revision log will be (when it ships)
 
-Every time the classifier changes a public field — because evidence
-updated, because staleness decayed a badge, because a new classifier
-version re-derived an old asset, or because an operator/regulator
-submitted a correction — it writes an append-only entry here.
+WorldMonitor's Energy Atlas publishes evidence bundles — not opinions —
+for pipelines, storage facilities, fuel shortages, and disruption
+events. A deterministic, versioned classifier turns those bundles into
+public badges (`flowing` / `reduced` / `offline` / `disputed` for
+assets; `confirmed` / `watch` for shortages).
 
-This is the real audit surface. The evidence registries themselves are
-forward-looking snapshots; this page is the history of how each status
-arrived at where it is today.
+When the classifier goes live, every time it changes a public field —
+because evidence updated, because staleness decayed a badge, because a
+new classifier version re-derived an old asset, or because an
+operator/regulator-submitted correction was applied — it will write an
+append-only entry here.
 
-## Data shape
+This is the designed audit surface. The evidence registries themselves
+are forward-looking snapshots; this log, once live, will be the history
+of how each status arrived at where it is today.
 
-Each entry is a row with the following fields:
+## Planned data shape
+
+Each entry is planned as a row with the following fields:
 
 ```ts
 {
@@ -37,97 +53,95 @@ Each entry is a row with the following fields:
 }
 ```
 
-### Trigger vocabulary
+The matching proto surface lives at
+`GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`.
+Both currently return empty arrays by design — the handlers document
+"Revision log arrives in a post-launch release" in their code comments
+rather than pretending the surface is live.
 
-- **`classifier`** — a routine classifier pass re-derived the field from
-  the current evidence bundle. Most common trigger.
-- **`source`** — a new evidence source arrived (regulator filing, operator
-  press release, sanction list update) and the classifier re-derived
-  accordingly.
+### Planned trigger vocabulary
+
+- **`classifier`** — a routine classifier pass re-derives the field
+  from the current evidence bundle. Expected to be the most common
+  trigger once live.
+- **`source`** — a new evidence source arrives (regulator filing,
+  operator press release, sanction list update) and the classifier
+  re-derives accordingly.
 - **`decay`** — the evidence is older than the staleness window
   (14 days for registry fields, 30 days for shortage evidence) and the
-  classifier demoted a non-positive badge to `disputed` or `watch`.
-- **`override`** — a break-glass manual override was applied. Rare;
-  reserved for demonstrably-wrong classifier outputs a reader has flagged.
-  Overrides carry the same `sourcesUsed` discipline as classifier entries.
+  classifier demotes a non-positive badge to `disputed` or `watch`.
+- **`override`** — a break-glass manual override is applied. Reserved
+  for demonstrably-wrong classifier outputs flagged by readers.
+  Overrides will carry the same `sourcesUsed` discipline as classifier
+  entries.
 
-## Current state (v1 launch)
+## What IS live today (v1 launch)
 
-The revision log starts empty at launch (2026-04-23). Entries accumulate
-as the classifier in `proactive-intelligence.mjs` runs on its normal
-schedule post-launch and as evidence bundles evolve. Expect the first
-entries to appear within days as:
+- **Evidence bundles on every asset.** Click any pipeline, storage
+  facility, or shortage pin on the [Energy Atlas](https://energy.worldmonitor.app)
+  and you see its full evidence bundle: physical state, commercial
+  state, operator statements (with URL and date), sanction references
+  (with authority + list ID + URL), classifier version and confidence,
+  and the timestamp of the most recent evidence update. This is the
+  primary audit surface today.
+- **Public methodology pages.** The derivation rules, staleness
+  windows, and evidence-threshold specs are all publicly documented:
+  - [Pipeline Registry](/methodology/pipelines)
+  - [Storage Facilities](/methodology/storage)
+  - [Fuel Shortages](/methodology/shortages)
+  - [Disruption Event Log](/methodology/disruptions)
+  - [Chokepoints](/methodology/chokepoints)
+- **Versioned classifier output.** Every RPC response carries a
+  `classifier_version` field. A reader can pin expectations to a
+  version today even though the revision-log history-of-versions
+  surface isn't yet published.
 
-- Regulator advisories for active fuel shortages update
-- New sanction list additions re-derive pipeline/storage badges
-- Evidence older than the staleness window decays non-positive badges
+## What is NOT live today
 
-The log surface pins to the classifier version in effect at write time.
-When a new classifier version ships, prior entries remain readable under
-their original `classifierVersion` — no silent rewrites.
+- The revision-log entries themselves (this page will list real rows
+  once the classifier ships).
+- An automated correction-intake pipeline. If you spot something
+  wrong, use the feedback channels at
+  [worldmonitor.app](https://worldmonitor.app) or open a GitHub issue
+  at the [public repository](https://github.com/koala73/worldmonitor/issues).
+  Corrections are not yet on the classifier's path — they're handled
+  manually today.
+- The `override`-trigger entry writer. Same dependency: ships with the
+  classifier.
 
-## How to verify a badge
+## Verifying a badge today (pre-classifier)
 
-If you see a status on the [Energy Atlas](https://energy.worldmonitor.app)
-that doesn't match what you know to be true, the audit path is:
+Until the revision log is live, the audit path for any status on the
+Energy Atlas is:
 
-1. Open the asset drawer (click the pipeline / storage dot / shortage pin).
+1. Open the asset drawer (click the pipeline / storage dot / shortage
+   pin).
 2. Read the evidence bundle — every source is linked with publication
-   date and authority (`regulator` / `operator` / `press` / `satellite`).
-3. Cross-reference this page for the derivation history of the current
-   badge.
-4. If all evidence is current and the classifier output still looks
-   wrong, email a correction request (see below). Your source becomes
-   the `sourcesUsed` for an `override` trigger entry.
+   date and authority (`regulator` / `operator` / `press` /
+   `satellite`).
+3. Check the methodology page for the asset class — the derivation
+   rules are deterministic and versioned.
+4. If all evidence is current and the public badge still looks wrong
+   after walking the rules, open an issue on the public repository
+   with the asset id, the current evidence bundle, and your reasoning.
+   The manual review path will seed `override` entries once the
+   revision log ships.
 
-## Submitting a correction
+## Why document this surface before it ships
 
-Corrections from operators, regulators, and researchers are welcomed:
+Two reasons to publish the spec before the writer lands:
 
-- **Operators** — Corrections about an asset you operate (pipeline,
-  storage facility) are treated as authoritative when accompanied by a
-  public reference (press release, operator statement on your own
-  domain). Email corrections with the URL to `corrections@worldmonitor.app`.
-- **Regulators / agencies** — Corrections from a national regulator are
-  treated the same. Include the regulator identifier in the email body.
-- **Researchers / journalists** — Corrections backed by a
-  publicly-verifiable source (wire coverage, filing, satellite imagery
-  provider) are reviewed and written as `override` entries citing your
-  source URL.
+1. **Contract stability.** The shape of `revisions` in
+   `GetPipelineDetail.revisions` / `GetStorageFacilityDetail.revisions`
+   is part of the RPC contract that agents and MCP clients consume.
+   Documenting it now means downstream consumers can code against the
+   stable shape before live data arrives.
+2. **Policy signalling.** Evidence-first classification only works if
+   the audit trail is committed-to in public, not treated as an
+   internal implementation detail. Publishing the planned shape and
+   submission policy ahead of the writer is the commitment.
 
-We do **not** accept corrections without a public source URL. The
-revision log contract requires `sourcesUsed` to be non-empty.
-
-## Related methodology
-
-- [Pipeline Registry](/methodology/pipelines) — the `publicBadge`
-  derivation rules for gas and oil pipelines.
-- [Storage Facilities](/methodology/storage) — same for strategic
-  storage assets.
-- [Fuel Shortages](/methodology/shortages) — severity classifier
-  (`watch` → `confirmed`) evidence-threshold spec.
-- [Disruption Event Log](/methodology/disruptions) — state-transition
-  event shape tied back to the asset registries.
-- [Chokepoints](/methodology/chokepoints) — chokepoint status derivation.
-
-## Why we publish this
-
-Most dashboards that classify infrastructure status — "sanctioned",
-"offline", "reduced flow" — treat the classifier's output as the primary
-surface and the evidence as footnotes. WorldMonitor inverts that: the
-evidence bundle is the primary surface; the public badge is a
-deterministic function of it; and every transition is tracked here.
-
-Two consequences:
-
-1. **Agents and MCP clients** consuming the RPCs (`ListPipelines`,
-   `ListStorageFacilities`, `ListFuelShortages`, `ListEnergyDisruptions`)
-   get the same `classifierVersion` field and can pin to a version,
-   reproduce a historical badge, or diff classifier generations.
-2. **Human readers** can verify any status independently. A pipeline
-   labeled `offline` that should read `flowing` can be traced to the
-   evidence field that flipped it, and a correction sent with a public
-   source URL propagates back through the same classifier.
-
-Evidence-first classification only works if the audit trail is public.
-This page is that trail.
+Neither reason justifies overstating the current state. When live
+entries start appearing on this page, the `Status` callout at the top
+will be replaced with a "last updated" timestamp and the "NOT live"
+section will be removed.
