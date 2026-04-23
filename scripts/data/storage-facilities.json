@@ -1328,6 +1328,276 @@
       "facilityType": "ugs", "country": "CZ", "location": { "lat": 49.57, "lon": 13.95 },
       "capacityTwh": 0.8, "workingCapacityUnit": "TWh", "inService": 1999,
       "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "nlng-bonny": {
+      "id": "nlng-bonny", "name": "Nigeria LNG (Bonny Island)", "operator": "Nigeria LNG Ltd (Shell/NNPC/Total/Eni)",
+      "facilityType": "lng_export", "country": "NG", "location": { "lat": 4.42, "lon": 7.15 },
+      "capacityMtpa": 22.5, "workingCapacityUnit": "Mtpa", "inService": 1999,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "Feedgas constrained by upstream disruptions; Train 7 expansion underway (operator IR).", "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "arzew-lng": {
+      "id": "arzew-lng", "name": "Arzew LNG Complex (GL1Z/GL2Z/GL3Z)", "operator": "Sonatrach",
+      "facilityType": "lng_export", "country": "DZ", "location": { "lat": 35.83, "lon": -0.32 },
+      "capacityMtpa": 25.3, "workingCapacityUnit": "Mtpa", "inService": 1978,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "skikda-lng": {
+      "id": "skikda-lng", "name": "Skikda LNG Complex (GL1K/GL2K/New Skikda)", "operator": "Sonatrach",
+      "facilityType": "lng_export", "country": "DZ", "location": { "lat": 36.87, "lon": 6.90 },
+      "capacityMtpa": 8.8, "workingCapacityUnit": "Mtpa", "inService": 1972,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "peru-lng": {
+      "id": "peru-lng", "name": "Perú LNG (Pampa Melchorita)", "operator": "Perú LNG (Hunt Oil / SK / Shell / Marubeni)",
+      "facilityType": "lng_export", "country": "PE", "location": { "lat": -13.18, "lon": -76.42 },
+      "capacityMtpa": 4.45, "workingCapacityUnit": "Mtpa", "inService": 2010,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "calcasieu-pass-lng": {
+      "id": "calcasieu-pass-lng", "name": "Calcasieu Pass LNG", "operator": "Venture Global LNG",
+      "facilityType": "lng_export", "country": "US", "location": { "lat": 29.79, "lon": -93.34 },
+      "capacityMtpa": 10, "workingCapacityUnit": "Mtpa", "inService": 2022,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "nwsh-karratha-lng": {
+      "id": "nwsh-karratha-lng", "name": "North West Shelf LNG (Karratha Gas Plant)", "operator": "Woodside Energy (on behalf of NWS JV)",
+      "facilityType": "lng_export", "country": "AU", "location": { "lat": -20.60, "lon": 116.77 },
+      "capacityMtpa": 16.9, "workingCapacityUnit": "Mtpa", "inService": 1989,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "swinoujscie-lng": {
+      "id": "swinoujscie-lng", "name": "Świnoujście LNG Terminal (President Lech Kaczyński)", "operator": "Gaz-System (Polskie LNG SA)",
+      "facilityType": "lng_import", "country": "PL", "location": { "lat": 53.92, "lon": 14.25 },
+      "capacityMtpa": 6.2, "workingCapacityUnit": "Mtpa", "inService": 2015,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "krk-fsru": {
+      "id": "krk-fsru", "name": "Krk FSRU (LNG Hrvatska)", "operator": "LNG Croatia LLC",
+      "facilityType": "lng_import", "country": "HR", "location": { "lat": 45.21, "lon": 14.55 },
+      "capacityMtpa": 2.9, "workingCapacityUnit": "Mtpa", "inService": 2021,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "wilhelmshaven-fsru": {
+      "id": "wilhelmshaven-fsru", "name": "Wilhelmshaven FSRU (Höegh Esperanza)", "operator": "Deutsche Energy Terminal (DET) / Uniper",
+      "facilityType": "lng_import", "country": "DE", "location": { "lat": 53.59, "lon": 8.14 },
+      "capacityMtpa": 5.0, "workingCapacityUnit": "Mtpa", "inService": 2022,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "brunsbuettel-lng": {
+      "id": "brunsbuettel-lng", "name": "Brunsbüttel FSRU (Höegh Gannet)", "operator": "Deutsche Energy Terminal (DET) / RWE",
+      "facilityType": "lng_import", "country": "DE", "location": { "lat": 53.89, "lon": 9.15 },
+      "capacityMtpa": 3.5, "workingCapacityUnit": "Mtpa", "inService": 2023,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "map-ta-phut-lng": {
+      "id": "map-ta-phut-lng", "name": "Map Ta Phut LNG (PTT)", "operator": "PTT LNG Co. Ltd.",
+      "facilityType": "lng_import", "country": "TH", "location": { "lat": 12.70, "lon": 101.15 },
+      "capacityMtpa": 11.5, "workingCapacityUnit": "Mtpa", "inService": 2011,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "port-qasim-lng": {
+      "id": "port-qasim-lng", "name": "Port Qasim LNG Terminals (Engro/PGPCL)", "operator": "Engro Elengy / Pakistan GasPort (PGPCL)",
+      "facilityType": "lng_import", "country": "PK", "location": { "lat": 24.78, "lon": 67.35 },
+      "capacityMtpa": 11.9, "workingCapacityUnit": "Mtpa", "inService": 2015,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "batangas-lng": {
+      "id": "batangas-lng", "name": "Batangas LNG Terminal (FGEN / AG&P)", "operator": "First Gen / AG&P Atlantic Gulf & Pacific",
+      "facilityType": "lng_import", "country": "PH", "location": { "lat": 13.77, "lon": 120.97 },
+      "capacityMtpa": 5.27, "workingCapacityUnit": "Mtpa", "inService": 2023,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "bilche-volytsko-uherske": {
+      "id": "bilche-volytsko-uherske", "name": "Bilche-Volytsko-Uherske UGS", "operator": "Ukrtransgaz",
+      "facilityType": "ugs", "country": "UA", "location": { "lat": 49.20, "lon": 23.50 },
+      "capacityTwh": 154, "workingCapacityUnit": "TWh", "inService": 1972,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "banatski-dvor": {
+      "id": "banatski-dvor", "name": "Banatski Dvor UGS", "operator": "Srbijagas",
+      "facilityType": "ugs", "country": "RS", "location": { "lat": 45.55, "lon": 20.53 },
+      "capacityTwh": 4.5, "workingCapacityUnit": "TWh", "inService": 2011,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "okoli": {
+      "id": "okoli", "name": "Okoli UGS", "operator": "PSP d.o.o. (Podzemno skladište plina)",
+      "facilityType": "ugs", "country": "HR", "location": { "lat": 45.48, "lon": 16.68 },
+      "capacityTwh": 5.8, "workingCapacityUnit": "TWh", "inService": 1987,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "yela": {
+      "id": "yela", "name": "Yela UGS", "operator": "Enagás",
+      "facilityType": "ugs", "country": "ES", "location": { "lat": 40.80, "lon": -2.63 },
+      "capacityTwh": 20, "workingCapacityUnit": "TWh", "inService": 2012,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "loenhout": {
+      "id": "loenhout", "name": "Loenhout UGS", "operator": "Fluxys Belgium",
+      "facilityType": "ugs", "country": "BE", "location": { "lat": 51.40, "lon": 4.72 },
+      "capacityTwh": 9, "workingCapacityUnit": "TWh", "inService": 1985,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "kushchevskoe": {
+      "id": "kushchevskoe", "name": "Kushchevskoe UGS", "operator": "Gazprom UGS",
+      "facilityType": "ugs", "country": "RU", "location": { "lat": 46.57, "lon": 39.65 },
+      "capacityTwh": 49, "workingCapacityUnit": "TWh", "inService": 1989,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+    },
+    "jose-terminal-ve": {
+      "id": "jose-terminal-ve", "name": "José Antonio Anzoátegui Petroindustrial Complex", "operator": "PDVSA",
+      "facilityType": "crude_tank_farm", "country": "VE", "location": { "lat": 10.15, "lon": -64.80 },
+      "capacityMb": 50, "workingCapacityUnit": "Mb", "inService": 1986,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "PDVSA output collapse since 2017; sanctions + infrastructure degradation limit throughput (OFAC-designated).", "commercialState": "suspended", "sanctionRefs": [{ "authority": "US", "listId": "OFAC SDN (PDVSA, Jan 2019)", "date": "2019-01-28", "url": "https://ofac.treasury.gov/recent-actions/20190128_33" }], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "santos-br": {
+      "id": "santos-br", "name": "Port of Santos Petroleum Tank Farm (Transpetro/Alemoa)", "operator": "Transpetro / Stolthaven / Adonai Química",
+      "facilityType": "crude_tank_farm", "country": "BR", "location": { "lat": -23.93, "lon": -46.33 },
+      "capacityMb": 12, "workingCapacityUnit": "Mb", "inService": 1960,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "tebar-sao-sebastiao": {
+      "id": "tebar-sao-sebastiao", "name": "Terminal Almirante Barroso (TEBAR São Sebastião)", "operator": "Transpetro",
+      "facilityType": "crude_tank_farm", "country": "BR", "location": { "lat": -23.80, "lon": -45.40 },
+      "capacityMb": 30, "workingCapacityUnit": "Mb", "inService": 1968,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "dos-bocas-mx": {
+      "id": "dos-bocas-mx", "name": "Dos Bocas Refinery Crude Storage (Olmeca)", "operator": "Pemex",
+      "facilityType": "crude_tank_farm", "country": "MX", "location": { "lat": 18.43, "lon": -93.18 },
+      "capacityMb": 10, "workingCapacityUnit": "Mb", "inService": 2022,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "bonny-crude": {
+      "id": "bonny-crude", "name": "Bonny Crude Oil Terminal (SPDC)", "operator": "Shell Petroleum Development Company / NNPC",
+      "facilityType": "crude_tank_farm", "country": "NG", "location": { "lat": 4.44, "lon": 7.18 },
+      "capacityMb": 14, "workingCapacityUnit": "Mb", "inService": 1961,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "Persistent theft + pipeline sabotage on Nembe Creek / Trans-Niger feeders caps effective throughput below nameplate.", "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+    },
+    "es-sider-ly": {
+      "id": "es-sider-ly", "name": "Es Sider Crude Oil Terminal", "operator": "Waha Oil Company (NOC Libya / ConocoPhillips / Total / Hess JV)",
+      "facilityType": "crude_tank_farm", "country": "LY", "location": { "lat": 30.62, "lon": 18.35 },
+      "capacityMb": 8, "workingCapacityUnit": "Mb", "inService": 1961,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "Libya Oil Crescent terminals (Es Sider, Ras Lanuf, Zueitina, Brega) face recurrent NOC force-majeure declarations tied to political blockades.", "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+    },
+    "ras-lanuf-ly": {
+      "id": "ras-lanuf-ly", "name": "Ras Lanuf Crude Oil Terminal", "operator": "Harouge Oil Operations (NOC Libya / Petro-Canada successor)",
+      "facilityType": "crude_tank_farm", "country": "LY", "location": { "lat": 30.52, "lon": 18.57 },
+      "capacityMb": 6, "workingCapacityUnit": "Mb", "inService": 1970,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "Oil Crescent terminal — tank farm damaged during 2011/2018/2019 conflict periods; partial recovery but below nameplate.", "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.7 }
+    },
+    "ceyhan-tr": {
+      "id": "ceyhan-tr", "name": "Ceyhan Marine Terminal (BTC / ITP / Kirkuk-Ceyhan)", "operator": "BOTAŞ International Limited",
+      "facilityType": "crude_tank_farm", "country": "TR", "location": { "lat": 36.85, "lon": 35.92 },
+      "capacityMb": 7, "workingCapacityUnit": "Mb", "inService": 1977,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "puerto-rosales-ar": {
+      "id": "puerto-rosales-ar", "name": "Puerto Rosales Crude Terminal (Oiltanking Ebytem)", "operator": "Oiltanking Ebytem S.A.",
+      "facilityType": "crude_tank_farm", "country": "AR", "location": { "lat": -38.90, "lon": -62.03 },
+      "capacityMb": 2.4, "workingCapacityUnit": "Mb", "inService": 1980,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+    },
+    "novorossiysk-sheskharis": {
+      "id": "novorossiysk-sheskharis", "name": "Sheskharis Crude Oil Terminal (Novorossiysk)", "operator": "Transneft / CPC",
+      "facilityType": "crude_tank_farm", "country": "RU", "location": { "lat": 44.70, "lon": 37.83 },
+      "capacityMb": 4, "workingCapacityUnit": "Mb", "inService": 1964,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": "Russia crude flow subject to G7+EU price cap (Dec 2022) and EU seaborne crude embargo; physical operation continues, commercial channels narrowed.", "commercialState": "under_contract", "sanctionRefs": [{ "authority": "EU", "listId": "Council Regulation (EU) 2022/1269 seaborne crude embargo", "date": "2022-06-03", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=uriserv:OJ.L_.2022.153.01.0053.01.ENG" }], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+    },
+    "kozmino-ru": {
+      "id": "kozmino-ru", "name": "Kozmino Crude Oil Terminal (ESPO)", "operator": "Transneft",
+      "facilityType": "crude_tank_farm", "country": "RU", "location": { "lat": 42.72, "lon": 133.10 },
+      "capacityMb": 8, "workingCapacityUnit": "Mb", "inService": 2009,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": "ESPO Blend export hub; continues under G7+EU price cap regime; primary buyers China, India.", "commercialState": "under_contract", "sanctionRefs": [{ "authority": "EU", "listId": "Council Regulation (EU) 2022/1269 seaborne crude embargo", "date": "2022-06-03", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=uriserv:OJ.L_.2022.153.01.0053.01.ENG" }], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "tema-gh": {
+      "id": "tema-gh", "name": "Tema Oil Refinery Tank Farm", "operator": "Tema Oil Refinery (TOR) / GHAPOHA",
+      "facilityType": "crude_tank_farm", "country": "GH", "location": { "lat": 5.63, "lon": 0.00 },
+      "capacityMb": 1, "workingCapacityUnit": "Mb", "inService": 1963,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "TOR has operated intermittently due to financial distress and feedstock shortages through the 2010s-2020s.", "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.7 }
+    },
+    "mombasa-ke": {
+      "id": "mombasa-ke", "name": "Kenya Pipeline Company Mombasa Terminal", "operator": "Kenya Pipeline Company (KPC)",
+      "facilityType": "crude_tank_farm", "country": "KE", "location": { "lat": -4.05, "lon": 39.67 },
+      "capacityMb": 1.2, "workingCapacityUnit": "Mb", "inService": 1978,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "abidjan-sir": {
+      "id": "abidjan-sir", "name": "SIR Abidjan Refinery Tank Farm", "operator": "Société Ivoirienne de Raffinage (SIR)",
+      "facilityType": "crude_tank_farm", "country": "CI", "location": { "lat": 5.25, "lon": -3.97 },
+      "capacityMb": 1, "workingCapacityUnit": "Mb", "inService": 1965,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+    },
+    "juaymah-terminal": {
+      "id": "juaymah-terminal", "name": "Juaymah Crude Tank Farm (Aramco)", "operator": "Saudi Aramco",
+      "facilityType": "crude_tank_farm", "country": "SA", "location": { "lat": 26.87, "lon": 49.97 },
+      "capacityMb": 33, "workingCapacityUnit": "Mb", "inService": 1978,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "ras-tanura": {
+      "id": "ras-tanura", "name": "Ras Tanura Crude Oil Terminal (Aramco)", "operator": "Saudi Aramco",
+      "facilityType": "crude_tank_farm", "country": "SA", "location": { "lat": 26.64, "lon": 50.15 },
+      "capacityMb": 50, "workingCapacityUnit": "Mb", "inService": 1945,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "yanbu-port": {
+      "id": "yanbu-port", "name": "Yanbu Crude Oil Terminal (Aramco)", "operator": "Saudi Aramco",
+      "facilityType": "crude_tank_farm", "country": "SA", "location": { "lat": 24.08, "lon": 38.05 },
+      "capacityMb": 20, "workingCapacityUnit": "Mb", "inService": 1981,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "kirkuk-iq": {
+      "id": "kirkuk-iq", "name": "Kirkuk Field Crude Storage (North Oil Company)", "operator": "North Oil Company (Iraq)",
+      "facilityType": "crude_tank_farm", "country": "IQ", "location": { "lat": 35.47, "lon": 44.40 },
+      "capacityMb": 12, "workingCapacityUnit": "Mb", "inService": 1934,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "Kirkuk-Ceyhan pipeline halted March 2023 after ICC arbitration ruling; Kurdistan crude route suspended.", "commercialState": "suspended", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+    },
+    "basra-gulf": {
+      "id": "basra-gulf", "name": "Basra Oil Terminal (BOT) & Khor al-Amaya", "operator": "Basra Oil Company / SOMO",
+      "facilityType": "crude_tank_farm", "country": "IQ", "location": { "lat": 29.65, "lon": 48.80 },
+      "capacityMb": 8, "workingCapacityUnit": "Mb", "inService": 1974,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "djibouti-horizon": {
+      "id": "djibouti-horizon", "name": "Horizon Djibouti Terminals", "operator": "Horizon Djibouti Terminals Ltd (Emirates National Oil Co.)",
+      "facilityType": "crude_tank_farm", "country": "DJ", "location": { "lat": 11.60, "lon": 43.15 },
+      "capacityMb": 3.7, "workingCapacityUnit": "Mb", "inService": 2005,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "yokkaichi-jp": {
+      "id": "yokkaichi-jp", "name": "Yokkaichi Crude Terminal (ENEOS)", "operator": "ENEOS Corporation",
+      "facilityType": "crude_tank_farm", "country": "JP", "location": { "lat": 34.95, "lon": 136.63 },
+      "capacityMb": 10, "workingCapacityUnit": "Mb", "inService": 1956,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "mailiao-tw": {
+      "id": "mailiao-tw", "name": "Mailiao Harbor Crude Tank Farm (Formosa)", "operator": "Formosa Petrochemical Corporation",
+      "facilityType": "crude_tank_farm", "country": "TW", "location": { "lat": 23.80, "lon": 120.20 },
+      "capacityMb": 18, "workingCapacityUnit": "Mb", "inService": 1998,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "ventspils-crude": {
+      "id": "ventspils-crude", "name": "Ventspils Crude Oil Terminal (Ventbunkers)", "operator": "Ventbunkers AS",
+      "facilityType": "crude_tank_farm", "country": "LV", "location": { "lat": 57.40, "lon": 21.57 },
+      "capacityMb": 2.5, "workingCapacityUnit": "Mb", "inService": 1961,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": "Russian crude exports via Ventspils halted in 2010 after Transneft rerouted to Primorsk/Ust-Luga; terminal converted to refined product trade only.", "commercialState": "suspended", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "gdansk-naftoport": {
+      "id": "gdansk-naftoport", "name": "Naftoport Gdańsk Crude Terminal", "operator": "Naftoport Sp. z o.o. (PERN)",
+      "facilityType": "crude_tank_farm", "country": "PL", "location": { "lat": 54.40, "lon": 18.70 },
+      "capacityMb": 3, "workingCapacityUnit": "Mb", "inService": 1975,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "constanta-ro": {
+      "id": "constanta-ro", "name": "Oil Terminal Constanța", "operator": "Oil Terminal S.A. Constanța",
+      "facilityType": "crude_tank_farm", "country": "RO", "location": { "lat": 44.17, "lon": 28.65 },
+      "capacityMb": 2, "workingCapacityUnit": "Mb", "inService": 1900,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "wood-river-il-hub": {
+      "id": "wood-river-il-hub", "name": "Wood River Crude Hub (Illinois)", "operator": "Phillips 66 / Cenovus WRB Refining",
+      "facilityType": "crude_tank_farm", "country": "US", "location": { "lat": 38.88, "lon": -90.10 },
+      "capacityMb": 14, "workingCapacityUnit": "Mb", "inService": 1948,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "EIA weekly PADD 2 stocks", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
     }
   }
 }
