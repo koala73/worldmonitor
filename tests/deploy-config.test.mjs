@@ -482,3 +482,60 @@ describe('vercel.json functions config (none expected after carousel moved to ed
     );
   });
 });
+
+// Agent readiness: RFC 8288 Link response headers on the homepage.
+// Scanners like isitagentready.com fetch GET / and expect a Link
+// header advertising every well-known resource. Each rel is either
+// an IANA-registered token (api-catalog, service-desc, service-doc,
+// status) or the full IANA URI form (RFC 9728 OAuth rels). The MCP
+// card rel carries anchor="/mcp" because the server card describes
+// the /mcp endpoint, not the homepage.
+describe('agent readiness: homepage Link headers', () => {
+  const vercel = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
+
+  for (const source of ['/', '/index.html']) {
+    it(`${source} emits a Link header`, () => {
+      const entry = vercel.headers.find((h) => h.source === source);
+      assert.ok(entry, `expected a headers entry for ${source}`);
+      const linkHeader = entry.headers.find((h) => h.key === 'Link');
+      assert.ok(linkHeader, `expected a Link header on ${source}`);
+
+      // Must advertise each required rel at least once
+      const requiredRels = [
+        'rel="api-catalog"',
+        'rel="service-desc"',
+        'rel="service-doc"',
+        'rel="status"',
+        'rel="http://www.iana.org/assignments/relation/oauth-protected-resource"',
+        'rel="http://www.iana.org/assignments/relation/oauth-authorization-server"',
+        'rel="mcp-server-card"',
+      ];
+      for (const rel of requiredRels) {
+        assert.ok(
+          linkHeader.value.includes(rel),
+          `Link header missing ${rel}`
+        );
+      }
+
+      // MCP card rel must carry anchor="/mcp" (server card describes /mcp, not homepage)
+      assert.match(
+        linkHeader.value,
+        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="\/mcp"/,
+        'mcp-server-card rel must carry anchor="/mcp"'
+      );
+
+      // Target URIs must be root-relative (start with /, not http://)
+      const targetMatches = [...linkHeader.value.matchAll(/<([^>]+)>/g)];
+      assert.ok(
+        targetMatches.length >= 7,
+        `expected >=7 link targets, got ${targetMatches.length}`
+      );
+      for (const [, target] of targetMatches) {
+        assert.ok(
+          target.startsWith('/'),
+          `link target must be root-relative, got ${target}`
+        );
+      }
+    });
+  }
+});
