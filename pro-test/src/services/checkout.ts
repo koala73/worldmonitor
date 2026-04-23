@@ -136,19 +136,40 @@ export function initOverlay(onSuccess?: () => void): void {
         // payment_id) depending on event type, and anything logged here
         // lands in Sentry breadcrumbs via the console integration.
         const data = event.data as Record<string, unknown> | undefined;
-        const status = data?.status
-          ?? (data?.message as Record<string, unknown> | undefined)?.status;
+        const msg = data?.message as Record<string, unknown> | undefined;
+        const status = msg?.status as string | undefined;
         console.info('[checkout] dodo event', event.event_type,
           status !== undefined ? { status } : undefined);
+
+        // Dodo's documented `manualRedirect: true` flow emits TWO events
+        // on terminal success: `checkout.status` for UI updates, and
+        // `checkout.redirect_requested` carrying the URL WE must navigate
+        // to. The SDK explicitly hands navigation to the merchant in this
+        // mode — ignoring `checkout.redirect_requested` is what stranded
+        // users after paying (docs: overlay-checkout.mdx, inline-checkout.mdx).
+        //
+        // Status shape is ONLY `event.data.message.status` per docs — the
+        // legacy top-level `event.data.status` read was a guess against
+        // an older SDK version and most likely never matched.
         if (event.event_type === 'checkout.status' && status === 'succeeded') {
-          // Best-effort: with `manualRedirect: false` the SDK performs
-          // `window.location.href = redirect_to` on a sibling
-          // `checkout.redirect` event, and that navigation can race
-          // with this callback. Callers should treat any side effects
-          // here as a bonus, not a guarantee. The authoritative success
-          // path is the `?wm_checkout=success` bridge on
-          // worldmonitor.app that the SDK's redirect lands on.
           onSuccess?.();
+        }
+        if (event.event_type === 'checkout.redirect_requested') {
+          const redirectTo = msg?.redirect_to as string | undefined;
+          // Dodo builds redirect_to from the return_url we sent, appending
+          // payment_id/subscription_id/status/license_key/email per
+          // changelog v1.84.0. Our return_url carries `?wm_checkout=success`
+          // so the dashboard bridge (src/services/checkout-return.ts) fires
+          // regardless of Dodo's appended params.
+          window.location.href = redirectTo || 'https://worldmonitor.app/?wm_checkout=success';
+        }
+        if (event.event_type === 'checkout.link_expired') {
+          // Not user-blocking — log-only for now; follow-up if Sentry
+          // shows volume.
+          Sentry.captureMessage('Dodo checkout link expired', {
+            level: 'info',
+            tags: { surface: 'pro-marketing', code: 'link_expired' },
+          });
         }
       },
     });
@@ -320,15 +341,16 @@ async function doCheckout(
     DodoPayments.Checkout.open({
       checkoutUrl: result.checkout_url,
       options: {
-        // manualRedirect: false — Dodo performs the parent-window
-        // redirect on success, landing at the `returnUrl` we sent to
-        // /api/create-checkout (which carries ?wm_checkout=success).
-        // Relying on the SDK's own redirect avoids a class of bugs
-        // where `checkout.status=succeeded` never reaches our onEvent
-        // (iframe internally navigates to wallet-return, postMessage
-        // gets lost) and the user is stuck on /pro#pricing with the
-        // overlay open.
-        manualRedirect: false,
+        // manualRedirect: true — Dodo emits `checkout.redirect_requested`
+        // with the final redirect URL and the MERCHANT performs the
+        // navigation. Reverting PR #3298's `false`: that mode disables
+        // both `checkout.status` and `checkout.redirect_requested` events
+        // (docs: "only when manualRedirect is enabled") and depends on
+        // the SDK's internal redirect, which fails for Safari users
+        // (stuck on a spinner with an orphaned about:blank tab). The
+        // correct flow per docs is manualRedirect:true + a
+        // checkout.redirect_requested handler — see onEvent above.
+        manualRedirect: true,
         themeConfig: {
           dark: {
             bgPrimary: '#0d0d0d',

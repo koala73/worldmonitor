@@ -164,14 +164,12 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
     onEvent: (event: CheckoutEvent) => {
       switch (event.event_type) {
         case 'checkout.status': {
-          // Dodo SDK has emitted `event.data.status` in some versions and
-          // `event.data.message.status` in others (the /pro build reads both
-          // already; main app was only reading the first, so successes went
-          // unnoticed whenever the SDK used the nested shape). Read both.
+          // Docs-documented shape is ONLY `event.data.message.status` —
+          // the prior top-level `event.data.status` read was a guess
+          // against an older SDK version and most likely never matched.
+          // (overlay-checkout.mdx / inline-checkout.mdx, SDK >= 0.109.2).
           const rawData = event.data as Record<string, unknown> | undefined;
-          const status = typeof rawData?.status === 'string'
-            ? rawData.status
-            : (rawData?.message as Record<string, unknown> | undefined)?.status;
+          const status = (rawData?.message as Record<string, unknown> | undefined)?.status;
           if (status === 'succeeded') {
             successFired = true;
             onSuccessCallback?.();
@@ -215,6 +213,19 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
             clearPendingCheckoutIntent();
           }
           break;
+        case 'checkout.redirect_requested': {
+          // With `manualRedirect: true` (below), Dodo's SDK hands the
+          // final navigation to the merchant via this event. Dodo's own
+          // redirect path (manualRedirect:false) has been observed to
+          // fail on Safari with an orphaned about:blank tab; we follow
+          // the docs-prescribed handler instead.
+          // (overlay-checkout.mdx: "Redirect the customer manually".)
+          const redirectTo = (event.data?.message as Record<string, unknown> | undefined)?.redirect_to as string | undefined;
+          if (redirectTo) {
+            window.location.href = redirectTo;
+          }
+          break;
+        }
         case 'checkout.error':
           console.error('[checkout] Overlay error:', event.data?.message);
           Sentry.captureMessage(`Dodo checkout overlay error: ${event.data?.message || 'unknown'}`, { level: 'error', tags: { component: 'dodo-checkout' } });
