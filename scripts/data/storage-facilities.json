@@ -1054,6 +1054,280 @@
           { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
         ],
         "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "kharg-island": {
+      "id": "kharg-island", "name": "Kharg Island Export Terminal", "operator": "National Iranian Oil Company (NIOC)",
+      "facilityType": "crude_tank_farm", "country": "IR", "location": { "lat": 29.25, "lon": 50.33 },
+      "capacityMb": 28, "workingCapacityUnit": "Mb", "inService": 1960,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract",
+        "sanctionRefs": [ { "authority": "US", "listId": "OFAC Iran energy sanctions framework", "date": "2018-08-07", "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/iran-sanctions" } ],
+        "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "sidi-kerir": {
+      "id": "sidi-kerir", "name": "Sidi Kerir SuMed Terminal", "operator": "Arab Petroleum Pipelines Company (SUMED)",
+      "facilityType": "crude_tank_farm", "country": "EG", "location": { "lat": 30.95, "lon": 29.55 },
+      "capacityMb": 15, "workingCapacityUnit": "Mb", "inService": 1977,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "mina-al-ahmadi": {
+      "id": "mina-al-ahmadi", "name": "Mina Al-Ahmadi Export Terminal", "operator": "Kuwait Petroleum Corporation",
+      "facilityType": "crude_tank_farm", "country": "KW", "location": { "lat": 29.07, "lon": 48.13 },
+      "capacityMb": 18, "workingCapacityUnit": "Mb", "inService": 1949,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "mesaieed": {
+      "id": "mesaieed", "name": "Mesaieed Industrial Port (Qatar)", "operator": "QatarEnergy",
+      "facilityType": "crude_tank_farm", "country": "QA", "location": { "lat": 25.00, "lon": 51.55 },
+      "capacityMb": 12, "workingCapacityUnit": "Mb", "inService": 1975,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "jebel-dhanna": {
+      "id": "jebel-dhanna", "name": "Jebel Dhanna Crude Terminal", "operator": "ADNOC Onshore",
+      "facilityType": "crude_tank_farm", "country": "AE", "location": { "lat": 24.18, "lon": 52.57 },
+      "capacityMb": 20, "workingCapacityUnit": "Mb", "inService": 1965,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "mina-al-fahal": {
+      "id": "mina-al-fahal", "name": "Mina al-Fahal Crude Export Terminal", "operator": "Petroleum Development Oman",
+      "facilityType": "crude_tank_farm", "country": "OM", "location": { "lat": 23.62, "lon": 58.55 },
+      "capacityMb": 10, "workingCapacityUnit": "Mb", "inService": 1967,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "bandar-imam-khomeini": {
+      "id": "bandar-imam-khomeini", "name": "Bandar Imam Khomeini Export Terminal", "operator": "NIOC",
+      "facilityType": "crude_tank_farm", "country": "IR", "location": { "lat": 30.43, "lon": 49.08 },
+      "capacityMb": 9, "workingCapacityUnit": "Mb", "inService": 1969,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract",
+        "sanctionRefs": [ { "authority": "US", "listId": "OFAC Iran energy sanctions framework", "date": "2018-08-07", "url": "https://home.treasury.gov/policy-issues/financial-sanctions/sanctions-programs-and-country-information/iran-sanctions" } ],
+        "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "reitbrook": {
+      "id": "reitbrook", "name": "Reitbrook Gas Storage", "operator": "Hamburger Gaswerke / Uniper",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 53.48, "lon": 10.15 },
+      "capacityTwh": 4.5, "workingCapacityUnit": "TWh", "inService": 1974,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "empelde": {
+      "id": "empelde", "name": "Empelde Gas Storage", "operator": "Storengy Deutschland",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 52.32, "lon": 9.67 },
+      "capacityTwh": 2.2, "workingCapacityUnit": "TWh", "inService": 1994,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "kirchheilingen": {
+      "id": "kirchheilingen", "name": "Kirchheilingen Gas Storage", "operator": "Uniper Energy Storage",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 51.15, "lon": 10.77 },
+      "capacityTwh": 3.8, "workingCapacityUnit": "TWh", "inService": 1986,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "stockstadt": {
+      "id": "stockstadt", "name": "Stockstadt Gas Storage", "operator": "Uniper Energy Storage",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 49.82, "lon": 8.52 },
+      "capacityTwh": 0.8, "workingCapacityUnit": "TWh", "inService": 1993,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "nuttermoor": {
+      "id": "nuttermoor", "name": "Nüttermoor Gas Storage", "operator": "EWE Gasspeicher",
+      "facilityType": "ugs", "country": "DE", "location": { "lat": 53.25, "lon": 7.50 },
+      "capacityTwh": 15.4, "workingCapacityUnit": "TWh", "inService": 1975,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "grijpskerk": {
+      "id": "grijpskerk", "name": "Grijpskerk Gas Storage", "operator": "NAM",
+      "facilityType": "ugs", "country": "NL", "location": { "lat": 53.27, "lon": 6.32 },
+      "capacityTwh": 27, "workingCapacityUnit": "TWh", "inService": 1997,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "tirgu-mures": {
+      "id": "tirgu-mures", "name": "Târgu Mureș Gas Storage", "operator": "Romgaz",
+      "facilityType": "ugs", "country": "RO", "location": { "lat": 46.55, "lon": 24.57 },
+      "capacityTwh": 3.1, "workingCapacityUnit": "TWh", "inService": 1960,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "tranovice": {
+      "id": "tranovice", "name": "Třanovice Gas Storage", "operator": "RWE Gas Storage CZ",
+      "facilityType": "ugs", "country": "CZ", "location": { "lat": 49.67, "lon": 18.57 },
+      "capacityTwh": 3.2, "workingCapacityUnit": "TWh", "inService": 2001,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "uhrice": {
+      "id": "uhrice", "name": "Uhřice Gas Storage", "operator": "MND Energy Storage",
+      "facilityType": "ugs", "country": "CZ", "location": { "lat": 49.03, "lon": 17.00 },
+      "capacityTwh": 2.8, "workingCapacityUnit": "TWh", "inService": 2001,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "yangshan-port-crude": {
+      "id": "yangshan-port-crude", "name": "Yangshan Port Crude Storage (Shanghai)", "operator": "Sinopec / Yangshan Port Authority",
+      "facilityType": "crude_tank_farm", "country": "CN", "location": { "lat": 30.62, "lon": 122.05 },
+      "capacityMb": 32, "workingCapacityUnit": "Mb", "inService": 2005,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "qingdao-port-crude": {
+      "id": "qingdao-port-crude", "name": "Qingdao Commercial Crude Storage", "operator": "Sinopec / Qingdao Port International",
+      "facilityType": "crude_tank_farm", "country": "CN", "location": { "lat": 36.07, "lon": 120.30 },
+      "capacityMb": 24, "workingCapacityUnit": "Mb", "inService": 2003,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "rizhao-port-crude": {
+      "id": "rizhao-port-crude", "name": "Rizhao Port Crude Storage", "operator": "Rizhao Port Group / Sinopec",
+      "facilityType": "crude_tank_farm", "country": "CN", "location": { "lat": 35.40, "lon": 119.45 },
+      "capacityMb": 18, "workingCapacityUnit": "Mb", "inService": 2010,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+    },
+    "maoming-petrochina": {
+      "id": "maoming-petrochina", "name": "Maoming Commercial Crude Storage", "operator": "Sinopec Maoming",
+      "facilityType": "crude_tank_farm", "country": "CN", "location": { "lat": 21.67, "lon": 110.92 },
+      "capacityMb": 14, "workingCapacityUnit": "Mb", "inService": 1962,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.72 }
+    },
+    "la-spezia-panigaglia-lng": {
+      "id": "la-spezia-panigaglia-lng", "name": "Panigaglia LNG Terminal (La Spezia)", "operator": "GNL Italia (Snam)",
+      "facilityType": "lng_import", "country": "IT", "location": { "lat": 44.08, "lon": 9.83 },
+      "capacityMtpa": 2.7, "workingCapacityUnit": "Mtpa", "inService": 1971,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "adriatic-lng": {
+      "id": "adriatic-lng", "name": "Adriatic LNG Terminal (Rovigo offshore)", "operator": "Terminale GNL Adriatico",
+      "facilityType": "lng_import", "country": "IT", "location": { "lat": 45.03, "lon": 12.47 },
+      "capacityMtpa": 6.5, "workingCapacityUnit": "Mtpa", "inService": 2009,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "olt-livorno-lng": {
+      "id": "olt-livorno-lng", "name": "OLT Offshore LNG Toscana (Livorno FSRU)", "operator": "OLT Offshore LNG Toscana",
+      "facilityType": "lng_import", "country": "IT", "location": { "lat": 43.50, "lon": 10.13 },
+      "capacityMtpa": 3.75, "workingCapacityUnit": "Mtpa", "inService": 2013,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "klaipeda-fsru": {
+      "id": "klaipeda-fsru", "name": "Klaipėda LNG FSRU (Independence)", "operator": "KN Energies (Klaipėdos nafta)",
+      "facilityType": "lng_import", "country": "LT", "location": { "lat": 55.73, "lon": 21.10 },
+      "capacityMtpa": 2.9, "workingCapacityUnit": "Mtpa", "inService": 2014,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "el-ferrol-mugardos-lng": {
+      "id": "el-ferrol-mugardos-lng", "name": "Mugardos LNG (Reganosa, El Ferrol)", "operator": "Reganosa",
+      "facilityType": "lng_import", "country": "ES", "location": { "lat": 43.47, "lon": -8.30 },
+      "capacityMtpa": 3.6, "workingCapacityUnit": "Mtpa", "inService": 2007,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "cartagena-lng-es": {
+      "id": "cartagena-lng-es", "name": "Cartagena LNG (Spain)", "operator": "Enagás",
+      "facilityType": "lng_import", "country": "ES", "location": { "lat": 37.57, "lon": -0.98 },
+      "capacityMtpa": 8.8, "workingCapacityUnit": "Mtpa", "inService": 1989,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE ALSI", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "hazira-lng": {
+      "id": "hazira-lng", "name": "Hazira LNG (Shell)", "operator": "Shell Energy India",
+      "facilityType": "lng_import", "country": "IN", "location": { "lat": 21.12, "lon": 72.65 },
+      "capacityMtpa": 6.5, "workingCapacityUnit": "Mtpa", "inService": 2005,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "kochi-lng": {
+      "id": "kochi-lng", "name": "Kochi LNG (Puthuvypeen)", "operator": "Petronet LNG",
+      "facilityType": "lng_import", "country": "IN", "location": { "lat": 9.97, "lon": 76.22 },
+      "capacityMtpa": 5, "workingCapacityUnit": "Mtpa", "inService": 2013,
+      "evidence": { "physicalState": "reduced", "physicalStateSource": "press", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.78 }
+    },
+    "ennore-lng": {
+      "id": "ennore-lng", "name": "Ennore LNG", "operator": "Indian Oil Corporation",
+      "facilityType": "lng_import", "country": "IN", "location": { "lat": 13.22, "lon": 80.32 },
+      "capacityMtpa": 5, "workingCapacityUnit": "Mtpa", "inService": 2019,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "mundra-lng": {
+      "id": "mundra-lng", "name": "Mundra LNG (Adani-GSPC)", "operator": "Mundra LNG Ltd (Adani / GSPC)",
+      "facilityType": "lng_import", "country": "IN", "location": { "lat": 22.77, "lon": 69.72 },
+      "capacityMtpa": 5, "workingCapacityUnit": "Mtpa", "inService": 2020,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "chita-lng": {
+      "id": "chita-lng", "name": "Chita LNG Terminal", "operator": "JERA / Toho Gas",
+      "facilityType": "lng_import", "country": "JP", "location": { "lat": 34.92, "lon": 136.82 },
+      "capacityMtpa": 13.8, "workingCapacityUnit": "Mtpa", "inService": 1978,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "negishi-lng": {
+      "id": "negishi-lng", "name": "Negishi LNG Terminal", "operator": "Tokyo Gas / JERA",
+      "facilityType": "lng_import", "country": "JP", "location": { "lat": 35.40, "lon": 139.65 },
+      "capacityMtpa": 11.6, "workingCapacityUnit": "Mtpa", "inService": 1969,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "sodegaura-lng": {
+      "id": "sodegaura-lng", "name": "Sodegaura LNG Terminal", "operator": "Tokyo Gas",
+      "facilityType": "lng_import", "country": "JP", "location": { "lat": 35.43, "lon": 140.00 },
+      "capacityMtpa": 26, "workingCapacityUnit": "Mtpa", "inService": 1973,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.92 }
+    },
+    "himeji-lng": {
+      "id": "himeji-lng", "name": "Himeji LNG Terminal (Joint)", "operator": "Osaka Gas / Kansai Electric",
+      "facilityType": "lng_import", "country": "JP", "location": { "lat": 34.75, "lon": 134.63 },
+      "capacityMtpa": 11.4, "workingCapacityUnit": "Mtpa", "inService": 1984,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "pyeongtaek-lng": {
+      "id": "pyeongtaek-lng", "name": "Pyeongtaek LNG Terminal", "operator": "KOGAS",
+      "facilityType": "lng_import", "country": "KR", "location": { "lat": 36.97, "lon": 126.82 },
+      "capacityMtpa": 15.2, "workingCapacityUnit": "Mtpa", "inService": 1986,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "KOGAS disclosure", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "incheon-lng": {
+      "id": "incheon-lng", "name": "Incheon LNG Terminal", "operator": "KOGAS",
+      "facilityType": "lng_import", "country": "KR", "location": { "lat": 37.35, "lon": 126.38 },
+      "capacityMtpa": 19.2, "workingCapacityUnit": "Mtpa", "inService": 1996,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "KOGAS disclosure", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.9 }
+    },
+    "lake-charles-crude-terminal": {
+      "id": "lake-charles-crude-terminal", "name": "Lake Charles Crude Storage Complex", "operator": "Phillips 66 / Motiva / multi-operator",
+      "facilityType": "crude_tank_farm", "country": "US", "location": { "lat": 30.23, "lon": -93.22 },
+      "capacityMb": 22, "workingCapacityUnit": "Mb", "inService": 1940,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "EIA weekly PADD 3 stocks", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.85 }
+    },
+    "corpus-christi-crude-terminal": {
+      "id": "corpus-christi-crude-terminal", "name": "Corpus Christi Crude Storage", "operator": "Magellan / Buckeye / multi-operator",
+      "facilityType": "crude_tank_farm", "country": "US", "location": { "lat": 27.80, "lon": -97.40 },
+      "capacityMb": 38, "workingCapacityUnit": "Mb", "inService": 1952,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "EIA weekly PADD 3 stocks", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "patoka-il-hub": {
+      "id": "patoka-il-hub", "name": "Patoka Crude Hub (Illinois)", "operator": "Marathon / Energy Transfer / multi-operator",
+      "facilityType": "crude_tank_farm", "country": "US", "location": { "lat": 38.77, "lon": -89.12 },
+      "capacityMb": 16, "workingCapacityUnit": "Mb", "inService": 1960,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "EIA weekly PADD 2 stocks", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.82 }
+    },
+    "edmonton-ab-hub": {
+      "id": "edmonton-ab-hub", "name": "Edmonton Crude Hub (Alberta)", "operator": "Enbridge / Gibson Energy / Pembina",
+      "facilityType": "crude_tank_farm", "country": "CA", "location": { "lat": 53.55, "lon": -113.50 },
+      "capacityMb": 30, "workingCapacityUnit": "Mb", "inService": 1970,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "CER crude stocks", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "hardisty-ab-hub": {
+      "id": "hardisty-ab-hub", "name": "Hardisty Crude Hub (Alberta)", "operator": "Enbridge / Gibson Energy / TC Energy",
+      "facilityType": "crude_tank_farm", "country": "CA", "location": { "lat": 52.67, "lon": -111.30 },
+      "capacityMb": 32, "workingCapacityUnit": "Mb", "inService": 1956,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "regulator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "CER crude stocks", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.88 }
+    },
+    "taiwan-kaohsiung-crude": {
+      "id": "taiwan-kaohsiung-crude", "name": "Kaohsiung Crude Storage Complex (CPC Taiwan)", "operator": "CPC Corporation, Taiwan",
+      "facilityType": "crude_tank_farm", "country": "TW", "location": { "lat": 22.62, "lon": 120.25 },
+      "capacityMb": 24, "workingCapacityUnit": "Mb", "inService": 1974,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "vietnam-nghi-son-storage": {
+      "id": "vietnam-nghi-son-storage", "name": "Nghi Son Refinery Crude Storage", "operator": "Nghi Son Refinery and Petrochemical (Idemitsu-led JV)",
+      "facilityType": "crude_tank_farm", "country": "VN", "location": { "lat": 19.30, "lon": 105.78 },
+      "capacityMb": 8, "workingCapacityUnit": "Mb", "inService": 2018,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.75 }
+    },
+    "dabhol-lng": {
+      "id": "dabhol-lng", "name": "Dabhol LNG", "operator": "Konkan LNG Ltd (GAIL)",
+      "facilityType": "lng_import", "country": "IN", "location": { "lat": 17.60, "lon": 73.17 },
+      "capacityMtpa": 5, "workingCapacityUnit": "Mtpa", "inService": 2013,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": false, "fillSource": null, "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
+    },
+    "haje-cz": {
+      "id": "haje-cz", "name": "Háje Gas Storage (Czech Republic)", "operator": "RWE Gas Storage CZ",
+      "facilityType": "ugs", "country": "CZ", "location": { "lat": 49.57, "lon": 13.95 },
+      "capacityTwh": 0.8, "workingCapacityUnit": "TWh", "inService": 1999,
+      "evidence": { "physicalState": "operational", "physicalStateSource": "operator", "operatorStatement": null, "commercialState": "under_contract", "sanctionRefs": [], "fillDisclosed": true, "fillSource": "GIE AGSI+", "lastEvidenceUpdate": "2026-04-22T00:00:00Z", "classifierVersion": "v1", "classifierConfidence": 0.8 }
     }
   }
 }
