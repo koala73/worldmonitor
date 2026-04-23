@@ -155,6 +155,7 @@ export interface PanelLayoutManagerCallbacks {
   loadAllData: () => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
+  onTimeRangeChanged?: (timeRange: string) => void;
 }
 
 export class PanelLayoutManager implements AppModule {
@@ -177,6 +178,7 @@ export class PanelLayoutManager implements AppModule {
     this.callbacks = callbacks;
     this.applyTimeRangeFilterDebounced = debounce(() => {
       this.applyTimeRangeFilterToNewsPanels();
+      this.callbacks.onTimeRangeChanged?.(ctx.currentTimeRange);
     }, 120);
 
     // Dodo Payments: entitlement subscription + billing watch for ALL users.

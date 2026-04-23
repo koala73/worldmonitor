@@ -55,10 +55,18 @@ export interface SanctionsPressureResult {
 }
 
 const client = new SanctionsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+
+// Two separate breakers so that failures on filtered requests (e.g. 7d)
+// don't put the canonical unfiltered view into cooldown, and vice-versa.
 const breaker = createCircuitBreaker<SanctionsPressureResult>({
   name: 'Sanctions Pressure',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+});
+const filteredBreaker = createCircuitBreaker<SanctionsPressureResult>({
+  name: 'Sanctions Pressure (filtered)',
+  cacheTtlMs: 10 * 60 * 1000,
+  persistCache: false,
 });
 
 let latestSanctionsPressureResult: SanctionsPressureResult | null = null;
@@ -147,30 +155,37 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
   };
 }
 
-export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult> {
-  const hydrated = getHydratedData('sanctionsPressure') as ListSanctionsPressureResponse | undefined;
-  if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
-    const result = toResult(hydrated);
-    latestSanctionsPressureResult = result;
-    return result;
+export async function fetchSanctionsPressure(timeRange?: string): Promise<SanctionsPressureResult> {
+  // Only use the bootstrap hydration path when there is no timeRange filter:
+  // hydrated data carries the seed script's static isNew flags and cannot be
+  // re-filtered, so a non-default window would show incorrect counts.
+  if (!timeRange) {
+    const hydrated = getHydratedData('sanctionsPressure') as ListSanctionsPressureResponse | undefined;
+    if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
+      const result = toResult(hydrated);
+      latestSanctionsPressureResult = result;
+      return result;
+    }
   }
 
-  return breaker.execute(async () => {
+  const activeBreaker = timeRange ? filteredBreaker : breaker;
+  const cacheKey = timeRange || 'all';
+
+  return activeBreaker.execute(async () => {
     const response = await client.listSanctionsPressure({
       maxItems: 30,
+      timeRange,
     }, {
       signal: AbortSignal.timeout(25_000),
     });
     const result = toResult(response);
     latestSanctionsPressureResult = result;
     if (result.totalCount === 0) {
-      // Seed is missing or the feed is down. Evict any stale cache so the
-      // panel surfaces "unavailable" instead of serving old designations
-      // indefinitely via stale-while-revalidate.
-      breaker.clearCache();
+      activeBreaker.clearCache(cacheKey);
     }
     return result;
   }, emptyResult, {
+    cacheKey,
     shouldCache: (result) => result.totalCount > 0,
   });
 }

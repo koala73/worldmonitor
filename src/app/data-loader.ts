@@ -3246,7 +3246,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadSanctionsPressure(): Promise<void> {
     try {
-      const result = await fetchSanctionsPressure();
+      const result = await fetchSanctionsPressure(this.ctx.currentTimeRange);
       this.callPanel('sanctions-pressure', 'setData', result);
       this.ctx.intelligenceCache.sanctions = result;
       signalAggregator.ingestSanctionsPressure(result.countries);
