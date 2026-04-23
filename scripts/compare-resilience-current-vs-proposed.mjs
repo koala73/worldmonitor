@@ -44,18 +44,32 @@ loadEnvFile(import.meta.url);
 // score — fail-loud instead of silent drop).
 
 // Mirrors `_shared.ts#coverageWeightedMean`. Kept local because the
-// production helper is not exported.
-function coverageWeightedMean(dims) {
-  const totalCoverage = dims.reduce((s, d) => s + d.coverage, 0);
-  if (!totalCoverage) return 0;
-  return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCoverage;
+// production helper is not exported. MUST stay in lockstep with
+// _shared.ts — including the per-dim weight multiplier introduced in
+// PR 2 §3.4 for the recovery-domain rebalance. Without the weight
+// application, this harness's Spearman / rank-delta artifacts would
+// silently diverge from live API scoring post-rebalance (see the
+// RESILIENCE_DIMENSION_WEIGHTS source-of-truth constant).
+function coverageWeightedMean(dims, dimensionWeights) {
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const d of dims) {
+    const w = dimensionWeights[d.id] ?? 1.0;
+    const effective = d.coverage * w;
+    totalWeight += effective;
+    weightedSum += d.score * effective;
+  }
+  if (!totalWeight) return 0;
+  return weightedSum / totalWeight;
 }
 
 // Mirrors `_shared.ts#buildDomainList` exactly so the ResilienceDomain
 // objects fed to buildPillarList are byte-identical to what production
 // emits. The production helper is not exported, so we re-implement it
-// here; the implementation MUST stay in lockstep with _shared.ts.
-function buildDomainList(dimensions, dimensionDomains, domainOrder, getDomainWeight) {
+// here; the implementation MUST stay in lockstep with _shared.ts —
+// including the per-dim weight pass-through from
+// RESILIENCE_DIMENSION_WEIGHTS (PR 2 §3.4 recovery rebalance).
+function buildDomainList(dimensions, dimensionDomains, domainOrder, getDomainWeight, dimensionWeights) {
   const grouped = new Map();
   for (const domainId of domainOrder) grouped.set(domainId, []);
   for (const dim of dimensions) {
@@ -64,7 +78,7 @@ function buildDomainList(dimensions, dimensionDomains, domainOrder, getDomainWei
   }
   return domainOrder.map((domainId) => {
     const domainDims = grouped.get(domainId) ?? [];
-    const domainScore = coverageWeightedMean(domainDims);
+    const domainScore = coverageWeightedMean(domainDims, dimensionWeights);
     return {
       id: domainId,
       score: Math.round(domainScore * 100) / 100,
@@ -688,6 +702,14 @@ async function main() {
     scoreAllDimensions,
     RESILIENCE_DIMENSION_ORDER,
     RESILIENCE_DIMENSION_DOMAINS,
+    // PR 2 §3.4 recovery-domain rebalance: per-dim weights applied
+    // inside coverageWeightedMean so the harness's domain scores,
+    // overall score, and Spearman / rank-delta artifacts track live
+    // scoring after the rebalance. Missing entries default to 1.0 in
+    // the mirror functions above (same as production), so this import
+    // is authoritative if present and forward-compatible if a future
+    // refactor renames / removes the constant.
+    RESILIENCE_DIMENSION_WEIGHTS,
     getResilienceDomainWeight,
     RESILIENCE_DOMAIN_ORDER,
     createMemoizedSeedReader,
@@ -805,12 +827,18 @@ async function main() {
       freshness: { lastObservedAtMs: '0', staleness: '' },
     }));
 
-    // Build domains and pillars with the EXACT production aggregation.
+    // Build domains and pillars with the EXACT production aggregation
+    // — including the per-dim weight channel (PR 2 §3.4 recovery
+    // rebalance). RESILIENCE_DIMENSION_WEIGHTS is passed through so
+    // this harness's Spearman / rank-delta artifacts reflect live
+    // scoring. The mirror `coverageWeightedMean` above defaults any
+    // missing id to 1.0 (same contract as production).
     const domains = buildDomainList(
       dimensions,
       RESILIENCE_DIMENSION_DOMAINS,
       RESILIENCE_DOMAIN_ORDER,
       getResilienceDomainWeight,
+      RESILIENCE_DIMENSION_WEIGHTS,
     );
 
     // Current production overallScore: Σ domain.score * domain.weight
