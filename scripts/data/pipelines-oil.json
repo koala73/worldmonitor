@@ -710,6 +710,574 @@
         "classifierVersion": "v1",
         "classifierConfidence": 0.92
       }
+    },
+    "bps-1": {
+      "id": "bps-1",
+      "name": "Baltic Pipeline System 1 (Primorsk)",
+      "operator": "Transneft",
+      "commodityType": "oil",
+      "fromCountry": "RU",
+      "toCountry": "RU",
+      "transitCountries": [],
+      "capacityMbd": 1.3,
+      "lengthKm": 2700,
+      "inService": 2001,
+      "startPoint": { "lat": 56.93, "lon": 52.92 },
+      "endPoint": { "lat": 60.37, "lon": 28.62 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
+    },
+    "bps-2": {
+      "id": "bps-2",
+      "name": "Baltic Pipeline System 2 (Ust-Luga)",
+      "operator": "Transneft",
+      "commodityType": "oil",
+      "fromCountry": "RU",
+      "toCountry": "RU",
+      "transitCountries": [],
+      "capacityMbd": 0.75,
+      "lengthKm": 1170,
+      "inService": 2012,
+      "startPoint": { "lat": 53.38, "lon": 34.33 },
+      "endPoint": { "lat": 59.67, "lon": 28.42 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
+    },
+    "enbridge-line-5": {
+      "id": "enbridge-line-5",
+      "name": "Enbridge Line 5",
+      "operator": "Enbridge",
+      "commodityType": "oil",
+      "fromCountry": "CA",
+      "toCountry": "CA",
+      "transitCountries": ["US"],
+      "capacityMbd": 0.54,
+      "lengthKm": 1038,
+      "inService": 1953,
+      "startPoint": { "lat": 46.75, "lon": -92.10 },
+      "endPoint": { "lat": 42.95, "lon": -83.00 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": {
+          "text": "Line 5 continues to operate; ongoing litigation with the State of Michigan over easement under Straits of Mackinac. Tunnel replacement project in permitting.",
+          "url": "https://www.enbridge.com/projects-and-infrastructure/public-awareness/line-5-michigan",
+          "date": "2024-06-01"
+        },
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.9
+      }
+    },
+    "keystone-xl-cancelled": {
+      "id": "keystone-xl-cancelled",
+      "name": "Keystone XL (cancelled 2021)",
+      "operator": "TC Energy (project sponsor; permit revoked)",
+      "commodityType": "oil",
+      "fromCountry": "CA",
+      "toCountry": "US",
+      "transitCountries": [],
+      "capacityMbd": 0.83,
+      "lengthKm": 1897,
+      "inService": 0,
+      "startPoint": { "lat": 52.28, "lon": -110.83 },
+      "endPoint": { "lat": 40.03, "lon": -97.72 },
+      "evidence": {
+        "physicalState": "unknown",
+        "physicalStateSource": "regulator",
+        "operatorStatement": {
+          "text": "Biden administration revoked presidential permit 20 Jan 2021. TC Energy terminated the project 9 Jun 2021. Not constructed; listed for historical / geopolitical completeness.",
+          "url": "https://www.tcenergy.com/announcements/2021/2021-06-09-tc-energy-confirms-termination-of-keystone-xl-pipeline-project/",
+          "date": "2021-06-09"
+        },
+        "commercialState": "expired",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.95
+      }
+    },
+    "trans-panama-pipeline": {
+      "id": "trans-panama-pipeline",
+      "name": "Trans-Panama Pipeline",
+      "operator": "Petroterminal de Panamá",
+      "commodityType": "oil",
+      "fromCountry": "PA",
+      "toCountry": "PA",
+      "transitCountries": [],
+      "capacityMbd": 0.9,
+      "lengthKm": 131,
+      "inService": 1982,
+      "startPoint": { "lat": 9.33, "lon": -82.23 },
+      "endPoint": { "lat": 8.27, "lon": -82.80 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
+    },
+    "rotterdam-rhine-rrp": {
+      "id": "rotterdam-rhine-rrp",
+      "name": "Rotterdam–Rhine Pipeline (RRP)",
+      "operator": "BP / Shell / ExxonMobil (RRP consortium)",
+      "commodityType": "oil",
+      "fromCountry": "NL",
+      "toCountry": "DE",
+      "transitCountries": [],
+      "capacityMbd": 0.5,
+      "lengthKm": 275,
+      "inService": 1960,
+      "startPoint": { "lat": 51.90, "lon": 4.15 },
+      "endPoint": { "lat": 50.13, "lon": 8.78 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.9
+      }
+    },
+    "spse": {
+      "id": "spse",
+      "name": "Pipeline Sud-Européen (SPSE)",
+      "operator": "SPSE SAS (Trafigura / ExxonMobil / others)",
+      "commodityType": "oil",
+      "fromCountry": "FR",
+      "toCountry": "DE",
+      "transitCountries": [],
+      "capacityMbd": 0.49,
+      "lengthKm": 769,
+      "inService": 1962,
+      "startPoint": { "lat": 43.45, "lon": 4.95 },
+      "endPoint": { "lat": 49.01, "lon": 8.40 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
+    },
+    "forties-pipeline": {
+      "id": "forties-pipeline",
+      "name": "Forties Pipeline System",
+      "operator": "INEOS Forties Pipeline System",
+      "commodityType": "oil",
+      "fromCountry": "GB",
+      "toCountry": "GB",
+      "transitCountries": [],
+      "capacityMbd": 0.6,
+      "lengthKm": 169,
+      "inService": 1975,
+      "startPoint": { "lat": 57.75, "lon": 0.97 },
+      "endPoint": { "lat": 56.95, "lon": -2.23 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.92
+      }
+    },
+    "brent-pipeline": {
+      "id": "brent-pipeline",
+      "name": "Brent System Pipeline",
+      "operator": "Shell",
+      "commodityType": "oil",
+      "fromCountry": "NO",
+      "toCountry": "GB",
+      "transitCountries": [],
+      "capacityMbd": 0.5,
+      "lengthKm": 150,
+      "inService": 1978,
+      "startPoint": { "lat": 61.08, "lon": 1.72 },
+      "endPoint": { "lat": 60.48, "lon": -1.30 },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "operator",
+        "operatorStatement": {
+          "text": "Brent field in decommissioning phase; pipeline continues to serve residual Shetland North Sea production, throughput reduced from peak.",
+          "url": "https://www.shell.com/about-us/projects-and-sites/brent-decommissioning.html",
+          "date": "2020-10-01"
+        },
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.82
+      }
+    },
+    "khafji-neutral-zone": {
+      "id": "khafji-neutral-zone",
+      "name": "Khafji–Neutral Zone Export Pipeline",
+      "operator": "KJO (Saudi Arabian Chevron / Kuwait Gulf Oil)",
+      "commodityType": "oil",
+      "fromCountry": "SA",
+      "toCountry": "KW",
+      "transitCountries": [],
+      "capacityMbd": 0.31,
+      "lengthKm": 120,
+      "inService": 1960,
+      "startPoint": { "lat": 28.43, "lon": 48.50 },
+      "endPoint": { "lat": 29.08, "lon": 48.13 },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.7
+      }
+    },
+    "greater-nile-petroleum": {
+      "id": "greater-nile-petroleum",
+      "name": "Greater Nile Petroleum Pipeline",
+      "operator": "GNPOC (CNPC / Petronas / ONGC consortium)",
+      "commodityType": "oil",
+      "fromCountry": "SS",
+      "toCountry": "SD",
+      "transitCountries": [],
+      "capacityMbd": 0.27,
+      "lengthKm": 1610,
+      "inService": 1999,
+      "startPoint": { "lat": 9.55, "lon": 30.08 },
+      "endPoint": { "lat": 19.57, "lon": 37.18 },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.72
+      }
+    },
+    "trans-andino": {
+      "id": "trans-andino",
+      "name": "Transandino Pipeline (Argentina–Chile)",
+      "operator": "Oleoducto Trasandino S.A.",
+      "commodityType": "oil",
+      "fromCountry": "AR",
+      "toCountry": "CL",
+      "transitCountries": [],
+      "capacityMbd": 0.11,
+      "lengthKm": 427,
+      "inService": 1994,
+      "startPoint": { "lat": -37.72, "lon": -69.10 },
+      "endPoint": { "lat": -36.77, "lon": -73.05 },
+      "evidence": {
+        "physicalState": "offline",
+        "physicalStateSource": "press",
+        "operatorStatement": {
+          "text": "Crude exports through the Transandino halted 2006 amid Argentine export restrictions; pipeline intermittent since. Some natural-gas liquids traffic continues.",
+          "url": "https://www.enap.cl/",
+          "date": "2023-01-01"
+        },
+        "commercialState": "expired",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
+    },
+    "odesa-brody": {
+      "id": "odesa-brody",
+      "name": "Odesa–Brody Pipeline",
+      "operator": "Ukrtransnafta",
+      "commodityType": "oil",
+      "fromCountry": "UA",
+      "toCountry": "UA",
+      "transitCountries": [],
+      "capacityMbd": 0.18,
+      "lengthKm": 674,
+      "inService": 2001,
+      "startPoint": { "lat": 46.48, "lon": 30.73 },
+      "endPoint": { "lat": 50.08, "lon": 25.15 },
+      "evidence": {
+        "physicalState": "offline",
+        "physicalStateSource": "press",
+        "operatorStatement": null,
+        "commercialState": "expired",
+        "sanctionRefs": [
+          { "authority": "EU", "listId": "2022/879 (Russian oil embargo, 6th sanctions package)", "date": "2022-06-03", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879" }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.8
+      }
+    },
+    "ab-1-bahrain": {
+      "id": "ab-1-bahrain",
+      "name": "AB-1 (Saudi Arabia–Bahrain)",
+      "operator": "Bapco / Saudi Aramco",
+      "commodityType": "oil",
+      "fromCountry": "SA",
+      "toCountry": "BH",
+      "transitCountries": [],
+      "capacityMbd": 0.35,
+      "lengthKm": 115,
+      "inService": 2018,
+      "startPoint": { "lat": 25.57, "lon": 49.80 },
+      "endPoint": { "lat": 26.18, "lon": 50.63 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.88
+      }
+    },
+    "pemex-nuevo-cactus": {
+      "id": "pemex-nuevo-cactus",
+      "name": "Nuevo Pemex–Cactus Crude Pipeline (Mexico)",
+      "operator": "Pemex",
+      "commodityType": "oil",
+      "fromCountry": "MX",
+      "toCountry": "MX",
+      "transitCountries": [],
+      "capacityMbd": 0.44,
+      "lengthKm": 155,
+      "inService": 1980,
+      "startPoint": { "lat": 18.03, "lon": -93.15 },
+      "endPoint": { "lat": 17.58, "lon": -93.32 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
+    },
+    "nigeria-forcados-export": {
+      "id": "nigeria-forcados-export",
+      "name": "Nigeria Forcados Export System",
+      "operator": "SPDC / Renaissance Africa Energy",
+      "commodityType": "oil",
+      "fromCountry": "NG",
+      "toCountry": "NG",
+      "transitCountries": [],
+      "capacityMbd": 0.4,
+      "lengthKm": 92,
+      "inService": 1971,
+      "startPoint": { "lat": 5.55, "lon": 5.72 },
+      "endPoint": { "lat": 5.35, "lon": 5.35 },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": {
+          "text": "Recurring force majeure declarations due to crude theft + pipeline vandalism in the Niger Delta; throughput significantly below nameplate.",
+          "url": "https://www.shell.com.ng/",
+          "date": "2024-09-01"
+        },
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.82
+      }
+    },
+    "nigeria-bonny-export": {
+      "id": "nigeria-bonny-export",
+      "name": "Nigeria Bonny Export System (Trans Niger Pipeline)",
+      "operator": "SPDC / Renaissance Africa Energy",
+      "commodityType": "oil",
+      "fromCountry": "NG",
+      "toCountry": "NG",
+      "transitCountries": [],
+      "capacityMbd": 0.45,
+      "lengthKm": 180,
+      "inService": 1965,
+      "startPoint": { "lat": 4.72, "lon": 7.28 },
+      "endPoint": { "lat": 4.43, "lon": 7.17 },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": {
+          "text": "Trans Niger Pipeline (TNP) chronically disrupted by tap-ins; Shell has declared force majeure multiple times in recent years. Bonny terminal exports intermittent.",
+          "url": "https://www.shell.com.ng/",
+          "date": "2024-08-01"
+        },
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.82
+      }
+    },
+    "kirkuk-haifa-idle": {
+      "id": "kirkuk-haifa-idle",
+      "name": "Kirkuk–Haifa Pipeline (closed 1948)",
+      "operator": "Iraq Petroleum Company (historical; now defunct)",
+      "commodityType": "oil",
+      "fromCountry": "IQ",
+      "toCountry": "IL",
+      "transitCountries": ["JO"],
+      "capacityMbd": 0.08,
+      "lengthKm": 942,
+      "inService": 1934,
+      "startPoint": { "lat": 35.47, "lon": 44.40 },
+      "endPoint": { "lat": 32.82, "lon": 35.00 },
+      "evidence": {
+        "physicalState": "offline",
+        "physicalStateSource": "regulator",
+        "operatorStatement": {
+          "text": "Pipeline was closed by newly-independent Iraq in 1948 and abandoned; sections dismantled or repurposed. Listed for historical / geopolitical completeness; periodically floated as a reopening proposal.",
+          "url": "https://en.wikipedia.org/wiki/Mosul%E2%80%93Haifa_oil_pipeline",
+          "date": "1948-08-01"
+        },
+        "commercialState": "expired",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.9
+      }
+    },
+    "djeno-congo": {
+      "id": "djeno-congo",
+      "name": "Djeno Terminal System (Congo)",
+      "operator": "TotalEnergies / Eni / Perenco (Djeno consortium)",
+      "commodityType": "oil",
+      "fromCountry": "CG",
+      "toCountry": "CG",
+      "transitCountries": [],
+      "capacityMbd": 0.27,
+      "lengthKm": 175,
+      "inService": 1981,
+      "startPoint": { "lat": -4.12, "lon": 11.85 },
+      "endPoint": { "lat": -4.77, "lon": 11.85 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
+    },
+    "uganda-tanzania-eacop-planned": {
+      "id": "uganda-tanzania-eacop-planned",
+      "name": "East African Crude Oil Pipeline (EACOP, under construction)",
+      "operator": "TotalEnergies / CNOOC / UNOC / TPDC",
+      "commodityType": "oil",
+      "fromCountry": "UG",
+      "toCountry": "TZ",
+      "transitCountries": [],
+      "capacityMbd": 0.216,
+      "lengthKm": 1443,
+      "inService": 0,
+      "startPoint": { "lat": 2.27, "lon": 31.50 },
+      "endPoint": { "lat": -5.08, "lon": 39.05 },
+      "evidence": {
+        "physicalState": "unknown",
+        "physicalStateSource": "operator",
+        "operatorStatement": {
+          "text": "Under construction; first oil targeted 2025 (subject to continued schedule slips). Project faces financing challenges after Western bank withdrawals citing climate / human-rights concerns.",
+          "url": "https://eacop.com/",
+          "date": "2024-10-01"
+        },
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.82
+      }
+    },
+    "myanmar-china-crude": {
+      "id": "myanmar-china-crude",
+      "name": "Myanmar–China Crude Pipeline",
+      "operator": "South East Asia Crude Pipeline Company (CNPC-led)",
+      "commodityType": "oil",
+      "fromCountry": "MM",
+      "toCountry": "CN",
+      "transitCountries": [],
+      "capacityMbd": 0.44,
+      "lengthKm": 771,
+      "inService": 2017,
+      "startPoint": { "lat": 20.15, "lon": 93.53 },
+      "endPoint": { "lat": 24.45, "lon": 98.58 },
+      "evidence": {
+        "physicalState": "flowing",
+        "physicalStateSource": "operator",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.85
+      }
+    },
+    "baku-novorossiysk-northern": {
+      "id": "baku-novorossiysk-northern",
+      "name": "Baku–Novorossiysk Northern Route Pipeline",
+      "operator": "Transneft / SOCAR",
+      "commodityType": "oil",
+      "fromCountry": "AZ",
+      "toCountry": "RU",
+      "transitCountries": [],
+      "capacityMbd": 0.1,
+      "lengthKm": 1330,
+      "inService": 1996,
+      "startPoint": { "lat": 40.37, "lon": 50.25 },
+      "endPoint": { "lat": 44.72, "lon": 37.75 },
+      "evidence": {
+        "physicalState": "reduced",
+        "physicalStateSource": "press",
+        "operatorStatement": null,
+        "commercialState": "under_contract",
+        "sanctionRefs": [
+          { "authority": "G7+EU", "listId": "Russian crude price cap", "date": "2022-12-05", "url": "https://home.treasury.gov/news/press-releases/jy1161" }
+        ],
+        "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+        "classifierVersion": "v1",
+        "classifierConfidence": 0.78
+      }
     }
   }
 }
