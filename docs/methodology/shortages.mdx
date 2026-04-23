@@ -43,7 +43,7 @@ AND — the LLM second-pass must agree with the promotion. If the LLM disagrees,
 - `confirmed` without new corroborating signal in 7 days → auto-demotes to `watch`
 - `watch` without new signal in 14 days → auto-removed
 
-Stale shortages never persist silently. Every demotion writes to the public revision log.
+When the post-launch classifier ships, stale shortages will never persist silently — every demotion will write an entry to the planned public revision log. See [`/corrections`](/corrections) for the designed audit-surface shape and current status. Today the demotion thresholds above are the contract; the structured audit trail lands with the classifier.
 
 ## Evidence transparency
 
