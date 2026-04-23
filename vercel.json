@@ -2,7 +2,8 @@
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "redirects": [
-    { "source": "/docs", "destination": "/docs/documentation", "permanent": false }
+    { "source": "/docs", "destination": "/docs/documentation", "permanent": false },
+    { "source": "/security.txt", "destination": "/.well-known/security.txt", "permanent": true }
   ],
   "rewrites": [
     { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
