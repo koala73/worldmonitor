@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseFrontmatter } from '../scripts/build-agent-skills-index.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
@@ -63,5 +64,52 @@ describe('agent readiness: agent-skills index', () => {
       .sort();
     const names = index.skills.map((s) => s.name).sort();
     assert.deepEqual(names, dirs, 'every skill directory must have an index entry');
+  });
+});
+
+// Parser-contract tests for parseFrontmatter(). The previous hand-rolled
+// parser matched `\n---` anywhere, so a body line beginning with `---`
+// silently truncated the frontmatter. It also split on the first colon
+// without YAML semantics, so quoted-colon values became brittle. Lock in
+// the replacement's semantics so future edits don't regress either.
+describe('agent-skills index: frontmatter parser', () => {
+  it('closing fence must be on its own line (body `---` does not terminate)', () => {
+    const md = [
+      '---',
+      'name: demo',
+      'description: covers body that starts with three dashes',
+      '---',
+      '',
+      '--- this dash line is body text, not a fence ---',
+      'More body.',
+    ].join('\n');
+    const fm = parseFrontmatter(md);
+    assert.equal(fm.name, 'demo');
+    assert.equal(fm.description, 'covers body that starts with three dashes');
+  });
+
+  it('values containing colons are preserved (not truncated)', () => {
+    const md = [
+      '---',
+      'name: demo',
+      'description: "Retrieve X: the composite value at a point in time"',
+      '---',
+      '',
+      'body',
+    ].join('\n');
+    const fm = parseFrontmatter(md);
+    assert.equal(
+      fm.description,
+      'Retrieve X: the composite value at a point in time',
+    );
+  });
+
+  it('rejects non-mapping frontmatter (e.g. a YAML list)', () => {
+    const md = ['---', '- a', '- b', '---', '', 'body'].join('\n');
+    assert.throws(() => parseFrontmatter(md), /YAML mapping/);
+  });
+
+  it('returns empty object when no frontmatter present', () => {
+    assert.deepEqual(parseFrontmatter('# Just a markdown heading\n'), {});
   });
 });

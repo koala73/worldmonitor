@@ -14,6 +14,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
@@ -22,25 +23,22 @@ const INDEX_PATH = join(SKILLS_DIR, 'index.json');
 const PUBLIC_BASE = 'https://worldmonitor.app';
 
 const SCHEMA = 'https://agentskills.io/schemas/v0.2.0/index.json';
+// Closing fence must be anchored to its own line so values that happen to
+// start with `---` in the body can't prematurely terminate frontmatter.
+const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---(?:\n|$)/;
 
 function sha256Hex(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-function parseFrontmatter(md) {
-  if (!md.startsWith('---\n')) return {};
-  const end = md.indexOf('\n---', 4);
-  if (end === -1) return {};
-  const body = md.slice(4, end);
-  const out = {};
-  for (const line of body.split('\n')) {
-    const colon = line.indexOf(':');
-    if (colon === -1) continue;
-    const key = line.slice(0, colon).trim();
-    const value = line.slice(colon + 1).trim();
-    if (key) out[key] = value;
+export function parseFrontmatter(md) {
+  const match = FRONTMATTER_RE.exec(md);
+  if (!match) return {};
+  const parsed = yaml.load(match[1]);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Frontmatter must be a YAML mapping');
   }
-  return out;
+  return parsed;
 }
 
 function collectSkills() {
@@ -103,4 +101,6 @@ function main() {
   process.stdout.write(`Wrote ${INDEX_PATH}\n`);
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

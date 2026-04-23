@@ -8,13 +8,21 @@ description: Retrieve the current AI-generated strategic intelligence brief for 
 
 Use this skill when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country. The endpoint returns a fresh AI-generated brief composed from the latest news, market, conflict, and infrastructure signals World Monitor tracks for that country.
 
+## Authentication
+
+Server-to-server callers (agents, scripts, SDKs) MUST present an API key in the `X-WorldMonitor-Key` header. `Authorization: Bearer …` is for MCP/OAuth or Clerk JWTs — **not** raw API keys.
+
+```
+X-WorldMonitor-Key: wm_live_...
+```
+
+Browser requests from `worldmonitor.app` get a free pass via CORS Origin trust, but agents will never hit that path. Issue a key at https://www.worldmonitor.app/pro.
+
 ## Endpoint
 
 ```
 GET https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief
 ```
-
-No authentication is required for this RPC. Rate limits apply per client IP.
 
 ## Parameters
 
@@ -40,14 +48,16 @@ No authentication is required for this RPC. Rate limits apply per client IP.
 ## Worked example
 
 ```bash
-curl -s 'https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR' \
+curl -s -H "X-WorldMonitor-Key: $WM_API_KEY" \
+  'https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR' \
   | jq -r '.brief'
 ```
 
 With an analytical framework:
 
 ```bash
-curl -s --get 'https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief' \
+curl -s --get -H "X-WorldMonitor-Key: $WM_API_KEY" \
+  'https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief' \
   --data-urlencode 'country_code=TR' \
   --data-urlencode 'framework=focus on energy corridors and Black Sea shipping'
 ```
@@ -55,6 +65,7 @@ curl -s --get 'https://api.worldmonitor.app/api/intelligence/v1/get-country-inte
 ## Errors
 
 - `400` — `country_code` missing, not 2 letters, or not uppercase.
+- `401` — missing `X-WorldMonitor-Key` (server-to-server callers).
 - `429` — rate limited; retry with backoff.
 - `5xx` — transient upstream model failure; retry once after 2s.
 
@@ -66,4 +77,5 @@ curl -s --get 'https://api.worldmonitor.app/api/intelligence/v1/get-country-inte
 ## References
 
 - OpenAPI: [IntelligenceService.openapi.yaml](https://www.worldmonitor.app/openapi.yaml) — operation `GetCountryIntelBrief`.
+- Auth matrix: https://www.worldmonitor.app/docs/usage-auth
 - Documentation: https://www.worldmonitor.app/docs/documentation

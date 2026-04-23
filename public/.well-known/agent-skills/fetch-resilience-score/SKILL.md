@@ -10,12 +10,13 @@ Use this skill when the user asks how "resilient" a country is, or wants the num
 
 ## Authentication — required
 
-`/api/resilience/v1/get-resilience-score` is a paid endpoint. Callers must present either:
+`/api/resilience/v1/get-resilience-score` is Pro-tier. Agents and other server-to-server callers MUST present an API key in the `X-WorldMonitor-Key` header. `Authorization: Bearer …` is for MCP/OAuth or Clerk JWTs — **not** raw API keys.
 
-- A World Monitor API key: `Authorization: Bearer wm_live_…` (see https://www.worldmonitor.app/docs/documentation for issuance).
-- Or a Pro user session (browser only; not applicable to server-to-server agents).
+```
+X-WorldMonitor-Key: wm_live_...
+```
 
-Unauthenticated requests return `401`.
+The key must be attached to a Pro subscription. Unauthenticated or free-tier requests return `401` / `403`. Issue a key at https://www.worldmonitor.app/pro.
 
 ## Endpoint
 
@@ -45,8 +46,8 @@ GET https://api.worldmonitor.app/api/resilience/v1/get-resilience-score
   "stressFactor": 0.99,
   "dataVersion": "2026-04-23",
   "scoreInterval": { "lower": 76.1, "upper": 80.7 },
-  "domains": [ { "name": "Economic", "score": 82.1, … } ],
-  "pillars": [ { "name": "Fiscal Capacity", "score": 80.0, … } ]
+  "domains": [ { "name": "Economic", "score": 82.1, "…": "…" } ],
+  "pillars": [ { "name": "Fiscal Capacity", "score": 80.0, "…": "…" } ]
 }
 ```
 
@@ -61,7 +62,7 @@ Key fields for agents:
 ## Worked example
 
 ```bash
-curl -s -H "Authorization: Bearer $WM_API_KEY" \
+curl -s -H "X-WorldMonitor-Key: $WM_API_KEY" \
   'https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE' \
   | jq '{country: .countryCode, score: .overallScore, level, trend, change30d}'
 ```
@@ -69,8 +70,8 @@ curl -s -H "Authorization: Bearer $WM_API_KEY" \
 ## Errors
 
 - `400` — `countryCode` missing or malformed.
-- `401` — missing/invalid API key.
-- `403` — API key present but lacks the tier that covers this RPC.
+- `401` — missing `X-WorldMonitor-Key`.
+- `403` — key present but not attached to a Pro-tier subscription.
 - `404` — country not yet scored (rare; some micro-states).
 - `429` — per-key rate limit hit.
 
@@ -82,4 +83,5 @@ curl -s -H "Authorization: Bearer $WM_API_KEY" \
 ## References
 
 - OpenAPI: [ResilienceService.openapi.yaml](https://www.worldmonitor.app/openapi.yaml) — operation `GetResilienceScore`.
+- Auth matrix: https://www.worldmonitor.app/docs/usage-auth
 - Methodology: https://www.worldmonitor.app/docs/documentation
