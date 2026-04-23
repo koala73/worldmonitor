@@ -526,9 +526,10 @@ describe('agent readiness: homepage Link headers', () => {
 
       // Target URIs must be root-relative (start with /, not http://)
       const targetMatches = [...linkHeader.value.matchAll(/<([^>]+)>/g)];
-      assert.ok(
-        targetMatches.length >= 7,
-        `expected >=7 link targets, got ${targetMatches.length}`
+      assert.strictEqual(
+        targetMatches.length,
+        requiredRels.length,
+        `expected exactly ${requiredRels.length} link targets, got ${targetMatches.length}`
       );
       for (const [, target] of targetMatches) {
         assert.ok(
@@ -538,4 +539,13 @@ describe('agent readiness: homepage Link headers', () => {
       }
     });
   }
+
+  // / and /index.html serve the same document; their Link headers must
+  // stay in lockstep. Hardcoded duplication in vercel.json otherwise
+  // silently drifts — this guard catches the drift at CI time.
+  it('/ and /index.html Link headers are identical', () => {
+    const slash = vercel.headers.find((h) => h.source === '/').headers.find((h) => h.key === 'Link');
+    const index = vercel.headers.find((h) => h.source === '/index.html').headers.find((h) => h.key === 'Link');
+    assert.strictEqual(slash.value, index.value);
+  });
 });
