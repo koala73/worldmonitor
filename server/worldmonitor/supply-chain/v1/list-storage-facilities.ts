@@ -112,9 +112,14 @@ export async function listStorageFacilities(
   req: ListStorageFacilitiesRequest,
 ): Promise<ListStorageFacilitiesResponse> {
   const raw = (await getCachedJson(STORAGE_FACILITIES_KEY)) as RawRegistry | null;
-  const facilities = collect(raw, req.facilityType ?? '');
 
-  if (!raw || facilities.length === 0) {
+  // upstreamUnavailable is reserved for "Redis didn't return a registry".
+  // A healthy registry that filters down to zero rows via facilityType is
+  // a legitimate empty result — callers that asked for one facility type
+  // and got no matches should see an empty list, not an error state. This
+  // matches the contract in list_storage_facilities.proto and the sibling
+  // list-fuel-shortages handler.
+  if (!raw) {
     return {
       facilities: [],
       fetchedAt: new Date().toISOString(),
@@ -122,6 +127,8 @@ export async function listStorageFacilities(
       upstreamUnavailable: true,
     };
   }
+
+  const facilities = collect(raw, req.facilityType ?? '');
 
   return {
     facilities,
