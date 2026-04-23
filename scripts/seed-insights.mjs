@@ -26,8 +26,7 @@ function normalizeThreat(threat) {
   return { ...threat, level };
 }
 
-const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval (was 1x = key expired on any missed run)
-const MAX_HEADLINES = 10;
+const CACHE_TTL = 1800; // 30m — matches cron interval; bad briefs age out in one cycle instead of persisting 3h
 const MAX_HEADLINE_LEN = 500;
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
@@ -110,23 +109,20 @@ const LLM_PROVIDERS = [
   },
 ];
 
-async function callLLM(headlines) {
-  const headlineText = headlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
-  const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}. Provide geopolitical context appropriate for the current date.`;
+async function callLLM(headline) {
+  const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.`;
 
   const systemPrompt = `${dateContext}
 
-Summarize the single most important headline in 2 concise sentences MAX (under 60 words total).
+Rewrite the provided headline as 2 concise sentences MAX (under 60 words total).
 Rules:
-- Each numbered headline below is a SEPARATE, UNRELATED story
-- Pick the ONE most significant headline and summarize ONLY that story
-- NEVER combine or merge people, places, or facts from different headlines into one sentence
-- Lead with WHAT happened and WHERE - be specific
-- NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings
-- Start directly with the subject of the chosen headline
-- No bullet points, no meta-commentary, no elaboration beyond the core facts`;
+- Use ONLY facts present in the headline text. Do not add names, places, dates, or context that are not explicitly in the headline.
+- Do not invent proper nouns (people, organizations, countries) that are not in the headline.
+- Lead with WHAT happened and WHERE — be specific but grounded.
+- NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.
+- No bullet points, no meta-commentary, no speculation beyond the headline.`;
 
-  const userPrompt = `Each headline below is a separate story. Pick the most important ONE and summarize only that story:\n${headlineText}`;
+  const userPrompt = `Headline: ${headline}\n\nRewrite as 2 sentences using only facts from this headline.`;
 
   for (const provider of LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
@@ -146,7 +142,7 @@ Rules:
             { role: 'user', content: userPrompt },
           ],
           max_tokens: 300,
-          temperature: 0.3,
+          temperature: 0.1,
           ...provider.extraBody,
         }),
         signal: AbortSignal.timeout(provider.timeout),
@@ -276,16 +272,18 @@ async function fetchInsights() {
 
   if (topStories.length === 0) throw new Error('No top stories after scoring');
 
-  const headlines = topStories
-    .slice(0, MAX_HEADLINES)
-    .map(s => sanitizeTitle(s.primaryTitle));
+  // Clustering already ranks by sourceCount + velocity + isAlert. Trust the rank:
+  // summarize only the top story. Previously we sent all 10 and asked the LLM to
+  // "pick the most important" — small/medium models biased toward sensational
+  // single-source rumors over multi-sourced objective leaders.
+  const topHeadline = sanitizeTitle(topStories[0].primaryTitle);
 
   let worldBrief = '';
   let briefProvider = '';
   let briefModel = '';
   let status = 'ok';
 
-  const llmResult = await callLLM(headlines);
+  const llmResult = await callLLM(topHeadline);
   if (llmResult) {
     worldBrief = llmResult.text;
     briefProvider = llmResult.provider;
