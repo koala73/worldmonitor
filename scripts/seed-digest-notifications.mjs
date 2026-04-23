@@ -399,9 +399,19 @@ async function buildDigest(rule, windowStartMs) {
   // purpose: dedup input is shared across users of the same (variant,
   // lang, sensitivity), and we don't want user identity in log keys.
   // See docs/brainstorms/2026-04-23-001-brief-dedup-recall-gap.md §5 Phase 1.
+  //
+  // AWAITED on purpose: this script exits via explicit process.exit(1)
+  // on the brief-compose failure gate (~line 1539) and on main().catch
+  // (~line 1545). process.exit does NOT drain in-flight promises like
+  // natural exit does, so a `void` call here would silently drop the
+  // last N ticks' replay records — exactly the runs where measurement
+  // fidelity matters most. writeReplayLog has its own internal try/
+  // catch + early return when the flag is off, so awaiting is free on
+  // the disabled path and bounded by the 10s Upstash pipeline timeout
+  // on the enabled path.
   const tsMs = Date.now();
   const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
-  void writeReplayLog({
+  await writeReplayLog({
     stories,
     reps: dedupedAll,
     embeddingByHash,
