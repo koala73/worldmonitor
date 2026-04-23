@@ -79,6 +79,97 @@ function assertNonEmptyString(value, path) {
   }
 }
 
+function validateClassification(cls, path) {
+  if (!cls || typeof cls !== 'object') fail(`${path}: expected object`);
+  const c = /** @type {Record<string, unknown>} */ (cls);
+  assertZeroToOne(c.access,       `${path}.access`);
+  assertZeroToOne(c.liquidity,    `${path}.liquidity`);
+  assertZeroToOne(c.transparency, `${path}.transparency`);
+  return { access: c.access, liquidity: c.liquidity, transparency: c.transparency };
+}
+
+function validateRationale(rat, path) {
+  if (!rat || typeof rat !== 'object') fail(`${path}: expected object`);
+  const r = /** @type {Record<string, unknown>} */ (rat);
+  assertNonEmptyString(r.access,       `${path}.access`);
+  assertNonEmptyString(r.liquidity,    `${path}.liquidity`);
+  assertNonEmptyString(r.transparency, `${path}.transparency`);
+  return { access: r.access, liquidity: r.liquidity, transparency: r.transparency };
+}
+
+function validateSources(sources, path) {
+  if (!Array.isArray(sources) || sources.length === 0) fail(`${path}: expected non-empty array`);
+  for (const [srcIdx, src] of sources.entries()) {
+    assertNonEmptyString(src, `${path}[${srcIdx}]`);
+  }
+  return sources.slice();
+}
+
+// Optional wikipedia hints — used by the Wikipedia fallback scraper
+// in scripts/seed-sovereign-wealth.mjs. Either `abbrev` or `fund_name`
+// must be present if the block is present (otherwise the scraper has
+// nothing to match against). `article_url` is optional and activates
+// the Tier 3b per-fund infobox fallback.
+function validateWikipediaHints(block, path) {
+  if (block == null) return undefined;
+  if (typeof block !== 'object') fail(`${path}: expected object`);
+  const w = /** @type {Record<string, unknown>} */ (block);
+  const abbrev = w.abbrev;
+  const fundName = w.fund_name;
+  const articleUrl = w.article_url;
+  if (abbrev != null && typeof abbrev !== 'string') {
+    fail(`${path}.abbrev: expected string, got ${JSON.stringify(abbrev)}`);
+  }
+  if (fundName != null && typeof fundName !== 'string') {
+    fail(`${path}.fund_name: expected string, got ${JSON.stringify(fundName)}`);
+  }
+  if (articleUrl != null) {
+    if (typeof articleUrl !== 'string') {
+      fail(`${path}.article_url: expected string, got ${JSON.stringify(articleUrl)}`);
+    }
+    if (!/^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(articleUrl)) {
+      fail(`${path}.article_url: expected a https://<lang>.wikipedia.org/... URL, got ${JSON.stringify(articleUrl)}`);
+    }
+  }
+  if (!abbrev && !fundName) {
+    fail(`${path}: at least one of abbrev or fund_name must be provided`);
+  }
+  return {
+    ...(abbrev ? { abbrev } : {}),
+    ...(fundName ? { fundName } : {}),
+    ...(articleUrl ? { articleUrl } : {}),
+  };
+}
+
+function validateFundEntry(raw, idx, seenFundKeys) {
+  const path = `funds[${idx}]`;
+  if (!raw || typeof raw !== 'object') fail(`${path}: expected object`);
+  const f = /** @type {Record<string, unknown>} */ (raw);
+
+  assertIso2(f.country, `${path}.country`);
+  assertNonEmptyString(f.fund, `${path}.fund`);
+  assertNonEmptyString(f.display_name, `${path}.display_name`);
+
+  const dedupeKey = `${f.country}:${f.fund}`;
+  if (seenFundKeys.has(dedupeKey)) fail(`${path}: duplicate fund identifier ${dedupeKey}`);
+  seenFundKeys.add(dedupeKey);
+
+  const classification = validateClassification(f.classification, `${path}.classification`);
+  const rationale = validateRationale(f.rationale, `${path}.rationale`);
+  const sources = validateSources(f.sources, `${path}.sources`);
+  const wikipedia = validateWikipediaHints(f.wikipedia, `${path}.wikipedia`);
+
+  return {
+    country: f.country,
+    fund: f.fund,
+    displayName: f.display_name,
+    ...(wikipedia ? { wikipedia } : {}),
+    classification,
+    rationale,
+    sources,
+  };
+}
+
 /**
  * Validate and normalize a raw parsed manifest object into the
  * documented schema. Fails loudly on any deviation — the manifest is
@@ -113,94 +204,7 @@ export function validateManifest(raw) {
   if (rawFunds.length === 0) fail('funds: must list at least one fund');
 
   const seenFundKeys = new Set();
-  const funds = rawFunds.map((raw, idx) => {
-    const path = `funds[${idx}]`;
-    if (!raw || typeof raw !== 'object') fail(`${path}: expected object`);
-    const f = /** @type {Record<string, unknown>} */ (raw);
-
-    assertIso2(f.country, `${path}.country`);
-    assertNonEmptyString(f.fund, `${path}.fund`);
-    assertNonEmptyString(f.display_name, `${path}.display_name`);
-
-    const dedupeKey = `${f.country}:${f.fund}`;
-    if (seenFundKeys.has(dedupeKey)) fail(`${path}: duplicate fund identifier ${dedupeKey}`);
-    seenFundKeys.add(dedupeKey);
-
-    const cls = f.classification;
-    if (!cls || typeof cls !== 'object') fail(`${path}.classification: expected object`);
-    const c = /** @type {Record<string, unknown>} */ (cls);
-    assertZeroToOne(c.access,       `${path}.classification.access`);
-    assertZeroToOne(c.liquidity,    `${path}.classification.liquidity`);
-    assertZeroToOne(c.transparency, `${path}.classification.transparency`);
-
-    const rat = f.rationale;
-    if (!rat || typeof rat !== 'object') fail(`${path}.rationale: expected object`);
-    const r = /** @type {Record<string, unknown>} */ (rat);
-    assertNonEmptyString(r.access,       `${path}.rationale.access`);
-    assertNonEmptyString(r.liquidity,    `${path}.rationale.liquidity`);
-    assertNonEmptyString(r.transparency, `${path}.rationale.transparency`);
-
-    const sources = f.sources;
-    if (!Array.isArray(sources) || sources.length === 0) fail(`${path}.sources: expected non-empty array`);
-    for (const [srcIdx, src] of sources.entries()) {
-      assertNonEmptyString(src, `${path}.sources[${srcIdx}]`);
-    }
-
-    // Optional wikipedia hints — used by the Wikipedia fallback scraper
-    // in scripts/seed-sovereign-wealth.mjs. Either `abbrev` or
-    // `fund_name` must be present if the block is present (otherwise
-    // the scraper has nothing to match against); both may be present.
-    // `article_url` is optional and activates the Tier 3b per-fund
-    // infobox fallback.
-    let wikipedia;
-    if (f.wikipedia != null) {
-      if (typeof f.wikipedia !== 'object') fail(`${path}.wikipedia: expected object`);
-      const w = /** @type {Record<string, unknown>} */ (f.wikipedia);
-      const abbrev = w.abbrev;
-      const fundName = w.fund_name;
-      const articleUrl = w.article_url;
-      if (abbrev != null && typeof abbrev !== 'string') {
-        fail(`${path}.wikipedia.abbrev: expected string, got ${JSON.stringify(abbrev)}`);
-      }
-      if (fundName != null && typeof fundName !== 'string') {
-        fail(`${path}.wikipedia.fund_name: expected string, got ${JSON.stringify(fundName)}`);
-      }
-      if (articleUrl != null) {
-        if (typeof articleUrl !== 'string') {
-          fail(`${path}.wikipedia.article_url: expected string, got ${JSON.stringify(articleUrl)}`);
-        }
-        if (!/^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(articleUrl)) {
-          fail(`${path}.wikipedia.article_url: expected a https://<lang>.wikipedia.org/... URL, got ${JSON.stringify(articleUrl)}`);
-        }
-      }
-      if (!abbrev && !fundName) {
-        fail(`${path}.wikipedia: at least one of abbrev or fund_name must be provided`);
-      }
-      wikipedia = {
-        ...(abbrev ? { abbrev } : {}),
-        ...(fundName ? { fundName } : {}),
-        ...(articleUrl ? { articleUrl } : {}),
-      };
-    }
-
-    return {
-      country: f.country,
-      fund: f.fund,
-      displayName: f.display_name,
-      ...(wikipedia ? { wikipedia } : {}),
-      classification: {
-        access: c.access,
-        liquidity: c.liquidity,
-        transparency: c.transparency,
-      },
-      rationale: {
-        access: r.access,
-        liquidity: r.liquidity,
-        transparency: r.transparency,
-      },
-      sources: sources.slice(),
-    };
-  });
+  const funds = rawFunds.map((raw, idx) => validateFundEntry(raw, idx, seenFundKeys));
 
   return {
     manifestVersion,
