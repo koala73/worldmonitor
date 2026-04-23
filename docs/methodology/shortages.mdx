@@ -55,7 +55,7 @@ For any `confirmed` row, the panel surfaces:
 - Source dates
 - Classifier version + confidence
 
-Agents (MCP clients) receive the same structured evidence via `listActiveFuelShortages` (landing in Release 2).
+Agents (MCP clients) receive the same structured evidence via the `ListFuelShortages` RPC — every `FuelShortageEntry` in the response includes the full `evidence.evidenceSources[]` array, matching what the UI drawer renders.
 
 ## Root-cause attribution
 
@@ -68,9 +68,20 @@ Every shortage row carries a cause chain, not just a severity:
 - `logistics` — port / rail / truck bottleneck
 - `policy` — deliberate government restriction
 
-## Break-glass overrides
+## Break-glass overrides (planned)
 
-A `energy_asset_overrides` table exists for the rare case where a reader emails a demonstrably wrong classification. Overrides are admin-only writes and are NOT on the critical path — the default flow is fully automated. Every override writes to the revision log.
+An `energy_asset_overrides` persistence layer is the designed break-glass
+surface for the rare case where a reader flags a demonstrably wrong
+classification. Writes would be admin-only and off the critical path —
+the default flow stays fully automated, and every override would emit
+an `override`-trigger entry to the revision log.
+
+**Status (v1 launch):** the override persistence layer is not yet
+implemented. Reader-flagged corrections are handled manually today via
+[GitHub issues](https://github.com/koala73/worldmonitor/issues); they
+flow through the automated override path once that layer ships
+alongside the classifier. See [`/corrections`](/corrections) for the
+planned shape of override entries.
 
 ## Known limits
 
