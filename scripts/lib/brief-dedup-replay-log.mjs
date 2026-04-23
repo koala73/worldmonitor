@@ -56,10 +56,14 @@ export function replayLogEnabled(env = process.env) {
 export function buildReplayLogKey(ruleId, tsMs) {
   // Allow ':' so `variant:lang:sensitivity` composite ruleIds stay
   // readable as Redis key segments. Strip anything else to '_'; then
-  // if the whole string collapsed to nothing meaningful (all '_' or
-  // empty), use 'unknown' so the key namespace stays consistent.
+  // if the whole string collapsed to nothing meaningful — all '_',
+  // ':', '-', or empty — use 'unknown' so the key namespace stays
+  // consistent. Stripping ':' / '-' in the emptiness check prevents
+  // pathological inputs like ':::' producing keys like
+  // `digest:replay-log:v1::::2026-04-23` that confuse Redis namespace
+  // tooling (SCAN / KEYS / redis-cli tab completion).
   const raw = String(ruleId ?? '').replace(/[^A-Za-z0-9:_-]/g, '_');
-  const safeRuleId = raw.replace(/_/g, '') === '' ? 'unknown' : raw;
+  const safeRuleId = raw.replace(/[_:-]/g, '') === '' ? 'unknown' : raw;
   const iso = new Date(tsMs).toISOString();
   const dateKey = iso.slice(0, 10); // YYYY-MM-DD
   return `${KEY_PREFIX}:${safeRuleId}:${dateKey}`;
@@ -158,7 +162,13 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
       sources: Array.isArray(story?.sources) ? story.sources : [],
       embeddingCacheKey: cacheKey,
       hasEmbedding,
-      tickConfig,
+      // Per-record shallow copy so an in-memory consumer (future
+      // replay harness, test) that mutates one record's tickConfig
+      // can't silently affect every other record via shared reference.
+      // Serialisation goes through JSON.stringify in writeReplayLog so
+      // storage is unaffected either way; this is purely an in-memory
+      // footgun fix.
+      tickConfig: { ...tickConfig },
     });
   });
   return records;

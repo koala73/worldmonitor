@@ -391,6 +391,12 @@ async function buildDigest(rule, windowStartMs) {
 
   stories.sort((a, b) => b.currentScore - a.currentScore);
   const cfg = readOrchestratorConfig(process.env);
+  // Sample tsMs BEFORE dedup so briefTickId anchors to tick-start, not
+  // to dedup-completion. Dedup can take a few seconds on cold-cache
+  // embed calls; we want the replay log's tick id to reflect when the
+  // tick began processing, which is the natural reading of
+  // "briefTickId" for downstream readers.
+  const tsMs = Date.now();
   const { reps: dedupedAll, embeddingByHash, logSummary } =
     await deduplicateStories(stories);
   // Replay log (opt-in via DIGEST_DEDUP_REPLAY_LOG=1). Best-effort — any
@@ -409,7 +415,6 @@ async function buildDigest(rule, windowStartMs) {
   // catch + early return when the flag is off, so awaiting is free on
   // the disabled path and bounded by the 10s Upstash pipeline timeout
   // on the enabled path.
-  const tsMs = Date.now();
   const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
   await writeReplayLog({
     stories,

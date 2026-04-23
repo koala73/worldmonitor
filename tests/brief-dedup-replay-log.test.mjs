@@ -111,6 +111,23 @@ describe('buildReplayLogKey — key shape', () => {
       'digest:replay-log:v1:unknown:2026-04-23',
     );
   });
+
+  it('falls back to ruleId="unknown" on pathological separator-only inputs', () => {
+    // Regression guard (Greptile P2): a ruleId of pure separators
+    // (':', '-', '_' or mixtures) has no identifying content — passing
+    // it through verbatim would produce keys like
+    // `digest:replay-log:v1::::2026-04-23` that confuse redis-cli
+    // namespace tooling. The emptiness check strips ':' / '-' / '_'
+    // before deciding to fall back.
+    const ts = Date.UTC(2026, 3, 23);
+    for (const raw of [':::', '---', '___', ':_:', '-_-', '::-:--']) {
+      assert.equal(
+        buildReplayLogKey(raw, ts),
+        'digest:replay-log:v1:unknown:2026-04-23',
+        `ruleId=${JSON.stringify(raw)} should fall back to "unknown"`,
+      );
+    }
+  });
 });
 
 describe('buildReplayRecords — record shape', () => {
@@ -187,6 +204,23 @@ describe('buildReplayRecords — record shape', () => {
       topicThreshold: 0.45,
       entityVetoEnabled: true,
     });
+  });
+
+  it('tickConfig is a per-record shallow copy (not a shared reference)', () => {
+    // Regression guard (Greptile P2): mutating one record's tickConfig
+    // must not affect other records in the same batch. A shared-ref
+    // implementation had no storage bug (JSON.stringify serialises
+    // each record independently) but would bite any in-memory
+    // consumer that mutates for experimentation.
+    const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    assert.ok(records.length >= 2);
+    assert.notStrictEqual(
+      records[0].tickConfig,
+      records[1].tickConfig,
+      'records must not share tickConfig by reference',
+    );
+    records[0].tickConfig.mode = 'MUTATED';
+    assert.equal(records[1].tickConfig.mode, 'embed', 'mutation must not leak');
   });
 
   it('serialises topicGroupingEnabled=false distinctly from default', () => {
