@@ -830,6 +830,13 @@ export default async function handler(req: Request): Promise<Response> {
   if (origin && origin !== 'https://claude.ai' && origin !== 'https://claude.com') {
     return new Response('Forbidden', { status: 403, headers: corsHeaders });
   }
+  // Host-derived resource_metadata pointer: a client probing api.worldmonitor.app/mcp
+  // must see a pointer at its own origin, not the apex — otherwise the 401's
+  // WWW-Authenticate points at apex metadata whose `resource` field is apex too,
+  // and same-origin scanners (isitagentready.com, Cloudflare mcp.cloudflare.com)
+  // flag the mismatch. Matches the host-extraction in api/oauth-protected-resource.ts.
+  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
+  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
   // Auth chain (in priority order):
   //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
   //   2. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
@@ -853,7 +860,7 @@ export default async function handler(req: Request): Promise<Response> {
       // Bearer token present but unresolvable — expired or invalid UUID
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", error="invalid_token", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
       );
     }
   } else {
@@ -861,7 +868,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!candidateKey) {
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
       );
     }
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);

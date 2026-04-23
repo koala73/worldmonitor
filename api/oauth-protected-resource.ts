@@ -36,6 +36,11 @@ export default function handler(req: Request): Response {
       'Content-Type': 'application/json',
       'Cache-Control': 'public, max-age=3600',
       'Access-Control-Allow-Origin': '*',
+      // Response body varies by Host (resource/authorization_servers derived
+      // from it). Any intermediate cache keying on path alone could serve
+      // wrong-origin metadata across hosts. Vercel's own router is per-host,
+      // but this is belt-and-braces against downstream caches.
+      'Vary': 'Host',
     },
   });
 }

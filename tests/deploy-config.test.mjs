@@ -387,31 +387,29 @@ describe('agent readiness: api-catalog + openapi build', () => {
 // mcp.cloudflare.com) enforce that `authorization_servers[*]` share
 // origin with `resource` — this construction guarantees that.
 describe('agent readiness: MCP/OAuth origin alignment', () => {
-  it('oauth-protected-resource edge fn derives resource from request host', () => {
-    const source = readFileSync(
-      resolve(__dirname, '../api/oauth-protected-resource.ts'),
-      'utf-8'
-    );
-    assert.match(
-      source,
-      /const\s+origin\s*=\s*`https:\/\/\$\{host\}`/,
-      'resource must be derived from request host'
-    );
-    assert.match(
-      source,
-      /resource:\s*origin/,
-      'resource field must equal origin'
-    );
-    assert.match(
-      source,
-      /authorization_servers:\s*\[\s*origin\s*\]/,
-      'authorization_servers must equal [origin] (same-origin by construction)'
-    );
-    assert.match(
-      source,
-      /runtime:\s*['"]edge['"]/,
-      'must be edge runtime'
-    );
+  it('oauth-protected-resource handler returns origin-matching metadata per host', async () => {
+    // Runtime test (not source-regex): dynamically import the edge handler
+    // and invoke it against synthetic Host headers to prove the response
+    // is actually same-origin per host, with correct Vary + Content-Type.
+    const mod = await import('../api/oauth-protected-resource.ts');
+    const handler = mod.default;
+    assert.equal(typeof handler, 'function', 'handler must be the default export');
+
+    const hosts = ['worldmonitor.app', 'www.worldmonitor.app', 'api.worldmonitor.app'];
+    for (const host of hosts) {
+      const req = new Request(`https://${host}/.well-known/oauth-protected-resource`, {
+        headers: { host },
+      });
+      const res = await handler(req);
+      assert.equal(res.status, 200, `status 200 for ${host}`);
+      assert.equal(res.headers.get('content-type'), 'application/json', `JSON for ${host}`);
+      assert.equal(res.headers.get('vary'), 'Host', `Vary: Host for ${host}`);
+      const json = await res.json();
+      assert.equal(json.resource, `https://${host}`, `resource matches ${host}`);
+      assert.deepEqual(json.authorization_servers, [`https://${host}`], `auth_servers match ${host}`);
+      assert.deepEqual(json.bearer_methods_supported, ['header']);
+      assert.deepEqual(json.scopes_supported, ['mcp']);
+    }
   });
 
   it('MCP server card authentication.resource is a valid https URL on a known host', () => {
@@ -426,18 +424,27 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
     );
   });
 
-  it('api/mcp.ts WWW-Authenticate resource_metadata paths resolve to /.well-known/oauth-protected-resource', () => {
+  it('api/mcp.ts resource_metadata is host-derived, not hardcoded', () => {
     const source = readFileSync(resolve(__dirname, '../api/mcp.ts'), 'utf-8');
-    const matches = [...source.matchAll(/resource_metadata="([^"]+)"/g)];
+    // Must NOT contain a hardcoded apex or api URL for resource_metadata —
+    // that regressed once (PR #3351 review: apex pointer emitted from
+    // api.worldmonitor.app/mcp 401s) and the grep-only test didn't catch it.
     assert.ok(
-      matches.length > 0,
-      'api/mcp.ts must emit resource_metadata pointers in its 401 WWW-Authenticate headers'
+      !/resource_metadata="https:\/\/(?:api\.)?worldmonitor\.app\/\.well-known\//.test(source),
+      'api/mcp.ts must not hardcode resource_metadata URL — derive from request host'
     );
-    for (const [, url] of matches) {
-      const u = new URL(url);
-      assert.equal(u.pathname, '/.well-known/oauth-protected-resource');
-      assert.equal(u.protocol, 'https:');
-    }
+    // Must contain a template-literal construction that uses a host variable.
+    assert.match(
+      source,
+      /resource_metadata="\$\{[A-Za-z_][A-Za-z0-9_]*\}"|`[^`]*resource_metadata="\$\{[^}]+\}"/,
+      'api/mcp.ts must construct resource_metadata from a host-derived variable'
+    );
+    // Must actually read the request host header somewhere in the file.
+    assert.match(
+      source,
+      /request\.headers\.get\(['"]host['"]\)|req\.headers\.get\(['"]host['"]\)/i,
+      'api/mcp.ts should read the request host header'
+    );
   });
 
   it('vercel.json rewrites /.well-known/oauth-protected-resource to the edge fn', () => {
