@@ -131,6 +131,28 @@ let initialized = false;
 let onSuccessCallback: (() => void) | null = null;
 let _resetOverlaySession: (() => void) | null = null;
 let _watchersInitialized = false;
+let _escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+
+/**
+ * Dodo's hosted overlay has been observed to deadlock: the in-iframe X
+ * button hits `GET /api/checkout/sessions/{id}/payment-link` → 404 →
+ * unhandled rejection in their React code → Maximum-update-depth render
+ * loop. When that happens, the `checkout.closed` postMessage never
+ * escapes their iframe, so our onEvent handler can't clean up and the
+ * user is trapped on the overlay. `DodoPayments.Checkout.close()`
+ * removes the iframe at the merchant-SDK level and works even when the
+ * inner overlay is frozen — it's the only safety net available since
+ * CheckoutOptions has no onCancel/dismissBehavior hook (SDK 1.8.0).
+ */
+function safeCloseOverlay(): void {
+  try {
+    if (DodoPayments.Checkout.isOpen?.()) {
+      DodoPayments.Checkout.close();
+    }
+  } catch {
+    // Swallow — the overlay is already gone or the SDK is mid-teardown.
+  }
+}
 
 /**
  * Initialize the Dodo overlay SDK. Idempotent -- second+ calls are no-ops.
@@ -229,10 +251,22 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
         case 'checkout.error':
           console.error('[checkout] Overlay error:', event.data?.message);
           Sentry.captureMessage(`Dodo checkout overlay error: ${event.data?.message || 'unknown'}`, { level: 'error', tags: { component: 'dodo-checkout' } });
+          // Release the user if their overlay surfaces an error. The
+          // deadlock bug (payment-link 404 + render loop) never reaches
+          // this branch — it traps inside their iframe — but any error
+          // that DOES escape should not leave a broken overlay mounted.
+          safeCloseOverlay();
           break;
       }
     },
   });
+
+  _escapeHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && DodoPayments.Checkout.isOpen?.()) {
+      safeCloseOverlay();
+    }
+  };
+  window.addEventListener('keydown', _escapeHandler);
 
   initialized = true;
 }
@@ -244,6 +278,10 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
 export function destroyCheckoutOverlay(): void {
   initialized = false;
   onSuccessCallback = null;
+  if (_escapeHandler) {
+    window.removeEventListener('keydown', _escapeHandler);
+    _escapeHandler = null;
+  }
 }
 
 function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
