@@ -148,3 +148,85 @@ test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', asyn
     try { unlinkSync(path); } catch {}
   }
 });
+
+test('SIGTERM handler is removed AFTER fetchFn completes (no race with publish-phase exit)', async () => {
+  // After the fetch phase returns, runSeed's try/finally removes the
+  // SIGTERM listener. Verify by: fetchFn returns synthetic data → runSeed
+  // enters publish phase (which will fail on our empty fetch mock that
+  // doesn't simulate atomicPublish success) → SIGTERM arriving AFTER
+  // fetchFn-resolution must fall through to Node's default handler (fast
+  // exit with signal=SIGTERM, NO "SIGTERM received" cleanup line).
+  //
+  // This pins the narrowed-scope contract: the cleanup handler exists
+  // only during the long-running fetch, and post-fetch SIGTERMs do
+  // NOT trigger runSeed's TTL-extension code path — critical for
+  // strict-floor seeders (emptyDataIsFailure: true) that must NOT
+  // refresh seed-meta on empty data.
+  const body = `
+    import { runSeed } from './_seed-utils.mjs';
+    // Redis stub: lock SET NX → OK, everything else → OK.
+    globalThis.fetch = async (url, opts = {}) => {
+      const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+      if (Array.isArray(body) && Array.isArray(body[0])) {
+        return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    };
+    // fetchFn resolves IMMEDIATELY with data, then we signal READY and
+    // hang in the publish phase so the test can send SIGTERM. Using
+    // atomicPublish's Lua-redirect stub response ('OK') will keep the
+    // seeder alive in verify-retry; setInterval ensures event loop stays up.
+    const quickFetch = async () => {
+      const data = { items: [{ k: 1 }] };
+      // Give the SIGTERM handler a microtask to be removed by the
+      // try{ ... } finally{ process.off } after withRetry resolves.
+      // Then signal ready.
+      setInterval(() => {}, 10_000);
+      setImmediate(() => console.log('POST_FETCH_READY'));
+      return data;
+    };
+    await runSeed('test-domain', 'post-fetch', 'data:test:post-fetch:v1', quickFetch, {
+      ttlSeconds: 900,
+      lockTtlMs: 60_000,
+    });
+  `;
+  const path = join(SCRIPTS_DIR, `_sigterm-postfetch-fixture-${Date.now()}.mjs`);
+  writeFileSync(path, body);
+  try {
+    await new Promise((resolve) => {
+      const child = spawn(process.execPath, [path], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          UPSTASH_REDIS_REST_URL: 'https://fake-upstash.example.com',
+          UPSTASH_REDIS_REST_TOKEN: 'fake-token',
+        },
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (c) => { stdout += c; });
+      child.stderr.on('data', (c) => { stderr += c; });
+      const ready = setInterval(() => {
+        if (stdout.includes('POST_FETCH_READY')) {
+          clearInterval(ready);
+          // Give one extra event-loop tick so the finally{process.off} runs.
+          setTimeout(() => child.kill('SIGTERM'), 50);
+        }
+      }, 25);
+      child.on('close', (code, signal) => {
+        clearInterval(ready);
+        // Post-fetch SIGTERM falls through to Node default: no "SIGTERM
+        // received" cleanup log from our handler. Exit may be signal=SIGTERM
+        // or code (Node varies), but the decisive signal is the ABSENCE of
+        // the cleanup log line.
+        const cleanupFired = /SIGTERM received — releasing lock/.test(stderr);
+        assert.equal(cleanupFired, false,
+          `post-fetch SIGTERM must NOT trigger runSeed cleanup (strict-floor safety). stderr:\n${stderr}`);
+        resolve();
+      });
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 10_000);
+    });
+  } finally {
+    try { unlinkSync(path); } catch {}
+  }
+});

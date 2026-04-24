@@ -178,3 +178,52 @@ test('sibling sections share the same BUNDLE_RUN_STARTED_AT_MS (one-shot per bun
     cleanupB();
   }
 });
+
+test('dependsOn: throws when a dep appears later in the sections array', async () => {
+  // Consumer (depends on Producer) is at index 0 — violates the contract.
+  const cleanupC = writeFixture('_bundle-fixture-dep-consumer.mjs', `console.log('consumer');\n`);
+  const cleanupP = writeFixture('_bundle-fixture-dep-producer.mjs', `console.log('producer');\n`);
+  try {
+    const { code, stderr } = await runBundleWith([
+      { label: 'Consumer', script: '_bundle-fixture-dep-consumer.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['Producer'] },
+      { label: 'Producer', script: '_bundle-fixture-dep-producer.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.notEqual(code, 0, 'out-of-order dependsOn must cause non-zero exit');
+    assert.match(stderr, /dependsOn 'Producer' but 'Producer' is at index 1/,
+      `expected topological violation error; stderr:\n${stderr}`);
+  } finally {
+    cleanupC();
+    cleanupP();
+  }
+});
+
+test('dependsOn: passes when deps appear earlier in the sections array', async () => {
+  const cleanupP = writeFixture('_bundle-fixture-dep-producer-ok.mjs', `console.log('producer');\n`);
+  const cleanupC = writeFixture('_bundle-fixture-dep-consumer-ok.mjs', `console.log('consumer');\n`);
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'Producer', script: '_bundle-fixture-dep-producer-ok.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'Consumer', script: '_bundle-fixture-dep-consumer-ok.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['Producer'] },
+    ]);
+    assert.equal(code, 0);
+    assert.match(stdout, /\[Producer\] producer/);
+    assert.match(stdout, /\[Consumer\] consumer/);
+  } finally {
+    cleanupP();
+    cleanupC();
+  }
+});
+
+test('dependsOn: throws on unknown label reference', async () => {
+  const cleanup = writeFixture('_bundle-fixture-dep-orphan.mjs', `console.log('orphan');\n`);
+  try {
+    const { code, stderr } = await runBundleWith([
+      { label: 'Orphan', script: '_bundle-fixture-dep-orphan.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['DoesNotExist'] },
+    ]);
+    assert.notEqual(code, 0);
+    assert.match(stderr, /dependsOn unknown label 'DoesNotExist'/,
+      `expected unknown-label error; stderr:\n${stderr}`);
+  } finally {
+    cleanup();
+  }
+});
