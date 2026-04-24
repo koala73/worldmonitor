@@ -7,13 +7,20 @@ import { fileURLToPath } from 'node:url';
 import {
   validateRegistry,
   recordCount,
+  buildPayload,
   ENERGY_DISRUPTIONS_CANONICAL_KEY,
   MAX_STALE_MIN,
 } from '../scripts/_energy-disruption-registry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const raw = readFileSync(resolve(__dirname, '../scripts/data/energy-disruptions.json'), 'utf-8');
-const registry = JSON.parse(raw) as { events: Record<string, any> };
+const rawRegistry = JSON.parse(raw) as { events: Record<string, any> };
+// validateRegistry checks the buildPayload output (the denormalised shape
+// the seeder actually writes to Redis), not the raw JSON on disk. Since
+// plan §R/#5 decision B, buildPayload attaches countries[] per event; the
+// raw file intentionally omits that field so a curator can edit events
+// without manually computing affected countries.
+const registry = buildPayload() as { events: Record<string, any> };
 
 describe('energy-disruptions registry — schema', () => {
   test('registry passes validateRegistry', () => {
@@ -91,6 +98,37 @@ describe('energy-disruptions registry — evidence', () => {
     for (const e of Object.values(registry.events)) {
       assert.ok(e.classifierConfidence >= 0 && e.classifierConfidence <= 1, `${e.id}: bad confidence`);
     }
+  });
+});
+
+describe('energy-disruptions registry — countries[] denorm (§R #5 B)', () => {
+  test('every event in buildPayload output has non-empty countries[]', () => {
+    for (const e of Object.values(registry.events)) {
+      assert.ok(
+        Array.isArray(e.countries) && e.countries.length > 0,
+        `${e.id}: empty countries[] — assetId may be orphaned`,
+      );
+    }
+  });
+
+  test('every country code is ISO-3166-1 alpha-2 uppercase', () => {
+    for (const e of Object.values(registry.events)) {
+      for (const c of e.countries) {
+        assert.ok(/^[A-Z]{2}$/.test(c), `${e.id}: bad country code ${c}`);
+      }
+    }
+  });
+
+  test('raw JSON on disk does NOT carry countries[] (source of truth is the join)', () => {
+    for (const e of Object.values(rawRegistry.events)) {
+      assert.equal(e.countries, undefined, `${e.id}: raw JSON should not pre-compute countries[]`);
+    }
+  });
+
+  test('nord-stream-1-sabotage-2022 resolves to [DE, RU]', () => {
+    const nord = registry.events['nord-stream-1-sabotage-2022'];
+    assert.ok(nord, 'nord-stream-1-sabotage-2022 missing from registry');
+    assert.deepEqual(nord.countries, ['DE', 'RU']);
   });
 });
 

@@ -621,6 +621,7 @@ export interface EnergyDisruptionEntry {
   classifierVersion: string;
   classifierConfidence: number;
   lastEvidenceUpdate: string;
+  countries: string[];
 }
 
 export interface EnergyDisruptionSource {

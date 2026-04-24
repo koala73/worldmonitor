@@ -59,6 +59,13 @@ export function projectDisruption(raw: unknown): EnergyDisruptionEntry | null {
     classifierVersion: coerceString(r.classifierVersion, 'v1'),
     classifierConfidence: coerceNumber(r.classifierConfidence),
     lastEvidenceUpdate: coerceString(r.lastEvidenceUpdate),
+    // Seed-denormalised countries[] (plan §R/#5 decision B). The registry
+    // seeder joins each event's assetId against the pipeline/storage
+    // registries and emits the touched ISO2 set. Legacy rows written
+    // before the denorm shipped can still exist in Redis transiently; we
+    // surface an empty array there so the field is always present on the
+    // wire but consumers can detect pre-denorm data by checking length.
+    countries: coerceStringArray(r.countries),
   };
 }
 

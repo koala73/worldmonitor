@@ -39,6 +39,61 @@ function loadRegistry() {
 }
 
 /**
+ * Load the pipeline + storage registries so `buildPayload` can join each
+ * disruption event to its referenced asset and compute the `countries[]`
+ * denorm field (plan §R/#5 decision B).
+ *
+ * Pipelines contribute fromCountry, toCountry, and transitCountries[].
+ * Storage facilities contribute their single country code. Duplicates are
+ * deduped and sorted so the seed output is stable across runs — unstable
+ * ordering would churn the seeded payload bytes on every cron tick and
+ * defeat envelope diffing.
+ *
+ * @returns {{
+ *   pipelines: Record<string, { fromCountry?: string; toCountry?: string; transitCountries?: string[] }>,
+ *   storage:   Record<string, { country?: string }>,
+ * }}
+ */
+function loadAssetRegistries() {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const gas = JSON.parse(readFileSync(resolve(__dirname, 'data', 'pipelines-gas.json'), 'utf-8'));
+  const oil = JSON.parse(readFileSync(resolve(__dirname, 'data', 'pipelines-oil.json'), 'utf-8'));
+  const storageRaw = JSON.parse(readFileSync(resolve(__dirname, 'data', 'storage-facilities.json'), 'utf-8'));
+  return {
+    pipelines: { ...(gas.pipelines ?? {}), ...(oil.pipelines ?? {}) },
+    storage: storageRaw.facilities ?? {},
+  };
+}
+
+/**
+ * Compute the denormalised country set for a single event.
+ *
+ * @param {{ assetId: string; assetType: string }} event
+ * @param {ReturnType<typeof loadAssetRegistries>} registries
+ * @returns {string[]} ISO2 codes, deduped + alpha-sorted. Empty array when
+ *   the referenced asset cannot be resolved — callers (seeder) should
+ *   treat empty as a hard validation failure so stale references surface
+ *   loudly on the next cron tick rather than silently corrupt the filter.
+ */
+function deriveCountriesForEvent(event, registries) {
+  const out = new Set();
+  if (event.assetType === 'pipeline') {
+    const p = registries.pipelines[event.assetId];
+    if (p) {
+      if (typeof p.fromCountry === 'string') out.add(p.fromCountry);
+      if (typeof p.toCountry === 'string') out.add(p.toCountry);
+      if (Array.isArray(p.transitCountries)) {
+        for (const c of p.transitCountries) if (typeof c === 'string') out.add(c);
+      }
+    }
+  } else if (event.assetType === 'storage') {
+    const s = registries.storage[event.assetId];
+    if (s && typeof s.country === 'string') out.add(s.country);
+  }
+  return Array.from(out).sort();
+}
+
+/**
  * @param {unknown} data
  * @returns {boolean}
  */
@@ -83,6 +138,16 @@ export function validateRegistry(data) {
       const end = Date.parse(e.endAt);
       if (end < start) return false;
     }
+    // countries[] is the denorm introduced in plan §R/#5 (decision B). Every
+    // event must resolve to ≥1 country code from its referenced asset. An
+    // empty array here means the upstream asset was removed or the assetId
+    // is misspelled — both are hard errors the cron should surface by
+    // failing validation (emptyDataIsFailure upstream preserves seed-meta
+    // staleness so health alarms fire).
+    if (!Array.isArray(e.countries) || e.countries.length === 0) return false;
+    for (const c of e.countries) {
+      if (typeof c !== 'string' || !/^[A-Z]{2}$/.test(c)) return false;
+    }
   }
   return true;
 }
@@ -94,7 +159,22 @@ function isIsoDate(v) {
 
 export function buildPayload() {
   const registry = loadRegistry();
-  return { ...registry, updatedAt: new Date().toISOString() };
+  const assets = loadAssetRegistries();
+
+  // Denormalise countries[] on every event so CountryDeepDivePanel can
+  // filter by country without an asset-registry round trip. If an event's
+  // assetId cannot be resolved we leave countries[] empty — validateRegistry
+  // rejects that shape, which fails the seed (emptyDataIsFailure: true)
+  // and keeps seed-meta stale until the curator fixes the orphaned id.
+  const rawEvents = /** @type {Record<string, any>} */ (registry.events ?? {});
+  const events = Object.fromEntries(
+    Object.entries(rawEvents).map(([id, event]) => [
+      id,
+      { ...event, countries: deriveCountriesForEvent(event, assets) },
+    ]),
+  );
+
+  return { ...registry, events, updatedAt: new Date().toISOString() };
 }
 
 /**

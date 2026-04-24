@@ -1255,6 +1255,62 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         );
       }
     }).catch(() => {});
+
+    // Disruptions filter (plan §R/#5 decision B). The seeded registry carries
+    // denormalised `countries[]` on every event, populated from the referenced
+    // pipeline or storage facility. We fetch the full list once (no asset
+    // filter) and narrow client-side; the bootstrap payload already contains
+    // the registry so this is usually cache-hot. If the RPC round-trip returns
+    // nothing, we silently skip — CountryDeepDive is not the primary
+    // disruption surface (EnergyDisruptionsPanel is), so an empty row is
+    // preferable to a spurious error.
+    this.loadDisruptionsForCountry(iso2);
+  }
+
+  private async loadDisruptionsForCountry(iso2: string): Promise<void> {
+    try {
+      const { SupplyChainServiceClient } = await import(
+        '@/generated/client/worldmonitor/supply_chain/v1/service_client'
+      );
+      const { getRpcBaseUrl } = await import('@/services/rpc-client');
+      const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
+        fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+      });
+      const res = await client.listEnergyDisruptions({
+        assetId: '',
+        assetType: '',
+        ongoingOnly: false,
+      });
+      if (!res || !Array.isArray(res.events) || this.currentCode !== iso2) return;
+      const events = res.events.filter(e =>
+        Array.isArray(e.countries) && e.countries.includes(iso2),
+      );
+      if (events.length === 0) return;
+      const ongoing = events.filter(e => !e.endAt).length;
+      const summary = ongoing > 0
+        ? `${ongoing} ongoing · ${events.length - ongoing} resolved`
+        : `${events.length} resolved`;
+      this.appendAtlasRow(
+        `Energy disruptions in ${iso2}`,
+        summary,
+        events.map(e => ({
+          id: e.id,
+          label: `${e.eventType} — ${e.shortDescription}`,
+          // Event type mirrors the existing asset-detail events (pipeline /
+          // storage) because disruptions reference the underlying asset; the
+          // panel-layout listener routes to the matching asset panel.
+          event: e.assetType === 'storage'
+            ? 'energy:open-storage-facility-detail'
+            : 'energy:open-pipeline-detail',
+          detail: e.assetType === 'storage'
+            ? { facilityId: e.assetId, highlightEventId: e.id }
+            : { pipelineId: e.assetId, highlightEventId: e.id },
+        })),
+      );
+    } catch {
+      // Silent — disruptions row is supplementary; failures elsewhere
+      // surface via the dedicated EnergyDisruptionsPanel.
+    }
   }
 
   private appendAtlasRow(

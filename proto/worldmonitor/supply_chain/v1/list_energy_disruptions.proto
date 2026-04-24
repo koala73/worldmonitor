@@ -54,6 +54,12 @@ message EnergyDisruptionEntry {
   string classifier_version = 12;
   double classifier_confidence = 13;          // 0..1
   string last_evidence_update = 14;           // ISO8601
+  // Countries touched by the referenced asset (pipeline: fromCountry +
+  // toCountry + transitCountries; storage: country). Denormalised at seed
+  // time so CountryDeepDivePanel can filter events without a second RPC.
+  // Always non-empty in well-formed payloads; empty only if the upstream
+  // asset was removed without an event update. Per plan §R/#5 decision B.
+  repeated string countries = 15;
 }
 
 message EnergyDisruptionSource {
