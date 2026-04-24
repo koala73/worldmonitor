@@ -193,8 +193,11 @@ const STANDALONE_KEYS = {
   recoveryExternalDebt:     'resilience:recovery:external-debt:v1',
   recoveryImportHhi:        'resilience:recovery:import-hhi:v1',
   recoveryFuelStocks:       'resilience:recovery:fuel-stocks:v1',
-  // PR 1 v2 energy-construct seeds. ON_DEMAND_KEYS until Railway cron
-  // provisions; see below.
+  // PR 1 v2 energy-construct seeds. STRICT SEED_META (not ON_DEMAND):
+  // plan 2026-04-24-001 removed these from ON_DEMAND_KEYS so /api/health
+  // reports CRIT (not WARN) when they are absent. This is the intended
+  // alarm on the Railway bundle-not-provisioned state. See the ON_DEMAND_KEYS
+  // comment block below for the full rationale.
   lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
   fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
   powerLosses:              'resilience:power-losses:v1',
@@ -395,9 +398,9 @@ const SEED_META = {
   recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryFuelStocks:      { key: 'seed-meta:resilience:recovery:fuel-stocks',      maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   // PR 1 v2 energy seeds — weekly cron (8d * 1440 = 11520min = 2x interval).
-  // Listed in ON_DEMAND_KEYS below until Railway cron provisions and
-  // the first clean run lands; after that they graduate to the normal
-  // SEED_META staleness check like the recovery seeds above.
+  // STRICT SEED_META (not ON_DEMAND): plan 2026-04-24-001 made /api/health
+  // CRIT on absent/stale so operators see the Railway-bundle gap before
+  // the flag flips. See the ON_DEMAND_KEYS "do not add back" note below.
   lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
