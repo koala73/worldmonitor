@@ -54,14 +54,21 @@ lint: ## Lint protobuf files
 
 generate: clean ## Generate code from proto definitions
 	@mkdir -p $(GEN_CLIENT_DIR) $(GEN_SERVER_DIR) $(DOCS_API_DIR)
-	# Prepend $$HOME/go/bin so the Makefile-declared sebuf version
+	# Prepend the Go install dir so the Makefile-declared sebuf version
 	# ($(SEBUF_VERSION)) installed by `install-plugins` wins over any
 	# stale sebuf binary that a package manager (Homebrew, etc.) may
 	# have placed earlier on PATH. Without this, `buf generate` can
 	# pick up an older sebuf v0.7.x build that ignores `bundle_only=true`
-	# / `format=json` and produces duplicate-output errors. This matches
-	# what .husky/pre-push already does before invoking this target.
-	cd $(PROTO_DIR) && PATH="$$HOME/go/bin:$$PATH" buf generate
+	# / `format=json` and produces duplicate-output errors.
+	#
+	# Mirror `go install`'s own resolution order: GOBIN first, then
+	# GOPATH/bin. This respects developers who set a non-default GOBIN
+	# (e.g. to keep binaries out of ~/go/bin) — hardcoding $$HOME/go/bin
+	# would force a stale ~/go/bin copy to win on those machines.
+	# (Note: .husky/pre-push:151-153 still hardcodes $$HOME/go/bin for
+	# discovering `buf` itself. That's additive — the Makefile's own
+	# recipe-level prepend here takes precedence for the plugin lookup.)
+	cd $(PROTO_DIR) && PATH="$$(gobin=$$(go env GOBIN); [ -n "$$gobin" ] && printf '%s' "$$gobin" || printf '%s/bin' "$$(go env GOPATH)"):$$PATH" buf generate
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
