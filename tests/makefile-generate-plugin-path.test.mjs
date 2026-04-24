@@ -77,20 +77,54 @@ describe('Makefile generate target — plugin path resolution', () => {
     );
   });
 
-  test('verifies the sebuf plugin binary is actually present before invoking buf', () => {
+  test('verifies EVERY sebuf plugin binary referenced by buf.gen.yaml is present', () => {
     // `go` can be installed without the user having ever run
-    // `make install-plugins`. Without this guard, buf would fail with
-    // a confusing protoc-level error instead of a clear remediation.
+    // `make install-plugins`. Guarding only one plugin would let buf
+    // fall through to a stale copy of the OTHERS on the normal PATH
+    // and recreate the mixed-version bug this PR is meant to prevent.
+    // The list here must stay in sync with proto/buf.gen.yaml.
+    const required = ['protoc-gen-ts-client', 'protoc-gen-ts-server', 'protoc-gen-openapiv3'];
+    for (const bin of required) {
+      // The guard iterates a shell `for` loop, so the literal plugin
+      // name must appear in the recipe's plugin list AND the
+      // remediation string must reference install-plugins.
+      assert.ok(
+        recipe.includes(bin),
+        `generate recipe must include ${bin} in the plugin-executable guard list`,
+      );
+    }
+    // The loop must check each entry with `[ -x "$PLUGIN_DIR/$p" ]`
+    // and bail with a message that points users to `make install-plugins`.
     assert.match(
       recipe,
-      /-x ".*\$\$PLUGIN_DIR\/protoc-gen-ts-client"/,
-      'generate recipe must verify protoc-gen-ts-client is executable in the resolved plugin dir',
+      /\[ -x "\$\$PLUGIN_DIR\/\$\$p" \]/,
+      'generate recipe must verify each plugin is executable via [ -x "$PLUGIN_DIR/$p" ]',
     );
     assert.match(
       recipe,
       /Run: make install-plugins/,
-      'generate recipe must tell the user the remediation when the plugin is missing',
+      'generate recipe must tell the user the remediation when a plugin is missing',
     );
+  });
+
+  test('plugin guard list covers every plugin declared in buf.gen.yaml', () => {
+    // Cross-reference proto/buf.gen.yaml plugin entries against the
+    // Makefile's guard list. If buf.gen.yaml ever adds a new `local:`
+    // plugin (e.g. a future protoc-gen-*), the guard must grow too —
+    // otherwise the new binary can silently fall through to a stale
+    // PATH copy.
+    const BUF_GEN = readFileSync(resolve(__dirname, '../proto/buf.gen.yaml'), 'utf-8');
+    const declared = new Set();
+    for (const m of BUF_GEN.matchAll(/^\s*-\s*local:\s*(\S+)\s*$/gm)) {
+      declared.add(m[1]);
+    }
+    assert.ok(declared.size > 0, 'buf.gen.yaml must declare at least one local plugin');
+    for (const bin of declared) {
+      assert.ok(
+        recipe.includes(bin),
+        `buf.gen.yaml declares '${bin}' but the Makefile guard does not check it — stale ${bin} on PATH could still win`,
+      );
+    }
   });
 
   test('invokes buf via absolute path (via "$BUF_BIN"), not via PATH lookup', () => {

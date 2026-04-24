@@ -98,12 +98,18 @@ generate: clean ## Generate code from proto definitions
 	@# would silently become "/bin" when unset, failing to override PATH
 	@# and letting a stale sebuf on the normal PATH win — the exact
 	@# failure mode this PR is trying to prevent (Codex high-severity on
-	@# 9c0058a). The plugin-executable check catches the case where `go`
-	@# is installed but the user has never run `make install-plugins`.
+	@# 9c0058a). The plugin-executable check covers ALL three sebuf
+	@# binaries invoked by proto/buf.gen.yaml (protoc-gen-ts-client,
+	@# protoc-gen-ts-server, protoc-gen-openapiv3) — guarding only one
+	@# would let `buf generate` fall through to a stale copy of the
+	@# others on PATH, recreating the mixed-version failure mode. Keep
+	@# this list in sync with proto/buf.gen.yaml.
 	cd $(PROTO_DIR) && \
 		PLUGIN_DIR=$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi) && \
 		[ -n "$$PLUGIN_DIR" ] || { echo 'Could not resolve Go install dir from GOBIN/GOPATH — refusing to run buf generate without a pinned plugin location.' >&2; exit 1; } && \
-		[ -x "$$PLUGIN_DIR/protoc-gen-ts-client" ] || { echo "protoc-gen-ts-client not found at $$PLUGIN_DIR/. Run: make install-plugins" >&2; exit 1; } && \
+		for p in protoc-gen-ts-client protoc-gen-ts-server protoc-gen-openapiv3; do \
+			[ -x "$$PLUGIN_DIR/$$p" ] || { echo "$$p not found at $$PLUGIN_DIR/. Run: make install-plugins" >&2; exit 1; }; \
+		done && \
 		BUF_BIN=$$(command -v buf) && \
 		PATH="$$PLUGIN_DIR:$$PATH" "$$BUF_BIN" generate
 	@echo "Code generation complete!"
