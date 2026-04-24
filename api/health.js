@@ -462,7 +462,7 @@ const ON_DEMAND_KEYS = new Set([
 // no earnings events this week, econ calendar quiet between seasons).
 // The key must still exist in Redis; only the record count can be 0.
 const EMPTY_DATA_OK_KEYS = new Set([
-  'notamClosures', 'faaDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
+  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
