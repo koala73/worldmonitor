@@ -146,3 +146,110 @@ spot-check runs.
 - Plan reference:
   `docs/plans/2026-04-24-002-fix-resilience-cohort-ranking-structural-audit-plan.md`
   §PR 5.2
+
+---
+
+## foodWater scorer — construct-deterministic cohort identity (scoreFoodWater)
+
+**Dimension.** `foodWater` (weight 1.0 in the `health-food` domain
+aggregate). Reads from `resilience:static:<ISO2>` via
+`readStaticCountry`. Three weighted slots:
+
+| Slot | Source | Weight | Mapping |
+|---|---|---|---|
+| People in food crisis (log10) | `fao.peopleInCrisis` (HDX IPC/FSIN) | 0.45 | `normalizeLowerBetter(log10(max(1, n)), 0, 7)` |
+| IPC phase number | `fao.phase` → digit extracted | 0.15 | `normalizeLowerBetter(phase, 1, 5)` |
+| AQUASTAT water indicator | `aquastat.value` + `aquastat.indicator` (WB `ER.H2O.FWST.ZS`, labelled `'water stress'`) | 0.40 | `normalizeLowerBetter(value, 0, 100)` when indicator contains `stress`/`withdrawal`/`dependency`; `normalizeHigherBetter` when `availability`/`renewable`/`access` |
+
+**What the plan's predecessor concern was.** The cohort-audit plan
+observed that GCC countries all score ~53 on `foodWater` and
+asked whether this was a "mystery regional default" or genuine
+construct output.
+
+**Finding — it is genuine construct output.**
+
+1. IPC/HDX doesn't publish active food-crisis data for food-secure
+   states like the GCC. `scripts/seed-resilience-static.mjs` writes
+   `fao: null` (or omits the block) for those countries.
+2. The scorer's `fao == null` branch imputes `IMPUTE.ipcFood` =
+   `{ score: 88, certaintyCoverage: 0.7, imputationClass:
+   'stable-absence' }` (see `_dimension-scorers.ts` line 135) at
+   weight 0.6 for the combined peopleInCrisis+phase slot.
+3. AQUASTAT for the GCC is EXTREME. WB indicator `ER.H2O.FWST.ZS`
+   measures freshwater withdrawal as a % of internal renewable
+   resources. Desert economies with desalination routinely exceed
+   100% (Kuwait ~3200%, Bahrain ~3400%, UAE ~2080%, Qatar ~770%).
+   Values > 100 clamp the sub-score to 0 under the lower-better
+   normaliser against (0, 100).
+4. Under the `fao = { peopleInCrisis: 0, phase: null }` shape plus
+   clamped AQUASTAT=0 at weight 0.4, the weighted blend evaluates
+   to `(100*0.45 + 0*0.4) / (0.45 + 0.4) = 45/0.85 ≈ 53`. Pinned
+   as an anchor test in
+   `tests/resilience-foodwater-field-mapping.test.mts`.
+
+**Why GCC scores are identical across the cohort.** GCC
+countries share:
+
+- Same IPC status (not monitored → same impute constant)
+- Same AQUASTAT indicator (`'water stress'`, WB's standard label)
+- Extreme and similarly-clamped withdrawal ratios (all > 100 →
+  all clamp to 0 on the AQUASTAT sub-score)
+
+Identical inputs → identical outputs. That is construct
+determinism, not a regional-default lookup. Pinned with a
+synthetic two-country test: identical input shapes produce
+identical scores; different water profiles produce different
+scores.
+
+**Regression-guard tests** in
+`tests/resilience-foodwater-field-mapping.test.mts`:
+
+- Indicator routing: `'water stress'` → lower-better;
+  `'renewable water availability'` → higher-better.
+- GCC extreme-withdrawal anchor: AQUASTAT value=2000 +
+  peopleInCrisis=0 blends to exactly 53.
+- IPC-absent with static record present: imputes
+  `ipcFood=88`; observed AQUASTAT wins →
+  `imputationClass=null` per weightedBlend's T1.7 rule.
+- Fully-imputed (FAO missing AND AQUASTAT missing): surfaces
+  `imputationClass='stable-absence'`.
+- Fully-absent static record (seeder never ran): returns
+  coverage=0, NOT an impute.
+- Cohort determinism: identical inputs → identical scores;
+  different water-profile inputs → different scores.
+
+**Implication — no fix required.** The scorer is producing the
+construct it's specified to produce. The observed GCC identity
+is a correct summary statement: "non-crisis food security +
+severe water-withdrawal stress." A future construct decision
+might split `foodWater` into food and water sub-dims so the
+water-stress signal doesn't saturate the combined dim across
+desert economies — but that is a construct redesign, not a
+bug fix.
+
+**Follow-up data-side spot-check (requires API key / Redis
+access; not in scope of this PR).** Pull raw AQUASTAT + FAO
+inputs for GCC + IL + JO (similar water-stressed region) and
+verify the seeder-written values against WB's live API
+response. If a GCC country's WB value differs substantially
+from the figures above, the seeder may have a stale-year
+picker bug — unlikely given `seed-resilience-static.mjs` uses
+`mrv=15` + `selectLatestWorldBankByCountry`, but worth
+verifying.
+
+**References.**
+
+- Seeder: `scripts/seed-resilience-static.mjs` lines 658-680
+  (`WB_WATER_STRESS_INDICATOR`, `fetchAquastatDataset`,
+  `buildAquastatWbMap`)
+- Scorer reads:
+  `server/worldmonitor/resilience/v1/_dimension-scorers.ts`
+  lines 895 (`scoreAquastatValue`), 1471 (`scoreFoodWater`),
+  135 (`IMPUTE.ipcFood` constant)
+- WB indicator docs:
+  https://data.worldbank.org/indicator/ER.H2O.FWST.ZS
+- Plan reference:
+  `docs/plans/2026-04-24-002-fix-resilience-cohort-ranking-structural-audit-plan.md`
+  §PR 5.3
+- Test regression guards:
+  `tests/resilience-foodwater-field-mapping.test.mts`
