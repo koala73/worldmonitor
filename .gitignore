@@ -77,6 +77,7 @@ api-cache.json
 verbose-mode.json
 skills-lock.json
 tmp/
+.context/
 
 # Local planning documents (not for public repo)
 docs/plans/
