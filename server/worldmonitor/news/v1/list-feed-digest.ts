@@ -81,7 +81,20 @@ interface ParsedItem {
   corroborationCount: number;
   titleHash?: string;
   lang: string;
+  // Cleaned RSS/Atom article description: HTML-stripped, entity-decoded,
+  // whitespace-normalised, clipped to MAX_DESCRIPTION_LEN. Empty string when
+  // absent, too short, or indistinguishable from the headline. Grounding input
+  // for brief / whyMatters / SummarizeArticle LLMs.
+  description: string;
 }
+
+const MAX_DESCRIPTION_LEN = 400;
+const MIN_DESCRIPTION_LEN = 40;
+
+const DESCRIPTION_TAG_PRIORITY = {
+  rss: ['description', 'content:encoded'] as const,
+  atom: ['summary', 'content'] as const,
+};
 
 function computeImportanceScore(
   level: ThreatLevel,
@@ -216,6 +229,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
 
     const threat = classifyByKeyword(title, variant);
     const isAlert = threat.level === 'critical' || threat.level === 'high';
+    const description = extractDescription(block, isAtom, title);
 
     items.push({
       source: feed.name,
@@ -230,10 +244,66 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
       importanceScore: 0,
       corroborationCount: 1,
       lang: feed.lang ?? 'en',
+      description,
     });
   }
 
   return items.length > 0 ? items : null;
+}
+
+/**
+ * Raw-body extractor for HTML-carrying tags (description, content:encoded,
+ * summary, content). Non-greedy `[\s\S]*?` captures the full tag body including
+ * nested markup; the CDATA end is anchored to the closing tag so internal `]]>`
+ * sequences followed by more content do not truncate the match prematurely.
+ * Returns the raw content without entity decoding — caller strips HTML and
+ * decodes entities via `decodeXmlEntities`.
+ */
+function extractRawTagBody(xml: string, tag: string): string {
+  const cdataRe = new RegExp(
+    `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`,
+    'i',
+  );
+  const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
+
+  const cdataMatch = xml.match(cdataRe);
+  if (cdataMatch) return cdataMatch[1] ?? '';
+
+  const match = xml.match(plainRe);
+  return match ? match[1] ?? '' : '';
+}
+
+function normalizeForDescriptionEquality(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Extract + clean the article description/summary for an RSS `<item>` or Atom
+ * `<entry>` block. Picks the LONGEST non-empty candidate across the dialect's
+ * tag priority list after HTML-strip + entity-decode + whitespace-normalise.
+ * Returns '' when the best candidate is empty, shorter than
+ * MIN_DESCRIPTION_LEN, or normalises-equal to the headline — in those cases
+ * downstream consumers must fall back to the cleaned headline (R6).
+ */
+function extractDescription(block: string, isAtom: boolean, title: string): string {
+  const tags = isAtom ? DESCRIPTION_TAG_PRIORITY.atom : DESCRIPTION_TAG_PRIORITY.rss;
+
+  let best = '';
+  for (const tag of tags) {
+    const raw = extractRawTagBody(block, tag);
+    if (!raw) continue;
+    const cleaned = decodeXmlEntities(raw)
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (cleaned.length > best.length) best = cleaned;
+  }
+
+  if (best.length === 0) return '';
+  if (best.length < MIN_DESCRIPTION_LEN) return '';
+  if (normalizeForDescriptionEquality(best) === normalizeForDescriptionEquality(title)) return '';
+
+  return best.slice(0, MAX_DESCRIPTION_LEN);
 }
 
 const TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
@@ -627,3 +697,12 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     clearTimeout(deadlineTimeout);
   }
 }
+
+/** Internal exports for unit tests only — do not import in production code. */
+export const __testing__ = {
+  parseRssXml,
+  extractDescription,
+  extractRawTagBody,
+  MAX_DESCRIPTION_LEN,
+  MIN_DESCRIPTION_LEN,
+};
