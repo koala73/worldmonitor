@@ -114,12 +114,20 @@ async function fetchComtradeFlow(apiKey, reporterCode, flowCode, years, { iso2 }
       });
 
       if (resp.status === 429) {
+        if (attempt === RETRY_MAX_ATTEMPTS) {
+          console.warn(`[reexport-share] ${iso2} ${flowCode}: 429 after ${RETRY_MAX_ATTEMPTS} attempts; omitting`);
+          return { rows: [], truncated: false, status: 429 };
+        }
         const backoffMs = 2000 * attempt;
         console.warn(`[reexport-share] ${iso2} ${flowCode}: 429 rate-limited, backoff ${backoffMs}ms (attempt ${attempt}/${RETRY_MAX_ATTEMPTS})`);
         await sleep(backoffMs);
         continue;
       }
       if (resp.status >= 500) {
+        if (attempt === RETRY_MAX_ATTEMPTS) {
+          console.warn(`[reexport-share] ${iso2} ${flowCode}: HTTP ${resp.status} after ${RETRY_MAX_ATTEMPTS} attempts; omitting`);
+          return { rows: [], truncated: false, status: resp.status };
+        }
         const backoffMs = 5000 * attempt;
         console.warn(`[reexport-share] ${iso2} ${flowCode}: HTTP ${resp.status}, backoff ${backoffMs}ms (attempt ${attempt}/${RETRY_MAX_ATTEMPTS})`);
         await sleep(backoffMs);
@@ -152,10 +160,14 @@ async function fetchComtradeFlow(apiKey, reporterCode, flowCode, years, { iso2 }
 
 /**
  * Sum primaryValue per year from a Comtrade flow response.
- * Includes world-aggregate rows (partnerCode='0') — this differs from
- * the HHI seeder, which requires partner-level decomposition. For the
- * re-export-share construct we want the country-total flow regardless
- * of partner breakdown. See plan §Phase 1 "Per-country flow" step 3.
+ * USES world-aggregate rows only (partnerCode='0' / 0 / absent) —
+ * this construct wants the country-total flow as a single figure, not
+ * a partner-level breakdown. The `cmdCode=TOTAL` query without a
+ * partner filter defaults to returning only world-aggregate rows in
+ * practice, but this filter is defensive: if a future refactor asks
+ * Comtrade for partner-level decomposition (e.g. to cross-check),
+ * summing partner rows ON TOP of the world-aggregate row would
+ * silently double-count and cut the derived share in half.
  *
  * Pure function — exported for tests.
  *
@@ -165,6 +177,17 @@ async function fetchComtradeFlow(apiKey, reporterCode, flowCode, years, { iso2 }
 export function parseComtradeFlowResponse(rows) {
   const byYear = new Map();
   for (const r of rows) {
+    // Accept world-aggregate rows only: string '0', numeric 0, or
+    // the field absent entirely (older response shapes). Any specific
+    // partnerCode (e.g. '842' for US, '826' for UK) is a per-partner
+    // breakdown row and must be excluded to avoid double-counting
+    // against the world-aggregate row for the same year.
+    const partnerCode = r?.partnerCode;
+    const isWorldAggregate = partnerCode == null
+      || partnerCode === '0'
+      || partnerCode === 0;
+    if (!isWorldAggregate) continue;
+
     const yRaw = r?.period ?? r?.refPeriodId;
     const y = Number(yRaw);
     const v = Number(r?.primaryValue ?? 0);

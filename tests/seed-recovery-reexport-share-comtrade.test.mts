@@ -34,17 +34,38 @@ describe('parseComtradeFlowResponse', () => {
     assert.equal(out.has(2021), false);
   });
 
-  it('includes partnerCode=0 world-aggregate rows (unlike HHI seeder)', () => {
-    // The HHI seeder filters partnerCode=0 to avoid double-counting;
-    // this seeder wants the country-total regardless of partner
-    // decomposition, so no filter. Verify a row with partnerCode=0
-    // contributes to the sum.
+  it('sums ONLY world-aggregate rows (partnerCode=0), excludes partner-level rows', () => {
+    // Defensive filter: if Comtrade returns BOTH a world-aggregate
+    // row (partner=0) AND per-partner breakdown rows for the same
+    // year, summing all would silently double-count and cut any
+    // derived share in half. We sum only partnerCode='0' / 0 / null.
     const rows = [
-      { period: 2023, partnerCode: '0', primaryValue: 1_000_000 },
-      { period: 2023, partnerCode: '842', primaryValue: 200_000 },
+      { period: 2023, partnerCode: '0', primaryValue: 1_000_000 },   // world aggregate — include
+      { period: 2023, partnerCode: '842', primaryValue: 200_000 },   // per-partner (US) — EXCLUDE
+      { period: 2023, partnerCode: '826', primaryValue: 150_000 },   // per-partner (UK) — EXCLUDE
     ];
     const out = parseComtradeFlowResponse(rows);
-    assert.equal(out.get(2023), 1_200_000);
+    assert.equal(out.get(2023), 1_000_000,
+      'per-partner rows must not add to the world-aggregate total');
+  });
+
+  it('accepts numeric 0 partnerCode (shape variant)', () => {
+    // Comtrade has occasionally emitted numeric 0 vs string '0' depending
+    // on response shape; both must be treated as world-aggregate.
+    const rows = [
+      { period: 2023, partnerCode: 0, primaryValue: 500 },
+      { period: 2023, partnerCode: '0', primaryValue: 500 },
+    ];
+    const out = parseComtradeFlowResponse(rows);
+    assert.equal(out.get(2023), 1_000);
+  });
+
+  it('accepts rows with no partnerCode field (older response shape)', () => {
+    // Defensive: if a response shape omits partnerCode entirely,
+    // treat the row as world-aggregate rather than silently dropping it.
+    const rows = [{ period: 2024, primaryValue: 42 }];
+    const out = parseComtradeFlowResponse(rows);
+    assert.equal(out.get(2024), 42);
   });
 
   it('handles refPeriodId fallback when period is absent', () => {
