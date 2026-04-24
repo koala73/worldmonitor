@@ -62,13 +62,18 @@ generate: clean ## Generate code from proto definitions
 	# / `format=json` and produces duplicate-output errors.
 	#
 	# Mirror `go install`'s own resolution order: GOBIN first, then
-	# GOPATH/bin. This respects developers who set a non-default GOBIN
-	# (e.g. to keep binaries out of ~/go/bin) — hardcoding $$HOME/go/bin
-	# would force a stale ~/go/bin copy to win on those machines.
+	# the FIRST entry of GOPATH + "/bin". `go install` writes binaries
+	# only into the first GOPATH entry's bin dir — GOPATH is a
+	# colon-separated list (Linux/macOS), so `$$(go env GOPATH)/bin`
+	# alone would wrongly turn "/p1:/p2" into "/p1:/p2/bin" (two
+	# distinct PATH entries, neither pointing at the actual install
+	# target /p1/bin). Take only the first entry via `cut`.
+	# This respects developers who set a non-default GOBIN (e.g. to
+	# keep binaries out of ~/go/bin) or who have a multi-entry GOPATH.
 	# (Note: .husky/pre-push:151-153 still hardcodes $$HOME/go/bin for
 	# discovering `buf` itself. That's additive — the Makefile's own
 	# recipe-level prepend here takes precedence for the plugin lookup.)
-	cd $(PROTO_DIR) && PATH="$$(gobin=$$(go env GOBIN); [ -n "$$gobin" ] && printf '%s' "$$gobin" || printf '%s/bin' "$$(go env GOPATH)"):$$PATH" buf generate
+	cd $(PROTO_DIR) && PATH="$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi):$$PATH" buf generate
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
