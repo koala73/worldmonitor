@@ -47,8 +47,15 @@ describe('normalizeSanctionCount — piecewise anchors pinned', () => {
   //   count=201+   → 25..0  (linear at 0.1/step, clamped 0)
   //
   // The tests drive scoreTradeSanctions end-to-end with an otherwise-
-  // empty reader so the sanctions slot score surfaces as the overall
-  // weightedBlend output.
+  // empty reader so the sanctions slot is the only one contributing a
+  // non-null score to the weightedBlend. Note the OTHER slots still
+  // contribute their declared weights (restrictions 0.15, barriers
+  // 0.15, tariff 0.25) to weightedBlend's `totalWeight` denominator —
+  // they just don't contribute to `availableWeight` (the score-
+  // computation denominator) because their score is null. So the
+  // surfaced `coverage` value reflects the 0.45 sanctions weight over
+  // the full 1.0 totalWeight; the surfaced `score` reflects the
+  // sanctions-slot score alone (since it's the only non-null input).
 
   it('count=0 anchors at score 100 (no designated parties)', async () => {
     const result = await scoreTradeSanctions(TEST_ISO2, sanctionsOnlyReader(0));
@@ -75,11 +82,14 @@ describe('normalizeSanctionCount — piecewise anchors pinned', () => {
     assert.equal(result.score, 25, `expected 25 at count=200, got ${result.score}`);
   });
 
-  it('count=500 scores near 0 (high-count tail, 0.1/step decay past 200)', async () => {
+  it('count=500 anchors at score 0 (high-count tail clamped to floor)', async () => {
     const result = await scoreTradeSanctions(TEST_ISO2, sanctionsOnlyReader(500));
-    // At count=500: 25 - (500-200)*0.1 = 25 - 30 = -5 → clamped to 0.
-    assert.ok(result.score <= 1,
-      `expected near-0 at count=500 (heavily-sanctioned state); got ${result.score}`);
+    // At count=500: 25 - (500-200)*0.1 = 25 - 30 = -5 → clamped to 0
+    // via `roundScore` which clamps to [0, 100]. Equality assertion
+    // (not <= 1) so a future roundScore / boundary change that nudges
+    // the result off 0 breaks the test loudly instead of silently.
+    assert.equal(result.score, 0,
+      `expected exactly 0 at count=500 (heavily-sanctioned state; clamped from -5); got ${result.score}`);
   });
 
   it('monotonic: more designated parties → strictly lower score', async () => {
