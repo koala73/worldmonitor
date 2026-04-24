@@ -94,7 +94,14 @@ export class EnergyDisruptionsPanel extends Panel {
         ongoingOnly: false,
       });
       if (!this.element?.isConnected) return;
-      if (live.upstreamUnavailable || !live.events?.length) {
+      // Distinguish upstream unavailability from a healthy empty result.
+      // The server contract (see list-energy-disruptions.ts) returns
+      // `upstreamUnavailable: true` only when Redis itself can't be
+      // read; an empty `events` array with `upstreamUnavailable: false`
+      // is a valid response shape the UI should render as "no events
+      // match" rather than as an error. Conflating the two previously
+      // showed a retry button on what was a legitimate empty state.
+      if (live.upstreamUnavailable) {
         this.showError('Energy disruptions log unavailable', () => void this.fetchData());
         return;
       }
@@ -207,6 +214,10 @@ export class EnergyDisruptionsPanel extends Panel {
       const assetId = tr.dataset.assetId;
       const assetType = tr.dataset.assetType;
       if (!eventId || !assetId || !assetType) return;
+      // Pass `eventId` through even though the receiving drawers ignore it
+      // today — they consume only {pipelineId, facilityId}. Keeping the
+      // parameter plumbed makes a future event-highlight feature a
+      // single-site change in the drawer, not a re-plumb here.
       tr.addEventListener('click', () => this.dispatchOpenAsset(eventId, assetId, assetType));
     });
 
@@ -217,10 +228,19 @@ export class EnergyDisruptionsPanel extends Panel {
     ongoingButton?.addEventListener('click', () => this.toggleOngoingOnly());
   }
 
-  private dispatchOpenAsset(eventId: string, assetId: string, assetType: string): void {
+  private dispatchOpenAsset(_eventId: string, assetId: string, assetType: string): void {
+    // Dispatch only the {pipelineId, facilityId} field the receiving
+    // drawers actually consume today (see PipelineStatusPanel and
+    // StorageFacilityMapPanel `openDetailHandler`). The row click
+    // jumps the user to the asset — they see the full disruption
+    // timeline for that asset and can locate the specific event
+    // visually. A future PR can add a `highlightEventId` contract
+    // with matching drawer-side rendering (scroll-into-view + visual
+    // emphasis); until then, emitting an unread field was a misleading
+    // API surface (Codex P2).
     const detail = assetType === 'storage'
-      ? { facilityId: assetId, highlightEventId: eventId }
-      : { pipelineId: assetId, highlightEventId: eventId };
+      ? { facilityId: assetId }
+      : { pipelineId: assetId };
     const eventName = assetType === 'storage'
       ? 'energy:open-storage-facility-detail'
       : 'energy:open-pipeline-detail';
