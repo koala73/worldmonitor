@@ -52,11 +52,23 @@ for (const [iso2, code] of Object.entries(COMTRADE_REPORTER_OVERRIDES)) {
 
 const ALL_REPORTERS = Object.values(UN_TO_ISO2).filter(c => c.length === 2);
 
-function parseRecords(data) {
+// Parse Comtrade imports into partner-value rows for HHI. Picks the
+// "best" year per reporter using a freshness-weighted rule:
+//   (a) prefer years with more partner rows (proxy for data completeness);
+//   (b) on ties, prefer the most recent year (newer data wins).
+//
+// PR 1 of plan 2026-04-24-002: period window is 4y (Y-1..Y-4). Late-
+// reporters like UAE, Oman, Bahrain publish Comtrade 1-2y behind; with
+// the original Y-1..Y-2 window their per-reporter query returned an
+// empty set and they fell through to IMPUTED on importConcentration.
+// The 4y window gives us a chance to pick a reporter's latest
+// non-empty year without degrading the result for on-time reporters
+// (they still get their newest year on the completeness tiebreak).
+export function parseRecords(data) {
   const records = data?.data ?? [];
-  if (!Array.isArray(records)) return [];
+  if (!Array.isArray(records)) return { rows: [], year: null };
   const valid = records.filter(r => r && Number(r.primaryValue ?? 0) > 0);
-  if (valid.length === 0) return [];
+  if (valid.length === 0) return { rows: [], year: null };
   const byPeriod = new Map();
   for (const r of valid) {
     const p = String(r.period ?? r.refPeriodId ?? '0');
@@ -75,10 +87,12 @@ function parseRecords(data) {
       bestPeriod = p;
     }
   }
-  return byPeriod.get(bestPeriod).map(r => ({
+  const rows = byPeriod.get(bestPeriod).map(r => ({
     partnerCode: String(r.partnerCode ?? r.partner2Code ?? '000'),
     primaryValue: Number(r.primaryValue ?? 0),
   }));
+  const yearNum = Number(bestPeriod);
+  return { rows, year: Number.isFinite(yearNum) ? yearNum : null };
 }
 
 // Comtrade transient 5xx (500/502/503/504) must be retried or the reporter
@@ -94,12 +108,24 @@ export function isTransientComtrade(status) {
 let _retrySleep = sleep;
 export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
 
+// 4-year period window. Plan 2026-04-24-002 §PR 1: late-reporters
+// (UAE, Oman, Bahrain and others) publish Comtrade 1-2y behind G7, so
+// a Y-1..Y-2 window silently drops them. Y-1..Y-4 keeps on-time
+// reporters' latest-year data AND picks up late reporters' most
+// recent published year.
+const PERIOD_WINDOW_YEARS = 4;
+export function buildPeriodParam(nowYear = new Date().getFullYear()) {
+  const years = [];
+  for (let i = 1; i <= PERIOD_WINDOW_YEARS; i++) years.push(nowYear - i);
+  return years.join(',');
+}
+
 export async function fetchImportsForReporter(reporterCode, apiKey) {
   const url = new URL(COMTRADE_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('flowCode', 'M');
   url.searchParams.set('cmdCode', 'TOTAL');
-  url.searchParams.set('period', `${new Date().getFullYear() - 1},${new Date().getFullYear() - 2}`);
+  url.searchParams.set('period', buildPeriodParam());
   url.searchParams.set('subscription-key', apiKey);
 
   async function once() {
@@ -135,8 +161,9 @@ export async function fetchImportsForReporter(reporterCode, apiKey) {
     break;
   }
 
-  if (!resp.ok) return { records: [], status: resp.status };
-  return { records: parseRecords(await resp.json()), status: resp.status };
+  if (!resp.ok) return { records: [], year: null, status: resp.status };
+  const { rows, year } = parseRecords(await resp.json());
+  return { records: rows, year, status: resp.status };
 }
 
 export function computeHhi(records) {
@@ -184,7 +211,7 @@ async function runWorker(apiKey, queue, countries, progressRef) {
     if (!unCode) { progressRef.skipped++; continue; }
 
     try {
-      const { records, status } = await fetchImportsForReporter(unCode, apiKey);
+      const { records, year, status } = await fetchImportsForReporter(unCode, apiKey);
       if (records.length === 0) {
         if (status && status !== 200) progressRef.errors++;
         progressRef.skipped++;
@@ -197,6 +224,11 @@ async function runWorker(apiKey, queue, countries, progressRef) {
             hhi: result.hhi,
             concentrated: result.hhi > 0.25,
             partnerCount: result.partnerCount,
+            // `year` is the reporter's latest non-empty Comtrade year inside
+            // the 4y window. Publication-lag auditors (operators + the
+            // cohort-sanity audit at scripts/audit-resilience-cohorts.mjs)
+            // read this to see which reporters are 2-3y stale vs current.
+            year,
             fetchedAt: new Date().toISOString(),
           };
           progressRef.fetched++;
