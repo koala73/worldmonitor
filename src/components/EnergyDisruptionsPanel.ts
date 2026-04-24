@@ -84,7 +84,46 @@ export class EnergyDisruptionsPanel extends Panel {
         'click a row to jump to the pipeline / storage panel with that event ' +
         'highlighted. See /docs/methodology/disruptions for the schema.',
     });
+
+    // Event delegation on the persistent `content` element. Panel.setContent
+    // debounces the DOM write by 150ms (see Panel.ts:1025), so attaching
+    // listeners immediately after setContent() in render() would target the
+    // stale DOM — chips, rows, and the ongoing-toggle button would all be
+    // silently non-interactive. Codex P1 on PR #3378.
+    //
+    // Delegating from the persistent parent sidesteps the debounce entirely:
+    // the handler uses `closest(...)` on the clicked element to route by
+    // data-attributes, so it works regardless of whether the DOM has
+    // flushed yet or has been re-rendered since the last filter change.
+    this.content.addEventListener('click', this.handleContentClick);
   }
+
+  private handleContentClick = (e: Event): void => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    const filterBtn = target.closest<HTMLButtonElement>('[data-filter-type]');
+    if (filterBtn) {
+      this.setTypeFilter(filterBtn.dataset.filterType ?? '');
+      return;
+    }
+
+    const ongoingBtn = target.closest<HTMLButtonElement>('[data-toggle-ongoing]');
+    if (ongoingBtn) {
+      this.toggleOngoingOnly();
+      return;
+    }
+
+    const row = target.closest<HTMLTableRowElement>('tr.ed-row');
+    if (row) {
+      const eventId = row.dataset.eventId;
+      const assetId = row.dataset.assetId;
+      const assetType = row.dataset.assetType;
+      if (eventId && assetId && assetType) {
+        this.dispatchOpenAsset(eventId, assetId, assetType);
+      }
+    }
+  };
 
   public async fetchData(): Promise<void> {
     try {
@@ -141,10 +180,14 @@ export class EnergyDisruptionsPanel extends Panel {
   private render(): void {
     if (!this.data) return;
 
-    const rows = this.filterEvents().map(e => this.renderRow(e)).join('');
+    // Compute once — previously filterEvents() ran twice per render, once
+    // for the row HTML and again for filteredCount. Trivial for 52 events
+    // but the redundant sort on every render was noise. Codex P2.
+    const filtered = this.filterEvents();
+    const rows = filtered.map(e => this.renderRow(e)).join('');
     const totalCount = this.data.events.length;
     const ongoingCount = this.data.events.filter(e => !e.endAt).length;
-    const filteredCount = this.filterEvents().length;
+    const filteredCount = filtered.length;
     const summary = this.activeTypeFilter || this.ongoingOnly
       ? `${filteredCount} shown · ${totalCount} total · ${ongoingCount} ongoing`
       : `${totalCount} events · ${ongoingCount} ongoing`;
@@ -208,24 +251,10 @@ export class EnergyDisruptionsPanel extends Panel {
       </style>
     `);
 
-    const table = this.element?.querySelector('.ed-table') as HTMLTableElement | null;
-    table?.querySelectorAll<HTMLTableRowElement>('tr.ed-row').forEach(tr => {
-      const eventId = tr.dataset.eventId;
-      const assetId = tr.dataset.assetId;
-      const assetType = tr.dataset.assetType;
-      if (!eventId || !assetId || !assetType) return;
-      // Pass `eventId` through even though the receiving drawers ignore it
-      // today — they consume only {pipelineId, facilityId}. Keeping the
-      // parameter plumbed makes a future event-highlight feature a
-      // single-site change in the drawer, not a re-plumb here.
-      tr.addEventListener('click', () => this.dispatchOpenAsset(eventId, assetId, assetType));
-    });
-
-    this.element?.querySelectorAll<HTMLButtonElement>('[data-filter-type]').forEach(btn => {
-      btn.addEventListener('click', () => this.setTypeFilter(btn.dataset.filterType ?? ''));
-    });
-    const ongoingButton = this.element?.querySelector<HTMLButtonElement>('[data-toggle-ongoing]');
-    ongoingButton?.addEventListener('click', () => this.toggleOngoingOnly());
+    // No inline listener attachment — the constructor registers a single
+    // delegated click handler on `this.content` that routes by data-
+    // attribute via `closest(...)`. Attaching listeners here would target
+    // the stale DOM because Panel.setContent() debounces by 150ms.
   }
 
   private dispatchOpenAsset(_eventId: string, assetId: string, assetType: string): void {
