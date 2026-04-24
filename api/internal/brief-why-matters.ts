@@ -368,23 +368,22 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
 
   // Cache identity.
   const hash = await hashBriefStory(story);
-  // v6: category-gated context + prompt-level RELEVANCE RULE (2026-04-22).
-  // Shadow review of 15 v2 pairs showed the analyst pattern-matching the
-  // loudest context numbers (VIX, forecast probabilities, FX stress) into
-  // every story regardless of editorial fit. Fix ships two layers:
-  //   1. structural — buildContextBlock now only exposes sections that are
-  //      editorially relevant to the story's category (humanitarian stories
-  //      don't see market data, aviation doesn't see macro, etc.).
-  //   2. prompt — WHY_MATTERS_ANALYST_SYSTEM_V2 adds a RELEVANCE RULE that
-  //      explicitly permits grounding in headline/description actors when
-  //      no context fact is a clean fit.
-  // Either layer changes the output distribution enough that v5 prose must
-  // be invalidated — otherwise half the tick's stories would still return
-  // the formulaic v5 strings for up to 24h until TTL.
-  const cacheKey = `brief:llm:whymatters:v6:${hash}`;
-  // Shadow v3→v4 for the same reason — a mid-rollout shadow record
-  // comparing v5-analyst vs gemini is not useful once v6 is live.
-  const shadowKey = `brief:llm:whymatters:shadow:v4:${hash}`;
+  // v7: RSS-description grounding (2026-04-24). story:track:v1 now carries
+  // a cleaned RSS description that rides through buildWhyMattersUserPrompt
+  // as the `description` field. Every v6 row was produced either without a
+  // description or with the cleaned-headline placeholder; with real article
+  // bodies arriving, the editorial voice and named-actor accuracy shift
+  // enough that v6 prose must be invalidated. hashBriefStory includes
+  // description in its hash material so identity naturally drifts too —
+  // this prefix bump is belt-and-braces for a clean cold-start on first
+  // tick after deploy.
+  //
+  // v6 history (kept for reference): category-gated context + prompt-level
+  // RELEVANCE RULE (2026-04-22) — those changes remain in v7.
+  const cacheKey = `brief:llm:whymatters:v7:${hash}`;
+  // Shadow v4→v5 for the same reason — a mid-rollout shadow record
+  // comparing v6 pre-grounding vs gemini is not useful once v7 is live.
+  const shadowKey = `brief:llm:whymatters:shadow:v5:${hash}`;
 
   // Cache read. Any infrastructure failure → treat as miss (logged).
   let cached: WhyMattersEnvelope | null = null;

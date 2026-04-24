@@ -36,17 +36,24 @@ import {
 import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
 
 /**
- * Sanitize the five story fields that flow into buildWhyMattersUserPrompt.
- * Mirrors server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts
+ * Sanitize the story fields that flow into buildWhyMattersUserPrompt and
+ * buildStoryDescriptionPrompt. Mirrors
+ * server/worldmonitor/intelligence/v1/brief-why-matters-prompt.ts
  * sanitizeStoryFields — the legacy Railway fallback path must apply the
  * same defense as the analyst endpoint, since this is exactly what runs
  * when the endpoint misses / returns null / throws.
+ *
+ * `description` is included because the RSS-description fix (2026-04-24)
+ * now threads untrusted article bodies into the description prompt as
+ * grounding context. Without sanitising it, a hostile feed's
+ * `<description>` is an unsanitised injection vector — the asymmetry with
+ * whyMatters (already sanitised) was a latent bug, fixed here.
  *
  * Kept local (not promoted to brief-llm-core.js) because llm-sanitize.js
  * only lives in server/_shared and the edge endpoint already sanitizes
  * before its own buildWhyMattersUserPrompt call.
  *
- * @param {{ headline?: string; source?: string; threatLevel?: string; category?: string; country?: string }} story
+ * @param {{ headline?: string; source?: string; threatLevel?: string; category?: string; country?: string; description?: string }} story
  */
 function sanitizeStoryForPrompt(story) {
   return {
@@ -55,6 +62,7 @@ function sanitizeStoryForPrompt(story) {
     threatLevel: sanitizeForPrompt(story.threatLevel ?? ''),
     category: sanitizeForPrompt(story.category ?? ''),
     country: sanitizeForPrompt(story.country ?? ''),
+    description: sanitizeForPrompt(story.description ?? ''),
   };
 }
 
@@ -131,10 +139,13 @@ export async function generateWhyMatters(story, deps) {
     }
   }
 
-  // Fallback path: legacy direct-Gemini chain with the v2 cache.
-  // v2 coexists with the endpoint's v3 cache during the rollout window;
-  // entries expire in ≤24h so there's no long-term cross-contamination.
-  const key = `brief:llm:whymatters:v2:${await hashBriefStory(story)}`;
+  // Fallback path: legacy direct-Gemini chain with the v3 cache.
+  // Bumped v2→v3 on 2026-04-24 alongside the RSS-description fix: rows
+  // keyed on the prior v2 prefix were produced from headline-only prompts
+  // and may reference hallucinated named actors. The prefix bump forces
+  // a clean cold-start on first tick after deploy; entries expire in
+  // ≤24h so the prior prefix ages out naturally without a DEL sweep.
+  const key = `brief:llm:whymatters:v3:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
@@ -173,20 +184,35 @@ const STORY_DESCRIPTION_SYSTEM =
   'no hedging. One sentence only.';
 
 /**
- * @param {{ headline: string; source: string; category: string; country: string; threatLevel: string }} story
+ * @param {{ headline: string; source: string; category: string; country: string; threatLevel: string; description?: string }} story
  * @returns {{ system: string; user: string }}
  */
 export function buildStoryDescriptionPrompt(story) {
-  const user = [
+  // Grounding context: when the RSS feed carried a real description
+  // (post-RSS-description fix, 2026-04-24), interpolate it as `Context:`
+  // between the metadata block and the "One editorial sentence" instruction.
+  // This is the actual fix for the named-actor hallucination class — the LLM
+  // now has the article's body to paraphrase instead of filling role-label
+  // headlines from its parametric priors. Skip when description is empty or
+  // normalise-equal to the headline (no grounding value; parser already
+  // filters this but the prompt builder is a second belt-and-braces check).
+  const normalise = /** @param {string} x */ (x) => x.trim().toLowerCase().replace(/\s+/g, ' ');
+  const rawDescription = typeof story.description === 'string' ? story.description.trim() : '';
+  const contextUseful = rawDescription.length > 0
+    && normalise(rawDescription) !== normalise(story.headline ?? '');
+  const contextLine = contextUseful ? `Context: ${rawDescription.slice(0, 400)}` : null;
+
+  const lines = [
     `Headline: ${story.headline}`,
     `Source: ${story.source}`,
     `Severity: ${story.threatLevel}`,
     `Category: ${story.category}`,
     `Country: ${story.country}`,
+    ...(contextLine ? [contextLine] : []),
     '',
     'One editorial sentence describing what happened (not why it matters):',
-  ].join('\n');
-  return { system: STORY_DESCRIPTION_SYSTEM, user };
+  ];
+  return { system: STORY_DESCRIPTION_SYSTEM, user: lines.join('\n') };
 }
 
 /**
@@ -232,9 +258,14 @@ export function parseStoryDescription(text, headline) {
  */
 export async function generateStoryDescription(story, deps) {
   // Shares hashBriefStory() with whyMatters — the key prefix
-  // (`brief:llm:description:v1:`) is what separates the two cache
-  // namespaces; the material is the same five fields.
-  const key = `brief:llm:description:v1:${await hashBriefStory(story)}`;
+  // (`brief:llm:description:v2:`) is what separates the two cache
+  // namespaces; the material is the six fields including description.
+  // Bumped v1→v2 on 2026-04-24 alongside the RSS-description fix so
+  // cached pre-grounding output (hallucinated named actors from
+  // headline-only prompts) is evicted. hashBriefStory itself includes
+  // description in the hash material, so content drift invalidates
+  // naturally too — the prefix bump is belt-and-braces.
+  const key = `brief:llm:description:v2:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string') {
@@ -244,7 +275,11 @@ export async function generateStoryDescription(story, deps) {
       if (valid) return valid;
     }
   } catch { /* cache miss is fine */ }
-  const { system, user } = buildStoryDescriptionPrompt(story);
+  // Sanitise the story BEFORE building the prompt. `description` (RSS body)
+  // is untrusted input; without sanitisation, a hostile feed's
+  // `<description>` would be an injection vector. The whyMatters path
+  // already does this — keep the two symmetric.
+  const { system, user } = buildStoryDescriptionPrompt(sanitizeStoryForPrompt(story));
   let text = null;
   try {
     text = await deps.callLLM(system, user, {
