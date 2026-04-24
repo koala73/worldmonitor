@@ -46,6 +46,7 @@ export async function summarizeArticle(
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
+  const MAX_BODY_LEN = 400;
 
   // Bounded raw headlines — used for cache key so browser/server keys agree.
   // Only structural patterns stripped (delimiters, control chars); semantic
@@ -60,6 +61,17 @@ export async function summarizeArticle(
   const sanitizedGeoContext = sanitizeForPrompt(
     typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '',
   );
+
+  // Bodies (RSS descriptions) paired 1:1 with headlines. Full injection
+  // sanitisation applied — bodies are untrusted upstream text identical in
+  // trust-level to geoContext. Padded to match headlines length so pair-wise
+  // cache-key identity stays stable. Callers may omit (old path) or pass a
+  // shorter/longer array (handler tolerates).
+  const rawBodies = Array.isArray(req.bodies) ? req.bodies : [];
+  const bodies = headlines.map((_, i) => {
+    const b = rawBodies[i];
+    return typeof b === 'string' ? sanitizeForPrompt(b.slice(0, MAX_BODY_LEN)) : '';
+  });
 
   // Provider credential check
   const skipReasons: Record<string, string> = {
@@ -101,7 +113,7 @@ export async function summarizeArticle(
   }
 
   try {
-    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined);
+    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
@@ -117,11 +129,20 @@ export async function summarizeArticle(
         // prompt is protected against semantic injection phrases.
         const promptHeadlines = sanitizeHeadlines(headlines);
         const uniqueHeadlines = deduplicateHeadlines(promptHeadlines.slice(0, 5));
+        // Pair bodies with the deduplicated top-5 headlines: walk the
+        // deduped order, find each headline's original index, and pluck the
+        // paired body from the sanitised `bodies` array. Preserves 1:1
+        // pairing through the dedup reorder; missing matches → empty body.
+        const uniqueBodies = uniqueHeadlines.map((h: string) => {
+          const idx = promptHeadlines.findIndex((ph: string) => ph === h);
+          return idx >= 0 ? (bodies[idx] ?? '') : '';
+        });
         const { systemPrompt, userPrompt } = buildArticlePrompts(promptHeadlines, uniqueHeadlines, {
           mode,
           geoContext: sanitizedGeoContext,
           variant,
           lang,
+          bodies: uniqueBodies,
         });
 
         const sanitizedAppend = systemAppend ? sanitizeForPrompt(systemAppend) : '';

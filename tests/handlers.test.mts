@@ -372,6 +372,56 @@ describe('buildArticlePrompts', () => {
     const result = buildArticlePrompts(headlines, unique, frOpts);
     assert.ok(result.systemPrompt.includes('FR'));
   });
+
+  // ── bodies (U6) ────────────────────────────────────────────────────────
+
+  it('omitting bodies yields byte-identical userPrompt to pre-U6 (R6 fallback)', () => {
+    const result = buildArticlePrompts(headlines, unique, baseOpts);
+    // Exact shape: numbered headlines joined with \n — no Context: lines.
+    const expectedHeadlineBlock = '1. Earthquake hits Tokyo\n2. SpaceX launch delayed';
+    assert.ok(result.userPrompt.includes(expectedHeadlineBlock));
+    assert.ok(!result.userPrompt.includes('Context:'), 'no bodies → no Context: line');
+  });
+
+  it('interleaves Context: lines per headline when bodies are supplied', () => {
+    const bodies = [
+      'A 7.1 magnitude quake struck offshore Tokyo early Tuesday.',
+      'SpaceX postponed the Starlink launch due to upper-level winds.',
+    ];
+    const result = buildArticlePrompts(headlines, unique, { ...baseOpts, bodies });
+    assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo\n    Context: A 7.1 magnitude quake'));
+    assert.ok(result.userPrompt.includes('2. SpaceX launch delayed\n    Context: SpaceX postponed'));
+  });
+
+  it('emits Context: only under headlines whose body is non-empty (partial fill)', () => {
+    const bodies = ['', 'SpaceX postponed the Starlink launch due to upper-level winds.'];
+    const result = buildArticlePrompts(headlines, unique, { ...baseOpts, bodies });
+    // Headline 1 has no body → no Context line under it.
+    assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo\n2.'));
+    // Headline 2 does.
+    assert.ok(result.userPrompt.includes('2. SpaceX launch delayed\n    Context: SpaceX postponed'));
+  });
+
+  it('clips body to 400 chars at prompt-builder level', () => {
+    const longBody = 'B'.repeat(800);
+    const result = buildArticlePrompts(['H'], ['H'], { ...baseOpts, bodies: [longBody] });
+    const match = result.userPrompt.match(/Context: (B+)/);
+    assert.ok(match, 'Context: present');
+    assert.strictEqual(match[1].length, 400, 'body clipped to 400');
+  });
+
+  it('translate mode ignores bodies (safety: translate path is headline[0]-only)', () => {
+    const translateOpts = { mode: 'translate', geoContext: '', variant: 'Spanish', lang: 'es' };
+    const result = buildArticlePrompts(headlines, unique, { ...translateOpts, bodies: ['unrelated body 1', 'unrelated body 2'] });
+    assert.ok(!result.userPrompt.includes('Context:'), 'translate mode must not interleave bodies');
+  });
+
+  it('bodies array shorter than uniqueHeadlines does not crash', () => {
+    const result = buildArticlePrompts(headlines, unique, { ...baseOpts, bodies: ['only first'] });
+    assert.ok(result.userPrompt.includes('1. Earthquake hits Tokyo\n    Context: only first'));
+    // Second headline with no paired body → no Context line under it.
+    assert.ok(result.userPrompt.includes('2. SpaceX launch delayed'));
+  });
 });
 
 
