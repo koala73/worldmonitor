@@ -82,6 +82,7 @@
 import { loadEnvFile, CHROME_UA, runSeed, SHARED_FX_FALLBACKS, getSharedFxRates } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
+import { loadReexportShareByCountry } from './shared/reexport-share-loader.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -618,8 +619,49 @@ function buildFxSymbolsForSwf() {
   return symbols;
 }
 
+/**
+ * Net-imports denominator transformation for the SWF rawMonths
+ * calculation.
+ *
+ *   netImports = grossImports × (1 − reexportShareOfImports)
+ *
+ * For countries without a re-export adjustment (reexportShareOfImports = 0),
+ * netImports === grossImports — status-quo behaviour.
+ *
+ * For re-export hubs, the fraction of gross imports that flows through
+ * as re-exports does not represent domestic consumption, so the SWF's
+ * "months of imports covered" should be measured against the RESIDUAL
+ * import stream that actually settles.
+ *
+ * Exported for unit tests that pin the denominator math independently
+ * of live-API fixtures.
+ *
+ * @param {number} grossImportsUsd  Total annual imports in USD (WB NE.IMP.GNFS.CD)
+ * @param {number} reexportShareOfImports  0..1 inclusive; 0 = no adjustment
+ * @returns {number} Net annual imports in USD
+ */
+export function computeNetImports(grossImportsUsd, reexportShareOfImports) {
+  if (!Number.isFinite(grossImportsUsd) || grossImportsUsd <= 0) {
+    throw new Error(`computeNetImports: grossImportsUsd must be positive finite, got ${grossImportsUsd}`);
+  }
+  const share = Number.isFinite(reexportShareOfImports) ? reexportShareOfImports : 0;
+  if (share < 0 || share >= 1) {
+    throw new Error(`computeNetImports: reexportShareOfImports must be in [0, 1), got ${share}`);
+  }
+  return grossImportsUsd * (1 - share);
+}
+
 export async function fetchSovereignWealth() {
   const manifest = loadSwfManifest();
+  // PR 3A §net-imports. Re-export share manifest: per-country fraction
+  // of gross imports that flow through as re-exports without settling
+  // as domestic consumption. Loaded from
+  // `scripts/shared/reexport-share-manifest.yaml`. Countries NOT in the
+  // manifest get `netImports = grossImports` (status-quo behaviour) —
+  // absence MUST NOT throw or zero the denominator. Load is local
+  // (YAML parse), not a Redis read: the manifest is code-adjacent and
+  // always available in the seeder's working directory.
+  const reexportShareByCountry = loadReexportShareByCountry();
   const [imports, wikipediaCache, fxRates] = await Promise.all([
     fetchAnnualImportsUsd(),
     loadWikipediaRankingsCache(),
@@ -629,6 +671,10 @@ export async function fetchSovereignWealth() {
   const countries = {};
   const sourceMix = { official: 0, ifswf: 0, wikipedia_list: 0, wikipedia_infobox: 0 };
   const unmatched = [];
+  // Provenance audit for the cohort-sanity report: which countries had a
+  // net-imports adjustment applied, and by how much. Keeps the scorer
+  // transparent about where denominators diverge from gross imports.
+  const reexportAdjustments = [];
 
   for (const [iso2, funds] of groupFundsByCountry(manifest)) {
     const importsEntry = imports[iso2];
@@ -644,6 +690,23 @@ export async function fetchSovereignWealth() {
       continue;
     }
 
+    // PR 3A net-imports denominator. For re-export hubs (UNCTAD-cited
+    // entries in the manifest), replace the gross-imports denominator
+    // with net imports via `computeNetImports`. Countries without a
+    // manifest entry get grossImports unchanged (share=0 → identity).
+    const reexportEntry = reexportShareByCountry.get(iso2);
+    const reexportShare = reexportEntry?.reexportShareOfImports ?? 0;
+    const denominatorImports = computeNetImports(importsEntry.importsUsd, reexportShare);
+    if (reexportShare > 0) {
+      reexportAdjustments.push({
+        country: iso2,
+        grossImportsUsd: importsEntry.importsUsd,
+        reexportShareOfImports: reexportShare,
+        netImportsUsd: denominatorImports,
+        sourceYear: reexportEntry?.year ?? null,
+      });
+    }
+
     const fundRecords = [];
     for (const fund of funds) {
       const aum = await fetchFundAum(fund, wikipediaCache, fxRates);
@@ -654,7 +717,7 @@ export async function fetchSovereignWealth() {
       sourceMix[aum.source] = (sourceMix[aum.source] ?? 0) + 1;
 
       const { access, liquidity, transparency } = fund.classification;
-      const rawMonths = (aum.aum / importsEntry.importsUsd) * 12;
+      const rawMonths = (aum.aum / denominatorImports) * 12;
       const effectiveMonths = rawMonths * access * liquidity * transparency;
 
       fundRecords.push({
@@ -688,7 +751,14 @@ export async function fetchSovereignWealth() {
     countries[iso2] = {
       funds: fundRecords,
       totalEffectiveMonths,
+      // `annualImports` preserved for backwards compatibility + audit.
+      // `denominatorImports` (post-PR-3A) is the value ACTUALLY used in
+      // rawMonths math. For countries without a re-export adjustment
+      // the two are identical; for UNCTAD-cited re-export hubs the
+      // latter is smaller.
       annualImports: importsEntry.importsUsd,
+      denominatorImports,
+      reexportShareOfImports: reexportShare,
       expectedFunds,
       matchedFunds,
       completeness,
@@ -707,6 +777,15 @@ export async function fetchSovereignWealth() {
     console.log(`[seed-sovereign-wealth]   ${tag} ${row.country} ${row.matched}/${row.expected}${extra}`);
   }
 
+  if (reexportAdjustments.length > 0) {
+    console.log(`[seed-sovereign-wealth] re-export adjustment applied to ${reexportAdjustments.length} country/countries:`);
+    for (const adj of reexportAdjustments) {
+      console.log(`[seed-sovereign-wealth]   ${adj.country} share=${adj.reexportShareOfImports.toFixed(2)} gross=$${(adj.grossImportsUsd / 1e9).toFixed(1)}B net=$${(adj.netImportsUsd / 1e9).toFixed(1)}B (source year ${adj.sourceYear ?? 'n/a'})`);
+    }
+  } else {
+    console.log(`[seed-sovereign-wealth] re-export manifest is empty; all countries use gross imports as the rawMonths denominator (status-quo behaviour)`);
+  }
+
   const usedWikipedia = sourceMix.wikipedia_list + sourceMix.wikipedia_infobox > 0;
   return {
     countries,
@@ -717,6 +796,11 @@ export async function fetchSovereignWealth() {
       wikipedia: usedWikipedia ? WIKIPEDIA_SOURCE_ATTRIBUTION : undefined,
     },
     summary,
+    // PR 3A §net-imports. Published for downstream audit (cohort-
+    // sanity release-gate + operator verification). Empty array means
+    // the re-export manifest has no entries yet; follow-up PRs populate
+    // it with UNCTAD-cited shares per country.
+    reexportAdjustments,
   };
 }
 

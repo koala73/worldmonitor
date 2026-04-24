@@ -19,12 +19,12 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
   || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
-// Bumped v10 → v11 in lockstep with server/worldmonitor/resilience/v1/
-// _shared.ts for the PR 2 §3.4 recovery-domain weight rebalance.
+// Bumped v11 → v12 in lockstep with server/worldmonitor/resilience/v1/
+// _shared.ts for PR 3A §net-imports denominator (plan 2026-04-24-002).
 // Seeder and server MUST agree on the prefix or the seeder writes
 // scores the handler will never read.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v11:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v11';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v12:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v12';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.
@@ -339,7 +339,7 @@ async function main() {
   if (!result.skipped && (result.recordCount ?? 0) > 0 && !result.rankingPresent) {
     // Observability only — seeder never writes seed-meta. Health will flag the
     // stale meta on its own if this persists across multiple cron ticks.
-    console.warn('[resilience-scores] resilience:ranking:v9 absent after rebuild attempt; handler-side coverage gate likely tripped. Next cron will retry.');
+    console.warn(`[resilience-scores] ${RESILIENCE_RANKING_CACHE_KEY} absent after rebuild attempt; handler-side coverage gate likely tripped. Next cron will retry.`);
   }
 }
 

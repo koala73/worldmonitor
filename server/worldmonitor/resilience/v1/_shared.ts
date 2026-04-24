@@ -125,13 +125,18 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // `buildResilienceScore`, read by `ensureResilienceScoreCached` and
 // `getCachedResilienceScores` to reject stale-formula hits at serve
 // time. See the `CacheFormulaTag` comment block.
-// v11 bump for PR 2 §3.4 recovery-domain weight rebalance. The
-// `_formula` tag only distinguishes 'd6' vs 'pc' and does NOT detect
-// intra-'d6' coefficient changes like a per-dim weight adjustment, so
-// a bare flag-guard would leave pre-deploy equal-weight scores served
-// for up to the full 6h TTL. Prefix bump forces a clean slate —
-// matches the established v9→v10 pattern for formula-changing deploys.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v11:';
+// v12 bump for PR 3A §net-imports denominator (plan
+// `docs/plans/2026-04-24-002-fix-resilience-cohort-ranking-structural-
+// audit-plan.md`). The SWF seeder's rawMonths denominator changed
+// from grossImports to grossImports × (1 − reexportShareOfImports)
+// for countries in the re-export share manifest; totalEffectiveMonths
+// values thus shift for those countries. The `_formula` tag (d6/pc)
+// does NOT detect intra-'d6' seed-payload changes, so without a
+// prefix bump v11 entries would serve stale pre-fix scores for the
+// full 6h TTL post-deploy. v12 forces a clean slate — matches the
+// established v9→v10 and v10→v11 patterns for formula-affecting
+// deploys.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v12:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -143,19 +148,23 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v11:';
 // untagged members (from older deploys that happen to survive on v4
 // readers) decode as `d6` — matching the only formula that existed
 // before this PR — so the filter stays correct in either direction.
-// v6 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v10→v11 for
-// PR 2 §3.4 recovery-domain weight rebalance. Pre-bump history points
-// were written against equal-weight scoring; trend + change30d math
-// mixes them with post-bump points otherwise.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v6:';
-// Bumped in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v9 → v10) for
-// a clean slate at PR deploy. As with the score prefix, the version
-// bump is a belt — the suspenders are the `_formula` tag on the
-// ranking payload itself, written via stampRankingCacheTag and read
-// via rankingCacheTagMatches in the ranking handler, which force a
-// recompute-and-publish on a cross-formula cache hit rather than
+// v7 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v11→v12 for
+// PR 3A §net-imports denominator. Pre-bump history points were written
+// against gross-imports-denominated scores; mixing them with net-imports
+// points inside a rolling 30-day window would manufacture false
+// "falling" trends for re-export hubs on day one of deploy (history's
+// moving average mixes v11 scores from day -29 with v12 scores from
+// day 0, exactly the scenario the cache-prefix-bump-propagation-scope
+// skill warns against). Rotation forces a clean 30-day window.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v7:';
+// v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
+// for PR 3A §net-imports denominator. As with the score prefix, the
+// version bump is a belt — the suspenders are the `_formula` tag on
+// the ranking payload itself, written via stampRankingCacheTag and
+// read via rankingCacheTagMatches in the ranking handler, which force
+// a recompute-and-publish on a cross-formula cache hit rather than
 // serving the stale ranking for up to the 12h ranking TTL.
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v11';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v12';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';

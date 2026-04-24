@@ -15,6 +15,11 @@ const EXPECTED_ENTRIES = [
   { label: 'External-Debt', script: 'seed-recovery-external-debt.mjs', seedMetaKey: 'resilience:recovery:external-debt' },
   { label: 'Import-HHI', script: 'seed-recovery-import-hhi.mjs', seedMetaKey: 'resilience:recovery:import-hhi' },
   { label: 'Fuel-Stocks', script: 'seed-recovery-fuel-stocks.mjs', seedMetaKey: 'resilience:recovery:fuel-stocks' },
+  // PR 3A §net-imports denominator. Must appear BEFORE Sovereign-Wealth
+  // in the bundle so the SWF seeder reads freshly-written re-export
+  // share data in the same cron tick. Updated to match the current
+  // bundle ordering; moving this entry breaks the SWF denominator math.
+  { label: 'Reexport-Share', script: 'seed-recovery-reexport-share.mjs', seedMetaKey: 'resilience:recovery:reexport-share' },
   { label: 'Sovereign-Wealth', script: 'seed-sovereign-wealth.mjs', seedMetaKey: 'resilience:recovery:sovereign-wealth' },
 ];
 

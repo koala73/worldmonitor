@@ -12,5 +12,11 @@ await runBundle('resilience-recovery', [
   // and the quarterly revision cadence documented in the manifest. Longer
   // timeout than peers because Tier 3b (per-fund Wikipedia infobox) is N
   // network round-trips per manifest fund the list article misses.
+  // PR 3A §net-imports denominator. Re-export share manifest is read by
+  // the SWF seeder to convert gross annual imports into NET annual
+  // imports before computing rawMonths. Must run BEFORE Sovereign-Wealth
+  // so the SWF seeder sees the freshly-published reexport-share key.
+  // Sub-second runtime (reads a ~100-line YAML); short timeout.
+  { label: 'Reexport-Share', script: 'seed-recovery-reexport-share.mjs', seedMetaKey: 'resilience:recovery:reexport-share', canonicalKey: 'resilience:recovery:reexport-share:v1', intervalMs: 30 * DAY, timeoutMs: 60_000 },
   { label: 'Sovereign-Wealth', script: 'seed-sovereign-wealth.mjs', seedMetaKey: 'resilience:recovery:sovereign-wealth', canonicalKey: 'resilience:recovery:sovereign-wealth:v1', intervalMs: 30 * DAY, timeoutMs: 600_000 },
 ]);
