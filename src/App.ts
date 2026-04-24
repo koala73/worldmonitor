@@ -40,6 +40,10 @@ import type { BigMacPanel } from '@/components/BigMacPanel';
 import type { FuelPricesPanel } from '@/components/FuelPricesPanel';
 import type { FaoFoodPriceIndexPanel } from '@/components/FaoFoodPriceIndexPanel';
 import type { OilInventoriesPanel } from '@/components/OilInventoriesPanel';
+import type { PipelineStatusPanel } from '@/components/PipelineStatusPanel';
+import type { StorageFacilityMapPanel } from '@/components/StorageFacilityMapPanel';
+import type { FuelShortagePanel } from '@/components/FuelShortagePanel';
+import type { EnergyDisruptionsPanel } from '@/components/EnergyDisruptionsPanel';
 import type { ClimateNewsPanel } from '@/components/ClimateNewsPanel';
 import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
 import type { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
@@ -323,6 +327,29 @@ export class App {
     if (shouldPrime('oil-inventories')) {
       const panel = this.state.panels['oil-inventories'] as OilInventoriesPanel | undefined;
       if (panel) primeTask('oil-inventories', () => panel.fetchData());
+    }
+    // Energy Atlas panels — each self-fetches via bootstrap cache + RPC fallback
+    // (scripts/seed-pipelines-{gas,oil}.mjs, seed-storage-facilities.mjs,
+    // seed-fuel-shortages.mjs, seed-energy-disruptions.mjs). Without these
+    // primeTask wires the panels sit at showLoading() forever because
+    // Panel's constructor calls showLoading() but nothing else triggers
+    // fetchData() on attach — App.ts's primeTask table is the sole
+    // near-viewport kickoff path.
+    if (shouldPrime('pipeline-status')) {
+      const panel = this.state.panels['pipeline-status'] as PipelineStatusPanel | undefined;
+      if (panel) primeTask('pipeline-status', () => panel.fetchData());
+    }
+    if (shouldPrime('storage-facility-map')) {
+      const panel = this.state.panels['storage-facility-map'] as StorageFacilityMapPanel | undefined;
+      if (panel) primeTask('storage-facility-map', () => panel.fetchData());
+    }
+    if (shouldPrime('fuel-shortages')) {
+      const panel = this.state.panels['fuel-shortages'] as FuelShortagePanel | undefined;
+      if (panel) primeTask('fuel-shortages', () => panel.fetchData());
+    }
+    if (shouldPrime('energy-disruptions')) {
+      const panel = this.state.panels['energy-disruptions'] as EnergyDisruptionsPanel | undefined;
+      if (panel) primeTask('energy-disruptions', () => panel.fetchData());
     }
     if (shouldPrime('climate-news')) {
       const panel = this.state.panels['climate-news'] as ClimateNewsPanel | undefined;
