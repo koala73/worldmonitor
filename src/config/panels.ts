@@ -434,6 +434,15 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   bonds: { name: 'Fixed Income', enabled: true, priority: 1 },
   commodities: { name: 'Metals & Materials', enabled: true, priority: 1 },
   'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
+  // Required for finance variant's pipeline-click path. FINANCE_MAP_LAYERS
+  // has `pipelines: true`, and PR #3366 unified all variants on
+  // createEnergyPipelinesLayer which dispatches energy:open-pipeline-detail
+  // on click. The listener lives in PipelineStatusPanel — if the key is
+  // absent from this panel set, panel-layout never instantiates it and
+  // the click is a silent no-op. Default disabled so the panel slot
+  // doesn't auto-open; users invoke it by clicking a pipeline on the map
+  // (or via CMD+K). Codex P1.
+  'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: false, priority: 2 },
   'commodities-news': { name: 'Commodities News', enabled: true, priority: 2 },
   crypto: { name: 'Crypto & Digital Assets', enabled: true, priority: 1 },
   'crypto-news': { name: 'Crypto News', enabled: true, priority: 2 },
@@ -766,6 +775,11 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   markets: { name: 'Commodity Markets', enabled: true, priority: 1 },
   commodities: { name: 'Live Metals & Materials', enabled: true, priority: 1 },
   'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
+  // Required for commodity variant's pipeline-click path — see FINANCE_PANELS
+  // for the same rationale: `pipelines: true` + unified Redis-backed layer +
+  // energy:open-pipeline-detail dispatch means the listener must be present
+  // for the click to do anything. Codex P1.
+  'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: false, priority: 2 },
   'oil-inventories': { name: 'Oil Inventories', enabled: true, priority: 60 },
   'gold-intelligence': { name: 'Gold Intelligence', enabled: true, priority: 60 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
