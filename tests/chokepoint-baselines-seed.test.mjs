@@ -123,14 +123,38 @@ describe('fixture parity (tests/fixtures/chokepoint-baselines-sample.json)', () 
     assert.equal(fixture.chokepoints.length, payload.chokepoints.length);
   });
 
-  it('fixture chokepoints match seeded CHOKEPOINTS position-by-position (id, relayId, mbd)', () => {
-    for (let i = 0; i < CHOKEPOINTS.length; i++) {
-      const seed = CHOKEPOINTS[i];
+  it('fixture chokepoints match buildPayload().chokepoints on every contracted field', () => {
+    // Validate against the seeded PAYLOAD (the actual wire-level contract
+    // the cron writes to Redis), not against the raw CHOKEPOINTS constant.
+    // This matters because buildPayload could transform entries in a
+    // future refactor (coercion, ordering, normalization) — we want the
+    // fixture to track the emitted shape, not the internal source array.
+    //
+    // Validates every field the fixture carries: id, relayId, name, mbd,
+    // lat, lon. Previously only id/relayId/mbd were checked, leaving
+    // lat/lon/name drifts invisible despite being in the fixture.
+    const payload = buildPayload();
+    for (let i = 0; i < payload.chokepoints.length; i++) {
+      const seed = payload.chokepoints[i];
       const fix = fixture.chokepoints[i];
-      assert.equal(fix.id, seed.id, `position ${i}: id drift (seed=${seed.id} fixture=${fix.id})`);
-      assert.equal(fix.relayId, seed.relayId, `${seed.id}: relayId drift`);
-      assert.equal(fix.mbd, seed.mbd, `${seed.id}: mbd drift (seed=${seed.mbd} fixture=${fix.mbd})`);
+      assert.equal(fix.id,       seed.id,       `position ${i}: id drift (seed=${seed.id} fixture=${fix.id})`);
+      assert.equal(fix.relayId,  seed.relayId,  `${seed.id}: relayId drift`);
+      assert.equal(fix.name,     seed.name,     `${seed.id}: name drift (seed="${seed.name}" fixture="${fix.name}")`);
+      assert.equal(fix.mbd,      seed.mbd,      `${seed.id}: mbd drift (seed=${seed.mbd} fixture=${fix.mbd})`);
+      assert.equal(fix.lat,      seed.lat,      `${seed.id}: lat drift (seed=${seed.lat} fixture=${fix.lat})`);
+      assert.equal(fix.lon,      seed.lon,      `${seed.id}: lon drift (seed=${seed.lon} fixture=${fix.lon})`);
     }
+  });
+
+  it('fixture entry key set matches buildPayload entry key set exactly', () => {
+    // Catches the case where a future buildPayload adds a new field
+    // (e.g. mbd_source, last_reviewed) without updating the fixture —
+    // or vice versa. Keeps schema evolution deliberate and reviewed.
+    const payload = buildPayload();
+    const seedKeys  = Object.keys(payload.chokepoints[0]).sort();
+    const fixKeys   = Object.keys(fixture.chokepoints[0]).sort();
+    assert.deepEqual(fixKeys, seedKeys,
+      `entry key set drift — seed keys: [${seedKeys.join(', ')}], fixture keys: [${fixKeys.join(', ')}]`);
   });
 
   it('fixture carries a non-empty updatedAt placeholder (format only, not value)', () => {
