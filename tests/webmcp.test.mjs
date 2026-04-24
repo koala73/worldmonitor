@@ -15,18 +15,29 @@ const WEBMCP_PATH = resolve(ROOT, 'src/services/webmcp.ts');
 const src = readFileSync(WEBMCP_PATH, 'utf-8');
 
 describe('webmcp.ts: draft-spec contract', () => {
-  it('feature-detects navigator.modelContext before calling provideContext', () => {
-    // The detection gate must run before any call. If a future refactor
-    // inverts the order, this regex stops matching and fails.
+  it('prefers registerTool (Chrome-implemented form) over provideContext (legacy)', () => {
+    // isitagentready.com scans for navigator.modelContext.registerTool calls.
+    // The registerTool branch must come first; provideContext is a legacy
+    // fallback. If a future refactor inverts order, the scanner will miss us.
+    const registerIdx = src.search(/typeof provider\.registerTool === 'function'/);
+    const provideIdx = src.search(/typeof provider\.provideContext === 'function'/);
+    assert.ok(registerIdx >= 0, 'registerTool branch missing');
+    assert.ok(provideIdx >= 0, 'provideContext fallback missing');
+    assert.ok(
+      registerIdx < provideIdx,
+      'registerTool must be checked before provideContext (Chrome-impl form is the primary target)',
+    );
+  });
+
+  it('uses AbortController for registerTool teardown (draft-spec pattern)', () => {
     assert.match(
       src,
-      /typeof provider\.provideContext !== 'function'\) return false[\s\S]+?provider\.provideContext\(/,
-      'feature detection must short-circuit before provideContext is invoked',
+      /const controller = new AbortController\(\)[\s\S]+?provider\.registerTool\(tool, \{ signal: controller\.signal \}\)/,
     );
   });
 
   it('guards against non-browser runtimes (navigator undefined)', () => {
-    assert.match(src, /typeof navigator === 'undefined'\) return false/);
+    assert.match(src, /typeof navigator === 'undefined'\) return null/);
   });
 
   it('ships at least two tools (acceptance criterion: >=2 tools)', () => {
@@ -83,11 +94,38 @@ describe('webmcp.ts: tool behaviour (source-level invariants)', () => {
 describe('webmcp App.ts binding: guard against silent success', () => {
   const appSrc = readFileSync(resolve(ROOT, 'src/App.ts'), 'utf-8');
   const bindingBlock = appSrc.match(
-    /registerWebMcpTools\(\{[\s\S]+?\}\);\s*\}\);/,
+    /registerWebMcpTools\(\{[\s\S]+?\}\);/,
   );
 
   it('the WebMCP binding block exists in App.ts init', () => {
     assert.ok(bindingBlock, 'could not locate registerWebMcpTools(...) in App.ts');
+  });
+
+  it('is imported statically (not via dynamic import)', () => {
+    // Scanner timing: dynamic import defers registration past the probe
+    // window. A static import lets the synchronous call at init-start run
+    // before any await in init(), catching the first scanner probe.
+    assert.match(
+      appSrc,
+      /^import \{ registerWebMcpTools \} from '@\/services\/webmcp';$/m,
+      'registerWebMcpTools must be imported statically',
+    );
+    assert.doesNotMatch(
+      appSrc,
+      /import\(['"]@\/services\/webmcp['"]\)/,
+      "no dynamic import('@/services/webmcp') — defers past scanner probe window",
+    );
+  });
+
+  it('is called before the first await in init()', () => {
+    const initBody = appSrc.match(/public async init\(\): Promise<void> \{([\s\S]+?)\n  \}/);
+    assert.ok(initBody, 'could not locate init() body');
+    const preAwait = initBody[1].split(/\n\s+await\s/, 2)[0];
+    assert.match(
+      preAwait,
+      /registerWebMcpTools\(/,
+      'registerWebMcpTools must be invoked before the first await in init()',
+    );
   });
 
   it('openSearch binding throws when searchModal is absent', () => {

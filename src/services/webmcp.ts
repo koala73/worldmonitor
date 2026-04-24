@@ -1,11 +1,11 @@
 // WebMCP — in-page agent tool surface.
 //
-// Registers a small set of tools via `navigator.modelContext.provideContext`
-// so that browsers implementing the draft WebMCP spec
-// (webmachinelearning.github.io/webmcp) can drive the site the same way a
-// human does. Tools MUST route through existing UI code paths so agents
-// inherit every auth/entitlement gate a browser user is subject to — they
-// are not a backdoor around the paywall.
+// Registers a small set of tools via `navigator.modelContext.registerTool`
+// so browsers implementing the WebMCP spec as shipped in Chrome
+// (developer.chrome.com/blog/webmcp-epp, webmachinelearning.github.io/webmcp)
+// can drive the site the same way a human does. Tools MUST route through
+// existing UI code paths so agents inherit every auth/entitlement gate a
+// browser user is subject to — they are not a backdoor around the paywall.
 //
 // Current tools mirror the static Agent Skills set (#3310) for consistency:
 //   1. openCountryBrief({ iso2 }) — opens the country deep-dive panel.
@@ -14,6 +14,11 @@
 // The two v1 tools don't branch on auth state, so a single registration at
 // init time is correct. Any future Pro-only tool MUST re-register on
 // sign-in/sign-out (see feedback_reactive_listeners_must_be_symmetric.md).
+//
+// Scanner compatibility: isitagentready.com probes for
+// `navigator.modelContext.registerTool` invocations during initial page load.
+// Register synchronously from App.ts (no dynamic import, no init-phase
+// awaits) so the probe finds the tools before it gives up.
 
 import { track } from './analytics';
 
@@ -36,7 +41,11 @@ interface WebMcpTool {
 }
 
 interface WebMcpProvider {
-  provideContext(ctx: { tools: WebMcpTool[] }): void;
+  // Chrome-implemented form — one call per tool, unregistration via AbortSignal.
+  registerTool?: (tool: WebMcpTool, options?: { signal?: AbortSignal }) => void;
+  // Older editor-draft form — kept as a compatibility fallback for browsers
+  // shipping the batch-registration shape. Harmless no-op when absent.
+  provideContext?: (ctx: { tools: WebMcpTool[] }) => void;
 }
 
 interface NavigatorWithWebMcp extends Navigator {
@@ -118,13 +127,31 @@ export function buildWebMcpTools(app: WebMcpAppBindings): WebMcpTool[] {
 
 // Registers tools with the browser's WebMCP provider, if present.
 // Safe to call on every load: no-op in browsers without `navigator.modelContext`.
-// Returns true if registration actually happened (for tests / telemetry).
-export function registerWebMcpTools(app: WebMcpAppBindings): boolean {
-  if (typeof navigator === 'undefined') return false;
+// Returns an AbortController whose `.abort()` tears down every registration
+// (for the `registerTool` path); null when WebMCP is absent or only the
+// legacy `provideContext` form is available (no per-call teardown in that shape).
+export function registerWebMcpTools(app: WebMcpAppBindings): AbortController | null {
+  if (typeof navigator === 'undefined') return null;
   const provider = (navigator as NavigatorWithWebMcp).modelContext;
-  if (!provider || typeof provider.provideContext !== 'function') return false;
+  if (!provider) return null;
+
   const tools = buildWebMcpTools(app);
-  provider.provideContext({ tools });
-  track('webmcp-registered', { toolCount: tools.length });
-  return true;
+
+  // Chrome-implemented form — preferred, and the shape isitagentready.com scans for.
+  if (typeof provider.registerTool === 'function') {
+    const controller = new AbortController();
+    for (const tool of tools) {
+      provider.registerTool(tool, { signal: controller.signal });
+    }
+    track('webmcp-registered', { toolCount: tools.length, api: 'registerTool' });
+    return controller;
+  }
+
+  // Older editor-draft form — batch registration, no per-call teardown.
+  if (typeof provider.provideContext === 'function') {
+    provider.provideContext({ tools });
+    track('webmcp-registered', { toolCount: tools.length, api: 'provideContext' });
+  }
+
+  return null;
 }

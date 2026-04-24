@@ -64,6 +64,7 @@ import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, ty
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
+import { registerWebMcpTools } from '@/services/webmcp';
 import { SearchManager } from '@/app/search-manager';
 import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
@@ -803,6 +804,29 @@ export class App {
 
   public async init(): Promise<void> {
     const initStart = performance.now();
+
+    // WebMCP — register synchronously before any init awaits so agent
+    // scanners (isitagentready.com, in-browser agents) find the tools on
+    // their first probe. No-op in browsers without navigator.modelContext.
+    // Bindings close over lazy refs; when a tool fires later and its UI
+    // target is still null they throw, and the invocation-logging shim in
+    // webmcp.ts surfaces that as isError:true instead of a silent success.
+    registerWebMcpTools({
+      openCountryBriefByCode: async (code, country) => {
+        if (!this.state.countryBriefPage) {
+          throw new Error('Country brief panel is not initialised yet');
+        }
+        await this.countryIntel.openCountryBriefByCode(code, country);
+      },
+      resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
+      openSearch: () => {
+        if (!this.state.searchModal) {
+          throw new Error('Search modal is not initialised yet');
+        }
+        this.state.searchModal.open();
+      },
+    });
+
     await initDB();
     await initI18n();
     const aiFlow = getAiFlowSettings();
@@ -1032,34 +1056,6 @@ export class App {
     this.searchManager.init();
     this.eventHandlers.setupMapLayerHandlers();
     this.countryIntel.init();
-
-    // WebMCP — expose a small set of UI tools to in-page agents.
-    // Feature-detects `navigator.modelContext`; no-ops in browsers without it.
-    // Registered after search+country modules so the bound callbacks have real
-    // targets; tools intentionally route through the same paths a click takes
-    // so paywall/auth gates still apply to agent invocations.
-    //
-    // Bindings throw when a required UI target is missing so the tool's
-    // withInvocationLogging shim catches it and reports ok:false instead of
-    // a misleading "Opened …" success — the underlying UI methods silently
-    // no-op on null targets.
-    void import('@/services/webmcp').then(({ registerWebMcpTools }) => {
-      registerWebMcpTools({
-        openCountryBriefByCode: async (code, country) => {
-          if (!this.state.countryBriefPage) {
-            throw new Error('Country brief panel is not initialised yet');
-          }
-          await this.countryIntel.openCountryBriefByCode(code, country);
-        },
-        resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
-        openSearch: () => {
-          if (!this.state.searchModal) {
-            throw new Error('Search modal is not initialised yet');
-          }
-          this.state.searchModal.open();
-        },
-      });
-    });
 
     // Phase 5: Event listeners + URL sync
     this.eventHandlers.init();
