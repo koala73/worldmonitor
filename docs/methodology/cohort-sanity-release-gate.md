@@ -96,6 +96,61 @@ Recommended environment variables:
 | `TOP_N` | 60 | Rows to render in the full-ranking table |
 | `MOVERS_N` | 30 | Rows to render in the movers table |
 | `CONCURRENCY` | 6 | Parallel score-endpoint fetches |
+| `STRICT` | unset | `1` = fail-closed. Report still writes, then exit 3 on fetch failures/missing members, exit 4 on formula-mode drift, exit 0 otherwise. Recommended for release-gate automation. |
+| `CONTRIB_TOLERANCE` | 1.5 | Points of drift tolerated between `Σ contributions` and `overallScore` before formula-mode drift is declared. |
+
+### Fail-closed semantics
+
+The audit is fail-closed on two axes. Both are implemented in
+`scripts/audit-resilience-cohorts.mjs` and documented here so that a
+release-gate operator cannot shortcut them by reading only the
+rendered tables.
+
+1. **Fetch failures / missing cohort members.** When a per-country score
+   fetch fails (HTTP 4xx/5xx, timeout, DNS), the country is NOT silently
+   dropped. The failure is recorded in the run's `failures` map, banner'd
+   as a ⛔ block at the top of the report, and rendered in a dedicated
+   "Fetch failures / missing members" section that is ALWAYS present
+   (even when empty, so an operator learns to look for it). Fixture mode
+   uses the same mechanism for cohort members absent from the fixture.
+
+2. **Formula-mode mismatch (`RESILIENCE_PILLAR_COMBINE_ENABLED`).** The
+   contribution decomposition is a domain-weighted roll-up that is ONLY
+   mathematically valid when `overallScore` is computed via the legacy
+   `sum(domain.score * domain.weight)` path. Once pillar combine is on,
+   `overallScore = penalizedPillarScore(pillars)` — a non-linear
+   function of the dim scores — and the decomposition rows no longer
+   sum to overall. The harness detects this by taking any country with:
+
+   - `sum(domain.weight)` within 0.05 of 1.0 (complete response)
+   - every dim at `coverage ≥ 0.9` (stable share math)
+
+   and checking `|Σ contributions - overallScore| ≤ CONTRIB_TOLERANCE`.
+   If more than 50% of ≥ 3 eligible countries drift beyond the
+   tolerance, a ⛔ blocker banner fires at report top AND a
+   "Formula-mode diagnostic" section prints the first three offenders
+   with their Σ vs overall numbers. Until the harness grows a
+   pillar-aware decomposition, the contribution tables under pillar
+   mode must be treated as *"legacy-formula reference only"*.
+
+### Formula mode
+
+The operator guide for what to do when the formula-mode banner fires:
+
+- **If the banner is a false positive** (e.g. scorer changed a dim
+  weight and the audit mirror in `scripts/audit-resilience-cohorts.mjs`
+  `DIM_WEIGHTS` is stale): update the mirror, re-run. This is the
+  `production-logic-mirror-silent-divergence` pattern — the mirror
+  must move with the scorer.
+- **If pillar combine actually activated:** stop using the
+  contribution-decomposition tables for this release gate. Fall back
+  to the per-dimension score table + the construct invariants test +
+  movers review. File a follow-up to grow the harness a pillar-aware
+  decomposition before the next methodology PR under pillar mode.
+- **Exit codes under `STRICT=1`:** `3` = fetch/missing, `4` = formula
+  mode, `0` = all clear. These are distinct so automation can
+  differentiate "the infra is broken" from "the code path is no
+  longer decomposable."
 
 ## How to read the report
 

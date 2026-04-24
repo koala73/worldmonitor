@@ -46,6 +46,23 @@
 // and builds the report without any network calls. Useful for offline runs
 // and for regression-comparing the audit output itself across scorer
 // changes (diff the Markdown).
+//
+// Failure modes the script explicitly surfaces (NOT silent-drops):
+//   1. Per-country fetch failure (HTTP 4xx/5xx, timeout). Tracked in a
+//      `failures` map, rendered as a top-of-report blocker banner and a
+//      dedicated "Fetch failures / missing members" section, so a
+//      reviewer skimming the artifact cannot miss that the cohort was
+//      only partially audited.
+//   2. Formula-mode mismatch. When `RESILIENCE_PILLAR_COMBINE_ENABLED`
+//      is active, `overallScore = penalizedPillarScore(pillars)` — a
+//      non-linear function of the dim scores — and the contribution
+//      decomposition (domain-weighted) no longer sums to overall. The
+//      harness detects this via Σ-contribution vs overall drift and
+//      flags it at report top so the operator knows the decomposition
+//      rows are reference-only.
+// STRICT=1 exits non-zero (code 3 for fetch failures, 4 for formula
+// mismatch) AFTER writing the report, so release-gate automation can't
+// treat a partial/stale audit as green.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -76,6 +93,15 @@ const OUT_PATH = process.env.OUT || '';
 const TOP_N_FULL_RANKING = Number(process.env.TOP_N || 60);
 const MOVERS_N = Number(process.env.MOVERS_N || 30);
 const CONCURRENCY = Number(process.env.CONCURRENCY || 6);
+// STRICT=1 makes the audit fail-closed: any per-country fetch failure OR any
+// detected formula-mode change (pillar-combine on, contribution rows
+// invalid) exits non-zero so the release-gate operator cannot accidentally
+// ship a partial / misleading report. Default (STRICT unset) still renders
+// but banners the issue prominently at report top.
+const STRICT = process.env.STRICT === '1' || process.env.STRICT === 'true';
+// Tolerance for "sum(contributions) vs overallScore" equality check used
+// to detect pillar-combine formula mode (see decomposeContributions).
+const CONTRIBUTION_SUM_TOLERANCE = Number(process.env.CONTRIB_TOLERANCE || 1.5);
 
 // Named cohorts. Membership reflects the construct question each cohort
 // answers — not "who should rank where." See release-gate doc for rationale.
@@ -159,6 +185,7 @@ async function fetchScore(countryCode) {
 
 async function fetchScoresConcurrent(countryCodes) {
   const scores = new Map();
+  const failures = new Map(); // cc → error message
   const queue = [...countryCodes];
   async function worker() {
     while (queue.length) {
@@ -169,13 +196,16 @@ async function fetchScoresConcurrent(countryCodes) {
         scores.set(cc, data);
       } catch (err) {
         console.error(`[audit] ${cc} failed: ${err.message}`);
-        scores.set(cc, null);
+        failures.set(cc, err.message || 'unknown fetch error');
+        // Do NOT insert null into scores — silent-drop was the P1 bug.
+        // Failures are tracked distinctly so the report can banner them
+        // and STRICT mode can exit non-zero.
       }
     }
   }
   const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker);
   await Promise.all(workers);
-  return scores;
+  return { scores, failures };
 }
 
 function round1(n) {
@@ -346,15 +376,169 @@ function section(label, body) {
   return `\n## ${label}\n\n${body}\n`;
 }
 
-function buildReport({ ranking, scoreMap, nameMap, movers, capturedAt, sha }) {
+// Detect whether overall is computed via the legacy domain-weighted
+// formula (contribution decomposition is valid) or the pillar-combine
+// formula (penalizedPillarScore — decomposition is NOT valid and the
+// operator MUST know). Signal: |Σ contributions - overallScore| across
+// countries with COMPLETE domain coverage exceeds
+// CONTRIBUTION_SUM_TOLERANCE. "Complete" requires:
+//   (a) sum(domain.weight) within 0.05 of 1.0 (all 6 domains present)
+//   (b) every dim has coverage ≥ 0.9 (so the dim-share math is stable)
+// Both gates prevent false positives from small/partial fixtures or
+// live-API responses where the call happened to land mid-backfill.
+function detectFormulaMode(scoreMap) {
+  let diffsExceeded = 0;
+  let checked = 0;
+  const examples = [];
+  for (const [cc, doc] of scoreMap.entries()) {
+    if (!doc) continue;
+    const domains = doc.domains ?? [];
+    const domainWeightSum = domains.reduce((a, d) => a + (d.weight ?? 0), 0);
+    if (Math.abs(domainWeightSum - 1.0) > 0.05) continue; // incomplete response
+    const hasFullCoverage = domains.every((dom) =>
+      (dom.dimensions ?? []).every((dim) => (dim.coverage ?? 0) >= 0.9),
+    );
+    if (!hasFullCoverage) continue;
+    const rows = decomposeContributions(doc, DIM_WEIGHTS);
+    const sum = rows.reduce((a, r) => a + r.contribution, 0);
+    const overall = doc.overallScore ?? 0;
+    const diff = Math.abs(sum - overall);
+    checked += 1;
+    if (diff > CONTRIBUTION_SUM_TOLERANCE) {
+      diffsExceeded += 1;
+      if (examples.length < 3) examples.push({ cc, sum, overall, diff });
+    }
+  }
+  // Heuristic: if > 50% of eligible countries drift AND at least 3 were
+  // checked, pillar-combine is probably active. Below 3 checked we skip
+  // the flag entirely — the signal is too noisy to banner-block on.
+  const pillarModeLikely = checked >= 3 && diffsExceeded / checked > 0.5;
+  return { pillarModeLikely, checked, diffsExceeded, examples };
+}
+
+function renderCohortSection(cohortName, codes, scoreMap, nameMap) {
+  const present = codes.filter((cc) => scoreMap.get(cc));
+  if (!present.length) return '';
+
+  // Collect all dims seen in this cohort.
+  const dimIds = new Set();
+  for (const cc of present) {
+    const doc = scoreMap.get(cc);
+    for (const dom of doc.domains ?? []) for (const dim of dom.dimensions ?? []) dimIds.add(dim.id);
+  }
+  const orderedDims = [...dimIds].sort();
+
+  let body = `Members: ${present.join(', ')}\n\n`;
+
+  // Overall table
+  body += `**Overall**\n\n| CC | Country | Overall | Baseline | Stress | Level |\n|---|---|---:|---:|---:|---|\n`;
+  for (const cc of present) {
+    const doc = scoreMap.get(cc);
+    body += `| ${cc} | ${nameMap[cc] ?? cc} | ${round1(doc.overallScore)} | ${round1(doc.baselineScore)} | ${round1(doc.stressScore)} | ${doc.level} |\n`;
+  }
+
+  // Per-dim scores
+  body += `\n**Per-dimension score** (score · coverage · imputationClass if set)\n\n`;
+  body += `| Dim | ${present.join(' | ')} |\n|---| ${present.map(() => '---:').join(' | ')} |\n`;
+  for (const dimId of orderedDims) {
+    const cells = present.map((cc) => renderDimCell(scoreMap.get(cc), dimId));
+    body += `| ${dimId} | ${cells.join(' | ')} |\n`;
+  }
+
+  // Contribution decomposition (sums to overall per country under legacy formula).
+  body += `\n**Contribution decomposition** (points toward overall score)\n\n`;
+  body += `| Dim | ${present.join(' | ')} |\n|---| ${present.map(() => '---:').join(' | ')} |\n`;
+  const contribByCc = new Map(
+    present.map((cc) => [cc, decomposeContributions(scoreMap.get(cc), DIM_WEIGHTS)]),
+  );
+  for (const dimId of orderedDims) {
+    const cells = present.map((cc) => {
+      const row = (contribByCc.get(cc) ?? []).find((r) => r.dimensionId === dimId);
+      return row ? row.contribution.toFixed(2) : '—';
+    });
+    body += `| ${dimId} | ${cells.join(' | ')} |\n`;
+  }
+  const sums = present.map((cc) => (contribByCc.get(cc) ?? []).reduce((a, r) => a + r.contribution, 0));
+  body += `| **sum contrib** | ${sums.map((s) => s.toFixed(2)).join(' | ')} |\n`;
+  const overalls = present.map((cc) => scoreMap.get(cc).overallScore);
+  body += `| **overallScore** | ${overalls.map((s) => round1(s)).join(' | ')} |\n`;
+
+  return section(`Cohort: ${cohortName}`, body);
+}
+
+function renderDimCell(doc, dimId) {
+  for (const dom of doc.domains ?? []) {
+    for (const dim of dom.dimensions ?? []) {
+      if (dim.id === dimId) {
+        const cov = round2(dim.coverage ?? 0);
+        const imp = dim.imputationClass ? ` · *${dim.imputationClass}*` : '';
+        return `${Math.round(dim.score ?? 0)} · ${cov}${imp}`;
+      }
+    }
+  }
+  return '—';
+}
+
+function buildReport({ ranking, scoreMap, nameMap, movers, capturedAt, sha, failures, requestedCohortCodes }) {
   const items = ranking.items ?? [];
   const greyedOut = ranking.greyedOut ?? [];
+  const failureList = [...(failures?.entries?.() ?? [])];
+  const missingCohortMembers = (requestedCohortCodes ?? []).filter((cc) => !scoreMap.get(cc));
+  const formulaMode = detectFormulaMode(scoreMap);
 
   let md = `# Resilience cohort-sanity audit report\n\n`;
+
+  // Blocking banners at the very top. Operator MUST see these before the
+  // tables below. STRICT mode will exit non-zero after writing the report
+  // so an operator can inspect the diagnostics and then re-run.
+  if (failureList.length || missingCohortMembers.length) {
+    md += `> ⛔ **Fetch failures / missing cohort members.** ${failureList.length} per-country fetch(es) failed; `;
+    md += `${missingCohortMembers.length} cohort member(s) are missing from the score map. `;
+    md += `Tables below only reflect the members that DID load. `;
+    md += `Re-run the audit (STRICT=1 recommended) before treating this report as release-gate evidence.\n\n`;
+  }
+  if (formulaMode.pillarModeLikely) {
+    md += `> ⛔ **Formula mode not supported.** ${formulaMode.diffsExceeded}/${formulaMode.checked} full-coverage countries show `;
+    md += `|Σ contributions − overallScore| > ${CONTRIBUTION_SUM_TOLERANCE}. This almost certainly means \`RESILIENCE_PILLAR_COMBINE_ENABLED\` `;
+    md += `is active (penalizedPillarScore), and the **contribution decomposition tables below are NOT valid**. `;
+    md += `Treat them as "legacy-formula reference only." `;
+    md += `See \`docs/methodology/cohort-sanity-release-gate.md#formula-mode\`.\n\n`;
+  }
+
   md += `- Captured: ${capturedAt}\n- Commit: ${sha}\n- Source: ${RANKING_URL}\n- Ranked: ${items.length} · Grey-out: ${greyedOut.length}\n`;
   md += `- Generated by: \`scripts/audit-resilience-cohorts.mjs\`\n`;
   md += `- Expected domain weights: ${Object.entries(EXPECTED_DOMAIN_WEIGHTS).map(([k, v]) => `${k}=${v}`).join(', ')}\n`;
+  md += `- Formula mode: ${formulaMode.pillarModeLikely ? '**PILLAR-COMBINE (decomposition invalid)**' : 'legacy domain-weighted (decomposition valid)'}\n`;
+  md += `- Fetch failures: ${failureList.length} · Missing cohort members: ${missingCohortMembers.length}\n`;
   if (BASELINE_PATH) md += `- Baseline snapshot: \`${BASELINE_PATH}\`\n`;
+
+  // Dedicated "what failed" section, rendered even when empty so operators
+  // always know to check for it.
+  {
+    let failBody = '';
+    if (failureList.length) {
+      failBody += `| CC | Country | Error |\n|---|---|---|\n`;
+      for (const [cc, msg] of failureList) {
+        failBody += `| ${cc} | ${nameMap[cc] ?? cc} | ${String(msg).replace(/\|/g, '\\|').slice(0, 200)} |\n`;
+      }
+    }
+    if (missingCohortMembers.length) {
+      failBody += `\n**Cohort members with no score data:** ${missingCohortMembers.join(', ')}\n`;
+      failBody += `\nThe cohorts below were rendered using only members that loaded successfully. `;
+      failBody += `An operator comparing to a prior audit should assume the missing members may carry the very anomaly under review.\n`;
+    }
+    if (!failBody) failBody = '_No fetch failures and all cohort members present._';
+    md += section('Fetch failures / missing members', failBody);
+  }
+
+  if (formulaMode.pillarModeLikely && formulaMode.examples.length) {
+    let fmBody = `| CC | Σ contrib | overallScore | |diff| |\n|---|---:|---:|---:|\n`;
+    for (const ex of formulaMode.examples) {
+      fmBody += `| ${ex.cc} | ${ex.sum.toFixed(2)} | ${ex.overall.toFixed(2)} | ${ex.diff.toFixed(2)} |\n`;
+    }
+    fmBody += `\n**Diagnosis.** Under the legacy domain-weighted formula, Σ contributions ≈ overallScore (within ~${CONTRIBUTION_SUM_TOLERANCE} pts of drift for rounding). When \`RESILIENCE_PILLAR_COMBINE_ENABLED\` is active, \`overallScore\` is computed by \`penalizedPillarScore(pillars)\` which is non-linear in the dimension scores; contribution decomposition by domain-weight no longer sums to overall. The audit script does not yet implement a pillar-aware decomposition — fix that before relying on this report under pillar-combine mode.\n`;
+    md += section('Formula-mode diagnostic', fmBody);
+  }
 
   // Ranking table
   let body = '| # | CC | Country | Overall | Coverage | Level | Low-conf |\n|---:|---|---|---:|---:|---|---|\n';
@@ -365,69 +549,7 @@ function buildReport({ ranking, scoreMap, nameMap, movers, capturedAt, sha }) {
 
   // Per-cohort per-dimension breakdown
   for (const [cohortName, codes] of Object.entries(COHORTS)) {
-    const present = codes.filter((cc) => scoreMap.get(cc));
-    if (!present.length) continue;
-    let cohort = `Members: ${present.join(', ')}\n\n`;
-
-    // Collect all dims seen in this cohort.
-    const dimIds = new Set();
-    for (const cc of present) {
-      const doc = scoreMap.get(cc);
-      for (const dom of doc.domains ?? []) for (const dim of dom.dimensions ?? []) dimIds.add(dim.id);
-    }
-    const orderedDims = [...dimIds].sort();
-
-    // Overall table
-    cohort += `**Overall**\n\n| CC | Country | Overall | Baseline | Stress | Level |\n|---|---|---:|---:|---:|---|\n`;
-    for (const cc of present) {
-      const doc = scoreMap.get(cc);
-      cohort += `| ${cc} | ${nameMap[cc] ?? cc} | ${round1(doc.overallScore)} | ${round1(doc.baselineScore)} | ${round1(doc.stressScore)} | ${doc.level} |\n`;
-    }
-
-    cohort += `\n**Per-dimension score** (score · coverage · imputationClass if set)\n\n`;
-    cohort += `| Dim | ${present.map((cc) => cc).join(' | ')} |\n|---| ${present.map(() => '---:').join(' | ')} |\n`;
-    for (const dimId of orderedDims) {
-      const cells = present.map((cc) => {
-        const doc = scoreMap.get(cc);
-        for (const dom of doc.domains ?? []) {
-          for (const dim of dom.dimensions ?? []) {
-            if (dim.id === dimId) {
-              const cov = round2(dim.coverage ?? 0);
-              const imp = dim.imputationClass ? ` · *${dim.imputationClass}*` : '';
-              return `${Math.round(dim.score ?? 0)} · ${cov}${imp}`;
-            }
-          }
-        }
-        return '—';
-      });
-      cohort += `| ${dimId} | ${cells.join(' | ')} |\n`;
-    }
-
-    // Contribution decomposition for the cohort (sums to overall per country).
-    cohort += `\n**Contribution decomposition** (points toward overall score)\n\n`;
-    cohort += `| Dim | ${present.map((cc) => cc).join(' | ')} |\n|---| ${present.map(() => '---:').join(' | ')} |\n`;
-    const contribByCc = new Map(
-      present.map((cc) => [cc, decomposeContributions(scoreMap.get(cc), DIM_WEIGHTS)]),
-    );
-    for (const dimId of orderedDims) {
-      const cells = present.map((cc) => {
-        const rows = contribByCc.get(cc) ?? [];
-        const row = rows.find((r) => r.dimensionId === dimId);
-        if (!row) return '—';
-        return row.contribution.toFixed(2);
-      });
-      cohort += `| ${dimId} | ${cells.join(' | ')} |\n`;
-    }
-    // Sanity row: contribution sum vs overall
-    const sums = present.map((cc) => {
-      const rows = contribByCc.get(cc) ?? [];
-      return rows.reduce((a, r) => a + r.contribution, 0);
-    });
-    cohort += `| **sum contrib** | ${sums.map((s) => s.toFixed(2)).join(' | ')} |\n`;
-    const overalls = present.map((cc) => scoreMap.get(cc).overallScore);
-    cohort += `| **overallScore** | ${overalls.map((s) => round1(s)).join(' | ')} |\n`;
-
-    md += section(`Cohort: ${cohortName}`, cohort);
+    md += renderCohortSection(cohortName, codes, scoreMap, nameMap);
   }
 
   // Flagged patterns
@@ -456,27 +578,34 @@ function buildReport({ ranking, scoreMap, nameMap, movers, capturedAt, sha }) {
   }
 
   md += `\n---\n\n*This audit is a release-gate diagnostic, not a merge-blocker. Rank-targeted acceptance criteria are an explicit anti-pattern — see \`docs/methodology/cohort-sanity-release-gate.md\`.*\n`;
-  return md;
+  return { md, failureList, missingCohortMembers, formulaMode };
 }
 
 async function main() {
   const nameMap = await loadCountryNameMap();
+  const cohortCodeSet = new Set();
+  for (const codes of Object.values(COHORTS)) for (const cc of codes) cohortCodeSet.add(cc);
+  const requestedCohortCodes = [...cohortCodeSet].sort();
+
   let ranking;
   let scoreMap;
+  let failures = new Map();
   if (FIXTURE_PATH) {
     const raw = await fs.readFile(path.resolve(REPO_ROOT, FIXTURE_PATH), 'utf8');
     const fixture = JSON.parse(raw);
     ranking = fixture.ranking ?? { items: [], greyedOut: [] };
     scoreMap = new Map(Object.entries(fixture.scores ?? {}));
+    // Fixture mode has no network calls, but a fixture may legitimately
+    // omit cohort members (for small smoke-test fixtures). Rather than
+    // silently dropping them, compute the missing set here too so the
+    // report banners them identically to live-mode fetch failures.
     console.error(`[audit] FIXTURE mode: ${path.resolve(REPO_ROOT, FIXTURE_PATH)} (ranked=${(ranking.items || []).length}, scores=${scoreMap.size})`);
   } else {
     ranking = await fetchRanking();
-    // Collect all unique country codes across all cohorts (dedup).
-    const cohortCodes = new Set();
-    for (const codes of Object.values(COHORTS)) for (const cc of codes) cohortCodes.add(cc);
-    const cohortList = [...cohortCodes].sort();
-    console.error(`[audit] fetching per-country scores for ${cohortList.length} cohort members at concurrency=${CONCURRENCY}`);
-    scoreMap = await fetchScoresConcurrent(cohortList);
+    console.error(`[audit] fetching per-country scores for ${requestedCohortCodes.length} cohort members at concurrency=${CONCURRENCY}`);
+    const result = await fetchScoresConcurrent(requestedCohortCodes);
+    scoreMap = result.scores;
+    failures = result.failures;
   }
   const items = ranking.items ?? [];
   items.forEach((x, i) => { x.__rank = i + 1; });
@@ -494,7 +623,9 @@ async function main() {
 
   const capturedAt = new Date().toISOString();
   const sha = commitSha();
-  const md = buildReport({ ranking, scoreMap, nameMap, movers, capturedAt, sha });
+  const { md, failureList, missingCohortMembers, formulaMode } = buildReport({
+    ranking, scoreMap, nameMap, movers, capturedAt, sha, failures, requestedCohortCodes,
+  });
 
   if (OUT_PATH) {
     await fs.mkdir(path.dirname(path.resolve(REPO_ROOT, OUT_PATH)), { recursive: true });
@@ -502,6 +633,22 @@ async function main() {
     console.error(`[audit] wrote ${OUT_PATH}`);
   } else {
     process.stdout.write(md);
+  }
+
+  // STRICT mode fails the run AFTER writing the report so operators still
+  // have the diagnostic artifact on disk. Exit codes:
+  //   3 — fetch failures or missing cohort members
+  //   4 — formula-mode change detected (pillar-combine active, decomposition invalid)
+  //   0 — all clear
+  if (STRICT) {
+    if (failureList.length || missingCohortMembers.length) {
+      console.error(`[audit] STRICT: ${failureList.length} fetch failure(s), ${missingCohortMembers.length} missing cohort member(s); exiting 3`);
+      process.exit(3);
+    }
+    if (formulaMode.pillarModeLikely) {
+      console.error(`[audit] STRICT: formula-mode mismatch detected (pillar-combine likely); contribution decomposition invalid; exiting 4`);
+      process.exit(4);
+    }
   }
 }
 
