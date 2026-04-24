@@ -335,7 +335,10 @@ export class NewsPanel extends Panel {
   }
 
   private getHeadlineSignature(): string {
-    return JSON.stringify(this.currentHeadlines.slice(0, 5).sort());
+    return JSON.stringify([
+      this.currentHeadlines.slice(0, 5).sort(),
+      this.currentBodies.slice(0, 5), // NOT sorted — paired with headlines
+    ]);
   }
 
   private updateHeadlineSignature(): void {

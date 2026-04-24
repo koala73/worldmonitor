@@ -149,6 +149,17 @@ const BRIEF_WHY_MATTERS_ENDPOINT_URL =
   `${WORLDMONITOR_PUBLIC_BASE_URL}/api/internal/brief-why-matters`;
 
 /**
+ * Lowercase + collapse whitespace to mirror extractor-side gate in
+ * server/worldmonitor/news/v1/list-feed-digest.ts
+ * (normalizeForDescriptionEquality). Duplicated (not imported) because
+ * that module is .ts on a different loader path; a shared .mjs helper
+ * would be a cleaner home if more surfaces adopt this check.
+ */
+function normalizeForDescriptionEquality(s) {
+  return String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
  * POST one story to the analyst whyMatters endpoint. Returns the
  * string on success, null on any failure (auth, non-200, parse error,
  * timeout, missing value). The cron's `generateWhyMatters` is
@@ -178,7 +189,12 @@ async function callAnalystWhyMatters(story) {
   if (
     typeof story.description === 'string' &&
     story.description.length > 0 &&
-    story.description !== story.headline
+    // Normalize-equality (case + whitespace) mirrors the extractor-side gate
+    // in list-feed-digest.ts (normalizeForDescriptionEquality) so a feed
+    // whose description only differs from the headline by casing/spacing
+    // doesn't leak as "grounding" content here.
+    normalizeForDescriptionEquality(story.description) !==
+      normalizeForDescriptionEquality(story.headline ?? '')
   ) {
     payload.description = story.description;
   }

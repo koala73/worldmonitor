@@ -221,7 +221,12 @@ async function generateSummaryInternal(
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
   const bodies = options?.bodies;
-  if (!options?.skipCloudProviders) {
+  // Only take the pre-chain cache-lookup shortcut when no body is present.
+  // When bodies are RAW on the client but sanitised server-side before
+  // keying, the keys diverge on injection content. The regular call chain
+  // (tryApiProvider → server) still benefits from the server's
+  // authoritative cachedFetchJsonWithMeta lookup when bodies are present.
+  if (!options?.skipCloudProviders && !bodies?.some((b) => typeof b === 'string' && b.length > 0)) {
     try {
       const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies);
       const cached = await newsClient.getSummarizeArticleCache({ cacheKey });
@@ -242,7 +247,7 @@ async function generateSummaryInternal(
         const browserResult = await tryBrowserT5(headlines, 'summarization-beta');
         if (browserResult) {
           const groqProvider = API_PROVIDERS.find(p => p.provider === 'groq');
-          if (groqProvider && !options?.skipCloudProviders) tryApiProvider(groqProvider, headlines, geoContext).catch(() => {});
+          if (groqProvider && !options?.skipCloudProviders) tryApiProvider(groqProvider, headlines, geoContext, undefined, bodies).catch(() => {});
 
           return browserResult;
         }

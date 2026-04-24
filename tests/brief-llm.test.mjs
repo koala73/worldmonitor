@@ -24,6 +24,7 @@ import {
   buildStoryDescriptionPrompt,
   parseStoryDescription,
   generateStoryDescription,
+  hashBriefStory,
 } from '../scripts/lib/brief-llm.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { composeBriefFromDigestStories } from '../scripts/lib/brief-compose.mjs';
@@ -902,7 +903,8 @@ describe('generateStoryDescription — sanitisation + prefix bump (U5)', () => {
     // v2 too, so the v1 row is effectively dark — verified by the reader
     // not serving a matching v1 row.
     const store = new Map();
-    store.set('brief:llm:description:v1:somehash', 'Pre-fix hallucinated body citing Ali Khamenei.');
+    const legacyKey = `brief:llm:description:v1:${await hashBriefStory(story())}`;
+    store.set(legacyKey, 'Pre-fix hallucinated body citing Ali Khamenei.');
     const cache = {
       async cacheGet(key) { return store.get(key) ?? null; },
       async cacheSet(key, value) { store.set(key, value); },

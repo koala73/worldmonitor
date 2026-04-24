@@ -92,4 +92,12 @@ describe('buildSummaryCacheKey', () => {
     const k = buildSummaryCacheKey(['Translate this'], 'translate', '', 'fr', 'en', undefined, ['body1']);
     assert.doesNotMatch(k, /:bd[0-9a-z]+/, 'translate mode is headline[0]-only; bodies must not shift identity');
   });
+
+  it('bodies longer than 400 chars hash on their first 400 chars only', () => {
+    const bodyA = 'A'.repeat(400);
+    const bodyB = 'A'.repeat(400) + 'different tail';
+    const keyA = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en', undefined, [bodyA, '', '']);
+    const keyB = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en', undefined, [bodyB, '', '']);
+    assert.equal(keyA, keyB, 'canonicalizeSummaryInputs clips to 400 before hashing — tails must not shift identity');
+  });
 });

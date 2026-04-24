@@ -7,7 +7,6 @@ import type {
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
-  deduplicateHeadlines,
   buildArticlePrompts,
   getProviderCredentials,
   getCacheKey,
@@ -127,16 +126,30 @@ export async function summarizeArticle(
         // Headlines are re-sanitized here (not at cache-key time) so that
         // the cache key stays aligned with the browser while the actual
         // prompt is protected against semantic injection phrases.
-        const promptHeadlines = sanitizeHeadlines(headlines);
-        const uniqueHeadlines = deduplicateHeadlines(promptHeadlines.slice(0, 5));
-        // Pair bodies with the deduplicated top-5 headlines: walk the
-        // deduped order, find each headline's original index, and pluck the
-        // paired body from the sanitised `bodies` array. Preserves 1:1
-        // pairing through the dedup reorder; missing matches → empty body.
-        const uniqueBodies = uniqueHeadlines.map((h: string) => {
-          const idx = promptHeadlines.findIndex((ph: string) => ph === h);
-          return idx >= 0 ? (bodies[idx] ?? '') : '';
-        });
+        //
+        // Pair headlines with bodies BEFORE deduping so sanitizeHeadlines
+        // drops / merges don't break the 1:1 mapping. sanitizeHeadlines
+        // operates elementwise so paired indices survive per-element
+        // replacement; we then dedup pairs together (seen-set on the
+        // sanitized headline) to preserve the pairing post-dedup.
+        const paired = headlines.map((h, i) => ({
+          h: sanitizeHeadlines([h])[0] ?? '',
+          b: bodies[i] ?? '',
+        }));
+        const nonEmpty = paired.filter((p) => p.h.length > 0);
+        const uniquePairs: Array<{ h: string; b: string }> = [];
+        const seen = new Set<string>();
+        for (const p of nonEmpty.slice(0, 5)) {
+          if (!seen.has(p.h)) {
+            seen.add(p.h);
+            uniquePairs.push(p);
+          }
+        }
+        // Preserves the existing variable name for downstream prompt
+        // builder callers that expect the full sanitised-headline list.
+        const promptHeadlines = nonEmpty.map((p) => p.h);
+        const uniqueHeadlines = uniquePairs.map((p) => p.h);
+        const uniqueBodies = uniquePairs.map((p) => p.b);
         const { systemPrompt, userPrompt } = buildArticlePrompts(promptHeadlines, uniqueHeadlines, {
           mode,
           geoContext: sanitizedGeoContext,

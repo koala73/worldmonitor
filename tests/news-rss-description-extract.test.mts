@@ -108,13 +108,10 @@ describe('extractDescription — RSS', () => {
     assert.strictEqual(desc.length, 400, 'MAX_DESCRIPTION_LEN=400 must clip');
   });
 
-  it('handles CDATA content that contains an internal "]]>-like" token not followed by </description>', () => {
-    // Well-formed CDATA cannot contain literal ]]>; the regex anchor (CDATA end
-    // followed by closing tag) is the safeguard against feeds that malform this.
-    // Here we test a well-formed variant: CDATA terminator is the last ]]> before
-    // the closing tag; any earlier ]]> sequence that isn't followed by the closing
-    // tag would not match regex and parsing would degrade gracefully. We assert
-    // a realistic well-formed body parses cleanly.
+  it('handles well-formed CDATA with punctuation content', () => {
+    // Well-formed CDATA cannot contain a literal ]]> inside the body (XML
+    // spec). This test asserts that a realistic body with heavy punctuation
+    // (colons, semicolons) parses cleanly via the CDATA regex anchor.
     const block = `
       <title>Headline</title>
       <description><![CDATA[<p>Body containing typical punctuation: semicolons; colons: and lots of text that makes the body comfortably above the minimum grounding length.</p>]]></description>
@@ -122,6 +119,28 @@ describe('extractDescription — RSS', () => {
     const desc = extractDescription(block, false, 'Headline');
     assert.ok(desc.includes('semicolons'));
     assert.ok(desc.includes('comfortably above'));
+  });
+
+  it('malformed CDATA with a premature ]]> sequence falls back to the plain regex', () => {
+    // Feeds in the wild sometimes malform CDATA by embedding a literal ]]>
+    // that is not the terminator (spec-violating). Our CDATA regex is
+    // anchored to the closing tag, so it REJECTS this feed rather than
+    // matching prematurely; the plain regex then captures the entire
+    // <description> body including the CDATA wrapper markup. We then
+    // HTML-strip + entity-decode + length-gate as usual, so the net
+    // behaviour is "degraded but safe": we may keep some CDATA syntax
+    // noise in the extracted text, but we never truncate the article body.
+    const body = 'Mojtaba Khamenei was seriously wounded in an attack this week; multiple sources report the delegation of authority came ]]> before the attack was acknowledged publicly. Substantial body above the minimum grounding gate.';
+    const block = `
+      <title>Headline</title>
+      <description><![CDATA[<p>${body}</p></description>
+    `;
+    const desc = extractDescription(block, false, 'Headline');
+    // The plain regex returns the inner content between the tags, which
+    // still contains the article body. CDATA wrapper characters (`<![CDATA[`
+    // / `]]>`) may survive HTML-strip since they aren't inside angle brackets.
+    assert.ok(desc.length > 0, 'malformed CDATA must not produce empty output');
+    assert.ok(desc.includes('Mojtaba'), 'real article content survives the degraded match');
   });
 
   it('returns empty string when no description tag is present', () => {

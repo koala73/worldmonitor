@@ -651,7 +651,6 @@ function shouldNotify(rule, event) {
 // Default-off in the first cut so the initial rollout is a pure upstream
 // plumbing change; when disabled, output is byte-identical to pre-U7.
 const NOTIFY_RELAY_INCLUDE_SNIPPET = process.env.NOTIFY_RELAY_INCLUDE_SNIPPET === '1';
-const SNIPPET_PUSH_MAX = 150;       // push body is ~150 chars before clip on most OSes
 const SNIPPET_TELEGRAM_MAX = 400;   // Telegram handles 4096; 400 keeps notifications terse
 
 function truncateForDisplay(str, maxLen) {

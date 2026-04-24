@@ -60,7 +60,10 @@ export function buildArticlePrompts(
     && opts.bodies.some((b) => typeof b === 'string' && b.length > 0);
   const headlineText = interpolateBodies
     ? uniqueHeadlines.map((h, i) => {
-        const rawBody = typeof opts.bodies?.[i] === 'string' ? opts.bodies![i]! : '';
+        // typeof check was redundant: ?? '' handles undefined; string-only
+        // input contract is enforced by the caller (summarize-article.ts
+        // sanitises bodies into string values before passing here).
+        const rawBody = opts.bodies?.[i] ?? '';
         const clipped = rawBody.slice(0, MAX_BODY_INTERPOLATION_LEN);
         return clipped.length > 0
           ? `${i + 1}. ${h}\n    Context: ${clipped}`

@@ -38,6 +38,20 @@ export function canonicalizeSummaryInputs(
   };
 }
 
+/**
+ * Canonical cache-key builder for SummarizeArticle results. Shared by both
+ * client (src/services/summarization.ts) and server (server/worldmonitor/
+ * news/v1/_shared.ts re-export as getCacheKey). Client and server MUST call
+ * with identical inputs for the cache to align — sanitise any adversarial
+ * text (bodies, geoContext) the same way on both sides before calling.
+ *
+ * @param bodies Paired 1:1 with headlines (post-sort, post-sanitize).
+ *   - When every body is empty → no `:bd<hash>` segment → key identical to
+ *     the headline-only v5 shape (modulo the v5→v6 version bump).
+ *   - When any body is non-empty → appends `:bd<hash>` where hash is over
+ *     the pair-wise-sorted bodies string.
+ *   - In translate mode, bodies are ignored (that path is headline[0]-only).
+ */
 export function buildSummaryCacheKey(
   headlines: string[],
   mode: string,
@@ -53,7 +67,16 @@ export function buildSummaryCacheKey(
   // Without pair-wise sort, swapping a body between stories that share the
   // alphabetic tier would collide the key for distinct prompt content.
   const pairs = canon.headlines.map((h, i) => ({ h, b: canon.bodies[i] ?? '' }));
-  pairs.sort((a, b) => (a.h < b.h ? -1 : a.h > b.h ? 1 : 0));
+  pairs.sort((a, b) => {
+    if (a.h < b.h) return -1;
+    if (a.h > b.h) return 1;
+    // Tie-break on body so duplicate headlines produce stable order across
+    // runs — without this, duplicate-headline pairs sort non-deterministically
+    // and the bodies-hash drifts across rebuilds.
+    if (a.b < b.b) return -1;
+    if (a.b > b.b) return 1;
+    return 0;
+  });
   const topPairs = pairs.slice(0, MAX_HEADLINES_FOR_KEY);
   const sortedHeadlines = topPairs.map(p => p.h).join('|');
 

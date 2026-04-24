@@ -328,7 +328,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   // -------------------------------------------------------------------------
   {
     name: 'get_world_brief',
-    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines and produces an LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
+    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
     inputSchema: {
       type: 'object',
       properties: {

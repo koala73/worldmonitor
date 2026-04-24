@@ -259,17 +259,24 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
  * Returns the raw content without entity decoding — caller strips HTML and
  * decodes entities via `decodeXmlEntities`.
  */
-function extractRawTagBody(xml: string, tag: string): string {
-  const cdataRe = new RegExp(
-    `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`,
-    'i',
-  );
-  const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
+const DESCRIPTION_TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
 
-  const cdataMatch = xml.match(cdataRe);
+function extractRawTagBody(xml: string, tag: string): string {
+  let cached = DESCRIPTION_TAG_REGEX_CACHE.get(tag);
+  if (!cached) {
+    cached = {
+      cdata: new RegExp(
+        `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`,
+        'i',
+      ),
+      plain: new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'),
+    };
+    DESCRIPTION_TAG_REGEX_CACHE.set(tag, cached);
+  }
+  const cdataMatch = xml.match(cached.cdata);
   if (cdataMatch) return cdataMatch[1] ?? '';
 
-  const match = xml.match(plainRe);
+  const match = xml.match(cached.plain);
   return match ? match[1] ?? '' : '';
 }
 
