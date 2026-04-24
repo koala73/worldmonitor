@@ -498,6 +498,32 @@ export async function listFeedDigest(
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
 
+/**
+ * Build the HSET field list for a story:track:v1 row. Description is written
+ * only when non-empty so old rows (pre-fix) or rows from feeds without a
+ * description return `undefined` on HGETALL, letting downstream readers fall
+ * back to the cleaned headline (R6) without a key version bump.
+ */
+function buildStoryTrackHsetFields(
+  item: ParsedItem,
+  nowStr: string,
+  score: number,
+): Array<string | number> {
+  const fields: Array<string | number> = [
+    'lastSeen', nowStr,
+    'currentScore', score,
+    'title', item.title,
+    'link', item.link,
+    'severity', item.level,
+    'lang', item.lang,
+  ];
+  const description = item.description ?? '';
+  if (description) {
+    fields.push('description', description);
+  }
+  return fields;
+}
+
 async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[]): Promise<void> {
   if (items.length === 0) return;
   const now = Date.now();
@@ -517,16 +543,11 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       const nowStr = String(now);
       const ttl = STORY_TTL;
 
+      const hsetFields = buildStoryTrackHsetFields(item, nowStr, score);
+
       commands.push(
         ['HINCRBY', trackKey, 'mentionCount', '1'],
-        ['HSET', trackKey,
-          'lastSeen', nowStr,
-          'currentScore', score,
-          'title', item.title,
-          'link', item.link,
-          'severity', item.level,
-          'lang', item.lang,
-        ],
+        ['HSET', trackKey, ...hsetFields],
         ['HSETNX', trackKey, 'firstSeen', nowStr],
         ['ZADD', peakKey, 'GT', score, 'peak'],
         ['SADD', sourcesKey, item.source],
@@ -703,6 +724,7 @@ export const __testing__ = {
   parseRssXml,
   extractDescription,
   extractRawTagBody,
+  buildStoryTrackHsetFields,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
 };
