@@ -1,13 +1,13 @@
 declare module '@/workers/analysis.worker?worker' {
-  const WorkerFactory: {
+  const AnalysisWorker: {
     new (): Worker;
   };
-  export default WorkerFactory;
+  export default AnalysisWorker;
 }
 
 declare module '@/workers/ml.worker?worker' {
-  const WorkerFactory: {
+  const MLWorker: {
     new (): Worker;
   };
-  export default WorkerFactory;
+  export default MLWorker;
 }
