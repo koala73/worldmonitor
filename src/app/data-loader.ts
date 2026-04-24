@@ -242,6 +242,11 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
     ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
     ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
+    // Cleaned RSS description (U3 proto field 12). Only populated when the
+    // upstream feed carried a usable <description>/<content:encoded>/<summary>;
+    // empty string otherwise. Consumers render the headline and fall back to
+    // snippet as a secondary line when non-empty.
+    ...(p.snippet ? { snippet: p.snippet } : {}),
   };
 }
 

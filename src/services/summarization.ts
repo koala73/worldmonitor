@@ -32,6 +32,13 @@ export type ProgressCallback = (step: number, total: number, message: string) =>
 export interface SummarizeOptions {
   skipCloudProviders?: boolean;  // true = skip Ollama/Groq/OpenRouter, go straight to browser T5
   skipBrowserFallback?: boolean; // true = skip browser T5 fallback
+  /**
+   * Optional article bodies paired 1:1 with `headlines`. When supplied and
+   * non-empty, the server-side SummarizeArticle handler grounds each headline
+   * with its paired Context line in the prompt. Empty / undefined → current
+   * headline-only behavior (R6). Bodies are pre-sanitised server-side.
+   */
+  bodies?: string[];
 }
 
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
@@ -71,6 +78,7 @@ async function tryApiProvider(
   headlines: string[],
   geoContext?: string,
   lang?: string,
+  bodies?: string[],
 ): Promise<SummarizationResult | null> {
   if (!isFeatureAvailable(providerDef.featureId)) return null;
   lastAttemptedProvider = providerDef.provider;
@@ -84,7 +92,7 @@ async function tryApiProvider(
         variant: SITE_VARIANT,
         lang: lang || 'en',
         systemAppend: '',
-        bodies: [],
+        bodies: bodies ?? [],
       });
     }, emptySummaryFallback);
 
@@ -151,10 +159,11 @@ async function runApiChain(
   onProgress: ProgressCallback | undefined,
   stepOffset: number,
   totalSteps: number,
+  bodies?: string[],
 ): Promise<SummarizationResult | null> {
   for (const [i, provider] of providers.entries()) {
     onProgress?.(stepOffset + i, totalSteps, `Connecting to ${provider.label}...`);
-    const result = await tryApiProvider(provider, headlines, geoContext, lang);
+    const result = await tryApiProvider(provider, headlines, geoContext, lang, bodies);
     if (result) return result;
   }
   return null;
@@ -162,8 +171,12 @@ async function runApiChain(
 
 /**
  * Generate a summary using the fallback chain: Ollama -> Groq -> OpenRouter -> Browser T5
- * Server-side Redis caching is handled by the SummarizeArticle RPC handler
+ * Server-side Redis caching is handled by the SummarizeArticle RPC handler.
+ *
  * @param geoContext Optional geographic signal context to include in the prompt
+ * @param options `bodies` threads paired RSS descriptions into the prompt for
+ *   grounding. When omitted/empty, behavior is byte-identical to pre-U7
+ *   (headline-only prompt + headline-only cache key), preserving R6.
  */
 export async function generateSummary(
   headlines: string[],
@@ -176,10 +189,11 @@ export async function generateSummary(
     return null;
   }
 
+  const bodies = options?.bodies;
   const optionsSuffix = options?.skipCloudProviders || options?.skipBrowserFallback
     ? `:opts${options.skipCloudProviders ? 'C' : ''}${options.skipBrowserFallback ? 'B' : ''}`
     : '';
-  const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang) + optionsSuffix;
+  const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies) + optionsSuffix;
 
   return summaryResultBreaker.execute(
     async () => {
@@ -206,9 +220,10 @@ async function generateSummaryInternal(
   lang: string,
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
+  const bodies = options?.bodies;
   if (!options?.skipCloudProviders) {
     try {
-      const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang);
+      const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies);
       const cached = await newsClient.getSummarizeArticleCache({ cacheKey });
       if (cached.summary) {
         return { summary: cached.summary, provider: 'cache', model: cached.model || '', cached: true };
@@ -235,7 +250,7 @@ async function generateSummaryInternal(
 
       // Warm model failed inference -- fallback through API providers
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 2, totalSteps);
+        const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies);
         if (chainResult) return chainResult;
       }
     } else {
@@ -246,7 +261,7 @@ async function generateSummaryInternal(
 
       // API providers while model loads
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 1, totalSteps);
+        const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies);
         if (chainResult) {
           return chainResult;
         }
@@ -271,7 +286,7 @@ async function generateSummaryInternal(
   let chainResult: SummarizationResult | null = null;
 
   if (!options?.skipCloudProviders) {
-    chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, lang, onProgress, 1, totalSteps);
+    chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies);
   }
   if (chainResult) return chainResult;
 

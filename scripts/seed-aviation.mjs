@@ -13,6 +13,12 @@
  * Prev-alerted state is persisted to Redis so short-lived cron invocations don't
  * re-notify on every tick.
  *
+ * @notification-source: domain (aviation)
+ *   publishNotificationEvent() calls in this file build payload.title from
+ *   structured airport/ICAO/delay/NOTAM fields. Events are NOT RSS-origin
+ *   and MUST NOT set payload.description. Enforced by
+ *   tests/notification-relay-payload-audit.test.mjs.
+ *
  * Supersedes: scripts/seed-airport-delays.mjs (deleted) + the in-process seed
  * loops that used to live inside scripts/ais-relay.cjs (stripped). ais-relay still
  * hosts the /aviationstack live proxy for user-triggered flight lookups.

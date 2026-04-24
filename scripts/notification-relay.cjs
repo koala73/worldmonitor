@@ -636,8 +636,36 @@ function shouldNotify(rule, event) {
   return true;
 }
 
+// ── RSS-origin event contract (audit codified in
+// tests/notification-relay-payload-audit.test.*) ────────────────────────────
+// RSS-origin events (source: rss, e.g. from src/services/breaking-news-alerts.ts)
+// MUST set `payload.description` when their upstream NewsItem carried a
+// snippet. Domain-origin events (ais-relay, seed-aviation, alert-emitter)
+// MUST NOT set `payload.description` — those titles are built from structured
+// domain data, not free-form RSS text. The audit test enforces the tag
+// comment on every publishNotificationEvent / /api/notify call site so
+// future additions can't silently drift.
+//
+// NOTIFY_RELAY_INCLUDE_SNIPPET gate: when set to '1', the relay renders a
+// context line under the event title for payloads that carry `description`.
+// Default-off in the first cut so the initial rollout is a pure upstream
+// plumbing change; when disabled, output is byte-identical to pre-U7.
+const NOTIFY_RELAY_INCLUDE_SNIPPET = process.env.NOTIFY_RELAY_INCLUDE_SNIPPET === '1';
+const SNIPPET_PUSH_MAX = 150;       // push body is ~150 chars before clip on most OSes
+const SNIPPET_TELEGRAM_MAX = 400;   // Telegram handles 4096; 400 keeps notifications terse
+
+function truncateForDisplay(str, maxLen) {
+  if (typeof str !== 'string' || str.length === 0) return '';
+  if (str.length <= maxLen) return str;
+  const cutAtWord = str.slice(0, maxLen).replace(/\s+\S*$/, '');
+  return (cutAtWord.length > 0 ? cutAtWord : str.slice(0, maxLen)) + '…';
+}
+
 function formatMessage(event) {
   const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${event.payload?.title ?? event.eventType}`];
+  if (NOTIFY_RELAY_INCLUDE_SNIPPET && typeof event.payload?.description === 'string' && event.payload.description.length > 0) {
+    parts.push(`> ${truncateForDisplay(event.payload.description, SNIPPET_TELEGRAM_MAX)}`);
+  }
   if (event.payload?.source) parts.push(`Source: ${event.payload.source}`);
   if (event.payload?.link) parts.push(event.payload.link);
   return parts.join('\n');

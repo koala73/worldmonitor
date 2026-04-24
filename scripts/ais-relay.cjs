@@ -7,6 +7,12 @@
  *   AISSTREAM_API_KEY=your_key
  *
  * Local: node scripts/ais-relay.cjs
+ *
+ * @notification-source: domain (ais)
+ *   Every publishNotificationEvent() call in this file builds payload.title
+ *   from structured AIS/vessel/port domain fields (MMSI, vessel name, ETA,
+ *   port code, etc.). Events are NOT RSS-origin and MUST NOT set
+ *   payload.description. Enforced by tests/notification-relay-payload-audit.test.mjs.
  */
 
 const http = require('http');

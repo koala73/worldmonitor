@@ -118,6 +118,13 @@ export interface NewsItem {
   importanceScore?: number;
   corroborationCount?: number;
   storyMeta?: StoryMeta;
+  /**
+   * Cleaned RSS/Atom article description — HTML-stripped, entity-decoded,
+   * whitespace-normalised, ≤400 chars. Empty string when the upstream feed
+   * didn't carry a description or it was indistinguishable from the headline.
+   * Consumers MUST fall back to `title` for display when absent (R6).
+   */
+  snippet?: string;
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';

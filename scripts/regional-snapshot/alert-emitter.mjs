@@ -5,6 +5,12 @@
 // and enqueues one notification event per meaningful state change onto the
 // existing wm:events:queue Redis list consumed by notification-relay.cjs.
 //
+// @notification-source: domain (regional-snapshot)
+//   publishNotificationEvent() calls in this file build payload.title from
+//   structured regime/corridor/trigger/buffer fields. Events are NOT
+//   RSS-origin and MUST NOT set payload.description. Enforced by
+//   tests/notification-relay-payload-audit.test.mjs.
+//
 // Emits on 4 event types:
 //   regional_regime_shift      — diff.regime_changed set
 //   regional_trigger_activation — one per entry in diff.trigger_activations

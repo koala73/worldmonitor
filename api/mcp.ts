@@ -344,13 +344,17 @@ const TOOL_REGISTRY: ToolDef[] = [
         signal: AbortSignal.timeout(6_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
-      type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
+      type DigestPayload = { categories?: Record<string, { items?: { title?: string; snippet?: string }[] }> };
       const digest = await digestRes.json() as DigestPayload;
-      const headlines = Object.values(digest.categories ?? {})
+      // Pair headlines with their RSS snippets so the LLM grounds per-story
+      // on article bodies instead of hallucinating across unrelated titles.
+      const pairs = Object.values(digest.categories ?? {})
         .flatMap(cat => cat.items ?? [])
-        .map(item => item.title ?? '')
-        .filter(Boolean)
+        .map(item => ({ title: item.title ?? '', snippet: item.snippet ?? '' }))
+        .filter(p => p.title.length > 0)
         .slice(0, 10);
+      const headlines = pairs.map(p => p.title);
+      const bodies = pairs.map(p => p.snippet);
       // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
       const briefRes = await fetch(`${base}/api/news/v1/summarize-article`, {
         method: 'POST',
@@ -358,6 +362,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         body: JSON.stringify({
           provider: 'openrouter',
           headlines,
+          bodies,
           mode: 'brief',
           geoContext: String(params.geo_context ?? ''),
           variant: 'geo',
