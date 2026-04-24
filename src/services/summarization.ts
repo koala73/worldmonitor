@@ -118,7 +118,11 @@ async function tryApiProvider(
 
 // ── Browser T5 provider (different interface -- no API call) ──
 
-async function tryBrowserT5(headlines: string[], modelId?: string): Promise<SummarizationResult | null> {
+async function tryBrowserT5(
+  headlines: string[],
+  modelId?: string,
+  bodies?: string[],
+): Promise<SummarizationResult | null> {
   try {
     if (!mlWorker.isAvailable) {
       return null;
@@ -126,7 +130,19 @@ async function tryBrowserT5(headlines: string[], modelId?: string): Promise<Summ
     lastAttemptedProvider = 'browser';
 
     const lang = getCurrentLanguage();
-    const combinedText = headlines.slice(0, 5).map(h => h.slice(0, 80)).join('. ');
+    // When bodies are supplied, interleave them with headlines so the local
+    // T5-small model grounds on article context instead of headline metadata
+    // alone. Mirrors the server-side `Context:` interleave in
+    // buildArticlePrompts (U6). Clip each body to 200 chars so the combined
+    // prompt stays inside T5-small's ~512-token context window.
+    const topHeadlines = headlines.slice(0, 5);
+    const hasBody = Array.isArray(bodies) && bodies.some(b => typeof b === 'string' && b.length > 0);
+    const combinedText = hasBody
+      ? topHeadlines.map((h, i) => {
+          const b = typeof bodies![i] === 'string' ? bodies![i]!.slice(0, 200) : '';
+          return b ? `${h.slice(0, 80)} — ${b}` : h.slice(0, 80);
+        }).join('. ')
+      : topHeadlines.map(h => h.slice(0, 80)).join('. ');
     const prompt = lang === 'fr'
       ? `Résumez le titre le plus important en 2 phrases concises (moins de 60 mots) : ${combinedText}`
       : `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`;
@@ -244,7 +260,7 @@ async function generateSummaryInternal(
       // Model already loaded -- use browser T5-small first
       if (!options?.skipBrowserFallback) {
         onProgress?.(1, totalSteps, 'Running local AI model (beta)...');
-        const browserResult = await tryBrowserT5(headlines, 'summarization-beta');
+        const browserResult = await tryBrowserT5(headlines, 'summarization-beta', bodies);
         if (browserResult) {
           const groqProvider = API_PROVIDERS.find(p => p.provider === 'groq');
           if (groqProvider && !options?.skipCloudProviders) tryApiProvider(groqProvider, headlines, geoContext, undefined, bodies).catch(() => {});
@@ -275,7 +291,7 @@ async function generateSummaryInternal(
       // Last resort: try browser T5 (may have finished loading by now)
       if (mlWorker.isAvailable && !options?.skipBrowserFallback) {
         onProgress?.(API_PROVIDERS.length + 1, totalSteps, 'Waiting for local AI model...');
-        const browserResult = await tryBrowserT5(headlines, 'summarization-beta');
+        const browserResult = await tryBrowserT5(headlines, 'summarization-beta', bodies);
         if (browserResult) return browserResult;
       }
 
@@ -297,7 +313,7 @@ async function generateSummaryInternal(
 
   if (!options?.skipBrowserFallback) {
     onProgress?.(totalSteps, totalSteps, 'Loading local AI model...');
-    const browserResult = await tryBrowserT5(headlines);
+    const browserResult = await tryBrowserT5(headlines, undefined, bodies);
     if (browserResult) return browserResult;
   }
 
