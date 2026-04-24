@@ -339,6 +339,24 @@ function isEnergyV2EnabledLocal(): boolean {
   return (process.env.RESILIENCE_ENERGY_V2_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 
+/**
+ * Thrown by the v2 energy dispatch when `RESILIENCE_ENERGY_V2_ENABLED=true`
+ * but one or more of the required Redis seeds
+ * (`resilience:low-carbon-generation:v1`, `resilience:fossil-electricity-share:v1`,
+ * `resilience:power-losses:v1`) is absent. Fail-closed surfaces the
+ * misconfiguration via the source-failure path instead of silently
+ * producing IMPUTE scores that look computed. See
+ * `docs/plans/2026-04-24-001-fix-resilience-v2-fail-closed-on-missing-seeds-plan.md`.
+ */
+export class ResilienceConfigurationError extends Error {
+  readonly missingKeys: readonly string[];
+  constructor(message: string, missingKeys: readonly string[]) {
+    super(message);
+    this.name = 'ResilienceConfigurationError';
+    this.missingKeys = missingKeys;
+  }
+}
+
 const COUNTRY_NAME_ALIASES = new Map<string, Set<string>>();
 for (const [name, iso2] of Object.entries(countryNames as Record<string, string>)) {
   const code = String(iso2 || '').toUpperCase();
@@ -1309,9 +1327,36 @@ export async function scoreEnergy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  return isEnergyV2EnabledLocal()
-    ? scoreEnergyV2(countryCode, reader)
-    : scoreEnergyLegacy(countryCode, reader);
+  if (!isEnergyV2EnabledLocal()) {
+    return scoreEnergyLegacy(countryCode, reader);
+  }
+
+  // Flag is ON — preflight the required seeds before routing to v2.
+  // A null from any of these would let scoreEnergyV2 score every country
+  // via the IMPUTE fallback with no signal to the operator (weightedBlend
+  // silently collapses null indicators to the imputation path). Fail-closed:
+  // throw ResilienceConfigurationError, caught at scoreAllDimensions and
+  // surfaced as imputationClass='source-failure' on the energy dimension.
+  // See docs/plans/2026-04-24-001-fix-resilience-v2-fail-closed-on-missing-seeds-plan.md.
+  const [fossilShareRaw, lowCarbonRaw, powerLossesRaw] = await Promise.all([
+    reader(RESILIENCE_FOSSIL_ELEC_SHARE_KEY),
+    reader(RESILIENCE_LOW_CARBON_GEN_KEY),
+    reader(RESILIENCE_POWER_LOSSES_KEY),
+  ]);
+  const missing: string[] = [];
+  if (fossilShareRaw == null) missing.push(RESILIENCE_FOSSIL_ELEC_SHARE_KEY);
+  if (lowCarbonRaw == null) missing.push(RESILIENCE_LOW_CARBON_GEN_KEY);
+  if (powerLossesRaw == null) missing.push(RESILIENCE_POWER_LOSSES_KEY);
+  if (missing.length > 0) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_ENERGY_V2_ENABLED=true but required v2 energy seeds are absent: ${missing.join(', ')}. ` +
+        `Provision seed-bundle-resilience-energy-v2 on Railway and confirm seeds populate BEFORE flipping the flag. ` +
+        'Or set RESILIENCE_ENERGY_V2_ENABLED=false to revert to the legacy energy construct.',
+      missing,
+    );
+  }
+
+  return scoreEnergyV2(countryCode, reader);
 }
 
 export async function scoreGovernanceInstitutional(
@@ -1855,10 +1900,41 @@ export async function scoreAllDimensions(
   const memoizedReader = createMemoizedSeedReader(reader);
   const [entries, freshnessMap, failedDatasets] = await Promise.all([
     Promise.all(
-      RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => [
-        dimensionId,
-        await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader),
-      ] as const),
+      RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => {
+        try {
+          const score = await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader);
+          return [dimensionId, score] as const;
+        } catch (err) {
+          // ResilienceConfigurationError (e.g. v2 energy flag flipped without
+          // seeds) surfaces here. Fail-closed per dimension, not per country:
+          // the country keeps scoring other dims normally, and this dim
+          // carries imputationClass='source-failure' + coverage=0 so the
+          // consumer sees the gap explicitly. The T1.7 decoration pass below
+          // reads this shape and leaves it alone; no double-tagging.
+          if (err instanceof ResilienceConfigurationError) {
+            console.warn(
+              `[Resilience] configuration-error dim=${dimensionId} country=${countryCode} missing=${err.missingKeys.join(',')} — routing to source-failure`,
+            );
+            // Match weightedBlend's empty-data shape (score=0 NOT null
+            // because the type declares score: number; coverage=0 marks
+            // "no data") + explicit source-failure tag so the T1.7
+            // decoration pass downstream recognises this as misconfiguration
+            // rather than IMPUTE. Freshness decorated by the caller
+            // alongside the other scores.
+            const sourceFailureScore: ResilienceDimensionScore = {
+              score: 0,
+              coverage: 0,
+              observedWeight: 0,
+              imputedWeight: 1,
+              imputationClass: 'source-failure',
+              freshness: { lastObservedAtMs: 0, staleness: '' },
+            };
+            return [dimensionId, sourceFailureScore] as const;
+          }
+          // Any other error is a bug, not misconfiguration — let it surface.
+          throw err;
+        }
+      }),
     ),
     // T1.5 propagation pass: aggregate freshness at the caller level so
     // the dimension scorers stay mechanical. We share the memoized

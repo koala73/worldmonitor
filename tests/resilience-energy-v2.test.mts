@@ -7,9 +7,14 @@
 //      cross-contamination from the v2 code path into the default
 //      branch is a merge-blocker.
 //   2. Flag on = v2 composite. Each new indicator must move the score
-//      in the documented direction (monotonicity), and countries
-//      missing a v2 input should degrade gracefully to null per
-//      weighted-blend contract rather than throw.
+//      in the documented direction (monotonicity). When any REQUIRED
+//      v2 seed is absent, the dispatch throws
+//      `ResilienceConfigurationError` (fail-closed) so the operator
+//      sees the misconfiguration via the source-failure path instead
+//      of IMPUTE numbers that look computed. Pre-2026-04-24 the
+//      scorer silently degraded to IMPUTE; plan
+//      `docs/plans/2026-04-24-001-fix-resilience-v2-fail-closed-on-missing-seeds-plan.md`
+//      inverts that contract.
 //
 // The tests use stubbed readers instead of Redis so the suite stays
 // hermetic.
@@ -17,7 +22,11 @@
 import test, { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { scoreEnergy, type ResilienceSeedReader } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import {
+  ResilienceConfigurationError,
+  scoreEnergy,
+  type ResilienceSeedReader,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 
 const TEST_ISO2 = 'ZZ'; // fictional country so test coverage checks don't flag it
 
@@ -159,13 +168,63 @@ describe('scoreEnergy — RESILIENCE_ENERGY_V2_ENABLED=true', () => {
     assert.ok(deHigh.score > deLow.score, `DE storage 10→90 should raise score; got ${deLow.score} → ${deHigh.score}`);
   });
 
-  it('missing v2 seed inputs degrade gracefully (no throw, coverage < 1.0)', async () => {
-    const allMissing = await scoreEnergy(TEST_ISO2, makeEnergyReader(TEST_ISO2, {
-      fossilBulk: null, lowCarbonBulk: null, lossesBulk: null,
-    }));
-    // Score may be null/low but must NOT throw. Coverage should be
-    // well below 1.0 because most inputs are absent.
-    assert.ok(allMissing.coverage < 1.0, `all-missing coverage should be < 1.0, got ${allMissing.coverage}`);
+  // Fail-closed contract (plan 2026-04-24-001). When flag=true but any
+  // required v2 seed is absent, the dispatch throws. Silent IMPUTE
+  // fallback would produce fabricated-looking numbers with zero operator
+  // signal — the exact failure the user post-mortem-caught on 2026-04-24.
+  // The shared makeEnergyReader fixture uses `??` fallbacks that coerce
+  // null-overrides back into default data, so these fail-closed tests
+  // need a direct reader that can authoritatively return null for a
+  // specific key without the fixture's defaulting logic.
+  const makeReaderWithMissingV2Seeds = (missing: Set<string>): ResilienceSeedReader => {
+    const base = makeEnergyReader(TEST_ISO2);
+    return async (key: string) => (missing.has(key) ? null : base(key));
+  };
+
+  it('flag on + ALL three v2 seeds missing → throws ResilienceConfigurationError naming all three keys', async () => {
+    const reader = makeReaderWithMissingV2Seeds(new Set([
+      'resilience:fossil-electricity-share:v1',
+      'resilience:low-carbon-generation:v1',
+      'resilience:power-losses:v1',
+    ]));
+    await assert.rejects(
+      scoreEnergy(TEST_ISO2, reader),
+      (err: unknown) => {
+        assert.ok(err instanceof ResilienceConfigurationError, `expected ResilienceConfigurationError, got ${err}`);
+        assert.ok(err.message.includes('resilience:fossil-electricity-share:v1'), 'error must name missing fossil-share key');
+        assert.ok(err.message.includes('resilience:low-carbon-generation:v1'), 'error must name missing low-carbon key');
+        assert.ok(err.message.includes('resilience:power-losses:v1'), 'error must name missing power-losses key');
+        assert.equal(err.missingKeys.length, 3, 'missingKeys must enumerate every absent seed');
+        return true;
+      },
+    );
+  });
+
+  it('flag on + partial missing (only fossil-share absent) → throws naming ONLY the missing key', async () => {
+    // Operator-clarity: the error must tell the operator WHICH seed is
+    // broken so they can fix that specific seeder rather than chase
+    // all three.
+    const reader = makeReaderWithMissingV2Seeds(new Set([
+      'resilience:fossil-electricity-share:v1',
+    ]));
+    await assert.rejects(
+      scoreEnergy(TEST_ISO2, reader),
+      (err: unknown) => {
+        assert.ok(err instanceof ResilienceConfigurationError);
+        assert.deepEqual([...err.missingKeys].sort(), ['resilience:fossil-electricity-share:v1']);
+        assert.ok(!err.message.includes('low-carbon-generation'), 'must not mention keys that ARE present');
+        assert.ok(!err.message.includes('power-losses'), 'must not mention keys that ARE present');
+        return true;
+      },
+    );
+  });
+
+  it('flag on + ALL three v2 seeds present → v2 runs normally, no throw', async () => {
+    // Regression guard for the happy path — ensuring the preflight
+    // check does not block a correctly-configured v2 activation.
+    const result = await scoreEnergy(TEST_ISO2, makeEnergyReader(TEST_ISO2));
+    assert.equal(typeof result.score, 'number', 'happy-path v2 must produce a numeric score');
+    assert.ok(result.coverage > 0, 'happy-path v2 must report positive coverage');
   });
 
   it('reserveMarginPct is NOT read in v2 path (deferred per plan §3.1)', async () => {

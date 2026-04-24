@@ -166,6 +166,8 @@ Retired under v2: `electricityConsumption` (wealth proxy, §3.1 of repair plan),
 
 **Deferred under v2 (plan §3.1 open-question):** `reserveMarginPct` does not ship in PR 1. IEA electricity-balance coverage is sparse outside OECD+G20; the indicator will likely ship at `tier='unmonitored'` with weight 0.05 if it lands at all. Its Redis key is reserved in `_dimension-scorers.ts`; when a seeder lands, split 0.10 out of `powerLossesPct` and add `reserveMarginPct` at 0.10 in the scorer blend.
 
+**Fail-closed semantics (plan `2026-04-24-001`).** When `RESILIENCE_ENERGY_V2_ENABLED=true` but any of the three required seeds (`resilience:fossil-electricity-share:v1`, `resilience:low-carbon-generation:v1`, `resilience:power-losses:v1`) is absent from Redis, the scorer throws `ResilienceConfigurationError` at dispatch rather than silently falling back to IMPUTE. The error is caught per-dimension in `scoreAllDimensions` and surfaces as `imputationClass='source-failure'` with `coverage=0`, visible in the widget and the API response. `/api/health` also reports CRIT on the three `seed-meta:resilience:\{low-carbon-generation,fossil-electricity-share,power-losses\}` entries when they are absent or stale. The flag is only safe to flip AFTER `seed-bundle-resilience-energy-v2` is provisioned on Railway and health reports green on all three.
+
 ### Social & Governance Domain (weight 0.19)
 
 #### Governance
