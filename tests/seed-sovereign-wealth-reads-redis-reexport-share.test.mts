@@ -144,6 +144,45 @@ describe('loadReexportShareFromRedis — Gap #2 regression guards', () => {
     assert.equal(map.size, 0);
   });
 
+  it('standalone mode (BUNDLE_RUN_STARTED_AT_MS unset) skips the freshness gate', async () => {
+    // Regression guard for the standalone-regression bug: when a seeder
+    // runs manually (operator invocation, not bundle-runner), the env
+    // var is absent. Earlier designs fell back to `Date.now()` which
+    // rejected any previously-seeded peer envelope as "stale" — even
+    // when the operator ran the Reexport seeder milliseconds beforehand.
+    // The fix: getBundleRunStartedAtMs() returns null outside a bundle;
+    // the consumer skips the freshness gate but still requires meta
+    // existence (peer outage still fails safely).
+    delete process.env.BUNDLE_RUN_STARTED_AT_MS;
+    keyStore[REEXPORT_SHARE_KEY] = {
+      manifestVersion: 2,
+      countries: { AE: { reexportShareOfImports: 0.35, year: 2023 } },
+    };
+    // Meta written 10 MINUTES ago — rejected under the old `Date.now()`
+    // fallback, accepted under the null-return + skip-gate fix.
+    keyStore[REEXPORT_SHARE_META_KEY] = { fetchedAt: Date.now() - 600_000 };
+
+    const map = await loadReexportShareFromRedis();
+    assert.equal(map.size, 1,
+      'standalone: operator-seeded peer data must be accepted even if written before this process started');
+    assert.equal(map.get('AE')?.reexportShareOfImports, 0.35);
+  });
+
+  it('standalone mode still rejects missing meta (peer outage still fails safely)', async () => {
+    // Even in standalone mode, meta absence means "peer never ran" —
+    // must fall back to gross imports, don't apply potentially stale
+    // shares from a data key that has no freshness signal.
+    delete process.env.BUNDLE_RUN_STARTED_AT_MS;
+    keyStore[REEXPORT_SHARE_KEY] = {
+      manifestVersion: 2,
+      countries: { AE: { reexportShareOfImports: 0.35, year: 2023 } },
+    };
+    // No meta key written — peer outage.
+    const map = await loadReexportShareFromRedis();
+    assert.equal(map.size, 0,
+      'standalone: absent meta must still fall back (peer-outage fail-safe survives gate bypass)');
+  });
+
   it('fetchedAtMs === bundleStartMs passes (inclusive freshness boundary)', async () => {
     // The freshness check uses strict-less-than: `fetchedAt < bundleStart`.
     // Exact equality is treated as FRESH. This pins the inclusive-boundary

@@ -113,9 +113,22 @@ export async function loadReexportShareFromRedis() {
 
   const metaRaw = await readSeedSnapshot(REEXPORT_SHARE_META_KEY);
   const fetchedAtMs = Number(metaRaw?.fetchedAt ?? 0);
+  if (!fetchedAtMs) {
+    // Meta absent or malformed — can't tell whether the peer seeder ran.
+    // Safer to treat as outage than to trust the data key alone.
+    console.warn('[seed-sovereign-wealth] reexport-share seed-meta absent/malformed; falling back to gross-imports denominator for all countries');
+    return map;
+  }
   const bundleStartMs = getBundleRunStartedAtMs();
-  if (!fetchedAtMs || fetchedAtMs < bundleStartMs) {
-    const ageMin = fetchedAtMs ? ((Date.now() - fetchedAtMs) / 60_000).toFixed(0) : 'n/a';
+  // Freshness gate applies ONLY when spawned by _bundle-runner.mjs (i.e.
+  // `getBundleRunStartedAtMs()` returns a timestamp). Standalone runs
+  // (manual invocation, operator debugging) return null and skip the
+  // gate: the operator is responsible for running the peer seeder
+  // first, and we trust any `fetchedAt` in that context. The gate's
+  // purpose is protecting against across-bundle-tick staleness inside
+  // a cron run, which has no analog outside a bundle.
+  if (bundleStartMs != null && fetchedAtMs < bundleStartMs) {
+    const ageMin = ((Date.now() - fetchedAtMs) / 60_000).toFixed(0);
     console.warn(`[seed-sovereign-wealth] reexport-share seed-meta NOT from this bundle run (age=${ageMin}min, bundleStart=${new Date(bundleStartMs).toISOString()}). Falling back to gross imports for all countries.`);
     return map;
   }
