@@ -1244,14 +1244,20 @@ async function composeBriefsForRun(rules, nowMs) {
     console.warn('[digest] brief: insights read failed, using zeroed stats:', err.message);
   }
 
-  // Memoize buildDigest by (variant, lang, windowStart). Many users
-  // share a variant/lang, so this saves ZRANGE + HGETALL round-trips
-  // across the per-user loop. Scoped to this cron run — no cross-run
-  // memoization needed (Redis is authoritative).
+  // Memoize buildDigest by (variant, lang, sensitivity, windowStart).
+  // Many users share a variant/lang, so this saves ZRANGE + HGETALL
+  // round-trips across the per-user loop. Scoped to this cron run —
+  // no cross-run memoization needed (Redis is authoritative).
+  //
+  // Sensitivity is part of the key because buildDigest filters by
+  // rule.sensitivity BEFORE dedup — without it, a stricter user
+  // inherits a looser populator's pool (the earlier populator "wins"
+  // and decides which severity tiers enter the pool, so stricter
+  // users get a pool that contains severities they never wanted).
   const windowStart = nowMs - BRIEF_STORY_WINDOW_MS;
   const digestCache = new Map();
   async function digestFor(candidate) {
-    const key = `${candidate.variant ?? 'full'}:${candidate.lang ?? 'en'}:${windowStart}`;
+    const key = `${candidate.variant ?? 'full'}:${candidate.lang ?? 'en'}:${candidate.sensitivity ?? 'high'}:${windowStart}`;
     if (digestCache.has(key)) return digestCache.get(key);
     const stories = await buildDigest(candidate, windowStart);
     digestCache.set(key, stories ?? []);
