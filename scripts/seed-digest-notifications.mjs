@@ -1301,23 +1301,52 @@ async function composeAndStoreBriefForUser(userId, candidates, insightsNumbers, 
   let envelope = null;
   let chosenVariant = null;
   let chosenCandidate = null;
+  // Per Solution 0 of the topic-adjacency plan: count filter drops for
+  // the candidate whose envelope we ship, so operators can see whether
+  // post-group URL/headline/sensitivity drops are puncturing multi-
+  // member topics at material rates.
+  let chosenDropStats = null;
   for (const candidate of candidates) {
     const digestStories = await digestFor(candidate);
     if (!digestStories || digestStories.length === 0) continue;
+    const dropStats = { severity: 0, headline: 0, url: 0, shape: 0, in: digestStories.length };
     const composed = composeBriefFromDigestStories(
       candidate,
       digestStories,
       insightsNumbers,
-      { nowMs },
+      {
+        nowMs,
+        onDrop: (ev) => { dropStats[ev.reason] = (dropStats[ev.reason] ?? 0) + 1; },
+      },
     );
     if (composed) {
       envelope = composed;
       chosenVariant = candidate.variant;
       chosenCandidate = candidate;
+      chosenDropStats = dropStats;
       break;
     }
   }
   if (!envelope) return null;
+
+  // Per-user filter-drop line. Emits one structured row per composed
+  // brief so a day's worth of ticks can be grep'd for drop-rate patterns
+  // without tailing every tick. See Solution 0 in
+  // docs/plans/2026-04-24-004-fix-brief-topic-adjacency-defects-plan.md
+  // for why this log exists (deciding whether Solution 3 is warranted).
+  if (chosenDropStats && chosenCandidate) {
+    const out = (envelope?.data?.stories?.length ?? 0);
+    console.log(
+      `[digest] brief filter drops user=${userId} ` +
+        `sensitivity=${chosenCandidate.sensitivity ?? 'high'} ` +
+        `in=${chosenDropStats.in} ` +
+        `dropped_severity=${chosenDropStats.severity} ` +
+        `dropped_url=${chosenDropStats.url} ` +
+        `dropped_headline=${chosenDropStats.headline} ` +
+        `dropped_shape=${chosenDropStats.shape} ` +
+        `out=${out}`,
+    );
+  }
 
   // Phase 3b — LLM enrichment. Substitutes the stubbed whyMatters /
   // lead / threads / signals fields with Gemini 2.5 Flash output.

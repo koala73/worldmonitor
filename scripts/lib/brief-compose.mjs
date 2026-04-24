@@ -272,9 +272,12 @@ function digestStoryToUpstreamTopStory(s) {
  * @param {object} rule — enabled alertRule row
  * @param {unknown[]} digestStories — output of buildDigest(rule, windowStart)
  * @param {{ clusters: number; multiSource: number }} insightsNumbers
- * @param {{ nowMs?: number }} [opts]
+ * @param {{ nowMs?: number, onDrop?: import('../../shared/brief-filter.js').DropMetricsFn }} [opts]
+ *   `onDrop` is forwarded to filterTopStories so the seeder can
+ *   aggregate per-user filter-drop counts without this module knowing
+ *   how they are reported.
  */
-export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now() } = {}) {
+export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
   const sensitivity = rule.sensitivity ?? 'all';
   const tz = rule.digestTimezone ?? 'UTC';
@@ -283,6 +286,7 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     stories: upstreamLike,
     sensitivity,
     maxStories: MAX_STORIES_PER_USER,
+    onDrop,
   });
   if (stories.length === 0) return null;
   const issueDate = issueDateInTz(nowMs, tz);

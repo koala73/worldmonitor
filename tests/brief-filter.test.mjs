@@ -230,6 +230,101 @@ describe('assembleStubbedBriefEnvelope', () => {
   });
 });
 
+describe('filterTopStories — onDrop metrics', () => {
+  const sensitivity = 'high';
+
+  it('does not invoke onDrop when every story passes', () => {
+    const calls = [];
+    const stories = [upstreamStory(), upstreamStory({ primaryTitle: 'Another' })];
+    filterTopStories({ stories, sensitivity, onDrop: (ev) => calls.push(ev) });
+    assert.equal(calls.length, 0);
+  });
+
+  it('fires onDrop with reason=severity when sensitivity excludes the level', () => {
+    const calls = [];
+    filterTopStories({
+      stories: [upstreamStory({ threatLevel: 'low' })],
+      sensitivity,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].reason, 'severity');
+    assert.equal(calls[0].severity, 'low');
+  });
+
+  it('fires onDrop with reason=headline when primaryTitle is empty', () => {
+    const calls = [];
+    filterTopStories({
+      stories: [upstreamStory({ primaryTitle: '' })],
+      sensitivity,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].reason, 'headline');
+    assert.equal(calls[0].severity, 'high');
+  });
+
+  it('fires onDrop with reason=url when primaryLink is invalid', () => {
+    const calls = [];
+    filterTopStories({
+      stories: [upstreamStory({ primaryLink: 'ftp://bad' })],
+      sensitivity,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].reason, 'url');
+    assert.equal(calls[0].severity, 'high');
+    assert.equal(calls[0].sourceUrl, 'ftp://bad');
+  });
+
+  it('fires onDrop with reason=shape for non-object input', () => {
+    const calls = [];
+    filterTopStories({
+      stories: [null, 'not an object', upstreamStory()],
+      sensitivity,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].reason, 'shape');
+    assert.equal(calls[1].reason, 'shape');
+  });
+
+  it('output is byte-identical whether onDrop is supplied or not', () => {
+    // Regression guard: the metrics hook must not alter filter behaviour.
+    const stories = [
+      upstreamStory({ threatLevel: 'low' }),
+      upstreamStory(),
+      upstreamStory({ primaryLink: 'ftp://bad' }),
+      upstreamStory({ primaryTitle: '' }),
+      upstreamStory({ primaryTitle: 'Second valid' }),
+    ];
+    const without = filterTopStories({ stories, sensitivity });
+    const with_ = filterTopStories({ stories, sensitivity, onDrop: () => {} });
+    assert.deepEqual(without, with_);
+  });
+
+  it('distinct reasons are counted separately across a mixed batch', () => {
+    // Matches the seeder's per-user aggregation pattern.
+    const tally = { severity: 0, headline: 0, url: 0, shape: 0 };
+    filterTopStories({
+      stories: [
+        upstreamStory({ threatLevel: 'low' }),        // severity
+        upstreamStory({ threatLevel: 'medium' }),     // severity
+        upstreamStory({ primaryTitle: '' }),          // headline
+        upstreamStory({ primaryLink: 'ftp://bad' }),  // url
+        null,                                          // shape
+        upstreamStory(),                              // kept
+      ],
+      sensitivity,
+      onDrop: (ev) => { tally[ev.reason]++; },
+    });
+    assert.equal(tally.severity, 2);
+    assert.equal(tally.headline, 1);
+    assert.equal(tally.url, 1);
+    assert.equal(tally.shape, 1);
+  });
+});
+
 describe('issueDateInTz', () => {
   // 2026-04-18T00:30:00Z — midnight UTC + 30min. Tokyo (+9) is
   // already mid-morning on the 18th; LA (-7) is late on the 17th.

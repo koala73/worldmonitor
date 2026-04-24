@@ -94,24 +94,43 @@ function clip(v, cap) {
 }
 
 /**
- * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number }} input
+ * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
+ */
+
+/**
+ * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number; onDrop?: DropMetricsFn }} input
  * @returns {BriefStory[]}
  */
-export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
+export function filterTopStories({ stories, sensitivity, maxStories = 12, onDrop }) {
   if (!Array.isArray(stories)) return [];
   const allowed = ALLOWED_LEVELS_BY_SENSITIVITY[sensitivity];
   if (!allowed) return [];
+
+  // Per Solution 0 of the topic-adjacency plan: when the caller passes
+  // onDrop, we emit one event per filter drop so the seeder can
+  // aggregate counts and log per-tick drop rates. onDrop is optional
+  // and synchronous — any throw is the caller's problem (tested above).
+  const emit = typeof onDrop === 'function' ? onDrop : null;
 
   /** @type {BriefStory[]} */
   const out = [];
   for (const raw of stories) {
     if (out.length >= maxStories) break;
-    if (!raw || typeof raw !== 'object') continue;
+    if (!raw || typeof raw !== 'object') {
+      if (emit) emit({ reason: 'shape' });
+      continue;
+    }
     const threatLevel = normaliseThreatLevel(raw.threatLevel);
-    if (!threatLevel || !allowed.has(threatLevel)) continue;
+    if (!threatLevel || !allowed.has(threatLevel)) {
+      if (emit) emit({ reason: 'severity', severity: threatLevel ?? undefined });
+      continue;
+    }
 
     const headline = clip(asTrimmedString(raw.primaryTitle), MAX_HEADLINE_LEN);
-    if (!headline) continue;
+    if (!headline) {
+      if (emit) emit({ reason: 'headline', severity: threatLevel });
+      continue;
+    }
 
     // v2: every surfaced story must have a working outgoing link so
     // the magazine can wrap the source line in a UTM anchor. A story
@@ -121,7 +140,10 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
     // populated on every ingested item; the check exists so one bad
     // row can't slip through.
     const sourceUrl = normaliseSourceUrl(raw.primaryLink);
-    if (!sourceUrl) continue;
+    if (!sourceUrl) {
+      if (emit) emit({ reason: 'url', severity: threatLevel, sourceUrl: typeof raw.primaryLink === 'string' ? raw.primaryLink : undefined });
+      continue;
+    }
 
     const description = clip(
       asTrimmedString(raw.description) || headline,
