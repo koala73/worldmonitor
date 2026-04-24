@@ -1,0 +1,125 @@
+{
+  "_comment": "Minimal synthetic fixture for scripts/audit-resilience-cohorts.mjs end-to-end dry-run. Mirrors the 2026-04-24 GCC snapshot (KW>QA>AE) so the fixture-mode run produces the observed-real-world deltas the audit is designed to surface. Values are approximate; used only for structural verification.",
+  "ranking": {
+    "items": [
+      { "countryCode": "KW", "overallScore": 79.08, "level": "high", "lowConfidence": false, "overallCoverage": 0.92, "rankStable": true },
+      { "countryCode": "QA", "overallScore": 77.06, "level": "high", "lowConfidence": false, "overallCoverage": 0.95, "rankStable": true },
+      { "countryCode": "AE", "overallScore": 72.72, "level": "high", "lowConfidence": false, "overallCoverage": 0.88, "rankStable": true },
+      { "countryCode": "SA", "overallScore": 68.04, "level": "high", "lowConfidence": false, "overallCoverage": 0.90, "rankStable": true },
+      { "countryCode": "OM", "overallScore": 65.74, "level": "moderate", "lowConfidence": false, "overallCoverage": 0.82, "rankStable": true },
+      { "countryCode": "BH", "overallScore": 61.69, "level": "moderate", "lowConfidence": false, "overallCoverage": 0.85, "rankStable": true }
+    ],
+    "greyedOut": []
+  },
+  "scores": {
+    "AE": {
+      "countryCode": "AE",
+      "overallScore": 72.72,
+      "level": "high",
+      "baselineScore": 72.0,
+      "stressScore": 70.0,
+      "stressFactor": 0.15,
+      "domains": [
+        { "id": "recovery", "score": 62, "weight": 0.25, "dimensions": [
+          { "id": "sovereignFiscalBuffer", "score": 27, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "liquidReserveAdequacy", "score": 38, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "importConcentration", "score": 50, "coverage": 0.3, "observedWeight": 0, "imputedWeight": 1, "imputationClass": "unmonitored" },
+          { "id": "externalDebtCoverage", "score": 100, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "fiscalSpace", "score": 76, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "stateContinuity", "score": 85, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "economic", "score": 74, "weight": 0.17, "dimensions": [
+          { "id": "tradeSanctions", "score": 54, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "currencyExternal", "score": 73, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "macroFiscal", "score": 80, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "energy", "score": 79, "weight": 0.11, "dimensions": [
+          { "id": "energy", "score": 79, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "health-food", "score": 62, "weight": 0.13, "dimensions": [
+          { "id": "foodWater", "score": 53, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "healthPublicService", "score": 75, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "social-governance", "score": 74, "weight": 0.19, "dimensions": [
+          { "id": "socialCohesion", "score": 70, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "governanceInstitutional", "score": 78, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "infrastructure", "score": 78, "weight": 0.15, "dimensions": [
+          { "id": "infrastructure", "score": 80, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]}
+      ]
+    },
+    "KW": {
+      "countryCode": "KW",
+      "overallScore": 79.08,
+      "level": "high",
+      "baselineScore": 79.0,
+      "stressScore": 78.0,
+      "stressFactor": 0.11,
+      "domains": [
+        { "id": "recovery", "score": 90, "weight": 0.25, "dimensions": [
+          { "id": "sovereignFiscalBuffer", "score": 98, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "liquidReserveAdequacy", "score": 72, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "importConcentration", "score": 85, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "externalDebtCoverage", "score": 100, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "fiscalSpace", "score": 98, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "stateContinuity", "score": 80, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "economic", "score": 78, "weight": 0.17, "dimensions": [
+          { "id": "tradeSanctions", "score": 82, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "currencyExternal", "score": 86, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "macroFiscal", "score": 70, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "energy", "score": 55, "weight": 0.11, "dimensions": [
+          { "id": "energy", "score": 55, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "health-food", "score": 60, "weight": 0.13, "dimensions": [
+          { "id": "foodWater", "score": 53, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "healthPublicService", "score": 72, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "social-governance", "score": 72, "weight": 0.19, "dimensions": [
+          { "id": "socialCohesion", "score": 68, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "governanceInstitutional", "score": 76, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "infrastructure", "score": 76, "weight": 0.15, "dimensions": [
+          { "id": "infrastructure", "score": 76, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]}
+      ]
+    },
+    "QA": {
+      "countryCode": "QA",
+      "overallScore": 77.06,
+      "level": "high",
+      "baselineScore": 77.0,
+      "stressScore": 76.0,
+      "stressFactor": 0.12,
+      "domains": [
+        { "id": "recovery", "score": 85, "weight": 0.25, "dimensions": [
+          { "id": "sovereignFiscalBuffer", "score": 95, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "liquidReserveAdequacy", "score": 68, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "importConcentration", "score": 70, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "externalDebtCoverage", "score": 100, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]},
+        { "id": "economic", "score": 78, "weight": 0.17, "dimensions": [
+          { "id": "tradeSanctions", "score": 82, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+        ]}
+      ]
+    },
+    "SA": { "countryCode": "SA", "overallScore": 68.04, "level": "high", "baselineScore": 68.0, "stressScore": 67.0, "stressFactor": 0.14, "domains": [
+      { "id": "recovery", "score": 70, "weight": 0.25, "dimensions": [
+        { "id": "sovereignFiscalBuffer", "score": 72, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+        { "id": "externalDebtCoverage", "score": 100, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+      ]}
+    ]},
+    "OM": { "countryCode": "OM", "overallScore": 65.74, "level": "moderate", "baselineScore": 66.0, "stressScore": 64.0, "stressFactor": 0.16, "domains": [
+      { "id": "recovery", "score": 60, "weight": 0.25, "dimensions": [
+        { "id": "externalDebtCoverage", "score": 100, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+      ]}
+    ]},
+    "BH": { "countryCode": "BH", "overallScore": 61.69, "level": "moderate", "baselineScore": 62.0, "stressScore": 60.0, "stressFactor": 0.18, "domains": [
+      { "id": "recovery", "score": 55, "weight": 0.25, "dimensions": [
+        { "id": "externalDebtCoverage", "score": 100, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+      ]}
+    ]}
+  }
+}
