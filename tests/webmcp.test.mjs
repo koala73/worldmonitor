@@ -87,11 +87,14 @@ describe('webmcp.ts: tool behaviour (source-level invariants)', () => {
   });
 });
 
-// App.ts wiring — guards against silent-success bugs where a binding
-// forwards to a nullable UI target whose no-op the tool then falsely
-// reports as success. Bindings MUST throw when the target is absent
-// so withInvocationLogging's catch path can return isError:true.
-describe('webmcp App.ts binding: guard against silent success', () => {
+// App.ts wiring — guards against two classes of bug:
+//   (1) Silent success when a binding forwards to a nullable UI target.
+//   (2) Startup race when a tool is invoked during the window between
+//       early registration (needed for scanners) and Phase-4 UI init.
+// Bindings await a readiness signal before touching UI state and fall
+// through to a throw if the signal never resolves; withInvocationLogging
+// converts that throw into isError:true.
+describe('webmcp App.ts binding: readiness + teardown', () => {
   const appSrc = readFileSync(resolve(ROOT, 'src/App.ts'), 'utf-8');
   const bindingBlock = appSrc.match(
     /registerWebMcpTools\(\{[\s\S]+?\}\);/,
@@ -128,17 +131,61 @@ describe('webmcp App.ts binding: guard against silent success', () => {
     );
   });
 
-  it('openSearch binding throws when searchModal is absent', () => {
+  it('both bindings await the UI-readiness signal before touching state', () => {
+    // Before-fix regression: openSearch threw immediately on first
+    // invocation during startup. Both bindings must wait for Phase-4
+    // UI init to complete, then check the state, then dispatch.
+    assert.match(
+      bindingBlock[0],
+      /openSearch:[\s\S]+?await this\.waitForUiReady\(\)[\s\S]+?this\.state\.searchModal/,
+      'openSearch must await waitForUiReady() before accessing searchModal',
+    );
+    assert.match(
+      bindingBlock[0],
+      /openCountryBriefByCode:[\s\S]+?await this\.waitForUiReady\(\)[\s\S]+?this\.state\.countryBriefPage/,
+      'openCountryBriefByCode must await waitForUiReady() before accessing countryBriefPage',
+    );
+  });
+
+  it('bindings still throw (not silently succeed) when state is absent after readiness', () => {
+    // The silent-success guard from PR #3356 review must survive the
+    // readiness refactor. After awaiting readiness, a missing target is
+    // a real failure — throw so withInvocationLogging returns isError.
     assert.match(
       bindingBlock[0],
       /openSearch:[\s\S]+?if \(!this\.state\.searchModal\)[\s\S]+?throw new Error/,
     );
-  });
-
-  it('openCountryBriefByCode binding throws when countryBriefPage is absent', () => {
     assert.match(
       bindingBlock[0],
       /openCountryBriefByCode:[\s\S]+?if \(!this\.state\.countryBriefPage\)[\s\S]+?throw new Error/,
+    );
+  });
+
+  it('uiReady is resolved after Phase-4 UI modules initialise', () => {
+    // waitForUiReady() hangs forever if nothing ever resolves uiReady.
+    // The resolve must live right after countryIntel.init() so that all
+    // Phase-4 modules are ready by the time waiters unblock.
+    assert.match(
+      appSrc,
+      /this\.countryIntel\.init\(\);[\s\S]{0,200}this\.resolveUiReady\(\)/,
+      'resolveUiReady() must fire after countryIntel.init() in Phase 4',
+    );
+  });
+
+  it('waitForUiReady enforces a timeout so a broken init cannot hang the agent', () => {
+    assert.match(
+      appSrc,
+      /private async waitForUiReady\(timeoutMs = [\d_]+\)[\s\S]+?Promise\.race\(\[this\.uiReady/,
+    );
+  });
+
+  it('destroy() aborts the WebMCP controller so re-inits do not duplicate registrations', () => {
+    const destroyBody = appSrc.match(/public destroy\(\): void \{([\s\S]+?)\n  \}/);
+    assert.ok(destroyBody, 'could not locate destroy() body');
+    assert.match(
+      destroyBody[1],
+      /this\.webMcpController\?\.abort\(\)/,
+      'destroy() must abort the stored WebMCP AbortController',
     );
   });
 });

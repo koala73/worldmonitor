@@ -55,7 +55,11 @@ interface NavigatorWithWebMcp extends Navigator {
 export interface WebMcpAppBindings {
   openCountryBriefByCode(code: string, country: string): Promise<void>;
   resolveCountryName(code: string): string;
-  openSearch(): void;
+  // Returns a Promise because implementations may await a readiness signal
+  // (e.g. waiting for the search modal to exist during startup) before
+  // dispatching. Tool executes must `await` it so rejections surface to
+  // withInvocationLogging's catch path.
+  openSearch(): void | Promise<void>;
 }
 
 const ISO2 = /^[A-Z]{2}$/;
@@ -118,7 +122,7 @@ export function buildWebMcpTools(app: WebMcpAppBindings): WebMcpTool[] {
         additionalProperties: false,
       },
       execute: withInvocationLogging('openSearch', async () => {
-        app.openSearch();
+        await app.openSearch();
         return textResult('Opened search palette.');
       }),
     },
