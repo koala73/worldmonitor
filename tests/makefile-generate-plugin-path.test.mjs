@@ -51,18 +51,45 @@ describe('Makefile generate target — plugin path resolution', () => {
   });
 
   test('fails loudly when buf is not on PATH', () => {
-    // Must not silently fall through when buf is absent — the next
-    // invocation would inherit an empty BUF_BIN and crash deeper in
-    // the pipeline with a confusing error.
-    assert.match(
-      recipe,
-      /\[ -n "\$\$BUF_BIN" \]/,
-      'generate recipe must check that BUF_BIN resolved to a non-empty path',
-    );
+    // Must not silently fall through when buf is absent.
     assert.match(
       recipe,
       /buf not found on PATH/i,
       'generate recipe must emit a clear error when buf is missing',
+    );
+  });
+
+  test('fails loudly when go is not on PATH', () => {
+    // `go env GOBIN` failing silently would let PLUGIN_DIR resolve to
+    // "/bin" (empty + "/bin" suffix), which doesn't override PATH — a
+    // stale sebuf on the normal PATH would win and the duplicate-output
+    // failure this PR is trying to prevent would come back. Codex
+    // high-severity on commit 9c0058a.
+    assert.match(
+      recipe,
+      /command -v go/,
+      'generate recipe must check that `go` is on PATH before attempting plugin resolution',
+    );
+    assert.match(
+      recipe,
+      /go not found on PATH/i,
+      'generate recipe must emit a clear error when go is missing',
+    );
+  });
+
+  test('verifies the sebuf plugin binary is actually present before invoking buf', () => {
+    // `go` can be installed without the user having ever run
+    // `make install-plugins`. Without this guard, buf would fail with
+    // a confusing protoc-level error instead of a clear remediation.
+    assert.match(
+      recipe,
+      /-x ".*\$\$PLUGIN_DIR\/protoc-gen-ts-client"/,
+      'generate recipe must verify protoc-gen-ts-client is executable in the resolved plugin dir',
+    );
+    assert.match(
+      recipe,
+      /Run: make install-plugins/,
+      'generate recipe must tell the user the remediation when the plugin is missing',
     );
   });
 
@@ -90,16 +117,23 @@ describe('Makefile generate target — plugin path resolution', () => {
   });
 
   test('PATH override order: install-dir comes first, then original PATH', () => {
-    // The install-dir subshell must appear BEFORE $$PATH. Reversing
-    // them would let any earlier PATH entry (e.g. Homebrew plugins)
-    // shadow the Makefile-pinned version — the exact bug this guards.
-    const pathEqIdx = recipe.indexOf('PATH="');
-    assert.ok(pathEqIdx >= 0, 'recipe must contain PATH= assignment');
-    const gobinIdx = recipe.indexOf('go env GOBIN', pathEqIdx);
-    const dollarPathIdx = recipe.indexOf('$$PATH', pathEqIdx);
-    assert.ok(gobinIdx > 0, 'GOBIN lookup must be inside the PATH assignment');
-    assert.ok(dollarPathIdx > gobinIdx,
-      '$$PATH must come AFTER the GOBIN subshell in the PATH assignment');
+    // PLUGIN_DIR must appear BEFORE $$PATH in the PATH assignment.
+    // Reversing them would let any earlier PATH entry (e.g. Homebrew
+    // plugins) shadow the Makefile-pinned version.
+    const pathAssignMatch = recipe.match(/PATH="\$\$PLUGIN_DIR:\$\$PATH"/);
+    assert.ok(
+      pathAssignMatch,
+      'recipe must contain PATH="$$PLUGIN_DIR:$$PATH" — resolved plugin dir first, original PATH second',
+    );
+    // Cross-check: PLUGIN_DIR must have been computed before the PATH
+    // assignment uses it.
+    const pluginDirAssignIdx = recipe.indexOf('PLUGIN_DIR=');
+    const pathAssignIdx = recipe.indexOf('PATH="$$PLUGIN_DIR');
+    assert.ok(pluginDirAssignIdx >= 0, 'recipe must set PLUGIN_DIR');
+    assert.ok(pathAssignIdx > pluginDirAssignIdx,
+      'PATH assignment must come AFTER the PLUGIN_DIR computation');
+    // The GOBIN lookup happens in the PLUGIN_DIR assignment, which
+    // precedes the PATH assignment — verified above.
   });
 
   test('path expansion succeeds on current machine', () => {

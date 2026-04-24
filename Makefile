@@ -90,7 +90,22 @@ generate: clean ## Generate code from proto definitions
 	@# command resolution before `make` runs) and is harmless here because
 	@# this recipe resolves `buf` via its own PATH before building the
 	@# plugin PATH.
-	cd $(PROTO_DIR) && BUF_BIN=$$(command -v buf) && [ -n "$$BUF_BIN" ] || { echo 'buf not found on PATH — run: make install-buf' >&2; exit 1; } && PATH="$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi):$$PATH" "$$BUF_BIN" generate
+	@command -v go  >/dev/null 2>&1 || { echo 'go not found on PATH — make generate needs `go` to resolve the sebuf plugin install dir. Install Go, then run: make install-plugins' >&2; exit 1; }
+	@command -v buf >/dev/null 2>&1 || { echo 'buf not found on PATH — run: make install-buf' >&2; exit 1; }
+	@# All plugin-resolution, plugin-presence, and invocation in a single
+	@# shell line chained with `&&` so any failed guard aborts the recipe
+	@# BEFORE `buf generate` runs. `$$(go env GOBIN)` without -n guard
+	@# would silently become "/bin" when unset, failing to override PATH
+	@# and letting a stale sebuf on the normal PATH win — the exact
+	@# failure mode this PR is trying to prevent (Codex high-severity on
+	@# 9c0058a). The plugin-executable check catches the case where `go`
+	@# is installed but the user has never run `make install-plugins`.
+	cd $(PROTO_DIR) && \
+		PLUGIN_DIR=$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi) && \
+		[ -n "$$PLUGIN_DIR" ] || { echo 'Could not resolve Go install dir from GOBIN/GOPATH — refusing to run buf generate without a pinned plugin location.' >&2; exit 1; } && \
+		[ -x "$$PLUGIN_DIR/protoc-gen-ts-client" ] || { echo "protoc-gen-ts-client not found at $$PLUGIN_DIR/. Run: make install-plugins" >&2; exit 1; } && \
+		BUF_BIN=$$(command -v buf) && \
+		PATH="$$PLUGIN_DIR:$$PATH" "$$BUF_BIN" generate
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
