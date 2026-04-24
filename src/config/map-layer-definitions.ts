@@ -82,8 +82,13 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   webcams:                  def('webcams',                  '&#128247;', 'webcams',                  'Live Webcams'),
   // weatherRadar removed — radar tiles now auto-start when Weather Alerts layer is toggled on
   diseaseOutbreaks:         def('diseaseOutbreaks',         '&#129440;', 'diseaseOutbreaks',         'Disease Outbreaks'),
-  storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities'),
-  fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages'),
+  // DeckGL-only layers. GlobeMap.ts has no renderer support (no branch in
+  // ensureStaticDataForLayer / no entry in the layer-channel map), so we
+  // restrict the declared renderers to ['flat'] — the layer picker hides
+  // the toggle in globe mode rather than exposing a no-op. Restore
+  // ['flat', 'globe'] when GlobeMap gets real rendering for these assets.
+  storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['flat']),
+  fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['flat']),
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {

@@ -384,7 +384,11 @@ export class MapComponent {
       'bases', 'nuclear', 'irradiators',                 // military/strategic
       'military',                                         // military tracking (flights + vessels)
       'cables', 'pipelines', 'outages', 'datacenters',   // infrastructure
-      // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only)
+      // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only).
+      // storageFacilities + fuelShortages are also DeckGL-only — this file has no
+      // SVG render path for them (see grep for existing 'pipelines' render at :1100).
+      // Adding them here would surface a toggle that produces zero output. They're
+      // already restricted to ['flat'] in LAYER_REGISTRY to hide from globe mode too.
       'ais', 'flights', 'gpsJamming',                      // transport/interference
       'natural', 'weather',                               // natural
       'economic',                                         // economic
