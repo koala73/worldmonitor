@@ -84,6 +84,7 @@ async function tryApiProvider(
         variant: SITE_VARIANT,
         lang: lang || 'en',
         systemAppend: '',
+        bodies: [],
       });
     }, emptySummaryFallback);
 
@@ -312,6 +313,7 @@ export async function translateText(
           variant: targetLang,
           lang: '',
           systemAppend: '',
+          bodies: [],
         });
       }, emptySummaryFallback);
 

@@ -9,6 +9,7 @@ export interface SummarizeArticleRequest {
   variant: string;
   lang: string;
   systemAppend: string;
+  bodies: string[];
 }
 
 export interface SummarizeArticleResponse {
@@ -54,6 +55,7 @@ export interface NewsItem {
   importanceScore: number;
   corroborationCount: number;
   storyMeta?: StoryMeta;
+  snippet: string;
 }
 
 export interface ThreatClassification {

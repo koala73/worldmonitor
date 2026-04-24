@@ -452,6 +452,7 @@ function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsIte
       source: item.classSource,
     },
     locationName: '',
+    snippet: item.description ?? '',
   };
 }
 
