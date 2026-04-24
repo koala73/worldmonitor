@@ -166,7 +166,7 @@ describe('UNHCR displacement — scorer reads + labor-migrant-cohort invariant',
     ]);
     const origin = await scoreBorderSecurity('SYR', makeReader(originPayload));
     assert.equal(origin.score, 100,
-      `origin-only country scores 100 today (the `??` fallback does NOT fire on hostTotal=0); got ${origin.score}`);
+      `origin-only country scores 100 today (the \`??\` fallback does NOT fire on hostTotal=0); got ${origin.score}`);
 
     // Host-only (Turkey pattern): hostTotal large → uses hostTotal.
     const hostPayload = buildDisplacementPayload([
