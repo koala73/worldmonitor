@@ -58,24 +58,27 @@ describe('scoreAquastatValue — indicator-keyword routing contract', () => {
     // 100% (KW ~3200, BH ~3400, AE ~2080, QA ~770). The normaliser
     // clamps anything past the "worst" anchor to 0. Test with 2000,
     // which comfortably exceeds the 100 anchor.
+    //
+    // IMPORTANT: drive the IMPUTE branch (`fao: null`), not the else
+    // branch. In production the static seeder writes `fao: null` for
+    // GCC (IPC/HDX does not monitor food-secure states), so the live
+    // blend uses the impute path with weights 0.6 (IPC impute=88) +
+    // 0.4 (AQUASTAT). The else branch (fao-present, peopleInCrisis=0)
+    // happens to converge on a near-identical number at these inputs
+    // by coincidence, but testing the wrong branch would let a future
+    // impute-branch regression slip through.
     const reader = makeStaticReader({
       aquastat: { value: 2000, indicator: 'water stress' },
-      // peopleInCrisis=0 so the IPC sub-score doesn't muddy the blend.
-      fao: { peopleInCrisis: 0, phase: null },
+      fao: null, // fao==null branch — matches the GCC production shape
     });
     const result = await scoreFoodWater(TEST_ISO2, reader);
-    // Blend is (peopleInCrisis=null?→100 actually: log10(max(1,0))=0 → 100 lowerBetter(0,0,7)=100)
-    // Actually: peopleInCrisis=0 → normalizeLowerBetter(log10(max(1,0))=log10(1)=0, 0, 7) = 100.
-    // Plus aquastat score=0 (clamped). Plus phase=null.
-    // weightedBlend([
-    //   { score: 100, weight: 0.45 },
-    //   { score: null, weight: 0.15 },
-    //   { score: 0, weight: 0.4 },
-    // ])
-    //   = (100*0.45 + 0*0.4) / (0.45 + 0.4) = 45 / 0.85 ≈ 52.94 → 53.
+    // Blend under the IMPUTE branch:
+    //   { score: 88, weight: 0.6, cov: 0.7, imputed }  // IMPUTE.ipcFood
+    //   { score: 0,  weight: 0.4, cov: 1.0, observed }  // AQUASTAT clamped
+    //   weightedScore = (88*0.6 + 0*0.4) / (0.6+0.4) = 52.8 → 53.
     // This is EXACTLY the observed GCC cohort score. Pinning it.
     assert.equal(Math.round(result.score), 53,
-      `GCC water-stress profile must yield ~53 on the current blend; got ${result.score}`);
+      `GCC water-stress profile must yield ~53 on the IMPUTE branch; got ${result.score}`);
   });
 
   it('indicator="renewable water availability" routes to higher-better (more = better)', async () => {
@@ -104,7 +107,7 @@ describe('scoreFoodWater — IPC absence path (stable-absence imputation)', () =
     });
     const result = await scoreFoodWater(TEST_ISO2, reader);
     // Blend: {score:88, weight:0.6, cov:0.7, imputed} + {score:80, weight:0.4, cov:1.0, observed}
-    //   weightedScore = (88*0.6 + 80*0.4) / (0.6+0.4) = 85.6 → 86
+    //   weightedScore = (88*0.6 + 80*0.4) / (0.6+0.4) = 52.8 + 32.0 = 84.8 → 85
     // Pinning the blended range to catch a formula regression.
     assert.ok(result.score >= 80 && result.score <= 90,
       `IPC-absent + moderate aquastat must blend to 80-90; got ${result.score}`);

@@ -181,11 +181,24 @@ construct output.
    100% (Kuwait ~3200%, Bahrain ~3400%, UAE ~2080%, Qatar ~770%).
    Values > 100 clamp the sub-score to 0 under the lower-better
    normaliser against (0, 100).
-4. Under the `fao = { peopleInCrisis: 0, phase: null }` shape plus
-   clamped AQUASTAT=0 at weight 0.4, the weighted blend evaluates
-   to `(100*0.45 + 0*0.4) / (0.45 + 0.4) = 45/0.85 ≈ 53`. Pinned
-   as an anchor test in
-   `tests/resilience-foodwater-field-mapping.test.mts`.
+4. Under the `fao: null` branch (which is what the static seeder
+   emits for GCC in production) plus clamped AQUASTAT=0 at weight
+   0.4, the weighted blend is:
+
+   ```
+   weightedScore = (IMPUTE.ipcFood × 0.6 + 0 × 0.4) / (0.6 + 0.4)
+                 = (88 × 0.6) / 1.0
+                 = 52.8  → 53
+   ```
+
+   Pinned as an anchor test in
+   `tests/resilience-foodwater-field-mapping.test.mts`. Note that
+   an alternative scenario — `fao` present with `peopleInCrisis: 0`
+   and `phase: null` — converges on a near-identical 52.94 via the
+   else branch formula `(100×0.45 + 0×0.4) / 0.85`. That convergence
+   is a coincidence of the specific zero-peopleInCrisis input, NOT
+   the construct's intent — the test fixture is intentionally shaped
+   to exercise the IMPUTE path that matches production.
 
 **Why GCC scores are identical across the cohort.** GCC
 countries share:
@@ -207,7 +220,8 @@ scores.
 - Indicator routing: `'water stress'` → lower-better;
   `'renewable water availability'` → higher-better.
 - GCC extreme-withdrawal anchor: AQUASTAT value=2000 +
-  peopleInCrisis=0 blends to exactly 53.
+  `fao: null` (IMPUTE branch, matching production) blends to
+  exactly 53 via `(88×0.6 + 0×0.4) / 1.0 = 52.8 → 53`.
 - IPC-absent with static record present: imputes
   `ipcFood=88`; observed AQUASTAT wins →
   `imputationClass=null` per weightedBlend's T1.7 rule.
