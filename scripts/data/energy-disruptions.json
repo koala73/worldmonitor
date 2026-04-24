@@ -63,7 +63,7 @@
     },
     "cpc-force-majeure-2022": {
       "id": "cpc-force-majeure-2022",
-      "assetId": "cpc-pipeline",
+      "assetId": "cpc",
       "assetType": "pipeline",
       "eventType": "mechanical",
       "startAt": "2022-03-22T00:00:00Z",
@@ -275,7 +275,7 @@
       "classifierVersion": "v1", "classifierConfidence": 0.96, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
     },
     "pdvsa-designation-2019": {
-      "id": "pdvsa-designation-2019", "assetId": "ve-petrol-2026-q1", "assetType": "pipeline",
+      "id": "pdvsa-designation-2019", "assetId": "venezuela-anzoategui-puerto-la-cruz", "assetType": "pipeline",
       "eventType": "sanction", "startAt": "2019-01-28T00:00:00Z", "endAt": null,
       "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.5,
       "causeChain": ["sanction"],
