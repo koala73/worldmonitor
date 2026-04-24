@@ -148,10 +148,26 @@ fi
 
 echo "Running proto freshness check..."
 if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ Makefile | grep -q .; then
-  if command -v buf >/dev/null 2>&1 || [ -x "$HOME/go/bin/buf" ]; then
+  # Only prepend $HOME/go/bin when buf is NOT already resolvable on the
+  # caller's PATH. An unconditional prepend would shadow a developer's
+  # preferred `buf` (e.g. Homebrew) with a potentially stale
+  # ~/go/bin/buf left over from an older `go install buf@<old>`, which
+  # is the exact mixed-version failure this PR is trying to eliminate.
+  # Plugin resolution is handled inside `make generate` via a pinned
+  # PLUGIN_DIR, so the hook no longer needs to prepend for plugin
+  # discovery — only for the `buf` binary itself, and only when there's
+  # no other candidate.
+  if ! command -v buf >/dev/null 2>&1 && [ -x "$HOME/go/bin/buf" ]; then
     export PATH="$HOME/go/bin:$PATH"
   fi
-  if command -v buf &>/dev/null && command -v protoc-gen-ts-client &>/dev/null; then
+  # Plugin-presence check: consider a plugin "available" if it's on
+  # PATH OR at the default `go install` location ($HOME/go/bin).
+  # `make generate` resolves plugins via its own PLUGIN_DIR (GOBIN,
+  # then first-entry GOPATH/bin), which matches the $HOME/go/bin
+  # default on almost every dev setup. Anything exotic (custom GOBIN
+  # not on PATH) still runs `make generate` cleanly because the
+  # Makefile's own plugin-executable guard fires there.
+  if command -v buf &>/dev/null && { command -v protoc-gen-ts-client &>/dev/null || [ -x "$HOME/go/bin/protoc-gen-ts-client" ]; }; then
     make generate
     if ! git diff --exit-code src/generated/ docs/api/; then
       echo ""

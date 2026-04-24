@@ -170,6 +170,42 @@ describe('Makefile generate target — plugin path resolution', () => {
     // precedes the PATH assignment — verified above.
   });
 
+  test('pre-push hook does not unconditionally prepend $HOME/go/bin', () => {
+    // The Makefile's caller-PATH-first invariant is only meaningful
+    // if the hook invoking it doesn't first shadow the caller's `buf`.
+    // An unconditional `export PATH="$HOME/go/bin:$PATH"` would let a
+    // stale `~/go/bin/buf` (from an old `go install`) win over a newer
+    // Homebrew-installed `buf`, defeating the whole point of this PR.
+    //
+    // The hook MUST guard the prepend on "buf is not already on PATH"
+    // so the prepend only fires as a fallback when buf has no other
+    // candidate.
+    const HOOK = readFileSync(resolve(__dirname, '../.husky/pre-push'), 'utf-8');
+    // Locate the proto-freshness block by its echo line.
+    const start = HOOK.indexOf('Running proto freshness check');
+    assert.ok(start >= 0, 'pre-push hook must contain the proto-freshness block');
+    const block = HOOK.slice(start, start + 2000);
+    // The prepend MUST be gated on `! command -v buf` so it only fires
+    // when buf has no other candidate. Any `export PATH="$HOME/go/bin:$PATH"`
+    // inside this block must appear inside an `if ! command -v buf ...`
+    // arm — never directly under the block or under a bare `if command -v buf`.
+    assert.match(
+      block,
+      /if\s+!\s+command\s+-v\s+buf[^\n]*\n[^\n]*export PATH="\$HOME\/go\/bin:\$PATH"/,
+      'pre-push hook must gate the $HOME/go/bin prepend on `! command -v buf` so it only fires as a fallback — ' +
+      'otherwise a stale ~/go/bin/buf would shadow the caller\'s preferred buf binary',
+    );
+    // Explicit regression guard for the PRIOR buggy pattern that this
+    // PR is replacing. The old hook did
+    // `if command -v buf ... || [ -x "$HOME/go/bin/buf" ]; then export PATH=...`
+    // which ALWAYS prepended whenever buf was reachable anywhere —
+    // exactly the stale-buf-wins failure mode.
+    assert.ok(
+      !/if\s+command\s+-v\s+buf[^\n]*\|\|\s*\[\s*-x\s+"\$HOME\/go\/bin\/buf"\s*\][^\n]*;\s*then\s*\n\s*export PATH="\$HOME\/go\/bin:\$PATH"/.test(block),
+      'pre-push hook must not use the old `buf-on-PATH-OR-at-~/go/bin -> prepend` pattern — it shadowed Homebrew buf with stale go-install buf',
+    );
+  });
+
   test('path expansion succeeds on current machine', () => {
     // The shell expression is syntactically correct and resolves to
     // an existing directory on this runner. Catches obvious typos
