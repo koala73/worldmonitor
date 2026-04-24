@@ -39,6 +39,7 @@ import {
 import { loadActiveReferral } from './referral-capture';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
+import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -193,13 +194,11 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
   // flag via the exported `resetOverlaySessionState()` helper below.
   let successFired = false;
   let navigationFired = false;
-  let _watchdogId: number | null = null;
+  let watchdog: EntitlementWatchdog | null = null;
 
   const stopWatchdog = (): void => {
-    if (_watchdogId !== null) {
-      clearInterval(_watchdogId);
-      _watchdogId = null;
-    }
+    watchdog?.stop();
+    watchdog = null;
   };
 
   _resetOverlaySession = () => {
@@ -259,40 +258,28 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
   };
 
   const startWatchdog = (): void => {
-    if (_watchdogId !== null || successFired) return;
-    const startedAt = Date.now();
-    _watchdogId = window.setInterval(async () => {
-      if (successFired) {
-        stopWatchdog();
-        return;
-      }
-      if (Date.now() - startedAt > WATCHDOG_TIMEOUT_MS) {
-        // Hard cap. Do NOT fire success on timeout — if 10min have
-        // passed with no webhook, we'd rather strand the user than
-        // silently promote them via a stale entitlement read.
-        stopWatchdog();
-        return;
-      }
-      try {
-        const token = await getClerkToken();
-        if (!token) return;
-        const resp = await fetch('/api/me/entitlement', {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(8_000),
-        });
-        if (!resp.ok) return;
-        const body = (await resp.json()) as { isPro?: boolean };
-        if (body.isPro) {
+    if (watchdog !== null || successFired) return;
+    watchdog = createEntitlementWatchdog(
+      {
+        endpoint: '/api/me/entitlement',
+        intervalMs: WATCHDOG_INTERVAL_MS,
+        timeoutMs: WATCHDOG_TIMEOUT_MS,
+      },
+      {
+        getToken: getClerkToken,
+        fetch: (input, init) => fetch(input, init),
+        setInterval: (cb, ms) => window.setInterval(cb, ms),
+        clearInterval: (id) => window.clearInterval(id),
+        now: () => Date.now(),
+        onPro: () => {
           runTerminalSuccessSideEffects('watchdog');
           // Close the stuck overlay so the entitlement watcher's reload
           // is not hidden behind Dodo's "payment successful" page.
           safeCloseOverlay();
-        }
-      } catch {
-        // Swallow — poll retries on next tick. Unexpected exceptions
-        // would spam Sentry once every 3s for up to 10 minutes.
-      }
-    }, WATCHDOG_INTERVAL_MS);
+        },
+      },
+    );
+    watchdog.start();
   };
 
   DodoPayments.Initialize({

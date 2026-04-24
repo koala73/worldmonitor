@@ -20,6 +20,7 @@ import {
   stripCheckoutIntentFromSearch,
   buildCheckoutReturnUrl,
 } from './checkout-intent-url';
+import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 
 let clerk: InstanceType<typeof Clerk> | null = null;
 let checkoutInFlight = false;
@@ -154,13 +155,11 @@ export function initOverlay(onSuccess?: () => void): void {
     // per the main-app comment in src/services/checkout.ts, so this
     // closure wraps the one-and-only live onEvent handler.
     let _terminalFired = false;
-    let _watchdogId: number | null = null;
+    let watchdog: EntitlementWatchdog | null = null;
 
     const stopWatchdog = (): void => {
-      if (_watchdogId !== null) {
-        clearInterval(_watchdogId);
-        _watchdogId = null;
-      }
+      watchdog?.stop();
+      watchdog = null;
     };
 
     const safeCloseOverlay = (): void => {
@@ -228,37 +227,23 @@ export function initOverlay(onSuccess?: () => void): void {
     };
 
     const startWatchdog = (): void => {
-      if (_watchdogId !== null || _terminalFired) return;
-      const startedAt = Date.now();
-      _watchdogId = window.setInterval(async () => {
-        if (_terminalFired) {
-          stopWatchdog();
-          return;
-        }
-        if (Date.now() - startedAt > WATCHDOG_TIMEOUT_MS) {
-          // Hard cap. Do NOT fire success on timeout — if 10min have
-          // passed with no webhook, we'd rather strand the user than
-          // silently promote them to pro via a stale entitlement read.
-          stopWatchdog();
-          return;
-        }
-        try {
-          const token = await getAuthToken();
-          if (!token) return;
-          const resp = await fetch(`${API_BASE}/me/entitlement`, {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: AbortSignal.timeout(8_000),
-          });
-          if (!resp.ok) return;
-          const body = (await resp.json()) as { isPro?: boolean };
-          if (body.isPro) {
-            fireTerminalSuccess('watchdog');
-          }
-        } catch {
-          // Swallow — poll retries on next tick. Unexpected exceptions
-          // would spam Sentry once every 3s for up to 10 minutes.
-        }
-      }, WATCHDOG_INTERVAL_MS);
+      if (watchdog !== null || _terminalFired) return;
+      watchdog = createEntitlementWatchdog(
+        {
+          endpoint: `${API_BASE}/me/entitlement`,
+          intervalMs: WATCHDOG_INTERVAL_MS,
+          timeoutMs: WATCHDOG_TIMEOUT_MS,
+        },
+        {
+          getToken: getAuthToken,
+          fetch: (input, init) => fetch(input, init),
+          setInterval: (cb, ms) => window.setInterval(cb, ms),
+          clearInterval: (id) => window.clearInterval(id),
+          now: () => Date.now(),
+          onPro: () => fireTerminalSuccess('watchdog'),
+        },
+      );
+      watchdog.start();
     };
 
     DodoPayments.Initialize({
