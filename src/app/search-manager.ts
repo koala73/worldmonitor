@@ -6,7 +6,8 @@ import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
 import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
-import { getAllowedLayerKeys } from '@/config/map-layer-definitions';
+import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
+import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
@@ -211,6 +212,18 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.setActivePanels(
       Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
     );
+    // Filter CMD+K layer commands by whether the layer can render under the
+    // current map renderer + DeckGL state. Without this, globe-mode and
+    // SVG/mobile users see toggles that silently no-op on activation (e.g.
+    // `layer:storageFacilities` in globe mode, or any `deckGLOnly` layer on
+    // the SVG fallback).
+    this.ctx.searchModal.setLayerExecutableFn((layerKey) => {
+      const key = (LAYER_KEY_MAP[layerKey] || layerKey) as keyof MapLayers;
+      if (!(key in this.ctx.mapLayers)) return false;
+      const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+      const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+      return isLayerExecutable(key, renderer, isDeckGL);
+    });
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
 
@@ -490,6 +503,12 @@ export class SearchManager implements AppModule {
         if (!(layerKey in this.ctx.mapLayers)) return;
         const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
         if (!variantAllowed.has(layerKey)) return;
+        // Renderer / DeckGL gate. Mirrors the filter applied in SearchModal
+        // so direct activation paths (keyboard-accelerator, programmatic
+        // dispatch, etc.) don't flip a layer on that can't render.
+        const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+        const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+        if (!isLayerExecutable(layerKey, renderer, isDeckGL)) return;
         let newValue = !this.ctx.mapLayers[layerKey];
         if (newValue && layerKey === 'resilienceScore' && !this.ctx.map?.isDeckGLActive?.()) {
           newValue = false;
