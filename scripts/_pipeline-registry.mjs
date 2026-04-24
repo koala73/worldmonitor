@@ -33,8 +33,10 @@ const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satellite', 'a
 // Required on every oil pipeline. `crude` = crude-oil lines (default),
 // `products` = refined-product lines (gasoline/diesel/jet), `mixed` =
 // dual-use bridges moving both. Gas pipelines don't carry this field
-// (commodity is its own class).
-const VALID_OIL_PRODUCT_CLASSES = new Set(['crude', 'products', 'mixed']);
+// (commodity is its own class). Exported so the test suite can assert
+// against the SAME source of truth the validator uses — otherwise an
+// inline copy in tests could silently drift when the enum is extended.
+export const VALID_OIL_PRODUCT_CLASSES = new Set(['crude', 'products', 'mixed']);
 
 // Minimum viable registry size. Expansion to ~75 each happens in the follow-up
 // GEM import PR; this seeder doesn't care about exact counts beyond the floor.

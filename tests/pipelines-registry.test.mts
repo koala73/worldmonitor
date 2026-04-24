@@ -10,6 +10,7 @@ import {
   recordCount,
   GAS_CANONICAL_KEY,
   OIL_CANONICAL_KEY,
+  VALID_OIL_PRODUCT_CLASSES,
 } from '../scripts/_pipeline-registry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -131,12 +132,10 @@ describe('pipeline registries — commodity-capacity pairing', () => {
 });
 
 describe('pipeline registries — productClass', () => {
-  const VALID = new Set(['crude', 'products', 'mixed']);
-
   test('every oil pipeline declares a productClass from the enum', () => {
     for (const p of Object.values(oil.pipelines)) {
       assert.ok(
-        VALID.has(p.productClass),
+        VALID_OIL_PRODUCT_CLASSES.has(p.productClass),
         `${p.id} has invalid productClass: ${p.productClass}`,
       );
     }
