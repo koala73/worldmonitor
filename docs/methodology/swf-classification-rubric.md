@@ -55,7 +55,7 @@ Deployment SPEED (weeks vs months vs years) is the core signal.
 | Nil access | **0.1** | Sanctions, asset freeze, or political paralysis makes deployment effectively impossible within a crisis window | Russia NWF (post-2022 asset freeze), Libya LIA (sanctions + frozen assets), Iran NDFI (sanctions + access concerns). Currently deferred from v1 for this reason. |
 | Intergenerational savings | **0.3** | Pure long-horizon wealth-preservation mandate; no explicit stabilization rule; withdrawal requires ruler / head-of-state / parliamentary discretion with no codified trigger | ADIA (Abu Dhabi, intergenerational mandate, ruler-discretionary); Brunei BIA (deferred candidate) |
 | Hybrid / constrained | **0.5** | Mandate mixes strategic + savings + partial stabilization; deployment is mechanically possible but constrained by strategic allocation locked to policy objectives (Vision 2030, industrial policy, geopolitical holdings) | PIF (Saudi Arabia, Vision 2030-locked), QIA (Qatar, long-horizon wealth-management with amiri-decree deployment), Mubadala (UAE, strategic + financial hybrid), Ireland ISIF (strategic-development mandate) |
-| Explicit stabilization with rule | **0.7** | Legislated or rule-based mechanism for fiscal support during specific shock classes, with historical precedent of actual deployment | KIA General Reserve Fund (legislated finance of budget shortfalls from oil-revenue swings); GIC via Singapore's NIRC framework (explicit formula contributing fund returns to the budget); NO GPFG is BORDERLINE — has a fiscal rule capping withdrawal at ~3% expected real return, which is an access MECHANISM but also an access CONSTRAINT (see below) |
+| Explicit stabilization with rule | **0.7** | Legislated or rule-based mechanism for fiscal support during specific shock classes, with historical precedent of actual deployment | KIA General Reserve Fund (legislated finance of budget shortfalls from oil-revenue swings). NO GPFG is BORDERLINE — has a fiscal rule capping withdrawal at ~3% expected real return, which is an access MECHANISM but also an access CONSTRAINT (see below). NOTE: GIC is discussed in the alignment table below as a candidate for this tier based on its NIRC framework, but the current manifest rates it 0.6 — so it's a 0.7 *candidate*, not a 0.7 *precedent*. |
 | Pure automatic stabilization | **0.9** | Deployment triggers automatically when a named macro signal crosses a threshold; stabilization is the primary mandate; political authorization is post-hoc or symbolic | Chile ESSF (deploys when copper revenue falls below a rule-based target); deferred v1 candidate |
 
 ### Edge case — fiscal-rule caps
@@ -96,8 +96,14 @@ thus liquidatable within days/weeks without fire-sale discount?"
 
 Operationalized as (public equities + listed fixed income +
 cash) ÷ total AUM, per the fund's most recent published asset
-mix. The rubric accepts either a disclosed ratio (GIC, GPFG,
-KIA) or a published range midpoint (ADIA 55-70% → 0.7 tier).
+mix. When the disclosure is a range (ADIA publishes 55-70%, not
+an exact ratio), the rubric uses the **upper-bound** of the
+range — the fund's own public statement is that it COULD be up
+to that figure, and haircut factors are designed to reward
+disclosed LIQUIDITY CAPACITY, not the conservative worst case.
+ADIA's 70% upper bound lands in the 0.7 tier (65-85%); if
+future ADIA disclosures tighten the range so the upper bound
+drops below 65%, the rubric directs the rating to 0.5.
 
 | Tier | Value | Meaning | Concrete precedents |
 |---|---|---|---|
@@ -195,7 +201,9 @@ flags whether the rating fits the rubric or looks off.
 | Temasek (SG) | liquidity | 0.5 | Mid-liquid mix | ✓ | ~50% listed per 2025 Review |
 | Temasek (SG) | transparency | 0.9 | Holdings-level | ✓ | Top-20 exposures + LM=10 |
 
-**Summary of rubric-flagged ratings** (6 of 24 coefficients):
+**Summary of rubric-flagged ratings** — 8 coefficients across 5 funds
+(Mubadala ×2, PIF ×2, KIA ×1, QIA ×2, GIC ×1) out of 24 total
+(8 funds × 3 axes):
 
 - Mubadala access 0.4 (arguably 0.5); transparency 0.6 (arguably 0.7)
 - PIF access 0.4 (arguably 0.5); liquidity 0.4 (arguably 0.3)
