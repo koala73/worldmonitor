@@ -26,7 +26,9 @@ function normalizeThreat(threat) {
   return { ...threat, level };
 }
 
-const CACHE_TTL = 1800; // 30m — matches cron interval; bad briefs age out in one cycle instead of persisting 3h
+const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key expires on any missed cron tick
+                         // and /api/bootstrap loses insights entirely. Bad content is gated upstream (corroboration
+                         // requirement on topStories + grounded prompt), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
@@ -118,7 +120,7 @@ Rewrite the provided headline as 2 concise sentences MAX (under 60 words total).
 Rules:
 - Use ONLY facts present in the headline text. Do not add names, places, dates, or context that are not explicitly in the headline.
 - Do not invent proper nouns (people, organizations, countries) that are not in the headline.
-- Lead with WHAT happened and WHERE — be specific but grounded.
+- Include a location, person, or organization ONLY if it appears in the headline. If the headline has no location, do not add one.
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.
 - No bullet points, no meta-commentary, no speculation beyond the headline.`;
 
@@ -272,26 +274,35 @@ async function fetchInsights() {
 
   if (topStories.length === 0) throw new Error('No top stories after scoring');
 
-  // Clustering already ranks by sourceCount + velocity + isAlert. Trust the rank:
-  // summarize only the top story. Previously we sent all 10 and asked the LLM to
-  // "pick the most important" — small/medium models biased toward sensational
-  // single-source rumors over multi-sourced objective leaders.
-  const topHeadline = sanitizeTitle(topStories[0].primaryTitle);
+  // Corroboration gate: only brief a story at least two outlets have reported.
+  // scoreImportance() in _clustering.mjs is keyword-heavy (violence +125, flashpoint
+  // +75, multiplier x1.5) and can rank a single-source sensational rumor ahead of a
+  // 2-source lead. Walking for sourceCount >= 2 makes corroboration a hard requirement,
+  // not a tiebreaker. Previously we compounded this by asking the LLM to "pick the
+  // most important" from 10 headlines — small/medium models further biased toward
+  // sensational single-source rumors over multi-sourced leaders.
+  const briefCluster = topStories.find(s => (s.sourceCount || 1) >= 2);
+  const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
 
   let worldBrief = '';
   let briefProvider = '';
   let briefModel = '';
   let status = 'ok';
 
-  const llmResult = await callLLM(topHeadline);
-  if (llmResult) {
-    worldBrief = llmResult.text;
-    briefProvider = llmResult.provider;
-    briefModel = llmResult.model;
-    console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
-  } else {
+  if (!topHeadline) {
     status = 'degraded';
-    console.warn('  No LLM available — publishing degraded (stories without brief)');
+    console.warn('  No multi-source cluster available — publishing degraded (stories without brief)');
+  } else {
+    const llmResult = await callLLM(topHeadline);
+    if (llmResult) {
+      worldBrief = llmResult.text;
+      briefProvider = llmResult.provider;
+      briefModel = llmResult.model;
+      console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
+    } else {
+      status = 'degraded';
+      console.warn('  No LLM available — publishing degraded (stories without brief)');
+    }
   }
 
   const multiSourceCount = clusters.filter(c => c.sourceCount >= 2).length;
