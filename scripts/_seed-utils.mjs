@@ -821,6 +821,29 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   }
 
+  // SIGTERM handler — _bundle-runner.mjs sends SIGTERM when a section's
+  // timeout fires, then SIGKILL after KILL_GRACE_MS (5s). Without this
+  // handler the `finally` path never runs on SIGKILL, leaving the 30-min
+  // acquireLock() reservation in place until its own TTL expires — the
+  // next cron tick silently skips that resource. Release lock + extend
+  // existing-data TTL on timeout so consumers keep reading the last-good
+  // envelope. Exit 143 = POSIX convention for SIGTERM-terminated process.
+  const sigTermHandler = async () => {
+    console.error(`  [${domain}:${resource}] SIGTERM received — releasing lock runId=${runId}, extending existing TTL`);
+    try {
+      await releaseLock(`${domain}:${resource}`, runId);
+      const ttl = ttlSeconds || 600;
+      const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
+      if (extraKeys) keys.push(...extraKeys.map((ek) => ek.key));
+      await extendExistingTtl(keys, ttl);
+    } catch (err) {
+      console.error(`  [${domain}:${resource}] SIGTERM cleanup error: ${err?.message || err}`);
+    } finally {
+      process.exit(143);
+    }
+  };
+  process.once('SIGTERM', sigTermHandler);
+
   // Phase 1: Fetch data (graceful on failure — extend TTL on stale data)
   let data;
   try {

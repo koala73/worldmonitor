@@ -107,7 +107,7 @@ function streamLines(stream, onLine) {
   stream.on('error', (err) => onLine(`<stdio error: ${err.message}>`));
 }
 
-function spawnSeed(scriptPath, { timeoutMs, label }) {
+function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     // Capture the child's structured `seed_complete` event if emitted, so
@@ -118,8 +118,15 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
     // dropped a different subset of Run ID / Mode / seed_complete lines
     // despite identical code paths). Bundle-level lines survive reliably.
     let lastSeedComplete = null;
+    // BUNDLE_RUN_STARTED_AT_MS lets consumer seeders detect when a cohort
+    // peer's seed-meta predates the current bundle run and fall back to a
+    // hard default instead of reading a stale peer key. See plan
+    // 2026-04-24-003 §"Phase 2 — SWF seeder" bundle-freshness guard.
     const child = spawn(process.execPath, [scriptPath], {
-      env: process.env,
+      env: {
+        ...process.env,
+        BUNDLE_RUN_STARTED_AT_MS: String(bundleStartedAtMs ?? Date.now()),
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -228,7 +235,7 @@ export async function runBundle(label, sections, opts = {}) {
       continue;
     }
 
-    const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label });
+    const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label, bundleStartedAtMs: t0 });
     if (result.ok) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);
       // Bundle-level per-section summary — emitted from parent stdout so

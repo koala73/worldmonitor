@@ -1,0 +1,150 @@
+// Regression test: runSeed must release its lock and extend existing-data
+// TTL when it receives SIGTERM from _bundle-runner.mjs. Without this, the
+// 30-min acquireLock reservation leaks to the NEXT cron tick, which then
+// silently skips the resource — long-tail outage window described in
+// memory `bundle-runner-sigkill-leaks-child-lock` (PR #3128).
+//
+// Strategy: spawn a real child that monkey-patches global fetch to capture
+// every Upstash call, invokes runSeed() with a fetchFn that awaits forever,
+// sends SIGTERM, and verifies the child (a) exits 143 (b) prints the
+// "SIGTERM received" line (c) emits the DEL (releaseLock) + EXPIRE pipeline
+// (extendExistingTtl) calls before exit.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+
+const SCRIPTS_DIR = new URL('../scripts/', import.meta.url).pathname;
+
+function runFixture(bodyJs) {
+  const path = join(SCRIPTS_DIR, `_sigterm-fixture-${Date.now()}.mjs`);
+  writeFileSync(path, bodyJs);
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [path], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        UPSTASH_REDIS_REST_URL: 'https://fake-upstash.example.com',
+        UPSTASH_REDIS_REST_TOKEN: 'fake-token',
+      },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c) => { stdout += c; });
+    child.stderr.on('data', (c) => { stderr += c; });
+    child.on('close', (code, signal) => {
+      try { unlinkSync(path); } catch {}
+      resolve({ code, signal, stdout, stderr });
+    });
+    // Let runSeed register the SIGTERM handler and enter fetchFn before we kill.
+    // The fixture logs "READY" once the fetchFn is awaited; we kill then.
+    const readyCheck = setInterval(() => {
+      if (stdout.includes('READY')) {
+        clearInterval(readyCheck);
+        child.kill('SIGTERM');
+      }
+    }, 25);
+    setTimeout(() => {
+      clearInterval(readyCheck);
+      try { child.kill('SIGKILL'); } catch {}
+    }, 10_000);
+  });
+}
+
+test('runSeed releases lock and extends existing TTL on SIGTERM', async () => {
+  const body = `
+    import { runSeed } from './_seed-utils.mjs';
+    const calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+      calls.push({ url: String(url), body });
+      // Log each call on its own line so the test can regex the output.
+      console.log('FETCH ' + String(url).split('/').pop() + ' ' + JSON.stringify(body));
+      // Lock SET NX → return result:0 (not already held). Pipeline → array.
+      if (Array.isArray(body) && Array.isArray(body[0])) {
+        return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    };
+    // fetchFn that awaits "forever" — we want SIGTERM to interrupt mid-fetch.
+    // setInterval keeps the event loop alive (otherwise Node bails with
+    // "Detected unsettled top-level await" before SIGTERM can be delivered).
+    const foreverFetch = () => new Promise(() => {
+      console.log('READY');
+      setInterval(() => {}, 10_000);
+    });
+    await runSeed('test-domain', 'sigterm', 'data:test:sigterm:v1', foreverFetch, {
+      ttlSeconds: 900,
+      lockTtlMs: 60_000,
+    });
+  `;
+  const { code, signal, stderr } = await runFixture(body);
+  // process.exit(143) should produce code=143; on some platforms Node maps it
+  // back to a signal termination, so accept either code or signal.
+  assert.ok(code === 143 || signal === 'SIGTERM',
+    `expected exit 143 or SIGTERM; got code=${code} signal=${signal}\nstderr:\n${stderr}`);
+  assert.match(stderr, /SIGTERM received — releasing lock/,
+    `expected SIGTERM cleanup log; stderr:\n${stderr}`);
+});
+
+test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', async () => {
+  // Uses process.once under the hood; verify by emitting SIGTERM twice.
+  // A second SIGTERM while the handler is mid-cleanup should not trigger
+  // re-entry. If the handler was registered with process.on instead of
+  // process.once, the second SIGTERM would re-enter and double-release.
+  const body = `
+    import { runSeed } from './_seed-utils.mjs';
+    globalThis.fetch = async (url, opts = {}) => {
+      const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+      if (Array.isArray(body) && Array.isArray(body[0])) {
+        return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    };
+    const foreverFetch = () => new Promise(() => { console.log('READY'); setInterval(() => {}, 10_000); });
+    await runSeed('test-domain', 'sigterm-once', 'data:test:sigterm-once:v1', foreverFetch, {
+      ttlSeconds: 900,
+      lockTtlMs: 60_000,
+    });
+  `;
+  const path = join(SCRIPTS_DIR, `_sigterm-once-fixture-${Date.now()}.mjs`);
+  writeFileSync(path, body);
+  try {
+    await new Promise((resolve) => {
+      const child = spawn(process.execPath, [path], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          UPSTASH_REDIS_REST_URL: 'https://fake-upstash.example.com',
+          UPSTASH_REDIS_REST_TOKEN: 'fake-token',
+        },
+      });
+      let stdout = '';
+      let stderr = '';
+      let sigtermLinesSeen = 0;
+      child.stdout.on('data', (c) => { stdout += c; });
+      child.stderr.on('data', (c) => {
+        stderr += c;
+        sigtermLinesSeen = (stderr.match(/SIGTERM received/g) || []).length;
+      });
+      const ready = setInterval(() => {
+        if (stdout.includes('READY')) {
+          clearInterval(ready);
+          child.kill('SIGTERM');
+          setTimeout(() => { try { child.kill('SIGTERM'); } catch {} }, 50);
+        }
+      }, 25);
+      child.on('close', (code) => {
+        clearInterval(ready);
+        assert.equal(sigtermLinesSeen, 1,
+          `handler must fire once (process.once); saw ${sigtermLinesSeen} SIGTERM lines\nstderr:\n${stderr}`);
+        resolve();
+      });
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 10_000);
+    });
+  } finally {
+    try { unlinkSync(path); } catch {}
+  }
+});

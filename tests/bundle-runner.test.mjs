@@ -125,3 +125,56 @@ test('non-zero exit without timeout reports exit code', async () => {
     cleanup();
   }
 });
+
+test('injects BUNDLE_RUN_STARTED_AT_MS env into child; value is within run bounds', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-env.mjs',
+    `console.log('BUNDLE_RUN_STARTED_AT_MS=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  const before = Date.now();
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'ENV', script: '_bundle-fixture-env.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const after = Date.now();
+    assert.equal(code, 0);
+    const match = stdout.match(/BUNDLE_RUN_STARTED_AT_MS=(\d+)/);
+    assert.ok(match, `expected env var in child stdout; got:\n${stdout}`);
+    const injected = Number(match[1]);
+    assert.ok(Number.isInteger(injected), 'injected value must be an integer');
+    // Parent captured t0 at bundle start (before this test's `before` call) and
+    // child ran before `after`. So: before - tolerance <= injected <= after.
+    assert.ok(injected >= before - 5000 && injected <= after,
+      `injected=${injected} out of bounds [${before - 5000}, ${after}]`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('sibling sections share the same BUNDLE_RUN_STARTED_AT_MS (one-shot per bundle)', async () => {
+  const cleanupA = writeFixture(
+    '_bundle-fixture-env-a.mjs',
+    `console.log('TS_A=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  const cleanupB = writeFixture(
+    '_bundle-fixture-env-b.mjs',
+    `await new Promise((r) => setTimeout(r, 200));\nconsole.log('TS_B=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'A', script: '_bundle-fixture-env-a.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'B', script: '_bundle-fixture-env-b.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 0);
+    const tsA = Number(stdout.match(/TS_A=(\d+)/)?.[1]);
+    const tsB = Number(stdout.match(/TS_B=(\d+)/)?.[1]);
+    assert.ok(tsA && tsB, `both timestamps present; stdout:\n${stdout}`);
+    // Both children read the same bundle-level t0, so the injected value is
+    // identical across siblings (NOT spawn time). This is the critical
+    // property Phase 2's bundle-freshness guard relies on.
+    assert.equal(tsA, tsB, 'siblings must share one bundle-level timestamp');
+  } finally {
+    cleanupA();
+    cleanupB();
+  }
+});
