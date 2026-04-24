@@ -397,6 +397,15 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
  * stored success callback so a new layout can register its own callback.
  */
 export function destroyCheckoutOverlay(): void {
+  // Stop any in-flight watchdog BEFORE we drop references. If the layout
+  // unmounts mid-checkout, the watchdog's setInterval would otherwise
+  // keep running inside the closed-over scope and, on entitlement flip,
+  // fire side effects (clearCheckoutAttempt, clearPendingCheckoutIntent,
+  // markPostCheckout, safeCloseOverlay) against a subsequent session's
+  // state. _resetOverlaySession is the only accessor for that closure's
+  // stopWatchdog.
+  _resetOverlaySession?.();
+  _resetOverlaySession = null;
   initialized = false;
   onSuccessCallback = null;
   if (_escapeHandler) {
