@@ -19,26 +19,34 @@ export { CHROME_UA };
 
 /**
  * Return the bundle-run start timestamp injected by `_bundle-runner.mjs`
- * as the `BUNDLE_RUN_STARTED_AT_MS` env var before each child spawn.
+ * as the `BUNDLE_RUN_STARTED_AT_MS` env var, or `null` when the seeder
+ * is running STANDALONE (manual invocation outside the bundle).
  *
  * All sibling seeders in a single bundle run share ONE value (captured
  * at `runBundle` start, not at spawn time). Use this when a consumer
  * seeder reads a peer's output inside the same bundle and must detect
  * stale data from a previous bundle tick:
  *
- *   if (fetchedAt < getBundleRunStartedAtMs()) {
- *     // peer did NOT run in this bundle — fall back to safe default
+ *   const bundleStartMs = getBundleRunStartedAtMs();
+ *   if (bundleStartMs != null && fetchedAt < bundleStartMs) {
+ *     // in-bundle context + peer did NOT run in THIS bundle → fallback
  *   }
  *
- * Standalone runs (manual invocation outside the bundle) fall back to
- * `Math.floor(Date.now()/1000)*1000` so the freshness check degrades
- * gracefully rather than throwing.
+ * The null-on-unset contract matters. Earlier designs fell back to
+ * `Date.now()` when the env was absent, which regressed standalone
+ * runs: a sibling seeder invoked manually just before the consumer
+ * wrote `fetchedAt = (process start - 5s)`, and the consumer's own
+ * `bundleStartMs = Date.now()` rejected that perfectly-fresh peer
+ * envelope as "stale". Returning null keeps the gate scoped to its
+ * real purpose: protecting against across-bundle-tick staleness,
+ * which has no analog outside a bundle context.
  *
- * @returns {number} epoch milliseconds
+ * @returns {number | null} epoch milliseconds when spawned by the
+ *   bundle runner; null when running standalone.
  */
 export function getBundleRunStartedAtMs() {
-  return Number(process.env.BUNDLE_RUN_STARTED_AT_MS)
-    || Math.floor(Date.now() / 1000) * 1000;
+  const raw = Number(process.env.BUNDLE_RUN_STARTED_AT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
 // Canonical FX fallback rates — used when Yahoo Finance returns null/zero.
