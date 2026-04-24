@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -73,5 +73,34 @@ describe('webmcp.ts: tool behaviour (source-level invariants)', () => {
     assert.equal(ISO2.test('USA'), false);
     assert.equal(ISO2.test(''), false);
     assert.equal(ISO2.test('D1'), false);
+  });
+});
+
+// App.ts wiring — guards against silent-success bugs where a binding
+// forwards to a nullable UI target whose no-op the tool then falsely
+// reports as success. Bindings MUST throw when the target is absent
+// so withInvocationLogging's catch path can return isError:true.
+describe('webmcp App.ts binding: guard against silent success', () => {
+  const appSrc = readFileSync(resolve(ROOT, 'src/App.ts'), 'utf-8');
+  const bindingBlock = appSrc.match(
+    /registerWebMcpTools\(\{[\s\S]+?\}\);\s*\}\);/,
+  );
+
+  it('the WebMCP binding block exists in App.ts init', () => {
+    assert.ok(bindingBlock, 'could not locate registerWebMcpTools(...) in App.ts');
+  });
+
+  it('openSearch binding throws when searchModal is absent', () => {
+    assert.match(
+      bindingBlock[0],
+      /openSearch:[\s\S]+?if \(!this\.state\.searchModal\)[\s\S]+?throw new Error/,
+    );
+  });
+
+  it('openCountryBriefByCode binding throws when countryBriefPage is absent', () => {
+    assert.match(
+      bindingBlock[0],
+      /openCountryBriefByCode:[\s\S]+?if \(!this\.state\.countryBriefPage\)[\s\S]+?throw new Error/,
+    );
   });
 });

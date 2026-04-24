@@ -1038,12 +1038,26 @@ export class App {
     // Registered after search+country modules so the bound callbacks have real
     // targets; tools intentionally route through the same paths a click takes
     // so paywall/auth gates still apply to agent invocations.
+    //
+    // Bindings throw when a required UI target is missing so the tool's
+    // withInvocationLogging shim catches it and reports ok:false instead of
+    // a misleading "Opened …" success — the underlying UI methods silently
+    // no-op on null targets.
     void import('@/services/webmcp').then(({ registerWebMcpTools }) => {
       registerWebMcpTools({
-        openCountryBriefByCode: (code, country) =>
-          this.countryIntel.openCountryBriefByCode(code, country),
+        openCountryBriefByCode: async (code, country) => {
+          if (!this.state.countryBriefPage) {
+            throw new Error('Country brief panel is not initialised yet');
+          }
+          await this.countryIntel.openCountryBriefByCode(code, country);
+        },
         resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
-        openSearch: () => this.state.searchModal?.open(),
+        openSearch: () => {
+          if (!this.state.searchModal) {
+            throw new Error('Search modal is not initialised yet');
+          }
+          this.state.searchModal.open();
+        },
       });
     });
 
