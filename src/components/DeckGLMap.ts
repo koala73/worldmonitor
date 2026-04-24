@@ -1508,32 +1508,34 @@ export class DeckGLMap {
       this.layerCache.delete('cables-layer');
     }
 
-    // Pipelines layer. Energy variant uses the evidence-backed registry
-    // (seed-pipelines-{gas,oil}.mjs) and colors by derived publicBadge;
-    // other variants keep the static PIPELINES config colored by type.
+    // Pipelines layer — Redis-backed evidence registry (seed-pipelines-{gas,oil}.mjs),
+    // colored by derived publicBadge. Available on every variant that toggles
+    // `pipelines: true`. The legacy static `PIPELINES` fallback was retired in
+    // the gap #3B rollout (plan §R/#3 decision B); createPipelinesLayer is kept
+    // in this file as a dead-code reference until the next cleanup pass.
     if (mapLayers.pipelines) {
-      layers.push(SITE_VARIANT === 'energy'
-        ? this.createEnergyPipelinesLayer()
-        : this.createPipelinesLayer());
+      layers.push(this.createEnergyPipelinesLayer());
     } else {
       this.layerCache.delete('pipelines-layer');
     }
 
-    // Storage facilities layer (energy variant only). Registry is seeded
-    // weekly by scripts/seed-storage-facilities.mjs; colors by derived
-    // publicBadge identical to the panel's evidence deriver so first-paint
-    // map dots match panel status exactly.
-    if (SITE_VARIANT === 'energy' && mapLayers.storageFacilities) {
+    // Storage facilities layer. Registry is seeded weekly by
+    // scripts/seed-storage-facilities.mjs; colors by derived publicBadge
+    // identical to the panel's evidence deriver so first-paint map dots match
+    // panel status exactly. Available on any variant with
+    // `mapLayers.storageFacilities: true` (plan §R/#3 decision B).
+    if (mapLayers.storageFacilities) {
       const storageLayer = this.createEnergyStorageLayer();
       if (storageLayer) layers.push(storageLayer);
     } else {
       this.layerCache.delete('storage-facilities-layer');
     }
 
-    // Fuel shortage pins (energy variant only). One pin per active shortage
-    // placed at the country centroid. Color by severity; click opens the
-    // FuelShortagePanel drawer via event.
-    if (SITE_VARIANT === 'energy' && mapLayers.fuelShortages) {
+    // Fuel shortage pins. One pin per active shortage placed at the country
+    // centroid. Color by severity; click opens the FuelShortagePanel drawer
+    // via event. Available on any variant with `mapLayers.fuelShortages: true`
+    // (plan §R/#3 decision B).
+    if (mapLayers.fuelShortages) {
       const shortageLayer = this.createEnergyShortagePinsLayer();
       if (shortageLayer) layers.push(shortageLayer);
     } else {

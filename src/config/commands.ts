@@ -59,6 +59,8 @@ export const COMMANDS: Command[] = [
   { id: 'layer:protests', keywords: ['protests', 'unrest', 'riots'], label: 'Toggle protests & unrest', icon: '\u270A', category: 'layers' },
   { id: 'layer:cables', keywords: ['cables', 'undersea', 'submarine cables'], label: 'Toggle undersea cables', icon: '\u{1F310}', category: 'layers' },
   { id: 'layer:pipelines', keywords: ['pipelines', 'oil', 'gas pipelines'], label: 'Toggle pipelines', icon: '\u{1F6E2}\uFE0F', category: 'layers' },
+  { id: 'layer:storageFacilities', keywords: ['storage layer', 'storage map', 'spr map', 'lng map', 'ugs map', 'tank farm map', 'storage markers'], label: 'Toggle storage facility markers', icon: '\u{1F3ED}', category: 'layers' },
+  { id: 'layer:fuelShortages', keywords: ['shortage pins', 'fuel shortage map', 'shortage markers', 'shortage layer'], label: 'Toggle fuel shortage pins', icon: '\u26FD', category: 'layers' },
   { id: 'layer:nuclear', keywords: ['nuclear', 'reactors'], label: 'Toggle nuclear facilities', icon: '\u2622\uFE0F', category: 'layers' },
   { id: 'layer:bases', keywords: ['bases', 'military bases'], label: 'Toggle military bases', icon: '\u{1F3DB}\uFE0F', category: 'layers' },
   { id: 'layer:fires', keywords: ['fires', 'wildfires'], label: 'Toggle satellite fires', icon: '\u{1F525}', category: 'layers' },
