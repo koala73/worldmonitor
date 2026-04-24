@@ -54,7 +54,14 @@ lint: ## Lint protobuf files
 
 generate: clean ## Generate code from proto definitions
 	@mkdir -p $(GEN_CLIENT_DIR) $(GEN_SERVER_DIR) $(DOCS_API_DIR)
-	cd $(PROTO_DIR) && buf generate
+	# Prepend $$HOME/go/bin so the Makefile-declared sebuf version
+	# ($(SEBUF_VERSION)) installed by `install-plugins` wins over any
+	# stale sebuf binary that a package manager (Homebrew, etc.) may
+	# have placed earlier on PATH. Without this, `buf generate` can
+	# pick up an older sebuf v0.7.x build that ignores `bundle_only=true`
+	# / `format=json` and produces duplicate-output errors. This matches
+	# what .husky/pre-push already does before invoking this target.
+	cd $(PROTO_DIR) && PATH="$$HOME/go/bin:$$PATH" buf generate
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
