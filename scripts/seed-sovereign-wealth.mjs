@@ -79,10 +79,78 @@
 // §3.4 "What happens to no-SWF countries"). This is substantively
 // different from IMPUTE fallback (which is "data-source-failed").
 
-import { loadEnvFile, CHROME_UA, runSeed, SHARED_FX_FALLBACKS, getSharedFxRates } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, SHARED_FX_FALLBACKS, getSharedFxRates } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
-import { loadReexportShareByCountry } from './shared/reexport-share-loader.mjs';
+
+const REEXPORT_SHARE_CANONICAL_KEY = 'resilience:recovery:reexport-share:v1';
+const REEXPORT_SHARE_META_KEY = 'seed-meta:resilience:recovery:reexport-share';
+
+// Bundle-run freshness marker. Set by `_bundle-runner.mjs` via env
+// `BUNDLE_RUN_STARTED_AT_MS` before each child spawn; all sibling
+// seeders in one bundle share one value. Standalone runs (manual
+// invocation outside the bundle) fall back to process start so the
+// freshness guard degrades gracefully. Resolved lazily (not at
+// module load) so tests can exercise different values by mutating
+// process.env between calls.
+function getBundleStartMs() {
+  return Number(process.env.BUNDLE_RUN_STARTED_AT_MS)
+    || Math.floor(Date.now() / 1000) * 1000;
+}
+
+/**
+ * Read the Comtrade-seeded re-export-share map from Redis, guarded by
+ * bundle-run freshness. Returns an empty Map on any failure signal —
+ * missing key, malformed payload, or seed-meta older than this bundle
+ * run. The caller treats an empty map as "use gross imports for all
+ * countries" (status-quo fallback).
+ *
+ * Why bundle-run freshness matters: the Reexport-Share seeder runs
+ * immediately before this SWF seeder inside the resilience-recovery
+ * bundle. If that seeder fails (Comtrade outage, 429 storm, timeout),
+ * its Redis key still holds LAST MONTH's envelope — reading that
+ * would silently apply stale shares to the current month's SWF data.
+ * The bundle-freshness guard rejects any meta predating the current
+ * bundle run, forcing a hard fallback to gross imports.
+ *
+ * @returns {Promise<Map<string, { reexportShareOfImports: number, year: number | null, sources: string[] }>>}
+ */
+export async function loadReexportShareFromRedis() {
+  const map = new Map();
+  const raw = await readSeedSnapshot(REEXPORT_SHARE_CANONICAL_KEY);
+  if (!raw || typeof raw !== 'object') {
+    console.warn('[seed-sovereign-wealth] reexport-share Redis key empty/malformed; falling back to gross-imports denominator for all countries');
+    return map;
+  }
+
+  const metaRaw = await readSeedSnapshot(REEXPORT_SHARE_META_KEY);
+  const fetchedAtMs = Number(metaRaw?.fetchedAt ?? 0);
+  const bundleStartMs = getBundleStartMs();
+  if (!fetchedAtMs || fetchedAtMs < bundleStartMs) {
+    const ageMin = fetchedAtMs ? ((Date.now() - fetchedAtMs) / 60_000).toFixed(0) : 'n/a';
+    console.warn(`[seed-sovereign-wealth] reexport-share seed-meta NOT from this bundle run (age=${ageMin}min, bundleStart=${new Date(bundleStartMs).toISOString()}). Falling back to gross imports for all countries.`);
+    return map;
+  }
+
+  const countries = raw.countries ?? {};
+  for (const [iso2, entry] of Object.entries(countries)) {
+    const share = entry?.reexportShareOfImports;
+    // Numeric bounds check — NaN / Infinity / negative / ≥ 1 all pass
+    // `typeof === 'number'`. computeNetImports requires share ∈ [0, 1).
+    // The Comtrade seeder caps at 0.95 but this guard protects against
+    // a rogue payload (e.g. a manual redis-cli write mid-migration).
+    if (!Number.isFinite(share) || share < 0 || share > 0.95) {
+      console.warn(`[seed-sovereign-wealth] ${iso2} share ${share} fails bounds check [0, 0.95]; skipping`);
+      continue;
+    }
+    map.set(iso2, {
+      reexportShareOfImports: share,
+      year: entry?.year ?? null,
+      sources: Array.isArray(entry?.sources) ? entry.sources : [],
+    });
+  }
+  return map;
+}
 
 loadEnvFile(import.meta.url);
 
@@ -653,15 +721,16 @@ export function computeNetImports(grossImportsUsd, reexportShareOfImports) {
 
 export async function fetchSovereignWealth() {
   const manifest = loadSwfManifest();
-  // PR 3A §net-imports. Re-export share manifest: per-country fraction
-  // of gross imports that flow through as re-exports without settling
-  // as domestic consumption. Loaded from
-  // `scripts/shared/reexport-share-manifest.yaml`. Countries NOT in the
-  // manifest get `netImports = grossImports` (status-quo behaviour) —
-  // absence MUST NOT throw or zero the denominator. Load is local
-  // (YAML parse), not a Redis read: the manifest is code-adjacent and
-  // always available in the seeder's working directory.
-  const reexportShareByCountry = loadReexportShareByCountry();
+  // Re-export share: per-country fraction of gross imports that flow
+  // through as re-exports without settling as domestic consumption.
+  // Sourced from Comtrade via the sibling Reexport-Share seeder that
+  // runs immediately before this one inside the resilience-recovery
+  // bundle. loadReexportShareFromRedis() enforces bundle-run freshness
+  // — if the sibling's seed-meta predates this bundle's start, all
+  // countries fall back to gross imports (hard fail-safe). Countries
+  // not in the returned map get netImports = grossImports (status-quo
+  // behaviour). Absence MUST NOT throw or zero the denominator.
+  const reexportShareByCountry = await loadReexportShareFromRedis();
   const [imports, wikipediaCache, fxRates] = await Promise.all([
     fetchAnnualImportsUsd(),
     loadWikipediaRankingsCache(),

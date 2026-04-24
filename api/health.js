@@ -193,6 +193,8 @@ const STANDALONE_KEYS = {
   recoveryExternalDebt:     'resilience:recovery:external-debt:v1',
   recoveryImportHhi:        'resilience:recovery:import-hhi:v1',
   recoveryFuelStocks:       'resilience:recovery:fuel-stocks:v1',
+  recoveryReexportShare:    'resilience:recovery:reexport-share:v1',
+  recoverySovereignWealth:  'resilience:recovery:sovereign-wealth:v1',
   // PR 1 v2 energy-construct seeds. STRICT SEED_META (not ON_DEMAND):
   // plan 2026-04-24-001 removed these from ON_DEMAND_KEYS so /api/health
   // reports CRIT (not WARN) when they are absent. This is the intended
@@ -397,6 +399,8 @@ const SEED_META = {
   recoveryExternalDebt:    { key: 'seed-meta:resilience:recovery:external-debt',    maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryFuelStocks:      { key: 'seed-meta:resilience:recovery:fuel-stocks',      maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoveryReexportShare:   { key: 'seed-meta:resilience:recovery:reexport-share',   maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoverySovereignWealth: { key: 'seed-meta:resilience:recovery:sovereign-wealth', maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   // PR 1 v2 energy seeds — weekly cron (8d * 1440 = 11520min = 2x interval).
   // STRICT SEED_META (not ON_DEMAND): plan 2026-04-24-001 made /api/health
   // CRIT on absent/stale so operators see the Railway-bundle gap before

@@ -55,4 +55,28 @@ describe('seed-bundle-resilience-recovery', () => {
     assert.ok(bundleSource.includes('runBundle'), 'Missing runBundle import');
     assert.ok(bundleSource.includes('DAY'), 'Missing DAY import');
   });
+
+  // Plan 2026-04-24-003: Reexport-Share became Comtrade-backed; 60s
+  // timeout is no longer enough. Guard against a revert / accidental
+  // restore of the pre-Comtrade timeout.
+  it('Reexport-Share entry has timeoutMs >= 180_000', () => {
+    // Match only the Reexport-Share entry's object body, not the full
+    // file, to avoid cross-entry timeout leakage.
+    const entryMatch = bundleSource.match(/\{[^}]*label:\s*'Reexport-Share'[^}]*\}/);
+    assert.ok(entryMatch, 'Could not locate Reexport-Share entry');
+    const timeoutMatch = entryMatch[0].match(/timeoutMs:\s*([\d_]+)/);
+    assert.ok(timeoutMatch, 'Reexport-Share entry missing timeoutMs');
+    const timeoutMs = Number(timeoutMatch[1].replace(/_/g, ''));
+    assert.ok(timeoutMs >= 180_000,
+      `Reexport-Share timeoutMs must be >= 180_000 (Comtrade + retry can take 2-3min); got ${timeoutMs}`);
+  });
+
+  it('Reexport-Share runs BEFORE Sovereign-Wealth in bundle ordering', () => {
+    const reexportIdx = bundleSource.indexOf("label: 'Reexport-Share'");
+    const swfIdx = bundleSource.indexOf("label: 'Sovereign-Wealth'");
+    assert.ok(reexportIdx >= 0, 'Reexport-Share not in bundle');
+    assert.ok(swfIdx >= 0, 'Sovereign-Wealth not in bundle');
+    assert.ok(reexportIdx < swfIdx,
+      `Reexport-Share must run before Sovereign-Wealth (so SWF seeder reads a freshly-written re-export share key)`);
+  });
 });

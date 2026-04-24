@@ -138,4 +138,39 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
       }
     });
   });
+
+  // Plan 2026-04-24-003 dual-registry drift guard. `api/health.js` and
+  // `api/seed-health.js` maintain INDEPENDENT registries (see
+  // `feedback_two_health_endpoints_must_match`). They are NOT globally
+  // identical — health.js watches keys seed-health.js doesn't, and vice
+  // versa. Only the keys explicitly added by this PR are required in
+  // BOTH registries; pre-existing recovery entries (fiscal-space,
+  // reserve-adequacy, external-debt, import-hhi, fuel-stocks) live only
+  // in api/health.js by design and are NOT asserted here.
+  describe('resilience-recovery dual-registry parity (this PR only)', () => {
+    const SHARED_RESILIENCE_KEYS = [
+      'resilience:recovery:reexport-share',
+      'resilience:recovery:sovereign-wealth',
+    ] as const;
+
+    const healthJsText = readFileSync(join(repoRoot, 'api/health.js'), 'utf-8');
+    const seedHealthJsText = readFileSync(join(repoRoot, 'api/seed-health.js'), 'utf-8');
+
+    for (const key of SHARED_RESILIENCE_KEYS) {
+      it(`'${key}' is registered in api/health.js SEED_META`, () => {
+        const metaKey = `seed-meta:${key}`;
+        assert.ok(
+          healthJsText.includes(`'${metaKey}'`) || healthJsText.includes(`"${metaKey}"`),
+          `api/health.js must register '${metaKey}' in SEED_META`,
+        );
+      });
+
+      it(`'${key}' is registered in api/seed-health.js SEED_DOMAINS`, () => {
+        assert.ok(
+          seedHealthJsText.includes(`'${key}'`) || seedHealthJsText.includes(`"${key}"`),
+          `api/seed-health.js must register '${key}' in SEED_DOMAINS`,
+        );
+      });
+    }
+  });
 });
