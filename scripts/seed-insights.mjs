@@ -4,6 +4,7 @@ import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-ut
 import { clusterItems, selectTopStories } from './_clustering.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { pickBriefCluster, briefSystemPrompt, briefUserPrompt } from './_insights-brief.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -26,9 +27,10 @@ function normalizeThreat(threat) {
   return { ...threat, level };
 }
 
-const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key expires on any missed cron tick
-                         // and /api/bootstrap loses insights entirely. Bad content is gated upstream (corroboration
-                         // requirement on topStories + grounded prompt), not by aging out fast.
+const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key expires on any missed
+                         // cron tick and /api/bootstrap loses insights entirely. Bad brief content
+                         // is gated at brief-selection time (see pickBriefCluster + briefSystemPrompt
+                         // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
@@ -112,19 +114,8 @@ const LLM_PROVIDERS = [
 ];
 
 async function callLLM(headline) {
-  const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.`;
-
-  const systemPrompt = `${dateContext}
-
-Rewrite the provided headline as 2 concise sentences MAX (under 60 words total).
-Rules:
-- Use ONLY facts present in the headline text. Do not add names, places, dates, or context that are not explicitly in the headline.
-- Do not invent proper nouns (people, organizations, countries) that are not in the headline.
-- Include a location, person, or organization ONLY if it appears in the headline. If the headline has no location, do not add one.
-- NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.
-- No bullet points, no meta-commentary, no speculation beyond the headline.`;
-
-  const userPrompt = `Headline: ${headline}\n\nRewrite as 2 sentences using only facts from this headline.`;
+  const systemPrompt = briefSystemPrompt(new Date().toISOString().split('T')[0]);
+  const userPrompt = briefUserPrompt(headline);
 
   for (const provider of LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
@@ -275,13 +266,12 @@ async function fetchInsights() {
   if (topStories.length === 0) throw new Error('No top stories after scoring');
 
   // Corroboration gate: only brief a story at least two outlets have reported.
-  // scoreImportance() in _clustering.mjs is keyword-heavy (violence +125, flashpoint
-  // +75, multiplier x1.5) and can rank a single-source sensational rumor ahead of a
-  // 2-source lead. Walking for sourceCount >= 2 makes corroboration a hard requirement,
-  // not a tiebreaker. Previously we compounded this by asking the LLM to "pick the
-  // most important" from 10 headlines — small/medium models further biased toward
-  // sensational single-source rumors over multi-sourced leaders.
-  const briefCluster = topStories.find(s => (s.sourceCount || 1) >= 2);
+  // See pickBriefCluster() in _insights-brief.mjs for rationale + unit tests.
+  // Note: this gates ONLY brief generation — the topStories payload itself
+  // continues to include single-source clusters, rendered as the headline list
+  // under the brief. The brief paragraph is the one surface where corroboration
+  // matters; the list is already visually marked with per-story sourceCount.
+  const briefCluster = pickBriefCluster(topStories);
   const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
 
   let worldBrief = '';
