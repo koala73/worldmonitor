@@ -80,6 +80,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 2 },
   'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 2 },
   'fuel-shortages': { name: 'Global Fuel Shortage Registry', enabled: true, priority: 2 },
+  'energy-disruptions': { name: 'Energy Disruptions Log', enabled: true, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'consumer-prices': { name: 'Consumer Prices', enabled: false, priority: 2 },
   'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
@@ -914,6 +915,7 @@ const ENERGY_PANELS: Record<string, PanelConfig> = {
   'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 1 },
   'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 1 },
   'fuel-shortages': { name: 'Global Fuel Shortage Registry', enabled: true, priority: 1 },
+  'energy-disruptions': { name: 'Energy Disruptions Log', enabled: true, priority: 1 },
   'live-news': { name: 'Energy Headlines', enabled: true, priority: 1 },
   insights: { name: 'AI Energy Insights', enabled: true, priority: 1 },
   // Energy complex — existing panels reused at launch
@@ -1222,7 +1224,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'energy-complex', 'pipeline-status', 'storage-facility-map', 'fuel-shortages', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
+    panelKeys: ['commodities', 'energy-complex', 'pipeline-status', 'storage-facility-map', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',

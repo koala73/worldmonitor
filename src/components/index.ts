@@ -91,6 +91,7 @@ export { ChokepointStripPanel } from './ChokepointStripPanel';
 export { PipelineStatusPanel } from './PipelineStatusPanel';
 export { StorageFacilityMapPanel } from './StorageFacilityMapPanel';
 export { FuelShortagePanel } from './FuelShortagePanel';
+export { EnergyDisruptionsPanel } from './EnergyDisruptionsPanel';
 export * from './ClimateNewsPanel';
 export * from './DiseaseOutbreaksPanel';
 export * from './SocialVelocityPanel';
