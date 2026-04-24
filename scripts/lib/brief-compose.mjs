@@ -279,7 +279,16 @@ function digestStoryToUpstreamTopStory(s) {
  */
 export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
-  const sensitivity = rule.sensitivity ?? 'all';
+  // Default to 'high' (NOT 'all') for undefined sensitivity, aligning
+  // with buildDigest at scripts/seed-digest-notifications.mjs:392 and
+  // the digestFor cache key. The live cron path pre-filters the pool
+  // to {critical, high}, so this default is a no-op for production
+  // calls — but a non-prefiltered caller with undefined sensitivity
+  // would otherwise silently widen to {medium, low} stories while the
+  // operator log labels the attempt as 'high', misleading telemetry.
+  // See PR #3387 review (P2) and Defect 2 / Solution 1 in
+  // docs/plans/2026-04-24-004-fix-brief-topic-adjacency-defects-plan.md.
+  const sensitivity = rule.sensitivity ?? 'high';
   const tz = rule.digestTimezone ?? 'UTC';
   const upstreamLike = digestStories.map(digestStoryToUpstreamTopStory);
   const stories = filterTopStories({

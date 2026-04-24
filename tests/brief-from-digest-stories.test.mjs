@@ -312,4 +312,64 @@ describe('composeBriefFromDigestStories — continued', () => {
     assert.ok(env);
     assert.equal(env.data.stories[0].description, 'Iran threatens to close Strait of Hormuz');
   });
+
+  describe('undefined sensitivity defaults to "high" (NOT "all")', () => {
+    // PR #3387 review (P2): the previous `?? 'all'` default would
+    // silently widen to {medium, low} for any non-prefiltered caller
+    // with undefined sensitivity, while operator telemetry labeled the
+    // attempt as 'high' (matching buildDigest's default). The two
+    // defaults must agree to keep the per-attempt log accurate and to
+    // prevent unintended severity widening through this entry point.
+    function ruleWithoutSensitivity() {
+      const r = rule();
+      delete r.sensitivity;
+      return r;
+    }
+
+    it('admits critical and high stories when sensitivity is undefined', () => {
+      const env = composeBriefFromDigestStories(
+        ruleWithoutSensitivity(),
+        [
+          digestStory({ hash: 'a', title: 'Critical event', severity: 'critical' }),
+          digestStory({ hash: 'b', title: 'High event', severity: 'high' }),
+        ],
+        { clusters: 0, multiSource: 0 },
+        { nowMs: NOW },
+      );
+      assert.ok(env);
+      assert.equal(env.data.stories.length, 2);
+    });
+
+    it('drops medium and low stories when sensitivity is undefined', () => {
+      const env = composeBriefFromDigestStories(
+        ruleWithoutSensitivity(),
+        [
+          digestStory({ hash: 'a', title: 'Medium event', severity: 'medium' }),
+          digestStory({ hash: 'b', title: 'Low event', severity: 'low' }),
+        ],
+        { clusters: 0, multiSource: 0 },
+        { nowMs: NOW },
+      );
+      // No critical/high stories survive → composer returns null per
+      // the empty-survivor contract (caller falls back to next variant).
+      assert.equal(env, null);
+    });
+
+    it('emits onDrop reason=severity for medium/low when sensitivity is undefined', () => {
+      // Locks in alignment with the per-attempt telemetry: if compose
+      // were to default to 'all' again, medium/low would NOT fire a
+      // severity drop and the log would silently misreport the filter.
+      const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
+      composeBriefFromDigestStories(
+        ruleWithoutSensitivity(),
+        [
+          digestStory({ hash: 'a', title: 'Medium', severity: 'medium' }),
+          digestStory({ hash: 'b', title: 'Low', severity: 'low' }),
+        ],
+        { clusters: 0, multiSource: 0 },
+        { nowMs: NOW, onDrop: (ev) => { tally[ev.reason]++; } },
+      );
+      assert.equal(tally.severity, 2);
+    });
+  });
 });
