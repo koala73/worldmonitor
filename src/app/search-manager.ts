@@ -212,14 +212,18 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.setActivePanels(
       Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
     );
-    // Filter CMD+K layer commands by whether the layer can render under the
-    // current map renderer + DeckGL state. Without this, globe-mode and
-    // SVG/mobile users see toggles that silently no-op on activation (e.g.
-    // `layer:storageFacilities` in globe mode, or any `deckGLOnly` layer on
-    // the SVG fallback).
+    // Filter CMD+K layer commands by (a) variant-allowed, (b) renderer
+    // compatibility, (c) DeckGL state for deckGLOnly layers. Without this,
+    // layer commands surface in CMD+K on variants where they'd silently
+    // fail the variantAllowed guard in handleCommand (e.g.
+    // `layer:storageFacilities` on tech/finance/commodity/happy), or on
+    // globe / SVG-mobile where they'd hit the renderer guard. Better to
+    // hide the toggle than expose a button that does nothing.
     this.ctx.searchModal.setLayerExecutableFn((layerKey) => {
       const key = (LAYER_KEY_MAP[layerKey] || layerKey) as keyof MapLayers;
       if (!(key in this.ctx.mapLayers)) return false;
+      const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+      if (!variantAllowed.has(key)) return false;
       const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
       const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
       return isLayerExecutable(key, renderer, isDeckGL);
