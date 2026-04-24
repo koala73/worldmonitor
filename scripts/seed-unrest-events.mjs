@@ -176,9 +176,13 @@ async function fetchGdeltDirect(url) {
 }
 
 async function fetchGdeltViaProxy(url, proxyAuth) {
+  // GDELT v1 gkg_geojson responds in ~19s when degraded; 20s timeout caused
+  // chronic "HTTP 522" / "CONNECT tunnel timeout" from Decodo, freezing
+  // seed-meta and firing STALE_SEED across health. 45s absorbs that variance
+  // with headroom.
   const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
     accept: 'application/json',
-    timeoutMs: 20_000,
+    timeoutMs: 45_000,
   });
   return JSON.parse(buffer.toString('utf8'));
 }
