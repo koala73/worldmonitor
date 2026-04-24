@@ -2319,6 +2319,16 @@ components:
                     format: double
                 lastEvidenceUpdate:
                     type: string
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Countries touched by the referenced asset (pipeline: fromCountry +
+                             toCountry + transitCountries; storage: country). Denormalised at seed
+                             time so CountryDeepDivePanel can filter events without a second RPC.
+                             Always non-empty in well-formed payloads; empty only if the upstream
+                             asset was removed without an event update. Per plan §R/#5 decision B.
         EnergyDisruptionSource:
             type: object
             properties:
