@@ -1,9 +1,13 @@
-// U2 — story:track:v1 HSET persistence contract for the new description field.
+// U2 — story:track:v1 HSET persistence contract for the description field.
 //
-// The description is written to the HSET only when non-empty, so old rows and
-// rows from feeds without a description return `undefined` on HGETALL. This
-// lets downstream consumers fall back to the cleaned headline (R6) without a
-// key version bump.
+// Description is written UNCONDITIONALLY on every mention (empty string when
+// the current mention has no body). This keeps the row's description
+// authoritative for the current cycle: because story:track rows are
+// collapsed by normalized-title hash, an earlier mention's body would
+// otherwise persist on subsequent body-less mentions for up to STORY_TTL
+// (7 days), silently grounding LLMs on a body that doesn't belong to the
+// current mention. Writing empty is the honest signal — consumers fall
+// back to the cleaned headline (R6) per contract.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -52,24 +56,28 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.ok(m.has('lang'));
   });
 
-  it('omits description key entirely when empty', () => {
+  it('writes an empty-string description when the current mention has no body — overwrites any prior mention body', () => {
+    // Critical for stale-grounding avoidance: if the previous mention for
+    // this normalized-title had a body, the next body-less mention must
+    // wipe it so consumers don't ground LLMs on "some mention's body."
     const item = baseItem({ description: '' });
     const fields = buildStoryTrackHsetFields(item, '1745000000000', 42);
     const m = fieldsToMap(fields);
-    assert.strictEqual(m.has('description'), false, 'empty description must not be written so HGETALL returns undefined');
-    // Other fields still present
+    assert.strictEqual(m.has('description'), true, 'description must always be written (empty string overwrites any prior mention body)');
+    assert.strictEqual(m.get('description'), '');
     assert.ok(m.has('title'));
     assert.ok(m.has('link'));
   });
 
-  it('treats undefined description the same as empty string', () => {
+  it('treats undefined description the same as empty string (writes empty, overwriting prior)', () => {
     // Simulates old cached ParsedItem rows from rss:feed:v1 (1h TTL) that
     // predate the parser change and are deserialised without the field.
     const item = baseItem();
     delete (item as Record<string, unknown>).description;
     const fields = buildStoryTrackHsetFields(item as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42);
     const m = fieldsToMap(fields);
-    assert.strictEqual(m.has('description'), false);
+    assert.strictEqual(m.has('description'), true);
+    assert.strictEqual(m.get('description'), '');
   });
 
   it('preserves all other canonical fields (lastSeen, currentScore, title, link, severity, lang)', () => {
@@ -105,5 +113,26 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     const m = fieldsToMap(fields);
     assert.strictEqual(m.get('description'), description);
     assert.strictEqual((m.get('description') as string).length, 400);
+  });
+
+  it('stale-body overwrite: sequence of mentions for the same titleHash always reflects the CURRENT mention', () => {
+    // Simulates the Codex-flagged scenario: Feed A at T0 has body, Feed B
+    // at T1 body-less, Feed C at T2 has different body. All collapse to the
+    // same story:track:v1 row via normalized-title hash. Each HSET must
+    // reflect the current mention exactly — not preserve a prior mention's
+    // body silently.
+    const t0Fields = buildStoryTrackHsetFields(baseItem({
+      description: 'Feed A body from T0: Mojtaba Khamenei, 56, wounded in attack.',
+    }), '1745000000000', 42);
+    const t1Fields = buildStoryTrackHsetFields(baseItem({
+      description: '', // body-less wire reprint
+    }), '1745000000100', 42);
+    const t2Fields = buildStoryTrackHsetFields(baseItem({
+      description: 'Feed C body from T2: Leader reported in stable condition.',
+    }), '1745000000200', 42);
+
+    assert.strictEqual(fieldsToMap(t0Fields).get('description'), 'Feed A body from T0: Mojtaba Khamenei, 56, wounded in attack.');
+    assert.strictEqual(fieldsToMap(t1Fields).get('description'), '', 'T1 body-less mention must emit empty description, overwriting T0');
+    assert.strictEqual(fieldsToMap(t2Fields).get('description'), 'Feed C body from T2: Leader reported in stable condition.');
   });
 });

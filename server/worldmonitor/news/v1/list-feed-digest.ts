@@ -507,29 +507,34 @@ export async function listFeedDigest(
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
 
 /**
- * Build the HSET field list for a story:track:v1 row. Description is written
- * only when non-empty so old rows (pre-fix) or rows from feeds without a
- * description return `undefined` on HGETALL, letting downstream readers fall
- * back to the cleaned headline (R6) without a key version bump.
+ * Build the HSET field list for a story:track:v1 row.
+ *
+ * Description is written UNCONDITIONALLY (empty string when the current
+ * mention has no body). Rationale: story:track rows are collapsed by
+ * normalized-title hash, so multiple wire reports of the same event share a
+ * row. If we only wrote description when non-empty, an earlier mention's
+ * body would persist on subsequent body-less mentions for up to STORY_TTL
+ * (7 days), and consumers would unknowingly ground LLMs on "some mention's
+ * body" rather than "this mention's body" — violating the grounding
+ * contract advertised to brief / whyMatters / SummarizeArticle. Writing
+ * empty is the authoritative signal that the current mention has no body;
+ * consumers then fall back to the cleaned headline (R6) honestly, and the
+ * next mention with a body re-populates the field naturally.
  */
 function buildStoryTrackHsetFields(
   item: ParsedItem,
   nowStr: string,
   score: number,
 ): Array<string | number> {
-  const fields: Array<string | number> = [
+  return [
     'lastSeen', nowStr,
     'currentScore', score,
     'title', item.title,
     'link', item.link,
     'severity', item.level,
     'lang', item.lang,
+    'description', item.description ?? '',
   ];
-  const description = item.description ?? '';
-  if (description) {
-    fields.push('description', description);
-  }
-  return fields;
 }
 
 async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[]): Promise<void> {

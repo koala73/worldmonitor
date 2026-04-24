@@ -1,6 +1,9 @@
 // ── Story persistence tracking keys (E3) ─────────────────────────────────────
 // Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore,
-//       title, link, severity, lang, description?
+//       title, link, severity, lang, description
+// description is authoritative per-mention: written unconditionally on every
+// HSET (empty string when the current mention has no body), so an earlier
+// mention's body never silently grounds LLMs for the current mention.
 export const STORY_TRACK_KEY_PREFIX = 'story:track:v1:';
 // Set: unique feed names that have mentioned this story
 export const STORY_SOURCES_KEY_PREFIX = 'story:sources:v1:';
@@ -15,7 +18,7 @@ export const STORY_TRACKING_TTL_S = 172800;
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description?
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description (always-written)
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
