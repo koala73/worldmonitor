@@ -480,9 +480,21 @@ export class SearchManager implements AppModule {
 
       case 'layers': {
         const allowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+        // Preset paths (`layers:all`, `layers:infra`, …) also need the
+        // renderer + DeckGL gate that per-layer toggles go through. Without
+        // it, a user in globe mode or on the SVG fallback can run
+        // `layers:infra` and silently flip `deckGLOnly` layers on — those
+        // layers set to `true` in state but produce no rendered output,
+        // and since the picker hides them under the current renderer the
+        // user has no way to toggle them back off without switching
+        // modes. Codex P2 on PR #3366.
+        const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+        const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+        const executable = (k: keyof MapLayers): boolean =>
+          allowed.has(k) && isLayerExecutable(k, renderer, isDeckGL);
         if (action === 'all') {
           for (const key of Object.keys(this.ctx.mapLayers)) {
-            this.ctx.mapLayers[key as keyof MapLayers] = allowed.has(key as keyof MapLayers);
+            this.ctx.mapLayers[key as keyof MapLayers] = executable(key as keyof MapLayers);
           }
         } else if (action === 'none') {
           for (const key of Object.keys(this.ctx.mapLayers))
@@ -493,7 +505,7 @@ export class SearchManager implements AppModule {
             for (const key of Object.keys(this.ctx.mapLayers))
               this.ctx.mapLayers[key as keyof MapLayers] = false;
             for (const layer of preset) {
-              if (allowed.has(layer)) this.ctx.mapLayers[layer] = true;
+              if (executable(layer)) this.ctx.mapLayers[layer] = true;
             }
           }
         }
