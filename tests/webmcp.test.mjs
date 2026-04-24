@@ -121,8 +121,15 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
   });
 
   it('is called before the first await in init()', () => {
-    const initBody = appSrc.match(/public async init\(\): Promise<void> \{([\s\S]+?)\n  \}/);
-    assert.ok(initBody, 'could not locate init() body');
+    // Anchor the end of the capture to the NEXT class-level member
+    // (public/private) so an intermediate 2-space-indent `}` inside
+    // init() can't truncate the body. A lazy `[\s\S]+?\n  }` match
+    // would stop at the first such closing brace and silently shrink
+    // the slice we search for the pre-await pattern.
+    const initBody = appSrc.match(
+      /public async init\(\): Promise<void> \{([\s\S]*?)\n  \}(?=\n\n  (?:public|private) )/,
+    );
+    assert.ok(initBody, 'could not locate init() body (anchor to next class member missing)');
     const preAwait = initBody[1].split(/\n\s+await\s/, 2)[0];
     assert.match(
       preAwait,
@@ -180,8 +187,12 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
   });
 
   it('destroy() aborts the WebMCP controller so re-inits do not duplicate registrations', () => {
-    const destroyBody = appSrc.match(/public destroy\(\): void \{([\s\S]+?)\n  \}/);
-    assert.ok(destroyBody, 'could not locate destroy() body');
+    // Same anchoring as init() — end at the next class member so an
+    // intermediate 2-space-indent close brace can't truncate the capture.
+    const destroyBody = appSrc.match(
+      /public destroy\(\): void \{([\s\S]*?)\n  \}(?=\n\n  (?:public|private) )/,
+    );
+    assert.ok(destroyBody, 'could not locate destroy() body (anchor to next class member missing)');
     assert.match(
       destroyBody[1],
       /this\.webMcpController\?\.abort\(\)/,
