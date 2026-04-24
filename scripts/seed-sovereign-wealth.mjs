@@ -79,24 +79,12 @@
 // §3.4 "What happens to no-SWF countries"). This is substantively
 // different from IMPUTE fallback (which is "data-source-failed").
 
-import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, SHARED_FX_FALLBACKS, getSharedFxRates } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, SHARED_FX_FALLBACKS, getSharedFxRates, getBundleRunStartedAtMs } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
 
 const REEXPORT_SHARE_CANONICAL_KEY = 'resilience:recovery:reexport-share:v1';
 const REEXPORT_SHARE_META_KEY = 'seed-meta:resilience:recovery:reexport-share';
-
-// Bundle-run freshness marker. Set by `_bundle-runner.mjs` via env
-// `BUNDLE_RUN_STARTED_AT_MS` before each child spawn; all sibling
-// seeders in one bundle share one value. Standalone runs (manual
-// invocation outside the bundle) fall back to process start so the
-// freshness guard degrades gracefully. Resolved lazily (not at
-// module load) so tests can exercise different values by mutating
-// process.env between calls.
-function getBundleStartMs() {
-  return Number(process.env.BUNDLE_RUN_STARTED_AT_MS)
-    || Math.floor(Date.now() / 1000) * 1000;
-}
 
 /**
  * Read the Comtrade-seeded re-export-share map from Redis, guarded by
@@ -125,7 +113,7 @@ export async function loadReexportShareFromRedis() {
 
   const metaRaw = await readSeedSnapshot(REEXPORT_SHARE_META_KEY);
   const fetchedAtMs = Number(metaRaw?.fetchedAt ?? 0);
-  const bundleStartMs = getBundleStartMs();
+  const bundleStartMs = getBundleRunStartedAtMs();
   if (!fetchedAtMs || fetchedAtMs < bundleStartMs) {
     const ageMin = fetchedAtMs ? ((Date.now() - fetchedAtMs) / 60_000).toFixed(0) : 'n/a';
     console.warn(`[seed-sovereign-wealth] reexport-share seed-meta NOT from this bundle run (age=${ageMin}min, bundleStart=${new Date(bundleStartMs).toISOString()}). Falling back to gross imports for all countries.`);

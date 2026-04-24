@@ -143,4 +143,24 @@ describe('loadReexportShareFromRedis — Gap #2 regression guards', () => {
     const map = await loadReexportShareFromRedis();
     assert.equal(map.size, 0);
   });
+
+  it('fetchedAtMs === bundleStartMs passes (inclusive freshness boundary)', async () => {
+    // The freshness check uses strict-less-than: `fetchedAt < bundleStart`.
+    // Exact equality is treated as FRESH. This pins the inclusive-boundary
+    // semantic so a future refactor to `<=` fails this test loudly
+    // instead of silently rejecting a peer that wrote at the very first
+    // millisecond of the bundle run (theoretically possible on a fast
+    // host where t0 and the peer's fetchedAt align on the same ms).
+    const bundleStart = 1_700_000_000_000;
+    process.env.BUNDLE_RUN_STARTED_AT_MS = String(bundleStart);
+    keyStore[REEXPORT_SHARE_KEY] = {
+      manifestVersion: 2,
+      countries: { AE: { reexportShareOfImports: 0.4, year: 2023 } },
+    };
+    keyStore[REEXPORT_SHARE_META_KEY] = { fetchedAt: bundleStart }; // EXACT equality
+    const map = await loadReexportShareFromRedis();
+    assert.equal(map.size, 1,
+      'equality at the freshness boundary must be treated as FRESH');
+    assert.equal(map.get('AE')?.reexportShareOfImports, 0.4);
+  });
 });

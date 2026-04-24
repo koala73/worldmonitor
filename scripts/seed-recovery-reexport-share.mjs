@@ -37,6 +37,8 @@
 // duplication is cheaper than a premature abstraction — a second
 // Comtrade caller in the future can extract then.
 
+import { pathToFileURL } from 'node:url';
+
 import { CHROME_UA, loadEnvFile, runSeed, sleep } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -294,9 +296,11 @@ export function declareRecords(data) {
 }
 
 // Guard top-level runSeed so the module can be imported by tests without
-// triggering the full fetch/publish flow. Mirrors the isMain idiom used
-// across other seeders (seed-aaii-sentiment, seed-bis-data, ...).
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
+// triggering the full fetch/publish flow. Uses the canonical
+// `pathToFileURL` comparison — unambiguous across path forms (symlink,
+// case-different on macOS HFS+, Windows backslash vs slash) — rather
+// than the basename-suffix matching pattern used by some older seeders.
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   runSeed('resilience', 'recovery:reexport-share', CANONICAL_KEY, fetchReexportShare, {
     validateFn: validate,

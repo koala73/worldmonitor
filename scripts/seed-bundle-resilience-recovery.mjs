@@ -20,5 +20,10 @@ await runBundle('resilience-recovery', [
   // pacing + retry-on-429; a 2-country cohort averages 10-15s but a
   // rate-limited retry storm can extend to 2-3 min.
   { label: 'Reexport-Share', script: 'seed-recovery-reexport-share.mjs', seedMetaKey: 'resilience:recovery:reexport-share', canonicalKey: 'resilience:recovery:reexport-share:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
-  { label: 'Sovereign-Wealth', script: 'seed-sovereign-wealth.mjs', seedMetaKey: 'resilience:recovery:sovereign-wealth', canonicalKey: 'resilience:recovery:sovereign-wealth:v1', intervalMs: 30 * DAY, timeoutMs: 600_000 },
+  // `dependsOn: ['Reexport-Share']` makes the ordering contract explicit
+  // and enforced by `_bundle-runner.mjs` (throws on violation). The SWF
+  // seeder reads the Reexport-Share Redis key inside the same bundle
+  // run; a future edit that reorders these sections would otherwise
+  // silently corrupt the net-imports denominator.
+  { label: 'Sovereign-Wealth', script: 'seed-sovereign-wealth.mjs', seedMetaKey: 'resilience:recovery:sovereign-wealth', canonicalKey: 'resilience:recovery:sovereign-wealth:v1', intervalMs: 30 * DAY, timeoutMs: 600_000, dependsOn: ['Reexport-Share'] },
 ]);
