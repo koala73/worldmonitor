@@ -219,14 +219,22 @@ export function stripHeadlineSuffix(title, publisher) {
 /**
  * Adapter: the digest accumulator hydrates stories from
  * story:track:v1:{hash} (title / link / severity / lang / score /
- * mentionCount) + story:sources:v1:{hash} SMEMBERS. It does NOT carry
- * a category or country-code — those fields are optional in the
- * upstream brief-filter shape and default cleanly.
+ * mentionCount / description?) + story:sources:v1:{hash} SMEMBERS. It
+ * does NOT carry a category or country-code — those fields are optional
+ * in the upstream brief-filter shape and default cleanly.
  *
  * Since envelope v2, the story's `link` field is carried through as
  * `primaryLink` so filterTopStories can emit a BriefStory.sourceUrl.
  * Stories without a valid link are still passed through here — the
  * filter drops them at the validation boundary rather than this adapter.
+ *
+ * Description plumbing (post RSS-description fix, 2026-04-24):
+ *   When the ingested story:track row carries a cleaned RSS description,
+ *   it rides here as `s.description` and becomes the brief's baseline
+ *   description. When absent (old rows inside the 48h bleed, or feeds
+ *   without a description), we fall back to the cleaned headline —
+ *   preserving today's behavior and letting Phase 3b's LLM enrichment
+ *   still operate over something, not nothing.
  *
  * @param {object} s — digest-shaped story from buildDigest()
  */
@@ -235,13 +243,14 @@ function digestStoryToUpstreamTopStory(s) {
   const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
   const rawTitle = typeof s?.title === 'string' ? s.title : '';
   const cleanTitle = stripHeadlineSuffix(rawTitle, primarySource);
+  const rawDescription = typeof s?.description === 'string' ? s.description.trim() : '';
   return {
     primaryTitle: cleanTitle,
-    // Digest track hash has no separate body; baseline description is
-    // the cleaned headline. Phase 3b's LLM enrichment substitutes a
-    // one-sentence synthesis on top of this via
-    // enrichBriefEnvelopeWithLLM.
-    description: cleanTitle,
+    // When upstream persists a real RSS description (via story:track:v1
+    // post-fix), forward it; otherwise fall back to the cleaned headline
+    // so downstream consumers (brief filter, Phase 3b LLM) always have
+    // something to ground on.
+    description: rawDescription || cleanTitle,
     primarySource,
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,

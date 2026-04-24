@@ -384,6 +384,10 @@ async function buildDigest(rule, windowStartMs) {
       mentionCount: parseInt(track.mentionCount ?? '1', 10),
       phase,
       sources: [],
+      // Cleaned RSS description from list-feed-digest's parseRssXml; empty
+      // on old story:track rows (pre-fix, 48h bleed) and feeds without a
+      // description. Downstream adapter falls back to the cleaned headline.
+      description: typeof track.description === 'string' ? track.description : '',
     });
   }
 

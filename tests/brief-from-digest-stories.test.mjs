@@ -261,4 +261,55 @@ describe('composeBriefFromDigestStories — continued', () => {
     const b = composeBriefFromDigestStories(rule(), input, { clusters: 1, multiSource: 0 }, { nowMs: NOW });
     assert.deepEqual(a, b);
   });
+
+  // ── Description plumbing (U4) ────────────────────────────────────────────
+
+  it('forwards real RSS description when present on the digest story', () => {
+    const realBody = 'Mojtaba Khamenei, 56, was seriously wounded in an attack this week and has delegated authority to the Revolutionary Guards, multiple regional sources told News24.';
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({
+        title: "Iran's new supreme leader seriously wounded, delegates power to Revolutionary Guards",
+        description: realBody,
+      })],
+      { clusters: 1, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    const s = env.data.stories[0];
+    // Real RSS body grounds the description card; LLM grounding now
+    // operates over article-named actors instead of parametric priors.
+    assert.ok(s.description.includes('Mojtaba'), 'brief description should carry the article-named actor when upstream persists it');
+    assert.notStrictEqual(
+      s.description,
+      "Iran's new supreme leader seriously wounded, delegates power to Revolutionary Guards",
+      'brief description must not fall back to headline when upstream has a real body',
+    );
+  });
+
+  it('falls back to cleaned headline when digest story has no description (R6)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ description: '' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(
+      env.data.stories[0].description,
+      'Iran threatens to close Strait of Hormuz',
+      'empty description must preserve today behavior — cleaned headline baseline',
+    );
+  });
+
+  it('treats whitespace-only description as empty (falls back to headline)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ description: '   \n  ' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].description, 'Iran threatens to close Strait of Hormuz');
+  });
 });
