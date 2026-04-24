@@ -54,26 +54,43 @@ lint: ## Lint protobuf files
 
 generate: clean ## Generate code from proto definitions
 	@mkdir -p $(GEN_CLIENT_DIR) $(GEN_SERVER_DIR) $(DOCS_API_DIR)
-	# Prepend the Go install dir so the Makefile-declared sebuf version
-	# ($(SEBUF_VERSION)) installed by `install-plugins` wins over any
-	# stale sebuf binary that a package manager (Homebrew, etc.) may
-	# have placed earlier on PATH. Without this, `buf generate` can
-	# pick up an older sebuf v0.7.x build that ignores `bundle_only=true`
-	# / `format=json` and produces duplicate-output errors.
+	# Ensure the Makefile-declared sebuf protoc plugins ($(SEBUF_VERSION))
+	# installed by `install-plugins` win over any stale sebuf binary that
+	# a package manager (Homebrew, etc.) may have placed earlier on PATH.
+	# Without this, `buf generate` spawns an older sebuf v0.7.x plugin
+	# that ignores `bundle_only=true` / `format=json` and fails with
+	# duplicate-output errors.
 	#
-	# Mirror `go install`'s own resolution order: GOBIN first, then
-	# the FIRST entry of GOPATH + "/bin". `go install` writes binaries
-	# only into the first GOPATH entry's bin dir — GOPATH is a
-	# colon-separated list (Linux/macOS), so `$$(go env GOPATH)/bin`
-	# alone would wrongly turn "/p1:/p2" into "/p1:/p2/bin" (two
-	# distinct PATH entries, neither pointing at the actual install
-	# target /p1/bin). Take only the first entry via `cut`.
-	# This respects developers who set a non-default GOBIN (e.g. to
-	# keep binaries out of ~/go/bin) or who have a multi-entry GOPATH.
-	# (Note: .husky/pre-push:151-153 still hardcodes $$HOME/go/bin for
-	# discovering `buf` itself. That's additive — the Makefile's own
-	# recipe-level prepend here takes precedence for the plugin lookup.)
-	cd $(PROTO_DIR) && PATH="$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi):$$PATH" buf generate
+	# Two-stage resolution:
+	#
+	#  1. Resolve `buf` using the CALLER's PATH so we pick up whatever
+	#     `buf` version was installed via Homebrew / go install / etc. —
+	#     whichever the developer actually runs day-to-day. We do NOT
+	#     want the Go install dir to override the buf binary itself; an
+	#     earlier version of this Makefile did, which could silently
+	#     downgrade `buf` on machines with a stale GOBIN copy.
+	#
+	#  2. Invoke the resolved `buf` via absolute path, but give it a
+	#     PATH whose FIRST entry is the Go install dir. This affects
+	#     only plugin lookup inside `buf generate` (protoc-gen-ts-*,
+	#     protoc-gen-openapiv3) — not `buf` itself, which is already
+	#     resolved. Plugins find the Makefile-pinned version first.
+	#
+	# Go install dir resolution mirrors `go install`'s own logic:
+	# GOBIN first, then the FIRST entry of GOPATH + "/bin". `go install`
+	# writes binaries only into the first GOPATH entry's bin dir — GOPATH
+	# can be a path-list (colon-separated on Unix, semicolon on Windows),
+	# so naïvely appending "/bin" to the whole value produces a bogus
+	# path. The `cut -d:` fallback works on Linux/macOS shells; Windows
+	# (MSYS/cmd) is not a supported dev platform for this repo, so the
+	# Unix assumption is acceptable here.
+	#
+	# .husky/pre-push still prepends $$HOME/go/bin for the outer shell
+	# discovering `buf` — that's a broader prepend (it affects the shell's
+	# command resolution before `make` runs) and is harmless here because
+	# this recipe resolves `buf` via its own PATH before building the
+	# plugin PATH.
+	cd $(PROTO_DIR) && BUF_BIN=$$(command -v buf) && [ -n "$$BUF_BIN" ] || { echo 'buf not found on PATH — run: make install-buf' >&2; exit 1; } && PATH="$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi):$$PATH" "$$BUF_BIN" generate
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
