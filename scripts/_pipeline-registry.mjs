@@ -30,6 +30,11 @@ export const PIPELINES_TTL_SECONDS = 21 * 24 * 3600;
 const VALID_PHYSICAL_STATES = new Set(['flowing', 'reduced', 'offline', 'unknown']);
 const VALID_COMMERCIAL_STATES = new Set(['under_contract', 'expired', 'suspended', 'unknown']);
 const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satellite', 'ais-relay']);
+// Required on every oil pipeline. `crude` = crude-oil lines (default),
+// `products` = refined-product lines (gasoline/diesel/jet), `mixed` =
+// dual-use bridges moving both. Gas pipelines don't carry this field
+// (commodity is its own class).
+const VALID_OIL_PRODUCT_CLASSES = new Set(['crude', 'products', 'mixed']);
 
 // Minimum viable registry size. Expansion to ~75 each happens in the follow-up
 // GEM import PR; this seeder doesn't care about exact counts beyond the floor.
@@ -61,6 +66,13 @@ export function validateRegistry(data) {
     if (typeof p.name !== 'string' || p.name.length === 0) return false;
     if (typeof p.operator !== 'string') return false;
     if (p.commodityType !== 'oil' && p.commodityType !== 'gas') return false;
+    // Oil pipelines must declare a productClass from the enum; gas pipelines
+    // must NOT carry one (commodity is its own class there).
+    if (p.commodityType === 'oil') {
+      if (!VALID_OIL_PRODUCT_CLASSES.has(p.productClass)) return false;
+    } else if (p.productClass !== undefined) {
+      return false;
+    }
     if (typeof p.fromCountry !== 'string' || !/^[A-Z]{2}$/.test(p.fromCountry)) return false;
     if (typeof p.toCountry !== 'string' || !/^[A-Z]{2}$/.test(p.toCountry)) return false;
     if (!Array.isArray(p.transitCountries)) return false;
