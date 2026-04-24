@@ -59,10 +59,32 @@ function loadAssetRegistries() {
   const gas = JSON.parse(readFileSync(resolve(__dirname, 'data', 'pipelines-gas.json'), 'utf-8'));
   const oil = JSON.parse(readFileSync(resolve(__dirname, 'data', 'pipelines-oil.json'), 'utf-8'));
   const storageRaw = JSON.parse(readFileSync(resolve(__dirname, 'data', 'storage-facilities.json'), 'utf-8'));
-  return {
-    pipelines: { ...(gas.pipelines ?? {}), ...(oil.pipelines ?? {}) },
-    storage: storageRaw.facilities ?? {},
-  };
+
+  // Merge with explicit collision detection. A spread like
+  // { ...gas.pipelines, ...oil.pipelines } would silently let an oil
+  // entry overwrite a gas entry if a curator ever added a pipeline
+  // under the same id to both files — `deriveCountriesForEvent` would
+  // then return data for whichever side won the spread regardless of
+  // which commodity the disruption actually references, and the
+  // collision would surface as mysterious wrong-country filter
+  // results with no test or validator flagging it. Codex P2 on
+  // PR #3377. Throw loudly so the next cron tick fails validation
+  // and health alarms fire.
+  /** @type {Record<string, any>} */
+  const pipelines = {};
+  for (const [id, p] of Object.entries(gas.pipelines ?? {})) pipelines[id] = p;
+  for (const [id, p] of Object.entries(oil.pipelines ?? {})) {
+    if (pipelines[id]) {
+      throw new Error(
+        `Duplicate pipeline id "${id}" present in both pipelines-gas.json ` +
+        `and pipelines-oil.json — an event referencing this id would resolve ` +
+        `ambiguously. Rename one of them before re-running the seeder.`,
+      );
+    }
+    pipelines[id] = p;
+  }
+
+  return { pipelines, storage: storageRaw.facilities ?? {} };
 }
 
 /**

@@ -74,6 +74,19 @@ const SEVERITY_ORDER: Record<ThreatLevel, number> = {
   info: 0,
 };
 
+// Clamp long disruption shortDescriptions when rendered in the compact
+// CountryDeepDive Atlas row. Some registry entries (OFAC designations,
+// multi-clause sanctions summaries) run 100–200 chars; without a clamp
+// they overflow the row. 80 chars is a balance between scannability and
+// information density; full detail stays accessible by clicking through
+// to the asset drawer.
+const DISRUPTION_LABEL_MAX_LEN = 80;
+function truncateDisruptionLabel(eventType: string, shortDescription: string): string {
+  const base = `${eventType} — ${shortDescription}`;
+  if (base.length <= DISRUPTION_LABEL_MAX_LEN) return base;
+  return base.slice(0, DISRUPTION_LABEL_MAX_LEN - 1) + '…';
+}
+
 export class CountryDeepDivePanel implements CountryBriefPanel {
   private panel: HTMLElement;
   private content: HTMLElement;
@@ -1273,8 +1286,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         '@/generated/client/worldmonitor/supply_chain/v1/service_client'
       );
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
+      // Thread the panel's `signal` into the fetch shim so a country
+      // switch or panel close cancels the in-flight request, not just
+      // discards the result via the `this.currentCode !== iso2` guard
+      // below. Codex P2 on PR #3377.
+      const abortSignal = this.signal;
       const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
-        fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+        fetch: (input, init) => globalThis.fetch(input, { ...(init ?? {}), signal: abortSignal }),
       });
       const res = await client.listEnergyDisruptions({
         assetId: '',
@@ -1295,7 +1313,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         summary,
         events.map(e => ({
           id: e.id,
-          label: `${e.eventType} — ${e.shortDescription}`,
+          // Clamp long descriptions (some registry entries run 100-200
+          // chars, e.g. OFAC designation paragraphs) so the row layout
+          // stays compact. 80-char limit + ellipsis. Codex P2 on PR #3377.
+          label: truncateDisruptionLabel(e.eventType, e.shortDescription),
           // Event type mirrors the existing asset-detail events (pipeline /
           // storage) because disruptions reference the underlying asset; the
           // panel-layout listener routes to the matching asset panel.
@@ -1318,7 +1339,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       );
     } catch {
       // Silent — disruptions row is supplementary; failures elsewhere
-      // surface via the dedicated EnergyDisruptionsPanel.
+      // surface via the dedicated EnergyDisruptionsPanel. Abort errors
+      // from signal cancellation are also swallowed here intentionally.
     }
   }
 
