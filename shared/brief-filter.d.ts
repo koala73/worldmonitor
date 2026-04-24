@@ -27,9 +27,13 @@ export type AlertSensitivity = 'all' | 'high' | 'critical';
  * dropped story. `severity` is present when threatLevel parsed but
  * failed the sensitivity gate, or when a later gate (headline/url)
  * dropped a story that had already passed the severity check.
+ *
+ * `cap` fires once per story skipped after `maxStories` has been
+ * reached — neither severity nor field metadata is included since
+ * the loop short-circuits without parsing the remaining stories.
  */
 export type DropMetricsFn = (event: {
-  reason: 'severity' | 'headline' | 'url' | 'shape';
+  reason: 'severity' | 'headline' | 'url' | 'shape' | 'cap';
   severity?: string;
   sourceUrl?: string;
 }) => void;

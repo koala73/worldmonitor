@@ -48,10 +48,14 @@ describe('digestFor cache key includes sensitivity', () => {
     // (explicit 'critical') would collide with a default-populator
     // (undefined → buildDigest treats as 'high', cache would treat as
     // something else).
+    //
+    // Anchor the match to the cache-key template-literal context so it
+    // cannot be satisfied by an unrelated `chosenCandidate.sensitivity
+    // ?? 'high'` elsewhere in the file (e.g. the new operator log line).
     assert.match(
       src,
-      /candidate\.sensitivity\s*\?\?\s*'high'/,
-      'cache key default for sensitivity must be "high" to align with buildDigest default',
+      /\$\{candidate\.sensitivity\s*\?\?\s*'high'\}\s*:\s*\$\{windowStart\}/,
+      'cache key default for sensitivity must be "high" to align with buildDigest default, anchored inside the cache-key template literal',
     );
   });
 

@@ -94,7 +94,7 @@ function clip(v, cap) {
 }
 
 /**
- * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
+ * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape'|'cap', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
  */
 
 /**
@@ -114,8 +114,21 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, onDrop
 
   /** @type {BriefStory[]} */
   const out = [];
-  for (const raw of stories) {
-    if (out.length >= maxStories) break;
+  for (let i = 0; i < stories.length; i++) {
+    const raw = stories[i];
+    if (out.length >= maxStories) {
+      // Cap-truncation: remaining stories are not evaluated. Emit one
+      // event per skipped story so operators can reconcile in vs out
+      // counts (`in - out - sum(dropped_severity|headline|url|shape)
+      // == dropped_cap`). Without this, cap-truncated stories are
+      // invisible to Sol-0 telemetry and Sol-3's gating signal is
+      // undercounted by up to (DIGEST_MAX_ITEMS - MAX_STORIES_PER_USER)
+      // per user per tick.
+      if (emit) {
+        for (let j = i; j < stories.length; j++) emit({ reason: 'cap' });
+      }
+      break;
+    }
     if (!raw || typeof raw !== 'object') {
       if (emit) emit({ reason: 'shape' });
       continue;

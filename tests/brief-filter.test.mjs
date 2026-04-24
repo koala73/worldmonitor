@@ -305,7 +305,7 @@ describe('filterTopStories — onDrop metrics', () => {
 
   it('distinct reasons are counted separately across a mixed batch', () => {
     // Matches the seeder's per-user aggregation pattern.
-    const tally = { severity: 0, headline: 0, url: 0, shape: 0 };
+    const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
     filterTopStories({
       stories: [
         upstreamStory({ threatLevel: 'low' }),        // severity
@@ -322,6 +322,73 @@ describe('filterTopStories — onDrop metrics', () => {
     assert.equal(tally.headline, 1);
     assert.equal(tally.url, 1);
     assert.equal(tally.shape, 1);
+    assert.equal(tally.cap, 0);
+  });
+
+  it('fires onDrop with reason=cap once per story skipped after maxStories', () => {
+    // Without this, cap-truncated stories are invisible to telemetry
+    // and `in - out - sum(other_drops)` does not reconcile.
+    const calls = [];
+    filterTopStories({
+      stories: [
+        upstreamStory({ primaryTitle: 'A' }),
+        upstreamStory({ primaryTitle: 'B' }),
+        upstreamStory({ primaryTitle: 'C' }),
+        upstreamStory({ primaryTitle: 'D' }),
+        upstreamStory({ primaryTitle: 'E' }),
+      ],
+      sensitivity,
+      maxStories: 2,
+      onDrop: (ev) => calls.push(ev),
+    });
+    assert.equal(calls.length, 3, 'should emit one cap event per story past maxStories');
+    for (const ev of calls) assert.equal(ev.reason, 'cap');
+  });
+
+  it('cap events do NOT count earlier severity/headline/url drops twice', () => {
+    // The cap-emit loop runs from the break point onward — earlier
+    // valid stories that pushed `out` to maxStories are not re-emitted,
+    // and earlier-dropped stories are accounted under their own reason.
+    const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
+    filterTopStories({
+      stories: [
+        upstreamStory({ primaryTitle: 'A' }),         // kept
+        upstreamStory({ threatLevel: 'low' }),        // severity (not cap)
+        upstreamStory({ primaryTitle: 'B' }),         // kept (out reaches 2)
+        upstreamStory({ primaryTitle: 'C' }),         // cap
+        upstreamStory({ primaryLink: 'ftp://bad' }),  // cap (loop short-circuits past url check)
+      ],
+      sensitivity,
+      maxStories: 2,
+      onDrop: (ev) => { tally[ev.reason]++; },
+    });
+    assert.equal(tally.severity, 1);
+    assert.equal(tally.cap, 2);
+    assert.equal(tally.url, 0, 'url drop should NOT fire after cap break');
+  });
+
+  it('reconciliation invariant: in === out + sum(dropped_*) across all reasons', () => {
+    // Locks in the operator-facing invariant that motivated adding `cap`.
+    const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
+    const stories = [
+      upstreamStory({ primaryTitle: 'A' }),
+      upstreamStory({ primaryTitle: 'B' }),
+      upstreamStory({ threatLevel: 'low' }),
+      upstreamStory({ primaryTitle: '' }),
+      upstreamStory({ primaryLink: 'ftp://bad' }),
+      null,
+      upstreamStory({ primaryTitle: 'C' }),
+      upstreamStory({ primaryTitle: 'D' }),
+      upstreamStory({ primaryTitle: 'E' }),
+    ];
+    const out = filterTopStories({
+      stories,
+      sensitivity,
+      maxStories: 3,
+      onDrop: (ev) => { tally[ev.reason]++; },
+    });
+    const totalDrops = tally.severity + tally.headline + tally.url + tally.shape + tally.cap;
+    assert.equal(stories.length, out.length + totalDrops);
   });
 });
 

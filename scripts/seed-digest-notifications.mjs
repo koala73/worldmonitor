@@ -1303,13 +1303,18 @@ async function composeAndStoreBriefForUser(userId, candidates, insightsNumbers, 
   let chosenCandidate = null;
   // Per Solution 0 of the topic-adjacency plan: count filter drops for
   // the candidate whose envelope we ship, so operators can see whether
-  // post-group URL/headline/sensitivity drops are puncturing multi-
-  // member topics at material rates.
+  // post-group URL/headline/sensitivity/cap drops are puncturing
+  // multi-member topics at material rates.
   let chosenDropStats = null;
+  // Per-candidate drop accounting. When every candidate composes to
+  // null (the user-wipeout case Solution 0 was meant to surface), we
+  // emit an aggregate "wipeout" log line covering all attempted
+  // candidates so the gap is not silent.
+  const allCandidateDrops = [];
   for (const candidate of candidates) {
     const digestStories = await digestFor(candidate);
     if (!digestStories || digestStories.length === 0) continue;
-    const dropStats = { severity: 0, headline: 0, url: 0, shape: 0, in: digestStories.length };
+    const dropStats = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0, in: digestStories.length };
     const composed = composeBriefFromDigestStories(
       candidate,
       digestStories,
@@ -1319,6 +1324,7 @@ async function composeAndStoreBriefForUser(userId, candidates, insightsNumbers, 
         onDrop: (ev) => { dropStats[ev.reason] = (dropStats[ev.reason] ?? 0) + 1; },
       },
     );
+    allCandidateDrops.push({ sensitivity: candidate.sensitivity ?? 'high', dropStats });
     if (composed) {
       envelope = composed;
       chosenVariant = candidate.variant;
@@ -1327,26 +1333,59 @@ async function composeAndStoreBriefForUser(userId, candidates, insightsNumbers, 
       break;
     }
   }
-  if (!envelope) return null;
 
-  // Per-user filter-drop line. Emits one structured row per composed
-  // brief so a day's worth of ticks can be grep'd for drop-rate patterns
+  // Per-user filter-drop line. Emits one structured row per user per
+  // tick so a day's worth of ticks can be grep'd for drop-rate patterns
   // without tailing every tick. See Solution 0 in
   // docs/plans/2026-04-24-004-fix-brief-topic-adjacency-defects-plan.md
   // for why this log exists (deciding whether Solution 3 is warranted).
+  //
+  // Two outcomes are logged:
+  //   outcome=shipped — the candidate whose envelope we shipped; drops
+  //     are this candidate's only.
+  //   outcome=wipeout — every candidate had a non-empty digest pool
+  //     but composeBriefFromDigestStories returned null for all of
+  //     them (the worst Sol-0 case). Drops are summed across attempts
+  //     so operators see the cumulative loss.
   if (chosenDropStats && chosenCandidate) {
     const out = (envelope?.data?.stories?.length ?? 0);
     console.log(
       `[digest] brief filter drops user=${userId} ` +
         `sensitivity=${chosenCandidate.sensitivity ?? 'high'} ` +
+        `outcome=shipped ` +
         `in=${chosenDropStats.in} ` +
         `dropped_severity=${chosenDropStats.severity} ` +
         `dropped_url=${chosenDropStats.url} ` +
         `dropped_headline=${chosenDropStats.headline} ` +
         `dropped_shape=${chosenDropStats.shape} ` +
+        `dropped_cap=${chosenDropStats.cap} ` +
         `out=${out}`,
     );
+  } else if (allCandidateDrops.length > 0) {
+    const agg = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0, in: 0 };
+    for (const { dropStats } of allCandidateDrops) {
+      agg.severity += dropStats.severity;
+      agg.headline += dropStats.headline;
+      agg.url += dropStats.url;
+      agg.shape += dropStats.shape;
+      agg.cap += dropStats.cap;
+      agg.in += dropStats.in;
+    }
+    console.log(
+      `[digest] brief filter drops user=${userId} ` +
+        `sensitivity=${allCandidateDrops[0].sensitivity} ` +
+        `outcome=wipeout attempts=${allCandidateDrops.length} ` +
+        `in=${agg.in} ` +
+        `dropped_severity=${agg.severity} ` +
+        `dropped_url=${agg.url} ` +
+        `dropped_headline=${agg.headline} ` +
+        `dropped_shape=${agg.shape} ` +
+        `dropped_cap=${agg.cap} ` +
+        `out=0`,
+    );
   }
+
+  if (!envelope) return null;
 
   // Phase 3b — LLM enrichment. Substitutes the stubbed whyMatters /
   // lead / threads / signals fields with Gemini 2.5 Flash output.
