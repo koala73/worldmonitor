@@ -61,11 +61,11 @@ All must be green before flipping `RESILIENCE_ENERGY_V2_ENABLED=true`:
    ```
    Every gate must be `pass`. If any is `fail`, STOP and debug before
    proceeding. Check in order:
-   - `gate-1-spearman`: Spearman vs baseline >= 0.85
-   - `gate-2-country-drift`: max country drift <= 15 points
-   - `gate-6-cohort-median`: cohort median shift <= 10 points
+   - `gate-1-spearman`: Spearman vs baseline ≥ 0.85
+   - `gate-2-country-drift`: max country drift ≤ 15 points
+   - `gate-6-cohort-median`: cohort median shift ≤ 10 points
    - `gate-7-matched-pair`: every matched pair holds expected direction
-   - `gate-9-effective-influence-baseline`: >= 80% Core indicators measurable
+   - `gate-9-effective-influence-baseline`: ≥ 80% Core indicators measurable
 
 3. **Bump the score-cache prefix.** Add a new commit to this branch
    bumping `RESILIENCE_SCORE_CACHE_PREFIX` from `v10` to `v11` in
