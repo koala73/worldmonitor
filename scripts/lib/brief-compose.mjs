@@ -32,8 +32,15 @@ function compareRules(a, b) {
   const aFull = a.variant === 'full' ? 0 : 1;
   const bFull = b.variant === 'full' ? 0 : 1;
   if (aFull !== bFull) return aFull - bFull;
-  const aRank = SENSITIVITY_RANK[a.sensitivity ?? 'all'] ?? 0;
-  const bRank = SENSITIVITY_RANK[b.sensitivity ?? 'all'] ?? 0;
+  // Default missing sensitivity to 'high' (NOT 'all') so the rank
+  // matches what compose/buildDigest/cache/log actually treat the
+  // rule as. Otherwise a legacy undefined-sensitivity rule would be
+  // ranked as the most-permissive 'all' and tried first, but compose
+  // would then apply a 'high' filter — shipping a narrow brief while
+  // an explicit 'all' rule for the same user is never tried.
+  // See PR #3387 review (P2).
+  const aRank = SENSITIVITY_RANK[a.sensitivity ?? 'high'] ?? 0;
+  const bRank = SENSITIVITY_RANK[b.sensitivity ?? 'high'] ?? 0;
   if (aRank !== bRank) return aRank - bRank;
   return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
 }
@@ -161,7 +168,10 @@ const MAX_STORIES_PER_USER = 12;
  * @param {{ nowMs: number }} [opts]
  */
 export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {}) {
-  const sensitivity = rule.sensitivity ?? 'all';
+  // Default to 'high' (NOT 'all') for parity with composeBriefFromDigestStories,
+  // buildDigest, the digestFor cache key, and the per-attempt log line.
+  // See PR #3387 review (P2).
+  const sensitivity = rule.sensitivity ?? 'high';
   const tz = rule.digestTimezone ?? 'UTC';
   const stories = filterTopStories({
     stories: insights.topStories,

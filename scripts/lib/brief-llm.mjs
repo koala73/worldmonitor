@@ -523,7 +523,15 @@ async function mapLimit(items, limit, fn) {
 export async function enrichBriefEnvelopeWithLLM(envelope, rule, deps) {
   if (!envelope?.data || !Array.isArray(envelope.data.stories)) return envelope;
   const stories = envelope.data.stories;
-  const sensitivity = rule?.sensitivity ?? 'all';
+  // Default to 'high' (NOT 'all') so the digest prompt and cache key
+  // align with what the rest of the pipeline (compose, buildDigest,
+  // cache, log) treats undefined-sensitivity rules as. Mismatched
+  // defaults would (a) mislead personalization — the prompt would say
+  // "Reader sensitivity level: all" while the actual brief contains
+  // only critical/high stories — and (b) bust the cache for legacy
+  // rules vs explicit-'all' rules that should share entries. See PR
+  // #3387 review (P3).
+  const sensitivity = rule?.sensitivity ?? 'high';
 
   // Per-story enrichment — whyMatters AND description in parallel
   // per story (two LLM calls) but bounded across stories.
