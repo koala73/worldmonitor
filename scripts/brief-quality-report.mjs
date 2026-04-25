@@ -17,9 +17,11 @@
 //   - false_adjacency — % of "should-separate" labeled pairs that end
 //     up adjacent (false positive)
 //   - cap_truncation_rate — % of qualified stories truncated by the
-//     MAX_STORIES_PER_USER cap (computed from production drop logs if
-//     supplied via stdin, else estimated as max(0, in - 16)/in from
-//     replay record counts)
+//     MAX_STORIES_PER_USER cap. ONLY reported when production drop logs
+//     are piped in via --drop-lines-stdin. Without that input, this
+//     metric is omitted entirely (no fallback estimate — replay records
+//     don't capture the post-cap output count, so any estimate would be
+//     misleading).
 //   - multi_member_topic_share — % of topics with size > 1
 //   - quality_score — composite (recall × 0.6 + (1-false-adj) × 0.3 +
 //     multi-member × 0.1)
