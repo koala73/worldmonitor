@@ -133,11 +133,11 @@ describe('import-gem-pipelines — capacity-unit conversion', () => {
     const { oil } = parseGemPipelines(fixture);
     const crude = oil.find((p) => p.name.includes('Crude Oil Trunk'));
     assert.ok(crude);
-    // 400_000 bbl/d ÷ 1000 = 400 Mbd. NOTE: our schema's `capacityMbd` field
-    // name uses the abbreviation Mbd but the value SHOULD be in millions of
-    // barrels per day per the existing on-main hand-curated rows (e.g. CPC
-    // pipeline = 1.4 capacityMbd = 1.4 million bbl/d). So 400_000 bbl/d =
-    // 0.4 capacityMbd.
+    // Schema convention: the field is named `capacityMbd` (the customary
+    // industry abbreviation) but the VALUE is in millions of barrels per
+    // day, NOT thousands — matching the existing on-main hand-curated rows
+    // (e.g. CPC pipeline ships as `capacityMbd: 1.4` for 1.4M bbl/d).
+    // So 400_000 bbl/d ÷ 1_000_000 = 0.4 capacityMbd.
     assert.equal(crude.capacityMbd, 0.4);
   });
 
@@ -207,6 +207,39 @@ describe('import-gem-pipelines — registry-shape conformance', () => {
       pipelines: Object.fromEntries(repeated.map((p) => [p.id, p])),
     };
     assert.equal(validateRegistry(reg), true);
+  });
+});
+
+describe('import-gem-pipelines — determinism (review-fix #3)', () => {
+  test('two parser runs on identical input produce identical output', () => {
+    // Regression: pre-fix, lastEvidenceUpdate used new Date() per run, so
+    // re-running parseGemPipelines on the same JSON on different days
+    // produced different output → noisy diffs every quarterly re-import.
+    // Now derived from envelope.downloadedAt, so output is byte-identical.
+    const r1 = JSON.stringify(parseGemPipelines(fixture));
+    const r2 = JSON.stringify(parseGemPipelines(fixture));
+    assert.equal(r1, r2);
+  });
+
+  test('lastEvidenceUpdate derives from envelope.downloadedAt', () => {
+    // Fixture has downloadedAt: 2026-04-25 → emitted as 2026-04-25T00:00:00Z.
+    const { gas } = parseGemPipelines(fixture);
+    for (const p of gas) {
+      assert.equal(p.evidence.lastEvidenceUpdate, '2026-04-25T00:00:00Z');
+    }
+  });
+
+  test('missing downloadedAt → epoch sentinel (loud failure, not silent today)', () => {
+    // If the operator forgets the date field, the emitted timestamp should
+    // be obviously wrong rather than today's wall clock — surfaces the
+    // gap in code review of the data file.
+    const noDate = { ...fixture };
+    delete noDate.downloadedAt;
+    delete noDate.sourceVersion;
+    const { gas } = parseGemPipelines(noDate);
+    for (const p of gas) {
+      assert.equal(p.evidence.lastEvidenceUpdate, '1970-01-01T00:00:00Z');
+    }
   });
 });
 

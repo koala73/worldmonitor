@@ -142,6 +142,31 @@ function convertCapacityToMbd(value, unit) {
 }
 
 /**
+ * Resolve `lastEvidenceUpdate` for emitted candidates. Prefers the
+ * operator-recorded `downloadedAt` (or `sourceVersion` if it parses) so
+ * two parser runs on the same input produce byte-identical output.
+ * Falls back to the unix-epoch sentinel `1970-01-01` rather than
+ * `new Date()` — the fallback is deliberately ugly so anyone reviewing
+ * the data file sees that the operator forgot to set the date and re-runs.
+ *
+ * @param {Record<string, unknown>} envelope
+ */
+function resolveEvidenceTimestamp(envelope) {
+  const candidates = [envelope.downloadedAt, envelope.sourceVersion];
+  for (const v of candidates) {
+    if (typeof v === 'string') {
+      // Accept full ISO strings OR bare YYYY-MM-DD; coerce to midnight-UTC.
+      const isoMatch = v.match(/^\d{4}-\d{2}-\d{2}/);
+      if (isoMatch) return `${isoMatch[0]}T00:00:00Z`;
+    }
+  }
+  // Sentinel: GEM data SHOULD always carry downloadedAt per the operator
+  // runbook. If neither field is present, surface the gap loudly via the
+  // epoch date — it'll show up obviously in the diff.
+  return '1970-01-01T00:00:00Z';
+}
+
+/**
  * Parse a GEM-shape JSON object into our two-registry candidate arrays.
  *
  * @param {unknown} data
@@ -156,6 +181,11 @@ export function parseGemPipelines(data) {
   if (!Array.isArray(obj.pipelines)) {
     throw new Error('parseGemPipelines: input must contain pipelines[] array');
   }
+  // Compute once per parse run so every emitted candidate gets the SAME
+  // timestamp — and so two runs on identical input produce byte-identical
+  // JSON (Greptile P2 on PR #3397: previous use of `new Date().toISOString()`
+  // made re-running the parser produce a noisy diff every time).
+  const evidenceTimestamp = resolveEvidenceTimestamp(obj);
 
   // Schema sentinel: assert every required column is present on every row.
   // GEM occasionally renames columns between releases; the operator's
@@ -243,7 +273,7 @@ export function parseGemPipelines(data) {
         operatorStatement: null,
         commercialState: 'unknown',
         sanctionRefs: [],
-        lastEvidenceUpdate: new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
+        lastEvidenceUpdate: evidenceTimestamp,
         classifierVersion: 'gem-import-v1',
         classifierConfidence: 0.4,
       },
