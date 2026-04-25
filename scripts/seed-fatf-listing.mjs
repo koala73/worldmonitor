@@ -27,13 +27,20 @@ const CACHE_TTL = 90 * 24 * 3600; // 90 days; FATF plenary is 3× per year
 
 const FATF_ENTRY_URL = 'https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html';
 
-// Build a name → ISO2 lookup from country-names.json (already in repo).
-function buildNameLookup() {
+// Build a name → ISO2 lookup from country-names.json. The JSON's actual
+// shape is `{ "name": "ISO2" }` (flat string-to-string map, ~250 entries
+// covering canonical names + common variants). The previous version
+// here treated the JSON as `{ "ISO2": { name, aliases[] } }` and
+// silently produced an EMPTY lookup, which never showed in production
+// because the FATF fetch path was Cloudflare-blocked end-to-end and
+// the parser was never reached. Now that PR #3413 + #3415 unblock the
+// fetch, the broken lookup is what makes 100% of list entries show up
+// as "unmatched country-name candidates".
+export function buildNameLookup(json = countryNames) {
   const lookup = new Map();
-  for (const [iso2, names] of Object.entries(countryNames)) {
-    for (const name of [names?.name, ...(names?.aliases ?? [])].filter(Boolean)) {
-      lookup.set(normalizeName(name), iso2);
-    }
+  for (const [name, iso2] of Object.entries(json)) {
+    if (typeof iso2 !== 'string') continue;
+    lookup.set(normalizeName(name), iso2);
   }
   return lookup;
 }
@@ -276,58 +283,83 @@ function stripHtml(s) {
   return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').replace(/&nbsp;/g, ' ').trim();
 }
 
-// Extract country names from a FATF publication page. Each listed
-// country typically appears as a header (h2/h3/h4) or strong tag.
-// Defensive: collect any text node that matches a known country name
-// from the lookup AND appears between the page's main listing markers.
+// Extract country names from a FATF publication page. The page renders
+// list members as a paragraph of links to /en/countries/detail/<slug>.html
+// inside a `<div class="cmp-text">` (the publication body). The FATF
+// site chrome reuses the SAME `/en/countries/detail/<slug>.html` URL
+// pattern in two places that we MUST exclude:
 //
-// Also reports `unmatchedCandidates` — short text nodes that LOOK like
-// country names (capitalized, 2-5 words, not common section headers)
-// but don't match the lookup. Surfaces parser drift / new country
-// spellings that the lookup needs to learn.
+//   1. FATF Member Countries sidebar — rendered as `<li class="cmp-list__item">`
+//      with `<a class="cmp-list__item-link">` inside a `<span class="cmp-list__item-title">`.
+//      ~38 of these per page.
+//   2. (no other observed cases as of Feb 2026 plenary fixtures)
+//
+// Discriminator: the publication-body anchors are PLAIN
+// `<a href="...">Country</a>` with no class attribute. Member-nav
+// anchors have `class="cmp-list__item-link"`. Skip any anchor whose
+// attributes contain that class.
+//
+// Resolution order on accepted anchors: (1) anchor text via nameLookup,
+// (2) href slug via nameLookup, (3) bubble up as `unmatchedCandidates`
+// so ops can see new FATF spellings that need adding to country-names.json.
+//
+// Returns `{ listed, unmatchedCandidates }`.
+const FATF_DETAIL_LINK_RE = /<a\s+([^>]*)href="[^"]*\/en\/countries\/detail\/([^"]+?)\.html"([^>]*)>([\s\S]*?)<\/a>/gi;
+
 export function extractListedCountries(html, nameLookup) {
   const isoSet = new Set();
   const unmatchedCandidates = new Set();
-  // Common section headers / FATF wording that should NOT be flagged
-  // as missing-country-spelling.
-  const SECTION_NOISE = new Set([
-    'high risk jurisdictions',
-    'jurisdictions under increased monitoring',
-    'call for action',
-    'high risk jurisdictions subject to a call for action',
-    'fatf',
-    'updated',
-    'overview',
-    'summary',
-    'introduction',
-    'background',
-    'process',
-    'february',
-    'june',
-    'october',
-  ]);
-  // Scan all HTML headings + bold/strong elements + list-item leaders.
-  const re = /<(?:h[1-6]|strong|b|li|p|td)[^>]*>([\s\S]*?)<\/(?:h[1-6]|strong|b|li|p|td)>/gi;
   let m;
-  while ((m = re.exec(html)) !== null) {
-    const text = stripHtml(m[1]);
-    if (!text || text.length > 80) continue; // skip long paragraphs
-    const norm = normalizeName(text);
-    const iso2 = nameLookup.get(norm);
-    if (iso2) {
-      isoSet.add(iso2);
+  // Reset lastIndex in case regex was used elsewhere — avoids the classic
+  // /g+lastIndex bug where sequential calls skip matches.
+  FATF_DETAIL_LINK_RE.lastIndex = 0;
+  while ((m = FATF_DETAIL_LINK_RE.exec(html)) !== null) {
+    const attrsBefore = m[1];
+    const slug = m[2];
+    const attrsAfter = m[3];
+    const innerHtml = m[4];
+    // Skip FATF Member Countries nav anchors. They use the AEM list
+    // component which always tags the anchor with `cmp-list__item-link`.
+    // Real publication-body anchors are plain `<a href="...">`.
+    if (/cmp-list__item-link/.test(attrsBefore + attrsAfter)) continue;
+    const anchorText = stripHtml(decodeHtmlEntities(innerHtml));
+    if (!anchorText) continue;
+    // Try anchor text first (most reliable — FATF renders the canonical
+    // display name like "Côte d'Ivoire" or "Democratic Republic of the
+    // Congo" inside the anchor).
+    const fromAnchor = nameLookup.get(normalizeName(anchorText));
+    if (fromAnchor) {
+      isoSet.add(fromAnchor);
       continue;
     }
-    // Heuristic: 1-5 words, all-or-mostly capitalized, not a known noise
-    // header → likely a country name the lookup is missing.
-    const wordCount = norm.split(' ').filter(Boolean).length;
-    if (wordCount >= 1 && wordCount <= 5 && !SECTION_NOISE.has(norm) && /^[a-z][a-z0-9 ]+$/.test(norm)) {
-      // Only count text that originally had at least one capital letter
-      // (FATF page bodies don't use all-lowercase for country names).
-      if (/[A-Z]/.test(text)) unmatchedCandidates.add(text);
+    // Fall back to the href slug (handles cases where FATF stylises the
+    // anchor text but keeps a canonical slug, e.g. "Lao PDR" anchor with
+    // /en/countries/detail/Lao-People-s-Democratic-Republic.html slug).
+    const slugDecoded = slug.replace(/-/g, ' ').replace(/[^a-zA-Z0-9 ]/g, '');
+    const fromSlug = nameLookup.get(normalizeName(slugDecoded));
+    if (fromSlug) {
+      isoSet.add(fromSlug);
+      continue;
     }
+    // Genuinely missing from country-names.json — surface for ops
+    // attention. Prefer anchor text in the report (more readable).
+    unmatchedCandidates.add(anchorText);
   }
   return { listed: isoSet, unmatchedCandidates };
+}
+
+// Minimal HTML entity decoder for the entities FATF emits in anchor
+// text (&#39; for apostrophe, &amp; for ampersand, &nbsp; for space).
+// Full-fledged decoders pull in 100KB of dependencies; this targeted
+// list covers what we actually see in the fixtures.
+function decodeHtmlEntities(s) {
+  return String(s)
+    .replace(/&#39;/g, "'")
+    .replace(/&#34;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
 
 // Try to extract the publication date from the URL slug or the page

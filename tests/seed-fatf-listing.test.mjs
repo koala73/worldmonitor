@@ -11,13 +11,20 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   findPublicationLink,
   extractListedCountries,
   extractPublicationDate,
   validate,
   fetchViaWayback,
+  buildNameLookup,
 } from '../scripts/seed-fatf-listing.mjs';
+
+const __testDir = dirname(fileURLToPath(import.meta.url));
+const fixtureHtml = (name) => readFileSync(resolve(__testDir, 'fixtures', name), 'utf8');
 
 describe('findPublicationLink — entry-page anchor scan', () => {
   const ENTRY_PAGE_2026 = `
@@ -54,91 +61,165 @@ describe('findPublicationLink — entry-page anchor scan', () => {
 });
 
 describe('extractListedCountries — country-name lookup from publication HTML', () => {
-  // Build a minimal name lookup mirroring the structure of country-names.json.
-  function buildLookup() {
-    return new Map([
-      ['north korea', 'KP'],
-      ['democratic peoples republic of korea', 'KP'],
-      ['iran', 'IR'],
-      ['islamic republic of iran', 'IR'],
-      ['myanmar', 'MM'],
-      ['burma', 'MM'],
-      ['nigeria', 'NG'],
-      ['south africa', 'ZA'],
-    ]);
-  }
+  // Real FATF Wayback fixtures captured 2026-04-25 (Feb 2026 plenary).
+  // The previous synthetic-only test suite let a 100-unmatched-candidate
+  // failure ship to production because the parser was never exercised
+  // against actual FATF DOM (`<a class="cmp-list__item-link">` member
+  // nav, /content/fatf-gafi/ AEM URL prefix variants, FATF's specific
+  // anchor-text renderings like "Lao PDR" / "Virgin Islands (UK)" /
+  // "Côte d'Ivoire"). Keep these fixtures in tree as the regression
+  // surface for any future parser change.
 
-  it('extracts country names from H2 / strong tag patterns (FATF black-list page)', () => {
-    const html = `
-      <html><body>
-        <h2>High-Risk Jurisdictions Subject to a Call for Action</h2>
-        <p>Updated February 2026</p>
-        <h3>Democratic People's Republic of Korea</h3>
-        <p>The FATF urges members to apply enhanced due diligence...</p>
-        <h3>Iran</h3>
-        <p>Iran remains subject to a call for countermeasures.</p>
-        <h3>Myanmar</h3>
-      </body></html>
-    `;
-    const { listed } = extractListedCountries(html, buildLookup());
-    assert.ok(listed.has('KP'), 'must extract DPRK');
-    assert.ok(listed.has('IR'), 'must extract Iran');
-    assert.ok(listed.has('MM'), 'must extract Myanmar');
+  it('REAL FIXTURE: black list (Feb 2026) — extracts exactly DPRK, Iran, Myanmar with zero unmatched', () => {
+    const html = fixtureHtml('fatf-blacklist-2026-02.html');
+    const { listed, unmatchedCandidates } = extractListedCountries(html, buildNameLookup());
+    assert.deepEqual([...listed].sort(), ['IR', 'KP', 'MM'],
+      `real Feb 2026 black list = DPRK + Iran + Myanmar; got ${[...listed].sort().join(',')}`);
+    assert.equal(unmatchedCandidates.size, 0,
+      `zero unmatched expected; got: ${[...unmatchedCandidates].join(', ')}`);
   });
 
-  it('extracts country names from grey-list publication (typical 15-25 countries)', () => {
-    const html = `
-      <html><body>
-        <h2>Jurisdictions under Increased Monitoring</h2>
-        <ul>
-          <li>Nigeria</li>
-          <li>South Africa</li>
-        </ul>
-      </body></html>
-    `;
-    const { listed } = extractListedCountries(html, buildLookup());
-    assert.ok(listed.has('NG'));
-    assert.ok(listed.has('ZA'));
+  it('REAL FIXTURE: grey list (Feb 2026) — extracts all 22 listed jurisdictions with zero unmatched', () => {
+    const html = fixtureHtml('fatf-greylist-2026-02.html');
+    const { listed, unmatchedCandidates } = extractListedCountries(html, buildNameLookup());
+    // Feb 2026 plenary grey list (per FATF official statement).
+    const expected = [
+      'AO',  // Angola
+      'BG',  // Bulgaria
+      'BO',  // Bolivia
+      'CD',  // Democratic Republic of the Congo
+      'CI',  // Côte d'Ivoire
+      'CM',  // Cameroon
+      'DZ',  // Algeria
+      'HT',  // Haiti
+      'KE',  // Kenya
+      'KW',  // Kuwait
+      'LA',  // Lao PDR
+      'LB',  // Lebanon
+      'MC',  // Monaco
+      'NA',  // Namibia
+      'NP',  // Nepal
+      'PG',  // Papua New Guinea
+      'SS',  // South Sudan
+      'SY',  // Syria
+      'VE',  // Venezuela
+      'VG',  // Virgin Islands (UK)
+      'VN',  // Vietnam
+      'YE',  // Yemen
+    ];
+    assert.deepEqual([...listed].sort(), expected,
+      `real Feb 2026 grey list = 22 jurisdictions; got ${[...listed].sort().join(',')}`);
+    assert.equal(unmatchedCandidates.size, 0,
+      `zero unmatched expected; got: ${[...unmatchedCandidates].join(', ')}`);
   });
 
-  it('ignores long paragraphs that happen to mention country names', () => {
-    // Defensive: paragraph text > 80 chars is skipped to avoid false matches.
-    const html = `
-      <h3>Iran</h3>
-      <p>The FATF expressed concern about Iran's continued failure to address financial system risks across many jurisdictions including but not limited to Iran's own. This is a long paragraph and should not match.</p>
-    `;
-    const { listed } = extractListedCountries(html, buildLookup());
-    assert.ok(listed.has('IR'), 'h3 match still works');
-    // The long paragraph mentioning Iran does NOT independently double-count.
-    assert.equal(listed.size, 1);
+  it('REAL FIXTURE: skips FATF Member Countries nav (cmp-list__item-link) — does NOT match the ~38 member jurisdictions', () => {
+    // Member Countries nav (Argentina, Australia, ..., United States) uses
+    // class="cmp-list__item-link". Real list entries use plain <a href=...>.
+    // Pre-fix parser pulled in all 38 member countries as false positives.
+    const html = fixtureHtml('fatf-blacklist-2026-02.html');
+    const { listed } = extractListedCountries(html, buildNameLookup());
+    // Sample member-country ISOs that would appear if the discriminator failed.
+    for (const iso of ['AR', 'AU', 'AT', 'BE', 'BR', 'CA', 'CN', 'DE', 'FR', 'GB', 'US', 'JP', 'CH']) {
+      assert.ok(!listed.has(iso),
+        `member-country ${iso} must NOT appear in black list (would mean cmp-list__item-link discriminator failed)`);
+    }
   });
 
-  it('flags short capitalized text nodes that look like missing country names', () => {
-    // FATF introduces a new spelling not in country-names.json — must
-    // surface as unmatchedCandidate so ops can extend the aliases map.
+  it('skip-discriminator: cmp-list__item-link anchor is ignored even if href matches /en/countries/detail/ pattern', () => {
+    // Synthetic edge case isolating the discriminator. Both anchors point
+    // at the same FATF detail URL pattern; only the plain one should be
+    // counted.
     const html = `
-      <html><body>
-        <h3>Mauretania</h3>  <!-- alternate spelling not in lookup -->
-        <h3>Iran</h3>
-      </body></html>
+      <ul class="cmp-list">
+        <li class="cmp-list__item">
+          <a class="cmp-list__item-link" href="/en/countries/detail/Argentina.html">
+            <span class="cmp-list__item-title">Argentina</span>
+          </a>
+        </li>
+      </ul>
+      <div class="cmp-text">
+        <p><a href="/en/countries/detail/Iran.html">Iran</a></p>
+      </div>
     `;
-    const { listed, unmatchedCandidates } = extractListedCountries(html, buildLookup());
-    assert.ok(listed.has('IR'), 'matched country still resolves');
-    assert.ok(unmatchedCandidates.has('Mauretania'), 'unknown spelling surfaces as unmatched candidate');
+    const { listed } = extractListedCountries(html, buildNameLookup());
+    assert.deepEqual([...listed], ['IR'],
+      'plain anchor matches; cmp-list__item-link anchor (Argentina) is skipped');
   });
 
-  it('does NOT flag known FATF section headers as unmatched', () => {
+  it('handles /content/fatf-gafi/ AEM URL prefix variants (some anchors render with the absolute AEM path)', () => {
+    // FATF embeds both /en/countries/detail/X.html and the longer
+    // /content/fatf-gafi/en/countries/detail/X.html in different sections.
+    // Both are valid list entries.
     const html = `
-      <html><body>
-        <h2>High-Risk Jurisdictions Subject to a Call for Action</h2>
-        <h3>Iran</h3>
-      </body></html>
+      <p><a href="/en/countries/detail/Iran.html">Iran</a></p>
+      <p><a href="/content/fatf-gafi/en/countries/detail/Myanmar.html">Myanmar</a></p>
     `;
-    const { unmatchedCandidates } = extractListedCountries(html, buildLookup());
-    // Section headers are too long (>80 chars after stripHtml is fine) AND
-    // they're in the SECTION_NOISE allow-list. None should appear as
-    // unmatched candidates.
-    assert.equal(unmatchedCandidates.size, 0, 'section headers must not be flagged as unmatched country names');
+    const { listed } = extractListedCountries(html, buildNameLookup());
+    assert.deepEqual([...listed].sort(), ['IR', 'MM']);
+  });
+
+  it('surfaces unmatched candidates ONLY for /en/countries/detail/ links whose anchor text and slug both miss the lookup', () => {
+    // Simulates FATF introducing a brand-new country with a spelling
+    // not in country-names.json. The unmatched candidate must surface
+    // (so ops can add the alias) — but ONLY for links inside the
+    // publication body, not for member-nav links.
+    const tinyLookup = new Map([['iran', 'IR']]);
+    const html = `
+      <p><a href="/en/countries/detail/Iran.html">Iran</a></p>
+      <p><a href="/en/countries/detail/Atlantis.html">Atlantis</a></p>
+      <li class="cmp-list__item"><a class="cmp-list__item-link" href="/en/countries/detail/Argentina.html"><span>Argentina</span></a></li>
+    `;
+    const { listed, unmatchedCandidates } = extractListedCountries(html, tinyLookup);
+    assert.deepEqual([...listed], ['IR']);
+    assert.deepEqual([...unmatchedCandidates], ['Atlantis'],
+      'Atlantis is unmatched (publication body, no lookup hit); Argentina is skipped (member nav, not surfaced)');
+  });
+
+  it('decodes &#39; for apostrophe in anchor text (matches FATF\'s actual rendering of "Côte d\'Ivoire")', () => {
+    // FATF emits literal ô (U+00F4) for accented characters and uses
+    // &#39; for the apostrophe. After decoding + normalization, this
+    // resolves through the "cote divoire" alias added alongside this PR.
+    const html = `<p><a href="/en/countries/detail/C-te-d-Ivoire.html">Côte d&#39;Ivoire</a></p>`;
+    const { listed } = extractListedCountries(html, buildNameLookup());
+    assert.ok(listed.has('CI'), `expected CI; got ${[...listed].join(',')}`);
+  });
+});
+
+describe('buildNameLookup — country-names.json shape parity', () => {
+  it('reads the flat {name: ISO2} JSON shape and produces a populated lookup', () => {
+    // Pre-fix the function treated the JSON as { ISO2: { name, aliases } }
+    // and silently produced an empty Map — never noticed because
+    // production never reached the parser (Cloudflare blocked everything
+    // upstream). After PR #3413 + #3415 unblocked the fetch path, the
+    // empty lookup made 100% of FATF list entries fail to resolve.
+    const lookup = buildNameLookup();
+    assert.ok(lookup.size > 200, `expected ~250+ entries; got ${lookup.size}`);
+    assert.equal(lookup.get('iran'), 'IR');
+    assert.equal(lookup.get('myanmar'), 'MM');
+    assert.equal(lookup.get('algeria'), 'DZ');
+  });
+
+  it('includes the FATF-specific aliases needed for Feb 2026 plenary entries', () => {
+    // FATF renders some countries in non-canonical forms. These aliases
+    // were added to country-names.json alongside this parser fix.
+    const lookup = buildNameLookup();
+    assert.equal(lookup.get('cote divoire'), 'CI', 'Côte d\'Ivoire (apostrophe-stripped form) must resolve');
+    assert.equal(lookup.get('virgin islands uk'), 'VG', 'Virgin Islands (UK) must resolve');
+    assert.equal(lookup.get('democratic republic of korea'), 'KP', "FATF's missing-People's DPRK rendering must resolve");
+  });
+
+  it('handles non-string values defensively (skips entries that arent name-string → ISO-string pairs)', () => {
+    const lookup = buildNameLookup({
+      iran: 'IR',
+      // Defensive: not a string value — must not throw, must not appear.
+      malformed: { not: 'a string' },
+      // valid neighbour
+      myanmar: 'MM',
+    });
+    assert.equal(lookup.get('iran'), 'IR');
+    assert.equal(lookup.get('myanmar'), 'MM');
+    assert.equal(lookup.has('malformed'), false);
   });
 });
 
