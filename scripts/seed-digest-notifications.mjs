@@ -39,6 +39,11 @@ import {
   MAX_STORIES_PER_USER,
   shouldExitNonZero as shouldExitOnBriefFailures,
 } from './lib/brief-compose.mjs';
+import {
+  pickWinningCandidateWithPool,
+  runSynthesisWithFallback,
+  subjectForBrief,
+} from './lib/digest-orchestration-helpers.mjs';
 import { issueSlotInTz } from '../shared/brief-filter.js';
 import {
   enrichBriefEnvelopeWithLLM,
@@ -1322,46 +1327,12 @@ async function composeBriefsForRun(rules, nowMs) {
  * @param {number} nowMs
  */
 async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, digestFor, nowMs) {
-  // Two-pass walk: prefer DUE rules first (so the synthesis pool +
-  // ctx come from a rule that's about to send), fall back to ANY
-  // eligible rule (compose-only tick — keeps the dashboard brief
-  // refreshed for weekly/twice_daily users on non-due ticks). Within
-  // each pass, `compareRules` priority order. Pick first candidate
-  // with non-empty pool — mirrors today's behavior at the legacy
-  // composeAndStoreBriefForUser walk.
-  // Codex Round-3 High #1 + Round-4 High #1 + Round-4 Medium #2.
-  const sortedDue = annotated.filter((a) => a.due).sort((a, b) => compareRules(a.rule, b.rule));
-  const sortedAll = [...annotated].sort((a, b) => compareRules(a.rule, b.rule));
-
-  let winner = null;
-  let winnerStories = null;
-  for (const cand of [...sortedDue, ...sortedAll]) {
-    if (winner) break;
-    const stories = await digestFor(cand.rule);
-    const dropStats = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0, in: stories?.length ?? 0 };
-    if (!stories || stories.length === 0) {
-      // Per-attempt filter-drop line for the empty-pool case so ops
-      // can distinguish "pool empty upstream" from "all stories
-      // filtered out post-compose". outcome=empty-pool is a third
-      // value beyond shipped/rejected.
-      console.log(
-        `[digest] brief filter drops user=${userId} ` +
-          `sensitivity=${cand.rule.sensitivity ?? 'high'} ` +
-          `variant=${cand.rule.variant ?? 'full'} ` +
-          `due=${cand.due} ` +
-          `outcome=empty-pool ` +
-          `in=0 dropped_severity=0 dropped_url=0 dropped_headline=0 dropped_shape=0 dropped_cap=0 out=0`,
-      );
-      continue;
-    }
-    winner = cand;
-    winnerStories = stories;
-    // No console.log here — the per-attempt log is emitted inside the
-    // composeBriefFromDigestStories call below via onDrop, so the row
-    // carries the actual `out` count after filtering.
-  }
-
-  if (!winner) return null;
+  // Two-pass walk extracted to a pure helper so it can be unit-tested
+  // (A6.l + A6.m). When no candidate has a non-empty pool, returns
+  // null — same outcome as today's behavior.
+  const winnerResult = await pickWinningCandidateWithPool(annotated, digestFor, (line) => console.log(line), userId);
+  if (!winnerResult) return null;
+  const { winner, stories: winnerStories } = winnerResult;
 
   // ── Canonical synthesis (3-level fallback chain) ────────────────────
   //
@@ -1381,41 +1352,27 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   let synthesisLevel = 3;  // pessimistic default; bumped on success
   if (BRIEF_LLM_ENABLED) {
     const ctx = await buildSynthesisCtx(winner.rule, nowMs);
-    // L1 — canonical
-    try {
-      const l1 = await generateDigestProse(
-        userId,
-        winnerStories,
-        sensitivity,
-        briefLlmDeps,
-        { profile: ctx.profile, greeting: ctx.greeting, isPublic: false },
-      );
-      if (l1) {
-        synthesis = l1;
-        synthesisLevel = 1;
-      }
-    } catch (err) {
-      console.warn(`[digest] brief: synthesis L1 threw for ${userId} — falling to L2:`, err?.message);
-    }
-    // L2 — degraded fallback (no profile/greeting; envelope-sized pool slice)
-    if (!synthesis) {
-      try {
-        const cappedSlice = winnerStories.slice(0, MAX_STORIES_PER_USER);
-        const l2 = await generateDigestProse(userId, cappedSlice, sensitivity, briefLlmDeps);
-        if (l2) {
-          synthesis = l2;
-          synthesisLevel = 2;
+    const result = await runSynthesisWithFallback(
+      userId,
+      winnerStories,
+      sensitivity,
+      ctx,
+      briefLlmDeps,
+      (level, kind, err) => {
+        if (kind === 'throw') {
+          console.warn(
+            `[digest] brief: synthesis L${level} threw for ${userId} — falling to L${level + 1}:`,
+            err?.message,
+          );
+        } else if (kind === 'success' && level === 2) {
           console.log(`[digest] synthesis level=2_degraded user=${userId}`);
+        } else if (kind === 'success' && level === 3) {
+          console.log(`[digest] synthesis level=3_stub user=${userId}`);
         }
-      } catch (err) {
-        console.warn(`[digest] brief: synthesis L2 threw for ${userId} — falling to L3 stub:`, err?.message);
-      }
-    }
-    // L3 — stub. synthesis stays null; composer's assembleStubbedBriefEnvelope
-    // path produces the stub lead.
-    if (!synthesis) {
-      console.log(`[digest] synthesis level=3_stub user=${userId}`);
-    }
+      },
+    );
+    synthesis = result.synthesis;
+    synthesisLevel = result.level;
     // publicLead — parallel call. Profile-stripped; cache-shared
     // across all users for the same (date, sensitivity, story-pool).
     // Failure is non-fatal — the renderer's public-mode fail-safe
@@ -1698,14 +1655,7 @@ async function main() {
     const html = injectBriefCta(htmlWithSummary, magazineUrl);
 
     const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
-    // Subject: "Intelligence Brief" when the canonical synthesis (L1
-    // or L2) succeeded; "Digest" when only the L3 stub is in the
-    // envelope. Mirrors today's behavior (briefLead non-null = signal
-    // strong enough for the editorial subject) but reads from the
-    // cron-local synthesisLevel rather than re-checking the LLM call.
-    const subject = (briefLead && synthesisLevel <= 2)
-      ? `WorldMonitor Intelligence Brief — ${shortDate}`
-      : `WorldMonitor Digest — ${shortDate}`;
+    const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate });
 
     let anyDelivered = false;
 
