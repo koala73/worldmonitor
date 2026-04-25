@@ -236,11 +236,34 @@ async function fetchVesselSnapshotFromRelay(
 // pulling every tanker through one query.
 const MAX_BBOX_DEGREES = 10;
 
-export class BboxTooLargeError extends Error {
-  constructor() {
-    super('bbox too large: each dimension must be ≤ 10 degrees');
-    this.name = 'BboxTooLargeError';
+/**
+ * 400-class bbox validation error. Carries `statusCode = 400` so
+ * server/error-mapper.ts surfaces it as HTTP 400 (the mapper branches
+ * on `'statusCode' in error`; a plain Error would fall through to
+ * "unhandled error" → 500). Used for both the size guard and the
+ * lat/lon range guard.
+ *
+ * Range checks matter because the relay silently DROPS a malformed
+ * bbox param and serves a global capped tanker subset — making the
+ * layer appear to "work" with stale data instead of failing loudly.
+ */
+export class BboxValidationError extends Error {
+  readonly statusCode = 400;
+  constructor(reason: string) {
+    super(`bbox invalid: ${reason}`);
+    this.name = 'BboxValidationError';
   }
+}
+
+// Backwards-compatible alias for tests that imported BboxTooLargeError.
+// Prefer BboxValidationError for new code.
+export const BboxTooLargeError = BboxValidationError;
+
+function isValidLatLon(lat: number, lon: number): boolean {
+  return (
+    Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+  );
 }
 
 function extractAndValidateBbox(req: GetVesselSnapshotRequest): { swLat: number; swLon: number; neLat: number; neLon: number } | null {
@@ -250,10 +273,17 @@ function extractAndValidateBbox(req: GetVesselSnapshotRequest): { swLat: number;
   if (sw.lat === 0 && sw.lon === 0 && ne.lat === 0 && ne.lon === 0) {
     return null;
   }
-  if (![sw.lat, sw.lon, ne.lat, ne.lon].every(Number.isFinite)) return null;
-  if (sw.lat > ne.lat || sw.lon > ne.lon) return null;
+  if (!isValidLatLon(sw.lat, sw.lon)) {
+    throw new BboxValidationError('sw corner outside lat/lon domain (-90..90 / -180..180)');
+  }
+  if (!isValidLatLon(ne.lat, ne.lon)) {
+    throw new BboxValidationError('ne corner outside lat/lon domain (-90..90 / -180..180)');
+  }
+  if (sw.lat > ne.lat || sw.lon > ne.lon) {
+    throw new BboxValidationError('sw corner must be south-west of ne corner');
+  }
   if (ne.lat - sw.lat > MAX_BBOX_DEGREES || ne.lon - sw.lon > MAX_BBOX_DEGREES) {
-    throw new BboxTooLargeError();
+    throw new BboxValidationError(`each dimension must be ≤ ${MAX_BBOX_DEGREES} degrees`);
   }
   return { swLat: sw.lat, swLon: sw.lon, neLat: ne.lat, neLon: ne.lon };
 }
@@ -271,7 +301,9 @@ export async function getVesselSnapshot(
     );
     return { snapshot };
   } catch (err) {
-    if (err instanceof BboxTooLargeError) throw err; // surface to the gateway as 400
+    // BboxValidationError carries statusCode=400; rethrowing lets the
+    // gateway error-mapper surface it as HTTP 400 with the reason string.
+    if (err instanceof BboxValidationError) throw err;
     return { snapshot: undefined };
   }
 }

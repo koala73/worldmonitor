@@ -243,13 +243,23 @@ describe('getVesselSnapshot caching (HIGH-1)', () => {
       'Should return stale cached snapshot from the selected slot when fresh relay fetch fails');
   });
 
-  it('rejects bbox larger than 10° on either dimension', () => {
+  it('rejects oversized bbox AND out-of-range coords with statusCode=400', () => {
     // PR 3 (parity-push): server-side guard against a malicious or buggy
     // global-bbox query that would pull every tanker through one request.
+    // Range guard added in #3402 review-fix: relay silently drops malformed
+    // bboxes and serves global capped subsets — handler MUST validate
+    // -90..90 / -180..180 before calling relay. Error must carry
+    // statusCode=400 or error-mapper.ts maps it to a generic 500.
     assert.match(src, /MAX_BBOX_DEGREES\s*=\s*10/,
       'should declare a 10° max-bbox guard');
-    assert.match(src, /class\s+BboxTooLargeError/,
-      'should throw BboxTooLargeError on oversized bbox');
+    assert.match(src, /class\s+BboxValidationError/,
+      'should throw BboxValidationError on invalid bbox');
+    assert.match(src, /readonly\s+statusCode\s*=\s*400/,
+      'BboxValidationError must carry statusCode=400 (error-mapper surfaces it as HTTP 400 only when the error has a statusCode property)');
+    assert.match(src, /lat\s*>=\s*-90\s*&&\s*lat\s*<=\s*90/,
+      'must validate lat is in [-90, 90]');
+    assert.match(src, /lon\s*>=\s*-180\s*&&\s*lon\s*<=\s*180/,
+      'must validate lon is in [-180, 180]');
   });
 
   // NOTE: Full integration test (mocking fetch, verifying cache hits) requires

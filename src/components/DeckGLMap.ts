@@ -435,6 +435,7 @@ export class DeckGLMap {
   private aisDensity: AisDensityZone[] = [];
   private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
   private liveTankersAbort: AbortController | null = null;
+  private liveTankersTimer: ReturnType<typeof setInterval> | null = null;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
   private healthByCableId: Record<string, CableHealthRecord> = {};
@@ -1549,9 +1550,20 @@ export class DeckGLMap {
     // fetch per layer-tick. deckGLOnly per src/config/map-layer-definitions.ts.
     // Powered by the relay's tankerReports field (added in PR 3 U7 alongside
     // the existing military-only candidateReports). Energy Atlas parity-push.
-    if (mapLayers.liveTankers && this.liveTankers.length > 0) {
-      layers.push(this.createLiveTankersLayer());
+    if (mapLayers.liveTankers) {
+      // Start (or keep) the refresh loop while the layer is on. The
+      // ensure helper handles the "first time on" kick + the 60s
+      // setInterval; idempotent so calling it on every layers update is
+      // safe. Render immediately if we already have data; the interval
+      // re-renders when fresh data arrives.
+      this.ensureLiveTankersLoop();
+      if (this.liveTankers.length > 0) {
+        layers.push(this.createLiveTankersLayer());
+      }
     } else {
+      // Layer toggled off → tear down the timer so we stop hitting the
+      // relay even when the map is still on screen.
+      this.stopLiveTankersLoop();
       this.layerCache.delete('live-tankers-layer');
     }
 
@@ -2989,6 +3001,36 @@ export class DeckGLMap {
       radiusMaxPixels: 8,
       pickable: true,
     });
+  }
+
+  /**
+   * Idempotent: ensures the 60s tanker-refresh loop is running. Called
+   * each time the layer is observed enabled in the layers update. First
+   * call kicks an immediate load; subsequent calls no-op. Pairs with
+   * stopLiveTankersLoop() in destroy() and on layer-disable.
+   */
+  private ensureLiveTankersLoop(): void {
+    if (this.liveTankersTimer !== null) return; // already running
+    void this.loadLiveTankers();
+    this.liveTankersTimer = setInterval(() => {
+      void this.loadLiveTankers();
+    }, 60_000);
+  }
+
+  /**
+   * Stop the refresh loop and abort any in-flight fetch. Called when the
+   * layer is toggled off (and from destroy()) to keep the relay traffic
+   * scoped to active viewers.
+   */
+  private stopLiveTankersLoop(): void {
+    if (this.liveTankersTimer !== null) {
+      clearInterval(this.liveTankersTimer);
+      this.liveTankersTimer = null;
+    }
+    if (this.liveTankersAbort) {
+      this.liveTankersAbort.abort();
+      this.liveTankersAbort = null;
+    }
   }
 
   /**
@@ -7072,6 +7114,7 @@ export class DeckGLMap {
       clearInterval(this.aircraftFetchTimer);
       this.aircraftFetchTimer = null;
     }
+    this.stopLiveTankersLoop();
 
 
     this.layerCache.clear();
