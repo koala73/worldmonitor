@@ -32,32 +32,68 @@ export function subjectForBrief({ briefLead, synthesisLevel, shortDate }) {
 }
 
 /**
+ * Single source of truth for the digest's story window. Used by BOTH
+ * the compose path (digestFor closure in the cron) and the send loop.
+ * Without this, the brief lead can be synthesized from a 24h pool
+ * while the channel body ships 7d / 12h of stories — reintroducing
+ * the cross-surface divergence the canonical-brain refactor is meant
+ * to eliminate, just in a different shape.
+ *
+ * `lastSentAt` is the rule's previous successful send timestamp (ms
+ * since epoch) or null on first send. `defaultLookbackMs` is the
+ * first-send fallback (today: 24h).
+ *
+ * @param {number | null | undefined} lastSentAt
+ * @param {number} nowMs
+ * @param {number} defaultLookbackMs
+ * @returns {number}
+ */
+export function digestWindowStartMs(lastSentAt, nowMs, defaultLookbackMs) {
+  return lastSentAt ?? (nowMs - defaultLookbackMs);
+}
+
+/**
  * Walk an annotated rule list and return the winning candidate +
  * its non-empty story pool. Two-pass: due rules first (so the
  * synthesis comes from a rule that's actually sending), then ALL
  * eligible rules (compose-only tick — keeps the dashboard brief
  * fresh for weekly/twice_daily users). Within each pass, walk by
  * compareRules priority and pick the FIRST candidate whose pool is
- * non-empty.
+ * non-empty AND survives `tryCompose` (when provided).
  *
- * Returns null when every candidate has an empty pool — caller
- * skips the user (same as today's behavior).
+ * Returns null when every candidate is rejected — caller skips the
+ * user (same as today's behavior on empty-pool exhaustion).
  *
  * Plan acceptance criteria A6.l (compose-only tick still works for
  * weekly user) + A6.m (winner walks past empty-pool top-priority
  * candidate). Codex Round-3 High #1 + Round-4 High #1 + Round-4
  * Medium #2.
  *
- * `log` is the per-empty-pool log emitter — passed in so tests can
- * capture lines without reaching for console.log.
+ * `tryCompose` (optional): called with `(cand, stories)` after a
+ * non-empty pool is found. Returning a truthy value claims the
+ * candidate as winner and the value is forwarded as `composeResult`.
+ * Returning a falsy value (e.g. composeBriefFromDigestStories
+ * dropped every story via its URL/headline/shape filters) walks to
+ * the next candidate. Without this callback, the helper preserves
+ * the original "first non-empty pool wins" semantics, which let a
+ * filter-rejected top-priority candidate suppress the brief for the
+ * user even when a lower-priority candidate would have shipped one.
+ *
+ * `digestFor` receives the full annotated candidate (not just the
+ * rule) so callers can derive a per-candidate story window from
+ * `cand.lastSentAt` — see `digestWindowStartMs`.
+ *
+ * `log` is the per-rejected-candidate log emitter — passed in so
+ * tests can capture lines without reaching for console.log.
  *
  * @param {Array<{ rule: object; lastSentAt: number | null; due: boolean }>} annotated
- * @param {(rule: object) => Promise<unknown[] | null | undefined>} digestFor
+ * @param {(cand: { rule: object; lastSentAt: number | null; due: boolean }) => Promise<unknown[] | null | undefined>} digestFor
  * @param {(line: string) => void} log
  * @param {string} userId
- * @returns {Promise<{ winner: { rule: object; lastSentAt: number | null; due: boolean }; stories: unknown[] } | null>}
+ * @param {((cand: { rule: object; lastSentAt: number | null; due: boolean }, stories: unknown[]) => Promise<unknown> | unknown)} [tryCompose]
+ * @returns {Promise<{ winner: { rule: object; lastSentAt: number | null; due: boolean }; stories: unknown[]; composeResult?: unknown } | null>}
  */
-export async function pickWinningCandidateWithPool(annotated, digestFor, log, userId) {
+export async function pickWinningCandidateWithPool(annotated, digestFor, log, userId, tryCompose) {
   if (!Array.isArray(annotated) || annotated.length === 0) return null;
   const sortedDue = annotated.filter((a) => a.due).sort((a, b) => compareRules(a.rule, b.rule));
   const sortedAll = [...annotated].sort((a, b) => compareRules(a.rule, b.rule));
@@ -72,7 +108,7 @@ export async function pickWinningCandidateWithPool(annotated, digestFor, log, us
     walkOrder.push(cand);
   }
   for (const cand of walkOrder) {
-    const stories = await digestFor(cand.rule);
+    const stories = await digestFor(cand);
     if (!stories || stories.length === 0) {
       log(
         `[digest] brief filter drops user=${userId} ` +
@@ -83,6 +119,21 @@ export async function pickWinningCandidateWithPool(annotated, digestFor, log, us
           `in=0 dropped_severity=0 dropped_url=0 dropped_headline=0 dropped_shape=0 dropped_cap=0 out=0`,
       );
       continue;
+    }
+    if (typeof tryCompose === 'function') {
+      const composeResult = await tryCompose(cand, stories);
+      if (!composeResult) {
+        log(
+          `[digest] brief filter drops user=${userId} ` +
+            `sensitivity=${cand.rule.sensitivity ?? 'high'} ` +
+            `variant=${cand.rule.variant ?? 'full'} ` +
+            `due=${cand.due} ` +
+            `outcome=filter-rejected ` +
+            `in=${stories.length} out=0`,
+        );
+        continue;
+      }
+      return { winner: cand, stories, composeResult };
     }
     return { winner: cand, stories };
   }
