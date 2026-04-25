@@ -104,14 +104,6 @@ function loadLabels() {
   }));
 }
 
-function cosine(a, b) {
-  let dot = 0, na = 0, nb = 0;
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
-  if (na === 0 || nb === 0) return 0;
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
-}
-
 async function readStdinDropLines() {
   if (process.stdin.isTTY) return [];
   const chunks = [];
@@ -150,9 +142,21 @@ function summariseDropLines(lines) {
 }
 
 // Mirror production: groupTopicsPostDedup operates on top-N reps after
-// the score floor, not the raw 800-rep deduped pool.
-const SCORE_FLOOR = 63;
-const TOP_N = 30;
+// the score floor, not the raw 800-rep deduped pool. Read from env so
+// a Railway DIGEST_SCORE_MIN / DIGEST_MAX_ITEMS flip stays in sync;
+// fall back to documented defaults if env is empty/invalid.
+const SCORE_FLOOR_DEFAULT = 63;
+const TOP_N_DEFAULT = 30;
+const MIN_SURVIVING_REPS = 5;
+
+function envInt(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+const SCORE_FLOOR = envInt('DIGEST_SCORE_MIN', SCORE_FLOOR_DEFAULT);
+const TOP_N = envInt('DIGEST_MAX_ITEMS', TOP_N_DEFAULT);
 
 function scoreReplay({ records, embeddingByHash, labels, threshold }) {
   // Reuse the latest tick's reps as the canonical "today's brief" sample.
@@ -176,15 +180,20 @@ function scoreReplay({ records, embeddingByHash, labels, threshold }) {
 
   // Remap shape: replay uses storyHash/normalizedTitle; brief-dedup
   // expects hash/title. Title carries the normalized form so labels
-  // match directly.
-  const sliced = slicedReplay.map((r) => ({
+  // match directly. Filter out reps whose embedding is missing from
+  // the cache (transient eviction); skip the tick only if too few
+  // reps survive.
+  const remapped = slicedReplay.map((r) => ({
     hash: r.storyHash,
     title: r.normalizedTitle,
     currentScore: r.currentScore,
   }));
-
+  const sliced = remapped.filter((r) => Array.isArray(embeddingByHash.get(r.hash)));
+  const missingEmbedDrops = remapped.length - sliced.length;
+  if (sliced.length < MIN_SURVIVING_REPS) {
+    return { error: `only ${sliced.length} reps had cached embeddings (need ≥${MIN_SURVIVING_REPS}); ${missingEmbedDrops} dropped — re-run after cache warm-up` };
+  }
   const items = sliced.map((r) => ({ title: r.title, embedding: embeddingByHash.get(r.hash) }));
-  if (items.some((it) => !Array.isArray(it.embedding))) return { error: 'missing embedding for at least one rep' };
 
   // Direct single-link partition matches what production groupTopicsPostDedup does internally.
   const { clusters } = singleLinkCluster(items, { cosineThreshold: threshold, vetoFn: null });
@@ -227,6 +236,9 @@ function scoreReplay({ records, embeddingByHash, labels, threshold }) {
     tick_id: latestTickId,
     rep_count: allReps.length,
     sliced_rep_count: sliced.length,
+    missing_embed_drops: missingEmbedDrops,
+    score_floor: SCORE_FLOOR,
+    top_n: TOP_N,
     topic_count: topicCount,
     multi_member_topics: multi_member,
     multi_member_topic_share,
@@ -258,7 +270,7 @@ function renderReport(out) {
     L.push(`- pair_recall_cluster: ${(out.replay.pair_recall_cluster * 100).toFixed(1)}% (${out.replay.cluster_pairs_evaluated} labeled pairs evaluated)`);
     L.push(`- false_adjacency: ${(out.replay.false_adjacency * 100).toFixed(1)}% (${out.replay.separate_pairs_evaluated} labeled pairs evaluated)`);
     L.push(`- multi_member_topic_share: ${(out.replay.multi_member_topic_share * 100).toFixed(1)}% (${out.replay.multi_member_topics}/${out.replay.topic_count} topics)`);
-    L.push(`- topic_count: ${out.replay.topic_count} (from ${out.replay.sliced_rep_count} sliced reps; ${out.replay.rep_count} total in tick)`);
+    L.push(`- topic_count: ${out.replay.topic_count} (from ${out.replay.sliced_rep_count} sliced reps; ${out.replay.rep_count} total in tick; floor=${out.replay.score_floor}, topN=${out.replay.top_n}${out.replay.missing_embed_drops > 0 ? `, ${out.replay.missing_embed_drops} reps dropped on missing embedding` : ''})`);
     if (out.replay.violations?.length > 0) {
       L.push('');
       L.push('  Violations vs labeled pairs:');

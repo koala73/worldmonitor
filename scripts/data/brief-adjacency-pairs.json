@@ -1,16 +1,18 @@
 {
-  "_doc": "Labeled adjacency pairs for brief topic-grouping evaluation. Read by scripts/sweep-topic-thresholds.mjs and scripts/brief-quality-report.mjs. Each pair carries two normalized headlines and an expected verdict ('cluster' or 'separate'). The harness matches by normalizeForEmbedding(title) against replay-log records, so titles must match what was actually embedded (apply the same wire-suffix-stripping as scripts/lib/brief-embedding.mjs:normalizeForEmbedding).",
-  "_schema_version": 1,
-  "_observed_briefs": [
-    "2026-04-24-2001 — first brief that surfaced the adjacency complaint (Iran-Iran-Iran split)",
-    "2026-04-25-0802 — first brief after PR #3387 merged; Iran cluster of size 6 plus 3 split-off Iran subtopics"
-  ],
-  "_labeling_guidance": [
-    "cluster — these two stories cover the SAME news event or share so much narrative context that a reader would expect them to be adjacent in a daily brief.",
-    "separate — these two stories cover unrelated news events; clustering them would surface as a false adjacency to the reader.",
-    "Aim for a balanced ratio. 1:1 cluster:separate is healthy. Heavy-skew toward 'cluster' inflates recall numbers without measuring false-adjacency.",
-    "Add new pairs whenever a brief surfaces an adjacency outcome that was clearly right or clearly wrong. Treat this file as an append-only labeled corpus."
-  ],
+  "meta": {
+    "doc": "Labeled adjacency pairs for brief topic-grouping evaluation. Read by scripts/sweep-topic-thresholds.mjs and scripts/brief-quality-report.mjs. Each pair carries two normalized headlines and an expected verdict ('cluster' or 'separate'). The harness matches by normalizeForEmbedding(title) against replay-log records, so titles must match what was actually embedded (apply the same wire-suffix-stripping as scripts/lib/brief-embedding.mjs:normalizeForEmbedding).",
+    "schema_version": 1,
+    "observed_briefs": [
+      "2026-04-24-2001 — first brief that surfaced the adjacency complaint (Iran-Iran-Iran split)",
+      "2026-04-25-0802 — first brief after PR #3387 merged; Iran cluster of size 6 plus 3 split-off Iran subtopics"
+    ],
+    "labeling_guidance": [
+      "cluster — these two stories cover the SAME news event or share so much narrative context that a reader would expect them to be adjacent in a daily brief.",
+      "separate — these two stories cover unrelated news events; clustering them would surface as a false adjacency to the reader.",
+      "Aim for a balanced ratio. 1:1 cluster:separate is healthy. Heavy-skew toward 'cluster' inflates recall numbers without measuring false-adjacency.",
+      "Add new pairs whenever a brief surfaces an adjacency outcome that was clearly right or clearly wrong. Treat this file as an append-only labeled corpus."
+    ]
+  },
   "pairs": [
     {
       "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
