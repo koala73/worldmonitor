@@ -151,18 +151,30 @@ export function userDisplayNameFromId(userId) {
 
 // ── Compose a full brief for a single rule ──────────────────────────────────
 
-// Bumped 12 → 16 based on production telemetry from PR #3387: 73% of
-// `sensitivity=all` users had `dropped_cap=18` per tick (30 qualified
-// stories truncated to 12). Multi-member topics straddling the cap
-// boundary lost members to truncation. Bumping to 16 lets larger
-// leading topics fit fully and reduces dropped_cap from ~18 to ~14
-// without affecting `sensitivity=critical` users (their pools cap at
-// 7-10 stories — well below either threshold).
+// Cap on stories shown per user per brief.
 //
-// "Are we getting better" signal: watch the [digest] brief filter
-// drops log line on Railway — `dropped_cap=` should drop by ~4 per
-// tick after deploy.
-const MAX_STORIES_PER_USER = 16;
+// Default 12 — kept at the historical value because the offline sweep
+// harness (scripts/sweep-topic-thresholds.mjs) showed bumping the cap
+// to 16 against 2026-04-24 production replay data DROPPED visible
+// quality at the active 0.45 threshold (visible_quality 0.916 → 0.716;
+// positions 13-16 are mostly singletons or members of "should-separate"
+// clusters at this threshold, so they dilute without helping adjacency).
+//
+// Env-tunable via DIGEST_MAX_STORIES_PER_USER so future sweep evidence
+// (different threshold, different label set, different pool composition)
+// can be acted on with a Railway env flip without a redeploy. Any
+// invalid / non-positive value falls back to the 12 default.
+//
+// "Are we getting better" signal: re-run scripts/sweep-topic-thresholds.mjs
+// with --cap N before flipping the env, and the daily
+// scripts/brief-quality-report.mjs after.
+function readMaxStoriesPerUser() {
+  const raw = process.env.DIGEST_MAX_STORIES_PER_USER;
+  if (raw == null || raw === '') return 12;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 12;
+}
+const MAX_STORIES_PER_USER = readMaxStoriesPerUser();
 
 /**
  * Filter + assemble a BriefEnvelope for one alert rule from a
