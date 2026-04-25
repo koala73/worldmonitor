@@ -747,6 +747,76 @@ describe('renderBriefMagazine — publicMode', () => {
     const b = renderBriefMagazine(env, {});
     assert.equal(a, b);
   });
+
+  // ── Public-share lead fail-safe (Codex Round-2 High security) ──────
+  //
+  // Personalised `digest.lead` carries profile context (watched assets,
+  // saved regions, etc.). On the public-share surface we MUST render
+  // `publicLead` (a non-personalised parallel synthesis) instead, OR
+  // omit the pull-quote entirely. NEVER fall back to the personalised
+  // lead.
+
+  it('renders publicLead in the pull-quote when v3 envelope carries it', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead with watched-asset details that must NOT leak.';
+    env.data.digest.publicLead = 'A non-personalised editorial lead suitable for share readers.';
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(
+      html.includes('non-personalised editorial lead'),
+      'pull-quote must render the publicLead text',
+    );
+    assert.ok(
+      !html.includes('watched-asset details'),
+      'personalised lead text must NEVER appear on the public surface',
+    );
+  });
+
+  it('OMITS the pull-quote when publicLead is absent (v2 envelope back-compat)', () => {
+    // v2 envelopes still in TTL window have no publicLead. Public-mode
+    // render MUST omit the blockquote rather than render the
+    // personalised lead.
+    const env = envelope();
+    env.version = 2;
+    env.data.digest.lead = 'Personal lead with watched-asset details that must NOT leak.';
+    delete env.data.digest.publicLead;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(
+      !html.includes('watched-asset details'),
+      'personalised lead text must NEVER appear on the public surface',
+    );
+    // Sanity: the rest of the page (greeting + greeting block) is
+    // still rendered — only the blockquote is omitted.
+    assert.ok(html.includes('At The Top Of The Hour'));
+  });
+
+  it('OMITS the pull-quote when publicLead is empty string (defensive)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead that must NOT leak.';
+    // Defensive: publicLead set to empty string by a buggy producer.
+    // The render path treats empty as absent, omitting the pull-quote.
+    // (assertBriefEnvelope rejects publicLead='' as a non-empty-string
+    // violation, so this only matters if a future code path bypasses
+    // validation — belt-and-braces.)
+    env.data.digest.publicLead = '';
+    // Validator rejects empty publicLead first, so render throws —
+    // proves the contract is enforced before redactForPublic runs.
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicLead, when present, must be a non-empty string/,
+    );
+  });
+
+  it('private (non-public) render still uses the personalised lead', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead for the authenticated reader.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    const html = renderBriefMagazine(env);  // private path
+    assert.ok(html.includes('Personal lead for the authenticated reader'));
+    assert.ok(!html.includes('Generic public lead'), 'publicLead is share-only');
+  });
 });
 
 // ── Regression: cover greeting follows envelope.data.digest.greeting ─────────

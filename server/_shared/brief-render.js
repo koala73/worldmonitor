@@ -435,13 +435,22 @@ function renderCover({ dateLong, issue, storyCount, pageIndex, totalPages, greet
  * @param {{ greeting: string; lead: string; dateShort: string; pageIndex: number; totalPages: number }} opts
  */
 function renderDigestGreeting({ greeting, lead, dateShort, pageIndex, totalPages }) {
+  // Public-share fail-safe: when `lead` is empty, omit the pull-quote
+  // entirely. Reached via redactForPublic when the envelope lacks a
+  // non-empty `publicLead` — NEVER serve the personalised lead on the
+  // public surface. Page still reads as a complete editorial layout
+  // (greeting + horizontal rule), just without the italic blockquote.
+  // Codex Round-2 High (security on share-URL surface).
+  const blockquote = typeof lead === 'string' && lead.length > 0
+    ? `<blockquote>${escapeHtml(lead)}</blockquote>`
+    : '';
   return (
     '<section class="page digest">' +
     digestRunningHead(dateShort, 'Digest / 01') +
     '<div class="body">' +
     '<div class="label mono">At The Top Of The Hour</div>' +
     `<h2>${escapeHtml(greeting)}</h2>` +
-    `<blockquote>${escapeHtml(lead)}</blockquote>` +
+    blockquote +
     '<hr class="rule" />' +
     '</div>' +
     `<div class="page-number mono">${pad2(pageIndex)} / ${pad2(totalPages)}</div>` +
@@ -1153,17 +1162,38 @@ const NAV_SCRIPT = `<script>
  * leaking the recipient's name or the LLM-generated whyMatters (which
  * is framed as direct advice to that specific reader).
  *
- * Runs AFTER assertBriefEnvelope so the full v2 contract is still
+ * Runs AFTER assertBriefEnvelope so the full contract is still
  * enforced on the input — we never loosen validation for the public
  * path, only redact the output.
+ *
+ * Lead-field handling (v3, 2026-04-25): the personalised `digest.lead`
+ * can carry profile context (watched assets, region preferences) and
+ * MUST NEVER be served on the public surface. v3 envelopes carry
+ * `digest.publicLead` — a non-personalised parallel synthesis from
+ * generateDigestProsePublic — which we substitute into the `lead`
+ * slot so all downstream renderers stay agnostic to the public/
+ * personalised distinction. When `publicLead` is absent (v2
+ * envelopes still in the 7-day TTL window, or v3 envelopes where
+ * the publicLead generation failed), we substitute an EMPTY string
+ * — the renderer's pull-quote block reads "no pull-quote" for empty
+ * leads (per renderDigestGreeting), so the page renders without
+ * leaking personalised content. NEVER fall through to the original
+ * `lead`. Codex Round-2 High (security).
  *
  * @param {BriefData} data
  * @returns {BriefData}
  */
 function redactForPublic(data) {
+  const safeLead = typeof data.digest?.publicLead === 'string' && data.digest.publicLead.length > 0
+    ? data.digest.publicLead
+    : '';
   return {
     ...data,
     user: { ...data.user, name: 'WorldMonitor' },
+    digest: {
+      ...data.digest,
+      lead: safeLead,
+    },
     stories: data.stories.map((s) => ({
       ...s,
       whyMatters: 'Subscribe to WorldMonitor Brief to see the full editorial on this story.',
