@@ -44,6 +44,7 @@ import type { PipelineStatusPanel } from '@/components/PipelineStatusPanel';
 import type { StorageFacilityMapPanel } from '@/components/StorageFacilityMapPanel';
 import type { FuelShortagePanel } from '@/components/FuelShortagePanel';
 import type { EnergyDisruptionsPanel } from '@/components/EnergyDisruptionsPanel';
+import type { EnergyRiskOverviewPanel } from '@/components/EnergyRiskOverviewPanel';
 import type { ClimateNewsPanel } from '@/components/ClimateNewsPanel';
 import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
 import type { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
@@ -350,6 +351,10 @@ export class App {
     if (shouldPrime('energy-disruptions')) {
       const panel = this.state.panels['energy-disruptions'] as EnergyDisruptionsPanel | undefined;
       if (panel) primeTask('energy-disruptions', () => panel.fetchData());
+    }
+    if (shouldPrime('energy-risk-overview')) {
+      const panel = this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel | undefined;
+      if (panel) primeTask('energy-risk-overview', () => panel.fetchData());
     }
     if (shouldPrime('climate-news')) {
       const panel = this.state.panels['climate-news'] as ClimateNewsPanel | undefined;

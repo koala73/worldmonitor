@@ -92,6 +92,7 @@ export { PipelineStatusPanel } from './PipelineStatusPanel';
 export { StorageFacilityMapPanel } from './StorageFacilityMapPanel';
 export { FuelShortagePanel } from './FuelShortagePanel';
 export { EnergyDisruptionsPanel } from './EnergyDisruptionsPanel';
+export { EnergyRiskOverviewPanel } from './EnergyRiskOverviewPanel';
 export * from './ClimateNewsPanel';
 export * from './DiseaseOutbreaksPanel';
 export * from './SocialVelocityPanel';

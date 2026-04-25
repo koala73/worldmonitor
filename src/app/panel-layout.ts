@@ -70,6 +70,7 @@ import {
   StorageFacilityMapPanel,
   FuelShortagePanel,
   EnergyDisruptionsPanel,
+  EnergyRiskOverviewPanel,
   MacroTilesPanel,
   FSIPanel,
   YieldCurvePanel,
@@ -891,6 +892,7 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('storage-facility-map', () => new StorageFacilityMapPanel());
     this.createPanel('fuel-shortages', () => new FuelShortagePanel());
     this.createPanel('energy-disruptions', () => new EnergyDisruptionsPanel());
+    this.createPanel('energy-risk-overview', () => new EnergyRiskOverviewPanel());
     this.createPanel('polymarket', () => new PredictionPanel());
 
     this.createNewsPanel('gov', 'panels.gov');
