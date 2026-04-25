@@ -83,14 +83,23 @@ async function batchHgetAll(url, token, keys) {
   const commands = keys.map((k) => ['HGETALL', k]);
   const responses = await redisPipeline(url, token, commands);
   return responses.map((r) => {
-    const arr = r?.result;
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    // Upstash HGETALL returns ['k1', 'v1', 'k2', 'v2', ...] OR an object.
-    // Normalize to object.
-    if (typeof arr === 'object' && !Array.isArray(arr)) return arr;
+    const result = r?.result;
+    if (result == null) return null;
+    // Upstash HGETALL response shape varies by client/version:
+    //   - Object: { k1: 'v1', k2: 'v2' } — direct.
+    //   - Flat array: ['k1', 'v1', 'k2', 'v2', ...] — pair-wise normalize.
+    //   - Empty array / empty object: missing key.
+    // Object check MUST come before the array check (typeof []  === 'object'
+    // too, but Array.isArray distinguishes them); the previous order
+    // returned null for object-shape responses before the object branch
+    // could ever match, silently missing every contaminated row.
+    if (typeof result === 'object' && !Array.isArray(result)) {
+      return Object.keys(result).length === 0 ? null : result;
+    }
+    if (!Array.isArray(result) || result.length === 0) return null;
     const obj = {};
-    for (let i = 0; i < arr.length - 1; i += 2) {
-      obj[arr[i]] = arr[i + 1];
+    for (let i = 0; i < result.length - 1; i += 2) {
+      obj[result[i]] = result[i + 1];
     }
     return obj;
   });

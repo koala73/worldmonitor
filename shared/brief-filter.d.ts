@@ -31,9 +31,26 @@ export type AlertSensitivity = 'all' | 'high' | 'critical';
  * `cap` fires once per story skipped after `maxStories` has been
  * reached — neither severity nor field metadata is included since
  * the loop short-circuits without parsing the remaining stories.
+ *
+ * `source_topic_cap` (U5) fires when a story is dropped because the
+ * `(source, category)` pair already has `maxPerSourceTopic` survivors
+ * earlier in the in-flight `out` array. Both `severity` and `sourceUrl`
+ * are populated.
+ *
+ * `institutional_static_page` (U7) fires when a story's `sourceUrl`
+ * matches the static-institutional-page denylist (e.g.
+ * `defense.gov/About/Section-508/`). Both `severity` and `sourceUrl`
+ * are populated.
  */
 export type DropMetricsFn = (event: {
-  reason: 'severity' | 'headline' | 'url' | 'shape' | 'cap';
+  reason:
+    | 'severity'
+    | 'headline'
+    | 'url'
+    | 'shape'
+    | 'cap'
+    | 'source_topic_cap'
+    | 'institutional_static_page';
   severity?: string;
   sourceUrl?: string;
 }) => void;
@@ -55,11 +72,18 @@ export type DropMetricsFn = (event: {
  * stories not in the ranking come after in their original relative
  * order. Lets the canonical synthesis brain's editorial judgment of
  * importance survive the `maxStories` cut.
+ *
+ * `maxPerSourceTopic` (U5, default 2) caps how many stories sharing
+ * the same `(source, category)` pair can survive into a single brief.
+ * Pass `Infinity` to disable. The cap runs AFTER `applyRankedOrder`
+ * so the highest-ranked sibling of any pair survives. Stories beyond
+ * the cap are dropped with `onDrop({ reason: 'source_topic_cap' })`.
  */
 export function filterTopStories(input: {
   stories: UpstreamTopStory[];
   sensitivity: AlertSensitivity;
   maxStories?: number;
+  maxPerSourceTopic?: number;
   onDrop?: DropMetricsFn;
   rankedStoryHashes?: string[];
 }): BriefStory[];

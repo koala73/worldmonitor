@@ -1420,7 +1420,16 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // Compose envelope with synthesis pre-baked. The composer applies
   // rankedStoryHashes-aware ordering BEFORE the cap, so the model's
   // editorial judgment of importance survives MAX_STORIES_PER_USER.
-  const dropStats = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0, in: winnerStories.length };
+  const dropStats = {
+    severity: 0,
+    headline: 0,
+    url: 0,
+    shape: 0,
+    cap: 0,
+    source_topic_cap: 0,
+    institutional_static_page: 0,
+    in: winnerStories.length,
+  };
   const envelope = composeBriefFromDigestStories(
     winner.rule,
     winnerStories,
@@ -1456,6 +1465,8 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       `dropped_headline=${dropStats.headline} ` +
       `dropped_shape=${dropStats.shape} ` +
       `dropped_cap=${dropStats.cap} ` +
+      `dropped_source_topic_cap=${dropStats.source_topic_cap} ` +
+      `dropped_institutional_static_page=${dropStats.institutional_static_page} ` +
       `out=${out}`,
   );
 
