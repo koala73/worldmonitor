@@ -334,7 +334,7 @@ funds:
       abbrev: KIA
       fund_name: Kuwait Investment Authority
     classification:
-      access: 0.9
+      access: 0.7
       liquidity: 0.8
       transparency: 0.4
       aum_pct_of_audited: 0.05
@@ -343,10 +343,15 @@ funds:
         Kuwaiti Public Finance Law explicitly directs GRF to absorb
         oil-revenue shortfalls and finance budget deficits. Drained
         to negative balance during 2020 COVID shock; refilled by
-        domestic + international borrowing. Closest existing fund
-        to the rubric's 0.9 "automatic stabilization" tier (GRF's
-        deployment trigger is named in law but politically gated;
-        keep at 0.9, not 0.95+).
+        domestic + international borrowing. The 2020 deployment
+        required active Council-of-Ministers authorization (NOT
+        post-hoc/symbolic), which keeps GRF in the rubric's 0.7
+        "Explicit stabilization with rule" tier — a legislated
+        mechanism with deployment precedent — rather than the 0.9
+        "automatic stabilization" tier (which requires
+        rule-triggered automatic deployment, e.g. Chile ESSF).
+        The original combined-KIA `access=0.7` matched this tier;
+        kept here for the GRF sleeve.
       liquidity: |
         Predominantly public-market (~75-85% listed equities + fixed
         income). Private-asset sleeve is a minority allocation.
@@ -547,7 +552,6 @@ funds:
       access: 0.20
       liquidity: 0.5
       transparency: 0.4
-      aum_pct_of_audited: 1.0
     rationale:
       access: |
         Pension-purpose: NSSF holdings are statutorily reserved for
@@ -561,10 +565,6 @@ funds:
       transparency: |
         Annual report publishes AUM totals + broad allocation; per-
         holding disclosure limited.
-      aum_pct_of_audited: |
-        Audited NSSF AUM is reported at the consolidated NSSF level;
-        no sleeve-internal split required. Coefficient is 1.0 (full
-        AUM scored).
     sources:
       - http://www.ssf.gov.cn/
       - https://www.swfinstitute.org/profile/nssf
@@ -672,7 +672,6 @@ funds:
       - https://www.kic.kr/en/
       - https://www.ifswf.org/member-profiles/korea-investment-corporation
 
-  # ── Australia ──
   # ── Oman ──
   # OIA established 2020 by merging State General Reserve Fund (SGRF)
   # + Oman Investment Fund (OIF). IFSWF member; rubric pre-flagged
@@ -768,6 +767,7 @@ funds:
       - https://www.bancocentral.tl/en/petroleum-fund
       - https://www.swfinstitute.org/profile/petroleum-fund-of-timor-leste
 
+  # ── Australia ──
   - country: AU
     fund: future-fund
     display_name: Australian Future Fund
