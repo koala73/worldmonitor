@@ -174,7 +174,13 @@ function readMaxStoriesPerUser() {
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : 12;
 }
-const MAX_STORIES_PER_USER = readMaxStoriesPerUser();
+// Exported so brief-llm.mjs (buildDigestPrompt + hashDigestInput) can
+// slice to the same cap. Hard-coding `slice(0, 12)` there would mean
+// the LLM prose only references the first 12 stories even when the
+// brief envelope carries more — a quiet mismatch between what the
+// reader sees as story cards vs the AI summary above them. Reviewer
+// P1 on PR #3389.
+export const MAX_STORIES_PER_USER = readMaxStoriesPerUser();
 
 /**
  * Filter + assemble a BriefEnvelope for one alert rule from a

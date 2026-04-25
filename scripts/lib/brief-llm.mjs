@@ -34,6 +34,10 @@ import {
   parseWhyMatters,
 } from '../../shared/brief-llm-core.js';
 import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
+// Single source of truth for the brief story cap. Both buildDigestPrompt
+// and hashDigestInput must slice to this value or the LLM prose drifts
+// from the rendered story cards (PR #3389 reviewer P1).
+import { MAX_STORIES_PER_USER } from './brief-compose.mjs';
 
 /**
  * Sanitize the story fields that flow into buildWhyMattersUserPrompt and
@@ -323,7 +327,7 @@ const DIGEST_PROSE_SYSTEM =
  * @returns {{ system: string; user: string }}
  */
 export function buildDigestPrompt(stories, sensitivity) {
-  const lines = stories.slice(0, 12).map((s, i) => {
+  const lines = stories.slice(0, MAX_STORIES_PER_USER).map((s, i) => {
     const n = String(i + 1).padStart(2, '0');
     return `${n}. [${s.threatLevel}] ${s.headline} — ${s.category} · ${s.country} · ${s.source}`;
   });
@@ -422,10 +426,11 @@ function hashDigestInput(userId, stories, sensitivity) {
   // Canonicalise as JSON of the fields the prompt actually references,
   // in the prompt's ranked order. Stable stringification via an array
   // of tuples keeps field ordering deterministic without relying on
-  // JS object-key iteration order.
+  // JS object-key iteration order. Slice MUST match buildDigestPrompt's
+  // slice or the cache key drifts from the prompt content.
   const material = JSON.stringify([
     sensitivity ?? '',
-    ...stories.slice(0, 12).map((s) => [
+    ...stories.slice(0, MAX_STORIES_PER_USER).map((s) => [
       s.headline ?? '',
       s.threatLevel ?? '',
       s.category ?? '',
