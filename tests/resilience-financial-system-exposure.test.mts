@@ -14,6 +14,16 @@
 // throws `ResilienceConfigurationError(message, missingKeys)` two-arg
 // form. Per-country data gaps are NOT preflight failures — they
 // produce per-component nulls.
+//
+// IMPORTANT — seed-meta key shape: `runSeed` (scripts/_seed-utils.mjs)
+// strips the trailing `:v\d+` from the data key when it writes the
+// freshness record. So `economic:wb-external-debt:v1` becomes
+// `seed-meta:economic:wb-external-debt` (NO `:v1`). The scorer's
+// preflight uses `resolveSeedMetaKey` to apply the same strip — these
+// tests mock the unversioned form to match. A regression-guard test
+// below pins the exact key shape so a future refactor that breaks
+// the writer/reader contract fails loudly instead of silently routing
+// every country to source-failure.
 
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -65,9 +75,9 @@ describe('scoreFinancialSystemExposure — flag-off rollout posture', () => {
 // specific keys to exercise component math.
 function emptyButReachableReader(): ResilienceSeedReader {
   const presentSeedMetaKeys = new Set([
-    'seed-meta:economic:wb-external-debt:v1',
-    'seed-meta:economic:bis-lbs:v1',
-    'seed-meta:economic:fatf-listing:v1',
+    'seed-meta:economic:wb-external-debt',
+    'seed-meta:economic:bis-lbs',
+    'seed-meta:economic:fatf-listing',
   ]);
   return async (key) => {
     if (presentSeedMetaKeys.has(key)) return { fetchedAt: Date.now() };
@@ -79,8 +89,8 @@ describe('scoreFinancialSystemExposure — fail-closed preflight', () => {
   it('throws ResilienceConfigurationError when economic:wb-external-debt:v1 seed-meta is missing', async () => {
     const reader: ResilienceSeedReader = async (key) => {
       // Two of three published; WB IDS missing.
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       return null;
     };
     await assert.rejects(
@@ -95,8 +105,8 @@ describe('scoreFinancialSystemExposure — fail-closed preflight', () => {
 
   it('throws ResilienceConfigurationError when economic:bis-lbs:v1 seed-meta is missing', async () => {
     const reader: ResilienceSeedReader = async (key) => {
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       return null;
     };
     await assert.rejects(
@@ -110,8 +120,8 @@ describe('scoreFinancialSystemExposure — fail-closed preflight', () => {
 
   it('throws ResilienceConfigurationError when economic:fatf-listing:v1 seed-meta is missing', async () => {
     const reader: ResilienceSeedReader = async (key) => {
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       return null;
     };
     await assert.rejects(
@@ -165,9 +175,9 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     //   redundancy      = 10 parents   → higherBetter(10, worst=1, best=10) = 100
     // Total: (100*0.35 + 100*0.30 + 100*0.20 + 100*0.15) / 1.0 = 100.
     const reader: ResilienceSeedReader = async (key) => {
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       if (key === 'economic:wb-external-debt:v1') return { countries: { [TEST_ISO2]: { value: 0, year: 2024 } } };
       if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { totalXborderPctGdp: 25, parentCount: 10 } } };
       if (key === 'economic:fatf-listing:v1') return { listings: { [TEST_ISO2]: 'compliant' }, publicationDate: '2026-02-13' };
@@ -186,9 +196,9 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     //   redundancy      = 1 parent     → higherBetter(1, 1, 10) = 0
     // Total: (0*0.35 + 10*0.30 + 0*0.20 + 0*0.15) / 1.0 = 3.
     const reader: ResilienceSeedReader = async (key) => {
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       if (key === 'economic:wb-external-debt:v1') return { countries: { [TEST_ISO2]: { value: 15, year: 2024 } } };
       if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { totalXborderPctGdp: 100, parentCount: 1 } } };
       if (key === 'economic:fatf-listing:v1') return { listings: { [TEST_ISO2]: 'black' }, publicationDate: '2026-02-13' };
@@ -202,9 +212,9 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     // Component 2 standalone test: hold all others null, vary the
     // BIS LBS exposure. The U-shape design penalizes both extremes.
     const buildReader = (xborderPct: number, parentCount: number): ResilienceSeedReader => async (key) => {
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       if (key === 'economic:bis-lbs:v1') {
         return {
           countries: {
@@ -229,9 +239,9 @@ describe('scoreFinancialSystemExposure — formula math', () => {
 
   it('FATF discrete mapping: black=0, gray=30, compliant=100', async () => {
     const buildReader = (status: 'black' | 'gray' | 'compliant'): ResilienceSeedReader => async (key) => {
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       if (key === 'economic:fatf-listing:v1') {
         return { listings: { [TEST_ISO2]: status }, publicationDate: '2026-02-13' };
       }
@@ -255,18 +265,52 @@ describe('scoreFinancialSystemExposure — component-read contract', () => {
     const observed = new Set<string>();
     const reader: ResilienceSeedReader = async (key) => {
       observed.add(key);
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       return null;
     };
     await scoreFinancialSystemExposure(TEST_ISO2, reader);
-    assert.ok(observed.has('seed-meta:economic:wb-external-debt:v1'), 'must preflight wb-external-debt seed-meta');
-    assert.ok(observed.has('seed-meta:economic:bis-lbs:v1'), 'must preflight bis-lbs seed-meta');
-    assert.ok(observed.has('seed-meta:economic:fatf-listing:v1'), 'must preflight fatf-listing seed-meta');
+    assert.ok(observed.has('seed-meta:economic:wb-external-debt'), 'must preflight wb-external-debt seed-meta');
+    assert.ok(observed.has('seed-meta:economic:bis-lbs'), 'must preflight bis-lbs seed-meta');
+    assert.ok(observed.has('seed-meta:economic:fatf-listing'), 'must preflight fatf-listing seed-meta');
     assert.ok(observed.has('economic:wb-external-debt:v1'), 'must read wb-external-debt data key');
     assert.ok(observed.has('economic:bis-lbs:v1'), 'must read bis-lbs data key');
     assert.ok(observed.has('economic:fatf-listing:v1'), 'must read fatf-listing data key');
+  });
+
+  it('preflight reads UNVERSIONED seed-meta keys (matches runSeed write-key shape)', async () => {
+    // Regression guard: previously the scorer preflighted
+    // `seed-meta:economic:<key>:v1` while runSeed writes
+    // `seed-meta:economic:<key>` (with the trailing :v\d+ stripped).
+    // That mismatch would have caused EVERY request to throw
+    // ResilienceConfigurationError once the flag flipped on, even with
+    // healthy seeders. Pin the exact key shape so the bug can't recur.
+    //
+    // Reference: scripts/_seed-utils.mjs runSeed → seed-meta is written
+    // at `seed-meta:${dataKey.replace(/:v\d+$/, '')}`. Same as
+    // api/health.js + api/seed-health.js entries.
+    const seedMetaReads = new Set<string>();
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key.startsWith('seed-meta:')) seedMetaReads.add(key);
+      // Return null so we observe the read attempts then trip the
+      // preflight throw — we only care about the keys the scorer probed.
+      return null;
+    };
+    try {
+      await scoreFinancialSystemExposure(TEST_ISO2, reader);
+    } catch (err) {
+      // Expected — all seeds null → throws.
+      assert.ok(err instanceof ResilienceConfigurationError);
+    }
+    assert.ok(seedMetaReads.has('seed-meta:economic:wb-external-debt'), 'preflight must probe unversioned seed-meta:economic:wb-external-debt (NOT :v1 suffix)');
+    assert.ok(seedMetaReads.has('seed-meta:economic:bis-lbs'), 'preflight must probe unversioned seed-meta:economic:bis-lbs (NOT :v1 suffix)');
+    assert.ok(seedMetaReads.has('seed-meta:economic:fatf-listing'), 'preflight must probe unversioned seed-meta:economic:fatf-listing (NOT :v1 suffix)');
+    // Negative: the versioned form must NOT be probed (would never match
+    // anything runSeed writes).
+    assert.ok(!seedMetaReads.has('seed-meta:economic:wb-external-debt:v1'), 'preflight must NOT probe versioned seed-meta key (writer/reader drift bug guard)');
+    assert.ok(!seedMetaReads.has('seed-meta:economic:bis-lbs:v1'));
+    assert.ok(!seedMetaReads.has('seed-meta:economic:fatf-listing:v1'));
   });
 
   it('does NOT read sanctions:country-counts:v1 (Phase 1 OFAC component remains dropped)', async () => {
@@ -280,9 +324,9 @@ describe('scoreFinancialSystemExposure — component-read contract', () => {
         sanctionsReads += 1;
         return { [TEST_ISO2]: 999 };
       }
-      if (key === 'seed-meta:economic:wb-external-debt:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs:v1') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing:v1') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
       return null;
     };
     await scoreFinancialSystemExposure(TEST_ISO2, reader);

@@ -2,7 +2,7 @@ import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
-import { classifyDimensionFreshness, readFreshnessMap } from './_dimension-freshness';
+import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
 import { failedDimensionsFromDatasets, readFailedDatasets } from './_source-failure';
 
@@ -1199,6 +1199,15 @@ export async function scoreFinancialSystemExposure(
   }
 
   // Preflight: verify the 3 required seed envelopes are published.
+  // `runSeed` (scripts/_seed-utils.mjs) STRIPS the trailing :v\d+ from the
+  // data key when it writes seed-meta — so `economic:wb-external-debt:v1`
+  // gets a freshness key of `seed-meta:economic:wb-external-debt`, NOT
+  // `seed-meta:economic:wb-external-debt:v1`. Use `resolveSeedMetaKey`
+  // (the canonical helper from _dimension-freshness.ts) so the preflight
+  // matches what the seeder actually writes; inlining the regex would
+  // re-introduce the same writer/reader drift this helper exists to prevent.
+  // The api/health.js + api/seed-health.js registries use the same
+  // unversioned form (`seed-meta:economic:wb-external-debt`).
   const requiredSeedKeys = [
     RESILIENCE_WB_EXTERNAL_DEBT_KEY,
     RESILIENCE_BIS_LBS_KEY,
@@ -1206,7 +1215,7 @@ export async function scoreFinancialSystemExposure(
   ] as const;
   const missing: string[] = [];
   for (const key of requiredSeedKeys) {
-    const meta = await reader(`seed-meta:${key}`);
+    const meta = await reader(resolveSeedMetaKey(key));
     if (!meta) missing.push(key);
   }
   if (missing.length > 0) {
