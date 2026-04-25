@@ -316,3 +316,116 @@ test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor 
     try { unlinkSync(path); } catch {}
   }
 });
+
+test('SIGTERM during fetch-failure cleanup still triggers handler (no leak window between catch and process.exit)', async () => {
+  // Pre-fix code path: the fetch-failure catch block did
+  //   process.off('SIGTERM', sigTermHandler);
+  //   await releaseLock(...);   ← if SIGTERM lands here, no handler
+  //   await extendExistingTtl(...);  ← or here
+  //   process.exit(0);
+  // That window (the two Upstash awaits, ~100ms-1s) was unprotected: a
+  // bundle-runner SIGTERM during it fell through to Node's default
+  // termination and could leak the lock or skip the TTL extension.
+  //
+  // Fix: keep the handler installed across the cleanup. Both code
+  // paths (catch's manual ops and the handler's parallel ops) are
+  // idempotent (LUA verify-and-DEL; pipeline-EXPIRE on existing
+  // keys), so a race converges on correct end state.
+  //
+  // This test drives the seeder INTO the catch block by throwing from
+  // fetchFn, then hangs the catch's first Upstash await (the manual
+  // releaseLock EVAL) so SIGTERM has a deterministic window to land.
+  // Asserts that the handler still fires (cleanup log appears) and
+  // that exit code is 143 (handler-driven) rather than 0 (catch's
+  // process.exit) or signal=SIGTERM (no handler ran).
+  const body = `
+    import { runSeed } from './_seed-utils.mjs';
+    let opIndex = 0;
+    let cleanupHung = false;
+    globalThis.fetch = async (url, opts = {}) => {
+      const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+      let shape = 'other';
+      if (Array.isArray(body)) {
+        if (Array.isArray(body[0])) {
+          shape = body[0][0] === 'EXPIRE' ? 'pipeline-EXPIRE' : 'pipeline-other';
+        } else if (body[0] === 'EVAL') {
+          shape = 'EVAL';
+        } else {
+          shape = 'cmd-' + body[0];
+        }
+      }
+      const idx = opIndex++;
+      console.error('FETCH_OP idx=' + idx + ' shape=' + shape + ' body=' + JSON.stringify(body));
+      // acquireLock SET NX → return OK (lock free)
+      if (Array.isArray(body) && body[0] === 'SET' && body[3] === 'NX') {
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
+      // First EVAL is the catch block's manual releaseLock — HANG it so
+      // SIGTERM has a deterministic window. Subsequent EVALs (e.g. from
+      // the handler firing) must succeed so the handler can complete
+      // and exit 143.
+      if (shape === 'EVAL' && !cleanupHung) {
+        cleanupHung = true;
+        setInterval(() => {}, 10_000);
+        setImmediate(() => console.log('FETCH_FAILURE_CLEANUP_HUNG'));
+        return new Promise(() => {});  // never resolves
+      }
+      // Subsequent EVALs (handler-issued) succeed.
+      if (shape === 'EVAL') {
+        return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      }
+      // Pipeline-EXPIRE (handler's extendExistingTtl) — succeed.
+      if (Array.isArray(body) && Array.isArray(body[0])) {
+        return new Response(JSON.stringify(body.map(() => ({ result: 1 }))), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    };
+    // fetchFn rejects so runSeed enters the fetch-failure catch path.
+    const failingFetch = async () => { throw new Error('synthetic upstream failure'); };
+    await runSeed('test-domain', 'fetch-fail', 'data:test:fetch-fail:v1', failingFetch, {
+      ttlSeconds: 900,
+      lockTtlMs: 60_000,
+      maxRetries: 0,  // fail fast — no withRetry retries
+    });
+  `;
+  const path = join(SCRIPTS_DIR, `_sigterm-fetchfail-fixture-${Date.now()}.mjs`);
+  writeFileSync(path, body);
+  try {
+    await new Promise((resolve) => {
+      const child = spawn(process.execPath, [path], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          UPSTASH_REDIS_REST_URL: 'https://fake-upstash.example.com',
+          UPSTASH_REDIS_REST_TOKEN: 'fake-token',
+        },
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (c) => { stdout += c; });
+      child.stderr.on('data', (c) => { stderr += c; });
+      const ready = setInterval(() => {
+        if (stdout.includes('FETCH_FAILURE_CLEANUP_HUNG')) {
+          clearInterval(ready);
+          child.kill('SIGTERM');
+        }
+      }, 25);
+      child.on('close', (code, signal) => {
+        clearInterval(ready);
+        // Decisive signal that the handler fired (NOT default termination):
+        // the cleanup log line. Pre-fix this would NOT appear because
+        // process.off had already removed the handler.
+        assert.match(stderr, /SIGTERM received during fetch phase — releasing lock/,
+          `handler must fire even when SIGTERM lands during fetch-failure cleanup; stderr:\n${stderr}`);
+        // Process exits 143 from the handler (NOT 0 from catch's
+        // process.exit, NOT signal=SIGTERM from default termination).
+        assert.ok(code === 143 || signal === 'SIGTERM',
+          `expected exit 143 (handler-driven) or SIGTERM signal; got code=${code} signal=${signal}\nstderr:\n${stderr}`);
+        resolve();
+      });
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 10_000);
+    });
+  } finally {
+    try { unlinkSync(path); } catch {}
+  }
+});

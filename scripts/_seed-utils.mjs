@@ -902,7 +902,18 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   try {
     data = await withRetry(fetchFn);
   } catch (err) {
-    process.off('SIGTERM', sigTermHandler);
+    // Keep the SIGTERM handler installed across the fetch-failure
+    // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`
+    // here, which opened a new leak window: SIGTERM during the
+    // releaseLock + extendExistingTtl awaits below would fall through
+    // to Node's default termination and could strand seed-lock or skip
+    // the TTL extension. Both paths (this catch's manual ops and the
+    // handler's parallel ops) are idempotent — the LUA verify-and-DEL
+    // releases at most once for a given runId, and EXPIRE pipelines on
+    // existing keys are safely re-runnable — so a race between the
+    // catch path and the handler converges on the correct end state.
+    // process.exit(0) below terminates before any pending SIGTERM can
+    // fire on the success path of cleanup.
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
