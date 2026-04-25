@@ -151,4 +151,23 @@ describe('injectEmailSummary — structured synthesis (the email regression fix)
     const bullets = (out.match(/• /g) ?? []).length;
     assert.equal(bullets, 1);
   });
+
+  it('emits no signals block when all signal entries are non-string or empty', () => {
+    // Greptile P2 regression guard: a non-empty signals array where
+    // EVERY entry fails the htmlEscape filter (null / number / empty
+    // string) must NOT render an orphan "Signals to watch:" header
+    // with no bullets beneath it. Pre-fix behaviour: header rendered
+    // alone. Post-fix: filter bullets first, omit header when no
+    // bullets survive.
+    const out = injectEmailSummary(TEMPLATE, {
+      lead: 'A long-enough lead text for the validator floor.',
+      threads: [],
+      signals: [null, 42, ''],
+    });
+    assert.ok(!out.includes('Signals to watch:'), 'header must not appear when all bullets dropped');
+    assert.ok(!out.includes('• '), 'no bullets when all signal entries malformed');
+    // Lead block still rendered — only the signals trailer is omitted.
+    assert.ok(out.includes('Executive Summary'));
+    assert.ok(out.includes('A long-enough lead'));
+  });
 });

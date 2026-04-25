@@ -77,13 +77,20 @@ export function injectEmailSummary(html, summary) {
 
   // Signals: rendered as a "Signals to watch:" trailer matching the
   // pre-refactor convention. Each signal on its own line.
-  const signalsHtml = payload.signals.length > 0
+  // Defensive: filter the bullets FIRST and only emit the "Signals to
+  // watch:" header when at least one bullet survived. Otherwise an
+  // all-malformed signals array (e.g. [null, 42, '']) renders as an
+  // orphan header with no bullets beneath. Greptile P2 on PR #3411.
+  const signalBullets = payload.signals
+    .map((s) => {
+      const text = htmlEscape(typeof s === 'string' ? s : '');
+      if (!text) return '';
+      return `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:4px 0 0 0;">• ${text}</div>`;
+    })
+    .filter(Boolean);
+  const signalsHtml = signalBullets.length > 0
     ? `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:14px 0 0 0;"><b style="color:#f2ede4;">Signals to watch:</b></div>` +
-      payload.signals.map((s) => {
-        const text = htmlEscape(typeof s === 'string' ? s : '');
-        if (!text) return '';
-        return `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:4px 0 0 0;">• ${text}</div>`;
-      }).filter(Boolean).join('')
+      signalBullets.join('')
     : '';
 
   const summaryHtml = `<div style="background:#161616;border:1px solid #222;border-left:3px solid #4ade80;padding:18px 22px;margin:0 0 24px 0;">
