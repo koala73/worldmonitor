@@ -3045,10 +3045,23 @@ export class DeckGLMap {
     if (this.liveTankersAbort) {
       this.liveTankersAbort.abort();
     }
-    this.liveTankersAbort = new AbortController();
+    const controller = new AbortController();
+    this.liveTankersAbort = controller;
     try {
       const { fetchLiveTankers } = await import('@/services/live-tankers');
-      const zones = await fetchLiveTankers();
+      // Thread the signal so the in-flight RPC actually cancels when a
+      // newer tick starts (or the layer toggles off). Without this, a
+      // slow older refresh can race-write stale data after a newer one
+      // already populated this.liveTankers.
+      const zones = await fetchLiveTankers(undefined, { signal: controller.signal });
+      // Drop the result if this controller was aborted mid-flight or if
+      // a newer load has already replaced us. Without this guard, an
+      // older fetch that completed despite signal.aborted (e.g. the
+      // service returned cached data without checking the signal) would
+      // overwrite the newer one's data.
+      if (controller.signal.aborted || this.liveTankersAbort !== controller) {
+        return;
+      }
       const flat = zones.flatMap((z) => z.tankers).map((t) => ({
         mmsi: t.mmsi,
         lat: t.lat,

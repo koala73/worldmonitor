@@ -78,13 +78,16 @@ function bboxFor(c: ChokepointRegistryEntry): {
   };
 }
 
-async function fetchOne(c: ChokepointRegistryEntry): Promise<SnapshotCandidateReport[]> {
+async function fetchOne(c: ChokepointRegistryEntry, signal?: AbortSignal): Promise<SnapshotCandidateReport[]> {
   const bbox = bboxFor(c);
-  const resp = await client.getVesselSnapshot({
-    ...bbox,
-    includeCandidates: false,
-    includeTankers: true,
-  });
+  const resp = await client.getVesselSnapshot(
+    {
+      ...bbox,
+      includeCandidates: false,
+      includeTankers: true,
+    },
+    { signal },
+  );
   return resp.snapshot?.tankerReports ?? [];
 }
 
@@ -96,12 +99,19 @@ async function fetchOne(c: ChokepointRegistryEntry): Promise<SnapshotCandidateRe
  * @param chokepoints - chokepoints to query. Defaults to the energy-relevant
  *                      subset (Hormuz, Suez, Bab el-Mandeb, Malacca, Panama,
  *                      Turkish Straits) when omitted.
+ * @param options.signal - AbortSignal to cancel in-flight RPC calls when
+ *                      the caller's context tears down (layer toggled off,
+ *                      map destroyed, newer refresh started). Without this,
+ *                      a slow older refresh can race-write stale data after
+ *                      a newer one already populated the layer state.
  */
 export async function fetchLiveTankers(
   chokepoints?: ChokepointRegistryEntry[],
+  options: { signal?: AbortSignal } = {},
 ): Promise<ChokepointTankers[]> {
   const targets = chokepoints ?? getDefaultChokepoints();
   const now = Date.now();
+  const { signal } = options;
 
   const results = await Promise.allSettled(
     targets.map(async (c) => {
@@ -109,8 +119,20 @@ export async function fetchLiveTankers(
       if (slot && now - slot.fetchedAt < CACHE_TTL_MS) {
         return { chokepoint: c, tankers: slot.data, stale: false };
       }
+      // Bail early if already aborted before the per-zone fetch starts —
+      // saves a wasted RPC + cache write when the caller has moved on.
+      if (signal?.aborted) {
+        if (slot) return { chokepoint: c, tankers: slot.data, stale: true };
+        throw new DOMException('aborted before fetch', 'AbortError');
+      }
       try {
-        const tankers = await fetchOne(c);
+        const tankers = await fetchOne(c, signal);
+        // Re-check abort after the fetch resolves: prevents a slow
+        // resolver from clobbering cache after the caller cancelled.
+        if (signal?.aborted) {
+          if (slot) return { chokepoint: c, tankers: slot.data, stale: true };
+          throw new DOMException('aborted after fetch', 'AbortError');
+        }
         cache.set(c.id, { data: tankers, fetchedAt: now });
         return { chokepoint: c, tankers, stale: false };
       } catch (err) {

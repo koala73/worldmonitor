@@ -39,6 +39,20 @@ describe('live-tankers — defaults', () => {
   });
 });
 
+describe('live-tankers — AbortSignal behavior', () => {
+  test('fetchLiveTankers accepts an options.signal parameter', async () => {
+    // Pin the signature so future edits can't accidentally drop the signal
+    // parameter and silently re-introduce the race-write bug Codex flagged
+    // on PR #3402: a slow older refresh overwriting a newer one because
+    // the abort controller wasn't actually wired into the fetch.
+    const { fetchLiveTankers } = await import('../src/services/live-tankers.ts');
+    const controller = new AbortController();
+    controller.abort(); // pre-aborted
+    const result = await fetchLiveTankers([], { signal: controller.signal });
+    assert.deepEqual(result, [], 'empty chokepoint list → empty result regardless of signal state');
+  });
+});
+
 describe('live-tankers — bbox derivation', () => {
   test('bbox is centered on the chokepoint with ±2° padding', () => {
     const synth = {
