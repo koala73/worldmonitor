@@ -334,8 +334,21 @@ Sentry.init({
     // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom).
     // OrbitControls is bundled into the main chunk, so hasFirstParty is true.
     // Match by function name pattern (_handleTouch*Dolly*) or suppress when no first-party frames.
+    //
+    // Symbolicated case: function name regex hits (_handleTouchDolly*, OrbitControls).
+    // Unsymbolicated case (Sentry WORLDMONITOR-P7): single minified frame in the main
+    // bundle (e.g. `Yge`) on iOS/iPadOS Safari. iOS is the only platform where a
+    // touch-driven `t.x` crash is plausible AND the production build can lose source
+    // maps for OrbitControls' touch handlers. Gate on:
+    //   - exactly one main-bundle frame in the trace (no other first-party functions)
+    //   - device.family/os indicates iOS/iPadOS
+    // so a real `t.x` regression elsewhere on desktop still surfaces.
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
       if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
+      const osName = ((event.contexts as any)?.os?.name as string) ?? '';
+      const isTouchOs = /^iOS|iPadOS$/.test(osName);
+      const mainBundleFrames = nonInfraFrames.filter(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''));
+      if (isTouchOs && mainBundleFrames.length === 1 && nonInfraFrames.length === mainBundleFrames.length) return null;
     }
     // Suppress Three.js OrbitControls pointer-capture race: pointerdown handler calls
     // setPointerCapture but the browser has already released the pointer (focus change,

@@ -719,6 +719,17 @@ export class DeckGLMap {
     try {
       const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
       if (existing) {
+        // Guard against the source existing in the style registry while
+        // its underlying texture is mid-load or being torn down. Calling
+        // setTiles in that window triggers a render-frame crash inside
+        // MapLibre at fa() / texture.bind() (Sentry WORLDMONITOR-P6:
+        // Firefox 149, hit on the 5-minute radar refresh interval).
+        // isSourceLoaded(id) is MapLibre's official "tiles fetched +
+        // applied to GL state" check; defer to the next idle if false.
+        if (!this.maplibreMap.isSourceLoaded('weather-radar')) {
+          this.maplibreMap.once('idle', () => this.applyRadarLayer());
+          return;
+        }
         existing.setTiles([this.radarTileUrl]);
         return;
       }
