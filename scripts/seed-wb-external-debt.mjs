@@ -3,13 +3,18 @@
 // WB IDS — short-term external debt as % of GNI
 // Canonical key: economic:wb-external-debt:v1
 //
-// Composition: short-term external debt as % of GNI is computed from two
-// World Bank IDS series (matching plan 2026-04-25-004 §Component 1):
+// Composition: divide absolute USD values directly. The previous
+// version used `DT.DOD.DSTC.IR.ZS` × `DT.DOD.DECT.GN.ZS` / 100, but
+// `DT.DOD.DSTC.IR.ZS` is "% of total RESERVES" (NOT "% of total
+// external debt"), so the composed result was mathematically wrong —
+// AR / TR scored above 100% on the intermediate ratio because their
+// short-term debt exceeds reserves. Caught by activation-time Redis
+// audit (PR #3407 follow-up).
 //
-//   DT.DOD.DSTC.IR.ZS  — Short-term external debt (% of total external debt)
-//   DT.DOD.DECT.GN.ZS  — Total external debt stocks (% of GNI)
+//   DT.DOD.DSTC.CD     — Short-term external debt stocks (current US$)
+//   NY.GNP.MKTP.CD     — GNI (current US$)
 //
-//   shortTermDebtPctGni = (DT.DOD.DSTC.IR.ZS / 100) * DT.DOD.DECT.GN.ZS
+//   shortTermDebtPctGni = (DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) * 100
 //
 // Coverage: ~125 LMICs (low- and middle-income countries). HIC are not
 // published by WB IDS — those countries fall through to the BIS LBS
@@ -30,8 +35,8 @@ const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'economic:wb-external-debt:v1';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days; WB IDS publishes annually
 
-const SHORT_TERM_PCT_OF_TOTAL_INDICATOR = 'DT.DOD.DSTC.IR.ZS';
-const TOTAL_DEBT_PCT_GNI_INDICATOR = 'DT.DOD.DECT.GN.ZS';
+const SHORT_TERM_DEBT_USD_INDICATOR = 'DT.DOD.DSTC.CD';
+const GNI_USD_INDICATOR = 'NY.GNP.MKTP.CD';
 
 async function fetchWbIndicator(indicator) {
   const out = {};
@@ -78,54 +83,56 @@ async function fetchWbIndicator(indicator) {
   return out;
 }
 
-export function combineExternalDebt({ shortTermPctOfTotal, totalDebtPctGni }) {
+export function combineExternalDebt({ shortTermDebtUsd, gniUsd }) {
   const countries = {};
   const allCodes = new Set([
-    ...Object.keys(shortTermPctOfTotal),
-    ...Object.keys(totalDebtPctGni),
+    ...Object.keys(shortTermDebtUsd),
+    ...Object.keys(gniUsd),
   ]);
 
   for (const iso2 of allCodes) {
-    const stPct = shortTermPctOfTotal[iso2];
-    const totalPct = totalDebtPctGni[iso2];
-    if (!stPct || !totalPct) continue;
-    if (stPct.value < 0 || totalPct.value < 0) continue;
+    const debt = shortTermDebtUsd[iso2];
+    const gni = gniUsd[iso2];
+    // Both indicators must be present; GNI must be positive (division).
+    if (!debt || !gni) continue;
+    if (debt.value < 0 || gni.value <= 0) continue;
 
-    // shortTermDebt as % of GNI = (shortTermShare / 100) * totalDebtPctOfGni.
-    const value = Math.round(((stPct.value / 100) * totalPct.value) * 100) / 100;
+    // shortTermDebt as % of GNI = (DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) × 100.
+    // Both indicators are absolute USD values; direct ratio.
+    const value = Math.round((debt.value / gni.value) * 10_000) / 100;
     // Use min(year) as the conservative "we have both" anchor. WB IDS
     // publishes the two source indicators with different lag patterns;
     // mixing different vintages is materially correct for resilience
     // scoring (the older year's data is the binding constraint), but
     // surface yearMismatch so the dashboard / scorer can flag countries
     // with cross-year composition for ops triage.
-    const conservativeYear = Math.min(stPct.year, totalPct.year);
-    const yearMismatch = stPct.year !== totalPct.year;
+    const conservativeYear = Math.min(debt.year, gni.year);
+    const yearMismatch = debt.year !== gni.year;
     countries[iso2] = {
       value,
       year: conservativeYear,
       yearMismatch,
-      // Provenance: which underlying values + per-indicator years.
-      shortTermPctOfTotalDebt: Math.round(stPct.value * 100) / 100,
-      totalDebtPctOfGni: Math.round(totalPct.value * 100) / 100,
-      shortTermPctOfTotalDebtYear: stPct.year,
-      totalDebtPctOfGniYear: totalPct.year,
+      // Provenance: absolute USD values + per-indicator years.
+      shortTermDebtUsd: debt.value,
+      gniUsd: gni.value,
+      shortTermDebtUsdYear: debt.year,
+      gniUsdYear: gni.year,
     };
   }
   return countries;
 }
 
 async function fetchWbExternalDebt() {
-  const [shortTermPctOfTotal, totalDebtPctGni] = await Promise.all([
-    fetchWbIndicator(SHORT_TERM_PCT_OF_TOTAL_INDICATOR),
-    fetchWbIndicator(TOTAL_DEBT_PCT_GNI_INDICATOR),
+  const [shortTermDebtUsd, gniUsd] = await Promise.all([
+    fetchWbIndicator(SHORT_TERM_DEBT_USD_INDICATOR),
+    fetchWbIndicator(GNI_USD_INDICATOR),
   ]);
 
   return {
-    countries: combineExternalDebt({ shortTermPctOfTotal, totalDebtPctGni }),
+    countries: combineExternalDebt({ shortTermDebtUsd, gniUsd }),
     sources: [
-      `https://data.worldbank.org/indicator/${SHORT_TERM_PCT_OF_TOTAL_INDICATOR}`,
-      `https://data.worldbank.org/indicator/${TOTAL_DEBT_PCT_GNI_INDICATOR}`,
+      `https://data.worldbank.org/indicator/${SHORT_TERM_DEBT_USD_INDICATOR}`,
+      `https://data.worldbank.org/indicator/${GNI_USD_INDICATOR}`,
     ],
     seededAt: new Date().toISOString(),
   };

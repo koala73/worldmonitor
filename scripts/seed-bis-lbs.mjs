@@ -1,47 +1,52 @@
 #!/usr/bin/env node
 //
-// BIS Locational Banking Statistics — by-parent cross-border claims
+// BIS Consolidated Banking Statistics — by-parent foreign claims
 // Canonical key: economic:bis-lbs:v1
 //
-// SDMX dataflow: WS_LBS_D_PUB
-// Endpoint:      https://stats.bis.org/api/v1/data/WS_LBS_D_PUB/<KEY>
+// CORRECTION (PR follow-up to #3407, 2026-04-25): the original draft used
+// `WS_LBS_D_PUB` (Locational Banking Statistics) on the assumption it
+// publishes a per-counterparty breakdown. It does not — `WS_LBS_D_PUB`
+// only exposes counterparty as the aggregate `5J`. The plan misread the
+// public BIS API. Migrated to `WS_CBS_PUB` (Consolidated Banking
+// Statistics), which IS the dataflow that publishes by-parent foreign
+// claims with a counterparty-country breakdown.
 //
-// Per plan 2026-04-25-004 §Component 2 (Codex R2 P1 + R4 P1 corrections):
+// SDMX dataflow: WS_CBS_PUB
+// Endpoint:      https://stats.bis.org/api/v1/data/WS_CBS_PUB/<KEY>
 //
-//   12-dim SDMX key shape:
-//     Q.S.C.A.TO1.A.<L_PARENT_CTY>.A.5A.A.<L_CP_COUNTRY>.N
+// CBS has 11 dimensions (in this order, discovered via probe of
+// `WS_CBS_PUB/all?lastNObservations=1` against the live BIS API):
 //
-//   Frequency       Q  (quarterly)
-//   Measure         S  (stocks at end-period)
-//   Balance sheet   C  (claims)
-//   Instruments     A  (all)
-//   Currency denom  TO1 (all currencies)
-//   Currency type   A  (all)
-//   PARENT country  varied per query — enumerated ISO2 (Codex R4 P1 #2:
-//                   `4F` is NOT valid; use individual parent ISO2 codes)
-//   Reporting type  A  (all)
-//   REP country     5A (all reporters — aggregate, NOT varied)
-//   Counterparty    A  (all sectors)
-//   Counterparty    empty wildcard — pull all counterparties per query
-//   Position type   N  (cross-border position type)
+//   1. FREQ           — Q (quarterly)
+//   2. L_MEASURE      — S (stocks at end-period)
+//   3. L_REP_CTY      — parent country (the bank's parent / where the
+//                        consolidated bank group is headquartered).
+//                        VARIED across our enumerated 16 Western parents.
+//   4. CBS_BANK_TYPE  — 4B (consolidated banks)
+//   5. CBS_BASIS      — F (foreign claims, ultimate-risk basis — the
+//                        view that captures sovereign-exposure semantics)
+//   6. L_POSITION     — C (claims)
+//   7. L_INSTR        — A (all instruments)
+//   8. REM_MATURITY   — A (all maturities)
+//   9. CURR_TYPE_BOOK — TO1 (all currencies)
+//  10. L_CP_SECTOR    — A (all counterparty sectors)
+//  11. L_CP_COUNTRY   — counterparty country. Empty position returns
+//                        all counterparties as separate series (verified
+//                        by probe — empty in CBS does NOT collapse to
+//                        an aggregate the way it does in LBS).
 //
-// ISO mapping (Codex R4 P1 #2): BIS LBS L_CP_COUNTRY uses CL_BIS_IF_REF_AREA
-// which follows ISO 3166-1 alpha-2 for country members. ISO2 codes pass
-// directly to the SDMX key — no M49 mapping needed. BIS-defined aggregate
-// codes (5J all parents, 5A all reporters, 5M emerging markets, 1C
-// international organisations, etc.) are handled as explicit allow-listed
-// exceptions in the country-iteration loop below.
+// SDMX key shape:  Q.S.<PARENT>.4B.F.C.A.A.TO1.A.
 //
-// Output schema:
+// Output schema (unchanged from the original LBS draft — same downstream
+// scorer contract; only the source dataflow + dimension shape changed):
 //   { countries: { [iso2]: {
-//       totalXborderPctGdp: number,    // Component 2 input
-//       parentCount: number,            // Component 4 input (count of parents
-//                                       //  with claims > 1% of GDP)
-//       parents: { [parentIso2]: number }, // per-parent claims (USD millions)
-//                                          // for downstream provenance
+//       totalXborderPctGdp: number,     // Component 2 input
+//       parentCount: number,             // Component 4 input
+//       parents: { [parentIso2]: number },
 //     }},
-//     gdpYear: number,
-//     bisQuarter: string,    // e.g. "2025Q1"
+//     bisQuarter: string,
+//     successfulParents: number,
+//     droppedForMissingGdp: string[],
 //     sources: string[],
 //     seededAt: string }
 
@@ -52,26 +57,29 @@ loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'economic:bis-lbs:v1';
-const CACHE_TTL = 100 * 24 * 3600; // 100 days; BIS LBS publishes quarterly
+const CACHE_TTL = 100 * 24 * 3600; // 100 days; CBS publishes quarterly
 const WB_BASE = 'https://api.worldbank.org/v2';
-const BIS_BASE = 'https://stats.bis.org/api/v1/data/WS_LBS_D_PUB';
+const BIS_BASE = 'https://stats.bis.org/api/v1/data/WS_CBS_PUB';
 
-// Major Western parent countries enumerated per Codex R4 P1 #2.
-// Sum across these gives the "exposure to actions by US/UK/major-EU/etc.
-// banks" signal. Together they account for >85% of BIS LBS counterparty
-// claims globally per the BIS 2024 outline.
+// Major Western parent countries enumerated per Codex R4 P1 #2 (the
+// principle survives the LBS → CBS dataflow swap; CBS uses ISO 3166-1
+// alpha-2 codes via the same `CL_BIS_IF_REF_AREA` codelist as LBS).
 const PARENT_COUNTRIES = [
   'US', 'GB', 'DE', 'FR', 'IT', 'NL', 'ES', 'BE', 'AT', 'IE', 'LU',
   'CH', 'JP', 'CA', 'AU', 'SG',
 ];
 
 // BIS-defined aggregate codes — skip during per-counterparty iteration.
-// These are NOT real countries; including them would inflate claim sums
-// and corrupt the % of GDP ratio.
+// CBS uses an even larger aggregate set than LBS (the 252-value codelist
+// includes UN regional groupings + offshore-centre groups + financial-
+// centre composites). Anything that isn't a 2-letter ISO2 country code
+// is dropped at the iteration boundary; this set is informational only.
 const BIS_AGGREGATE_CODES = new Set([
-  '5J', '5A', '5M', '1C', '4F', '4U', '5C', // common aggregates
-  'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', // grouped aggregates
-  '5R', '5T', '5W', '5Z',                          // EM/AE/world groupings
+  '5J', '5A', '5M', '5C', '5R', '5T', '5W', '5Z',
+  '1C', '1E', '1W',
+  '2Z', '3P',
+  '4F', '4U',
+  'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9',
 ]);
 
 async function fetchSdmxJson(url) {
@@ -96,15 +104,9 @@ async function fetchSdmxJson(url) {
 // Parse SDMX-JSON Data Message: extract latest-period claim per
 // counterparty country for a given parent. Returns { [iso2]: claimUsdMillions }.
 //
-// SDMX-JSON shape (simplified):
-//   data.dataSets[0].series = { "<dim-coord-string>": { observations: { "<period-idx>": [value, ...] } } }
-//   data.structure.dimensions.series = [ { id, values: [...] }, ... ]
-//   data.structure.dimensions.observation = [ { id, values: [...] } ]   // typically TIME_PERIOD
-//
-// We need to:
-//   1. Find which series-dimension index is L_CP_COUNTRY (counterparty country)
-//   2. For each series, decode that dimension index to the counterparty ISO2
-//   3. Pick the latest observation (last index in observations dict)
+// CBS-specific note: counterparty values include both ISO2 country
+// codes AND BIS aggregate codes. Filter to ISO2-shaped 2-letter codes
+// not in the aggregate allow-list.
 export function extractClaimsByCounterparty(sdmxJson) {
   const ds = sdmxJson?.data?.dataSets?.[0] ?? sdmxJson?.dataSets?.[0];
   const structure = sdmxJson?.data?.structure ?? sdmxJson?.structure;
@@ -115,7 +117,7 @@ export function extractClaimsByCounterparty(sdmxJson) {
   if (cpIdx < 0) {
     throw new Error('SDMX response missing L_CP_COUNTRY dimension');
   }
-  const cpValues = seriesDims[cpIdx].values; // [{ id, name }, ...]
+  const cpValues = seriesDims[cpIdx].values;
 
   const obsDim = (structure.dimensions.observation ?? [])[0];
   const obsValues = obsDim?.values ?? [];
@@ -129,10 +131,11 @@ export function extractClaimsByCounterparty(sdmxJson) {
     const cpEntry = cpValues[cpRefIdx];
     if (!cpEntry) continue;
     const cpCode = String(cpEntry.id ?? '').trim().toUpperCase();
-    if (!cpCode || cpCode.length !== 2 || BIS_AGGREGATE_CODES.has(cpCode)) continue;
+    // Only ISO2-shaped country codes pass; aggregate / regional codes
+    // (3P, 1C, 5J, etc.) and any non-2-letter values are dropped.
+    if (!cpCode || cpCode.length !== 2 || !/^[A-Z]{2}$/.test(cpCode) || BIS_AGGREGATE_CODES.has(cpCode)) continue;
 
     const obs = series.observations ?? {};
-    // Latest period: highest numeric obs index (SDMX-JSON convention).
     let latestIdx = -1;
     let latestVal = null;
     for (const [idxStr, valArr] of Object.entries(obs)) {
@@ -143,12 +146,9 @@ export function extractClaimsByCounterparty(sdmxJson) {
       }
     }
     if (!Number.isFinite(latestVal) || latestVal < 0) continue;
-    // Upper-bound sanity guard: BIS reports claims in USD millions. The
-    // largest realistic single-bilateral claim is ~$2T = 2,000,000 millions.
-    // 1e8 millions = $100T = >half of global GDP — far above any plausible
-    // bilateral exposure. A value above this threshold indicates a parser
-    // or upstream-corruption fault; reject silently rather than corrupt
-    // the % of GDP ratio downstream.
+    // Upper-bound sanity guard: BIS reports claims in USD millions.
+    // 1e8 millions = $100T = >half of global GDP. A value above this
+    // indicates parser / upstream-corruption fault; reject silently.
     if (latestVal > 1e8) continue;
 
     byCounterparty[cpCode] = latestVal;
@@ -159,42 +159,14 @@ export function extractClaimsByCounterparty(sdmxJson) {
   return { byCounterparty, latestPeriod };
 }
 
-async function fetchBisLbsForParent(parentIso2) {
-  const key = `Q.S.C.A.TO1.A.${parentIso2}.A.5A.A..N`;
-  // `?lastNObservations=4` keeps payload small; we only need the most
-  // recent quarter (older quarters used for cross-quarter reconciliation
-  // if the latest is missing).
+async function fetchCbsForParent(parentIso2) {
+  // CBS key: Q.S.<PARENT>.4B.F.C.A.A.TO1.A. (empty L_CP_COUNTRY → all
+  // counterparties; verified by probe to expand correctly in CBS,
+  // unlike LBS where it collapses to the 5J aggregate).
+  const key = `Q.S.${parentIso2}.4B.F.C.A.A.TO1.A.`;
   const url = `${BIS_BASE}/${key}?lastNObservations=4`;
   const json = await fetchSdmxJson(url);
   return extractClaimsByCounterparty(json);
-}
-
-// Bounded-concurrency runner. Sequential 16 parents × 60s timeout = 960s
-// worst-case, which exceeds the bundle's 600s timeoutMs. Parallel-4
-// caps wall time at ~4 × 60s = 240s on the slow path while staying
-// polite to BIS API (4 in-flight is well under any reasonable rate
-// limit). The runner returns the per-parent result map AND an errors
-// array so the caller can gate validation on the success-count.
-async function runParentFetchesConcurrent(parents, concurrency = 4) {
-  const results = {};
-  const errors = [];
-  let cursor = 0;
-  async function worker() {
-    while (true) {
-      const idx = cursor++;
-      if (idx >= parents.length) return;
-      const parent = parents[idx];
-      try {
-        results[parent] = await fetchBisLbsForParent(parent);
-      } catch (err) {
-        errors.push(`parent=${parent}: ${err.message}`);
-        results[parent] = { byCounterparty: {}, latestPeriod: null };
-      }
-    }
-  }
-  const workers = Array.from({ length: Math.min(concurrency, parents.length) }, () => worker());
-  await Promise.all(workers);
-  return { results, errors };
 }
 
 async function fetchGdpByCountry() {
@@ -235,7 +207,7 @@ async function fetchGdpByCountry() {
   return out;
 }
 
-export function combineLbsByCounterparty(perParent, gdpByCountry) {
+export function combineCbsByCounterparty(perParent, gdpByCountry) {
   // Reshape: counterparty → parent → claim.
   const claimsByCpByParent = {};
   for (const [parent, { byCounterparty }] of Object.entries(perParent)) {
@@ -249,7 +221,7 @@ export function combineLbsByCounterparty(perParent, gdpByCountry) {
   for (const [cp, parents] of Object.entries(claimsByCpByParent)) {
     const gdp = gdpByCountry[cp];
     if (!gdp) continue;
-    // BIS LBS reports claims in USD millions; WB GDP in USD. Convert
+    // CBS reports claims in USD millions; WB GDP in USD. Convert
     // millions → USD before computing the ratio.
     const claimsUsd = Object.values(parents).reduce((sum, v) => sum + v * 1e6, 0);
     const totalXborderPctGdp = Math.round((claimsUsd / gdp.value) * 10_000) / 100;
@@ -267,13 +239,34 @@ export function combineLbsByCounterparty(perParent, gdpByCountry) {
   return countries;
 }
 
+// Bounded-concurrency runner. Sequential 16 × 60s would exceed the
+// bundle's 600s timeout. Parallel-4 caps wall time at ~240s on the
+// slow path while staying polite to BIS API.
+async function runParentFetchesConcurrent(parents, concurrency = 4) {
+  const results = {};
+  const errors = [];
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= parents.length) return;
+      const parent = parents[idx];
+      try {
+        results[parent] = await fetchCbsForParent(parent);
+      } catch (err) {
+        errors.push(`parent=${parent}: ${err.message}`);
+        results[parent] = { byCounterparty: {}, latestPeriod: null };
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, parents.length) }, () => worker());
+  await Promise.all(workers);
+  return { results, errors };
+}
+
 // Minimum successful parents required for the seed payload to be
 // considered structurally valid. Below this threshold, the surviving
-// parents would skew Component 4 (financial-center redundancy) low for
-// every counterparty country until the next successful run — a covertly-
-// degraded payload that passes the >100-counterparty floor. Reject
-// instead so seed-meta is NOT refreshed and the previous valid payload
-// stays alive under cache TTL.
+// parents would skew Component 4 (financial-center redundancy) low.
 const MIN_SUCCESSFUL_PARENTS = 12;
 
 export async function fetchBisLbs() {
@@ -281,20 +274,19 @@ export async function fetchBisLbs() {
   const successfulParents = PARENT_COUNTRIES.length - errors.length;
   if (successfulParents < MIN_SUCCESSFUL_PARENTS) {
     throw new Error(
-      `BIS LBS: only ${successfulParents}/${PARENT_COUNTRIES.length} parents succeeded ` +
+      `BIS CBS: only ${successfulParents}/${PARENT_COUNTRIES.length} parents succeeded ` +
         `(min ${MIN_SUCCESSFUL_PARENTS} required to avoid skewing parentCount). Errors: ${errors.join('; ')}`,
     );
   }
   if (errors.length > 0) {
-    console.warn(`[bis-lbs] ${errors.length}/${PARENT_COUNTRIES.length} parent fetches failed (proceeding with ${successfulParents} successful): ${errors.join('; ')}`);
+    console.warn(`[bis-cbs] ${errors.length}/${PARENT_COUNTRIES.length} parent fetches failed (proceeding with ${successfulParents} successful): ${errors.join('; ')}`);
   }
 
   const gdpByCountry = await fetchGdpByCountry();
-  const countries = combineLbsByCounterparty(perParent, gdpByCountry);
+  const countries = combineCbsByCounterparty(perParent, gdpByCountry);
 
-  // Provenance: counterparties seen in BIS LBS but dropped because no
-  // GDP record was available. Surfaces silent coverage gaps for ops
-  // triage without polluting the main `countries` map.
+  // Provenance: counterparties seen in CBS but dropped because no
+  // GDP record was available.
   const droppedForMissingGdp = [];
   const seenCounterparties = new Set();
   for (const { byCounterparty } of Object.values(perParent)) {
@@ -316,7 +308,7 @@ export async function fetchBisLbs() {
     droppedForMissingGdp,
     successfulParents,
     sources: [
-      'https://stats.bis.org/api/v1/data/WS_LBS_D_PUB',
+      'https://stats.bis.org/api/v1/data/WS_CBS_PUB',
       'https://www.bis.org/statistics/about_banking_stats.htm',
       'https://www.bis.org/terms_conditions.htm',
     ],
@@ -324,10 +316,9 @@ export async function fetchBisLbs() {
   };
 }
 
-// BIS LBS counterparty coverage spans ~200+ jurisdictions. Floor of 150
-// is conservative — at this threshold, a fresh seed represents the
-// vast majority of manifest countries. Below 150 indicates a serious
-// upstream regression that should NOT silently refresh seed-meta.
+// CBS counterparty coverage spans ~150-200 jurisdictions per parent.
+// Floor of 150 is conservative — at this threshold, a fresh seed
+// represents the vast majority of manifest countries.
 export function validate(data) {
   return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 150;
 }
@@ -337,17 +328,19 @@ export function declareRecords(data) {
 }
 
 export { CANONICAL_KEY, CACHE_TTL, PARENT_COUNTRIES };
+// Backwards-compat alias for tests that imported the original LBS name.
+export { combineCbsByCounterparty as combineLbsByCounterparty };
 
 if (process.argv[1]?.endsWith('seed-bis-lbs.mjs')) {
   runSeed('economic', 'bis-lbs', CANONICAL_KEY, fetchBisLbs, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: `bis-lbs-${new Date().getFullYear()}`,
+    sourceVersion: `bis-cbs-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
     emptyDataIsFailure: true,
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 14400, // 10d, > 1 BIS LBS publish lag
+    maxStaleMin: 14400,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

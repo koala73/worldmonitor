@@ -75,19 +75,22 @@ describe('combineLbsByCounterparty — sum across parents + GDP normalization', 
 });
 
 describe('extractClaimsByCounterparty — SDMX-JSON shape parsing', () => {
-  // Minimal SDMX-JSON fixture matching BIS WS_LBS_D_PUB response shape.
-  // The dimensions array order and the colon-separated coord-string format
-  // match the SDMX-JSON 1.0.0 spec.
+  // Minimal SDMX-JSON fixture matching BIS WS_CBS_PUB response shape.
+  // CBS has 11 dimensions (LBS had 12 — different dataflow). The
+  // dimension order was discovered via probe of the live BIS API:
+  //   FREQ, L_MEASURE, L_REP_CTY (parent), CBS_BANK_TYPE, CBS_BASIS,
+  //   L_POSITION, L_INSTR, REM_MATURITY, CURR_TYPE_BOOK, L_CP_SECTOR,
+  //   L_CP_COUNTRY (counterparty)
   function buildFixture(parentClaim) {
     return {
       data: {
         dataSets: [
           {
             series: {
-              // coord = "0:0:0:0:0:0:0:0:0:0:cpIdx:0" — only L_CP_COUNTRY varies
-              '0:0:0:0:0:0:0:0:0:0:0:0': { observations: { '0': [parentClaim.BR] } },
-              '0:0:0:0:0:0:0:0:0:0:1:0': { observations: { '0': [parentClaim.MX] } },
-              '0:0:0:0:0:0:0:0:0:0:2:0': { observations: { '0': [parentClaim['5J']] } }, // BIS-aggregate, must be skipped
+              // coord = "0:0:0:0:0:0:0:0:0:0:cpIdx" — only L_CP_COUNTRY varies (last dim)
+              '0:0:0:0:0:0:0:0:0:0:0': { observations: { '0': [parentClaim.BR] } },
+              '0:0:0:0:0:0:0:0:0:0:1': { observations: { '0': [parentClaim.MX] } },
+              '0:0:0:0:0:0:0:0:0:0:2': { observations: { '0': [parentClaim['5J']] } }, // BIS-aggregate, must be skipped
             },
           },
         ],
@@ -95,17 +98,16 @@ describe('extractClaimsByCounterparty — SDMX-JSON shape parsing', () => {
           dimensions: {
             series: [
               { id: 'FREQ', values: [{ id: 'Q' }] },
-              { id: 'MEASURE', values: [{ id: 'S' }] },
+              { id: 'L_MEASURE', values: [{ id: 'S' }] },
+              { id: 'L_REP_CTY', values: [{ id: 'US' }] },         // parent country (CBS-specific)
+              { id: 'CBS_BANK_TYPE', values: [{ id: '4B' }] },
+              { id: 'CBS_BASIS', values: [{ id: 'F' }] },           // foreign claims (ultimate-risk)
               { id: 'L_POSITION', values: [{ id: 'C' }] },
               { id: 'L_INSTR', values: [{ id: 'A' }] },
-              { id: 'L_DENOM', values: [{ id: 'TO1' }] },
-              { id: 'L_CURR_TYPE', values: [{ id: 'A' }] },
-              { id: 'L_PARENT_CTY', values: [{ id: 'US' }] },
-              { id: 'L_REP_BANK_TYPE', values: [{ id: 'A' }] },
-              { id: 'L_REP_CTY', values: [{ id: '5A' }] },
+              { id: 'REM_MATURITY', values: [{ id: 'A' }] },
+              { id: 'CURR_TYPE_BOOK', values: [{ id: 'TO1' }] },
               { id: 'L_CP_SECTOR', values: [{ id: 'A' }] },
               { id: 'L_CP_COUNTRY', values: [{ id: 'BR' }, { id: 'MX' }, { id: '5J' }] },
-              { id: 'L_POS_TYPE', values: [{ id: 'N' }] },
             ],
             observation: [{ id: 'TIME_PERIOD', values: [{ id: '2024-Q4' }] }],
           },
@@ -138,8 +140,8 @@ describe('extractClaimsByCounterparty — SDMX-JSON shape parsing', () => {
           dataSets: [
             {
               series: {
-                '0:0:0:0:0:0:0:0:0:0:0:0': { observations: { '0': [corruptVal] } },
-                '0:0:0:0:0:0:0:0:0:0:1:0': { observations: { '0': [50_000] } }, // legitimate
+                '0:0:0:0:0:0:0:0:0:0:0': { observations: { '0': [corruptVal] } },
+                '0:0:0:0:0:0:0:0:0:0:1': { observations: { '0': [50_000] } }, // legitimate
               },
             },
           ],
@@ -147,17 +149,16 @@ describe('extractClaimsByCounterparty — SDMX-JSON shape parsing', () => {
             dimensions: {
               series: [
                 { id: 'FREQ', values: [{ id: 'Q' }] },
-                { id: 'MEASURE', values: [{ id: 'S' }] },
+                { id: 'L_MEASURE', values: [{ id: 'S' }] },
+                { id: 'L_REP_CTY', values: [{ id: 'US' }] },
+                { id: 'CBS_BANK_TYPE', values: [{ id: '4B' }] },
+                { id: 'CBS_BASIS', values: [{ id: 'F' }] },
                 { id: 'L_POSITION', values: [{ id: 'C' }] },
                 { id: 'L_INSTR', values: [{ id: 'A' }] },
-                { id: 'L_DENOM', values: [{ id: 'TO1' }] },
-                { id: 'L_CURR_TYPE', values: [{ id: 'A' }] },
-                { id: 'L_PARENT_CTY', values: [{ id: 'US' }] },
-                { id: 'L_REP_BANK_TYPE', values: [{ id: 'A' }] },
-                { id: 'L_REP_CTY', values: [{ id: '5A' }] },
+                { id: 'REM_MATURITY', values: [{ id: 'A' }] },
+                { id: 'CURR_TYPE_BOOK', values: [{ id: 'TO1' }] },
                 { id: 'L_CP_SECTOR', values: [{ id: 'A' }] },
                 { id: 'L_CP_COUNTRY', values: [{ id: 'BR' }, { id: 'MX' }] },
-                { id: 'L_POS_TYPE', values: [{ id: 'N' }] },
               ],
               observation: [{ id: 'TIME_PERIOD', values: [{ id: '2024-Q4' }] }],
             },

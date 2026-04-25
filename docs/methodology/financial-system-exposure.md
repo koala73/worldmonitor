@@ -23,7 +23,7 @@ financialSystemExposure = weightedBlend([
 ])
 ```
 
-Components 2 + 4 share the BIS LBS payload (`economic:bis-lbs:v1`); no separate seeder for redundancy.
+Components 2 + 4 share the BIS CBS payload (`economic:bis-lbs:v1` — Redis key name retained for historical continuity even though the upstream dataflow is now CBS, not LBS); no separate seeder for redundancy.
 
 ### Component 1: `short_term_external_debt_pct_gni` (weight 0.35)
 
@@ -31,12 +31,14 @@ Components 2 + 4 share the BIS LBS payload (`economic:bis-lbs:v1`); no separate 
 
 **Composition**:
 ```
-shortTermDebtPctGni = (DT.DOD.DSTC.IR.ZS / 100) × DT.DOD.DECT.GN.ZS
+shortTermDebtPctGni = (DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) × 100
 ```
 Where:
 
-- `DT.DOD.DSTC.IR.ZS` — Short-term external debt (% of total external debt)
-- `DT.DOD.DECT.GN.ZS` — Total external debt stocks (% of GNI)
+- `DT.DOD.DSTC.CD` — Short-term external debt stocks (current US$)
+- `NY.GNP.MKTP.CD` — GNI (current US$)
+
+**Correction note (post-PR #3407 activation audit, 2026-04-25)**: the original draft used `DT.DOD.DSTC.IR.ZS` × `DT.DOD.DECT.GN.ZS` / 100, but `DT.DOD.DSTC.IR.ZS` is "% of total **reserves**" (NOT "% of total external debt"), so the composed result was mathematically meaningless — Argentina, Turkey, and other countries with thin reserves but moderate debt scored above 100% on the intermediate ratio. Caught by activation-time Redis audit. The fix: use absolute USD values for both numerator and denominator and divide directly.
 
 **Why GNI, not GDP**: WB IDS publishes external-debt ratios against GNI by convention. Cross-conversion to GDP requires the `NY.GDP.MKTP.CD` × `NY.GNP.MKTP.CD` ratio, which is generally close to 1 but not identical. Stay with GNI to avoid introducing a conversion error for a signal that doesn't have a high-precision USD component anyway.
 
@@ -44,7 +46,7 @@ Where:
 
 **Score shape**: `normalizeLowerBetter(value, 0, 15)` — IMF Article IV external-financing-vulnerability threshold is canonically 15% of GNI.
 
-**Coverage**: ~125 LMICs (low- and middle-income countries). HIC fall through to Component 2 (BIS LBS) which has ~200-country coverage.
+**Coverage**: ~125-190 LMICs (low- and middle-income countries) depending on the year. HIC fall through to Component 2 (BIS CBS) which has ~200-country coverage.
 
 **Cadence**: monthly cron (WB IDS publishes annually; the cadence is for refresh-once-they-publish detection).
 
@@ -52,25 +54,36 @@ Where:
 
 ### Component 2: `bis_lbs_xborder_us_eu_uk_pct_gdp` (weight 0.30)
 
-**Source**: BIS Locational Banking Statistics by-parent view (`WS_LBS_D_PUB`).
+**Source**: BIS Consolidated Banking Statistics by-parent view (`WS_CBS_PUB`).
 
-**SDMX key shape** (12 dimensions, per Codex R2 P1 + R4 P1 corrections):
+> **Correction (post-PR #3407 activation audit, 2026-04-25)**: the original draft used `WS_LBS_D_PUB` (Locational Banking Statistics) on the assumption it publishes a per-counterparty breakdown. It does not — `WS_LBS_D_PUB` only exposes counterparty as the aggregate `5J`. CBS (`WS_CBS_PUB`) is the actual dataflow that publishes by-parent foreign claims with a counterparty-country breakdown. The Redis key (`economic:bis-lbs:v1`), seeder filename, and Component-2 contract semantics are unchanged; only the upstream dataflow + dimension shape changed.
+
+**SDMX key shape** (11 dimensions, dimension order discovered via probe of the live BIS API):
 ```
-Q.S.C.A.TO1.A.<L_PARENT_CTY>.A.5A.A.<L_CP_COUNTRY>.N
+Q.S.<L_REP_CTY>.4B.F.C.A.A.TO1.A.<L_CP_COUNTRY>
 ```
 
-The resilience question ("how exposed is country X's financial system to actions by banks whose parent is in US/UK/EU/etc.?") maps to the BIS LBS **by-parent** view, not the by-reporting-country view. The two are different SDMX dimensions:
+| Position | Dimension | Value |
+|---|---|---|
+| 1 | FREQ | `Q` (quarterly) |
+| 2 | L_MEASURE | `S` (stocks at end-period) |
+| 3 | **L_REP_CTY** | parent country — **VARIED** across the 16 enumerated Western parents |
+| 4 | CBS_BANK_TYPE | `4B` (consolidated banks) |
+| 5 | CBS_BASIS | `F` (foreign claims, ultimate-risk basis) |
+| 6 | L_POSITION | `C` (claims) |
+| 7 | L_INSTR | `A` (all instruments) |
+| 8 | REM_MATURITY | `A` (all maturities) |
+| 9 | CURR_TYPE_BOOK | `TO1` (all currencies) |
+| 10 | L_CP_SECTOR | `A` (all counterparty sectors) |
+| 11 | **L_CP_COUNTRY** | counterparty country — **EMPTY** (returns all counterparties as separate series; verified by probe to expand correctly in CBS, unlike LBS where it collapses to the `5J` aggregate) |
 
-- `L_PARENT_CTY` = parent country (where the bank group is headquartered)
-- `L_REP_CTY` = reporting country (where the lending office is resident)
+The resilience question ("how exposed is country X's financial system to actions by banks whose parent is in US/UK/EU/etc.?") maps to CBS's by-parent foreign-claims view (`CBS_BASIS=F`). CBS uses `L_REP_CTY` to mean "country of the consolidated banking parent" — which is what we vary. The earlier LBS draft confusingly conflated LBS's `L_PARENT_CTY` (a separate dimension that exists but is only published in aggregate) with CBS's parent semantics.
 
-A US bank's London branch booking a claim on Brazil shows as `L_PARENT_CTY=US, L_REP_CTY=GB`. The by-parent view rolls these up to the parent's total claims regardless of the booking office, which is the right granularity for systemic exposure analysis.
+**Parent enumeration** (per Codex R4 P1 #2 — principle survives the dataflow swap): `US`, `GB`, `DE`, `FR`, `IT`, `NL`, `ES`, `BE`, `AT`, `IE`, `LU`, `CH`, `JP`, `CA`, `AU`, `SG`. CBS uses the same `CL_BIS_IF_REF_AREA` codelist as LBS, so ISO 3166-1 alpha-2 codes pass directly.
 
-**Parent enumeration** (per Codex R4 P1 #2): `US`, `GB`, `DE`, `FR`, `IT`, `NL`, `ES`, `BE`, `AT`, `IE`, `LU`, `CH`, `JP`, `CA`, `AU`, `SG`. The earlier `4F` aggregate is NOT a valid parent code in `WS_LBS_D_PUB`; individual ISO2 codes for major Western parents must be enumerated.
+**ISO mapping**: ISO2 codes used directly. BIS-defined aggregate codes that appear in CBS counterparty values (`5J`, `5A`, `5M`, `1C`, `1E`, `1W`, `2Z`, `3P`, `4F`, etc.) are filtered out at the iteration boundary so they don't inflate claim sums.
 
-**ISO mapping**: BIS LBS `L_CP_COUNTRY` and `L_PARENT_CTY` use codelist `CL_BIS_IF_REF_AREA`, which follows ISO 3166-1 alpha-2. ISO2 codes pass directly to the SDMX key. BIS-defined aggregate codes (`5J`, `5A`, `5M`, `1C`, etc.) are handled as explicit allow-listed exceptions in the seeder's per-counterparty iteration.
-
-**GDP denominator**: World Bank `NY.GDP.MKTP.CD` (current USD), matched to the same reference year as the BIS LBS quarter.
+**GDP denominator**: World Bank `NY.GDP.MKTP.CD` (current USD), matched to the same reference year as the CBS quarter.
 
 **Score shape**: U-shaped band-normalization (`normalizeBandLowerBetter`). Both extremes are bad — too little integration suggests financial isolation (sanctions-target jurisdictions; thin correspondent-banking access); too much suggests over-exposure to Western-bank pulls (Iceland-2008 territory). The score peaks in the "healthy diversified financial system" middle band:
 
@@ -84,9 +97,9 @@ A US bank's London branch booking a claim on Brazil shows as `L_PARENT_CTY=US, L
 
 **Coverage**: ~200 jurisdictions; effectively complete for the manifest.
 
-**Cadence**: weekly cron. BIS LBS publishes quarterly; weekly catches the publication 2-3 weeks after each quarter-end with low overhead.
+**Cadence**: weekly cron. BIS CBS publishes quarterly; weekly catches the publication 2-3 weeks after each quarter-end with low overhead.
 
-**Seed key**: `economic:bis-lbs:v1`. **Seeder**: `scripts/seed-bis-lbs.mjs`.
+**Seed key**: `economic:bis-lbs:v1` (key name retained for historical continuity even though the dataflow is now CBS — the scorer-side contract is unchanged). **Seeder**: `scripts/seed-bis-lbs.mjs`.
 
 ### Component 3: `fatf_listing_status` (weight 0.20)
 
@@ -113,13 +126,13 @@ This page is a STABLE entry point that links to the current publication. Each FA
 
 **Question answered**: How many independent USD-clearing routes remain if one major counterparty pulls correspondent relationships?
 
-**Source**: BIS LBS by-parent series (shares the same seed payload as Component 2). For each counterparty country, count the distinct reporting-parent banks with non-trivial cross-border claims (>1% of host country GDP).
+**Source**: BIS CBS by-parent series (shares the same seed payload as Component 2). For each counterparty country, count the distinct reporting-parent banks with non-trivial cross-border claims (>1% of host country GDP).
 
 **Score shape**: `normalizeHigherBetter(parentCount, worst=1, best=10)`.
 
 **Important**: this directly REWARDS countries with multi-counterparty financial centers (UAE, Singapore, HK), inverting the hub-of-trade penalty in the OFAC-domicile construct. This is the component that explicitly balances against the Component 2 over-exposure penalty.
 
-**Coverage**: derived from BIS LBS — same ~200 jurisdictions.
+**Coverage**: derived from BIS CBS — same ~200 jurisdictions.
 
 ## Fail-closed preflight
 
@@ -159,21 +172,29 @@ When the flag flips on, every country's `financialSystemExposure` score moves fr
 | Component | Source | License |
 |---|---|---|
 | Component 1 (WB IDS short-term debt) | World Bank International Debt Statistics | CC-BY-4.0 (open-data) |
-| Component 2 (BIS LBS cross-border claims) | BIS Locational Banking Statistics — `WS_LBS_D_PUB` SDMX dataflow | [BIS terms of use](https://www.bis.org/terms_conditions.htm) — non-commercial, attribution required |
+| Component 2 (BIS CBS cross-border foreign claims) | BIS Consolidated Banking Statistics — `WS_CBS_PUB` SDMX dataflow | [BIS terms of use](https://www.bis.org/terms_conditions.htm) — non-commercial, attribution required |
 | Component 3 (FATF listing status) | FATF "Black and Grey Lists" web publications | Open (no machine-readable license terms posted; FATF publications are public-domain by convention) |
-| Component 4 (BIS LBS by-parent count) | BIS LBS — same seed as Component 2 | Same as Component 2 |
+| Component 4 (BIS CBS by-parent count) | BIS CBS — same seed as Component 2 | Same as Component 2 |
 
 The BIS-derived indicators (Components 2 + 4) are tagged `non-commercial` / `enrichment` in `_indicator-registry.ts` per the existing BIS classification convention. The dimension itself is `core` (it contributes to the headline score) per Codex R1 #8 — a `core` dim with `enrichment` constituent indicators is permissible because the indicator-registry lint accepts the configuration.
 
 ## Common operational footguns
 
-### BIS LBS `4F` is NOT a valid parent-country aggregate
+### `WS_LBS_D_PUB` does NOT publish a counterparty breakdown — use `WS_CBS_PUB` instead
 
-Codex Round 4 caught this: BIS publishes `4F` as a counterparty-country legacy code (Euro area), but `WS_LBS_D_PUB`'s `L_PARENT_CTY` codelist (`CL_BIS_IF_REF_AREA`) only accepts ISO 3166-1 alpha-2 country codes plus the BIS-defined parent aggregates `5J` (all parents) and `5M` (emerging markets). Querying `L_PARENT_CTY=4F` returns an empty SDMX result silently — a fresh seed-meta with zero claims looks plausible but produces 0% exposure for every counterparty. **Rule**: enumerate the individual euro-area parent ISO2 codes (DE, FR, IT, NL, ES, BE, AT, IE, LU) instead. The seeder's `PARENT_COUNTRIES` list pins this.
+The most expensive lesson from this construct's activation audit. The plan called for "BIS Locational Banking Statistics by-parent" data, but `WS_LBS_D_PUB`'s public API only exposes counterparty as the aggregate `5J` — a single series per parent representing total claims on ALL counterparties combined. Per-counterparty breakdowns require `WS_CBS_PUB` (Consolidated Banking Statistics), which has a different dimension order (11 dims, not 12) and different parent semantics (CBS uses `L_REP_CTY` for parent country; LBS has a separate `L_PARENT_CTY` dim that exists only as an aggregate). **Rule**: when an SDMX query returns 200 OK with a single series whose counterparty value is `5J` despite an empty L_CP_COUNTRY position, that's the smoking gun — switch dataflows.
 
-### BIS LBS `L_CP_COUNTRY` uses ISO 3166-1, not M49
+### BIS `4F` is NOT a valid parent-country aggregate
 
-Codex Round 4 also caught this: BIS LBS country dimensions follow the `CL_BIS_IF_REF_AREA` codelist, which is ISO 3166-1 alpha-2 for country members (`BR`, `US`, `GB`, etc.). No M49 numeric mapping is required — pass ISO2 codes directly to the SDMX key. The seeder uses `iso3-to-iso2.json` only for the GDP denominator (WB API returns ISO3).
+Codex Round 4 caught this: BIS publishes `4F` as a counterparty-country legacy code (Euro area), but the parent-country codelist (`CL_BIS_IF_REF_AREA`) only accepts ISO 3166-1 alpha-2 country codes plus the BIS-defined parent aggregates `5J` (all parents) and `5M` (emerging markets). Querying `L_PARENT_CTY=4F` (LBS) or `L_REP_CTY=4F` (CBS) returns an empty SDMX result silently — a fresh seed-meta with zero claims looks plausible but produces 0% exposure for every counterparty. **Rule**: enumerate the individual euro-area parent ISO2 codes (DE, FR, IT, NL, ES, BE, AT, IE, LU) instead. The seeder's `PARENT_COUNTRIES` list pins this.
+
+### BIS `L_CP_COUNTRY` uses ISO 3166-1, not M49
+
+Codex Round 4 also caught this: BIS country dimensions follow the `CL_BIS_IF_REF_AREA` codelist, which is ISO 3166-1 alpha-2 for country members (`BR`, `US`, `GB`, etc.). No M49 numeric mapping is required — pass ISO2 codes directly to the SDMX key. The seeder uses `iso3-to-iso2.json` only for the GDP denominator (WB API returns ISO3).
+
+### `DT.DOD.DSTC.IR.ZS` is "% of total reserves", NOT "% of total external debt"
+
+Caught by activation-time audit on PR #3407. The original WB IDS composition was `DT.DOD.DSTC.IR.ZS / 100 × DT.DOD.DECT.GN.ZS`, intended to produce "short-term external debt as % of GNI." But `DT.DOD.DSTC.IR.ZS` is short-term debt as a share of **international reserves**, not total external debt. Argentina, Turkey, Sri Lanka all had values >100% on the intermediate `shortTermPctOfTotalDebt` ratio because their short-term debt exceeds their reserves. The composed result was mathematically meaningless. **Rule**: the only safe way to compute "X as % of GNI" from WB IDS is to divide the absolute USD values directly: `(DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) × 100`. Don't compose ratio indicators that share an unstated denominator.
 
 ### Smoke test before flipping `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true`
 
