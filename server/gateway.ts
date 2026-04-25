@@ -17,7 +17,22 @@ import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
 import { checkEntitlement, getRequiredTier, getEntitlements } from './_shared/entitlement-check';
-import { resolveSessionUserId } from './_shared/auth-session';
+import { resolveClerkSession } from './_shared/auth-session';
+import { buildUsageIdentity, type UsageIdentityInput } from './_shared/usage-identity';
+import {
+  emitUsageEvents,
+  buildRequestEvent,
+  deriveRequestId,
+  deriveExecutionRegion,
+  deriveCountry,
+  deriveReqBytes,
+  deriveSentryTraceId,
+  deriveOriginKind,
+  deriveUaHash,
+  maybeAttachDevHealthHeader,
+  type CacheTier as UsageCacheTier,
+  type RequestReason,
+} from './_shared/usage';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
 export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
@@ -280,13 +295,61 @@ export function createDomainGateway(
 ): (req: Request, ctx: GatewayCtx) => Promise<Response> {
   const router = createRouter(routes);
 
-  return async function handler(originalRequest: Request, _ctx: GatewayCtx): Promise<Response> {
+  return async function handler(originalRequest: Request, ctx: GatewayCtx): Promise<Response> {
     let request = originalRequest;
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
+    const t0 = Date.now();
+
+    // Usage-telemetry identity inputs — accumulated as gateway auth resolution progresses.
+    // Read at every return point; null/0 defaults are valid for early returns.
+    const usage: UsageIdentityInput = {
+      sessionUserId: null,
+      isUserApiKey: false,
+      enterpriseApiKey: null,
+      widgetKey: request.headers.get('x-widget-key') ?? null,
+      clerkOrgId: null,
+      userApiKeyCustomerRef: null,
+      tier: null,
+    };
+    const domain = pathname.split('/')[2] ?? '';
+    const reqBytes = deriveReqBytes(request);
+
+    function emitRequest(status: number, reason: RequestReason, cacheTier: UsageCacheTier | null, resBytes = 0): void {
+      const identity = buildUsageIdentity(usage);
+      // ua_hash is async (SHA-256) — fire-and-forget Promise inside waitUntil.
+      ctx.waitUntil((async () => {
+        const uaHash = await deriveUaHash(originalRequest);
+        emitUsageEvents(ctx, [
+          buildRequestEvent({
+            requestId: deriveRequestId(originalRequest),
+            domain,
+            route: pathname,
+            method: originalRequest.method,
+            status,
+            durationMs: Date.now() - t0,
+            reqBytes,
+            resBytes,
+            customerId: identity.customer_id,
+            principalId: identity.principal_id,
+            authKind: identity.auth_kind,
+            tier: identity.tier,
+            country: deriveCountry(originalRequest),
+            executionRegion: deriveExecutionRegion(originalRequest),
+            executionPlane: 'vercel-edge',
+            originKind: deriveOriginKind(originalRequest),
+            cacheTier,
+            uaHash,
+            sentryTraceId: deriveSentryTraceId(originalRequest),
+            reason,
+          }),
+        ]);
+      })());
+    }
 
     // Origin check — skip CORS headers for disallowed origins
     if (isDisallowedOrigin(request)) {
+      emitRequest(403, 'origin_403', null);
       return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json' },
@@ -314,7 +377,10 @@ export function createDomainGateway(
     // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     if (isTierGated) {
-      sessionUserId = await resolveSessionUserId(request);
+      const session = await resolveClerkSession(request);
+      sessionUserId = session?.userId ?? null;
+      usage.sessionUserId = sessionUserId;
+      usage.clerkOrgId = session?.orgId ?? null;
       if (sessionUserId) {
         request = new Request(request.url, {
           method: request.method,
@@ -346,10 +412,13 @@ export function createDomainGateway(
       const userKeyResult = await validateUserApiKey(wmKey);
       if (userKeyResult) {
         isUserApiKey = true;
+        usage.isUserApiKey = true;
+        usage.userApiKeyCustomerRef = userKeyResult.userId;
         keyCheck = { valid: true, required: true };
         // Inject x-user-id for downstream entitlement checks
         if (!sessionUserId) {
           sessionUserId = userKeyResult.userId;
+          usage.sessionUserId = sessionUserId;
           request = new Request(request.url, {
             method: request.method,
             headers: (() => {
@@ -363,11 +432,19 @@ export function createDomainGateway(
       }
     }
 
+    // Enterprise API key (WORLDMONITOR_VALID_KEYS): keyCheck.valid + wmKey present
+    // and not a wm_-prefixed user key.
+    if (keyCheck.valid && wmKey && !isUserApiKey && !wmKey.startsWith('wm_')) {
+      usage.enterpriseApiKey = wmKey;
+    }
+
     // User API keys on PREMIUM_RPC_PATHS need verified pro-tier entitlement.
     // Admin keys (WORLDMONITOR_VALID_KEYS) bypass this since they are operator-issued.
     if (isUserApiKey && needsLegacyProBearerGate && sessionUserId) {
       const ent = await getEntitlements(sessionUserId);
+      if (ent) usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
       if (!ent || !ent.features.apiAccess) {
+        emitRequest(403, 'ok', null);
         return new Response(JSON.stringify({ error: 'API access subscription required' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -382,6 +459,7 @@ export function createDomainGateway(
           const { validateBearerToken } = await import('./auth-session');
           const session = await validateBearerToken(authHeader.slice(7));
           if (!session.valid) {
+            emitRequest(401, 'ok', null);
             return new Response(JSON.stringify({ error: 'Invalid or expired session' }), {
               status: 401,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -406,9 +484,11 @@ export function createDomainGateway(
           let allowed = session.role === 'pro';
           if (!allowed && session.userId) {
             const ent = await getEntitlements(session.userId);
+            if (ent) usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
             allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
           }
           if (!allowed) {
+            emitRequest(403, 'ok', null);
             return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
               status: 403,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -416,12 +496,14 @@ export function createDomainGateway(
           }
           // Valid pro session (Clerk role OR Dodo entitlement) — fall through to route handling.
         } else {
+          emitRequest(401, 'ok', null);
           return new Response(JSON.stringify({ error: keyCheck.error, _debug: (keyCheck as any)._debug }), {
             status: 401,
             headers: { 'Content-Type': 'application/json', ...corsHeaders },
           });
         }
       } else {
+        emitRequest(401, 'ok', null);
         return new Response(JSON.stringify({ error: keyCheck.error }), {
           status: 401,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -434,16 +516,25 @@ export function createDomainGateway(
     // User API keys do NOT bypass — the key owner's tier is checked normally.
     if (!(keyCheck.valid && wmKey && !isUserApiKey)) {
       const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
-      if (entitlementResponse) return entitlementResponse;
+      if (entitlementResponse) {
+        emitRequest(entitlementResponse.status, 'ok', null);
+        return entitlementResponse;
+      }
     }
 
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback
     const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);
-    if (endpointRlResponse) return endpointRlResponse;
+    if (endpointRlResponse) {
+      emitRequest(endpointRlResponse.status, 'rate_limit_429', null);
+      return endpointRlResponse;
+    }
 
     if (!hasEndpointRatePolicy(pathname)) {
       const rateLimitResponse = await checkRateLimit(request, corsHeaders);
-      if (rateLimitResponse) return rateLimitResponse;
+      if (rateLimitResponse) {
+        emitRequest(rateLimitResponse.status, 'rate_limit_429', null);
+        return rateLimitResponse;
+      }
     }
 
     // Route matching — if POST doesn't match, convert to GET for stale clients
@@ -469,11 +560,13 @@ export function createDomainGateway(
     if (!matchedHandler) {
       const allowed = router.allowedMethods(new URL(request.url).pathname);
       if (allowed.length > 0) {
+        emitRequest(405, 'ok', null);
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
           status: 405,
           headers: { 'Content-Type': 'application/json', Allow: allowed.join(', '), ...corsHeaders },
         });
       }
+      emitRequest(404, 'ok', null);
       return new Response(JSON.stringify({ error: 'Not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -505,6 +598,7 @@ export function createDomainGateway(
     }
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
+    let resolvedCacheTier: CacheTier | null = null;
     if (response.status === 200 && request.method === 'GET' && response.body) {
       const bodyBytes = await response.arrayBuffer();
 
@@ -516,12 +610,14 @@ export function createDomainGateway(
       if (mergedHeaders.get('X-No-Cache') || isUpstreamUnavailable) {
         mergedHeaders.set('Cache-Control', 'no-store');
         mergedHeaders.set('X-Cache-Tier', 'no-store');
+        resolvedCacheTier = 'no-store';
       } else {
         const rpcName = pathname.split('/').pop() ?? '';
         const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
         const isPremium = PREMIUM_RPC_PATHS.has(pathname) || getRequiredTier(pathname) !== null;
         const tier = isPremium ? 'slow-browser' as CacheTier
           : (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
+        resolvedCacheTier = tier;
         mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
         // Only allow Vercel CDN caching for trusted origins (worldmonitor.app, Vercel previews,
         // Tauri). No-origin server-side requests (external scrapers) must always reach the edge
@@ -555,9 +651,13 @@ export function createDomainGateway(
 
       const ifNoneMatch = request.headers.get('If-None-Match');
       if (ifNoneMatch === etag) {
+        emitRequest(304, 'ok', resolvedCacheTier, 0);
+        maybeAttachDevHealthHeader(mergedHeaders);
         return new Response(null, { status: 304, headers: mergedHeaders });
       }
 
+      emitRequest(response.status, 'ok', resolvedCacheTier, view.length);
+      maybeAttachDevHealthHeader(mergedHeaders);
       return new Response(bodyBytes, {
         status: response.status,
         statusText: response.statusText,
@@ -572,6 +672,12 @@ export function createDomainGateway(
       mergedHeaders.delete('X-No-Cache');
     }
 
+    // Streaming/non-GET-200 responses: res_bytes is best-effort 0 (Content-Length
+    // is often absent on chunked responses; teeing the stream would add latency).
+    const finalContentLen = response.headers.get('content-length');
+    const finalResBytes = finalContentLen ? Number(finalContentLen) || 0 : 0;
+    emitRequest(response.status, 'ok', resolvedCacheTier, finalResBytes);
+    maybeAttachDevHealthHeader(mergedHeaders);
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
