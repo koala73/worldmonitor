@@ -18,7 +18,6 @@ import {
   escapeHtml,
   escapeTelegramHtml,
   escapeSlackMrkdwn,
-  markdownToEmailHtml,
   markdownToTelegramHtml,
   markdownToSlackMrkdwn,
   markdownToDiscord,
@@ -45,6 +44,7 @@ import {
   runSynthesisWithFallback,
   subjectForBrief,
 } from './lib/digest-orchestration-helpers.mjs';
+import { injectEmailSummary } from './lib/email-summary-html.mjs';
 import { issueSlotInTz } from '../shared/brief-filter.js';
 import {
   enrichBriefEnvelopeWithLLM,
@@ -1160,20 +1160,10 @@ function buildChannelBodies(storyListPlain, aiSummary, magazineUrl) {
   };
 }
 
-/**
- * Inject the formatted AI summary into the HTML email template's slot,
- * or strip the slot placeholder when there is no summary.
- */
-function injectEmailSummary(html, aiSummary) {
-  if (!html) return html;
-  if (!aiSummary) return html.replace('<div data-ai-summary-slot></div>', '');
-  const formattedSummary = markdownToEmailHtml(aiSummary);
-  const summaryHtml = `<div style="background:#161616;border:1px solid #222;border-left:3px solid #4ade80;padding:18px 22px;margin:0 0 24px 0;">
-<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#4ade80;margin-bottom:10px;">Executive Summary</div>
-<div style="font-size:13px;line-height:1.7;color:#ccc;">${formattedSummary}</div>
-</div>`;
-  return html.replace('<div data-ai-summary-slot></div>', summaryHtml);
-}
+// injectEmailSummary lives in scripts/lib/email-summary-html.mjs so
+// the multi-section HTML assembly can be unit-tested without
+// dragging the cron's env-checking side effects into the test
+// runtime. Imported at the top alongside the other lib helpers.
 
 /**
  * Inject the "Open your brief" CTA into the email HTML. Placed near
@@ -1698,7 +1688,8 @@ async function main() {
     // can't represent multiple per-rule briefs without an
     // architectural change to the URL signer + Redis key.
     const brief = briefByUser.get(rule.userId);
-    let briefLead = null;
+    let briefSynthesis = null;  // full {lead, threads, signals} when synthesis succeeded
+    let briefLead = null;       // string projection for non-email channels + parity log
     let synthesisLevel = 3;
     if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
       const ruleCtx = await buildSynthesisCtx(rule, nowMs);
@@ -1709,6 +1700,7 @@ async function main() {
         ruleCtx,
         briefLlmDeps,
       );
+      briefSynthesis = ruleResult.synthesis;
       briefLead = ruleResult.synthesis?.lead ?? null;
       synthesisLevel = ruleResult.level;
     }
@@ -1723,7 +1715,14 @@ async function main() {
       briefLead,
       magazineUrl,
     );
-    const htmlWithSummary = injectEmailSummary(htmlRaw, briefLead);
+    // Email gets the FULL structured synthesis (lead + threads +
+    // signals) so the editorial block matches the old Brain B
+    // multi-paragraph richness — not just the magazine pull-quote.
+    // Non-email channels (Telegram/Slack/Discord/webhook) keep the
+    // single-string lead since their formats favour brevity. The
+    // canonical-synthesis contract still holds: every channel reads
+    // from the same generateDigestProse output for this rule.
+    const htmlWithSummary = injectEmailSummary(htmlRaw, briefSynthesis);
     const html = injectBriefCta(htmlWithSummary, magazineUrl);
 
     const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));

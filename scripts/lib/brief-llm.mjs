@@ -20,7 +20,7 @@
 //     SHA-256 of the resolved digest lead so per-story rationales
 //     re-generate when the lead changes (rationales must align with
 //     the headline frame). v2 rows were lead-blind and could drift.
-//   - brief:llm:digest:v3:{userId|public}:{sensitivity}:{poolHash}
+//   - brief:llm:digest:v4:{userId|public}:{sensitivity}:{poolHash}
 //     — 4h. The canonical synthesis is now ALWAYS produced through
 //     this path (formerly split with `generateAISummary` in the
 //     digest cron). Material includes profile-SHA, greeting bucket,
@@ -322,21 +322,34 @@ const DIGEST_PROSE_SYSTEM_BASE =
   "today's top stories for a reader, produce EXACTLY this JSON and nothing " +
   'else (no markdown, no code fences, no preamble):\n' +
   '{\n' +
-  '  "lead": "<2–3 sentence executive summary, editorial tone, references ' +
-  'the most important 1–2 threads, addresses the reader directly>",\n' +
+  '  "lead": "<2–3 sentences. The FIRST sentence MUST name the single most ' +
+  "impactful development by its specific actor and event (e.g. \"Pentagon " +
+  "chief Hegseth declared the US blockade on Iran is going global\"), NOT " +
+  'an editorial framing about "geopolitical tensions" or "shifting ' +
+  'landscapes". Subsequent sentences may give brief context. Reference at ' +
+  'most 1–2 threads. No vapid hedging.>",\n' +
   '  "threads": [\n' +
   '    { "tag": "<one-word editorial category e.g. Energy, Diplomacy, Climate>", ' +
-  '"teaser": "<one sentence describing what is developing>" }\n' +
+  '"teaser": "<one sentence naming a SPECIFIC event or actor — e.g. ' +
+  '\\"Hegseth fired Navy Secretary Phelan amid Iran-policy rift\\" — NOT ' +
+  'generic phrasing like \\"tensions continue to develop\\".>" }\n' +
   '  ],\n' +
-  '  "signals": ["<forward-looking imperative phrase, <=14 words>"],\n' +
+  '  "signals": ["<forward-looking imperative phrase, <=14 words, naming a ' +
+  'specific watch-item — e.g. \\"Watch for direct US-Iran naval engagement ' +
+  'in the Strait of Hormuz\\".>"],\n' +
   '  "rankedStoryHashes": ["<short hash from the [h:XXXX] prefix of the most ' +
   'important story>", "..."]\n' +
   '}\n' +
+  'BANNED phrasing (do NOT use any of these — they are vapid editorial ' +
+  'filler that hides which events actually matter): "the global stage", ' +
+  '"buzzing with developments", "intricate shifts", "evolving landscape", ' +
+  '"navigating", "discerning reader", "continues to simmer", "shape the ' +
+  'coming months", "strategic importance".\n' +
   'Threads: 3–6 items reflecting actual clusters in the stories. ' +
   'Signals: 2–4 items, forward-looking. ' +
   'rankedStoryHashes: at least the top 3 stories by editorial importance, ' +
   'using the short hash from each story line (the value inside [h:...]). ' +
-  'Lead with the single most impactful development. Lead under 250 words.';
+  'Lead with the single most impactful development NAMED. Lead under 250 words.';
 
 /**
  * Compute a coarse greeting bucket for cache-key stability.
@@ -582,9 +595,14 @@ function hashDigestInput(userId, stories, sensitivity, ctx = {}) {
  * @param {DigestPromptCtx} [ctx]
  */
 export async function generateDigestProse(userId, stories, sensitivity, deps, ctx = {}) {
-  // v3 key: see hashDigestInput() comment. Full-prompt hash + strict
-  // shape validation on every cache hit.
-  const key = `brief:llm:digest:v3:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
+  // v4 key (2026-04-25 evening): bumped from v3 when the prompt
+  // gained a BANNED-phrasing list + "name the specific actor and
+  // event" lead instructions, after a regression where evening
+  // briefs shipped vapid editorial filler ("the global stage is
+  // buzzing", "navigating the evolving landscape"). v3 cache rows
+  // still in TTL would otherwise serve stale vapid leads for 4h
+  // post-deploy.
+  const key = `brief:llm:digest:v4:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
   try {
     const hit = await deps.cacheGet(key);
     // CRITICAL: re-run the shape validator on cache hits. Without

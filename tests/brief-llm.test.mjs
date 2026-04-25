@@ -471,7 +471,7 @@ describe('generateDigestProse', () => {
     // (2026-04-25) when the digest hash gained ctx (profile, greeting,
     // isPublic) and per-story `hash` fields. v2 rows are ignored on
     // rollout; v3 is the active prefix.
-    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v3:'));
+    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v4:'));
     assert.ok(badKey, 'expected a digest prose cache entry');
     cache.store.set(badKey, { lead: 'short', /* missing threads + signals */ });
     const llm2 = makeLLM(validJson);
@@ -631,12 +631,13 @@ describe('generateDigestProsePublic — public cache shared across users', () =>
     assert.equal(llm2.calls.length, 1, 'profile change re-keys the cache');
   });
 
-  it('writes to cache under brief:llm:digest:v3 prefix (not v2)', async () => {
+  it('writes to cache under brief:llm:digest:v4 prefix (not v3)', async () => {
     const cache = makeCache();
     const llm = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm.callLLM });
     const keys = [...cache.store.keys()];
-    assert.ok(keys.some((k) => k.startsWith('brief:llm:digest:v3:')), 'v3 prefix used');
+    assert.ok(keys.some((k) => k.startsWith('brief:llm:digest:v4:')), 'v4 prefix used');
+    assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v3:')), 'no v3 writes');
     assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v2:')), 'no v2 writes');
   });
 });
