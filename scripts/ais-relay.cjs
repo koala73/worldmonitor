@@ -6360,6 +6360,14 @@ const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.AIS_SNAPSHOT_INTE
 const CANDIDATE_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_DENSITY_ZONES = 200;
 const MAX_CANDIDATE_REPORTS = 1500;
+// Hard size cap for vesselMeta. Active global AIS fleet is ~50-70k unique
+// MMSIs at any given time (UNCTAD/MarineTraffic estimates). 50k headroom
+// covers steady state with the 24h TTL; a hostile or buggy upstream that
+// floods unique MMSIs gets bounded after this cap. Pairs with the TTL
+// loop in cleanupAggregates so eviction has both age-based and size-based
+// gates, matching the pattern used by tankerReports / candidateReports /
+// densityGrid / vesselHistory.
+const MAX_VESSEL_META = 50000;
 
 const vessels = new Map();
 const vesselHistory = new Map();
@@ -6625,8 +6633,13 @@ function processShipStaticDataForMeta(data) {
   const mmsi = String(meta.MMSI || sd.UserID || '');
   if (!mmsi) return;
   // ShipType lives in the message body, not MetaData, on Type 5 frames.
+  // Gate on `> 0` (not just `Number.isFinite`) so that Number(null) === 0
+  // and AIS code 0 ("Not available" per ITU-R M.1371) don't overwrite a
+  // previously-cached valid type. Otherwise a vessel that broadcasts
+  // {Type: 85} then later {Type: null} would be downgraded to non-tanker
+  // because the second write replaces the first with shipType=0.
   const shipType = Number(sd.Type);
-  if (!Number.isFinite(shipType)) return;
+  if (!Number.isFinite(shipType) || shipType <= 0) return;
   vesselMeta.set(mmsi, {
     shipType,
     shipName: (sd.Name || meta.ShipName || '').trim(),
@@ -6811,6 +6824,10 @@ function cleanupAggregates() {
       vesselMeta.delete(mmsi);
     }
   }
+  // Hard size cap as defense-in-depth against a hostile/buggy upstream
+  // flooding unique MMSIs faster than the TTL eviction can drain them.
+  // Matches the pattern used by every peer Map in this function.
+  evictMapByTimestamp(vesselMeta, MAX_VESSEL_META, (entry) => entry.lastSeen || 0);
 
   // Clean chokepoint buckets: remove stale vessels
   for (const [cpName, bucket] of chokepointBuckets) {

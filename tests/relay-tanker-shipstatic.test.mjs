@@ -112,12 +112,35 @@ describe('ais-relay — tanker classification depends on ShipStaticData', () => 
     );
   });
 
-  test('vesselMeta has TTL eviction so it cannot grow unbounded', () => {
+  test('vesselMeta has TTL eviction AND hard size cap so it cannot grow unbounded', () => {
     assert.match(RELAY, /VESSEL_META_TTL_MS/);
     assert.match(
       RELAY,
       /vesselMeta\.delete\(/,
       'cleanup must delete stale vesselMeta entries',
+    );
+    // PR #3410 review (Greptile P1): every peer Map in cleanupAggregates
+    // (tankerReports, candidateReports, densityGrid, vesselHistory) follows
+    // its TTL loop with an evictMapByTimestamp hard cap. vesselMeta must
+    // match that pattern — TTL alone is insufficient against a hostile or
+    // buggy upstream flooding unique MMSIs faster than the TTL drains them.
+    assert.match(RELAY, /MAX_VESSEL_META/);
+    assert.match(
+      RELAY,
+      /evictMapByTimestamp\(\s*vesselMeta\s*,/,
+      'vesselMeta must have a hard size cap via evictMapByTimestamp',
+    );
+  });
+
+  test('processShipStaticDataForMeta rejects shipType <= 0 (AIS code 0 = "Not available")', () => {
+    // Number(null) === 0, which is finite. Without the > 0 gate, a Type 5
+    // frame with Type=null after a valid Type=85 would overwrite the
+    // cached tanker as shipType=0, downgrading classification on the next
+    // PositionReport. Pin the gate so a refactor can't accidentally drop it.
+    assert.match(
+      RELAY,
+      /!Number\.isFinite\(shipType\)\s*\|\|\s*shipType\s*<=\s*0/,
+      'shipType must be guarded against <= 0 in processShipStaticDataForMeta',
     );
   });
 
