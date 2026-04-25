@@ -433,14 +433,16 @@ Sentry.init({
     // (WORLDMONITOR-NJ).
     if (/Cannot read properties of undefined \(reading 'fetchToken'\)/.test(msg)
         && frames.some(f => /tryToReauthenticate/.test(f.function ?? ''))) return null;
-    // Suppress `Failed to fetch (<host>)` when any frame is a browser extension URL.
-    // Some extensions (e.g. AdBlock-class fetch interceptors) wrap window.fetch and
-    // their replacement can fail for reasons unrelated to our backend. The maplibre
-    // host-allowlist filter above doesn't apply here because the failing host is our
-    // own (abacus.worldmonitor.app analytics, api.worldmonitor.app), and gating on
-    // an extension frame keeps signal for genuine first-party fetch failures from
-    // users without such extensions (WORLDMONITOR-P5).
-    if (excType === 'TypeError'
+    // Suppress `Failed to fetch (<host>)` when any frame is a browser extension URL
+    // AND the stack has NO first-party frames. AdBlock-class extensions wrap
+    // window.fetch and their replacement can fail unrelated to our backend; the
+    // maplibre host-allowlist above doesn't apply when the failing host is our own
+    // (abacus.worldmonitor.app, api.worldmonitor.app). The `!hasFirstParty` gate
+    // mirrors the broader extension rule below and preserves signal for a real
+    // first-party fetch regression that happens to coexist with an extension frame
+    // — `panels-*.js` calling api.worldmonitor.app must still surface (WORLDMONITOR-P5).
+    if (!hasFirstParty
+        && excType === 'TypeError'
         && /^Failed to fetch \([^)]+\)$/.test(msg)
         && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? ''))) return null;
     if (hasAnyStack && !hasFirstParty && (

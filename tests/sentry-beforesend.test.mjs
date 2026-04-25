@@ -363,6 +363,28 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'All-maplibre first-party tile fetch failure must still reach Sentry');
   });
 
+  it('suppresses "Failed to fetch (<host>)" when stack is extension-only (no first-party frames)', () => {
+    // WORLDMONITOR-P5: AdBlock-class extensions wrap window.fetch and their replacement
+    // can fail unrelated to our backend. With no first-party frames, we can't attribute
+    // to our code — drop.
+    const event = makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', [
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'Extension-only fetch failure should be suppressed');
+  });
+
+  it('does NOT suppress "Failed to fetch (<host>)" when stack has both first-party and extension frames', () => {
+    // Regression for WORLDMONITOR-P5 review feedback: a first-party panels-*.js frame
+    // means our code initiated the fetch — must surface even if an extension also
+    // wrapped it, so a real api.worldmonitor.app outage isn't silenced for users who
+    // happen to run fetch-wrapping extensions.
+    const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 24, function: 'window.fetch' },
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'First-party + extension Failed-to-fetch must reach Sentry');
+  });
+
   it('suppresses iOS Safari WKWebView "Cannot inject key into script value" regardless of first-party frame', () => {
     // The native throw always lands in a first-party caller; the existing
     // !hasFirstParty gate missed it. `UnknownError` type name is WebKit-only
