@@ -128,6 +128,8 @@ This page is a STABLE entry point that links to the current publication. Each FA
 
 **Source**: BIS CBS by-parent series (shares the same seed payload as Component 2). For each counterparty country, count the distinct reporting-parent banks with non-trivial cross-border claims (>1% of host country GDP).
 
+**Self-exclusion rule**: claims where the counterparty equals the parent (e.g., Singapore banks on Singapore counterparties, Switzerland banks on Switzerland counterparties) are filtered out before computing `parentCount`. This is domestic banking, not foreign-bank redundancy — Component 4 measures "how many INDEPENDENT FOREIGN USD-clearing routes remain." Without this filter, hub jurisdictions in `PARENT_COUNTRIES` (SG, CH) would have inflated `parentCount` because their own domestic loan books would count as fallback routes. Caught during the 2026-04-25 activation audit.
+
 **Score shape**: `normalizeHigherBetter(parentCount, worst=1, best=10)`.
 
 **Important**: this directly REWARDS countries with multi-counterparty financial centers (UAE, Singapore, HK), inverting the hub-of-trade penalty in the OFAC-domicile construct. This is the component that explicitly balances against the Component 2 over-exposure penalty.

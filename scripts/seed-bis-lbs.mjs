@@ -69,17 +69,21 @@ const PARENT_COUNTRIES = [
   'CH', 'JP', 'CA', 'AU', 'SG',
 ];
 
-// BIS-defined aggregate codes — skip during per-counterparty iteration.
-// CBS uses an even larger aggregate set than LBS (the 252-value codelist
-// includes UN regional groupings + offshore-centre groups + financial-
-// centre composites). Anything that isn't a 2-letter ISO2 country code
-// is dropped at the iteration boundary; this set is informational only.
-const BIS_AGGREGATE_CODES = new Set([
-  '5J', '5A', '5M', '5C', '5R', '5T', '5W', '5Z',
-  '1C', '1E', '1W',
-  '2Z', '3P',
-  '4F', '4U',
-  'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9',
+// BIS-defined aggregate codes that ARE all-alpha 2-letter (would pass
+// the regex filter below) — must be explicitly rejected so a future
+// CBS codelist update introducing e.g. `EU` doesn't silently leak an
+// aggregate into per-country claim sums. The numeric / alphanumeric
+// aggregates (5J, 1C, A2, 4F, etc.) are already rejected by the
+// `/^[A-Z]{2}$/` regex, so they don't need to appear here. Per Greptile
+// P2 review on PR #3412 — the previous Set was dead code because every
+// entry contained a digit and was filtered out by the regex first.
+//
+// Verified against the live `WS_CBS_PUB` L_CP_COUNTRY codelist
+// (252 values as of 2026-04-25): no current 2-letter all-alpha
+// aggregates exist. This Set is empty by default and audited each time
+// the codelist is reviewed (every BIS CBS quarterly publish).
+const ALPHA_AGGREGATE_CODES = new Set([
+  // (none currently — placeholder for future BIS additions like `EU`)
 ]);
 
 async function fetchSdmxJson(url) {
@@ -132,8 +136,10 @@ export function extractClaimsByCounterparty(sdmxJson) {
     if (!cpEntry) continue;
     const cpCode = String(cpEntry.id ?? '').trim().toUpperCase();
     // Only ISO2-shaped country codes pass; aggregate / regional codes
-    // (3P, 1C, 5J, etc.) and any non-2-letter values are dropped.
-    if (!cpCode || cpCode.length !== 2 || !/^[A-Z]{2}$/.test(cpCode) || BIS_AGGREGATE_CODES.has(cpCode)) continue;
+    // (3P, 1C, 5J, etc.) are rejected by the regex (any digit present).
+    // Plus an explicit reject-list for any future 2-letter ALL-ALPHA
+    // aggregates BIS might introduce (e.g. `EU`).
+    if (!cpCode || !/^[A-Z]{2}$/.test(cpCode) || ALPHA_AGGREGATE_CODES.has(cpCode)) continue;
 
     const obs = series.observations ?? {};
     let latestIdx = -1;
@@ -209,9 +215,22 @@ async function fetchGdpByCountry() {
 
 export function combineCbsByCounterparty(perParent, gdpByCountry) {
   // Reshape: counterparty → parent → claim.
+  //
+  // Self-claims (cp === parent) are EXCLUDED. Component 4 measures
+  // "redundancy of FOREIGN bank exposure" — domestic banking claims
+  // (e.g., Singapore-banks-on-Singapore, Switzerland-banks-on-Switzerland)
+  // are not a fallback if foreign banks pull correspondent relationships.
+  // Without this filter, hub jurisdictions on `PARENT_COUNTRIES` (SG, CH)
+  // get inflated `parentCount` because their domestic loan book counts
+  // as a "redundant route." Live verification:
+  //   - Singapore: $584B SG-on-SG claims would otherwise count
+  //   - Switzerland: $2.2T CH-on-CH claims would otherwise count
+  // Per Greptile-adjacent finding on PR #3412 review (self-noted during
+  // activation-time Redis audit, 2026-04-25).
   const claimsByCpByParent = {};
   for (const [parent, { byCounterparty }] of Object.entries(perParent)) {
     for (const [cp, claim] of Object.entries(byCounterparty)) {
+      if (cp === parent) continue;
       if (!claimsByCpByParent[cp]) claimsByCpByParent[cp] = {};
       claimsByCpByParent[cp][parent] = claim;
     }
@@ -328,8 +347,6 @@ export function declareRecords(data) {
 }
 
 export { CANONICAL_KEY, CACHE_TTL, PARENT_COUNTRIES };
-// Backwards-compat alias for tests that imported the original LBS name.
-export { combineCbsByCounterparty as combineLbsByCounterparty };
 
 if (process.argv[1]?.endsWith('seed-bis-lbs.mjs')) {
   runSeed('economic', 'bis-lbs', CANONICAL_KEY, fetchBisLbs, {

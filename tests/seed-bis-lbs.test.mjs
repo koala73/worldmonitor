@@ -1,6 +1,6 @@
 // Pin the BIS LBS combination math. Plan 2026-04-25-004 §Component 2.
 //
-// The pure helpers `combineLbsByCounterparty` and
+// The pure helpers `combineCbsByCounterparty` and
 // `extractClaimsByCounterparty` are exported so these tests run fully
 // offline. Real BIS SDMX network shape is known and pinned via a
 // realistic SDMX-JSON fixture below.
@@ -9,20 +9,20 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  combineLbsByCounterparty,
+  combineCbsByCounterparty,
   extractClaimsByCounterparty,
   validate,
   PARENT_COUNTRIES,
 } from '../scripts/seed-bis-lbs.mjs';
 
-describe('combineLbsByCounterparty — sum across parents + GDP normalization', () => {
+describe('combineCbsByCounterparty — sum across parents + GDP normalization', () => {
   it('Brazil: $300B claims aggregated from US + GB / $2T GDP = 15% of GDP, parentCount=2', () => {
     const perParent = {
       US: { byCounterparty: { BR: 200_000 }, latestPeriod: '2024-Q4' }, // 200B in millions
       GB: { byCounterparty: { BR: 100_000 }, latestPeriod: '2024-Q4' }, // 100B
     };
     const gdpByCountry = { BR: { value: 2_000_000_000_000, year: 2024 } }; // $2T
-    const out = combineLbsByCounterparty(perParent, gdpByCountry);
+    const out = combineCbsByCounterparty(perParent, gdpByCountry);
     assert.equal(out.BR.totalXborderPctGdp, 15.0);
     assert.equal(out.BR.parentCount, 2, 'both parents have claims > 1% GDP');
   });
@@ -34,7 +34,7 @@ describe('combineLbsByCounterparty — sum across parents + GDP normalization', 
       GB: { byCounterparty: { BR: 5_000 }, latestPeriod: '2024-Q4' },   // 5B = 0.25% GDP
     };
     const gdpByCountry = { BR: { value: 2_000_000_000_000, year: 2024 } };
-    const out = combineLbsByCounterparty(perParent, gdpByCountry);
+    const out = combineCbsByCounterparty(perParent, gdpByCountry);
     assert.equal(out.BR.parentCount, 1, 'GB is below the 1% GDP threshold');
   });
 
@@ -43,8 +43,35 @@ describe('combineLbsByCounterparty — sum across parents + GDP normalization', 
       US: { byCounterparty: { XX: 50_000 }, latestPeriod: '2024-Q4' },
     };
     const gdpByCountry = {}; // no XX
-    const out = combineLbsByCounterparty(perParent, gdpByCountry);
+    const out = combineCbsByCounterparty(perParent, gdpByCountry);
     assert.equal(Object.keys(out).length, 0);
+  });
+
+  it('excludes self-claims (cp === parent) — domestic banking does not count as foreign-redundancy', () => {
+    // Singapore is in PARENT_COUNTRIES AND is a counterparty. The
+    // SG-banks-claims-on-Singapore amount is domestic banking, not a
+    // foreign-fallback route. Component 4 (`parentCount`) measures
+    // "redundancy of FOREIGN bank exposure" so the host country must
+    // be excluded from its own parents map. Without this filter, hub
+    // jurisdictions (SG, CH) showed inflated parentCount during the
+    // 2026-04-25 production activation audit:
+    //   - SG: $584B SG-on-SG self-claim
+    //   - CH: $2.2T CH-on-CH self-claim
+    const perParent = {
+      SG: { byCounterparty: { SG: 584_960, BR: 1_000 }, latestPeriod: '2024-Q4' }, // SG-on-SG must be excluded
+      US: { byCounterparty: { SG: 139_594 }, latestPeriod: '2024-Q4' },
+      GB: { byCounterparty: { SG: 196_995 }, latestPeriod: '2024-Q4' },
+    };
+    const gdpByCountry = {
+      SG: { value: 500_000_000_000, year: 2024 },
+      BR: { value: 2_000_000_000_000, year: 2024 },
+    };
+    const out = combineCbsByCounterparty(perParent, gdpByCountry);
+    // SG's parents map should ONLY include US and GB — not SG itself.
+    assert.deepEqual(Object.keys(out.SG.parents).sort(), ['GB', 'US']);
+    assert.ok(!('SG' in out.SG.parents), 'SG-on-SG self-claim must be filtered');
+    // BR's parents map should still include SG (SG-on-BR is a real foreign claim).
+    assert.equal(out.BR.parents.SG, 1_000);
   });
 
   it('preserves per-parent provenance in the parents map', () => {
@@ -53,7 +80,7 @@ describe('combineLbsByCounterparty — sum across parents + GDP normalization', 
       DE: { byCounterparty: { BR: 50_000 }, latestPeriod: '2024-Q4' },
     };
     const gdpByCountry = { BR: { value: 2_000_000_000_000, year: 2024 } };
-    const out = combineLbsByCounterparty(perParent, gdpByCountry);
+    const out = combineCbsByCounterparty(perParent, gdpByCountry);
     assert.deepEqual(out.BR.parents, { US: 200_000, DE: 50_000 });
   });
 
@@ -68,7 +95,7 @@ describe('combineLbsByCounterparty — sum across parents + GDP normalization', 
       perParent[parent] = { byCounterparty: { BR: 10_000 }, latestPeriod: '2024-Q4' };
     }
     const gdpByCountry = { BR: { value: 2_000_000_000_000, year: 2024 } };
-    const out = combineLbsByCounterparty(perParent, gdpByCountry);
+    const out = combineCbsByCounterparty(perParent, gdpByCountry);
     assert.equal(out.BR.totalXborderPctGdp, 8.0, 'sum across 16 parents at $10B each = $160B = 8% of $2T');
     assert.equal(out.BR.parentCount, 0, 'no single parent above 1% threshold');
   });
