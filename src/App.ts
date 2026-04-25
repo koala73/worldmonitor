@@ -80,7 +80,7 @@ import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
-import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
   capturePendingCheckoutIntentFromUrl,
@@ -118,6 +118,7 @@ export class App {
   private modules: { destroy(): void }[] = [];
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
+  private unsubEntitlementPremiumLoaders: (() => void) | null = null;
   // Resolves once Phase-4 UI modules (searchManager, countryIntel) have
   // initialised so WebMCP bindings can await readiness before touching
   // the nullable UI targets. Avoids the startup race where an agent
@@ -946,7 +947,14 @@ export class App {
     // loadTradePolicy) would sit empty until the next scheduled refresh — for
     // trade-policy that's a 10-minute wait post-sign-in. See PR #3295 review.
     let _prevHadPremium = hasPremiumAccess();
-    this.unsubFreeTier = subscribeAuthState((session) => {
+    // Pro-loader fan-out runs on EITHER Clerk auth changes OR Convex
+    // entitlement changes — Pro can come from either signal (Clerk
+    // user.role === 'pro' OR Convex tier >= 1 via Dodo). User-reported
+    // on commodity.worldmonitor.app: Trade Policy panel stuck at "Loading…"
+    // for a Pro Monthly subscriber because the original listener only
+    // watched subscribeAuthState (Clerk-only); Convex Free→Pro transitions
+    // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
+    const firePremiumLoaders = (): void => {
       this.enforceFreeTierLimits();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
@@ -960,6 +968,10 @@ export class App {
         void this.dataLoader.loadTradePolicy();
       }
       _prevHadPremium = nowPremium;
+    };
+    this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
+    this.unsubFreeTier = subscribeAuthState((session) => {
+      firePremiumLoaders();
 
       const userId = session.user?.id ?? null;
       if (userId !== null && userId !== _prevUserId) {
@@ -1256,6 +1268,7 @@ export class App {
     // Clean up subscriptions, map, AIS, and breaking news
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
+    this.unsubEntitlementPremiumLoaders?.();
     this.state.breakingBanner?.destroy();
     destroyBreakingNewsAlerts();
     this.cachedModeBannerEl?.remove();
