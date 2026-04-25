@@ -120,4 +120,61 @@ describe('ais-relay — tanker classification depends on ShipStaticData', () => 
       'cleanup must delete stale vesselMeta entries',
     );
   });
+
+  test('vessels record uses effectiveShipType (NOT raw meta.ShipType)', () => {
+    // Without this, classifyVesselType(vessel?.shipType) at the chokepoint
+    // transit logging site always returns 'other' because meta.ShipType
+    // is permanently undefined on PositionReport. Same root cause as the
+    // tanker layer being empty — needs the same vesselMeta fallback.
+    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
+    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
+    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
+    const fnBody = RELAY.slice(fnStart, fnEnd);
+    // The vessels.set call must reference effectiveShipType, not meta.ShipType
+    const vesselsSetMatch = fnBody.match(/vessels\.set\(\s*mmsi\s*,\s*\{[^}]*shipType:\s*([^,\n}]+)/);
+    assert.ok(vesselsSetMatch, 'vessels.set must include a shipType field');
+    assert.match(
+      vesselsSetMatch[1].trim(),
+      /^effectiveShipType\b/,
+      `vessels.set shipType must be effectiveShipType (was: ${vesselsSetMatch[1].trim()})`,
+    );
+  });
+
+  test('isLikelyMilitaryCandidate accepts a resolved-shipType override', () => {
+    // PositionReport callers must pass effectiveShipType so the type-based
+    // military arms (35/55/50-59) actually fire. Without the override, the
+    // classifier falls back to NAVAL_PREFIX_RE + MMSI suffix only.
+    assert.match(
+      RELAY,
+      /function\s+isLikelyMilitaryCandidate\s*\(\s*meta\s*,\s*resolvedShipType\s*\)/,
+      'isLikelyMilitaryCandidate must accept a resolvedShipType parameter',
+    );
+    // The PositionReport call site must pass it through
+    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
+    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
+    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
+    const fnBody = RELAY.slice(fnStart, fnEnd);
+    assert.match(
+      fnBody,
+      /isLikelyMilitaryCandidate\(\s*meta\s*,\s*effectiveShipType\s*\)/,
+      'PositionReport must invoke isLikelyMilitaryCandidate with effectiveShipType',
+    );
+  });
+
+  test('candidateReports record uses effectiveShipType', () => {
+    // Same fix as vessels.set — military candidate snapshots had shipType
+    // permanently undefined, so any downstream consumer that filtered
+    // candidates by ship type was broken too.
+    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
+    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
+    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
+    const fnBody = RELAY.slice(fnStart, fnEnd);
+    const candSetMatch = fnBody.match(/candidateReports\.set\(\s*mmsi\s*,\s*\{[^}]*shipType:\s*([^,\n}]+)/);
+    assert.ok(candSetMatch, 'candidateReports.set must include a shipType field');
+    assert.match(
+      candSetMatch[1].trim(),
+      /^effectiveShipType\b/,
+      `candidateReports.set shipType must be effectiveShipType (was: ${candSetMatch[1].trim()})`,
+    );
+  });
 });

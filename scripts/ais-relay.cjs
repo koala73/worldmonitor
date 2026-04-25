@@ -6442,9 +6442,15 @@ function getGridKey(lat, lon) {
   return `${gridLat},${gridLon}`;
 }
 
-function isLikelyMilitaryCandidate(meta) {
+function isLikelyMilitaryCandidate(meta, resolvedShipType) {
   const mmsi = String(meta?.MMSI || '');
-  const shipType = Number(meta?.ShipType);
+  // Prefer caller-resolved shipType (typically from vesselMeta cache) so
+  // PositionReport callers — where MetaData lacks ShipType — still hit the
+  // type-based military arm (35/55/50-59) instead of relying purely on
+  // NAVAL_PREFIX_RE + MMSI-suffix fallbacks.
+  const shipType = Number.isFinite(Number(resolvedShipType))
+    ? Number(resolvedShipType)
+    : Number(meta?.ShipType);
   const name = (meta?.ShipName || '').trim().toUpperCase();
 
   if (Number.isFinite(shipType) && (shipType === 35 || shipType === 55 || (shipType >= 50 && shipType <= 59))) {
@@ -6642,13 +6648,29 @@ function processPositionReportForSnapshot(data) {
 
   const now = Date.now();
 
+  // Resolve ShipType ONCE per position report and feed it to every consumer
+  // below (vessels record, military classifier, tanker capture). Pre-fix,
+  // each consumer read meta.ShipType directly — but AISStream's PositionReport
+  // MetaData does NOT carry that field; ShipType only arrives via Type 5
+  // ShipStaticData frames cached in vesselMeta. The consequence wasn't just
+  // an empty tanker layer (PR #3410 original scope) — `vessels[mmsi].shipType`
+  // was also undefined, so classifyVesselType(vessel?.shipType) used by
+  // chokepoint transit logging at line ~6555 always returned 'other'. That
+  // silently broke per-type transit counts in /seedChokepointTransits and
+  // every downstream consumer of transit-by-type breakdowns. PR3410 review
+  // catch — same root cause, same vesselMeta cache fixes all three sites.
+  const cachedMeta = vesselMeta.get(mmsi);
+  const effectiveShipType = Number.isFinite(Number(meta.ShipType))
+    ? Number(meta.ShipType)
+    : (cachedMeta ? cachedMeta.shipType : undefined);
+
   vessels.set(mmsi, {
     mmsi,
-    name: meta.ShipName || '',
+    name: meta.ShipName || (cachedMeta && cachedMeta.shipName) || '',
     lat,
     lon,
     timestamp: now,
-    shipType: meta.ShipType,
+    shipType: effectiveShipType,
     heading: pos.TrueHeading,
     speed: pos.Sog,
     course: pos.Cog,
@@ -6677,13 +6699,13 @@ function processPositionReportForSnapshot(data) {
   // Maintain exact chokepoint membership so moving vessels don't get "stuck" in old buckets.
   updateVesselChokepoints(mmsi, lat, lon);
 
-  if (isLikelyMilitaryCandidate(meta)) {
+  if (isLikelyMilitaryCandidate(meta, effectiveShipType)) {
     candidateReports.set(mmsi, {
       mmsi,
-      name: meta.ShipName || '',
+      name: meta.ShipName || (cachedMeta && cachedMeta.shipName) || '',
       lat,
       lon,
-      shipType: meta.ShipType,
+      shipType: effectiveShipType,
       heading: pos.TrueHeading,
       speed: pos.Sog,
       course: pos.Cog,
@@ -6696,16 +6718,7 @@ function processPositionReportForSnapshot(data) {
   // hazardous cargo classes A-D, and other tanker variants). Stored in a
   // SEPARATE Map from candidateReports so the existing military-detection
   // consumer never sees tankers (their contract is unchanged).
-  //
-  // ShipType is NOT in PositionReport MetaData per AISStream's schema —
-  // it arrives in ShipStaticData (Type 5) frames, cached in vesselMeta
-  // by processShipStaticDataForMeta. Pre-fix, this predicate always
-  // failed (NaN) and tankerReports stayed empty; rendering empty layer
-  // on energy.worldmonitor.app despite PR #3402 wiring being correct.
-  const cachedMeta = vesselMeta.get(mmsi);
-  const shipType = Number.isFinite(Number(meta.ShipType))
-    ? Number(meta.ShipType)
-    : (cachedMeta ? cachedMeta.shipType : NaN);
+  const shipType = Number.isFinite(Number(effectiveShipType)) ? Number(effectiveShipType) : NaN;
   if (Number.isFinite(shipType) && shipType >= 80 && shipType <= 89) {
     tankerReports.set(mmsi, {
       mmsi,
