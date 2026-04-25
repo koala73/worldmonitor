@@ -28,7 +28,12 @@ import {
 
 const SENSITIVITY_RANK = { all: 0, high: 1, critical: 2 };
 
-function compareRules(a, b) {
+// Exported so the cron orchestration's two-pass winner walk
+// (sortedDue / sortedAll) can sort each pass identically to how
+// `groupEligibleRulesByUser` already orders candidates here. Kept as
+// a same-shape function so callers can reuse it without re-deriving
+// the priority key.
+export function compareRules(a, b) {
   const aFull = a.variant === 'full' ? 0 : 1;
   const bFull = b.variant === 'full' ? 0 : 1;
   if (aFull !== bFull) return aFull - bFull;
