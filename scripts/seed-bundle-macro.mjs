@@ -12,4 +12,11 @@ await runBundle('macro', [
   { label: 'IMF-Macro', script: 'seed-imf-macro.mjs', seedMetaKey: 'economic:imf-macro', canonicalKey: 'economic:imf:macro:v2', intervalMs: 30 * DAY, timeoutMs: 300_000 },
   { label: 'National-Debt', script: 'seed-national-debt.mjs', seedMetaKey: 'economic:national-debt', canonicalKey: 'economic:national-debt:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
   { label: 'FAO-FFPI', script: 'seed-fao-food-price-index.mjs', seedMetaKey: 'economic:fao-ffpi', canonicalKey: 'economic:fao-ffpi:v1', intervalMs: DAY, timeoutMs: 120_000 },
+  // plan 2026-04-25-004 Phase 2: financialSystemExposure component seeders.
+  // Bundle placement = Option A per Codex R1 #5 (less operational overhead
+  // than provisioning a new bundle service). All 3 feed the new dim's
+  // fail-closed preflight (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true).
+  { label: 'WB-External-Debt', script: 'seed-wb-external-debt.mjs', seedMetaKey: 'economic:wb-external-debt', canonicalKey: 'economic:wb-external-debt:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
+  { label: 'BIS-LBS', script: 'seed-bis-lbs.mjs', seedMetaKey: 'economic:bis-lbs', canonicalKey: 'economic:bis-lbs:v1', intervalMs: 7 * DAY, timeoutMs: 600_000 },
+  { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 120_000 },
 ]);
