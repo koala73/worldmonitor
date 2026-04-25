@@ -15,15 +15,21 @@
 //     through to the original stub — the brief must always ship.
 //
 // Cache semantics:
-//   - brief:llm:whymatters:v1:{storyHash}   — 24h, shared across users.
-//     whyMatters is editorial global-stakes commentary, not user
-//     personalisation, so per-story caching collapses N×U LLM calls
-//     to N.
-//   - brief:llm:digest:v1:{userId}:{poolHash} — 4h, per user.
-//     The executive summary IS personalised to a user's sensitivity
-//     and surfaced story pool, so cache keys include a hash of both.
-//     4h balances cost vs freshness — hourly cron pays at most once
-//     per 4 ticks per user.
+//   - brief:llm:whymatters:v3:{storyHash}:{leadHash} — 24h, shared
+//     across users for the same (story, lead) pair. v3 includes
+//     SHA-256 of the resolved digest lead so per-story rationales
+//     re-generate when the lead changes (rationales must align with
+//     the headline frame). v2 rows were lead-blind and could drift.
+//   - brief:llm:digest:v3:{userId|public}:{sensitivity}:{poolHash}
+//     — 4h. The canonical synthesis is now ALWAYS produced through
+//     this path (formerly split with `generateAISummary` in the
+//     digest cron). Material includes profile-SHA, greeting bucket,
+//     isPublic flag, and per-story hash so cache hits never serve a
+//     differently-ranked or differently-personalised prompt.
+//     When isPublic=true, the userId slot in the key is the literal
+//     string 'public' so all public-share readers of the same
+//     (date, sensitivity, story-pool) hit the same row — no PII in
+//     the public cache key. v2 rows ignored on rollout.
 
 import { createHash } from 'node:crypto';
 
@@ -303,42 +309,111 @@ export async function generateStoryDescription(story, deps) {
   return parsed;
 }
 
-// ── Digest prose (per user) ────────────────────────────────────────────────
+// ── Digest prose (canonical synthesis) ─────────────────────────────────────
+//
+// This is the single LLM call that produces the brief's executive summary.
+// All channels (email HTML, plain-text, Telegram, Slack, Discord, webhook)
+// AND the magazine's `digest.lead` read the same string from this output.
+// The cron orchestration layer also produces a separate non-personalised
+// `publicLead` via `generateDigestProsePublic` for the share-URL surface.
 
-const DIGEST_PROSE_SYSTEM =
+const DIGEST_PROSE_SYSTEM_BASE =
   'You are the chief editor of WorldMonitor Brief. Given a ranked list of ' +
   "today's top stories for a reader, produce EXACTLY this JSON and nothing " +
   'else (no markdown, no code fences, no preamble):\n' +
   '{\n' +
   '  "lead": "<2–3 sentence executive summary, editorial tone, references ' +
-  'the most important 1–2 threads, addresses the reader in the third person>",\n' +
+  'the most important 1–2 threads, addresses the reader directly>",\n' +
   '  "threads": [\n' +
   '    { "tag": "<one-word editorial category e.g. Energy, Diplomacy, Climate>", ' +
   '"teaser": "<one sentence describing what is developing>" }\n' +
   '  ],\n' +
-  '  "signals": ["<forward-looking imperative phrase, <=14 words>"]\n' +
+  '  "signals": ["<forward-looking imperative phrase, <=14 words>"],\n' +
+  '  "rankedStoryHashes": ["<short hash from the [h:XXXX] prefix of the most ' +
+  'important story>", "..."]\n' +
   '}\n' +
   'Threads: 3–6 items reflecting actual clusters in the stories. ' +
-  'Signals: 2–4 items, forward-looking.';
+  'Signals: 2–4 items, forward-looking. ' +
+  'rankedStoryHashes: at least the top 3 stories by editorial importance, ' +
+  'using the short hash from each story line (the value inside [h:...]). ' +
+  'Lead with the single most impactful development. Lead under 250 words.';
 
 /**
- * @param {Array<{ headline: string; threatLevel: string; category: string; country: string; source: string }>} stories
+ * Compute a coarse greeting bucket for cache-key stability.
+ * Greeting strings can vary in punctuation/capitalisation across
+ * locales; the bucket collapses them to one of three slots so the
+ * cache key only changes when the time-of-day window changes.
+ *
+ * @param {string|null|undefined} greeting
+ * @returns {'morning' | 'afternoon' | 'evening' | ''}
+ */
+export function greetingBucket(greeting) {
+  if (typeof greeting !== 'string') return '';
+  const g = greeting.toLowerCase();
+  if (g.includes('morning')) return 'morning';
+  if (g.includes('afternoon')) return 'afternoon';
+  if (g.includes('evening') || g.includes('night')) return 'evening';
+  return '';
+}
+
+/**
+ * @typedef {object} DigestPromptCtx
+ * @property {string|null} [profile]   formatted user profile lines, or null for non-personalised
+ * @property {string|null} [greeting]  e.g. "Good morning", or null for non-personalised
+ * @property {boolean}     [isPublic]  true = strip personalisation, build a generic lead
+ */
+
+/**
+ * Build the digest-prose prompt. When `ctx.profile` / `ctx.greeting`
+ * are present (and `ctx.isPublic !== true`), the prompt asks the
+ * model to address the reader by their watched assets/regions and
+ * open with the greeting. Otherwise the prompt produces a generic
+ * editorial brief safe for share-URL surfaces.
+ *
+ * Per-story line format includes a stable short-hash prefix:
+ *   `01 [h:abc12345] [CRITICAL] Headline — Category · Country · Source`
+ * The model emits `rankedStoryHashes` referencing those short hashes
+ * so the cron can re-order envelope.stories before the cap.
+ *
+ * @param {Array<{ hash?: string; headline: string; threatLevel: string; category: string; country: string; source: string }>} stories
  * @param {string} sensitivity
+ * @param {DigestPromptCtx} [ctx]
  * @returns {{ system: string; user: string }}
  */
-export function buildDigestPrompt(stories, sensitivity) {
+export function buildDigestPrompt(stories, sensitivity, ctx = {}) {
+  const isPublic = ctx?.isPublic === true;
+  const profile = !isPublic && typeof ctx?.profile === 'string' ? ctx.profile.trim() : '';
+  const greeting = !isPublic && typeof ctx?.greeting === 'string' ? ctx.greeting.trim() : '';
+
   const lines = stories.slice(0, MAX_STORIES_PER_USER).map((s, i) => {
     const n = String(i + 1).padStart(2, '0');
-    return `${n}. [${s.threatLevel}] ${s.headline} — ${s.category} · ${s.country} · ${s.source}`;
+    const sev = (s.threatLevel ?? '').toUpperCase();
+    // Short hash prefix — first 8 chars of digest story hash. Keeps
+    // the prompt compact while remaining collision-free for ≤30
+    // stories. Stories without a hash fall back to position-based
+    // 'p<NN>' so the prompt is always well-formed.
+    const shortHash = typeof s.hash === 'string' && s.hash.length >= 8
+      ? s.hash.slice(0, 8)
+      : `p${n}`;
+    return `${n}. [h:${shortHash}] [${sev}] ${s.headline} — ${s.category} · ${s.country} · ${s.source}`;
   });
-  const user = [
+
+  const userParts = [
     `Reader sensitivity level: ${sensitivity}`,
-    '',
-    "Today's surfaced stories (ranked):",
-    ...lines,
-  ].join('\n');
-  return { system: DIGEST_PROSE_SYSTEM, user };
+  ];
+  if (greeting) {
+    userParts.push('', `Open the lead with: "${greeting}."`);
+  }
+  if (profile) {
+    userParts.push('', 'Reader profile (use to personalise lead and signals):', profile);
+  }
+  userParts.push('', "Today's surfaced stories (ranked):", ...lines);
+
+  return { system: DIGEST_PROSE_SYSTEM_BASE, user: userParts.join('\n') };
 }
+
+// Back-compat alias for tests that import the old constant name.
+export const DIGEST_PROSE_SYSTEM = DIGEST_PROSE_SYSTEM_BASE;
 
 /**
  * Strict shape check for a parsed digest-prose object. Used by BOTH
@@ -349,14 +424,20 @@ export function buildDigestPrompt(stories, sensitivity) {
  * returns the caller's object by reference so downstream writes
  * can't observe internal state.
  *
+ * v3 (2026-04-25): adds optional `rankedStoryHashes` — short hashes
+ * (≥4 chars each) that the orchestration layer maps back to digest
+ * story `hash` values to re-order envelope.stories before the cap.
+ * Field is optional so v2-shaped cache rows still pass validation
+ * during the rollout window — they just don't carry ranking signal.
+ *
  * @param {unknown} obj
- * @returns {{ lead: string; threads: Array<{tag:string;teaser:string}>; signals: string[] } | null}
+ * @returns {{ lead: string; threads: Array<{tag:string;teaser:string}>; signals: string[]; rankedStoryHashes: string[] } | null}
  */
 export function validateDigestProseShape(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
 
   const lead = typeof obj.lead === 'string' ? obj.lead.trim() : '';
-  if (lead.length < 40 || lead.length > 800) return null;
+  if (lead.length < 40 || lead.length > 1500) return null;
 
   const rawThreads = Array.isArray(obj.threads) ? obj.threads : [];
   const threads = rawThreads
@@ -387,7 +468,18 @@ export function validateDigestProseShape(obj) {
     })
     .slice(0, 6);
 
-  return { lead, threads, signals };
+  // rankedStoryHashes: optional. When present, must be array of
+  // non-empty short-hash strings (≥4 chars). Each entry trimmed and
+  // capped to 16 chars (the prompt emits 8). Length capped to
+  // MAX_STORIES_PER_USER × 2 to bound prompt drift.
+  const rawRanked = Array.isArray(obj.rankedStoryHashes) ? obj.rankedStoryHashes : [];
+  const rankedStoryHashes = rawRanked
+    .filter((x) => typeof x === 'string')
+    .map((x) => x.trim().slice(0, 16))
+    .filter((x) => x.length >= 4)
+    .slice(0, MAX_STORIES_PER_USER * 2);
+
+  return { lead, threads, signals, rankedStoryHashes };
 }
 
 /**
@@ -419,10 +511,25 @@ export function parseDigestProse(text) {
  * about cache-hit rate; that optimisation is the wrong tradeoff for
  * an editorial product whose correctness bar is "matches the email".
  *
- * v2 key space so pre-fix cache rows (under the looser key) are
- * ignored on rollout — a one-tick cost to pay for clean semantics.
+ * v3 key space (2026-04-25): material now includes the digest-story
+ * `hash` (per-story rankability), `ctx.profile` SHA-256, greeting
+ * bucket, and isPublic flag. When `ctx.isPublic === true` the userId
+ * slot is replaced with the literal `'public'` so all public-share
+ * readers of the same (sensitivity, story-pool) hit ONE cache row
+ * regardless of caller — no PII in public cache keys, no per-user
+ * inflation. v2 rows are ignored on rollout (paid for once).
+ *
+ * @param {string} userId
+ * @param {Array} stories
+ * @param {string} sensitivity
+ * @param {DigestPromptCtx} [ctx]
  */
-function hashDigestInput(userId, stories, sensitivity) {
+function hashDigestInput(userId, stories, sensitivity, ctx = {}) {
+  const isPublic = ctx?.isPublic === true;
+  const profileSha = isPublic ? '' : (typeof ctx?.profile === 'string' && ctx.profile.length > 0
+    ? createHash('sha256').update(ctx.profile).digest('hex').slice(0, 16)
+    : '');
+  const greetingSlot = isPublic ? '' : greetingBucket(ctx?.greeting);
   // Canonicalise as JSON of the fields the prompt actually references,
   // in the prompt's ranked order. Stable stringification via an array
   // of tuples keeps field ordering deterministic without relying on
@@ -430,7 +537,13 @@ function hashDigestInput(userId, stories, sensitivity) {
   // slice or the cache key drifts from the prompt content.
   const material = JSON.stringify([
     sensitivity ?? '',
+    profileSha,
+    greetingSlot,
+    isPublic ? 'public' : 'private',
     ...stories.slice(0, MAX_STORIES_PER_USER).map((s) => [
+      // hash drives ranking (model emits rankedStoryHashes); without
+      // it the cache ignores re-ranking and stale ordering is served.
+      typeof s.hash === 'string' ? s.hash.slice(0, 8) : '',
       s.headline ?? '',
       s.threatLevel ?? '',
       s.category ?? '',
@@ -439,20 +552,29 @@ function hashDigestInput(userId, stories, sensitivity) {
     ]),
   ]);
   const h = createHash('sha256').update(material).digest('hex').slice(0, 16);
-  return `${userId}:${sensitivity}:${h}`;
+  // userId-slot substitution for public mode — one cache row per
+  // (sensitivity, story-pool) shared across ALL public readers.
+  const userSlot = isPublic ? 'public' : userId;
+  return `${userSlot}:${sensitivity}:${h}`;
 }
 
 /**
  * Resolve the digest prose object via cache → LLM.
+ *
+ * Backward-compatible signature: existing 4-arg callers behave like
+ * today (no profile/greeting → non-personalised lead). New callers
+ * pass `ctx` to enable canonical synthesis with greeting + profile.
+ *
  * @param {string} userId
  * @param {Array} stories
  * @param {string} sensitivity
- * @param {object} deps — { callLLM, cacheGet, cacheSet }
+ * @param {{ callLLM: Function; cacheGet: Function; cacheSet: Function }} deps
+ * @param {DigestPromptCtx} [ctx]
  */
-export async function generateDigestProse(userId, stories, sensitivity, deps) {
-  // v2 key: see hashDigestInput() comment. Full-prompt hash + strict
+export async function generateDigestProse(userId, stories, sensitivity, deps, ctx = {}) {
+  // v3 key: see hashDigestInput() comment. Full-prompt hash + strict
   // shape validation on every cache hit.
-  const key = `brief:llm:digest:v2:${hashDigestInput(userId, stories, sensitivity)}`;
+  const key = `brief:llm:digest:v3:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
   try {
     const hit = await deps.cacheGet(key);
     // CRITICAL: re-run the shape validator on cache hits. Without
@@ -467,11 +589,11 @@ export async function generateDigestProse(userId, stories, sensitivity, deps) {
       if (validated) return validated;
     }
   } catch { /* cache miss fine */ }
-  const { system, user } = buildDigestPrompt(stories, sensitivity);
+  const { system, user } = buildDigestPrompt(stories, sensitivity, ctx);
   let text = null;
   try {
     text = await deps.callLLM(system, user, {
-      maxTokens: 700,
+      maxTokens: 900,
       temperature: 0.4,
       timeoutMs: 15_000,
       skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
@@ -485,6 +607,33 @@ export async function generateDigestProse(userId, stories, sensitivity, deps) {
     await deps.cacheSet(key, parsed, DIGEST_PROSE_TTL_SEC);
   } catch { /* ignore */ }
   return parsed;
+}
+
+/**
+ * Non-personalised wrapper for share-URL surfaces. Strips profile
+ * and greeting; substitutes 'public' for userId in the cache key
+ * (see hashDigestInput) so all public-share readers of the same
+ * (sensitivity, story-pool) hit one cache row.
+ *
+ * Note the missing `userId` parameter — by design. Callers MUST
+ * NOT thread their authenticated user's id through this function;
+ * the public lead must never carry per-user salt.
+ *
+ * @param {Array} stories
+ * @param {string} sensitivity
+ * @param {{ callLLM: Function; cacheGet: Function; cacheSet: Function }} deps
+ * @returns {ReturnType<typeof generateDigestProse>}
+ */
+export async function generateDigestProsePublic(stories, sensitivity, deps) {
+  // userId param to generateDigestProse is unused when isPublic=true
+  // (see hashDigestInput's userSlot logic). Pass an empty string so
+  // a typo on a future caller can't accidentally salt the public
+  // cache.
+  return generateDigestProse('', stories, sensitivity, deps, {
+    profile: null,
+    greeting: null,
+    isPublic: true,
+  });
 }
 
 // ── Envelope enrichment ────────────────────────────────────────────────────

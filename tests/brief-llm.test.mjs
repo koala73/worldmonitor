@@ -249,8 +249,12 @@ describe('buildDigestPrompt', () => {
     const { system, user } = buildDigestPrompt([story(), story({ headline: 'Second', country: 'PS' })], 'critical');
     assert.match(system, /chief editor of WorldMonitor Brief/);
     assert.match(user, /Reader sensitivity level: critical/);
-    assert.match(user, /01\. \[critical\] Iran threatens/);
-    assert.match(user, /02\. \[critical\] Second/);
+    // v3 prompt format: "01. [h:XXXX] [SEVERITY] Headline" — includes
+    // a short hash prefix for ranking and uppercases severity to
+    // emphasise editorial importance to the model. Hash falls back
+    // to "p<NN>" position when story.hash is absent (test fixtures).
+    assert.match(user, /01\. \[h:p?[a-z0-9]+\] \[CRITICAL\] Iran threatens/);
+    assert.match(user, /02\. \[h:p?[a-z0-9]+\] \[CRITICAL\] Second/);
   });
 
   it('caps at 12 stories', () => {
@@ -258,6 +262,42 @@ describe('buildDigestPrompt', () => {
     const { user } = buildDigestPrompt(many, 'all');
     const lines = user.split('\n').filter((l) => /^\d{2}\. /.test(l));
     assert.equal(lines.length, 12);
+  });
+
+  it('opens lead with greeting when ctx.greeting set and not public', () => {
+    const { user } = buildDigestPrompt([story()], 'critical', { greeting: 'Good morning', isPublic: false });
+    assert.match(user, /Open the lead with: "Good morning\."/);
+  });
+
+  it('omits greeting and profile when ctx.isPublic=true', () => {
+    const { user } = buildDigestPrompt([story()], 'critical', {
+      profile: 'Watching: oil futures, Strait of Hormuz',
+      greeting: 'Good morning',
+      isPublic: true,
+    });
+    assert.doesNotMatch(user, /Good morning/);
+    assert.doesNotMatch(user, /Watching:/);
+  });
+
+  it('includes profile lines when ctx.profile set and not public', () => {
+    const { user } = buildDigestPrompt([story()], 'critical', {
+      profile: 'Watching: oil futures',
+      isPublic: false,
+    });
+    assert.match(user, /Reader profile/);
+    assert.match(user, /Watching: oil futures/);
+  });
+
+  it('emits stable [h:XXXX] short-hash prefix derived from story.hash', () => {
+    const s = story({ hash: 'abc12345xyz9876' });
+    const { user } = buildDigestPrompt([s], 'critical');
+    // Short hash is first 8 chars of the digest story hash.
+    assert.match(user, /\[h:abc12345\]/);
+  });
+
+  it('asks model to emit rankedStoryHashes in JSON output (system prompt)', () => {
+    const { system } = buildDigestPrompt([story()], 'critical');
+    assert.match(system, /rankedStoryHashes/);
   });
 });
 
@@ -426,8 +466,11 @@ describe('generateDigestProse', () => {
     // `threads`, which the renderer's assertBriefEnvelope requires.
     const llm1 = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm1.callLLM });
-    // Corrupt the stored row in place
-    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v2:'));
+    // Corrupt the stored row in place. Cache key prefix bumped to v3
+    // (2026-04-25) when the digest hash gained ctx (profile, greeting,
+    // isPublic) and per-story `hash` fields. v2 rows are ignored on
+    // rollout; v3 is the active prefix.
+    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v3:'));
     assert.ok(badKey, 'expected a digest prose cache entry');
     cache.store.set(badKey, { lead: 'short', /* missing threads + signals */ });
     const llm2 = makeLLM(validJson);
@@ -452,6 +495,10 @@ describe('validateDigestProseShape', () => {
     assert.ok(out);
     assert.notEqual(out, good, 'must not return the caller object by reference');
     assert.equal(out.threads.length, 1);
+    // v3: rankedStoryHashes is always present in the normalised
+    // output (defaults to [] when source lacks the field — keeps the
+    // shape stable for downstream consumers).
+    assert.ok(Array.isArray(out.rankedStoryHashes));
   });
 
   it('rejects missing threads', () => {
@@ -468,6 +515,30 @@ describe('validateDigestProseShape', () => {
     assert.equal(validateDigestProseShape(undefined), null);
     assert.equal(validateDigestProseShape([good]), null);
     assert.equal(validateDigestProseShape('string'), null);
+  });
+
+  it('preserves rankedStoryHashes when present (v3 path)', () => {
+    const out = validateDigestProseShape({
+      ...good,
+      rankedStoryHashes: ['abc12345', 'def67890', 'short', 'ok'],
+    });
+    assert.ok(out);
+    // 'short' (5 chars) keeps; 'ok' (2 chars) drops below the ≥4-char floor.
+    assert.deepEqual(out.rankedStoryHashes, ['abc12345', 'def67890', 'short']);
+  });
+
+  it('drops malformed rankedStoryHashes entries without rejecting the payload', () => {
+    const out = validateDigestProseShape({
+      ...good,
+      rankedStoryHashes: ['valid_hash', null, 42, '', '   ', 'bb'],
+    });
+    assert.ok(out, 'malformed ranking entries do not invalidate the whole object');
+    assert.deepEqual(out.rankedStoryHashes, ['valid_hash']);
+  });
+
+  it('returns empty rankedStoryHashes when field absent (v2-shaped row passes)', () => {
+    const out = validateDigestProseShape(good);
+    assert.deepEqual(out.rankedStoryHashes, []);
   });
 });
 
