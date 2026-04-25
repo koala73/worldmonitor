@@ -200,8 +200,10 @@ describe('composeBriefFromDigestStories — continued', () => {
     // threshold, so they dilute without helping adjacency). The
     // constant is env-tunable so a Railway flip can experiment with
     // cap values once new sweep evidence justifies them.
+    // Vary sources so U5's source-topic cap (default 2 per source+category)
+    // doesn't dominate the maxStories cap we're testing here.
     const many = Array.from({ length: 30 }, (_, i) =>
-      digestStory({ hash: `h${i}`, title: `Story ${i}` }),
+      digestStory({ hash: `h${i}`, title: `Story ${i}`, sources: [`Source${i}`] }),
     );
     const env = composeBriefFromDigestStories(
       rule(),
@@ -442,10 +444,12 @@ describe('composeBriefFromDigestStories — synthesis splice', () => {
   });
 
   it('rankedStoryHashes re-orders the surfaced pool BEFORE the cap is applied', () => {
+    // Vary sources so U5's source-topic cap (default 2) doesn't drop the
+    // 3rd story — this test verifies ranking, not the per-pair cap.
     const stories = [
-      digestStory({ hash: 'aaaa1111', title: 'First by digest order' }),
-      digestStory({ hash: 'bbbb2222', title: 'Second by digest order' }),
-      digestStory({ hash: 'cccc3333', title: 'Third by digest order' }),
+      digestStory({ hash: 'aaaa1111', title: 'First by digest order', sources: ['SrcA'] }),
+      digestStory({ hash: 'bbbb2222', title: 'Second by digest order', sources: ['SrcB'] }),
+      digestStory({ hash: 'cccc3333', title: 'Third by digest order', sources: ['SrcC'] }),
     ];
     const env = composeBriefFromDigestStories(
       rule(),
@@ -491,10 +495,13 @@ describe('composeBriefFromDigestStories — synthesis splice', () => {
   });
 
   it('stories not present in rankedStoryHashes go after, in original order', () => {
+    // Vary sources so U5's source-topic cap (default 2) doesn't drop the
+    // 3rd story — this test verifies ranking-then-original-order, not the
+    // per-pair cap.
     const stories = [
-      digestStory({ hash: 'unranked-A', title: 'Unranked A' }),
-      digestStory({ hash: 'ranked-B', title: 'Ranked B' }),
-      digestStory({ hash: 'unranked-C', title: 'Unranked C' }),
+      digestStory({ hash: 'unranked-A', title: 'Unranked A', sources: ['SrcA'] }),
+      digestStory({ hash: 'ranked-B', title: 'Ranked B', sources: ['SrcB'] }),
+      digestStory({ hash: 'unranked-C', title: 'Unranked C', sources: ['SrcC'] }),
     ];
     const env = composeBriefFromDigestStories(
       rule(),

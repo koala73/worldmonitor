@@ -88,6 +88,9 @@ describe('filterTopStories', () => {
         upstreamStory({ threatLevel: 'unknown' }),
       ],
       sensitivity: 'all',
+      // Disable U5's source-topic cap — these fixtures share source/category
+      // by design (they test the severity gate, not the per-pair cap).
+      maxPerSourceTopic: Infinity,
     });
     assert.equal(out.length, 4);
   });
@@ -96,7 +99,14 @@ describe('filterTopStories', () => {
     const stories = Array.from({ length: 20 }, (_, i) =>
       upstreamStory({ primaryTitle: `Story ${i}` }),
     );
-    const out = filterTopStories({ stories, sensitivity: 'all', maxStories: 5 });
+    const out = filterTopStories({
+      stories,
+      sensitivity: 'all',
+      maxStories: 5,
+      // Disable U5's source-topic cap — these fixtures share source/category
+      // by design (they test the maxStories cap, not the per-pair cap).
+      maxPerSourceTopic: Infinity,
+    });
     assert.equal(out.length, 5);
   });
 
@@ -369,7 +379,7 @@ describe('filterTopStories — onDrop metrics', () => {
 
   it('reconciliation invariant: in === out + sum(dropped_*) across all reasons', () => {
     // Locks in the operator-facing invariant that motivated adding `cap`.
-    const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
+    const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0, source_topic_cap: 0, institutional_static_page: 0 };
     const stories = [
       upstreamStory({ primaryTitle: 'A' }),
       upstreamStory({ primaryTitle: 'B' }),
@@ -385,9 +395,14 @@ describe('filterTopStories — onDrop metrics', () => {
       stories,
       sensitivity,
       maxStories: 3,
+      // Disable U5's source-topic cap — fixtures share source/category by
+      // design; this test verifies the in===out+dropped invariant for the
+      // existing severity/headline/url/shape/cap reasons. U5's own tests
+      // cover the source_topic_cap reason in isolation.
+      maxPerSourceTopic: Infinity,
       onDrop: (ev) => { tally[ev.reason]++; },
     });
-    const totalDrops = tally.severity + tally.headline + tally.url + tally.shape + tally.cap;
+    const totalDrops = tally.severity + tally.headline + tally.url + tally.shape + tally.cap + tally.source_topic_cap + tally.institutional_static_page;
     assert.equal(stories.length, out.length + totalDrops);
   });
 });
@@ -411,5 +426,157 @@ describe('issueDateInTz', () => {
 
   it('malformed timezone falls back to UTC', () => {
     assert.equal(issueDateInTz(midnightUtc, 'Not/A_Zone'), '2026-04-18');
+  });
+});
+
+// ─── U5: source-topic cap (R6) ───────────────────────────────────────────────
+
+describe('filterTopStories — source-topic cap (U5/R6)', () => {
+  function story(overrides = {}) {
+    return upstreamStory({
+      threatLevel: 'high',
+      primarySource: 'CBS News',
+      category: 'weather',
+      ...overrides,
+    });
+  }
+
+  it('keeps 2 stories from the same (source, category) pair (within default cap)', () => {
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'Tornadoes rip through Midwest' }),
+        story({ primaryTitle: 'Watch tornadoes swirl through Oklahoma' }),
+      ],
+      sensitivity: 'all',
+    });
+    assert.equal(out.length, 2);
+  });
+
+  it('drops the 3rd story from the same (source, category) pair with reason source_topic_cap', () => {
+    const drops = [];
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'Tornadoes rip through Midwest' }),
+        story({ primaryTitle: 'Watch tornadoes swirl through Oklahoma' }),
+        story({ primaryTitle: 'Storm system batters Kansas' }),
+      ],
+      sensitivity: 'all',
+      onDrop: (e) => drops.push(e),
+    });
+    assert.equal(out.length, 2);
+    assert.equal(drops.length, 1);
+    assert.equal(drops[0].reason, 'source_topic_cap');
+    assert.equal(drops[0].severity, 'high');
+  });
+
+  it('stories from same source but different category both pass', () => {
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'Tornado A', category: 'weather' }),
+        story({ primaryTitle: 'Tornado B', category: 'weather' }),
+        story({ primaryTitle: 'Election update', category: 'politics' }),
+      ],
+      sensitivity: 'all',
+    });
+    assert.equal(out.length, 3);
+  });
+
+  it('stories from different sources but same category both pass', () => {
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'Tornado A', primarySource: 'CBS News' }),
+        story({ primaryTitle: 'Tornado B', primarySource: 'CBS News' }),
+        story({ primaryTitle: 'Tornado C', primarySource: 'Reuters' }),
+      ],
+      sensitivity: 'all',
+    });
+    assert.equal(out.length, 3);
+  });
+
+  it('honors maxPerSourceTopic override', () => {
+    const drops = [];
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'A' }),
+        story({ primaryTitle: 'B' }),
+        story({ primaryTitle: 'C' }),
+      ],
+      sensitivity: 'all',
+      maxPerSourceTopic: 1,
+      onDrop: (e) => drops.push(e),
+    });
+    assert.equal(out.length, 1);
+    assert.equal(drops.filter((d) => d.reason === 'source_topic_cap').length, 2);
+  });
+
+  it('default missing source falls back to "Multiple wires" — cap still applies', () => {
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'A', primarySource: undefined }),
+        story({ primaryTitle: 'B', primarySource: undefined }),
+        story({ primaryTitle: 'C', primarySource: undefined }),
+      ],
+      sensitivity: 'all',
+    });
+    assert.equal(out.length, 2, 'Multiple wires + same category caps at 2');
+  });
+
+  it('default missing category falls back to "General" — cap still applies', () => {
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'A', category: undefined }),
+        story({ primaryTitle: 'B', category: undefined }),
+        story({ primaryTitle: 'C', category: undefined }),
+      ],
+      sensitivity: 'all',
+    });
+    assert.equal(out.length, 2, 'CBS News + General caps at 2');
+  });
+
+  it('institutional-static-page URLs are dropped (U7/R7)', () => {
+    const drops = [];
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'About Section 508',
+          primaryLink: 'https://www.defense.gov/About/Section-508/',
+          primarySource: 'Pentagon',
+          category: 'gov',
+        }),
+        upstreamStory({
+          primaryTitle: 'Real news',
+          primaryLink: 'https://example.com/real-article',
+          primarySource: 'Pentagon',
+          category: 'gov',
+        }),
+      ],
+      sensitivity: 'all',
+      onDrop: (e) => drops.push(e),
+    });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].headline, 'Real news');
+    assert.equal(drops.length, 1);
+    assert.equal(drops[0].reason, 'institutional_static_page');
+    assert.equal(drops[0].sourceUrl, 'https://www.defense.gov/About/Section-508/');
+  });
+
+  it('ranked order survives the cap: highest-ranked sibling wins', () => {
+    const drops = [];
+    const out = filterTopStories({
+      stories: [
+        story({ primaryTitle: 'C low', hash: 'aaaaaaaaaaaaaaaa' }),
+        story({ primaryTitle: 'B mid', hash: 'bbbbbbbbbbbbbbbb' }),
+        story({ primaryTitle: 'A top', hash: 'cccccccccccccccc' }),
+      ],
+      sensitivity: 'all',
+      maxPerSourceTopic: 2,
+      // Rank C and A first, B last — so C+A survive, B is dropped.
+      rankedStoryHashes: ['cccccccc', 'aaaaaaaa', 'bbbbbbbb'],
+      onDrop: (e) => drops.push(e),
+    });
+    assert.equal(out.length, 2);
+    assert.equal(out[0].headline, 'A top');
+    assert.equal(out[1].headline, 'C low');
+    assert.equal(drops.filter((d) => d.reason === 'source_topic_cap').length, 1);
   });
 });
