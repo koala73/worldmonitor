@@ -113,6 +113,7 @@ async function _createCheckoutSession(
       "https://finance.worldmonitor.app",
       "https://commodity.worldmonitor.app",
       "https://happy.worldmonitor.app",
+      "https://energy.worldmonitor.app",
       new URL(siteUrl).origin,
     ]);
     if (!allowedOrigins.has(parsedReturnUrl.origin)) {

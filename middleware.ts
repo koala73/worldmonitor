@@ -45,6 +45,7 @@ const VARIANT_HOST_MAP: Record<string, string> = {
   'finance.worldmonitor.app': 'finance',
   'commodity.worldmonitor.app': 'commodity',
   'happy.worldmonitor.app': 'happy',
+  'energy.worldmonitor.app': 'energy',
 };
 
 // Source of truth: src/config/variant-meta.ts — keep in sync when variant metadata changes.
@@ -72,6 +73,12 @@ const VARIANT_OG: Record<string, { title: string; description: string; image: st
     description: 'Curated positive news, progress data, and uplifting stories from around the world.',
     image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
     url: 'https://happy.worldmonitor.app/',
+  },
+  energy: {
+    title: 'Energy Atlas - Real-Time Global Energy Intelligence Dashboard',
+    description: 'Real-time global energy atlas tracking oil and gas pipelines, storage facilities, chokepoints, fuel shortages, tanker flows, and disruption events worldwide.',
+    image: 'https://energy.worldmonitor.app/favico/energy/og-image.png',
+    url: 'https://energy.worldmonitor.app/',
   },
 };
 
