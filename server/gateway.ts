@@ -26,11 +26,16 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
 // single-source-of-truth maintainability; the size is negligible vs handler code.
 
-type CacheTier = 'fast' | 'medium' | 'slow' | 'slow-browser' | 'static' | 'daily' | 'no-store';
+type CacheTier = 'fast' | 'medium' | 'slow' | 'slow-browser' | 'static' | 'daily' | 'no-store' | 'live';
 
 // Three-tier caching: browser (max-age) → CF edge (s-maxage) → Vercel CDN (CDN-Cache-Control).
 // CF ignores Vary: Origin so it may pin a single ACAO value, but this is acceptable
 // since production traffic is same-origin and preview deployments hit Vercel CDN directly.
+//
+// 'live' tier (60s) is for endpoints with strict freshness contracts — the
+// energy-atlas live-tanker map layer requires position fixes to refresh on
+// the order of one minute. Every shorter-than-medium tier is custom; we keep
+// the existing tiers untouched so unrelated endpoints aren't impacted.
 const TIER_HEADERS: Record<CacheTier, string> = {
   fast: 'public, max-age=60, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
   medium: 'public, max-age=120, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
@@ -39,6 +44,7 @@ const TIER_HEADERS: Record<CacheTier, string> = {
   static: 'public, max-age=600, s-maxage=3600, stale-while-revalidate=600, stale-if-error=14400',
   daily: 'public, max-age=3600, s-maxage=14400, stale-while-revalidate=7200, stale-if-error=172800',
   'no-store': 'no-store',
+  live: 'public, max-age=30, s-maxage=60, stale-while-revalidate=60, stale-if-error=300',
 };
 
 // Vercel CDN-specific cache TTLs — CDN-Cache-Control overrides Cache-Control for
@@ -52,10 +58,14 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
   static: 'public, s-maxage=14400, stale-while-revalidate=3600, stale-if-error=28800',
   daily: 'public, s-maxage=86400, stale-while-revalidate=14400, stale-if-error=172800',
   'no-store': null,
+  live: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=300',
 };
 
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
-  '/api/maritime/v1/get-vessel-snapshot': 'no-store',
+  // 'live' tier — bbox-quantized + tanker-aware caching upstream of the
+  // 60s in-handler cache, absorbing identical-bbox requests at the CDN
+  // before they hit this Vercel function. Energy Atlas live-tanker layer.
+  '/api/maritime/v1/get-vessel-snapshot': 'live',
 
   '/api/market/v1/list-market-quotes': 'medium',
   '/api/market/v1/list-crypto-quotes': 'medium',

@@ -48,6 +48,17 @@ paths:
                   required: false
                   schema:
                     type: boolean
+                - name: include_tankers
+                  in: query
+                  description: |-
+                    When true, populate VesselSnapshot.tanker_reports with per-vessel
+                     position reports for AIS ship-type 80-89 (tanker class). Used by the
+                     Energy Atlas live-tanker map layer. Stored separately from
+                     candidate_reports (which is military-only) so consumers self-select
+                     via this flag rather than the response field changing meaning.
+                  required: false
+                  schema:
+                    type: boolean
             responses:
                 "200":
                     description: Successful response
@@ -171,6 +182,14 @@ components:
                         When true, populate VesselSnapshot.candidate_reports with per-vessel
                          position reports. Clients with no position callbacks should leave this
                          false to keep responses small.
+                includeTankers:
+                    type: boolean
+                    description: |-
+                        When true, populate VesselSnapshot.tanker_reports with per-vessel
+                         position reports for AIS ship-type 80-89 (tanker class). Used by the
+                         Energy Atlas live-tanker map layer. Stored separately from
+                         candidate_reports (which is military-only) so consumers self-select
+                         via this flag rather than the response field changing meaning.
             description: GetVesselSnapshotRequest specifies filters for the vessel snapshot.
         GetVesselSnapshotResponse:
             type: object
@@ -202,6 +221,10 @@ components:
                 status:
                     $ref: '#/components/schemas/AisSnapshotStatus'
                 candidateReports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SnapshotCandidateReport'
+                tankerReports:
                     type: array
                     items:
                         $ref: '#/components/schemas/SnapshotCandidateReport'

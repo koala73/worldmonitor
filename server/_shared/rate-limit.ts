@@ -96,6 +96,10 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // inline Upstash INCR. Gateway now enforces the same budget with per-IP
   // keying in checkEndpointRateLimit.
   '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
+  // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
+  // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
+  // pans within a single user without flagging legitimate traffic.
+  '/api/maritime/v1/get-vessel-snapshot': { limit: 60, window: '60 s' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();

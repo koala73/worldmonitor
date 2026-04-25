@@ -433,6 +433,8 @@ export class DeckGLMap {
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
+  private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
+  private liveTankersAbort: AbortController | null = null;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
   private healthByCableId: Record<string, CableHealthRecord> = {};
@@ -1540,6 +1542,17 @@ export class DeckGLMap {
       if (shortageLayer) layers.push(shortageLayer);
     } else {
       this.layerCache.delete('fuel-shortages-layer');
+    }
+
+    // Live tanker positions inside chokepoint bounding boxes. AIS ship type
+    // 80-89 (tanker class). Refreshed every 60s; one Map<chokepointId, ...>
+    // fetch per layer-tick. deckGLOnly per src/config/map-layer-definitions.ts.
+    // Powered by the relay's tankerReports field (added in PR 3 U7 alongside
+    // the existing military-only candidateReports). Energy Atlas parity-push.
+    if (mapLayers.liveTankers && this.liveTankers.length > 0) {
+      layers.push(this.createLiveTankersLayer());
+    } else {
+      this.layerCache.delete('live-tankers-layer');
     }
 
     // Conflict zones layer
@@ -2952,6 +2965,62 @@ export class DeckGLMap {
       radiusMaxPixels: 12,
       pickable: true,
     });
+  }
+
+  private createLiveTankersLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'live-tankers-layer',
+      data: this.liveTankers,
+      getPosition: (d) => [d.lon, d.lat],
+      // Radius scales loosely with deadweight class: VLCC > Aframax > Handysize.
+      // AIS ship type 80-89 covers all tanker subtypes; we have no DWT field
+      // in the AIS message itself, so this is a constant fallback. Future
+      // enhancement: enrich via a vessel-registry lookup.
+      getRadius: 2500,
+      getFillColor: (d) => {
+        // Anchored (speed < 0.5 kn) — orange, signals waiting / loading /
+        // potential congestion. Underway (speed >= 0.5 kn) — cyan, normal
+        // transit. Unknown / missing speed — gray.
+        if (!Number.isFinite(d.speed)) return [127, 140, 141, 200] as [number, number, number, number];
+        if (d.speed < 0.5) return [255, 183, 3, 220] as [number, number, number, number]; // amber
+        return [0, 209, 255, 220] as [number, number, number, number]; // cyan
+      },
+      radiusMinPixels: 3,
+      radiusMaxPixels: 8,
+      pickable: true,
+    });
+  }
+
+  /**
+   * Tanker loader — called externally (or on a 60s tick) to refresh
+   * `this.liveTankers`. Imports lazily so the service module isn't pulled
+   * into the bundle for variants where the layer is disabled.
+   */
+  public async loadLiveTankers(): Promise<void> {
+    // Cancel any in-flight tick before starting another. Per skill
+    // closure-scoped-state-teardown-order: don't null out the abort
+    // controller before calling abort.
+    if (this.liveTankersAbort) {
+      this.liveTankersAbort.abort();
+    }
+    this.liveTankersAbort = new AbortController();
+    try {
+      const { fetchLiveTankers } = await import('@/services/live-tankers');
+      const zones = await fetchLiveTankers();
+      const flat = zones.flatMap((z) => z.tankers).map((t) => ({
+        mmsi: t.mmsi,
+        lat: t.lat,
+        lon: t.lon,
+        speed: t.speed,
+        shipType: t.shipType,
+        name: t.name,
+      }));
+      this.liveTankers = flat;
+      this.updateLayers();
+    } catch {
+      // Graceful: leave existing tankers in place; layer will continue
+      // rendering last-known data until the next successful tick.
+    }
   }
 
   private createGpsJammingLayer(): H3HexagonLayer {

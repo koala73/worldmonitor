@@ -27,10 +27,27 @@ const SEVERITY_MAP: Record<string, AisDisruptionSeverity> = {
   high: 'AIS_DISRUPTION_SEVERITY_HIGH',
 };
 
-// Cache the two variants separately — candidate reports materially change
-// payload size, and clients with no position callbacks should not have to
-// wait on or pay for the heavier payload.
-const SNAPSHOT_CACHE_TTL_MS = 300_000; // 5 min -- matches client poll interval
+// In-process cache TTLs.
+//
+// The base snapshot (no candidates, no tankers, no bbox) is the high-traffic
+// path consumed by the AIS-density layer + military-detection consumers. It
+// re-uses the existing 5-minute cache because density / disruptions only
+// change once per relay cycle.
+//
+// Tanker (live-tanker map layer) and bbox-filtered responses MUST refresh
+// every 60s to honor the live-tanker freshness contract — anything longer
+// shows stale vessel positions and collapses distinct bboxes onto one
+// payload, defeating the bbox parameter entirely.
+const SNAPSHOT_CACHE_TTL_BASE_MS = 300_000; // 5 min for non-bbox / non-tanker reads
+const SNAPSHOT_CACHE_TTL_LIVE_MS = 60_000;  // 60 s for live tanker / bbox reads
+
+// 1° bbox quantization for cache-key reuse: a user panning a few decimal
+// degrees should hit the same cache slot as another user nearby. Done
+// server-side so the gateway 'live' tier sees identical query strings and
+// the CDN absorbs the request before it reaches this handler.
+function quantize(v: number): number {
+  return Math.floor(v);
+}
 
 interface SnapshotCacheSlot {
   snapshot: VesselSnapshot | undefined;
@@ -38,15 +55,44 @@ interface SnapshotCacheSlot {
   inFlight: Promise<VesselSnapshot | undefined> | null;
 }
 
-const cache: Record<'with' | 'without', SnapshotCacheSlot> = {
-  with: { snapshot: undefined, timestamp: 0, inFlight: null },
-  without: { snapshot: undefined, timestamp: 0, inFlight: null },
-};
+// Cache keyed by request shape: candidates, tankers, and quantized bbox.
+// Replaces the prior `with|without` keying which would silently serve
+// stale tanker data and collapse distinct bboxes.
+const cache = new Map<string, SnapshotCacheSlot>();
 
-async function fetchVesselSnapshot(includeCandidates: boolean): Promise<VesselSnapshot | undefined> {
-  const slot = cache[includeCandidates ? 'with' : 'without'];
+function cacheKeyFor(
+  includeCandidates: boolean,
+  includeTankers: boolean,
+  bbox: { swLat: number; swLon: number; neLat: number; neLon: number } | null,
+): string {
+  const c = includeCandidates ? '1' : '0';
+  const t = includeTankers ? '1' : '0';
+  if (!bbox) return `${c}${t}|null`;
+  const sl = quantize(bbox.swLat);
+  const so = quantize(bbox.swLon);
+  const nl = quantize(bbox.neLat);
+  const no = quantize(bbox.neLon);
+  return `${c}${t}|${sl},${so},${nl},${no}`;
+}
+
+function ttlFor(includeTankers: boolean, bbox: unknown): number {
+  return includeTankers || bbox ? SNAPSHOT_CACHE_TTL_LIVE_MS : SNAPSHOT_CACHE_TTL_BASE_MS;
+}
+
+async function fetchVesselSnapshot(
+  includeCandidates: boolean,
+  includeTankers: boolean,
+  bbox: { swLat: number; swLon: number; neLat: number; neLon: number } | null,
+): Promise<VesselSnapshot | undefined> {
+  const key = cacheKeyFor(includeCandidates, includeTankers, bbox);
+  let slot = cache.get(key);
+  if (!slot) {
+    slot = { snapshot: undefined, timestamp: 0, inFlight: null };
+    cache.set(key, slot);
+  }
   const now = Date.now();
-  if (slot.snapshot && (now - slot.timestamp) < SNAPSHOT_CACHE_TTL_MS) {
+  const ttl = ttlFor(includeTankers, bbox);
+  if (slot.snapshot && (now - slot.timestamp) < ttl) {
     return slot.snapshot;
   }
 
@@ -54,7 +100,7 @@ async function fetchVesselSnapshot(includeCandidates: boolean): Promise<VesselSn
     return slot.inFlight;
   }
 
-  slot.inFlight = fetchVesselSnapshotFromRelay(includeCandidates);
+  slot.inFlight = fetchVesselSnapshotFromRelay(includeCandidates, includeTankers, bbox);
   try {
     const result = await slot.inFlight;
     if (result) {
@@ -87,13 +133,31 @@ function toCandidateReport(raw: any): SnapshotCandidateReport | null {
   };
 }
 
-async function fetchVesselSnapshotFromRelay(includeCandidates: boolean): Promise<VesselSnapshot | undefined> {
+async function fetchVesselSnapshotFromRelay(
+  includeCandidates: boolean,
+  includeTankers: boolean,
+  bbox: { swLat: number; swLon: number; neLat: number; neLon: number } | null,
+): Promise<VesselSnapshot | undefined> {
   try {
     const relayBaseUrl = getRelayBaseUrl();
     if (!relayBaseUrl) return undefined;
 
+    const params = new URLSearchParams();
+    params.set('candidates', includeCandidates ? 'true' : 'false');
+    if (includeTankers) params.set('tankers', 'true');
+    if (bbox) {
+      // Quantized bbox: prevents the relay from caching one URL per
+      // floating-point pixel as users pan. Same quantization as the
+      // handler-side cache key so they stay consistent.
+      const sl = quantize(bbox.swLat);
+      const so = quantize(bbox.swLon);
+      const nl = quantize(bbox.neLat);
+      const no = quantize(bbox.neLon);
+      params.set('bbox', `${sl},${so},${nl},${no}`);
+    }
+
     const response = await fetch(
-      `${relayBaseUrl}/ais/snapshot?candidates=${includeCandidates ? 'true' : 'false'}`,
+      `${relayBaseUrl}/ais/snapshot?${params.toString()}`,
       {
         headers: getRelayHeaders(),
         signal: AbortSignal.timeout(10000),
@@ -141,6 +205,9 @@ async function fetchVesselSnapshotFromRelay(includeCandidates: boolean): Promise
     const candidateReports = (includeCandidates && Array.isArray(data.candidateReports))
       ? data.candidateReports.map(toCandidateReport).filter((r: SnapshotCandidateReport | null): r is SnapshotCandidateReport => r !== null)
       : [];
+    const tankerReports = (includeTankers && Array.isArray(data.tankerReports))
+      ? data.tankerReports.map(toCandidateReport).filter((r: SnapshotCandidateReport | null): r is SnapshotCandidateReport => r !== null)
+      : [];
 
     return {
       snapshotAt: Date.now(),
@@ -153,6 +220,7 @@ async function fetchVesselSnapshotFromRelay(includeCandidates: boolean): Promise
         messages: Number.isFinite(Number(rawStatus.messages)) ? Number(rawStatus.messages) : 0,
       },
       candidateReports,
+      tankerReports,
     };
   } catch {
     return undefined;
@@ -163,14 +231,47 @@ async function fetchVesselSnapshotFromRelay(includeCandidates: boolean): Promise
 // RPC handler
 // ========================================================================
 
+// Bbox-size guard: reject requests where either dimension exceeds 10°. This
+// prevents a malicious or buggy client from requesting a global box and
+// pulling every tanker through one query.
+const MAX_BBOX_DEGREES = 10;
+
+export class BboxTooLargeError extends Error {
+  constructor() {
+    super('bbox too large: each dimension must be ≤ 10 degrees');
+    this.name = 'BboxTooLargeError';
+  }
+}
+
+function extractAndValidateBbox(req: GetVesselSnapshotRequest): { swLat: number; swLon: number; neLat: number; neLon: number } | null {
+  const sw = { lat: Number(req.swLat), lon: Number(req.swLon) };
+  const ne = { lat: Number(req.neLat), lon: Number(req.neLon) };
+  // All zeroes (the default for unset proto doubles) → no bbox.
+  if (sw.lat === 0 && sw.lon === 0 && ne.lat === 0 && ne.lon === 0) {
+    return null;
+  }
+  if (![sw.lat, sw.lon, ne.lat, ne.lon].every(Number.isFinite)) return null;
+  if (sw.lat > ne.lat || sw.lon > ne.lon) return null;
+  if (ne.lat - sw.lat > MAX_BBOX_DEGREES || ne.lon - sw.lon > MAX_BBOX_DEGREES) {
+    throw new BboxTooLargeError();
+  }
+  return { swLat: sw.lat, swLon: sw.lon, neLat: ne.lat, neLon: ne.lon };
+}
+
 export async function getVesselSnapshot(
   _ctx: ServerContext,
   req: GetVesselSnapshotRequest,
 ): Promise<GetVesselSnapshotResponse> {
   try {
-    const snapshot = await fetchVesselSnapshot(Boolean(req.includeCandidates));
+    const bbox = extractAndValidateBbox(req);
+    const snapshot = await fetchVesselSnapshot(
+      Boolean(req.includeCandidates),
+      Boolean(req.includeTankers),
+      bbox,
+    );
     return { snapshot };
-  } catch {
+  } catch (err) {
+    if (err instanceof BboxTooLargeError) throw err; // surface to the gateway as 400
     return { snapshot: undefined };
   }
 }

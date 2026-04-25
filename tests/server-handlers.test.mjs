@@ -192,24 +192,37 @@ describe('getCacheKey determinism', () => {
 describe('getVesselSnapshot caching (HIGH-1)', () => {
   const src = readSrc('server/worldmonitor/maritime/v1/get-vessel-snapshot.ts');
 
-  it('has per-variant cache slots (candidates=on vs off)', () => {
-    assert.match(src, /cache:\s*Record<'with'\s*\|\s*'without'/,
-      'Cache should split on include_candidates so the large/small payloads do not share a slot');
-    assert.match(src, /with:\s*\{\s*snapshot:\s*undefined/,
-      'with-candidates slot should be initialized empty');
-    assert.match(src, /without:\s*\{\s*snapshot:\s*undefined/,
-      'without-candidates slot should be initialized empty');
+  it('cache is keyed by request shape (candidates, tankers, quantized bbox)', () => {
+    // PR 3 (parity-push) replaced the prior `Record<'with'|'without'>` cache
+    // with a Map<string, SnapshotCacheSlot> where the key embeds all three
+    // axes that change response payload: includeCandidates, includeTankers,
+    // and (when present) a 1°-quantized bbox. This prevents distinct bboxes
+    // from collapsing onto a single cached response.
+    assert.match(src, /const\s+cache\s*=\s*new\s+Map<string,\s*SnapshotCacheSlot>/,
+      'cache should be a Map<string, SnapshotCacheSlot> keyed by request shape');
+    assert.match(src, /cacheKeyFor\s*\(/,
+      'cacheKeyFor() helper should compose the cache key');
+    // Key must distinguish includeCandidates, includeTankers, and bbox.
+    assert.match(src, /includeCandidates\s*\?\s*'1'\s*:\s*'0'/,
+      'cache key must encode includeCandidates');
+    assert.match(src, /includeTankers\s*\?\s*'1'\s*:\s*'0'/,
+      'cache key must encode includeTankers');
   });
 
-  it('has 5-minute TTL cache', () => {
-    assert.match(src, /SNAPSHOT_CACHE_TTL_MS\s*=\s*300[_]?000/,
-      'TTL should be 5 minutes (300000ms)');
+  it('has split TTLs for base (5min) and live tanker / bbox (60s) reads', () => {
+    // Base path (density + military-detection consumers) keeps the prior
+    // 5-min cache. Live-tanker and bbox-filtered paths drop to 60s to honor
+    // the freshness contract that drives the Energy Atlas LiveTankersLayer.
+    assert.match(src, /SNAPSHOT_CACHE_TTL_BASE_MS\s*=\s*300[_]?000/,
+      'base TTL should remain 5 minutes (300000ms) for density/disruption consumers');
+    assert.match(src, /SNAPSHOT_CACHE_TTL_LIVE_MS\s*=\s*60[_]?000/,
+      'live tanker / bbox TTL should be 60s to match the gateway live tier s-maxage');
   });
 
   it('checks cache before calling relay', () => {
     // fetchVesselSnapshot should check slot freshness before fetchVesselSnapshotFromRelay
     const cacheCheckIdx = src.indexOf('slot.snapshot && (now - slot.timestamp)');
-    const relayCallIdx = src.indexOf('fetchVesselSnapshotFromRelay(includeCandidates)');
+    const relayCallIdx = src.indexOf('fetchVesselSnapshotFromRelay(');
     assert.ok(cacheCheckIdx > -1, 'Should check slot freshness');
     assert.ok(relayCallIdx > -1, 'Should have relay fetch function');
     assert.ok(cacheCheckIdx < relayCallIdx,
@@ -228,6 +241,15 @@ describe('getVesselSnapshot caching (HIGH-1)', () => {
   it('serves stale snapshot when relay fetch fails', () => {
     assert.match(src, /return\s+result\s*\?\?\s*slot\.snapshot/,
       'Should return stale cached snapshot from the selected slot when fresh relay fetch fails');
+  });
+
+  it('rejects bbox larger than 10° on either dimension', () => {
+    // PR 3 (parity-push): server-side guard against a malicious or buggy
+    // global-bbox query that would pull every tanker through one request.
+    assert.match(src, /MAX_BBOX_DEGREES\s*=\s*10/,
+      'should declare a 10° max-bbox guard');
+    assert.match(src, /class\s+BboxTooLargeError/,
+      'should throw BboxTooLargeError on oversized bbox');
   });
 
   // NOTE: Full integration test (mocking fetch, verifying cache hits) requires

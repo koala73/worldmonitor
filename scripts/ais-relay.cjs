@@ -6365,6 +6365,12 @@ const vessels = new Map();
 const vesselHistory = new Map();
 const densityGrid = new Map();
 const candidateReports = new Map();
+// Parallel store for tanker (AIS ship type 80-89) position reports — populated
+// alongside candidateReports but with a different inclusion predicate.
+// Required by the Energy Atlas live-tanker map layer (parity-push PR 3).
+// Kept SEPARATE from candidateReports so the existing military-detection
+// consumer's contract is unchanged.
+const tankerReports = new Map();
 
 let snapshotSequence = 0;
 let lastSnapshot = null;
@@ -6643,6 +6649,26 @@ function processPositionReportForSnapshot(data) {
       timestamp: now,
     });
   }
+
+  // Tanker capture for the Energy Atlas live-tanker layer. AIS ship type
+  // 80-89 covers all tanker subtypes per ITU-R M.1371 (oil/chemical tanker,
+  // hazardous cargo classes A-D, and other tanker variants). Stored in a
+  // SEPARATE Map from candidateReports so the existing military-detection
+  // consumer never sees tankers (their contract is unchanged).
+  const shipType = Number(meta.ShipType);
+  if (Number.isFinite(shipType) && shipType >= 80 && shipType <= 89) {
+    tankerReports.set(mmsi, {
+      mmsi,
+      name: meta.ShipName || '',
+      lat,
+      lon,
+      shipType,
+      heading: pos.TrueHeading,
+      speed: pos.Sog,
+      course: pos.Cog,
+      timestamp: now,
+    });
+  }
 }
 
 function cleanupAggregates() {
@@ -6700,6 +6726,18 @@ function cleanupAggregates() {
   }
   // Hard cap: keep freshest candidate reports.
   evictMapByTimestamp(candidateReports, MAX_CANDIDATE_REPORTS, (report) => report.timestamp || 0);
+
+  // Tanker reports: same retention window as candidate reports — a vessel
+  // that hasn't broadcast a position in CANDIDATE_RETENTION_MS is no longer
+  // useful for a live-tanker map layer. Cap at 2× the per-response cap so
+  // we have headroom for bbox filtering to find recent fixes anywhere on
+  // the globe (not just one chokepoint).
+  for (const [mmsi, report] of tankerReports) {
+    if (report.timestamp < now - CANDIDATE_RETENTION_MS) {
+      tankerReports.delete(mmsi);
+    }
+  }
+  evictMapByTimestamp(tankerReports, MAX_TANKER_REPORTS_PER_RESPONSE * 10, (report) => report.timestamp || 0);
 
   // Clean chokepoint buckets: remove stale vessels
   for (const [cpName, bucket] of chokepointBuckets) {
@@ -6842,6 +6880,55 @@ function getCandidateReportsSnapshot() {
   return Array.from(candidateReports.values())
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, MAX_CANDIDATE_REPORTS);
+}
+
+// Server-side cap for tanker_reports per request — protects the response
+// payload from a misbehaving filter that returns thousands of vessels.
+// 200/zone × 6 chokepoints in worst case is well under any practical
+// CDN/edge payload budget. Energy Atlas live-tanker layer also caps
+// client-side on top of this.
+const MAX_TANKER_REPORTS_PER_RESPONSE = 200;
+
+/**
+ * Parse a "bbox" query param of the form "swLat,swLon,neLat,neLon" into a
+ * {sw: {lat, lon}, ne: {lat, lon}} or null if absent / malformed.
+ *
+ * Validates:
+ *   - 4 comma-separated finite numbers
+ *   - sw <= ne (after normalization)
+ *   - bbox size ≤ 10° on both lat and lon (10° max per parity-push plan U7;
+ *     prevents pulling every vessel through one query)
+ *
+ * @param {string | null | undefined} raw
+ * @returns {{ sw: {lat:number, lon:number}, ne: {lat:number, lon:number} } | null}
+ */
+function parseBbox(raw) {
+  if (!raw) return null;
+  const parts = String(raw).split(',').map(Number);
+  if (parts.length !== 4 || parts.some((v) => !Number.isFinite(v))) return null;
+  const [swLat, swLon, neLat, neLon] = parts;
+  if (swLat > neLat || swLon > neLon) return null;
+  if (swLat < -90 || neLat > 90 || swLon < -180 || neLon > 180) return null;
+  if (neLat - swLat > 10 || neLon - swLon > 10) return null; // 10° guard
+  return { sw: { lat: swLat, lon: swLon }, ne: { lat: neLat, lon: neLon } };
+}
+
+/**
+ * Filtered + capped tanker reports. Sorted by recency of last fix so the
+ * 200-cap keeps the most-recently-seen vessels rather than a random subset.
+ *
+ * @param {{ sw: {lat:number,lon:number}, ne: {lat:number,lon:number} } | null} bbox
+ */
+function getTankerReportsSnapshot(bbox) {
+  let arr = Array.from(tankerReports.values());
+  if (bbox) {
+    arr = arr.filter(
+      (r) => r.lat >= bbox.sw.lat && r.lat <= bbox.ne.lat &&
+             r.lon >= bbox.sw.lon && r.lon <= bbox.ne.lon,
+    );
+  }
+  arr.sort((a, b) => b.timestamp - a.timestamp);
+  return arr.slice(0, MAX_TANKER_REPORTS_PER_RESPONSE);
 }
 
 function buildSnapshot() {
@@ -8791,19 +8878,40 @@ const server = http.createServer(async (req, res) => {
     buildSnapshot(); // ensures cache is warm
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const includeCandidates = url.searchParams.get('candidates') === 'true';
-    const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
-    const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
-    const br = includeCandidates ? lastSnapshotWithCandBrotli : lastSnapshotBrotli;
+    const includeTankers = url.searchParams.get('tankers') === 'true';
+    const bbox = parseBbox(url.searchParams.get('bbox'));
 
-    if (json) {
-      sendPreGzipped(req, res, 200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=2',
-        'CDN-Cache-Control': 'public, max-age=10',
-      }, json, gz, br);
+    // Fast path: pre-gzipped cache covers the {with|without}-candidates
+    // case only (no tankers, no bbox). Used by the existing AIS density +
+    // military-detection consumers, which are the vast majority of traffic.
+    if (!includeTankers && !bbox) {
+      const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
+      const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
+      const br = includeCandidates ? lastSnapshotWithCandBrotli : lastSnapshotBrotli;
+      if (json) {
+        sendPreGzipped(req, res, 200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=2',
+          'CDN-Cache-Control': 'public, max-age=10',
+        }, json, gz, br);
+      } else {
+        const payload = { ...lastSnapshot, candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [], tankerReports: [] };
+        sendCompressed(req, res, 200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=2',
+          'CDN-Cache-Control': 'public, max-age=10',
+        }, JSON.stringify(payload));
+      }
     } else {
-      // Cold start fallback
-      const payload = { ...lastSnapshot, candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [] };
+      // Live-tanker path: bbox-filtered + tanker-included responses skip the
+      // pre-gzipped cache (bbox space would explode the cache key set).
+      // Handler-side 60s cache (server/worldmonitor/maritime/v1/get-vessel-snapshot.ts)
+      // and the gateway 'live' tier absorb identical-bbox requests.
+      const payload = {
+        ...lastSnapshot,
+        candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [],
+        tankerReports: includeTankers ? getTankerReportsSnapshot(bbox) : [],
+      };
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=2',
