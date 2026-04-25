@@ -243,7 +243,7 @@ function extractFirstDateTag(block: string, isAtom: boolean): string {
   return '';
 }
 
-function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
+function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult {
   const items: ParsedItem[] = [];
   let parsedTotal = 0;
   let droppedUndated = 0;
@@ -332,11 +332,13 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     );
   }
 
-  // Preserve the existing "no items → null" cache contract: when no items
-  // survive (whether genuinely empty OR all dropped), return null so the
-  // outer `?? { items: [], ...}` fallback kicks in. Stats are still surfaced
-  // when there's at least one survivor.
-  if (items.length === 0) return null;
+  // Always return the struct so per-feed stats survive the cache layer —
+  // critical for distinguishing 'all-undated' (parsedTotal>0, items=[]) from
+  // 'empty' (parsedTotal=0, items=[]) downstream in buildDigest. Returning
+  // null here would let `fetchAndParseRss`'s `cached ?? { all-zero stats }`
+  // fallback erase the dropped count, making 'all-undated' classification
+  // unreachable. `null` is reserved for the upstream fetch/no-XML failure
+  // path in `fetchAndParseRss`.
   return { items, parsedTotal, droppedUndated };
 }
 

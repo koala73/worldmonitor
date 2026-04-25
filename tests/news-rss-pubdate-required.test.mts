@@ -104,9 +104,12 @@ describe('parseRssXml — date-required gate (R2)', () => {
       </item>
     `);
     const result = parseRssXml(xml, FEED, 'full');
-    // No survivors → null per existing cache contract; stats are still
-    // observable via the all-undated branch in buildDigest's caller.
-    assert.equal(result, null);
+    // Returns the struct (not null) so 'all-undated' classification in
+    // buildDigest's caller can see the dropped count survive the cache.
+    assert.ok(result);
+    assert.equal(result!.items.length, 0);
+    assert.equal(result!.parsedTotal, 1);
+    assert.equal(result!.droppedUndated, 1);
   });
 
   it('drops an item with NO recognized date element at all', () => {
@@ -117,7 +120,10 @@ describe('parseRssXml — date-required gate (R2)', () => {
       </item>
     `);
     const result = parseRssXml(xml, FEED, 'full');
-    assert.equal(result, null);
+    assert.ok(result);
+    assert.equal(result!.items.length, 0);
+    assert.equal(result!.parsedTotal, 1);
+    assert.equal(result!.droppedUndated, 1);
   });
 
   it('drops an Atom entry with no <published>, <updated>, or <dc:date>', () => {
@@ -128,7 +134,10 @@ describe('parseRssXml — date-required gate (R2)', () => {
       </entry>
     `);
     const result = parseRssXml(xml, FEED, 'full');
-    assert.equal(result, null);
+    assert.ok(result);
+    assert.equal(result!.items.length, 0);
+    assert.equal(result!.parsedTotal, 1);
+    assert.equal(result!.droppedUndated, 1);
   });
 
   it('drops an item with malformed <pubDate> (NaN guard)', () => {
@@ -140,7 +149,9 @@ describe('parseRssXml — date-required gate (R2)', () => {
       </item>
     `);
     const result = parseRssXml(xml, FEED, 'full');
-    assert.equal(result, null);
+    assert.ok(result);
+    assert.equal(result!.items.length, 0);
+    assert.equal(result!.droppedUndated, 1);
   });
 
   it('drops an item dated > 1h in the future (clock-skew defense)', () => {
@@ -153,7 +164,9 @@ describe('parseRssXml — date-required gate (R2)', () => {
       </item>
     `);
     const result = parseRssXml(xml, FEED, 'full');
-    assert.equal(result, null);
+    assert.ok(result);
+    assert.equal(result!.items.length, 0);
+    assert.equal(result!.droppedUndated, 1);
   });
 
   it('keeps an item dated within the future tolerance window', () => {
@@ -192,18 +205,36 @@ describe('parseRssXml — partial-feed preservation (R8)', () => {
     assert.equal(result!.items[0]!.title, 'Real news');
   });
 
-  it('a feed where 100% of items have no date returns null with stats unrecoverable here (caller uses parsedTotal===0 + droppedUndated>0 detection in fetchAndParseRss)', () => {
-    // When every item is dropped, parseRssXml returns null to honor the
-    // existing cache contract. The all-undated classification happens in
-    // the caller once per feed, using parsedTotal + droppedUndated tracked
-    // there. This test documents the boundary so future refactors don't
-    // mistakenly assume parseRssXml exposes stats for fully-dropped feeds.
+  it('a feed where 100% of items have no date returns the struct with full stats (all-undated signal survives the cache)', () => {
+    // Critical for the 'all-undated' classification in buildDigest's caller:
+    // when every parsed item is dropped, parseRssXml MUST return the struct
+    // with parsedTotal>0, items=[], droppedUndated>0 — not null. Returning
+    // null here would let `fetchAndParseRss`'s `cached ?? {all-zero stats}`
+    // fallback erase the dropped count, making 'all-undated' classification
+    // unreachable downstream and silently zeroing detection on dialect
+    // regressions. (Caught by reviewer of PR #3417 first-day landing.)
     const xml = wrapRss(`
       <item><title>A</title><link>https://example.com/a</link></item>
       <item><title>B</title><link>https://example.com/b</link></item>
       <item><title>C</title><link>https://example.com/c</link></item>
     `);
     const result = parseRssXml(xml, FEED, 'full');
-    assert.equal(result, null);
+    assert.ok(result, 'parseRssXml must NOT return null for fully-dropped feeds — stats need to survive the cache');
+    assert.equal(result!.items.length, 0);
+    assert.equal(result!.parsedTotal, 3);
+    assert.equal(result!.droppedUndated, 3);
+  });
+
+  it('a feed with no parseable items (no <item> or <entry>) still returns the struct with zero stats', () => {
+    // Genuinely empty feed (channel exists, no items in it). The 'empty'
+    // classification path in buildDigest's caller fires here, distinct from
+    // 'all-undated'. parseRssXml MUST NOT return null — null is reserved
+    // for the upstream fetch/no-XML path in fetchAndParseRss.
+    const xml = wrapRss(``);
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    assert.equal(result!.items.length, 0);
+    assert.equal(result!.parsedTotal, 0);
+    assert.equal(result!.droppedUndated, 0);
   });
 });
