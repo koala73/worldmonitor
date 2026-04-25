@@ -15,6 +15,7 @@ import { validateManifest } from '../scripts/shared/swf-manifest-loader.mjs';
 import {
   shouldSkipFundForBuffer,
   applyAumPctOfAudited,
+  buildCoverageSummary,
 } from '../scripts/seed-sovereign-wealth.mjs';
 
 function makeFund(overrides = {}) {
@@ -284,4 +285,103 @@ test('applyAumPctOfAudited: ignores out-of-range multipliers (defensive)', () =>
     const fund = { classification: { aumPctOfAudited: bad } };
     assert.equal(applyAumPctOfAudited(1_000, fund), 1_000);
   }
+});
+
+// ── buildCoverageSummary regression: completeness denominator ──────
+//
+// User's PR-3391 review caught a P1: completeness used `funds.length`
+// (manifest count) as the denominator, which depresses the ratio for
+// countries whose manifest contains documentation-only entries
+// (excluded_overlaps_with_reserves OR aum_verified=false). The shipped
+// manifest has this state for UAE (EIA unverified) and CN (SAFE-IC
+// excluded). These tests pin the corrected denominator: only scorable
+// funds count toward expected.
+
+test('buildCoverageSummary: country with all scorable funds matched is "complete" even if manifest also has unverified entries', () => {
+  // UAE-shape: 4 scorable (ADIA, Mubadala, ICD, ADQ) + 1 unverified (EIA).
+  // If all 4 scorable matched, country is COMPLETE, not partial.
+  const manifest = {
+    funds: [
+      { country: 'AE', fund: 'adia',    classification: { access: 0.4 } },
+      { country: 'AE', fund: 'mubadala',classification: { access: 0.5 } },
+      { country: 'AE', fund: 'icd',     classification: { access: 0.5 } },
+      { country: 'AE', fund: 'adq',     classification: { access: 0.5 } },
+      { country: 'AE', fund: 'eia',     classification: { access: 0.4 }, aumVerified: false },
+    ],
+  };
+  const imports = { AE: { importsUsd: 481.9e9 } };
+  const countries = {
+    AE: {
+      // expectedFunds is computed PER-COUNTRY in fetchSovereignWealth using
+      // shouldSkipFundForBuffer, so this test fixture mirrors the seeder's
+      // post-fix output (expectedFunds = 4 scorable, completeness = 1.0).
+      matchedFunds: 4,
+      expectedFunds: 4,
+      completeness: 1.0,
+    },
+  };
+  const summary = buildCoverageSummary(manifest, imports, countries);
+  // Only 4 scorable funds in AE; 1 unverified entry doesn't count.
+  assert.equal(summary.expectedFunds, 4,
+    `headline expected funds should exclude documentation-only entries; got ${summary.expectedFunds}`);
+  const aeStatus = summary.countryStatuses.find((s) => s.country === 'AE');
+  assert.equal(aeStatus.status, 'complete');
+});
+
+test('buildCoverageSummary: excludes excluded_overlaps_with_reserves entries from expectedFundsTotal', () => {
+  // CN-shape: CIC + NSSF scorable + SAFE-IC excluded.
+  const manifest = {
+    funds: [
+      { country: 'CN', fund: 'cic',  classification: { access: 0.4 } },
+      { country: 'CN', fund: 'nssf', classification: { access: 0.20 } },
+      { country: 'CN', fund: 'safe-ic', classification: { access: 0.5, excludedOverlapsWithReserves: true } },
+    ],
+  };
+  const imports = { CN: { importsUsd: 3.0e12 } };
+  const countries = {
+    CN: { matchedFunds: 2, expectedFunds: 2, completeness: 1.0 },
+  };
+  const summary = buildCoverageSummary(manifest, imports, countries);
+  assert.equal(summary.expectedFunds, 2,
+    `SAFE-IC should NOT count toward expected funds; got ${summary.expectedFunds}`);
+  const cnStatus = summary.countryStatuses.find((s) => s.country === 'CN');
+  assert.equal(cnStatus.status, 'complete');
+});
+
+test('buildCoverageSummary: missing-country path uses scorable count, not raw manifest count', () => {
+  // Country with mixed scorable + excluded entries that fails to seed
+  // entirely (e.g. WB imports missing). The "expected" figure on the
+  // missing-country status row should reflect SCORABLE funds, not all
+  // manifest entries — otherwise an operator dashboard shows
+  // "0/3 funds" when the truth is "0/2 funds, 1 documentation-only".
+  const manifest = {
+    funds: [
+      { country: 'CN', fund: 'cic',  classification: { access: 0.4 } },
+      { country: 'CN', fund: 'nssf', classification: { access: 0.20 } },
+      { country: 'CN', fund: 'safe-ic', classification: { access: 0.5, excludedOverlapsWithReserves: true } },
+    ],
+  };
+  const imports = {}; // CN imports missing → country not seeded
+  const countries = {}; // no country payload at all
+  const summary = buildCoverageSummary(manifest, imports, countries);
+  const cnStatus = summary.countryStatuses.find((s) => s.country === 'CN');
+  assert.equal(cnStatus.status, 'missing');
+  assert.equal(cnStatus.expected, 2,
+    `missing-country expected should be SCORABLE count (2), not all-manifest (3); got ${cnStatus.expected}`);
+});
+
+test('buildCoverageSummary: country with ONLY documentation-only entries is excluded from expectedCountries', () => {
+  // Edge case: hypothetical country where every manifest entry is
+  // documentation-only (e.g. only EIA-style unverified). Such a
+  // country has 0 scorable funds → should not appear in
+  // expectedCountries because there's nothing scorable to expect.
+  const manifest = {
+    funds: [
+      { country: 'XX', fund: 'placeholder', classification: { access: 0.4 }, aumVerified: false },
+    ],
+  };
+  const summary = buildCoverageSummary(manifest, {}, {});
+  assert.equal(summary.expectedCountries, 0,
+    `XX has zero scorable funds — should not be in expectedCountries`);
+  assert.equal(summary.expectedFunds, 0);
 });

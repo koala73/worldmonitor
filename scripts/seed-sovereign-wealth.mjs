@@ -874,9 +874,23 @@ export async function fetchSovereignWealth() {
 
     if (fundRecords.length === 0) continue;
     const totalEffectiveMonths = fundRecords.reduce((s, f) => s + f.effectiveMonths, 0);
-    const expectedFunds = funds.length;
+    // Completeness denominator excludes funds that were INTENTIONALLY
+    // skipped from buffer scoring (excluded_overlaps_with_reserves OR
+    // aum_verified=false). Without this, manifest entries that exist
+    // for documentation only would artificially depress completeness
+    // for countries with mixed scorable + non-scorable funds — e.g.
+    // UAE (4 scorable + EIA unverified) would show completeness=0.8
+    // even when every scorable fund matched, and CN (CIC + NSSF
+    // scorable + SAFE-IC excluded) would show 0.67.
+    //
+    // The right denominator is "scorable funds for this country":
+    // funds where shouldSkipFundForBuffer returns null. Documentation-
+    // only entries are neither matched nor expected; they don't appear
+    // in the ratio at all.
+    const scorableFunds = funds.filter((f) => shouldSkipFundForBuffer(f) === null);
+    const expectedFunds = scorableFunds.length;
     const matchedFunds = fundRecords.length;
-    const completeness = matchedFunds / expectedFunds;
+    const completeness = expectedFunds > 0 ? matchedFunds / expectedFunds : 0;
     // `completeness` signals partial-seed on multi-fund countries (AE,
     // SG). Downstream scorer must derate the country when completeness
     // < 1.0 — silently emitting partial totalEffectiveMonths would
@@ -885,7 +899,7 @@ export async function fetchSovereignWealth() {
     // use the partial number for IMPUTE-level coverage), but only
     // completeness=1.0 countries count toward recordCount / health.
     if (completeness < 1.0) {
-      console.warn(`[seed-sovereign-wealth] ${iso2} partial: ${matchedFunds}/${expectedFunds} funds matched — completeness=${completeness.toFixed(2)}`);
+      console.warn(`[seed-sovereign-wealth] ${iso2} partial: ${matchedFunds}/${expectedFunds} scorable funds matched — completeness=${completeness.toFixed(2)}`);
     }
     countries[iso2] = {
       funds: fundRecords,
@@ -955,8 +969,16 @@ export async function fetchSovereignWealth() {
  * @param {Record<string, { matchedFunds: number, expectedFunds: number, completeness: number }>} countries Seeded country payload
  */
 export function buildCoverageSummary(manifest, imports, countries) {
-  const expectedFundsTotal = manifest.funds.length;
-  const expectedCountries = new Set(manifest.funds.map((f) => f.country));
+  // Coverage denominator excludes manifest entries that are
+  // documentation-only by design — funds with
+  // `excluded_overlaps_with_reserves: true` (SAFE-IC, HKMA-EF) or
+  // `aum_verified: false` (EIA). Counting them as "expected" would
+  // depress the headline coverage ratio for countries with mixed
+  // scorable + non-scorable fund rosters. Same fix as the per-country
+  // completeness denominator above; see comment there.
+  const scorableManifestFunds = manifest.funds.filter((f) => shouldSkipFundForBuffer(f) === null);
+  const expectedFundsTotal = scorableManifestFunds.length;
+  const expectedCountries = new Set(scorableManifestFunds.map((f) => f.country));
   let matchedFundsTotal = 0;
   for (const entry of Object.values(countries)) matchedFundsTotal += entry.matchedFunds;
   // Every status carries a `reason` field so downstream consumers that
@@ -994,8 +1016,18 @@ export function buildCoverageSummary(manifest, imports, countries) {
 }
 
 function countManifestFundsForCountry(manifest, iso2) {
+  // Counts SCORABLE funds for the given country (excludes documentation-
+  // only entries: `excluded_overlaps_with_reserves: true` and
+  // `aum_verified: false`). Used by buildCoverageSummary's missing-
+  // country path so the "expected" figure on a missing country reflects
+  // what the seeder would actually try to score, not all manifest
+  // entries.
   let n = 0;
-  for (const f of manifest.funds) if (f.country === iso2) n++;
+  for (const f of manifest.funds) {
+    if (f.country !== iso2) continue;
+    if (shouldSkipFundForBuffer(f) !== null) continue;
+    n++;
+  }
   return n;
 }
 
