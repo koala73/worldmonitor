@@ -343,6 +343,30 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
     }
   });
 
+  it('per-tier timeouts sum to a budget that fits in seed-bundle-macro.mjs FATF-Listing timeoutMs (no SIGTERM mid-fetch)', async () => {
+    // Static-shape regression guard. Pre-PR-#3415 the tier timeouts were:
+    //   direct 30s + proxy 30s + wayback 4×45s = 240s/URL
+    //   × 3 URLs (entry sequential + black/grey parallel) = 480s end-to-end
+    // while the section was capped at 120_000ms. That meant bundle-runner
+    // would SIGTERM the seeder mid-fetch instead of letting runSeed reach
+    // its graceful "Failed gracefully" path. This test pins the new
+    // budget so a future cleanup can't silently regress it.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const seederSrc = readFileSync(resolve(here, '../scripts/seed-fatf-listing.mjs'), 'utf-8');
+    const bundleSrc = readFileSync(resolve(here, '../scripts/seed-bundle-macro.mjs'), 'utf-8');
+    // Direct fetch timeout — 10s ceiling; Cloudflare 403s in <1s when blocking.
+    assert.match(seederSrc, /AbortSignal\.timeout\(10_000\)/, 'direct fetch must use 10s timeout (was 30s pre-fix)');
+    // Proxy fetch timeout — 15s ceiling.
+    assert.match(seederSrc, /timeoutMs:\s*15_000\s*\}\s*\)/, 'proxy fetch must use 15s timeoutMs (was 30s pre-fix)');
+    // Wayback per-tier — 25s ceiling.
+    assert.match(seederSrc, /WAYBACK_TIMEOUT_MS\s*=\s*25_000/, 'WAYBACK_TIMEOUT_MS must be 25s (was 45s pre-fix)');
+    // Section timeoutMs — 300s, matches peer sections.
+    assert.match(bundleSrc, /label:\s*'FATF-Listing'[^\n]*timeoutMs:\s*300_000/, 'FATF-Listing section must use 300_000 ms timeoutMs (was 120_000 pre-fix)');
+  });
+
   it('falls back to CONNECT proxy when direct CDX query fails (Railway-egress rate-limit defense)', async () => {
     // Production observation 2026-04-25T20:35: Railway egress IPs hit
     // 20s+ timeouts on CDX while local desktop probes complete in <2s.

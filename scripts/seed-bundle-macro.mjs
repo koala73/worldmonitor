@@ -18,5 +18,10 @@ await runBundle('macro', [
   // fail-closed preflight (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true).
   { label: 'WB-External-Debt', script: 'seed-wb-external-debt.mjs', seedMetaKey: 'economic:wb-external-debt', canonicalKey: 'economic:wb-external-debt:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
   { label: 'BIS-LBS', script: 'seed-bis-lbs.mjs', seedMetaKey: 'economic:bis-lbs', canonicalKey: 'economic:bis-lbs:v1', intervalMs: 7 * DAY, timeoutMs: 600_000 },
-  { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 120_000 },
+  // FATF fetches 3 URLs (entry sequential, black+grey parallel) through a 6-tier
+  // fallback chain (direct → proxy → wayback-cdx-direct → wayback-cdx-proxy →
+  // wayback-snap-direct → wayback-snap-proxy, ≤125s/URL). Worst-case ≤250s;
+  // 300_000 gives ~50s margin and matches peer sections. Pre-PR-#3415 the section
+  // was 120_000 — too tight for the multi-tier fallback, would SIGTERM mid-fetch.
+  { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
 ]);
