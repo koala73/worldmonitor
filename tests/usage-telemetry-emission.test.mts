@@ -31,15 +31,25 @@ interface CapturedEvent {
   tier: number;
 }
 
-function makeRecordingCtx(): { ctx: GatewayCtx; settled: Promise<void[]> } {
+function makeRecordingCtx(): { ctx: GatewayCtx; settled: Promise<void> } {
   const pending: Promise<unknown>[] = [];
   const ctx: GatewayCtx = {
     waitUntil: (p) => { pending.push(p); },
   };
+  // Quiescence loop: emitUsageEvents calls ctx.waitUntil from inside an
+  // already-pending waitUntil promise, so the array grows during drain.
+  // Keep awaiting until no new entries appear between iterations.
+  async function settled(): Promise<void> {
+    let prev = -1;
+    while (pending.length !== prev) {
+      prev = pending.length;
+      await Promise.allSettled(pending.slice(0, prev));
+    }
+  }
   return {
     ctx,
-    get settled() { return Promise.all(pending) as Promise<void[]>; },
-  } as { ctx: GatewayCtx; settled: Promise<void[]> };
+    get settled() { return settled(); },
+  } as { ctx: GatewayCtx; settled: Promise<void> };
 }
 
 function installAxiomFetchSpy(
