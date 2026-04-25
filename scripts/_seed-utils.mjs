@@ -853,39 +853,53 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   }
 
-  // SIGTERM handler, SCOPED to the fetch phase only. _bundle-runner.mjs
-  // sends SIGTERM when a section's timeout fires, then SIGKILL after
-  // KILL_GRACE_MS (5s). The fetch phase is the long-running blocking
-  // call where timeout realistically fires; publish/verify is bounded
-  // Redis writes. Narrowing the handler's lifetime prevents it from
-  // racing graceful exit paths that MUST NOT refresh TTL — notably the
-  // `emptyDataIsFailure: true` strict-floor branch (IMF-External,
-  // WB-bulk) which deliberately avoids refreshing seed-meta so the next
-  // cron tick retries. Release lock + extend existing-data TTL in
-  // parallel (disjoint keys; serializing compounds Upstash latency
-  // during the exact failure mode this handler exists to handle).
+  // SIGTERM handler — installed BEFORE fetch and KEPT installed through
+  // publish. _bundle-runner.mjs sends SIGTERM when a section's timeout
+  // fires, then SIGKILL after KILL_GRACE_MS (5s). Without a publish-phase
+  // handler, a timeout that fires during atomicPublish or extendExistingTtl
+  // leaves seed-lock:<domain>:<resource> dangling for the full lockTtlMs
+  // (default 120s). For seeders bundled in fast-firing crons (e.g.
+  // seed-bis-lbs.mjs in seed-bundle-macro.mjs) the next tick can collide
+  // with that orphaned lock and SKIP repeatedly — the canonical key never
+  // gets published and /api/health reports `EMPTY`.
+  //
+  // The handler is phase-aware so it preserves the strict-floor invariant
+  // (emptyDataIsFailure seeders MUST NOT refresh seed-meta on validation
+  // reject — see imf-external Railway log 2026-04-13). During fetch we
+  // release lock + extend existing-data TTL so consumers keep seeing
+  // last-good. During publish we release lock ONLY: data was fetched but
+  // not yet stored; refreshing TTL here would silently re-anchor stale
+  // data and corrupt the strict-floor retry path.
+  //
+  // Releases run in parallel (disjoint keys; serializing compounds Upstash
+  // latency during the exact failure mode this handler exists to handle).
   // Exit 143 = POSIX convention for SIGTERM-terminated process.
+  let currentPhase = 'fetch';
   const sigTermHandler = async () => {
-    console.error(`  [${domain}:${resource}] SIGTERM received — releasing lock runId=${runId}, extending existing TTL`);
+    console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
     try {
-      const ttl = ttlSeconds || 600;
-      const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
-      if (extraKeys) keys.push(...extraKeys.map((ek) => ek.key));
-      await Promise.allSettled([
-        releaseLock(`${domain}:${resource}`, runId),
-        extendExistingTtl(keys, ttl),
-      ]);
+      if (currentPhase === 'fetch') {
+        const ttl = ttlSeconds || 600;
+        const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
+        if (extraKeys) keys.push(...extraKeys.map((ek) => ek.key));
+        await Promise.allSettled([
+          releaseLock(`${domain}:${resource}`, runId),
+          extendExistingTtl(keys, ttl),
+        ]);
+      } else {
+        await releaseLock(`${domain}:${resource}`, runId);
+      }
     } catch (err) {
       console.error(`  [${domain}:${resource}] SIGTERM cleanup error: ${err?.message || err}`);
     } finally {
       process.exit(143);
     }
   };
+  process.once('SIGTERM', sigTermHandler);
 
   // Phase 1: Fetch data (graceful on failure — extend TTL on stale data)
   let data;
   try {
-    process.once('SIGTERM', sigTermHandler);
     data = await withRetry(fetchFn);
   } catch (err) {
     process.off('SIGTERM', sigTermHandler);
@@ -901,13 +915,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     process.exit(0);
-  } finally {
-    // Remove the SIGTERM handler unconditionally: success path (fall
-    // through to publish), catch path (already removed above), and any
-    // future exit path added inside the try. process.off is a safe
-    // no-op when the listener was never registered or already removed.
-    process.off('SIGTERM', sigTermHandler);
   }
+  // Transition to publish phase — handler stays installed but switches
+  // behavior via the phase tracker.
+  currentPhase = 'publish';
 
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {
