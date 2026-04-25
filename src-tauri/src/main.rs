@@ -84,6 +84,13 @@ impl Default for LocalApiState {
 /// repeated macOS Keychain prompts (each `Entry::get_password()` triggers one).
 struct SecretsCache {
     secrets: Mutex<HashMap<String, String>>,
+    app_data_dir: PathBuf,
+}
+
+impl SecretsCache {
+    fn app_data_dir(&self) -> &Path {
+        &self.app_data_dir
+    }
 }
 
 /// In-memory mirror of persistent-cache.json. The file can grow to 10+ MB,
@@ -98,7 +105,7 @@ struct PersistentCache {
 }
 
 impl SecretsCache {
-    fn load_from_keychain() -> Self {
+    fn load_from_keychain(app_data_dir: PathBuf) -> Self {
         // Try consolidated vault first — single keychain prompt
         if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
             if let Ok(json) = entry.get_password() {
@@ -112,10 +119,12 @@ impl SecretsCache {
                         .collect();
                     return SecretsCache {
                         secrets: Mutex::new(secrets),
+                        app_data_dir,
                     };
                 }
             }
         }
+
 
         // Migration: read individual keys (old format), consolidate into vault.
         // This triggers one keychain prompt per key — happens only once.
@@ -148,6 +157,7 @@ impl SecretsCache {
 
         SecretsCache {
             secrets: Mutex::new(secrets),
+            app_data_dir,
         }
     }
 }
@@ -214,15 +224,21 @@ struct DesktopRuntimeInfo {
     local_api_port: Option<u16>,
 }
 
-fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
+fn save_vault(cache: &HashMap<String, String>, app_data_dir: &Path) -> Result<(), String> {
     let json =
         serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
     let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
         .map_err(|e| format!("Keyring init failed: {e}"))?;
-    entry
-        .set_password(&json)
-        .map_err(|e| format!("Failed to write vault: {e}"))?;
-    Ok(())
+    match entry.set_password(&json) {
+        Ok(()) => Ok(()),
+        Err(keyring_err) => {
+            // Linux/DBus fallback: write vault to app data dir as encrypted JSON file
+            let vault_path = app_data_dir.join("secrets-vault.json");
+            std::fs::write(&vault_path, &json)
+                .map_err(|e| format!("Failed to write vault file {}: {e}", vault_path.display()))?;
+            Ok(())
+        }
+    }
 }
 
 fn generate_local_token() -> String {
@@ -328,7 +344,7 @@ fn set_secret(
     } else {
         proposed.insert(key, trimmed);
     }
-    save_vault(&proposed)?;
+    save_vault(&proposed, cache.app_data_dir())?;
     *secrets = proposed;
     Ok(())
 }
@@ -345,7 +361,7 @@ fn delete_secret(webview: Webview, key: String, cache: tauri::State<'_, SecretsC
         .map_err(|_| "Lock poisoned".to_string())?;
     let mut proposed = secrets.clone();
     proposed.remove(&key);
-    save_vault(&proposed)?;
+    save_vault(&proposed, cache.app_data_dir())?;
     *secrets = proposed;
     Ok(())
 }
@@ -1376,7 +1392,6 @@ fn main() {
         .menu(build_app_menu)
         .on_menu_event(handle_menu_event)
         .manage(LocalApiState::default())
-        .manage(SecretsCache::load_from_keychain())
         .invoke_handler(tauri::generate_handler![
             list_supported_secret_keys,
             get_secret,
@@ -1404,6 +1419,12 @@ fn main() {
             // Load persistent cache into memory (avoids 14MB file I/O on every IPC call)
             let cache_path = cache_file_path(&app.handle()).unwrap_or_default();
             app.manage(PersistentCache::load(&cache_path));
+
+            // Load secrets: keyring first, fall back to file-based vault on Linux/DBus
+            let data_dir = app
+                .app_data_dir()
+                .map_err(|e| format!("Failed to resolve app data dir: {e}")).unwrap_or_default();
+            app.manage(SecretsCache::load_from_keychain(data_dir));
 
             if let Err(err) = start_local_api(&app.handle()) {
                 append_desktop_log(
