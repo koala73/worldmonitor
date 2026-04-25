@@ -295,6 +295,54 @@ export function maybeAttachDevHealthHeader(headers: Headers): void {
   headers.set('x-usage-telemetry', getTelemetryHealth());
 }
 
+// ---------- Implicit request scope (AsyncLocalStorage) ----------
+//
+// Per koala's review (#3381), this lets fetch helpers emit upstream events
+// without leaf handlers having to thread a usage hook through every call.
+// The gateway sets the scope before invoking matchedHandler; fetch helpers
+// (fetchJson, cachedFetchJsonWithMeta) read from it lazily.
+//
+// AsyncLocalStorage is loaded defensively. If the runtime ever rejects the
+// import (older Edge versions, sandboxed contexts), the scope helpers
+// degrade to no-ops and telemetry simply skips. The gateway request event
+// is unaffected — it never depended on ALS.
+
+export interface UsageScope {
+  ctx: WaitUntilCtx;
+  requestId: string;
+  customerId: string | null;
+  route: string;
+  tier: number;
+}
+
+type ALSLike<T> = {
+  run: <R>(store: T, fn: () => R) => R;
+  getStore: () => T | undefined;
+};
+
+let scopeStore: ALSLike<UsageScope> | null = null;
+
+async function getScopeStore(): Promise<ALSLike<UsageScope> | null> {
+  if (scopeStore) return scopeStore;
+  try {
+    const mod = await import('node:async_hooks');
+    scopeStore = new mod.AsyncLocalStorage<UsageScope>();
+    return scopeStore;
+  } catch {
+    return null;
+  }
+}
+
+export async function runWithUsageScope<R>(scope: UsageScope, fn: () => R | Promise<R>): Promise<R> {
+  const store = await getScopeStore();
+  if (!store) return fn();
+  return store.run(scope, fn) as R | Promise<R>;
+}
+
+export function getUsageScope(): UsageScope | undefined {
+  return scopeStore?.getStore();
+}
+
 // ---------- Sink ----------
 
 async function sendToAxiom(events: UsageEvent[]): Promise<void> {

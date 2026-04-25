@@ -30,6 +30,7 @@ import {
   deriveOriginKind,
   deriveUaHash,
   maybeAttachDevHealthHeader,
+  runWithUsageScope,
   type CacheTier as UsageCacheTier,
   type RequestReason,
 } from './_shared/usage';
@@ -573,10 +574,25 @@ export function createDomainGateway(
       });
     }
 
-    // Execute handler with top-level error boundary
+    // Execute handler with top-level error boundary.
+    // Wrap in runWithUsageScope so deep fetch helpers (fetchJson,
+    // cachedFetchJsonWithMeta) can attribute upstream calls to this customer
+    // without leaf handlers having to thread a usage hook through every call.
     let response: Response;
+    const identityForScope = buildUsageIdentity(usage);
+    const handlerCall = matchedHandler;
+    const requestForHandler = request;
     try {
-      response = await matchedHandler(request);
+      response = await runWithUsageScope(
+        {
+          ctx,
+          requestId: deriveRequestId(originalRequest),
+          customerId: identityForScope.customer_id,
+          route: pathname,
+          tier: identityForScope.tier,
+        },
+        () => handlerCall(requestForHandler),
+      );
     } catch (err) {
       console.error('[gateway] Unhandled handler error:', err);
       response = new Response(JSON.stringify({ message: 'Internal server error' }), {

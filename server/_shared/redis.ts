@@ -289,6 +289,31 @@ export async function cachedFetchJson<T extends object>(
 }
 
 /**
+ * Per-call usage-telemetry hook for upstream event emission (issue #3381).
+ *
+ * The only required field is `provider` — its presence is what tells the
+ * helper "emit an upstream event for this call." Everything else is filled
+ * in by the gateway-set UsageScope (request_id, customer_id, route, tier,
+ * ctx) via AsyncLocalStorage. Pass overrides explicitly if you need to.
+ *
+ * Use this when calling fetchJson / cachedFetchJsonWithMeta from a code
+ * path that runs inside a gateway-handled request. For helpers used
+ * outside any request (cron, scripts), no scope exists and emission is
+ * skipped silently.
+ */
+export interface UsageHook {
+  provider: string;
+  operation?: string;
+  host?: string;
+  // Overrides — leave unset to inherit from gateway-set UsageScope.
+  ctx?: { waitUntil: (p: Promise<unknown>) => void };
+  requestId?: string;
+  customerId?: string | null;
+  route?: string;
+  tier?: number;
+}
+
+/**
  * Like cachedFetchJson but reports the data source.
  * Use when callers need to distinguish cache hits from fresh fetches
  * (e.g. to set provider/cached metadata on responses).
@@ -296,12 +321,17 @@ export async function cachedFetchJson<T extends object>(
  * Returns { data, source } where source is:
  *   'cache'  — served from Redis
  *   'fresh'  — fetcher ran (leader) or joined an in-flight fetch (follower)
+ *
+ * If `opts.usage` is supplied, an upstream event is emitted on the fresh
+ * path (issue #3381). Pass-through for callers that don't care about
+ * telemetry — backwards-compatible.
  */
 export async function cachedFetchJsonWithMeta<T extends object>(
   key: string,
   ttlSeconds: number,
   fetcher: () => Promise<T | null>,
   negativeTtlSeconds = 120,
+  opts?: { usage?: UsageHook },
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' }> {
   const cached = await getCachedJson(key);
   if (cached === NEG_SENTINEL) return { data: null, source: 'cache' };
@@ -313,16 +343,23 @@ export async function cachedFetchJsonWithMeta<T extends object>(
     return { data, source: 'fresh' };
   }
 
+  const fetchT0 = Date.now();
+  let upstreamStatus = 0;
+  let cacheStatus: 'miss' | 'neg-sentinel' = 'miss';
+
   const promise = fetcher()
     .then(async (result) => {
+      upstreamStatus = 200;
       if (result != null) {
         await setCachedJson(key, result, ttlSeconds);
       } else {
+        cacheStatus = 'neg-sentinel';
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
       }
       return result;
     })
     .catch((err: unknown) => {
+      upstreamStatus = 0;
       console.warn(`[redis] cachedFetchJsonWithMeta fetcher failed for "${key}":`, errMsg(err));
       throw err;
     })
@@ -331,8 +368,48 @@ export async function cachedFetchJsonWithMeta<T extends object>(
     });
 
   inflight.set(key, promise);
-  const data = await promise;
+  let data: T | null;
+  try {
+    data = await promise;
+  } finally {
+    emitUpstreamFromHook(opts?.usage, upstreamStatus, Date.now() - fetchT0, cacheStatus);
+  }
   return { data, source: 'fresh' };
+}
+
+function emitUpstreamFromHook(
+  usage: UsageHook | undefined,
+  status: number,
+  durationMs: number,
+  cacheStatus: 'miss' | 'fresh' | 'stale-while-revalidate' | 'neg-sentinel',
+): void {
+  // Emit only when caller labels the provider — avoids "unknown" pollution.
+  if (!usage?.provider) return;
+  import('./usage')
+    .then(({ emitUsageEvents, buildUpstreamEvent, getUsageScope }) => {
+      const scope = getUsageScope();
+      const ctx = usage.ctx ?? scope?.ctx;
+      if (!ctx) return;
+      emitUsageEvents(ctx, [
+        buildUpstreamEvent({
+          requestId: usage.requestId ?? scope?.requestId ?? '',
+          customerId: usage.customerId ?? scope?.customerId ?? null,
+          route: usage.route ?? scope?.route ?? '',
+          tier: usage.tier ?? scope?.tier ?? 0,
+          provider: usage.provider,
+          operation: usage.operation ?? 'fetch',
+          host: usage.host ?? '',
+          status,
+          durationMs,
+          requestBytes: 0,
+          responseBytes: 0,
+          cacheStatus,
+        }),
+      ]);
+    })
+    .catch(() => {
+      /* telemetry must never throw */
+    });
 }
 
 export async function geoSearchByBox(
