@@ -380,3 +380,138 @@ describe('composeBriefFromDigestStories — continued', () => {
     });
   });
 });
+
+// ── synthesis splice (Codex Round-3 plan, Step 3) ─────────────────────────
+
+describe('composeBriefFromDigestStories — synthesis splice', () => {
+  it('substitutes envelope.digest.lead/threads/signals/publicLead from synthesis', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'h1', title: 'Story 1' }), digestStory({ hash: 'h2', title: 'Story 2' })],
+      { clusters: 12, multiSource: 3 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'A canonical executive lead from the orchestration layer that exceeds the 40-char floor.',
+          threads: [{ tag: 'Energy', teaser: 'Hormuz tensions resurface today.' }],
+          signals: ['Watch for naval redeployment in the Gulf.'],
+          publicLead: 'A non-personalised lead suitable for the share-URL surface.',
+        },
+      },
+    );
+    assert.ok(env);
+    assert.match(env.data.digest.lead, /A canonical executive lead/);
+    assert.equal(env.data.digest.threads.length, 1);
+    assert.equal(env.data.digest.threads[0].tag, 'Energy');
+    assert.deepEqual(env.data.digest.signals, ['Watch for naval redeployment in the Gulf.']);
+    assert.match(env.data.digest.publicLead, /share-URL surface/);
+  });
+
+  it('falls back to stub lead when synthesis is omitted (legacy callers)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'h1' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },  // no synthesis arg
+    );
+    assert.ok(env);
+    // Stub lead from assembleStubbedBriefEnvelope: "Today's brief surfaces N threads…"
+    assert.match(env.data.digest.lead, /Today's brief surfaces/);
+    // publicLead absent on the stub path — the renderer's public-mode
+    // fail-safe omits the pull-quote rather than leaking personalised lead.
+    assert.equal(env.data.digest.publicLead, undefined);
+  });
+
+  it('partial synthesis (only lead) does not clobber threads/signals stubs', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'h1', title: 'X', sources: ['Reuters'] })],
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Custom lead at least forty characters long for validator pass-through.',
+          // threads + signals omitted — must keep the stub defaults.
+        },
+      },
+    );
+    assert.ok(env);
+    assert.match(env.data.digest.lead, /Custom lead/);
+    // Threads default from deriveThreadsFromStories (stub path).
+    assert.ok(env.data.digest.threads.length >= 1);
+  });
+
+  it('rankedStoryHashes re-orders the surfaced pool BEFORE the cap is applied', () => {
+    const stories = [
+      digestStory({ hash: 'aaaa1111', title: 'First by digest order' }),
+      digestStory({ hash: 'bbbb2222', title: 'Second by digest order' }),
+      digestStory({ hash: 'cccc3333', title: 'Third by digest order' }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          // Re-rank: third story should lead, then first, then second.
+          rankedStoryHashes: ['cccc3333', 'aaaa1111', 'bbbb2222'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'Third by digest order');
+    assert.equal(env.data.stories[1].headline, 'First by digest order');
+    assert.equal(env.data.stories[2].headline, 'Second by digest order');
+  });
+
+  it('rankedStoryHashes matches by short-hash prefix (model emits 8-char prefixes)', () => {
+    const stories = [
+      digestStory({ hash: 'longhash1234567890abc', title: 'First' }),
+      digestStory({ hash: 'otherhashfullsuffix', title: 'Second' }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          // Model emits 8-char prefixes; helper must prefix-match the
+          // story's full hash.
+          rankedStoryHashes: ['otherhash', 'longhash'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'Second');
+    assert.equal(env.data.stories[1].headline, 'First');
+  });
+
+  it('stories not present in rankedStoryHashes go after, in original order', () => {
+    const stories = [
+      digestStory({ hash: 'unranked-A', title: 'Unranked A' }),
+      digestStory({ hash: 'ranked-B', title: 'Ranked B' }),
+      digestStory({ hash: 'unranked-C', title: 'Unranked C' }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          rankedStoryHashes: ['ranked-B'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'Ranked B');
+    // A and C keep their original relative order (A then C).
+    assert.equal(env.data.stories[1].headline, 'Unranked A');
+    assert.equal(env.data.stories[2].headline, 'Unranked C');
+  });
+});

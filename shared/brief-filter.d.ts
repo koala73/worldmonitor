@@ -48,12 +48,20 @@ export type DropMetricsFn = (event: {
  * callback runs before the `continue` that skips the story — callers
  * can use it to aggregate per-user drop counters without altering
  * filter behaviour.
+ *
+ * When `rankedStoryHashes` is provided, stories are re-ordered BEFORE
+ * the cap is applied: stories whose `hash` matches a ranking entry
+ * (by short-hash prefix, ≥4 chars) come first in ranking order;
+ * stories not in the ranking come after in their original relative
+ * order. Lets the canonical synthesis brain's editorial judgment of
+ * importance survive the `maxStories` cut.
  */
 export function filterTopStories(input: {
   stories: UpstreamTopStory[];
   sensitivity: AlertSensitivity;
   maxStories?: number;
   onDrop?: DropMetricsFn;
+  rankedStoryHashes?: string[];
 }): BriefStory[];
 
 /**
@@ -108,4 +116,12 @@ export interface UpstreamTopStory {
   category?: unknown;
   countryCode?: unknown;
   importanceScore?: unknown;
+  /**
+   * Stable digest-story hash carried through from the cron's pool
+   * (digestStoryToUpstreamTopStory at scripts/lib/brief-compose.mjs).
+   * Used by `filterTopStories` when `rankedStoryHashes` is supplied
+   * to re-order stories before the cap. Falls back to titleHash when
+   * the upstream digest path didn't materialise a primary `hash`.
+   */
+  hash?: unknown;
 }

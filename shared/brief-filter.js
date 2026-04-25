@@ -98,10 +98,60 @@ function clip(v, cap) {
  */
 
 /**
- * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number; onDrop?: DropMetricsFn }} input
+ * Re-order `stories` so entries whose `hash` matches an entry in
+ * `rankedStoryHashes` come first, in ranking order. Entries not in
+ * the ranking keep their original relative order and come after.
+ * Match is by short-hash prefix: a ranking entry of "abc12345"
+ * matches a story whose `hash` starts with "abc12345" (≥4 chars).
+ * The canonical synthesis prompt emits 8-char prefixes; stories
+ * carry the full hash. Defensive check: when ranking is missing /
+ * empty / not an array, returns the original array unchanged.
+ *
+ * Pure helper — does not mutate the input. Stable for stories that
+ * share rank slots (preserves original order within a slot).
+ *
+ * @param {Array<{ hash?: unknown }>} stories
+ * @param {unknown} rankedStoryHashes
+ * @returns {Array<{ hash?: unknown }>}
+ */
+function applyRankedOrder(stories, rankedStoryHashes) {
+  if (!Array.isArray(rankedStoryHashes) || rankedStoryHashes.length === 0) {
+    return stories;
+  }
+  const ranking = rankedStoryHashes
+    .filter((x) => typeof x === 'string' && x.length >= 4)
+    .map((x) => x);
+  if (ranking.length === 0) return stories;
+
+  // For each story, compute its rank index — the smallest index of a
+  // ranking entry that is a PREFIX of the story's hash. Stories with
+  // no match get Infinity so they sort last while preserving their
+  // original order via the secondary index.
+  const annotated = stories.map((story, originalIndex) => {
+    const storyHash = typeof story?.hash === 'string' ? story.hash : '';
+    let rank = Infinity;
+    if (storyHash.length > 0) {
+      for (let i = 0; i < ranking.length; i++) {
+        if (storyHash.startsWith(ranking[i])) {
+          rank = i;
+          break;
+        }
+      }
+    }
+    return { story, originalIndex, rank };
+  });
+  annotated.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    return a.originalIndex - b.originalIndex;
+  });
+  return annotated.map((a) => a.story);
+}
+
+/**
+ * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number; onDrop?: DropMetricsFn; rankedStoryHashes?: string[] }} input
  * @returns {BriefStory[]}
  */
-export function filterTopStories({ stories, sensitivity, maxStories = 12, onDrop }) {
+export function filterTopStories({ stories, sensitivity, maxStories = 12, onDrop, rankedStoryHashes }) {
   if (!Array.isArray(stories)) return [];
   const allowed = ALLOWED_LEVELS_BY_SENSITIVITY[sensitivity];
   if (!allowed) return [];
@@ -112,10 +162,20 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, onDrop
   // and synchronous — any throw is the caller's problem (tested above).
   const emit = typeof onDrop === 'function' ? onDrop : null;
 
+  // Optional editorial ranking — when supplied, stories are sorted by
+  // the position of `story.hash` in `rankedStoryHashes` BEFORE the
+  // cap is applied, so the canonical synthesis brain's judgment of
+  // editorial importance survives the MAX_STORIES_PER_USER cut.
+  // Stories not in the ranking go after, in their original order.
+  // Match is by short-hash prefix (≥4 chars) to tolerate the
+  // ranker's emit format (the prompt uses 8-char prefixes; the
+  // story carries the full hash). Empty/missing array = no-op.
+  const orderedStories = applyRankedOrder(stories, rankedStoryHashes);
+
   /** @type {BriefStory[]} */
   const out = [];
-  for (let i = 0; i < stories.length; i++) {
-    const raw = stories[i];
+  for (let i = 0; i < orderedStories.length; i++) {
+    const raw = orderedStories[i];
     if (out.length >= maxStories) {
       // Cap-truncation: remaining stories are not evaluated. Emit one
       // event per skipped story so operators can reconcile in vs out
@@ -125,7 +185,7 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, onDrop
       // undercounted by up to (DIGEST_MAX_ITEMS - MAX_STORIES_PER_USER)
       // per user per tick.
       if (emit) {
-        for (let j = i; j < stories.length; j++) emit({ reason: 'cap' });
+        for (let j = i; j < orderedStories.length; j++) emit({ reason: 'cap' });
       }
       break;
     }

@@ -297,6 +297,17 @@ function digestStoryToUpstreamTopStory(s) {
     // to 'General' / 'Global' via filterTopStories defaults.
     category: typeof s?.category === 'string' ? s.category : undefined,
     countryCode: typeof s?.countryCode === 'string' ? s.countryCode : undefined,
+    // Stable digest story hash. Carried through so:
+    //   (a) the canonical synthesis prompt can emit `rankedStoryHashes`
+    //       referencing each story by hash (not position, not title),
+    //   (b) `filterTopStories` can re-order the pool by ranking BEFORE
+    //       applying the MAX_STORIES_PER_USER cap, so the model's
+    //       editorial judgment of importance survives the cap.
+    // Falls back to titleHash when the digest path didn't materialise
+    // a primary `hash` (rare; shape varies across producer versions).
+    hash: typeof s?.hash === 'string' && s.hash.length > 0
+      ? s.hash
+      : (typeof s?.titleHash === 'string' ? s.titleHash : undefined),
   };
 }
 
@@ -308,15 +319,35 @@ function digestStoryToUpstreamTopStory(s) {
  * Returns null when no story survives the sensitivity filter — caller
  * falls back to another variant or skips the user.
  *
+ * Pure / synchronous. The cron orchestration layer pre-resolves the
+ * canonical synthesis (`exec` from `generateDigestProse`) and the
+ * non-personalised `publicLead` (`generateDigestProsePublic`) and
+ * passes them in via `opts.synthesis` — this module performs no LLM
+ * I/O.
+ *
  * @param {object} rule — enabled alertRule row
  * @param {unknown[]} digestStories — output of buildDigest(rule, windowStart)
  * @param {{ clusters: number; multiSource: number }} insightsNumbers
- * @param {{ nowMs?: number, onDrop?: import('../../shared/brief-filter.js').DropMetricsFn }} [opts]
+ * @param {{
+ *   nowMs?: number,
+ *   onDrop?: import('../../shared/brief-filter.js').DropMetricsFn,
+ *   synthesis?: {
+ *     lead?: string,
+ *     threads?: Array<{ tag: string, teaser: string }>,
+ *     signals?: string[],
+ *     rankedStoryHashes?: string[],
+ *     publicLead?: string,
+ *   },
+ * }} [opts]
  *   `onDrop` is forwarded to filterTopStories so the seeder can
  *   aggregate per-user filter-drop counts without this module knowing
  *   how they are reported.
+ *   `synthesis` (when provided) substitutes envelope.digest.lead /
+ *   threads / signals / publicLead with the canonical synthesis from
+ *   the orchestration layer, and re-orders the candidate pool by
+ *   `synthesis.rankedStoryHashes` before applying the cap.
  */
-export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop } = {}) {
+export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, synthesis } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
   // Default to 'high' (NOT 'all') for undefined sensitivity, aligning
   // with buildDigest at scripts/seed-digest-notifications.mjs:392 and
@@ -335,10 +366,11 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     sensitivity,
     maxStories: MAX_STORIES_PER_USER,
     onDrop,
+    rankedStoryHashes: synthesis?.rankedStoryHashes,
   });
   if (stories.length === 0) return null;
   const issueDate = issueDateInTz(nowMs, tz);
-  return assembleStubbedBriefEnvelope({
+  const envelope = assembleStubbedBriefEnvelope({
     user: { name: userDisplayNameFromId(rule.userId), tz },
     stories,
     issueDate,
@@ -348,4 +380,25 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     issuedAt: nowMs,
     localHour: localHourInTz(nowMs, tz),
   });
+  // Splice canonical synthesis into the envelope's digest. Done as a
+  // shallow merge so the assembleStubbedBriefEnvelope path stays the
+  // single source for greeting/numbers/threads-default. We only
+  // override the LLM-driven fields when the orchestrator supplied
+  // them; missing fields fall back to the stub for graceful
+  // degradation when synthesis fails.
+  if (synthesis && envelope?.data?.digest) {
+    if (typeof synthesis.lead === 'string' && synthesis.lead.length > 0) {
+      envelope.data.digest.lead = synthesis.lead;
+    }
+    if (Array.isArray(synthesis.threads) && synthesis.threads.length > 0) {
+      envelope.data.digest.threads = synthesis.threads;
+    }
+    if (Array.isArray(synthesis.signals)) {
+      envelope.data.digest.signals = synthesis.signals;
+    }
+    if (typeof synthesis.publicLead === 'string' && synthesis.publicLead.length > 0) {
+      envelope.data.digest.publicLead = synthesis.publicLead;
+    }
+  }
+  return envelope;
 }
