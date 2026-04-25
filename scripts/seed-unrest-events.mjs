@@ -166,25 +166,30 @@ function describeErr(err) {
   return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
 }
 
-async function fetchGdeltDirect(url) {
-  const resp = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!resp.ok) throw Object.assign(new Error(`GDELT API error: ${resp.status}`), { httpStatus: resp.status });
-  return resp.json();
-}
-
+// Direct fetch from Railway has 0% success — every attempt errors with
+// UND_ERR_CONNECT_TIMEOUT or ECONNRESET. Path is always proxy-only here.
+// Decodo→Cloudflare→GDELT occasionally returns 522 or RSTs the TLS handshake
+// (~80% per single attempt in production); retry-with-jitter recovers most of
+// it without touching the cron interval.
 async function fetchGdeltViaProxy(url, proxyAuth) {
-  // GDELT v1 gkg_geojson responds in ~19s when degraded; 20s timeout caused
-  // chronic "HTTP 522" / "CONNECT tunnel timeout" from Decodo, freezing
-  // seed-meta and firing STALE_SEED across health. 45s absorbs that variance
-  // with headroom.
-  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
-    accept: 'application/json',
-    timeoutMs: 45_000,
-  });
-  return JSON.parse(buffer.toString('utf8'));
+  const MAX_ATTEMPTS = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, {
+        accept: 'application/json',
+        timeoutMs: 45_000,
+      });
+      return JSON.parse(buffer.toString('utf8'));
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_ATTEMPTS) {
+        console.warn(`  [GDELT] proxy attempt ${attempt}/${MAX_ATTEMPTS} failed (${describeErr(err)}); retrying`);
+        await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500));
+      }
+    }
+  }
+  throw lastErr;
 }
 
 async function fetchGdeltEvents() {
@@ -194,26 +199,19 @@ async function fetchGdeltEvents() {
   });
   const url = `${GDELT_GKG_URL}?${params}`;
 
+  const proxyAuth = resolveProxyForConnect();
+  if (!proxyAuth) {
+    throw new Error('GDELT requires proxy: no proxy credentials configured');
+  }
+
   let data;
   try {
-    data = await fetchGdeltDirect(url);
-  } catch (directErr) {
-    // Upstream HTTP error (4xx/5xx) — proxy routes to the same GDELT endpoint so
-    // it won't change the response. Save the 20s proxy timeout and bubble up.
-    if (directErr.httpStatus) throw directErr;
-    const proxyAuth = resolveProxyForConnect();
-    if (!proxyAuth) {
-      throw Object.assign(new Error(`GDELT direct failed (no proxy configured): ${describeErr(directErr)}`), { cause: directErr });
-    }
-    console.warn(`  [GDELT] direct failed (${describeErr(directErr)}); retrying via proxy`);
-    try {
-      data = await fetchGdeltViaProxy(url, proxyAuth);
-    } catch (proxyErr) {
-      throw Object.assign(
-        new Error(`GDELT both paths failed — direct: ${describeErr(directErr)}; proxy: ${describeErr(proxyErr)}`),
-        { cause: proxyErr },
-      );
-    }
+    data = await fetchGdeltViaProxy(url, proxyAuth);
+  } catch (proxyErr) {
+    throw Object.assign(
+      new Error(`GDELT proxy failed (3 attempts): ${describeErr(proxyErr)}`),
+      { cause: proxyErr },
+    );
   }
 
   const features = data?.features || [];
