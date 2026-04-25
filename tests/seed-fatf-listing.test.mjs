@@ -274,15 +274,18 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
     );
   });
 
-  it('throws when CDX itself is unreachable (HTTP 5xx)', async () => {
+  it('throws when CDX itself is unreachable (HTTP 5xx) AND no proxy is configured', async () => {
+    // Pass proxyAuth: null to disable the new proxy fallback so this
+    // test stays focused on the direct-CDX failure mode. The proxy
+    // fallback path is exercised in dedicated cases below.
     const fetchFn = async () => ({ ok: false, status: 503 });
     await assert.rejects(
-      fetchViaWayback(FATF_URL, { fetchFn }),
-      /Wayback CDX HTTP 503/,
+      fetchViaWayback(FATF_URL, { fetchFn, proxyAuth: null }),
+      /Wayback CDX direct failed.*HTTP 503.*no proxy configured/,
     );
   });
 
-  it('throws when the snapshot itself returns non-200 (e.g. Wayback re-fetched a Cloudflare 403)', async () => {
+  it('throws when the snapshot itself returns non-200 AND no proxy is configured (e.g. Wayback re-fetched a Cloudflare 403)', async () => {
     const fetchFn = async (url) => {
       if (url.startsWith('https://web.archive.org/cdx/')) {
         return cdxResponse('20260403144947');
@@ -290,8 +293,8 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
       return { ok: false, status: 403 };
     };
     await assert.rejects(
-      fetchViaWayback(FATF_URL, { fetchFn }),
-      /Wayback snapshot 20260403144947 HTTP 403/,
+      fetchViaWayback(FATF_URL, { fetchFn, proxyAuth: null }),
+      /Wayback snapshot 20260403144947 direct failed.*HTTP 403.*no proxy configured/,
     );
   });
 
@@ -338,6 +341,74 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
       assert.match(ua, /Mozilla\/5\.0/,
         `User-Agent on ${url} should be the canonical CHROME_UA, not a placeholder; got: ${ua}`);
     }
+  });
+
+  it('falls back to CONNECT proxy when direct CDX query fails (Railway-egress rate-limit defense)', async () => {
+    // Production observation 2026-04-25T20:35: Railway egress IPs hit
+    // 20s+ timeouts on CDX while local desktop probes complete in <2s.
+    // The same pool gets soft-rate-limited or routed slowly to
+    // archive.org. Routing CDX through Decodo's residential proxy pool
+    // bypasses that without changing the response shape.
+    const fetchFn = async () => {
+      // Direct CDX fails — simulate timeout/rate-limit.
+      throw new Error('fetch failed');
+    };
+    const proxyCalls = [];
+    const proxyFetcher = async (url, auth, opts) => {
+      proxyCalls.push({ url, auth, opts });
+      if (url.startsWith('https://web.archive.org/cdx/')) {
+        // Return CDX response shape: header + 1 row.
+        return {
+          buffer: Buffer.from(JSON.stringify([
+            ['urlkey', 'timestamp', 'original', 'mimetype', 'statuscode', 'digest', 'length'],
+            ['org,fatf-gafi)/x', '20260403144947', FATF_URL, 'text/html', '200', 'D', '1'],
+          ])),
+        };
+      }
+      // Snapshot via proxy.
+      return { buffer: Buffer.from('<html><body><h2>Wayback via proxy</h2></body></html>') };
+    };
+    const html = await fetchViaWayback(FATF_URL, {
+      fetchFn,
+      proxyFetcher,
+      proxyAuth: 'test-user:test-pass@gate.decodo.com:7000',
+    });
+    assert.match(html, /Wayback via proxy/);
+    // Both CDX and snapshot must have hit the proxy after direct failed.
+    assert.equal(proxyCalls.length, 2, 'both CDX and snapshot must route through proxy after direct failure');
+    assert.match(proxyCalls[0].url, /^https:\/\/web\.archive\.org\/cdx\//);
+    assert.match(proxyCalls[1].url, /\/web\/20260403144947id_\//, 'snapshot proxy fetch must still use the id_ modifier + the CDX timestamp');
+  });
+
+  it('error message unwraps err.cause when both direct and proxy fail (operator-actionable diagnostics)', async () => {
+    // The pre-fix error was "wayback=fetch failed" with no detail —
+    // unactionable in production logs. The fix adds a describeErr
+    // helper that pulls err.cause.code / err.cause.message so failures
+    // surface DNS / TCP-reset / TLS-abort distinctions.
+    const fetchFn = async () => {
+      const err = new TypeError('fetch failed');
+      err.cause = Object.assign(new Error('getaddrinfo ENOTFOUND web.archive.org'), { code: 'ENOTFOUND' });
+      throw err;
+    };
+    const proxyFetcher = async () => {
+      const err = new Error('Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required');
+      throw err;
+    };
+    await assert.rejects(
+      fetchViaWayback(FATF_URL, {
+        fetchFn,
+        proxyFetcher,
+        proxyAuth: 'test:test@proxy.example:7000',
+      }),
+      (err) => {
+        // Error message must include BOTH the direct cause (ENOTFOUND
+        // unwrapped) and the proxy error message — gives operators the
+        // full failure surface in one log line.
+        assert.match(err.message, /direct=.*ENOTFOUND/, `expected ENOTFOUND cause unwrapped; got: ${err.message}`);
+        assert.match(err.message, /proxy=.*407/, `expected proxy 407 in message; got: ${err.message}`);
+        return true;
+      },
+    );
   });
 
   it('uses id_ modifier (NOT the bare /web/timestamp/url path) — keeps the parser DOM byte-for-byte identical to direct FATF', async () => {
