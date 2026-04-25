@@ -90,7 +90,10 @@ export async function fetchViaWayback(url, { fetchFn = fetch, lookbackDays = WAY
   // is exactly what we want and also avoids fetching ~20× more rows than
   // we need.
   const cdxUrl = `${WAYBACK_CDX_URL}?url=${encodeURIComponent(url)}&filter=statuscode:200&output=json&from=${fromDate}&limit=-1`;
-  const cdxResp = await fetchFn(cdxUrl, { signal: AbortSignal.timeout(20_000) });
+  const cdxResp = await fetchFn(cdxUrl, {
+    headers: { 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(20_000),
+  });
   if (!cdxResp.ok) throw new Error(`Wayback CDX HTTP ${cdxResp.status} for ${url}`);
   const rows = await cdxResp.json();
   // CDX returns: [headerRow, snapshotRow]. Each snapshot row =
@@ -105,7 +108,10 @@ export async function fetchViaWayback(url, { fetchFn = fetch, lookbackDays = WAY
     throw new Error(`Wayback CDX returned malformed timestamp "${timestamp}" for ${url}`);
   }
   const snapshotUrl = `https://web.archive.org/web/${timestamp}id_/${url}`;
-  const snapResp = await fetchFn(snapshotUrl, { signal: AbortSignal.timeout(30_000) });
+  const snapResp = await fetchFn(snapshotUrl, {
+    headers: { 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!snapResp.ok) throw new Error(`Wayback snapshot ${timestamp} HTTP ${snapResp.status} for ${url}`);
   return snapResp.text();
 }

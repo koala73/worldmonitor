@@ -314,6 +314,32 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
     );
   });
 
+  it('sends a User-Agent header on BOTH the CDX query and the snapshot fetch (AGENTS.md convention)', async () => {
+    // AGENTS.md mandates "Always include `User-Agent` header in
+    // server-side fetch calls". The direct FATF fetch sends CHROME_UA;
+    // the Wayback path must match. archive.org doesn't usually block
+    // header-less requests, but house-style consistency is the point —
+    // and a future Wayback rate-limiter could reasonably enforce UA.
+    const seenHeaders = [];
+    const fetchFn = async (url, opts) => {
+      seenHeaders.push({ url, ua: opts?.headers?.['User-Agent'] });
+      if (url.startsWith('https://web.archive.org/cdx/')) {
+        return cdxResponse('20260403144947');
+      }
+      return { ok: true, text: async () => '<html></html>' };
+    };
+    await fetchViaWayback(FATF_URL, { fetchFn });
+    assert.equal(seenHeaders.length, 2, 'expected one CDX + one snapshot fetch');
+    for (const { url, ua } of seenHeaders) {
+      assert.ok(typeof ua === 'string' && ua.length > 0,
+        `User-Agent must be set on ${url} (got: ${ua})`);
+      // Pin that we're not sending some empty/sentinel value — it should
+      // be the real CHROME_UA the rest of the seeder uses.
+      assert.match(ua, /Mozilla\/5\.0/,
+        `User-Agent on ${url} should be the canonical CHROME_UA, not a placeholder; got: ${ua}`);
+    }
+  });
+
   it('uses id_ modifier (NOT the bare /web/timestamp/url path) — keeps the parser DOM byte-for-byte identical to direct FATF', async () => {
     // Without `id_`, Wayback prepends a ~3KB toolbar banner and rewrites
     // every href/src to /web/.../ paths. Both would break the existing
