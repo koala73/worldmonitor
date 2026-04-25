@@ -47,7 +47,7 @@ function story(overrides = {}) {
 
 function envelope(overrides = {}) {
   return {
-    version: 2,
+    version: 3,
     issuedAt: 1_745_000_000_000,
     data: {
       user: { name: 'Reader', tz: 'UTC' },

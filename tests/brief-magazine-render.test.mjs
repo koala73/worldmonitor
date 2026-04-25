@@ -414,8 +414,56 @@ describe('renderBriefMagazine — envelope validation', () => {
 });
 
 describe('BRIEF_ENVELOPE_VERSION', () => {
-  it('is the literal 2 (bump requires cross-producer coordination)', () => {
-    assert.equal(BRIEF_ENVELOPE_VERSION, 2);
+  it('is the literal 3 (bump requires cross-producer coordination)', () => {
+    // Bumped 2 → 3 (2026-04-25) when BriefDigest gained the optional
+    // `publicLead` field for the share-URL surface. v2 envelopes still
+    // in the 7-day TTL window remain readable — see
+    // SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3]. Test below covers v1
+    // back-compat; v2 back-compat is exercised by the missing-publicLead
+    // path in the BriefDigest validator (publicLead === undefined is OK).
+    assert.equal(BRIEF_ENVELOPE_VERSION, 3);
+  });
+});
+
+describe('renderBriefMagazine — v3 publicLead field (Codex Round-3 Medium #2)', () => {
+  it('accepts a v3 envelope with publicLead', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicLead = 'A non-personalised editorial lead for share-URL surface readers.';
+    // Should NOT throw — publicLead is now an allowed digest key.
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects a publicLead that is not a non-empty string', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicLead = 42;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.digest\.publicLead, when present, must be a non-empty string/,
+    );
+  });
+
+  it('accepts a v2 envelope still in TTL window without publicLead (back-compat)', () => {
+    // v2 envelopes already in Redis at v3 rollout MUST keep rendering
+    // — SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3]. publicLead is
+    // optional; absence is the v2 shape.
+    const env = envelope();
+    env.version = 2;
+    delete env.data.digest.publicLead;
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects an envelope with an unknown digest key (closed-key-set still enforced)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.synthesisLevel = 1;  // would-be ad-hoc metadata
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.digest has unexpected key "synthesisLevel"/,
+    );
   });
 });
 

@@ -19,7 +19,7 @@
 // stripped at compose time. See PR #3143 for the notify-endpoint fix
 // that established this rule.
 
-export const BRIEF_ENVELOPE_VERSION: 2;
+export const BRIEF_ENVELOPE_VERSION: 3;
 
 /**
  * Versions the renderer accepts from Redis on READ. Always contains
@@ -69,6 +69,16 @@ export interface BriefDigest {
   threads: BriefThread[];
   /** Signals-to-watch. The "04 · Signals" page is omitted when empty. */
   signals: string[];
+  /**
+   * Non-personalised lead for the share-URL surface (v3+). Generated
+   * by `generateDigestProsePublic` with profile/greeting stripped.
+   * The renderer's public-mode lead block reads this when present
+   * and OMITS the pull-quote when absent — never falls back to the
+   * personalised `lead` (which would leak watched-asset/region
+   * context). Optional for v2-envelope back-compat through the
+   * 7-day TTL window.
+   */
+  publicLead?: string;
 }
 
 export interface BriefStory {

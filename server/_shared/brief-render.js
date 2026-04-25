@@ -113,7 +113,12 @@ function isFiniteNumber(v) {
 const ALLOWED_ENVELOPE_KEYS = new Set(['version', 'issuedAt', 'data']);
 const ALLOWED_DATA_KEYS = new Set(['user', 'issue', 'date', 'dateLong', 'digest', 'stories']);
 const ALLOWED_USER_KEYS = new Set(['name', 'tz']);
-const ALLOWED_DIGEST_KEYS = new Set(['greeting', 'lead', 'numbers', 'threads', 'signals']);
+// publicLead: optional v3+ field. Holds a non-personalised lead the
+// public-share renderer uses in place of the personalised `lead`. v2
+// envelopes (no publicLead) still pass — the validator's optional-key
+// pattern is "in the allow list, but isString check is skipped when
+// undefined" (see validateBriefDigest below).
+const ALLOWED_DIGEST_KEYS = new Set(['greeting', 'lead', 'numbers', 'threads', 'signals', 'publicLead']);
 const ALLOWED_NUMBERS_KEYS = new Set(['clusters', 'multiSource', 'surfaced']);
 const ALLOWED_THREAD_KEYS = new Set(['tag', 'teaser']);
 const ALLOWED_STORY_KEYS = new Set([
@@ -243,6 +248,13 @@ export function assertBriefEnvelope(envelope) {
   assertNoExtraKeys(digest, ALLOWED_DIGEST_KEYS, 'envelope.data.digest');
   if (!isNonEmptyString(digest.greeting)) throw new Error('envelope.data.digest.greeting must be a non-empty string');
   if (!isNonEmptyString(digest.lead)) throw new Error('envelope.data.digest.lead must be a non-empty string');
+  // publicLead: optional v3+ field. When present, MUST be a non-empty
+  // string (typed contract enforcement); when absent, the renderer's
+  // public-mode lead block omits the pull-quote entirely (per the
+  // "never fall back to personalised lead" rule).
+  if (digest.publicLead !== undefined && !isNonEmptyString(digest.publicLead)) {
+    throw new Error('envelope.data.digest.publicLead, when present, must be a non-empty string');
+  }
 
   if (!isObject(digest.numbers)) throw new Error('envelope.data.digest.numbers is required');
   const numbers = /** @type {Record<string, unknown>} */ (digest.numbers);
