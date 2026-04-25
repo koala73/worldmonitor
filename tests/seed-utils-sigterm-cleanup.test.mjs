@@ -273,38 +273,48 @@ test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor 
       });
       let stdout = '';
       let stderr = '';
-      let sigtermSentAt = -1;
-      let opsBeforeSigterm = 0;
+      let sigtermSent = false;
       child.stdout.on('data', (c) => { stdout += c; });
       child.stderr.on('data', (c) => { stderr += c; });
       const ready = setInterval(() => {
-        if (stdout.includes('PUBLISH_HUNG') && sigtermSentAt < 0) {
+        if (stdout.includes('PUBLISH_HUNG') && !sigtermSent) {
           clearInterval(ready);
-          opsBeforeSigterm = (stderr.match(/^FETCH_OP /gm) || []).length;
-          sigtermSentAt = opsBeforeSigterm;
+          sigtermSent = true;
           child.kill('SIGTERM');
         }
       }, 25);
       child.on('close', (code, signal) => {
         clearInterval(ready);
-        // Cleanup log line must indicate publish-phase context.
-        assert.match(stderr, /SIGTERM received during publish phase — releasing lock/,
+        // Cleanup log line MUST appear AND must indicate publish-phase context.
+        // We anchor every "post-SIGTERM" assertion to the position of THIS log
+        // line in stderr — not to a parent-side op-count snapshot. The
+        // op-count approach was IPC-buffer-lag-sensitive: pre-SIGTERM child
+        // ops not yet flushed to the parent at SIGTERM-send time would later
+        // appear with idx >= snapshot and could falsely satisfy "post-SIGTERM"
+        // assertions even if the handler never fired. The cleanup log is
+        // emitted SYNCHRONOUSLY by the handler before any cleanup op runs, so
+        // anything stderr-after that line was emitted by the handler or later.
+        const cleanupLogIdx = stderr.search(/SIGTERM received during publish phase — releasing lock/);
+        assert.ok(cleanupLogIdx >= 0,
           `expected publish-phase SIGTERM cleanup log; stderr:\n${stderr}`);
+        const postCleanupStderr = stderr.slice(cleanupLogIdx);
         // Lock release MUST happen — at least one EVAL (the LUA verify-and-DEL)
-        // must fire AFTER SIGTERM was sent.
-        const allOps = (stderr.match(/^FETCH_OP idx=(\d+) shape=(\S+)/gm) || []);
-        const postSigtermOps = allOps.filter((line) => {
-          const m = /idx=(\d+)/.exec(line);
-          return m && Number(m[1]) >= sigtermSentAt;
-        });
-        const evalAfter = postSigtermOps.filter((l) => l.includes('shape=EVAL'));
+        // must appear AFTER the cleanup log line, AND its body must carry the
+        // runSeed-generated runId pattern (matches test 1 line 121's idiom).
+        // The runId pin defends against any pre-cleanup EVAL the publish path
+        // might issue in the future (currently atomicPublish uses SET/DEL only,
+        // but future refactors could change that — Greptile P2 on PR #3414).
+        const evalAfter = (postCleanupStderr.match(/^FETCH_OP idx=\d+ shape=EVAL[^\n]*/gm) || []);
         assert.ok(evalAfter.length >= 1,
-          `publish-phase SIGTERM must release the lock; saw ${evalAfter.length} post-SIGTERM EVAL ops\nstderr:\n${stderr}`);
-        // Critical strict-floor invariant: NO pipeline-EXPIRE ops after
-        // SIGTERM. publish-phase cleanup releases lock only.
-        const expireAfter = postSigtermOps.filter((l) => l.includes('shape=pipeline-EXPIRE'));
+          `publish-phase SIGTERM must release the lock; saw 0 EVAL ops after cleanup log\nstderr:\n${stderr}`);
+        const evalCarriesRunId = evalAfter.some((l) => /"\d{10,}-[a-z0-9]{6}"/.test(l));
+        assert.ok(evalCarriesRunId,
+          `EVAL after cleanup log must carry the runSeed-generated runId; stderr:\n${stderr}`);
+        // Critical strict-floor invariant: NO pipeline-EXPIRE ops AFTER cleanup
+        // log. publish-phase handler releases lock only.
+        const expireAfter = (postCleanupStderr.match(/^FETCH_OP idx=\d+ shape=pipeline-EXPIRE[^\n]*/gm) || []);
         assert.equal(expireAfter.length, 0,
-          `publish-phase SIGTERM must NOT extend TTL (strict-floor invariant); saw ${expireAfter.length} pipeline-EXPIRE ops after SIGTERM\nstderr:\n${stderr}`);
+          `publish-phase SIGTERM must NOT extend TTL (strict-floor invariant); saw ${expireAfter.length} pipeline-EXPIRE ops after cleanup log\nstderr:\n${stderr}`);
         // Process should exit 143 (SIGTERM convention) or be killed by signal.
         assert.ok(code === 143 || signal === 'SIGTERM',
           `expected exit 143 or SIGTERM signal; got code=${code} signal=${signal}\nstderr:\n${stderr}`);
