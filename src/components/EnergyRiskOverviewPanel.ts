@@ -105,7 +105,13 @@ export class EnergyRiskOverviewPanel extends Panel {
       fetchHormuzTracker(),
       getEuGasStorageData(),
       fetchCommodityQuotes(BRENT_META),
-      supplyChain.listEnergyDisruptions({ assetId: '', assetType: '', ongoingOnly: false }),
+      // ongoingOnly=true: the panel only ever shows the count of active
+      // disruptions, so let the server filter rather than ship the full
+      // historical 52-event payload to be filtered client-side. This was
+      // a Greptile P2 finding (over-fetch); buildOverviewState's count
+      // calculation handles either response (the redundant client-side
+      // filter remains as defense-in-depth in the state builder).
+      supplyChain.listEnergyDisruptions({ assetId: '', assetType: '', ongoingOnly: true }),
     ]);
     this.state = buildOverviewState(hormuz, euGas, brent, disruptions, Date.now());
 
@@ -122,6 +128,7 @@ export class EnergyRiskOverviewPanel extends Panel {
   }
 
   private render(): void {
+    injectRiskOverviewStylesOnce();
     const html = `
       <div class="ero-grid">
         ${this.renderHormuzTile()}
@@ -131,7 +138,6 @@ export class EnergyRiskOverviewPanel extends Panel {
         ${this.renderFreshnessTile()}
         ${this.renderCrisisDayTile()}
       </div>
-      <style>${RISK_OVERVIEW_CSS}</style>
     `;
     this.setContent(html);
   }
@@ -225,6 +231,21 @@ function tileHtml(label: string, value: string, color: string, attrs = '', sub =
       ${subHtml}
     </div>
   `;
+}
+
+// CSS is injected once into <head> rather than emitted into the panel body.
+// Pre-fix, the freshness setInterval re-rendered every 60s and called
+// setContent(html + <style>...) — the style tag was torn out and re-inserted
+// on every tick. Now the panel HTML is style-free; the rules live in head.
+let _riskOverviewStylesInjected = false;
+function injectRiskOverviewStylesOnce(): void {
+  if (_riskOverviewStylesInjected) return;
+  if (typeof document === 'undefined') return;
+  const style = document.createElement('style');
+  style.setAttribute('data-ero-styles', '');
+  style.textContent = RISK_OVERVIEW_CSS;
+  document.head.appendChild(style);
+  _riskOverviewStylesInjected = true;
 }
 
 const RISK_OVERVIEW_CSS = `
