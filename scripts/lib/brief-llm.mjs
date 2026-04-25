@@ -344,6 +344,16 @@ const DIGEST_PROSE_SYSTEM_BASE =
  * locales; the bucket collapses them to one of three slots so the
  * cache key only changes when the time-of-day window changes.
  *
+ * Unrecognised greetings (locale-specific phrases the keyword
+ * heuristic doesn't match, empty strings after locale changes,
+ * non-string inputs) collapse to the literal `''` slot. This is
+ * INTENTIONAL — it's a stable fourth bucket, not a sentinel for
+ * "missing data". A user whose greeting flips between a recognised
+ * value (e.g. "Good morning") and an unrecognised one (e.g. a
+ * locale-specific phrase) will get different cache keys, which is
+ * correct: those produce visibly different leads. Greptile P2 on
+ * PR #3396 raised the visibility, kept the behaviour.
+ *
  * @param {string|null|undefined} greeting
  * @returns {'morning' | 'afternoon' | 'evening' | ''}
  */

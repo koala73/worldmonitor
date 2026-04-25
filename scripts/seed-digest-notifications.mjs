@@ -1767,7 +1767,13 @@ async function main() {
       console.log(
         `[digest] Sent ${stories.length} stories to ${rule.userId} (${rule.variant}, ${rule.digestMode})`,
       );
-      // Parity observability. Two distinct properties to track:
+      // Parity observability. Gated on AI_DIGEST_ENABLED + per-rule
+      // aiDigestEnabled — without this guard, opt-out users (briefLead
+      // is intentionally null) trigger PARITY REGRESSION every tick
+      // (null !== '<envelope stub lead>'), flooding Sentry with
+      // false positives. Greptile P1 on PR #3396.
+      //
+      // Two distinct properties to track:
       //
       // 1. CHANNEL parity (load-bearing): for ONE send, every channel
       //    body of THIS rule (email HTML + plain text + Telegram +
@@ -1777,41 +1783,44 @@ async function main() {
       //
       // 2. WINNER parity (informational): when `winner_match=true`,
       //    THIS rule is the same one the magazine envelope was
-      //    composed from — so channel lead == magazine lead. When
-      //    `winner_match=false`, this is a non-winner rule send;
-      //    channel lead reflects this rule's pool while the magazine
-      //    URL points at the winner's editorial. Expected divergence,
-      //    not a regression.
+      //    composed from — so channel lead == magazine lead (cache-
+      //    shared via generateDigestProse). When `winner_match=false`,
+      //    this is a non-winner rule send; channel lead reflects this
+      //    rule's pool while the magazine URL points at the winner's
+      //    editorial. Expected divergence, not a regression.
       //
       // PARITY REGRESSION fires only when winner_match=true AND the
       // channel lead differs from the envelope lead (the canonical-
-      // synthesis contract has actually broken).
-      const envLead = brief?.envelope?.data?.digest?.lead ?? '';
-      const winnerVariant = brief?.chosenVariant ?? '';
-      const winnerMatch = winnerVariant === (rule.variant ?? 'full');
-      const channelsEqual = briefLead === envLead;
-      const publicLead = brief?.envelope?.data?.digest?.publicLead ?? '';
-      console.log(
-        `[digest] brief lead parity user=${rule.userId} ` +
-          `rule=${rule.variant ?? 'full'}:${rule.sensitivity ?? 'high'}:${rule.lang ?? 'en'} ` +
-          `winner_match=${winnerMatch} ` +
-          `synthesis_level=${synthesisLevel} ` +
-          `exec_len=${(briefLead ?? '').length} ` +
-          `brief_lead_len=${envLead.length} ` +
-          `channels_equal=${channelsEqual} ` +
-          `public_lead_len=${publicLead.length}`,
-      );
-      if (winnerMatch && !channelsEqual && briefLead && envLead) {
-        // Sentry alert candidate — winner_match=true means this rule
-        // composed the envelope, so its channel lead MUST match the
-        // envelope lead. Mismatch = canonical-synthesis cache drift
-        // or code regression. Logged loudly so Sentry's console-
-        // breadcrumb hook surfaces it without an explicit
-        // captureMessage call.
-        console.warn(
-          `[digest] PARITY REGRESSION user=${rule.userId} — winner-rule channel lead != envelope lead. ` +
-            `Investigate: cache drift between compose pass and send pass?`,
+      // synthesis cache row has drifted between compose and send
+      // passes — a real contract break).
+      if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
+        const envLead = brief?.envelope?.data?.digest?.lead ?? '';
+        const winnerVariant = brief?.chosenVariant ?? '';
+        const winnerMatch = winnerVariant === (rule.variant ?? 'full');
+        const channelsEqual = briefLead === envLead;
+        const publicLead = brief?.envelope?.data?.digest?.publicLead ?? '';
+        console.log(
+          `[digest] brief lead parity user=${rule.userId} ` +
+            `rule=${rule.variant ?? 'full'}:${rule.sensitivity ?? 'high'}:${rule.lang ?? 'en'} ` +
+            `winner_match=${winnerMatch} ` +
+            `synthesis_level=${synthesisLevel} ` +
+            `exec_len=${(briefLead ?? '').length} ` +
+            `brief_lead_len=${envLead.length} ` +
+            `channels_equal=${channelsEqual} ` +
+            `public_lead_len=${publicLead.length}`,
         );
+        if (winnerMatch && !channelsEqual && briefLead && envLead) {
+          // Sentry alert candidate — winner_match=true means this rule
+          // composed the envelope, so its channel lead MUST match the
+          // envelope lead. Mismatch = canonical-synthesis cache drift
+          // or code regression. Logged loudly so Sentry's console-
+          // breadcrumb hook surfaces it without an explicit
+          // captureMessage call.
+          console.warn(
+            `[digest] PARITY REGRESSION user=${rule.userId} — winner-rule channel lead != envelope lead. ` +
+              `Investigate: cache drift between compose pass and send pass?`,
+          );
+        }
       }
     }
   }
