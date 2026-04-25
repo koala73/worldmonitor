@@ -1745,6 +1745,35 @@ async function main() {
       console.log(
         `[digest] Sent ${stories.length} stories to ${rule.userId} (${rule.variant}, ${rule.digestMode})`,
       );
+      // Parity contract observability — the email's exec block string,
+      // the magazine's digest.lead, the channel-body lead, and the
+      // webhook's `summary` field MUST all be the same string. Plan
+      // acceptance criterion A5. Log on every send so ops can grep for
+      // `channels_equal=false` in Railway logs without manually opening
+      // the email + the magazine to compare.
+      const envLead = brief?.envelope?.data?.digest?.lead ?? '';
+      const channelsEqual = briefLead === envLead;
+      const publicLead = brief?.envelope?.data?.digest?.publicLead ?? '';
+      console.log(
+        `[digest] brief lead parity user=${rule.userId} ` +
+          `rule=${rule.variant ?? 'full'}:${rule.sensitivity ?? 'high'}:${rule.lang ?? 'en'} ` +
+          `synthesis_level=${synthesisLevel} ` +
+          `exec_len=${(briefLead ?? '').length} ` +
+          `brief_lead_len=${envLead.length} ` +
+          `channels_equal=${channelsEqual} ` +
+          `public_lead_len=${publicLead.length}`,
+      );
+      if (!channelsEqual) {
+        // Sentry alert candidate — channels_equal=false means the
+        // canonical-synthesis contract has regressed. Logged loudly so
+        // ops + a Sentry transport on stderr surfaces it without
+        // requiring an explicit captureMessage call from this script
+        // (Sentry's console-breadcrumb hook lifts WARN/ERROR lines).
+        console.warn(
+          `[digest] PARITY REGRESSION user=${rule.userId} — email lead != envelope lead. ` +
+            `Investigate: same compose tick, channels read from different sources?`,
+        );
+      }
     }
   }
 

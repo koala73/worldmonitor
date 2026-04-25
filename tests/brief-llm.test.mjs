@@ -20,6 +20,7 @@ import {
   parseDigestProse,
   validateDigestProseShape,
   generateDigestProse,
+  generateDigestProsePublic,
   enrichBriefEnvelopeWithLLM,
   buildStoryDescriptionPrompt,
   parseStoryDescription,
@@ -539,6 +540,104 @@ describe('validateDigestProseShape', () => {
   it('returns empty rankedStoryHashes when field absent (v2-shaped row passes)', () => {
     const out = validateDigestProseShape(good);
     assert.deepEqual(out.rankedStoryHashes, []);
+  });
+});
+
+// ── generateDigestProsePublic + cache-key independence (Codex Round-2 #4) ──
+
+describe('generateDigestProsePublic — public cache shared across users', () => {
+  const stories = [story(), story({ headline: 'Second', country: 'PS' })];
+  const validJson = JSON.stringify({
+    lead: 'A non-personalised editorial lead generated for the share-URL surface, free of profile context.',
+    threads: [{ tag: 'Energy', teaser: 'Hormuz tensions resurface today.' }],
+    signals: ['Watch for naval redeployment in the Gulf.'],
+  });
+
+  it('two distinct callers with identical (sensitivity, story-pool) hit the SAME cache row', async () => {
+    // The whole point of generateDigestProsePublic: when the share
+    // URL is opened by 1000 different anonymous readers, only the
+    // first call hits the LLM. Every subsequent call serves the
+    // same cached output. (Internally: hashDigestInput substitutes
+    // 'public' for userId when ctx.isPublic === true.)
+    const cache = makeCache();
+    const llm1 = makeLLM(validJson);
+    await generateDigestProsePublic(stories, 'critical', { ...cache, callLLM: llm1.callLLM });
+    assert.equal(llm1.calls.length, 1);
+
+    // Second call — different "user" context (the wrapper takes no
+    // userId, so this is just a second invocation), same pool.
+    // Should hit cache, NOT re-LLM.
+    const llm2 = makeLLM(() => { throw new Error('would not be called'); });
+    const out = await generateDigestProsePublic(stories, 'critical', { ...cache, callLLM: llm2.callLLM });
+    assert.ok(out);
+    assert.equal(llm2.calls.length, 0, 'public cache shared across calls — no per-user inflation');
+  });
+
+  it('does NOT collide with the personalised cache for the same story pool', async () => {
+    // Defensive: a private call (with profile/greeting/userId) and a
+    // public call must produce DIFFERENT cache keys. Otherwise a
+    // private call could poison the public cache row (or vice versa).
+    const cache = makeCache();
+    const llm = makeLLM(validJson);
+
+    await generateDigestProsePublic(stories, 'critical', { ...cache, callLLM: llm.callLLM });
+    const publicKeys = [...cache.store.keys()];
+
+    await generateDigestProse('user_xyz', stories, 'critical',
+      { ...cache, callLLM: llm.callLLM },
+      { profile: 'Watching: oil', greeting: 'Good morning', isPublic: false },
+    );
+    const privateKeys = [...cache.store.keys()].filter((k) => !publicKeys.includes(k));
+
+    assert.equal(publicKeys.length, 1, 'one public cache row');
+    assert.equal(privateKeys.length, 1, 'private call writes its own row');
+    assert.notEqual(publicKeys[0], privateKeys[0], 'public + private rows must use distinct keys');
+    // Public key contains literal "public:" segment — userId substitution
+    assert.match(publicKeys[0], /:public:/);
+    // Private key contains the userId
+    assert.match(privateKeys[0], /:user_xyz:/);
+  });
+
+  it('greeting changes invalidate the personalised cache (per Brain B parity)', async () => {
+    // Brain B's old cache (digest:ai-summary:v1) included greeting in
+    // the key — morning prose differed from afternoon prose. The
+    // canonical synthesis preserves that semantic via greetingBucket.
+    const cache = makeCache();
+    const llm1 = makeLLM(validJson);
+    await generateDigestProse('user_a', stories, 'all',
+      { ...cache, callLLM: llm1.callLLM },
+      { greeting: 'Good morning', isPublic: false },
+    );
+    const llm2 = makeLLM(validJson);
+    await generateDigestProse('user_a', stories, 'all',
+      { ...cache, callLLM: llm2.callLLM },
+      { greeting: 'Good evening', isPublic: false },
+    );
+    assert.equal(llm2.calls.length, 1, 'greeting bucket change re-keys the cache');
+  });
+
+  it('profile changes invalidate the personalised cache', async () => {
+    const cache = makeCache();
+    const llm1 = makeLLM(validJson);
+    await generateDigestProse('user_a', stories, 'all',
+      { ...cache, callLLM: llm1.callLLM },
+      { profile: 'Watching: oil', isPublic: false },
+    );
+    const llm2 = makeLLM(validJson);
+    await generateDigestProse('user_a', stories, 'all',
+      { ...cache, callLLM: llm2.callLLM },
+      { profile: 'Watching: gas', isPublic: false },
+    );
+    assert.equal(llm2.calls.length, 1, 'profile change re-keys the cache');
+  });
+
+  it('writes to cache under brief:llm:digest:v3 prefix (not v2)', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(validJson);
+    await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm.callLLM });
+    const keys = [...cache.store.keys()];
+    assert.ok(keys.some((k) => k.startsWith('brief:llm:digest:v3:')), 'v3 prefix used');
+    assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v2:')), 'no v2 writes');
   });
 });
 
