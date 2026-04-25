@@ -113,12 +113,16 @@ function isFiniteNumber(v) {
 const ALLOWED_ENVELOPE_KEYS = new Set(['version', 'issuedAt', 'data']);
 const ALLOWED_DATA_KEYS = new Set(['user', 'issue', 'date', 'dateLong', 'digest', 'stories']);
 const ALLOWED_USER_KEYS = new Set(['name', 'tz']);
-// publicLead: optional v3+ field. Holds a non-personalised lead the
-// public-share renderer uses in place of the personalised `lead`. v2
-// envelopes (no publicLead) still pass — the validator's optional-key
-// pattern is "in the allow list, but isString check is skipped when
+// publicLead / publicSignals / publicThreads: optional v3+ fields.
+// Hold non-personalised content the public-share renderer uses in
+// place of the personalised lead/signals/threads. v2 envelopes (no
+// publicLead) still pass — the validator's optional-key pattern is
+// "in the allow list, but isString/array check is skipped when
 // undefined" (see validateBriefDigest below).
-const ALLOWED_DIGEST_KEYS = new Set(['greeting', 'lead', 'numbers', 'threads', 'signals', 'publicLead']);
+const ALLOWED_DIGEST_KEYS = new Set([
+  'greeting', 'lead', 'numbers', 'threads', 'signals',
+  'publicLead', 'publicSignals', 'publicThreads',
+]);
 const ALLOWED_NUMBERS_KEYS = new Set(['clusters', 'multiSource', 'surfaced']);
 const ALLOWED_THREAD_KEYS = new Set(['tag', 'teaser']);
 const ALLOWED_STORY_KEYS = new Set([
@@ -254,6 +258,31 @@ export function assertBriefEnvelope(envelope) {
   // "never fall back to personalised lead" rule).
   if (digest.publicLead !== undefined && !isNonEmptyString(digest.publicLead)) {
     throw new Error('envelope.data.digest.publicLead, when present, must be a non-empty string');
+  }
+  // publicSignals + publicThreads: optional v3+. When present, MUST
+  // match the signals/threads contracts (array of non-empty strings,
+  // array of {tag, teaser}). Absent siblings are OK — public render
+  // path falls back to "omit signals page" / "category-derived
+  // threads stub" rather than serving the personalised version.
+  if (digest.publicSignals !== undefined) {
+    if (!Array.isArray(digest.publicSignals)) {
+      throw new Error('envelope.data.digest.publicSignals, when present, must be an array');
+    }
+    digest.publicSignals.forEach((s, i) => {
+      if (!isNonEmptyString(s)) throw new Error(`envelope.data.digest.publicSignals[${i}] must be a non-empty string`);
+    });
+  }
+  if (digest.publicThreads !== undefined) {
+    if (!Array.isArray(digest.publicThreads)) {
+      throw new Error('envelope.data.digest.publicThreads, when present, must be an array');
+    }
+    digest.publicThreads.forEach((t, i) => {
+      if (!isObject(t)) throw new Error(`envelope.data.digest.publicThreads[${i}] must be an object`);
+      const th = /** @type {Record<string, unknown>} */ (t);
+      assertNoExtraKeys(th, ALLOWED_THREAD_KEYS, `envelope.data.digest.publicThreads[${i}]`);
+      if (!isNonEmptyString(th.tag)) throw new Error(`envelope.data.digest.publicThreads[${i}].tag must be a non-empty string`);
+      if (!isNonEmptyString(th.teaser)) throw new Error(`envelope.data.digest.publicThreads[${i}].teaser must be a non-empty string`);
+    });
   }
 
   if (!isObject(digest.numbers)) throw new Error('envelope.data.digest.numbers is required');
@@ -1187,18 +1216,62 @@ function redactForPublic(data) {
   const safeLead = typeof data.digest?.publicLead === 'string' && data.digest.publicLead.length > 0
     ? data.digest.publicLead
     : '';
+  // Public signals: substitute the publicSignals array (also produced
+  // by generateDigestProsePublic with profile=null) when present.
+  // When absent, EMPTY the signals array — the renderer's hasSignals
+  // gate then omits the entire "04 · Signals" page rather than
+  // serving the personalised forward-looking phrases (which can echo
+  // the user's watched assets / regions).
+  const safeSignals = Array.isArray(data.digest?.publicSignals) && data.digest.publicSignals.length > 0
+    ? data.digest.publicSignals
+    : [];
+  // Public threads: substitute publicThreads when present (preferred
+  // — the public synthesis still produces topic clusters from story
+  // content). When absent, fall back to category-derived stubs so
+  // the threads page still renders without leaking any personalised
+  // phrasing the original `threads` array might carry.
+  const safeThreads = Array.isArray(data.digest?.publicThreads) && data.digest.publicThreads.length > 0
+    ? data.digest.publicThreads
+    : derivePublicThreadsStub(data.stories);
   return {
     ...data,
     user: { ...data.user, name: 'WorldMonitor' },
     digest: {
       ...data.digest,
       lead: safeLead,
+      signals: safeSignals,
+      threads: safeThreads,
     },
     stories: data.stories.map((s) => ({
       ...s,
       whyMatters: 'Subscribe to WorldMonitor Brief to see the full editorial on this story.',
     })),
   };
+}
+
+/**
+ * Category-derived threads fallback for the public surface when the
+ * envelope lacks `publicThreads`. Mirrors deriveThreadsFromStories
+ * in shared/brief-filter.js (the composer's stub path) — keeps the
+ * fallback shape identical to what v2 envelopes already render with.
+ *
+ * @param {Array<{ category?: unknown }>} stories
+ * @returns {Array<{ tag: string; teaser: string }>}
+ */
+function derivePublicThreadsStub(stories) {
+  if (!Array.isArray(stories) || stories.length === 0) {
+    return [{ tag: 'World', teaser: 'One thread on the desk today.' }];
+  }
+  const byCategory = new Map();
+  for (const s of stories) {
+    const tag = typeof s?.category === 'string' && s.category.length > 0 ? s.category : 'World';
+    byCategory.set(tag, (byCategory.get(tag) ?? 0) + 1);
+  }
+  const sorted = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+  return sorted.slice(0, 6).map(([tag, count]) => ({
+    tag,
+    teaser: count === 1 ? 'One thread on the desk today.' : `${count} threads on the desk today.`,
+  }));
 }
 
 /**

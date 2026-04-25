@@ -79,6 +79,26 @@ export interface BriefDigest {
    * 7-day TTL window.
    */
   publicLead?: string;
+  /**
+   * Non-personalised "signals to watch" array for the share-URL
+   * surface (v3+). The personalised `signals` array is generated
+   * with `ctx.profile` set, so its phrasing can echo a user's
+   * watched assets / regions ("Watch for OPEC headlines on your
+   * Saudi exposure"). The public-share renderer MUST substitute
+   * `publicSignals` (or omit the signals page entirely when absent)
+   * — never serve the personalised `signals` to anonymous readers.
+   */
+  publicSignals?: string[];
+  /**
+   * Non-personalised threads array for the share-URL surface (v3+).
+   * Threads are mostly content-derived but the prompt instructs the
+   * model to surface clusters that align with user interests; in
+   * personalised mode that bias can leak. The public-share renderer
+   * substitutes `publicThreads` when present, falls back to a
+   * category-derived stub otherwise — never serves the personalised
+   * `threads` to anonymous readers.
+   */
+  publicThreads?: BriefThread[];
 }
 
 export interface BriefStory {

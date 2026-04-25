@@ -342,6 +342,8 @@ function digestStoryToUpstreamTopStory(s) {
  *     signals?: string[],
  *     rankedStoryHashes?: string[],
  *     publicLead?: string,
+ *     publicSignals?: string[],
+ *     publicThreads?: Array<{ tag: string, teaser: string }>,
  *   },
  * }} [opts]
  *   `onDrop` is forwarded to filterTopStories so the seeder can
@@ -403,6 +405,16 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     }
     if (typeof synthesis.publicLead === 'string' && synthesis.publicLead.length > 0) {
       envelope.data.digest.publicLead = synthesis.publicLead;
+    }
+    // Public signals/threads are non-personalised siblings produced by
+    // generateDigestProsePublic. Captured separately from the
+    // personalised signals/threads above so the share-URL renderer
+    // never has to choose between leaking and omitting a whole page.
+    if (Array.isArray(synthesis.publicSignals) && synthesis.publicSignals.length > 0) {
+      envelope.data.digest.publicSignals = synthesis.publicSignals;
+    }
+    if (Array.isArray(synthesis.publicThreads) && synthesis.publicThreads.length > 0) {
+      envelope.data.digest.publicThreads = synthesis.publicThreads;
     }
   }
   return envelope;

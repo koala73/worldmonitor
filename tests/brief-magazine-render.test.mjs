@@ -817,6 +817,105 @@ describe('renderBriefMagazine — publicMode', () => {
     assert.ok(html.includes('Personal lead for the authenticated reader'));
     assert.ok(!html.includes('Generic public lead'), 'publicLead is share-only');
   });
+
+  // ── Public signals + threads fail-safe (extends Codex Round-2 High security) ──
+
+  it('substitutes publicSignals when present — personalised signals never reach the public surface', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    // Personalised signals can echo a user's watched assets ("your
+    // Saudi exposure"). Anonymous public readers must never see this.
+    env.data.digest.signals = ['Watch Saudi crude exposure on your watchlist for OPEC moves'];
+    env.data.digest.publicSignals = ['Watch OPEC for production-quota signals'];
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(html.includes('OPEC for production-quota'), 'publicSignals must render');
+    assert.ok(!html.includes('your watchlist'), 'personalised signals must NEVER appear on public');
+    assert.ok(!html.includes('Saudi crude exposure'), 'personalised signal phrase must NEVER appear on public');
+  });
+
+  it('OMITS the signals page when publicSignals is absent (fail-safe — never serves personalised signals)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.signals = ['Watch your private watchlist for OPEC moves'];
+    delete env.data.digest.publicSignals;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    // Renderer's hasSignals gate hides the signals page when the
+    // array is empty. Personalised signal phrase must NOT appear.
+    assert.ok(!html.includes('your private watchlist'), 'personalised signals must NEVER appear on public');
+    assert.ok(!html.includes('Digest / 04'), 'signals page section must be omitted');
+  });
+
+  it('substitutes publicThreads when present — personalised thread teasers never reach public', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.threads = [
+      { tag: 'Energy', teaser: 'Saudi exposure on your portfolio is at risk this week' },
+    ];
+    env.data.digest.publicThreads = [
+      { tag: 'Energy', teaser: 'OPEC production quota debate intensifies' },
+    ];
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(html.includes('OPEC production quota'), 'publicThreads must render');
+    assert.ok(!html.includes('your portfolio'), 'personalised thread teaser must NEVER appear on public');
+  });
+
+  it('falls back to category-derived threads stub when publicThreads absent', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.threads = [
+      { tag: 'Energy', teaser: 'Saudi exposure on your portfolio is at risk this week' },
+    ];
+    delete env.data.digest.publicThreads;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(!html.includes('your portfolio'), 'personalised thread must NEVER appear on public');
+    // Stub teaser pattern — generic phrasing derived from story
+    // categories. Renderer still produces a threads page.
+    assert.ok(
+      html.includes('thread on the desk today') || html.includes('threads on the desk today'),
+      'category-derived threads stub renders',
+    );
+  });
+
+  it('rejects malformed publicSignals (validator contract)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicSignals = ['ok signal', 42];  // 42 is not a string
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicSignals\[1\] must be a non-empty string/,
+    );
+  });
+
+  it('rejects malformed publicThreads (validator contract)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicThreads = [{ tag: 'Energy' }];  // missing teaser
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicThreads\[0\]\.teaser must be a non-empty string/,
+    );
+  });
+
+  it('private render ignores publicSignals + publicThreads — uses personalised', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.signals = ['Personalised signal for authenticated reader'];
+    env.data.digest.publicSignals = ['Generic public signal'];
+    env.data.digest.threads = [{ tag: 'Energy', teaser: 'Personalised teaser' }];
+    env.data.digest.publicThreads = [{ tag: 'Energy', teaser: 'Generic public teaser' }];
+    const html = renderBriefMagazine(env);
+    assert.ok(html.includes('Personalised signal'), 'private render uses personalised signals');
+    assert.ok(!html.includes('Generic public signal'), 'public siblings ignored on private path');
+    assert.ok(html.includes('Personalised teaser'), 'private render uses personalised threads');
+  });
 });
 
 // ── Regression: cover greeting follows envelope.data.digest.greeting ─────────

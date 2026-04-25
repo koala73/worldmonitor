@@ -1373,14 +1373,18 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     );
     synthesis = result.synthesis;
     synthesisLevel = result.level;
-    // publicLead — parallel call. Profile-stripped; cache-shared
-    // across all users for the same (date, sensitivity, story-pool).
-    // Failure is non-fatal — the renderer's public-mode fail-safe
-    // omits the pull-quote when publicLead is absent rather than
-    // leaking the personalised lead.
+    // Public synthesis — parallel call. Profile-stripped; cache-
+    // shared across all users for the same (date, sensitivity,
+    // story-pool). Captures the FULL prose object (lead + signals +
+    // threads) since each personalised counterpart in the envelope
+    // can carry profile bias and the public surface needs sibling
+    // safe-versions of all three. Failure is non-fatal — the
+    // renderer's public-mode fail-safes (omit pull-quote / omit
+    // signals page / category-derived threads stub) handle absence
+    // rather than leaking the personalised version.
     try {
       const pub = await generateDigestProsePublic(winnerStories, sensitivity, briefLlmDeps);
-      if (pub?.lead) publicLead = pub.lead;
+      if (pub) publicLead = pub;  // { lead, threads, signals, rankedStoryHashes }
     } catch (err) {
       console.warn(`[digest] brief: publicLead generation failed for ${userId}:`, err?.message);
     }
@@ -1397,7 +1401,14 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     {
       nowMs,
       onDrop: (ev) => { dropStats[ev.reason] = (dropStats[ev.reason] ?? 0) + 1; },
-      synthesis: synthesis ? { ...synthesis, publicLead: publicLead ?? undefined } : (publicLead ? { publicLead } : undefined),
+      synthesis: synthesis || publicLead
+        ? {
+            ...(synthesis ?? {}),
+            publicLead: publicLead?.lead ?? undefined,
+            publicSignals: publicLead?.signals ?? undefined,
+            publicThreads: publicLead?.threads ?? undefined,
+          }
+        : undefined,
     },
   );
 
@@ -1629,17 +1640,41 @@ async function main() {
       continue;
     }
 
-    // Canonical lead text from the brief envelope. SAME string shipped
-    // to every channel + the magazine — eliminates the "two-brain"
-    // divergence where the email's lead disagreed with the brief's.
-    // When briefByUser doesn't have an entry (compose flow failed for
-    // this user), briefLead is null and the email subject downgrades
-    // to "Digest" via the synthesisLevel ternary below.
+    // Per-rule synthesis: each due rule's channel body must be
+    // internally consistent (lead derived from THIS rule's pool, not
+    // some other rule's). For multi-rule users, the compose flow
+    // picked ONE winning rule for the magazine envelope, but the
+    // send-loop body for a non-winner rule needs ITS OWN lead — else
+    // the email leads with one pool's narrative while listing stories
+    // from another pool. Cache absorbs the cost: when this is the
+    // winning rule, generateDigestProse hits the cache row written
+    // during the compose pass (same userId/sensitivity/pool/ctx) and
+    // no extra LLM call fires.
+    //
+    // The magazineUrl still points at the winner's envelope — that
+    // surface is the share-worthy alpha and remains a single brief
+    // per user per slot. Channel-body lead vs magazine lead may
+    // therefore differ for non-winner rules; users on those rules
+    // see their own coherent email + a magazine that shows the
+    // winner's editorial. Acceptable trade-off given multi-rule
+    // users are rare and the `(userId, issueSlot)` URL contract
+    // can't represent multiple per-rule briefs without an
+    // architectural change to the URL signer + Redis key.
     const brief = briefByUser.get(rule.userId);
-    const briefLead = (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false)
-      ? (brief?.envelope?.data?.digest?.lead ?? null)
-      : null;
-    const synthesisLevel = brief?.synthesisLevel ?? 3;
+    let briefLead = null;
+    let synthesisLevel = 3;
+    if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
+      const ruleCtx = await buildSynthesisCtx(rule, nowMs);
+      const ruleResult = await runSynthesisWithFallback(
+        rule.userId,
+        stories,
+        rule.sensitivity ?? 'high',
+        ruleCtx,
+        briefLlmDeps,
+      );
+      briefLead = ruleResult.synthesis?.lead ?? null;
+      synthesisLevel = ruleResult.level;
+    }
 
     const storyListPlain = formatDigest(stories, nowMs);
     if (!storyListPlain) continue;
@@ -1695,33 +1730,50 @@ async function main() {
       console.log(
         `[digest] Sent ${stories.length} stories to ${rule.userId} (${rule.variant}, ${rule.digestMode})`,
       );
-      // Parity contract observability — the email's exec block string,
-      // the magazine's digest.lead, the channel-body lead, and the
-      // webhook's `summary` field MUST all be the same string. Plan
-      // acceptance criterion A5. Log on every send so ops can grep for
-      // `channels_equal=false` in Railway logs without manually opening
-      // the email + the magazine to compare.
+      // Parity observability. Two distinct properties to track:
+      //
+      // 1. CHANNEL parity (load-bearing): for ONE send, every channel
+      //    body of THIS rule (email HTML + plain text + Telegram +
+      //    Slack + Discord + webhook) reads the same `briefLead`
+      //    string. Verifiable by code review (single variable threaded
+      //    everywhere); logged here as `exec_len` for telemetry.
+      //
+      // 2. WINNER parity (informational): when `winner_match=true`,
+      //    THIS rule is the same one the magazine envelope was
+      //    composed from — so channel lead == magazine lead. When
+      //    `winner_match=false`, this is a non-winner rule send;
+      //    channel lead reflects this rule's pool while the magazine
+      //    URL points at the winner's editorial. Expected divergence,
+      //    not a regression.
+      //
+      // PARITY REGRESSION fires only when winner_match=true AND the
+      // channel lead differs from the envelope lead (the canonical-
+      // synthesis contract has actually broken).
       const envLead = brief?.envelope?.data?.digest?.lead ?? '';
+      const winnerVariant = brief?.chosenVariant ?? '';
+      const winnerMatch = winnerVariant === (rule.variant ?? 'full');
       const channelsEqual = briefLead === envLead;
       const publicLead = brief?.envelope?.data?.digest?.publicLead ?? '';
       console.log(
         `[digest] brief lead parity user=${rule.userId} ` +
           `rule=${rule.variant ?? 'full'}:${rule.sensitivity ?? 'high'}:${rule.lang ?? 'en'} ` +
+          `winner_match=${winnerMatch} ` +
           `synthesis_level=${synthesisLevel} ` +
           `exec_len=${(briefLead ?? '').length} ` +
           `brief_lead_len=${envLead.length} ` +
           `channels_equal=${channelsEqual} ` +
           `public_lead_len=${publicLead.length}`,
       );
-      if (!channelsEqual) {
-        // Sentry alert candidate — channels_equal=false means the
-        // canonical-synthesis contract has regressed. Logged loudly so
-        // ops + a Sentry transport on stderr surfaces it without
-        // requiring an explicit captureMessage call from this script
-        // (Sentry's console-breadcrumb hook lifts WARN/ERROR lines).
+      if (winnerMatch && !channelsEqual && briefLead && envLead) {
+        // Sentry alert candidate — winner_match=true means this rule
+        // composed the envelope, so its channel lead MUST match the
+        // envelope lead. Mismatch = canonical-synthesis cache drift
+        // or code regression. Logged loudly so Sentry's console-
+        // breadcrumb hook surfaces it without an explicit
+        // captureMessage call.
         console.warn(
-          `[digest] PARITY REGRESSION user=${rule.userId} — email lead != envelope lead. ` +
-            `Investigate: same compose tick, channels read from different sources?`,
+          `[digest] PARITY REGRESSION user=${rule.userId} — winner-rule channel lead != envelope lead. ` +
+            `Investigate: cache drift between compose pass and send pass?`,
         );
       }
     }
