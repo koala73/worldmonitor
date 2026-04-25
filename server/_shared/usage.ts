@@ -16,6 +16,7 @@
 import type { AuthKind } from './usage-identity';
 
 const AXIOM_DATASET = 'wm_api_usage';
+// US region endpoint. EU workspaces would use api.eu.axiom.co.
 const AXIOM_INGEST_URL = `https://api.axiom.co/v1/datasets/${AXIOM_DATASET}/ingest`;
 const TELEMETRY_TIMEOUT_MS = 1_500;
 
