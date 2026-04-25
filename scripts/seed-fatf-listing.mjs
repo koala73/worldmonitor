@@ -16,7 +16,7 @@
 // of publication). Cache TTL 90d so a transient parse failure doesn't
 // drop the full listing.
 
-import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw, describeErr } from './_seed-utils.mjs';
 import countryNames from './shared/country-names.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
@@ -64,17 +64,6 @@ const WAYBACK_LOOKBACK_DAYS = 180;
 // max Wayback budget per URL) this fits inside the seeder's overall
 // per-URL ceiling (see comment block at fetchHtml).
 const WAYBACK_TIMEOUT_MS = 25_000;
-
-// Unwrap fetch errors so production logs surface the actual cause
-// (DNS failure / TCP reset / TLS abort) instead of undici's bare
-// "fetch failed". Without this, the bundle log is unactionable on
-// any wayback failure.
-function describeErr(err) {
-  if (!err) return 'unknown';
-  const cause = err.cause;
-  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
-  return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
-}
 
 /**
  * Fetch a URL via Wayback Machine's most recent successful (statuscode:200)
@@ -153,6 +142,9 @@ async function fetchWaybackJson(cdxUrl, { fetchFn, proxyFetcher, proxyAuth }) {
     throw new Error(`Wayback CDX direct failed (${describeErr(directErr)}); no proxy configured`);
   }
   try {
+    // Note: httpsProxyFetchRaw injects User-Agent: CHROME_UA internally
+    // (see scripts/_seed-utils.mjs:httpsProxyFetchRaw) — we don't need to
+    // pass headers here. AGENTS.md UA convention is satisfied on both legs.
     const { buffer } = await proxyFetcher(cdxUrl, proxyAuth, {
       accept: 'application/json',
       timeoutMs: WAYBACK_TIMEOUT_MS,
@@ -179,6 +171,9 @@ async function fetchWaybackText(snapshotUrl, timestamp, { fetchFn, proxyFetcher,
     throw new Error(`Wayback snapshot ${timestamp} direct failed (${describeErr(directErr)}); no proxy configured`);
   }
   try {
+    // Note: httpsProxyFetchRaw injects User-Agent: CHROME_UA internally
+    // (see scripts/_seed-utils.mjs:httpsProxyFetchRaw) — UA is sent on
+    // the proxy snapshot fetch even though it's not in the opts here.
     const { buffer } = await proxyFetcher(snapshotUrl, proxyAuth, {
       accept: 'text/html',
       timeoutMs: WAYBACK_TIMEOUT_MS,

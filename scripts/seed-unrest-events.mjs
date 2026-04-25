@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect, describeErr } from './_seed-utils.mjs';
 import { getAcledToken } from './shared/acled-oauth.mjs';
 
 loadEnvFile(import.meta.url);
@@ -158,13 +158,6 @@ async function fetchAcledProtests() {
 }
 
 // ---------- GDELT Fetch ----------
-
-function describeErr(err) {
-  if (!err) return 'unknown';
-  const cause = err.cause;
-  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
-  return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
-}
 
 // Direct fetch from Railway has 0% success — every attempt errors with
 // UND_ERR_CONNECT_TIMEOUT or ECONNRESET. Path is always proxy-only here.

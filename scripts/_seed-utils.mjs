@@ -18,6 +18,26 @@ const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 export { CHROME_UA };
 
 /**
+ * Unwrap fetch / network errors so log lines surface the actual cause
+ * (DNS / TCP reset / TLS abort) instead of undici's bare "fetch failed".
+ * Pulls `err.cause.code` (preferred — `ENOTFOUND`, `ECONNRESET`, etc.),
+ * `err.cause.errno`, or `err.cause.message` in that order; falls back to
+ * the outer error message when no cause is attached. Used by seeders
+ * with multi-tier fallback chains (FATF, GDELT) where the failure mode
+ * dictates the next-tier decision and operators need to distinguish
+ * routing / DNS / handshake failures from per-host throttling.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function describeErr(err) {
+  if (!err) return 'unknown';
+  const cause = err.cause;
+  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
+  return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
+}
+
+/**
  * Return the bundle-run start timestamp injected by `_bundle-runner.mjs`
  * as the `BUNDLE_RUN_STARTED_AT_MS` env var, or `null` when the seeder
  * is running STANDALONE (manual invocation outside the bundle).
