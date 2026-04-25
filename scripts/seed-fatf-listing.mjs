@@ -16,6 +16,7 @@
 // of publication). Cache TTL 90d so a transient parse failure doesn't
 // drop the full listing.
 
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw, describeErr } from './_seed-utils.mjs';
 import countryNames from './shared/country-names.json' with { type: 'json' };
 
@@ -133,6 +134,46 @@ export async function fetchViaWayback(url, opts = {}) {
   return await fetchWaybackText(snapshotUrl, timestamp, { fetchFn, proxyFetcher, proxyAuth });
 }
 
+// Wayback's `id_` modifier returns the captured response body BYTE-FOR-BYTE
+// from the original origin. When that origin sent `Content-Encoding: gzip`
+// (FATF AEM does, behind Cloudflare), the captured bytes are gzip-encoded.
+//
+// Native `fetch` auto-decompresses based on the response `Content-Encoding`
+// header, so the direct path is fine. Our CONNECT proxy path
+// (`httpsProxyFetchRaw`) returns raw bytes from the tunnel and does NOT
+// auto-decompress. Calling `.toString('utf8')` on gzipped bytes yields
+// binary garbage that the regex parser pattern-matches as ~100 false-
+// positive country candidates, tripping the sanity-check gate.
+//
+// This helper sniffs the standard magic bytes and decompresses when needed.
+// Safe to call on already-decompressed bodies — they'll fall through to the
+// utf8 cast.
+//
+// Magic bytes:
+//   gzip:    1f 8b
+//   zlib:    78 (followed by 01 / 9c / da)
+//   brotli:  no magic bytes; only attempted as last resort if upstream
+//            advertises `br` and the gzip/deflate paths failed.
+export function decodeMaybeCompressed(buffer, contentEncoding) {
+  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
+  // Gzip magic: 1f 8b
+  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) {
+    return gunzipSync(buffer).toString('utf8');
+  }
+  // Zlib/deflate magic: 78 01, 78 9c, 78 da
+  if (buffer.length >= 2 && buffer[0] === 0x78 && (buffer[1] === 0x01 || buffer[1] === 0x9c || buffer[1] === 0xda)) {
+    return inflateSync(buffer).toString('utf8');
+  }
+  // Brotli has no magic bytes — only try it if explicitly advertised AND
+  // the body is clearly not utf8 text. We treat ASCII-printable starts
+  // (`<`, `{`, `[`, `"`, whitespace) as already-decoded text.
+  if (contentEncoding === 'br' && buffer.length > 0 && buffer[0] >= 0x80) {
+    try { return brotliDecompressSync(buffer).toString('utf8'); }
+    catch { /* fall through to utf8 cast */ }
+  }
+  return buffer.toString('utf8');
+}
+
 async function fetchWaybackJson(cdxUrl, { fetchFn, proxyFetcher, proxyAuth }) {
   let directErr;
   try {
@@ -141,7 +182,12 @@ async function fetchWaybackJson(cdxUrl, { fetchFn, proxyFetcher, proxyAuth }) {
       signal: AbortSignal.timeout(WAYBACK_TIMEOUT_MS),
     });
     if (!cdxResp.ok) throw new Error(`Wayback CDX HTTP ${cdxResp.status}`);
-    return await cdxResp.json();
+    // Defensive decompression: if Wayback omits Content-Encoding on this
+    // route, Node's fetch won't auto-inflate. Use raw bytes + magic-byte
+    // detection. If the body is already-decoded (the common case), the
+    // helper falls through to a plain utf8 cast.
+    const buf = Buffer.from(await cdxResp.arrayBuffer());
+    return JSON.parse(decodeMaybeCompressed(buf, cdxResp.headers.get?.('content-encoding')));
   } catch (err) {
     directErr = err;
   }
@@ -152,11 +198,11 @@ async function fetchWaybackJson(cdxUrl, { fetchFn, proxyFetcher, proxyAuth }) {
     // Note: httpsProxyFetchRaw injects User-Agent: CHROME_UA internally
     // (see scripts/_seed-utils.mjs:httpsProxyFetchRaw) — we don't need to
     // pass headers here. AGENTS.md UA convention is satisfied on both legs.
-    const { buffer } = await proxyFetcher(cdxUrl, proxyAuth, {
+    const { buffer, headers } = await proxyFetcher(cdxUrl, proxyAuth, {
       accept: 'application/json',
       timeoutMs: WAYBACK_TIMEOUT_MS,
     });
-    return JSON.parse(buffer.toString('utf8'));
+    return JSON.parse(decodeMaybeCompressed(buffer, headers?.['content-encoding']));
   } catch (proxyErr) {
     throw new Error(`Wayback CDX direct=${describeErr(directErr)}; proxy=${describeErr(proxyErr)}`);
   }
@@ -170,7 +216,9 @@ async function fetchWaybackText(snapshotUrl, timestamp, { fetchFn, proxyFetcher,
       signal: AbortSignal.timeout(WAYBACK_TIMEOUT_MS),
     });
     if (!snapResp.ok) throw new Error(`Wayback snapshot ${timestamp} HTTP ${snapResp.status}`);
-    return await snapResp.text();
+    // Defensive decompression — see fetchWaybackJson for rationale.
+    const buf = Buffer.from(await snapResp.arrayBuffer());
+    return decodeMaybeCompressed(buf, snapResp.headers.get?.('content-encoding'));
   } catch (err) {
     directErr = err;
   }
@@ -181,11 +229,11 @@ async function fetchWaybackText(snapshotUrl, timestamp, { fetchFn, proxyFetcher,
     // Note: httpsProxyFetchRaw injects User-Agent: CHROME_UA internally
     // (see scripts/_seed-utils.mjs:httpsProxyFetchRaw) — UA is sent on
     // the proxy snapshot fetch even though it's not in the opts here.
-    const { buffer } = await proxyFetcher(snapshotUrl, proxyAuth, {
+    const { buffer, headers } = await proxyFetcher(snapshotUrl, proxyAuth, {
       accept: 'text/html',
       timeoutMs: WAYBACK_TIMEOUT_MS,
     });
-    return buffer.toString('utf8');
+    return decodeMaybeCompressed(buffer, headers?.['content-encoding']);
   } catch (proxyErr) {
     throw new Error(`Wayback snapshot ${timestamp} direct=${describeErr(directErr)}; proxy=${describeErr(proxyErr)}`);
   }
@@ -317,10 +365,14 @@ export function extractListedCountries(html, nameLookup) {
     const slug = m[2];
     const attrsAfter = m[3];
     const innerHtml = m[4];
-    // Skip FATF Member Countries nav anchors. They use the AEM list
-    // component which always tags the anchor with `cmp-list__item-link`.
-    // Real publication-body anchors are plain `<a href="...">`.
-    if (/cmp-list__item-link/.test(attrsBefore + attrsAfter)) continue;
+    // Skip ALL AEM CMS-component anchors (Member Countries side nav,
+    // top nav, breadcrumbs, footer, related-content boxes). FATF's
+    // publication body uses plain `<a href="...">name</a>`; every nav
+    // surface uses `class="cmp-..."`. The previous narrower filter
+    // (`cmp-list__item-link` only) missed snapshots where Wayback served
+    // a slightly different DOM that hit other nav classes — surfaced as
+    // 111 unmatched candidates in production 2026-04-25.
+    if (/\bcmp-/.test(attrsBefore + attrsAfter)) continue;
     // Strip HTML tags BEFORE decoding entities. If a malformed snapshot
     // contained `&lt;note&gt;` inside the anchor, decoding first would
     // produce `<note>` which stripHtml would then erase. Stripping first
@@ -383,6 +435,28 @@ export function extractPublicationDate(url, html) {
   return new Date().toISOString().slice(0, 10);
 }
 
+// On parser-sanity-check failure, surface enough about the HTML body that
+// ops can tell at a glance whether the fetch returned the real publication,
+// a Cloudflare challenge, a 404 redirect, or compressed bytes mistakenly
+// treated as utf8. Bounded to a few hundred chars so log lines stay
+// readable.
+function previewHtmlForDiagnostic(html) {
+  if (!html) return '<empty>';
+  const len = html.length;
+  const detailHrefs = (html.match(/\/en\/countries\/detail\//gi) || []).length;
+  const cmpListItem = (html.match(/cmp-list__item-link/g) || []).length;
+  // Detect leading control bytes / non-printable ASCII as a strong hint
+  // that the body is compressed/binary (gzip starts with 0x1f 0x8b, brotli
+  // is high-bit, etc.). Bypasses html.toString detection issues.
+  const head = html.slice(0, 32);
+  const printable = [...head].filter((c) => {
+    const code = c.charCodeAt(0);
+    return (code >= 0x20 && code < 0x7f) || code === 0x09 || code === 0x0a || code === 0x0d;
+  }).length;
+  const looksBinary = printable < 24;
+  return `len=${len} detailHrefs=${detailHrefs} cmpListItem=${cmpListItem} binaryHead=${looksBinary} firstChars=${JSON.stringify(html.slice(0, 120))}`;
+}
+
 export async function fetchFatfListings({
   fetchHtmlFn = fetchHtml,
 } = {}) {
@@ -421,6 +495,14 @@ export async function fetchFatfListings({
     console.warn(`[fatf-listing] ${unmatched.length} country-name candidates not found in shared/country-names.json: ${unmatched.join(', ')}. Extend the aliases map if any of these are real country names.`);
   }
   if (unmatched.length > 2) {
+    // Diagnostic preview: when this gate trips, ops needs to know whether
+    // the HTML actually arrived (real publication body), arrived garbled
+    // (binary / wrong page / Cloudflare challenge), or arrived empty.
+    // Without this preview the unmatched-text dump is ambiguous — we
+    // can't tell from logs whether to fix the parser or retry the fetch.
+    const blackPreview = previewHtmlForDiagnostic(blackHtml);
+    const greyPreview = previewHtmlForDiagnostic(greyHtml);
+    console.warn(`[fatf-listing] diagnostic: black=${blackPreview} grey=${greyPreview}`);
     const msg = `FATF parser found ${unmatched.length} unmatched country-name candidates (max 2 tolerated): ${unmatched.join(', ')}. Previous valid payload remains under cache TTL — extend shared/country-names.json or fix the parser before next plenary.`;
     console.warn(`[fatf-listing] parser sanity-check failed: ${msg}`);
     throw new Error(msg);

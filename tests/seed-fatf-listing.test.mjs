@@ -285,20 +285,31 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
   // is [urlkey, timestamp, original, mimetype, statuscode, digest, length].
   // Ordered timestamp-ascending — last row is most recent.
   function cdxResponse(...timestamps) {
+    const rows = [
+      ['urlkey', 'timestamp', 'original', 'mimetype', 'statuscode', 'digest', 'length'],
+      ...timestamps.map((ts) => [
+        'org,fatf-gafi)/en/countries/black-and-grey-lists.html',
+        ts,
+        FATF_URL,
+        'text/html',
+        '200',
+        'DIGEST',
+        '18000',
+      ]),
+    ];
     return {
       ok: true,
-      json: async () => [
-        ['urlkey', 'timestamp', 'original', 'mimetype', 'statuscode', 'digest', 'length'],
-        ...timestamps.map((ts) => [
-          'org,fatf-gafi)/en/countries/black-and-grey-lists.html',
-          ts,
-          FATF_URL,
-          'text/html',
-          '200',
-          'DIGEST',
-          '18000',
-        ]),
-      ],
+      headers: new Map(),
+      arrayBuffer: async () => Buffer.from(JSON.stringify(rows)),
+    };
+  }
+  // Snapshot mock helper. Tests previously used `{ ok: true, text: async () => '...' }`
+  // before the seeder switched to raw `arrayBuffer()` + magic-byte gzip detection.
+  function snapshotResponse(html) {
+    return {
+      ok: true,
+      headers: new Map(),
+      arrayBuffer: async () => Buffer.from(html, 'utf8'),
     };
   }
 
@@ -311,7 +322,7 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
       }
       // Snapshot fetch — must use the LATEST timestamp + id_ modifier
       assert.match(url, /web\/20260403144947id_\//, 'must request the latest CDX timestamp with id_ modifier');
-      return { ok: true, text: async () => '<html><body><h2>Black & grey lists</h2></body></html>' };
+      return snapshotResponse('<html><body><h2>Black & grey lists</h2></body></html>');
     };
     const html = await fetchViaWayback(FATF_URL, { fetchFn });
     assert.match(html, /Black & grey lists/);
@@ -325,7 +336,7 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
         cdxUrl = url;
         return cdxResponse('20260403144947');
       }
-      return { ok: true, text: async () => '<html></html>' };
+      return snapshotResponse('<html></html>');
     };
     await fetchViaWayback(FATF_URL, { fetchFn, lookbackDays: 90 });
     assert.match(cdxUrl, /filter=statuscode%3A200|filter=statuscode:200/, 'CDX query must filter to status 200');
@@ -345,7 +356,11 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
     const fetchFn = async (url) => {
       if (url.startsWith('https://web.archive.org/cdx/')) {
         // Only the header row, no actual snapshots.
-        return { ok: true, json: async () => [['urlkey', 'timestamp', 'original', 'mimetype', 'statuscode', 'digest', 'length']] };
+        return {
+          ok: true,
+          headers: new Map(),
+          arrayBuffer: async () => Buffer.from(JSON.stringify([['urlkey', 'timestamp', 'original', 'mimetype', 'statuscode', 'digest', 'length']])),
+        };
       }
       throw new Error('snapshot fetch should not be reached when CDX is empty');
     };
@@ -384,10 +399,11 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
       if (url.startsWith('https://web.archive.org/cdx/')) {
         return {
           ok: true,
-          json: async () => [
+          headers: new Map(),
+          arrayBuffer: async () => Buffer.from(JSON.stringify([
             ['urlkey', 'timestamp', 'original', 'mimetype', 'statuscode', 'digest', 'length'],
             ['org,fatf-gafi)/x', 'NOT-A-TIMESTAMP', FATF_URL, 'text/html', '200', 'D', '1'],
-          ],
+          ])),
         };
       }
       throw new Error('snapshot fetch should not run with malformed timestamp');
@@ -410,7 +426,7 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
       if (url.startsWith('https://web.archive.org/cdx/')) {
         return cdxResponse('20260403144947');
       }
-      return { ok: true, text: async () => '<html></html>' };
+      return snapshotResponse('<html></html>');
     };
     await fetchViaWayback(FATF_URL, { fetchFn });
     assert.equal(seenHeaders.length, 2, 'expected one CDX + one snapshot fetch');
@@ -516,6 +532,43 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
     );
   });
 
+  it('PROXY path: decompresses gzip-encoded snapshot bodies (Wayback `id_` returns FATF-origin gzipped bytes when CONNECT-proxy strips Content-Encoding header)', async () => {
+    // Production observation 2026-04-25 (run 1777155637881-7uafzc):
+    // FATF AEM origin gzips its HTML responses. Wayback's `id_` modifier
+    // preserves the byte-identical capture INCLUDING the gzipped body.
+    // The CONNECT-tunnel proxy code in scripts/_proxy-utils.cjs reads
+    // `Content-Encoding` to decide whether to inflate, but Wayback's
+    // re-served headers don't always include `content-encoding: gzip`
+    // (intermediate Cloudflare/CDN strips it on some routes). When that
+    // header is missing, raw gzip bytes were being treated as utf8 text,
+    // surfacing ~111 false-positive country candidates from chance
+    // ASCII patterns inside the compressed stream.
+    //
+    // Fix: detect gzip magic bytes (1f 8b) on the response body and
+    // decompress unconditionally on the proxy path.
+    const { gzipSync } = await import('node:zlib');
+    const realHtml = '<a href="/en/countries/detail/iran.html">Iran</a><a href="/en/countries/detail/Myanmar.html">Myanmar</a>';
+    const gzippedBody = gzipSync(Buffer.from(realHtml, 'utf8'));
+    const fetchFn = async () => { throw new Error('direct disabled to force proxy'); };
+    const proxyFetcher = async (url) => {
+      if (url.startsWith('https://web.archive.org/cdx/')) {
+        return { buffer: Buffer.from(JSON.stringify([
+          ['urlkey', 'timestamp', 'original', 'mimetype', 'statuscode', 'digest', 'length'],
+          ['org,fatf-gafi)/x', '20260403144947', FATF_URL, 'text/html', '200', 'D', '1'],
+        ])) };
+      }
+      // Snapshot returned with gzipped body and NO content-encoding header
+      // (the missing-header case that broke production).
+      return { buffer: gzippedBody, headers: {} };
+    };
+    const html = await fetchViaWayback(FATF_URL, {
+      fetchFn,
+      proxyFetcher,
+      proxyAuth: 'test:test@proxy.example:7000',
+    });
+    assert.equal(html, realHtml, 'gzip body must be decompressed before being returned as text');
+  });
+
   it('uses id_ modifier (NOT the bare /web/timestamp/url path) — keeps the parser DOM byte-for-byte identical to direct FATF', async () => {
     // Without `id_`, Wayback prepends a ~3KB toolbar banner and rewrites
     // every href/src to /web/.../ paths. Both would break the existing
@@ -527,7 +580,7 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
         return cdxResponse('20260403144947');
       }
       snapshotUrl = url;
-      return { ok: true, text: async () => '<html></html>' };
+      return snapshotResponse('<html></html>');
     };
     await fetchViaWayback(FATF_URL, { fetchFn });
     assert.match(snapshotUrl, /\/web\/\d{14}id_\//, 'snapshot URL MUST use the id_ modifier');
