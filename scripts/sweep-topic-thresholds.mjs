@@ -39,7 +39,11 @@ loadEnvFile(import.meta.url);
 // until then, env is the most-faithful source.
 const SCORE_FLOOR_DEFAULT = 63;     // matches production DIGEST_SCORE_MIN
 const TOP_N_DEFAULT = 30;           // matches production DIGEST_MAX_ITEMS
-const MAX_STORIES_DEFAULT = 16;     // matches MAX_STORIES_PER_USER post-PR #3389
+// Default 12 — matches production MAX_STORIES_PER_USER. PR #3389 kept
+// the historical default after sweep evidence showed cap=16 hurts
+// visible_quality at threshold 0.45. Override locally with
+// DIGEST_MAX_STORIES_PER_USER env var or `--cap N` flag.
+const MAX_STORIES_DEFAULT = 12;
 
 function envInt(name, fallback) {
   const raw = process.env[name];
@@ -390,14 +394,18 @@ function renderMarkdownTable(rows, ctx) {
   lines.push('');
   lines.push('| threshold | visible_quality | visible_recall | visible_false_adj | partition_quality | partition_recall | partition_false_adj | avg_topics | multi_share | visible_samples / partition_samples |');
   lines.push('|-----------|-----------------|----------------|-------------------|-------------------|------------------|---------------------|------------|-------------|-------------------------------------|');
+  // Compute the GLOBAL best in a first pass so the ⭐ marker only
+  // tags one row. The previous one-pass approach starred every row
+  // that was the running best at the time it was rendered (Greptile
+  // P1 on PR #3390).
   let best = null;
   for (const r of rows) {
     if (r.ticks === 0) continue;
-    let star = '';
-    if (best == null || r.visible_quality_score > best.visible_quality_score) {
-      best = r;
-      star = ' ⭐';
-    }
+    if (best == null || r.visible_quality_score > best.visible_quality_score) best = r;
+  }
+  for (const r of rows) {
+    if (r.ticks === 0) continue;
+    const star = (r === best) ? ' ⭐' : '';
     lines.push(
       `| ${r.threshold.toFixed(2)} `
       + `| ${r.visible_quality_score.toFixed(3)}${star} `

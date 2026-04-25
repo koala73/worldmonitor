@@ -338,10 +338,15 @@ async function main() {
   const threshold = latestRecords[0]?.tickConfig?.topicThreshold ?? 0.45;
   const labels = loadLabels();
 
-  let replay = null;
-  if (embeddingByHash.size === reps.length && reps.length > 0) {
-    replay = scoreReplay({ records: latestRecords, embeddingByHash, labels, threshold });
-  }
+  // Always call scoreReplay when there are reps. The function itself
+  // filters missing embeddings and returns { error: '…' } if too few
+  // survive (MIN_SURVIVING_REPS guard); renderReport surfaces that
+  // error path with a ⚠️ warning. Gating here on
+  // `embeddingByHash.size === reps.length` was defeating the
+  // intended graceful-degradation behaviour — Greptile P2 on PR #3390.
+  const replay = reps.length > 0
+    ? scoreReplay({ records: latestRecords, embeddingByHash, labels, threshold })
+    : null;
 
   const dropLines = args.dropLinesStdin ? await readStdinDropLines() : [];
   const drops = dropLines.length > 0 ? summariseDropLines(dropLines) : null;
