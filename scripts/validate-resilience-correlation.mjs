@@ -3,7 +3,7 @@
 import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 
 // Source of truth: server/worldmonitor/resilience/v1/_shared.ts → RESILIENCE_SCORE_CACHE_PREFIX
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v13:';
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v14:';
 
 // Mirror of server/worldmonitor/resilience/v1/_shared.ts#currentCacheFormula.
 // Must stay in lockstep with the server-side definition so this script

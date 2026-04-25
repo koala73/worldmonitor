@@ -10,6 +10,7 @@ export type ResilienceDimensionId =
   | 'macroFiscal'
   | 'currencyExternal'
   | 'tradePolicy'
+  | 'financialSystemExposure'  // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via BIS LBS + WB IDS + FATF
   | 'cyberDigital'
   | 'logisticsSupply'
   | 'infrastructure'
@@ -271,6 +272,10 @@ const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
 // re-add the constant there with the appropriate scope.
 const RESILIENCE_TRADE_RESTRICTIONS_KEY = 'trade:restrictions:v1:tariff-overview:50';
 const RESILIENCE_TRADE_BARRIERS_KEY = 'trade:barriers:v1:tariff-gap:50';
+// plan 2026-04-25-004 Phase 2: financialSystemExposure component seed keys.
+const RESILIENCE_WB_EXTERNAL_DEBT_KEY = 'economic:wb-external-debt:v1';
+const RESILIENCE_BIS_LBS_KEY = 'economic:bis-lbs:v1';
+const RESILIENCE_FATF_LISTING_KEY = 'economic:fatf-listing:v1';
 const RESILIENCE_CYBER_KEY = 'cyber:threats:v2';
 const RESILIENCE_OUTAGES_KEY = 'infra:outages:v1';
 const RESILIENCE_GPS_KEY = 'intelligence:gpsjam:v2';
@@ -406,7 +411,8 @@ const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
 export const RESILIENCE_DIMENSION_WEIGHTS: Record<ResilienceDimensionId, number> = {
   macroFiscal: 1.0,
   currencyExternal: 1.0,
-  tradePolicy: 1.0,
+  tradePolicy: 0.5,                  // plan 2026-04-25-004 Phase 2: split economic-domain weight with financialSystemExposure
+  financialSystemExposure: 0.5,      // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability
   cyberDigital: 1.0,
   logisticsSupply: 1.0,
   infrastructure: 1.0,
@@ -431,6 +437,7 @@ export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, Resilie
   macroFiscal: 'economic',
   currencyExternal: 'economic',
   tradePolicy: 'economic',
+  financialSystemExposure: 'economic',
   cyberDigital: 'infrastructure',
   logisticsSupply: 'infrastructure',
   infrastructure: 'infrastructure',
@@ -455,6 +462,7 @@ export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
   'macroFiscal',
   'currencyExternal',
   'tradePolicy',
+  'financialSystemExposure',
   'cyberDigital',
   'logisticsSupply',
   'infrastructure',
@@ -490,6 +498,7 @@ export const RESILIENCE_DIMENSION_TYPES: Record<ResilienceDimensionId, Resilienc
   macroFiscal: 'baseline',
   currencyExternal: 'stress',
   tradePolicy: 'stress',
+  financialSystemExposure: 'stress',
   cyberDigital: 'stress',
   logisticsSupply: 'mixed',
   infrastructure: 'baseline',
@@ -537,6 +546,36 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
   if (best <= worst) return 50;
   const ratio = (value - worst) / (best - worst);
   return roundScore(ratio * 100);
+}
+
+// U-shaped band normalization. Used by `financialSystemExposure` Component 2
+// (BIS LBS cross-border claims as % of GDP). Both extremes are bad — too
+// little integration suggests financial isolation (sanctions-target
+// jurisdictions; thin correspondent-banking access), too much suggests
+// over-exposure to Western-bank pulls (Iceland-2008 territory). The score
+// peaks in the "healthy diversified financial system" middle band.
+//
+// Plan 2026-04-25-004 Phase 2 § Component 2 score shape:
+//   value < 5%   of GDP → 60-70 (low integration; linear ramp 0% → 60, 5% → 70)
+//   5% ≤ value ≤ 25%    → 75-100 (sweet spot; linear 5% → 75, 25% → 100)
+//   25% < value ≤ 60%   → 70-30 (over-exposed; linear 25% → 70, 60% → 30)
+//   value > 60%          → < 30 (Iceland-2008 territory; linear 60% → 30, clamped 0)
+function normalizeBandLowerBetter(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return 50;
+  if (value < 5) {
+    // Low integration: 0% → 60, 5% → 70.
+    return roundScore(60 + (value / 5) * 10);
+  }
+  if (value <= 25) {
+    // Sweet spot: 5% → 75, 25% → 100.
+    return roundScore(75 + ((value - 5) / 20) * 25);
+  }
+  if (value <= 60) {
+    // Over-exposed: 25% → 70, 60% → 30.
+    return roundScore(70 - ((value - 25) / 35) * 40);
+  }
+  // Iceland-2008 territory: 60% → 30, every additional 1% drops 0.5pt; clamped 0.
+  return roundScore(Math.max(0, 30 - (value - 60) * 0.5));
 }
 
 // `normalizeSanctionCount` retired in plan 2026-04-25-004 Phase 1. The
@@ -1109,6 +1148,177 @@ export async function scoreTradePolicy(
         : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.30 },
     { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.40 },
   ]);
+}
+
+// plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via 4
+// composite signals. Replaces the structural-exposure half of the dropped
+// OFAC-domicile component (Phase 1 §What changes) with audited cross-
+// border banking + AML/CFT data that doesn't conflate transit-hub
+// corporate domicile with host-country risk.
+//
+// Components (weights total 1.0):
+//   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%)
+//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS LBS by-parent — U-shape band)
+//   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=30, compliant=100)
+//   financial_center_redundancy           0.15 (BIS LBS by-parent count — higherBetter; goalpost worst=1 best=10)
+//
+// Flag-gated rollout. `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` defaults off
+// so the dim ships dark until the 3 component seeders (seed-bis-lbs,
+// seed-fatf-listing, seed-wb-external-debt) are populating Redis in
+// production. When the flag is OFF, the scorer returns the empty-data
+// shape (score=0, coverage=0) and contributes no signal to the headline
+// score — matches the energy v2 rollout pattern from
+// `docs/plans/2026-04-24-001-fix-resilience-v2-fail-closed-on-missing-seeds-plan.md`.
+//
+// Fail-closed preflight (when flag is ON): all 3 required seed
+// envelopes (component 4 shares the BIS LBS seed) MUST be reachable.
+// Missing seed-meta indicates a Railway bundle/cron failure and is
+// surfaced as `source-failure` via
+// `ResilienceConfigurationError(message, missingKeys)` — caught at
+// `scoreAllDimensions` and routed to the imputationClass='source-failure'
+// path. Per-country data gaps are distinct: per-component reads return
+// `null` and the slot drops out of the weighted blend.
+function isFinSysExposureEnabledLocal(): boolean {
+  return (process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
+export async function scoreFinancialSystemExposure(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  if (!isFinSysExposureEnabledLocal()) {
+    // Flag off — emit empty-data shape. Matches `weightedBlend([])` semantics.
+    return {
+      score: 0,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 0,
+      imputationClass: null,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+
+  // Preflight: verify the 3 required seed envelopes are published.
+  const requiredSeedKeys = [
+    RESILIENCE_WB_EXTERNAL_DEBT_KEY,
+    RESILIENCE_BIS_LBS_KEY,
+    RESILIENCE_FATF_LISTING_KEY,
+  ] as const;
+  const missing: string[] = [];
+  for (const key of requiredSeedKeys) {
+    const meta = await reader(`seed-meta:${key}`);
+    if (!meta) missing.push(key);
+  }
+  if (missing.length > 0) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true but required seed-meta absent for: ${missing.join(', ')}. ` +
+        'Provision the macro bundle component seeders (seed-bis-lbs, seed-fatf-listing, ' +
+        'seed-wb-external-debt) and confirm Redis populates BEFORE flipping the flag. ' +
+        'Or set RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=false to keep the dim dark. ' +
+        'See plan 2026-04-25-004 §Fail-closed preflight.',
+      missing,
+    );
+  }
+
+  // Per-component reads. Each returns null on per-country data gap; the
+  // weightedBlend drops null-score slots from the blend denominator.
+  const [debtRaw, bisRaw, fatfRaw] = await Promise.all([
+    reader(RESILIENCE_WB_EXTERNAL_DEBT_KEY),
+    reader(RESILIENCE_BIS_LBS_KEY),
+    reader(RESILIENCE_FATF_LISTING_KEY),
+  ]);
+
+  // Component 1: short-term external debt as % of GNI. WB IDS coverage is
+  // ~125 LMICs; HIC fall through to per-component-null and the blend
+  // covers the gap via the BIS LBS structural-exposure component.
+  // Payload shape: { countries: { [iso2]: { value: number, year: number } } }.
+  const debtPct = readWbExternalDebtPct(debtRaw, countryCode);
+
+  // Component 2 + 4 share the BIS LBS payload. Component 2: sum of
+  // by-parent claims for the enumerated Western parents as % of GDP.
+  // Component 4: count of distinct by-parent reporters with non-trivial
+  // claims (>1% of GDP).
+  // Payload shape: { countries: { [iso2]: { totalXborderPctGdp: number,
+  //   parentCount: number, parents: { [parentIso2]: number } } } }.
+  const bisCountry = readBisLbsCountry(bisRaw, countryCode);
+
+  // Component 3: FATF listing status. Discrete classification.
+  // Payload shape: { listings: { [iso2]: 'black' | 'gray' | 'compliant' },
+  //   publicationDate: string }.
+  const fatfStatus = readFatfStatus(fatfRaw, countryCode);
+
+  return weightedBlend([
+    {
+      score: debtPct == null ? null : normalizeLowerBetter(debtPct, 0, 15),
+      weight: 0.35,
+    },
+    {
+      score: bisCountry?.totalXborderPctGdp == null
+        ? null
+        : normalizeBandLowerBetter(bisCountry.totalXborderPctGdp),
+      weight: 0.30,
+    },
+    {
+      score: fatfStatus == null ? null : fatfStatusToScore(fatfStatus),
+      weight: 0.20,
+    },
+    {
+      score: bisCountry?.parentCount == null
+        ? null
+        : normalizeHigherBetter(bisCountry.parentCount, 1, 10),
+      weight: 0.15,
+    },
+  ]);
+}
+
+// Small payload accessors for scoreFinancialSystemExposure. Defensive
+// against unexpected shapes; return null on any deviation.
+
+function readWbExternalDebtPct(raw: unknown, countryCode: string): number | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const countries = (raw as { countries?: Record<string, unknown> }).countries;
+  if (!countries || typeof countries !== 'object') return null;
+  const entry = countries[countryCode];
+  if (!entry || typeof entry !== 'object') return null;
+  return safeNum((entry as { value?: unknown }).value);
+}
+
+interface BisLbsCountry {
+  totalXborderPctGdp: number | null;
+  parentCount: number | null;
+}
+
+function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const countries = (raw as { countries?: Record<string, unknown> }).countries;
+  if (!countries || typeof countries !== 'object') return null;
+  const entry = countries[countryCode];
+  if (!entry || typeof entry !== 'object') return null;
+  return {
+    totalXborderPctGdp: safeNum((entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp),
+    parentCount: safeNum((entry as { parentCount?: unknown }).parentCount),
+  };
+}
+
+type FatfStatus = 'black' | 'gray' | 'compliant';
+
+function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const listings = (raw as { listings?: Record<string, unknown> }).listings;
+  if (!listings || typeof listings !== 'object') return null;
+  const status = listings[countryCode];
+  if (status === 'black' || status === 'gray' || status === 'compliant') return status;
+  // Unknown country = compliant (FATF only enumerates non-compliant
+  // jurisdictions; absence from both lists means compliant).
+  return 'compliant';
+}
+
+function fatfStatusToScore(status: FatfStatus): number {
+  switch (status) {
+    case 'black': return 0;
+    case 'gray': return 30;
+    case 'compliant': return 100;
+  }
 }
 
 export async function scoreCyberDigital(
@@ -1888,6 +2098,7 @@ ResilienceDimensionId,
   macroFiscal: scoreMacroFiscal,
   currencyExternal: scoreCurrencyExternal,
   tradePolicy: scoreTradePolicy,
+  financialSystemExposure: scoreFinancialSystemExposure,
   cyberDigital: scoreCyberDigital,
   logisticsSupply: scoreLogisticsSupply,
   infrastructure: scoreInfrastructure,

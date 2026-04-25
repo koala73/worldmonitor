@@ -36,6 +36,7 @@ const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   'Macro-Fiscal': 'macroFiscal',
   'Currency & External': 'currencyExternal',
   'Trade Policy': 'tradePolicy',
+  'Financial System Exposure': 'financialSystemExposure',
   'Cyber & Digital': 'cyberDigital',
   'Logistics & Supply': 'logisticsSupply',
   'Infrastructure': 'infrastructure',

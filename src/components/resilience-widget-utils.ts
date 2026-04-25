@@ -243,6 +243,7 @@ const DIMENSION_LABELS: Record<string, string> = {
   macroFiscal: 'Macro',
   currencyExternal: 'Currency',
   tradePolicy: 'Trade',
+  financialSystemExposure: 'Fin. Exposure',
   cyberDigital: 'Cyber',
   logisticsSupply: 'Logistics',
   infrastructure: 'Infra',

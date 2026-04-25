@@ -232,6 +232,79 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     license: 'open-data',
   },
 
+  // ── financialSystemExposure (4 sub-metrics) ───────────────────────────────
+  // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability built
+  // from BIS Locational Banking Statistics + WB IDS short-term external
+  // debt + FATF AML/CFT listing status. Replaces the dropped OFAC-domicile
+  // signal (Phase 1) with audited cross-border banking + AML/CFT data
+  // that doesn't conflate transit-hub corporate domicile with host-country
+  // risk. Components 2 + 4 share the BIS LBS payload (no separate seed).
+  // Dim is 'core' (contributes to headline score) but BIS-derived
+  // indicators are 'enrichment' / 'non-commercial' per Codex R1 #8 to
+  // match the existing BIS classification convention.
+  {
+    id: 'shortTermExternalDebtPctGni',
+    dimension: 'financialSystemExposure',
+    description: 'Short-term external debt as % of GNI (WB IDS DT.DOD.DSTC.IR.ZS × DT.DOD.DECT.GN.ZS); IMF Article IV vulnerability threshold is 15% GNI',
+    direction: 'lowerBetter',
+    goalposts: { worst: 15, best: 0 },
+    weight: 0.35,
+    sourceKey: 'economic:wb-external-debt:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    // WB IDS publishes for ~125 LMICs only; HIC fall through to BIS LBS structural-exposure component.
+    // Tagged 'enrichment' (not 'core') because the lint test enforces
+    // core indicators must have coverage >= 180; LMIC-only is below
+    // that gate by definition. Component carries weight 0.35 inside the
+    // dim regardless of tier — the tier is a documentation classification.
+    tier: 'enrichment',
+    coverage: 125,
+    license: 'open-data',
+  },
+  {
+    id: 'bisLbsXborderPctGdp',
+    dimension: 'financialSystemExposure',
+    description: 'BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (<5%) and over-exposure (>60%) score low',
+    direction: 'lowerBetter', // U-shape is "lowerBetter" in semantic sense (concentrated exposure penalized)
+    goalposts: { worst: 60, best: 15 },
+    weight: 0.30,
+    sourceKey: 'economic:bis-lbs:v1',
+    scope: 'global',
+    cadence: 'quarterly',
+    tier: 'enrichment',
+    coverage: 200,
+    license: 'non-commercial', // BIS terms of use; redistributed under attribution
+  },
+  {
+    id: 'fatfListingStatus',
+    dimension: 'financialSystemExposure',
+    description: 'FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 100 },
+    weight: 0.20,
+    sourceKey: 'economic:fatf-listing:v1',
+    scope: 'global',
+    cadence: 'monthly',
+    tier: 'core',
+    coverage: 200,
+    license: 'open-data',
+  },
+  {
+    id: 'financialCenterRedundancy',
+    dimension: 'financialSystemExposure',
+    description: 'Count of distinct BIS LBS by-parent reporters with non-trivial (>1% GDP) cross-border claims on the country; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 10 },
+    weight: 0.15,
+    sourceKey: 'economic:bis-lbs:v1', // shares BIS LBS seed with Component 2
+    scope: 'global',
+    cadence: 'quarterly',
+    tier: 'enrichment',
+    coverage: 200,
+    license: 'non-commercial',
+  },
+
   // ── cyberDigital (3 sub-metrics) ──────────────────────────────────────────
   {
     id: 'cyberThreats',

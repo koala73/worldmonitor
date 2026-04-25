@@ -187,7 +187,7 @@ test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
 // scorer dimension must have a stable display label and a consistent
 // status classification.
 
-test('getResilienceDimensionLabel returns short stable labels for all 21 dimensions', () => {
+test('getResilienceDimensionLabel returns short stable labels for all 22 dimensions', () => {
   assert.equal(getResilienceDimensionLabel('macroFiscal'), 'Macro');
   assert.equal(getResilienceDimensionLabel('currencyExternal'), 'Currency');
   assert.equal(getResilienceDimensionLabel('tradePolicy'), 'Trade');

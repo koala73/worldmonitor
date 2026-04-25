@@ -10,12 +10,12 @@ import {
 } from '../scripts/seed-resilience-scores.mjs';
 
 describe('exported constants', () => {
-  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v13)', () => {
-    assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v13');
+  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v14)', () => {
+    assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v14');
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v13)', () => {
-    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v13:');
+  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v14)', () => {
+    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v14:');
   });
 
   it('RESILIENCE_RANKING_CACHE_TTL_SECONDS is 12 hours (2x cron interval)', () => {

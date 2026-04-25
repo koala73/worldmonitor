@@ -151,7 +151,7 @@ export class ResilienceWidget {
           'span',
           {
             className: 'resilience-widget__help',
-            title: 'Composite resilience score from 19 dimensions across 6 domains (economic, infrastructure, energy, social & governance, health & food, recovery), grouped into 3 pillars (structural readiness, live shock exposure, recovery capacity). Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).',
+            title: 'Composite resilience score from 20 dimensions across 6 domains (economic, infrastructure, energy, social & governance, health & food, recovery), grouped into 3 pillars (structural readiness, live shock exposure, recovery capacity). Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).',
             'aria-label': 'Resilience score methodology',
           },
           '?',

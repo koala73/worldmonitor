@@ -139,7 +139,11 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // `tradeSanctions` → `tradePolicy` rename + dropped OFAC component +
 // reweighted trade-policy formula. Without the bump, v12 entries would
 // serve pre-rename economic-domain scores for the full 6h TTL post-deploy.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v13:';
+// v13→v14 bump in plan 2026-04-25-004 Phase 2 (Ship 2) for the new
+// `financialSystemExposure` dim — adds a 20th dimension contributing to
+// the economic domain, so v13 entries (which lack the new dim's score)
+// would surface incomplete payloads on cache hit.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v14:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -163,7 +167,11 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v13:';
 // plan 2026-04-25-004 Phase 1 (Ship 1) — same reasoning: pre-rename
 // economic-domain history points must not mix with post-rename points
 // inside the rolling 30-day window or the trend signal goes haywire.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v8:';
+// v8→v9 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v13→v14 for
+// plan 2026-04-25-004 Phase 2 (Ship 2) — same reasoning. Adding a new
+// dim shifts every country's overall-score baseline; mixing pre/post
+// points in the 30-day rolling window manufactures false trends.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v9:';
 // v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
 // for PR 3A §net-imports denominator. As with the score prefix, the
 // version bump is a belt — the suspenders are the `_formula` tag on
@@ -172,8 +180,9 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v8:';
 // a recompute-and-publish on a cross-formula cache hit rather than
 // serving the stale ranking for up to the 12h ranking TTL. v12→v13 bump
 // in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for plan 2026-04-25-004
-// Phase 1 (Ship 1).
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v13';
+// Phase 1 (Ship 1). v13→v14 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX
+// for plan 2026-04-25-004 Phase 2 (Ship 2).
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v14';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';

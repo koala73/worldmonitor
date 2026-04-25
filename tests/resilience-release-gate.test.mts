@@ -48,7 +48,7 @@ function installRedisFixtures() {
 }
 
 describe('resilience release gate', () => {
-  it('keeps all 21 dimension scorers non-placeholder for the required countries', async () => {
+  it('keeps all 22 dimension scorers non-placeholder for the required countries', async () => {
     // PR 3 §3.5 retired fuelStockDays; PR 2 §3.4 retired reserveAdequacy
     // (superseded by the liquidReserveAdequacy + sovereignFiscalBuffer
     // split). Both scorers emit coverage=0 + imputationClass=null — the
@@ -57,15 +57,28 @@ describe('resilience release gate', () => {
     // construct retirement. Allow-list keeps the zero-coverage placeholder
     // check enforcing on the OTHER 19 dimensions.
     const RETIRED_DIMENSIONS = new Set(['fuelStockDays', 'reserveAdequacy']);
+    // plan 2026-04-25-004 Phase 2: financialSystemExposure ships flag-gated
+    // off by default (rollout pattern matches energy v2). With the flag
+    // off, the dim emits coverage=0 + imputationClass=null. Treated as
+    // "dark in this baseline" — same shape as a retired dim, but for a
+    // distinct reason: pending seeder rollout, not deliberate retirement.
+    // When the flag flips on with seeders populating, this allow-list
+    // entry should be removed in the same PR that flips the flag.
+    const FLAG_GATED_DARK_DIMENSIONS = new Set(['financialSystemExposure']);
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
       const entries = Object.entries(scores);
-      assert.equal(entries.length, 21, `${countryCode} should have all 21 resilience dimensions (19 active + 2 retired kept for structural continuity)`);
+      assert.equal(entries.length, 22, `${countryCode} should have all 22 resilience dimensions (20 active + 2 retired kept for structural continuity)`);
       for (const [dimensionId, score] of entries) {
         assert.ok(Number.isFinite(score.score), `${countryCode} ${dimensionId} should produce a numeric score`);
         if (RETIRED_DIMENSIONS.has(dimensionId)) {
           assert.equal(score.coverage, 0, `${countryCode} ${dimensionId} is retired and must stay at coverage=0`);
           assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} retired dimensions must tag null imputationClass (not source-failure)`);
+          continue;
+        }
+        if (FLAG_GATED_DARK_DIMENSIONS.has(dimensionId)) {
+          assert.equal(score.coverage, 0, `${countryCode} ${dimensionId} is flag-gated dark (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED off) and must stay at coverage=0`);
+          assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} flag-off must tag null imputationClass (not source-failure)`);
           continue;
         }
         assert.ok(score.coverage > 0, `${countryCode} ${dimensionId} should not fall back to zero-coverage placeholder scoring`);
@@ -251,7 +264,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 21, 'US response should carry all 21 dimensions (19 active + 2 retired)');
+    assert.equal(allDimensions.length, 22, 'US response should carry all 22 dimensions (20 active + 2 retired)');
     for (const dimension of allDimensions) {
       assert.equal(
         typeof dimension.imputationClass,
@@ -279,7 +292,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 21, 'US response should carry all 21 dimensions (19 active + 2 retired)');
+    assert.equal(allDimensions.length, 22, 'US response should carry all 22 dimensions (20 active + 2 retired)');
     const validLevels = ['', 'fresh', 'aging', 'stale'];
     for (const dimension of allDimensions) {
       assert.ok(dimension.freshness != null, `dimension ${dimension.id} must carry a freshness payload`);

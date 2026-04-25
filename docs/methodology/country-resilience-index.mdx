@@ -57,7 +57,7 @@ The index is organized into 6 domains. Each domain weight reflects its relative 
 
 | Domain | ID | Weight | Dimensions |
 |---|---|---|---|
-| Economic | `economic` | 0.17 | Macro-Fiscal, Currency & External, Trade Policy |
+| Economic | `economic` | 0.17 | Macro-Fiscal, Currency & External, Trade Policy, Financial System Exposure |
 | Infrastructure | `infrastructure` | 0.15 | Cyber & Digital, Logistics & Supply, Infrastructure |
 | Energy | `energy` | 0.11 | Energy |
 | Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Border Security, Information |
@@ -116,6 +116,25 @@ weight categorization, transit-hub exclusion lists), see
 | tradeRestrictions | WTO trade restrictions count (IN_FORCE weighted 3x) | Lower is better | 30 - 0 | 0.30 | WTO | Weekly |
 | tradeBarriers | WTO trade barrier notifications count | Lower is better | 40 - 0 | 0.30 | WTO | Weekly |
 | appliedTariffRate | Applied tariff rate, weighted mean, all products (World Bank TM.TAX.MRCH.WM.AR.ZS) | Lower is better | 20 - 0 | 0.40 | World Bank | Annual |
+
+#### Financial System Exposure
+
+Added in plan 2026-04-25-004 Phase 2 (Ship 2). Replaces the dropped OFAC-domicile signal (Phase 1) with a structural-exposure construct built from audited cross-border banking + AML/CFT data. Where the OFAC count conflated transit-hub corporate domicile with host-country risk (penalizing financial centers like UAE / Singapore / Hong Kong for shell-entity behavior), this dimension uses sources that measure actual sovereign vulnerability: short-term external debt overhang, concentrated cross-border banking exposure, and AML/CFT compliance status.
+
+The dimension uses a **fail-closed preflight** pattern (mirrors `scoreEnergy` v2): all 3 required seed envelopes (`economic:wb-external-debt:v1`, `economic:bis-lbs:v1`, `economic:fatf-listing:v1`) MUST be reachable. Missing seed-meta indicates a Railway bundle outage and surfaces as `imputationClass='source-failure'` rather than silently zeroing the dim. Per-country data gaps are distinct: per-component reads return null and the slot drops out of the weighted blend.
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| shortTermExternalDebtPctGni | Short-term external debt as % of GNI (WB IDS DT.DOD.DSTC.IR.ZS × DT.DOD.DECT.GN.ZS); IMF Article IV vulnerability threshold is 15% GNI | Lower is better | 15 - 0 | 0.35 | World Bank IDS | Annual |
+| bisLbsXborderPctGdp | BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (<5%) and over-exposure (>60%) score low | Lower is better (U-shape) | 60 - 15 | 0.30 | BIS LBS | Quarterly |
+| fatfListingStatus | FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100 | Higher is better | 0 - 100 | 0.20 | FATF | Monthly |
+| financialCenterRedundancy | Count of distinct BIS LBS by-parent reporters with non-trivial (>1% GDP) cross-border claims; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty | Higher is better | 1 - 10 | 0.15 | BIS LBS | Quarterly |
+
+**Coverage**: WB IDS publishes for ~125 LMICs only; HIC fall through to the BIS LBS structural-exposure component (which has ~200-country coverage). FATF + BIS LBS together cover effectively all manifest countries.
+
+**Data sources and licensing**: BIS data (Components 2 + 4) is published under [BIS terms of use](https://www.bis.org/terms_conditions.htm) — publicly available with attribution; redistribution restricted. WB IDS (Component 1) and FATF (Component 3) are open-data. The BIS-derived indicators are tagged `non-commercial` / `enrichment` in the indicator registry per the existing BIS classification convention; the dimension itself is `core` (contributes to the headline score) per Codex R1 #8.
+
+For the full construct rationale, alternatives considered (program-weight categorization, transit-hub exclusion, single-dim formula rewrite, drop entirely), and the staged rollout decision, see [financial-system-exposure.md](./financial-system-exposure.md).
 
 ### Infrastructure Domain (weight 0.15)
 

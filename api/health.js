@@ -118,6 +118,10 @@ const STANDALONE_KEYS = {
   imfGrowth:            'economic:imf:growth:v1',
   imfLabor:             'economic:imf:labor:v1',
   imfExternal:          'economic:imf:external:v1',
+  // plan 2026-04-25-004 Phase 2: financialSystemExposure data keys.
+  wbExternalDebt:       'economic:wb-external-debt:v1',
+  bisLbs:               'economic:bis-lbs:v1',
+  fatfListing:          'economic:fatf-listing:v1',
   climateZoneNormals:    'climate:zone-normals:v1',
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
@@ -161,7 +165,7 @@ const STANDALONE_KEYS = {
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
-  resilienceRanking:        'resilience:ranking:v13',
+  resilienceRanking:        'resilience:ranking:v14',
   productCatalog:           'product-catalog:v2',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
@@ -259,6 +263,11 @@ const SEED_META = {
   imfGrowth:        { key: 'seed-meta:economic:imf-growth',       maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro (same WEO release cadence)
   imfLabor:         { key: 'seed-meta:economic:imf-labor',        maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
   imfExternal:      { key: 'seed-meta:economic:imf-external',     maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
+  // plan 2026-04-25-004 Phase 2: financialSystemExposure component seeders.
+  // Bundle: scripts/seed-bundle-macro.mjs (Codex R1 #5, Option A).
+  wbExternalDebt:   { key: 'seed-meta:economic:wb-external-debt', maxStaleMin: 100800 }, // annual WB IDS publication; 70d threshold matches IMF cadence pattern
+  bisLbs:           { key: 'seed-meta:economic:bis-lbs',          maxStaleMin: 14400 }, // BIS LBS quarterly publication; 10d threshold = ~1× publish lag tolerance after macro bundle daily refresh
+  fatfListing:      { key: 'seed-meta:economic:fatf-listing',     maxStaleMin: 60480 }, // FATF plenary 3×/year; 42d threshold = >1 plenary cycle (catches missed-update if cron silently fails)
   shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
   chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60, minRecordCount: 13 }, // 13 canonical chokepoints; get-chokepoint-status writes covered-count → < 13 = upstream partial (portwatch/ArcGIS dropped some)
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL

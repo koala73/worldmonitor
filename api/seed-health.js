@@ -84,6 +84,11 @@ const SEED_DOMAINS = {
   'economic:imf-growth':      { key: 'seed-meta:economic:imf-growth',      intervalMin: 50400 }, // monthly WEO seed; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
   'economic:imf-labor':       { key: 'seed-meta:economic:imf-labor',       intervalMin: 50400 }, // monthly WEO seed; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
   'economic:imf-external':    { key: 'seed-meta:economic:imf-external',    intervalMin: 50400 }, // monthly WEO seed; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
+  // plan 2026-04-25-004 Phase 2: financialSystemExposure component seeders.
+  // intervalMin = health.js maxStaleMin / 2 (mirrors the IMF-pattern). Bundle: scripts/seed-bundle-macro.mjs.
+  'economic:wb-external-debt': { key: 'seed-meta:economic:wb-external-debt', intervalMin: 50400 }, // annual WB IDS publication; intervalMin = health.js maxStaleMin / 2 (100800 / 2)
+  'economic:bis-lbs':          { key: 'seed-meta:economic:bis-lbs',          intervalMin: 7200 },  // BIS LBS quarterly; intervalMin = health.js maxStaleMin / 2 (14400 / 2)
+  'economic:fatf-listing':     { key: 'seed-meta:economic:fatf-listing',     intervalMin: 30240 }, // FATF plenary 3×/year; intervalMin = health.js maxStaleMin / 2 (60480 / 2)
   'product-catalog':          { key: 'seed-meta:product-catalog',          intervalMin: 360 }, // relay loop every 6h; intervalMin = health.js maxStaleMin / 3 (1080 / 3)
   'portwatch:chokepoints-ref': { key: 'seed-meta:portwatch:chokepoints-ref', intervalMin: 10080 }, // seed-bundle-portwatch runs this at WEEK cadence; intervalMin*2 = 14d matches api/health.js SEED_META.portwatchChokepointsRef
   'supply_chain:portwatch-ports': { key: 'seed-meta:supply_chain:portwatch-ports', intervalMin: 720 }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3)

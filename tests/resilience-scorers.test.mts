@@ -130,8 +130,18 @@ describe('resilience scorer contracts', () => {
     // the new construct). US-specific delta is small here because the
     // US already had a high tariff-policy openness; the bigger movers
     // are transit-hub jurisdictions (UAE/SG/HK).
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): economic 71 → 53.25. The
+    // new `financialSystemExposure` dim is added to the economic domain
+    // but ships flag-gated off by default (rollout pattern matches
+    // energy v2). Flag-off ⇒ score=0, so the simple-average computed
+    // here drops 71 = (78+68+67)/3 → 53.25 = (78+68+67+0)/4. NOTE
+    // this domainAverages computation is a flat mean (NOT the
+    // production coverage-weighted mean). The next test below uses
+    // the coverage-weighted-mean path which CORRECTLY drops a coverage=0
+    // dim from the blend; the headline overall is unaffected by the
+    // flag-off baseline beyond the small tradePolicy-reweight shift.
     assert.deepEqual(domainAverages, {
-      economic: 71,
+      economic: 53.25,
       infrastructure: 79,
       energy: 80,
       'social-governance': 61.75,
@@ -195,8 +205,12 @@ describe('resilience scorer contracts', () => {
     // post-rename uplift (OFAC component dropped) propagates into the
     // stress-only mean. stressFactor updates in lockstep:
     //   1 - 69.01/100 = 0.3099, clamped to 0.5.
-    assert.equal(stressScore, 69.01);
-    assert.equal(stressFactor, 0.3099);
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): 69.01 → 67.98. The new
+    // `financialSystemExposure` dim is also stress-class and ships
+    // flag-gated off → score 0 → drags the stress-only mean down.
+    //   1 - 67.98/100 = 0.3202, clamped to 0.5.
+    assert.equal(stressScore, 67.98);
+    assert.equal(stressFactor, 0.3202);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
@@ -229,7 +243,17 @@ describe('resilience scorer contracts', () => {
     // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24. economic
     // domain rises 66.33 → 71 with tradePolicy reweight (OFAC dropped),
     // contributing economic_delta * 0.17 ≈ +0.79 to the overall score.
-    assert.equal(overallScore, 65.24);
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): 65.24 → 64.78. Adding
+    // `financialSystemExposure` to the economic domain reweights
+    // tradePolicy 1.0 → 0.5 (to keep the domain's total dim weight
+    // conserved). The new dim ships dark behind a flag (default off)
+    // and contributes coverage=0 → drops from the coverage-weighted
+    // mean. The half-weight on tradePolicy shifts the economic domain
+    // mean slightly, dropping the overall by ~0.46 points. When the
+    // flag flips on in production with seeders populated, the dim will
+    // contribute its own signal; the expected value here will move
+    // accordingly in a future PR.
+    assert.equal(overallScore, 64.78);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -318,7 +342,13 @@ describe('resilience scorer contracts', () => {
     // new recovery dims down to weight=0.5 (~10% recovery share each).
     // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24 — economic
     // domain rises with tradePolicy reweight (OFAC component dropped).
-    assert.equal(expected, 65.24, 'overallScore should match sum(domainScore * domainWeight); 64.39 → 65.24 after Ship 1 tradePolicy reweight');
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): 65.24 → 64.78 — adding
+    // `financialSystemExposure` to the economic domain at weight 0.5
+    // reweights tradePolicy 1.0 → 0.5; the new dim ships flag-gated
+    // off by default, so it contributes coverage=0 and drops from the
+    // coverage-weighted mean. When the flag flips on with seeders
+    // populated, the expected here will shift accordingly.
+    assert.equal(expected, 64.78, 'overallScore should match sum(domainScore * domainWeight); 65.24 → 64.78 after Ship 2 dim added (flag-off baseline)');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {
