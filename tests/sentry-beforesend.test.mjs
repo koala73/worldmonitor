@@ -363,10 +363,11 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'All-maplibre first-party tile fetch failure must still reach Sentry');
   });
 
-  it('suppresses "Failed to fetch (<host>)" when stack is extension-only (no first-party frames)', () => {
-    // WORLDMONITOR-P5: AdBlock-class extensions wrap window.fetch and their replacement
-    // can fail unrelated to our backend. With no first-party frames, we can't attribute
-    // to our code — drop.
+  it('suppresses "Failed to fetch (<host>)" when stack is extension-only (covered by generic extension rule)', () => {
+    // WORLDMONITOR-P5: AdBlock-class extensions wrap window.fetch and their
+    // replacement can fail unrelated to our backend. The generic extension rule
+    // (`!hasFirstParty && extension frame`) already drops this; the test locks
+    // that property in for the `Failed to fetch (<host>)` message shape.
     const event = makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', [
       { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
     ]);
@@ -374,10 +375,10 @@ describe('existing beforeSend filters', () => {
   });
 
   it('does NOT suppress "Failed to fetch (<host>)" when stack has both first-party and extension frames', () => {
-    // Regression for WORLDMONITOR-P5 review feedback: a first-party panels-*.js frame
-    // means our code initiated the fetch — must surface even if an extension also
-    // wrapped it, so a real api.worldmonitor.app outage isn't silenced for users who
-    // happen to run fetch-wrapping extensions.
+    // Safety property: a first-party panels-*.js frame means our code initiated
+    // the fetch — must surface even if an extension also wrapped it, so a real
+    // api.worldmonitor.app outage isn't silenced for users who happen to run
+    // fetch-wrapping extensions.
     const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', [
       { filename: '/assets/panels-wF5GXf0N.js', lineno: 24, function: 'window.fetch' },
       { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
