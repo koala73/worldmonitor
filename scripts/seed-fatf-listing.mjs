@@ -444,7 +444,12 @@ function previewHtmlForDiagnostic(html) {
   if (!html) return '<empty>';
   const len = html.length;
   const detailHrefs = (html.match(/\/en\/countries\/detail\//gi) || []).length;
-  const cmpListItem = (html.match(/cmp-list__item-link/g) || []).length;
+  // Counts every `cmp-*` AEM class — must mirror the live discriminator
+  // in extractListedCountries (line ~323). The previous narrower count
+  // of `cmp-list__item-link` would report 0 even when the page was full
+  // of `cmp-navigation`/`cmp-breadcrumb`/etc. anchors that the new
+  // discriminator correctly filters, masking the exact diagnostic signal.
+  const cmpAnchors = (html.match(/\bcmp-/g) || []).length;
   // Detect leading control bytes / non-printable ASCII as a strong hint
   // that the body is compressed/binary (gzip starts with 0x1f 0x8b, brotli
   // is high-bit, etc.). Bypasses html.toString detection issues.
@@ -454,7 +459,7 @@ function previewHtmlForDiagnostic(html) {
     return (code >= 0x20 && code < 0x7f) || code === 0x09 || code === 0x0a || code === 0x0d;
   }).length;
   const looksBinary = printable < 24;
-  return `len=${len} detailHrefs=${detailHrefs} cmpListItem=${cmpListItem} binaryHead=${looksBinary} firstChars=${JSON.stringify(html.slice(0, 120))}`;
+  return `len=${len} detailHrefs=${detailHrefs} cmpAnchors=${cmpAnchors} binaryHead=${looksBinary} firstChars=${JSON.stringify(html.slice(0, 120))}`;
 }
 
 export async function fetchFatfListings({
