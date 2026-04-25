@@ -88,7 +88,7 @@ describe('pipeline registries — evidence', () => {
       const hasEvidence =
         p.evidence.operatorStatement != null ||
         p.evidence.sanctionRefs.length > 0 ||
-        ['ais-relay', 'satellite', 'press'].includes(p.evidence.physicalStateSource);
+        ['ais-relay', 'satellite', 'press', 'gem'].includes(p.evidence.physicalStateSource);
       assert.ok(hasEvidence, `${p.id} has no supporting evidence for state=${p.evidence.physicalState}`);
     }
   });
@@ -157,7 +157,7 @@ describe('pipeline registries — productClass', () => {
     const { productClass: _drop, ...stripped } = oilSample;
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [`p${i}`, { ...stripped, id: `p${i}` }]),
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, { ...stripped, id: `p${i}` }]),
       ),
     };
     assert.equal(validateRegistry(bad), false);
@@ -167,7 +167,7 @@ describe('pipeline registries — productClass', () => {
     const oilSample = oil.pipelines[Object.keys(oil.pipelines)[0]!];
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [
+        Array.from({ length: 210 }, (_, i) => [
           `p${i}`,
           { ...oilSample, id: `p${i}`, productClass: 'diesel-only' },
         ]),
@@ -180,7 +180,7 @@ describe('pipeline registries — productClass', () => {
     const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [
+        Array.from({ length: 210 }, (_, i) => [
           `p${i}`,
           { ...gasSample, id: `p${i}`, productClass: 'crude' },
         ]),
@@ -202,7 +202,7 @@ describe('pipeline registries — validateRegistry rejects bad input', () => {
   test('rejects a pipeline with no evidence', () => {
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [`p${i}`, {
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
           id: `p${i}`, name: 'x', operator: 'y', commodityType: 'gas',
           fromCountry: 'US', toCountry: 'CA', transitCountries: [],
           capacityBcmYr: 1, startPoint: { lat: 0, lon: 0 }, endPoint: { lat: 1, lon: 1 },
@@ -236,7 +236,7 @@ describe('pipeline registries — GEM source enum', () => {
     const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
     const good = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [`p${i}`, {
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
           ...gasSample,
           id: `p${i}`,
           evidence: {
@@ -264,7 +264,7 @@ describe('pipeline registries — GEM source enum', () => {
     const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
     const good = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [`p${i}`, {
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
           ...gasSample,
           id: `p${i}`,
           evidence: {
@@ -288,7 +288,7 @@ describe('pipeline registries — GEM source enum', () => {
     const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [`p${i}`, {
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
           ...gasSample,
           id: `p${i}`,
           evidence: {

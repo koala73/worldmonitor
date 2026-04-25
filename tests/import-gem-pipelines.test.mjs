@@ -184,11 +184,11 @@ describe('import-gem-pipelines — minimum-viable evidence', () => {
 describe('import-gem-pipelines — registry-shape conformance', () => {
   test('emitted gas registry passes validateRegistry', () => {
     // Build a synthetic registry of just the GEM-emitted gas rows; meets the
-    // validator's MIN_PIPELINES_PER_REGISTRY=8 floor by repeating the 3 fixture
-    // rows so we exercise the schema, not the count.
+    // validator's MIN_PIPELINES_PER_REGISTRY=200 floor by repeating the 3
+    // fixture rows so we exercise the schema, not the count.
     const { gas } = parseGemPipelines(fixture);
     const repeated = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 70; i++) {
       for (const p of gas) repeated.push({ ...p, id: `${p.id}-rep${i}` });
     }
     const reg = {
@@ -200,7 +200,7 @@ describe('import-gem-pipelines — registry-shape conformance', () => {
   test('emitted oil registry passes validateRegistry', () => {
     const { oil } = parseGemPipelines(fixture);
     const repeated = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 70; i++) {
       for (const p of oil) repeated.push({ ...p, id: `${p.id}-rep${i}` });
     }
     const reg = {

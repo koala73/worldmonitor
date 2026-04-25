@@ -44,9 +44,11 @@ export const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satelli
 // inline copy in tests could silently drift when the enum is extended.
 export const VALID_OIL_PRODUCT_CLASSES = new Set(['crude', 'products', 'mixed']);
 
-// Minimum viable registry size. Expansion to ~75 each happens in the follow-up
-// GEM import PR; this seeder doesn't care about exact counts beyond the floor.
-const MIN_PIPELINES_PER_REGISTRY = 8;
+// Minimum viable registry size. Post-GEM-import floor: 200. Live counts after
+// the 2025-11 GGIT + 2025-03 GOIT merge are 297 gas / 334 oil; 200 leaves ~100
+// rows of jitter headroom so a partial GEM re-import or a coverage-narrowing
+// release fails loud rather than silently halving the registry.
+const MIN_PIPELINES_PER_REGISTRY = 200;
 
 function loadRegistry(filename) {
   const __dirname = dirname(fileURLToPath(import.meta.url));
