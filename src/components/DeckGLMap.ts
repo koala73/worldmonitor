@@ -114,6 +114,7 @@ import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type Trad
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
@@ -428,6 +429,7 @@ export class DeckGLMap {
   private aptGroups: import('@/types').APTGroup[] = [];
   private aptGroupsLoaded = false;
   private _unsubscribeAuthState: (() => void) | null = null;
+  private _unsubscribeEntitlement: (() => void) | null = null;
   private aptGroupsLayerFailed = false;
   private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
@@ -5005,6 +5007,33 @@ export class DeckGLMap {
       queueMicrotask(() => {
         this._unsubscribeAuthState?.();
         this._unsubscribeAuthState = null;
+        this._unsubscribeEntitlement?.();
+        this._unsubscribeEntitlement = null;
+      });
+    });
+    // Pro can come from Convex (Dodo subscription) — subscribeAuthState above
+    // only listens to Clerk changes. A Dodo subscriber whose Pro arrives via
+    // Convex (tier>=1) NOT via Clerk role would never get the unlock fired.
+    // User-reported on energy.worldmonitor.app: "Pro Monthly" in settings UI
+    // but the Resilience layer still showed the lock. Mirror the auth-state
+    // subscription with an entitlement-change subscription that re-runs the
+    // same unlock logic. Whichever fires first with Pro performs the unlock;
+    // the other becomes a no-op via the early-return + already-unsubscribed
+    // queueMicrotask cleanup.
+    this._unsubscribeEntitlement = onEntitlementChange(() => {
+      if (!hasPremiumAccess(getAuthState())) return;
+      toggles.querySelectorAll('.layer-toggle-locked').forEach(label => {
+        label.classList.remove('layer-toggle-locked');
+        const input = label.querySelector('input') as HTMLInputElement | null;
+        if (input) input.disabled = false;
+        const labelSpan = label.querySelector('.toggle-label');
+        if (labelSpan) labelSpan.textContent = labelSpan.textContent!.replace(' 🔒', '');
+      });
+      queueMicrotask(() => {
+        this._unsubscribeAuthState?.();
+        this._unsubscribeAuthState = null;
+        this._unsubscribeEntitlement?.();
+        this._unsubscribeEntitlement = null;
       });
     });
 
@@ -7094,6 +7123,8 @@ export class DeckGLMap {
     this.clearTrailsBtn = null;
     this._unsubscribeAuthState?.();
     this._unsubscribeAuthState = null;
+    this._unsubscribeEntitlement?.();
+    this._unsubscribeEntitlement = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     window.removeEventListener('map-theme-changed', this.handleMapThemeChange);
     this.debouncedRebuildLayers.cancel();
