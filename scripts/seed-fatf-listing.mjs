@@ -81,13 +81,21 @@ export async function fetchViaWayback(url, { fetchFn = fetch, lookbackDays = WAY
     .toISOString()
     .slice(0, 10)
     .replace(/-/g, '');
-  const cdxUrl = `${WAYBACK_CDX_URL}?url=${encodeURIComponent(url)}&filter=statuscode:200&output=json&from=${fromDate}&limit=20`;
+  // CDX default sort is timestamp-ASCENDING. With a positive `limit=N` the
+  // server returns the FIRST N captures within the window (i.e. the OLDEST
+  // N), not the newest. FATF accumulates well over 20 captures per 180-day
+  // window, so a positive limit would silently serve a stale snapshot when
+  // a newer one exists. CDX accepts a NEGATIVE `limit` to mean "last N
+  // captures" — `limit=-1` returns just the most-recent snapshot, which
+  // is exactly what we want and also avoids fetching ~20× more rows than
+  // we need.
+  const cdxUrl = `${WAYBACK_CDX_URL}?url=${encodeURIComponent(url)}&filter=statuscode:200&output=json&from=${fromDate}&limit=-1`;
   const cdxResp = await fetchFn(cdxUrl, { signal: AbortSignal.timeout(20_000) });
   if (!cdxResp.ok) throw new Error(`Wayback CDX HTTP ${cdxResp.status} for ${url}`);
   const rows = await cdxResp.json();
-  // CDX returns: [headerRow, ...snapshotRows]. Each snapshot row =
+  // CDX returns: [headerRow, snapshotRow]. Each snapshot row =
   // [urlkey, timestamp, original, mimetype, statuscode, digest, length].
-  // Snapshots are timestamp-ascending, so the LAST row is most recent.
+  // With `limit=-1` we expect exactly one snapshot row.
   if (!Array.isArray(rows) || rows.length < 2) {
     throw new Error(`Wayback has no status-200 snapshots for ${url} since ${fromDate}`);
   }

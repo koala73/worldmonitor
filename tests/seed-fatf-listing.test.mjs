@@ -237,7 +237,7 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
     assert.equal(calls.length, 2, 'one CDX call + one snapshot call');
   });
 
-  it('CDX URL is built with statuscode:200 filter and a from-date — does NOT return 4xx-cached snapshots', async () => {
+  it('CDX URL is built with statuscode:200 filter, a from-date, AND limit=-1 (negative limit returns the most-recent capture)', async () => {
     let cdxUrl;
     const fetchFn = async (url) => {
       if (url.startsWith('https://web.archive.org/cdx/')) {
@@ -250,6 +250,14 @@ describe('fetchViaWayback — Cloudflare-bypass via Wayback Machine', () => {
     assert.match(cdxUrl, /filter=statuscode%3A200|filter=statuscode:200/, 'CDX query must filter to status 200');
     assert.match(cdxUrl, /from=\d{8}/, 'CDX query must include a from-date floor');
     assert.match(cdxUrl, /output=json/);
+    // Critical: CDX default ordering is timestamp-ASCENDING. A positive
+    // `limit=N` returns the OLDEST N captures within the window — not the
+    // newest. FATF accumulates well over 20 captures per 180-day window,
+    // so a positive limit would silently serve a stale archived snapshot
+    // even when a newer one exists. `limit=-1` = "last 1 capture" =
+    // most-recent. Pin this so a future cleanup can't regress it.
+    assert.match(cdxUrl, /[?&]limit=-1(&|$)/, 'CDX query MUST use negative limit (limit=-1) to get the most-recent snapshot, not the oldest within the window');
+    assert.doesNotMatch(cdxUrl, /[?&]limit=(?!-)\d+/, 'CDX query must NOT use a positive limit — that returns the oldest captures and serves stale data');
   });
 
   it('throws clear error when Wayback has NO status-200 snapshots in window', async () => {
