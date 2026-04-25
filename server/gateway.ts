@@ -20,7 +20,7 @@ import { checkEntitlement, getRequiredTier, getEntitlements } from './_shared/en
 import { resolveClerkSession } from './_shared/auth-session';
 import { buildUsageIdentity, type UsageIdentityInput } from './_shared/usage-identity';
 import {
-  emitUsageEvents,
+  deliverUsageEvents,
   buildRequestEvent,
   deriveRequestId,
   deriveExecutionRegion,
@@ -304,11 +304,21 @@ export function createDomainGateway(
 
     // Usage-telemetry identity inputs — accumulated as gateway auth resolution progresses.
     // Read at every return point; null/0 defaults are valid for early returns.
+    //
+    // x-widget-key is intentionally NOT trusted here: a header is attacker-
+    // controllable, and emitting it as `customer_id` would let unauthenticated
+    // callers poison per-customer dashboards (per koala #3403 review). We only
+    // populate `widgetKey` after validating it against the configured
+    // WIDGET_AGENT_KEY — same check used in api/widget-agent.ts.
+    const rawWidgetKey = request.headers.get('x-widget-key') ?? null;
+    const widgetAgentKey = process.env.WIDGET_AGENT_KEY ?? '';
+    const validatedWidgetKey =
+      rawWidgetKey && widgetAgentKey && rawWidgetKey === widgetAgentKey ? rawWidgetKey : null;
     const usage: UsageIdentityInput = {
       sessionUserId: null,
       isUserApiKey: false,
       enterpriseApiKey: null,
-      widgetKey: request.headers.get('x-widget-key') ?? null,
+      widgetKey: validatedWidgetKey,
       clerkOrgId: null,
       userApiKeyCustomerRef: null,
       tier: null,
@@ -323,10 +333,13 @@ export function createDomainGateway(
     function emitRequest(status: number, reason: RequestReason, cacheTier: UsageCacheTier | null, resBytes = 0): void {
       if (!ctx?.waitUntil) return;
       const identity = buildUsageIdentity(usage);
-      // ua_hash is async (SHA-256) — fire-and-forget Promise inside waitUntil.
+      // Single ctx.waitUntil() registered synchronously in the request phase.
+      // The IIFE awaits ua_hash (SHA-256) then awaits delivery directly via
+      // deliverUsageEvents — no nested waitUntil call, which Edge runtimes
+      // (Cloudflare/Vercel) may drop after the response phase ends.
       ctx.waitUntil((async () => {
         const uaHash = await deriveUaHash(originalRequest);
-        emitUsageEvents(ctx, [
+        await deliverUsageEvents([
           buildRequestEvent({
             requestId: deriveRequestId(originalRequest),
             domain,
@@ -371,6 +384,7 @@ export function createDomainGateway(
 
     // OPTIONS preflight
     if (request.method === 'OPTIONS') {
+      emitRequest(204, 'preflight', null);
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
@@ -450,7 +464,7 @@ export function createDomainGateway(
       const ent = await getEntitlements(sessionUserId);
       if (ent) usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
       if (!ent || !ent.features.apiAccess) {
-        emitRequest(403, 'ok', null);
+        emitRequest(403, 'tier_403', null);
         return new Response(JSON.stringify({ error: 'API access subscription required' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -465,7 +479,7 @@ export function createDomainGateway(
           const { validateBearerToken } = await import('./auth-session');
           const session = await validateBearerToken(authHeader.slice(7));
           if (!session.valid) {
-            emitRequest(401, 'ok', null);
+            emitRequest(401, 'auth_401', null);
             return new Response(JSON.stringify({ error: 'Invalid or expired session' }), {
               status: 401,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -501,7 +515,7 @@ export function createDomainGateway(
             allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
           }
           if (!allowed) {
-            emitRequest(403, 'ok', null);
+            emitRequest(403, 'tier_403', null);
             return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
               status: 403,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -509,14 +523,14 @@ export function createDomainGateway(
           }
           // Valid pro session (Clerk role OR Dodo entitlement) — fall through to route handling.
         } else {
-          emitRequest(401, 'ok', null);
+          emitRequest(401, 'auth_401', null);
           return new Response(JSON.stringify({ error: keyCheck.error, _debug: (keyCheck as any)._debug }), {
             status: 401,
             headers: { 'Content-Type': 'application/json', ...corsHeaders },
           });
         }
       } else {
-        emitRequest(401, 'ok', null);
+        emitRequest(401, 'auth_401', null);
         return new Response(JSON.stringify({ error: keyCheck.error }), {
           status: 401,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -530,7 +544,11 @@ export function createDomainGateway(
     if (!(keyCheck.valid && wmKey && !isUserApiKey)) {
       const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
       if (entitlementResponse) {
-        emitRequest(entitlementResponse.status, 'ok', null);
+        const entReason: RequestReason =
+          entitlementResponse.status === 401 ? 'auth_401'
+          : entitlementResponse.status === 403 ? 'tier_403'
+          : 'ok';
+        emitRequest(entitlementResponse.status, entReason, null);
         return entitlementResponse;
       }
       // Allowed → record the resolved tier for telemetry. getEntitlements has

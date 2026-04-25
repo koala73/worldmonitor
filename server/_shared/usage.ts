@@ -55,7 +55,14 @@ export type OriginKind =
   | 'mcp'
   | 'internal-cron';
 
-export type RequestReason = 'ok' | 'origin_403' | 'rate_limit_429';
+export type RequestReason =
+  | 'ok'
+  | 'origin_403'
+  | 'rate_limit_429'
+  | 'preflight'
+  | 'auth_401'
+  | 'auth_403'
+  | 'tier_403';
 
 export interface RequestEvent {
   _time: string;
@@ -345,7 +352,8 @@ export function getUsageScope(): UsageScope | undefined {
 
 // ---------- Sink ----------
 
-async function sendToAxiom(events: UsageEvent[]): Promise<void> {
+export async function sendToAxiom(events: UsageEvent[]): Promise<void> {
+  if (!isUsageEnabled()) return;
   if (events.length === 0) return;
   const token = process.env.AXIOM_API_TOKEN;
   if (!token) {
@@ -399,4 +407,13 @@ export interface WaitUntilCtx {
 export function emitUsageEvents(ctx: WaitUntilCtx, events: UsageEvent[]): void {
   if (!isUsageEnabled() || events.length === 0) return;
   ctx.waitUntil(sendToAxiom(events));
+}
+
+// Variant that returns the in-flight delivery promise instead of registering
+// it on a context. Use when the caller is already inside a single
+// ctx.waitUntil() chain and wants to await delivery synchronously to avoid a
+// nested waitUntil registration (which Edge runtimes may drop).
+export function deliverUsageEvents(events: UsageEvent[]): Promise<void> {
+  if (!isUsageEnabled() || events.length === 0) return Promise.resolve();
+  return sendToAxiom(events);
 }

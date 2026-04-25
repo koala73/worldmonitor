@@ -42,7 +42,7 @@ Two event types in dataset `wm_api_usage`:
 | `origin_kind`      | `api-key` \| `oauth` \| `browser-same-origin` \| `browser-cross-origin` \| `null` | derived from headers by `deriveOriginKind()` — `mcp` and `internal-cron` exist in the `OriginKind` type for upstream/future use but are not currently emitted on the request path |
 | `ua_hash`          | SHA-256 of the UA                         | hashed so PII doesn't land in Axiom          |
 | `sentry_trace_id`  | `"abc123…"`                               | join key into Sentry                         |
-| `reason`           | `ok` \| `origin_403` \| `rate_limit_429`  |                                              |
+| `reason`           | `ok` \| `origin_403` \| `rate_limit_429` \| `preflight` \| `auth_401` \| `auth_403` \| `tier_403` | `auth_*` distinguishes auth-rejection paths from genuine successes when filtering on `status` alone is ambiguous |
 
 ### `upstream` (one per outbound fetch from a request handler)
 

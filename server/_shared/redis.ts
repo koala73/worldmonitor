@@ -1,4 +1,5 @@
 import { unwrapEnvelope } from './seed-envelope';
+import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
 
 const REDIS_OP_TIMEOUT_MS = 1_500;
 const REDIS_PIPELINE_TIMEOUT_MS = 5_000;
@@ -349,10 +350,17 @@ export async function cachedFetchJsonWithMeta<T extends object>(
 
   const promise = fetcher()
     .then(async (result) => {
-      upstreamStatus = 200;
+      // Only count an upstream call as a 200 when it actually returned data.
+      // A null result triggers the neg-sentinel branch below — these are
+      // empty/failed upstream calls and must NOT show up as `status=200` in
+      // dashboards (would poison the cache-hit-ratio recipe and per-provider
+      // error rates). Use status=0 for the empty branch; cache_status carries
+      // the structural detail.
       if (result != null) {
+        upstreamStatus = 200;
         await setCachedJson(key, result, ttlSeconds);
       } else {
+        upstreamStatus = 0;
         cacheStatus = 'neg-sentinel';
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
       }
@@ -385,31 +393,31 @@ function emitUpstreamFromHook(
 ): void {
   // Emit only when caller labels the provider — avoids "unknown" pollution.
   if (!usage?.provider) return;
-  import('./usage')
-    .then(({ emitUsageEvents, buildUpstreamEvent, getUsageScope }) => {
-      const scope = getUsageScope();
-      const ctx = usage.ctx ?? scope?.ctx;
-      if (!ctx) return;
-      emitUsageEvents(ctx, [
-        buildUpstreamEvent({
-          requestId: usage.requestId ?? scope?.requestId ?? '',
-          customerId: usage.customerId ?? scope?.customerId ?? null,
-          route: usage.route ?? scope?.route ?? '',
-          tier: usage.tier ?? scope?.tier ?? 0,
-          provider: usage.provider,
-          operation: usage.operation ?? 'fetch',
-          host: usage.host ?? '',
-          status,
-          durationMs,
-          requestBytes: 0,
-          responseBytes: 0,
-          cacheStatus,
-        }),
-      ]);
-    })
-    .catch(() => {
-      /* telemetry must never throw */
-    });
+  // Single waitUntil() registered synchronously here — no nested
+  // ctx.waitUntil() inside Axiom delivery. Static import keeps the call
+  // synchronous so the runtime registers it during the request phase.
+  const scope = getUsageScope();
+  const ctx = usage.ctx ?? scope?.ctx;
+  if (!ctx) return;
+  const event = buildUpstreamEvent({
+    requestId: usage.requestId ?? scope?.requestId ?? '',
+    customerId: usage.customerId ?? scope?.customerId ?? null,
+    route: usage.route ?? scope?.route ?? '',
+    tier: usage.tier ?? scope?.tier ?? 0,
+    provider: usage.provider,
+    operation: usage.operation ?? 'fetch',
+    host: usage.host ?? '',
+    status,
+    durationMs,
+    requestBytes: 0,
+    responseBytes: 0,
+    cacheStatus,
+  });
+  try {
+    ctx.waitUntil(sendToAxiom([event]));
+  } catch {
+    /* telemetry must never throw */
+  }
 }
 
 export async function geoSearchByBox(

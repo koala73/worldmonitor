@@ -87,13 +87,22 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
   };
 }
 
-// 32-bit FNV-1a — non-cryptographic, only used to avoid logging raw key material.
-// Edge crypto.subtle.digest is async; we want a sync helper for the hot path.
+// 64-bit FNV-1a (two-round, XOR-folded) — non-cryptographic, only used to
+// avoid logging raw key material. Edge crypto.subtle.digest is async; we
+// want a sync helper for the hot path. Two rounds with different seeds give
+// ~64 bits of state, dropping birthday-collision risk well below the
+// widget-key population horizon (32-bit collides ~65k keys).
 function hashKeySync(key: string): string {
-  let hash = 2166136261;
+  let h1 = 2166136261;
+  let h2 = 0x811c9dc5 ^ 0xa3b2c1d4;
   for (let i = 0; i < key.length; i++) {
-    hash ^= key.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
+    const c = key.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 16777619);
+    h2 ^= c + 0x9e3779b1;
+    h2 = Math.imul(h2, 16777619);
   }
-  return (hash >>> 0).toString(36);
+  const lo = (h1 >>> 0).toString(36);
+  const hi = (h2 >>> 0).toString(36);
+  return `${hi}${lo}`;
 }

@@ -1,5 +1,6 @@
 import { CHROME_UA } from './constants';
 import type { UsageHook } from './redis';
+import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
 
 interface FetchJsonOptions {
   timeoutMs?: number;
@@ -47,31 +48,33 @@ export async function fetchJson<T>(
       const durationMs = Date.now() - t0;
       const explicit = options.usage;
       const host = explicit?.host ?? safeHost(url);
-      import('./usage')
-        .then(({ emitUsageEvents, buildUpstreamEvent, getUsageScope }) => {
-          const scope = getUsageScope();
-          const ctx = explicit?.ctx ?? scope?.ctx;
-          if (!ctx) return;
-          emitUsageEvents(ctx, [
-            buildUpstreamEvent({
-              requestId: explicit?.requestId ?? scope?.requestId ?? '',
-              customerId: explicit?.customerId ?? scope?.customerId ?? null,
-              route: explicit?.route ?? scope?.route ?? '',
-              tier: explicit?.tier ?? scope?.tier ?? 0,
-              provider,
-              operation,
-              host,
-              status,
-              durationMs,
-              requestBytes: 0,
-              responseBytes,
-              cacheStatus: 'miss',
-            }),
-          ]);
-        })
-        .catch(() => {
-          /* telemetry must never throw */
+      // Single waitUntil() registered synchronously here — no nested
+      // ctx.waitUntil() inside the Axiom delivery (Edge runtimes may drop
+      // the outer registration after the response phase ends). Static
+      // import keeps the emit path on the hot path.
+      const scope = getUsageScope();
+      const ctx = explicit?.ctx ?? scope?.ctx;
+      if (ctx) {
+        const event = buildUpstreamEvent({
+          requestId: explicit?.requestId ?? scope?.requestId ?? '',
+          customerId: explicit?.customerId ?? scope?.customerId ?? null,
+          route: explicit?.route ?? scope?.route ?? '',
+          tier: explicit?.tier ?? scope?.tier ?? 0,
+          provider,
+          operation,
+          host,
+          status,
+          durationMs,
+          requestBytes: 0,
+          responseBytes,
+          cacheStatus: 'miss',
         });
+        try {
+          ctx.waitUntil(sendToAxiom([event]));
+        } catch {
+          /* telemetry must never throw */
+        }
+      }
     }
   }
 }
