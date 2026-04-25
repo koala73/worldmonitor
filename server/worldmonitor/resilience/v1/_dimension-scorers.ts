@@ -555,26 +555,35 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
 // over-exposure to Western-bank pulls (Iceland-2008 territory). The score
 // peaks in the "healthy diversified financial system" middle band.
 //
-// Plan 2026-04-25-004 Phase 2 § Component 2 score shape:
-//   value < 5%   of GDP → 60-70 (low integration; linear ramp 0% → 60, 5% → 70)
-//   5% ≤ value ≤ 25%    → 75-100 (sweet spot; linear 5% → 75, 25% → 100)
-//   25% < value ≤ 60%   → 70-30 (over-exposed; linear 25% → 70, 60% → 30)
-//   value > 60%          → < 30 (Iceland-2008 territory; linear 60% → 30, clamped 0)
+// Plan 2026-04-25-004 Phase 2 § Component 2 score shape — re-anchored
+// for piecewise-CONTINUOUS transitions per Greptile P1 catch (PR #3407
+// review 2026-04-25). Original draft had a 30-point cliff at the 25%
+// boundary (sweet spot ended at 100, over-exposed started at 70) and a
+// 5-point jump at 5%. Cliffs in piecewise-linear scorers cause ranking
+// instability for countries near band edges — a 24.9% reading scores
+// dramatically different than 25.1%. Endpoints now share values across
+// adjacent segments so the function is monotone-then-monotone with no
+// discontinuities:
+//
+//   0% ≤ value < 5%      → 60-75  (low integration; slope +3/pct)
+//   5% ≤ value ≤ 25%     → 75-100 (sweet spot; slope +1.25/pct)
+//   25% < value ≤ 60%    → 100-30 (over-exposed; slope −2/pct)
+//   value > 60%           → 30 → 0 at 120% (Iceland-2008; slope −0.5/pct, clamped)
 function normalizeBandLowerBetter(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 50;
   if (value < 5) {
-    // Low integration: 0% → 60, 5% → 70.
-    return roundScore(60 + (value / 5) * 10);
+    // Low integration: 0% → 60, 5% → 75 (continuous to sweet-spot start).
+    return roundScore(60 + (value / 5) * 15);
   }
   if (value <= 25) {
     // Sweet spot: 5% → 75, 25% → 100.
     return roundScore(75 + ((value - 5) / 20) * 25);
   }
   if (value <= 60) {
-    // Over-exposed: 25% → 70, 60% → 30.
-    return roundScore(70 - ((value - 25) / 35) * 40);
+    // Over-exposed: 25% → 100 (continuous from sweet-spot peak), 60% → 30.
+    return roundScore(100 - ((value - 25) / 35) * 70);
   }
-  // Iceland-2008 territory: 60% → 30, every additional 1% drops 0.5pt; clamped 0.
+  // Iceland-2008 territory: 60% → 30 (continuous), drops 0.5pt per pct; clamped 0.
   return roundScore(Math.max(0, 30 - (value - 60) * 0.5));
 }
 
@@ -1315,6 +1324,15 @@ function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
   if (raw == null || typeof raw !== 'object') return null;
   const listings = (raw as { listings?: Record<string, unknown> }).listings;
   if (!listings || typeof listings !== 'object') return null;
+  // Defense-in-depth (Greptile P2 catch, PR #3407 review 2026-04-25):
+  // an empty `listings` dict that bypassed the seeder's validate()
+  // would otherwise default every country to 'compliant' (score 100)
+  // and silently mask a parser regression. Return null instead so the
+  // FATF slot drops out of the weighted blend — coverage shrinks
+  // visibly rather than the dim looking healthy with all-100s. The
+  // seeder's >=1 black + >=12 grey gate normally prevents this from
+  // reaching production, but defense-in-depth costs nothing.
+  if (Object.keys(listings).length === 0) return null;
   const status = listings[countryCode];
   if (status === 'black' || status === 'gray' || status === 'compliant') return status;
   // Unknown country = compliant (FATF only enumerates non-compliant

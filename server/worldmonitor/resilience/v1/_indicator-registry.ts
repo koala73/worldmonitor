@@ -267,7 +267,16 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     dimension: 'financialSystemExposure',
     description: 'BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (<5%) and over-exposure (>60%) score low',
     direction: 'lowerBetter', // U-shape is "lowerBetter" in semantic sense (concentrated exposure penalized)
-    goalposts: { worst: 60, best: 15 },
+    // NOTE (Greptile P2 catch, PR #3407 review): goalposts here are
+    // DOCUMENTATION-ONLY for the over-exposed branch. The actual scorer
+    // uses `normalizeBandLowerBetter` (a U-shape, not a linear lowerBetter
+    // mapping), which peaks at 25% and penalizes both extremes. A linear
+    // `{worst, best}` cannot represent a U-shape; we set goalposts to the
+    // peak (best=25) and the over-exposed worst-anchor (worst=60). Tooling
+    // / lints that read these values to compute "expected" component
+    // scores must consult `normalizeBandLowerBetter` directly, not assume
+    // these are the inputs to a generic linear normalizer.
+    goalposts: { worst: 60, best: 25 },
     weight: 0.30,
     sourceKey: 'economic:bis-lbs:v1',
     scope: 'global',

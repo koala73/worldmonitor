@@ -28,6 +28,17 @@ const BOOTSTRAP_CACHE_KEYS = {
   imfGrowth:        'economic:imf:growth:v1',
   imfLabor:         'economic:imf:labor:v1',
   imfExternal:      'economic:imf:external:v1',
+  // plan 2026-04-25-004 Phase 2 (financialSystemExposure data keys):
+  // intentionally NOT added here. The 3 new keys
+  // (economic:wb-external-debt:v1, economic:bis-lbs:v1,
+  //  economic:fatf-listing:v1) are SERVER-ONLY inputs to
+  // scoreFinancialSystemExposure — no client-side panel consumes them
+  // directly. AGENTS.md's "new data sources must hydrate via bootstrap"
+  // applies to keys with `getHydratedData` consumers in src/; the
+  // bootstrap-key-hydration-coverage test enforces that invariant. If
+  // a future PR adds a client panel that displays raw BIS LBS / FATF /
+  // WB external-debt data, register the keys here AND add the
+  // corresponding consumer + cache-keys.ts entries in the same PR.
   shippingRates:    'supply_chain:shipping:v2',
   chokepoints:      'supply_chain:chokepoints:v4',
   minerals:         'supply_chain:minerals:v2',

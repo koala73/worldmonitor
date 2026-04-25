@@ -208,6 +208,43 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     assert.ok(result.score < 10, `worst-case must score < 10, got ${result.score}`);
   });
 
+  it('U-shape is piecewise-CONTINUOUS at 5% and 25% boundaries (Greptile P1 regression guard)', async () => {
+    // Greptile flagged a 30-point cliff at the 25% boundary (sweet-spot
+    // ended at 100, over-exposed started at 70) in the original draft,
+    // plus a 5-point jump at 5%. Cliffs in piecewise-linear scorers
+    // cause ranking instability for countries near band edges. Pin
+    // continuity at every boundary by sampling values immediately above
+    // and below each transition and asserting the score delta is small.
+    const buildReader = (xborderPct: number): ResilienceSeedReader => async (key) => {
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:bis-lbs:v1') {
+        return { countries: { [TEST_ISO2]: { totalXborderPctGdp: xborderPct, parentCount: 5 } } };
+      }
+      return null;
+    };
+    const samplePoints = [
+      { name: 'just-below 5%', a: 4.99, b: 5.00 },
+      { name: 'just-above 5%', a: 5.00, b: 5.01 },
+      { name: 'just-below 25%', a: 24.99, b: 25.00 },
+      { name: 'just-above 25%', a: 25.00, b: 25.01 },
+      { name: 'just-below 60%', a: 59.99, b: 60.00 },
+      { name: 'just-above 60%', a: 60.00, b: 60.01 },
+    ];
+    for (const { name, a, b } of samplePoints) {
+      const sa = await scoreFinancialSystemExposure(TEST_ISO2, buildReader(a));
+      const sb = await scoreFinancialSystemExposure(TEST_ISO2, buildReader(b));
+      const delta = Math.abs(sa.score - sb.score);
+      // Tolerance of 1pt allows for rounding (roundScore uses Math.round
+      // on each branch independently). Original cliff was 30pts at 25%.
+      assert.ok(
+        delta <= 1,
+        `${name}: score must be continuous across boundary. Got delta=${delta} (a=${a}→${sa.score}, b=${b}→${sb.score})`,
+      );
+    }
+  });
+
   it('U-shape sanity: BIS LBS at 0% (financial isolation) scores LOWER than at 15% (sweet spot)', async () => {
     // Component 2 standalone test: hold all others null, vary the
     // BIS LBS exposure. The U-shape design penalizes both extremes.
@@ -235,6 +272,30 @@ describe('scoreFinancialSystemExposure — formula math', () => {
       sweetSpot.score > overExposed.score,
       `sweet-spot (${sweetSpot.score}) must beat over-exposed (${overExposed.score})`,
     );
+  });
+
+  it('FATF empty listings dict (parser regression) does NOT default every country to compliant', async () => {
+    // Greptile P2 regression guard (PR #3407 review). A malformed seed
+    // with `listings: {}` that bypassed validate would otherwise score
+    // every country at 100 (compliant default) — silently masking a
+    // parser bug. Defense-in-depth: empty listings → null component
+    // score → slot drops out of the blend. Visible coverage shrink
+    // rather than invisible all-pass.
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:fatf-listing:v1') {
+        return { listings: {}, publicationDate: '2026-02-13' };
+      }
+      return null;
+    };
+    const result = await scoreFinancialSystemExposure(TEST_ISO2, reader);
+    // All 4 components null → coverage 0. Critically, the test asserts
+    // we do NOT get score=100 (which is what an all-compliant default
+    // would produce against weight 0.20 if the other slots null out).
+    assert.equal(result.coverage, 0, 'empty FATF listings + null other components must yield coverage=0');
+    assert.notEqual(result.score, 100, 'empty FATF listings must NOT score 100 via the compliant-default fall-through');
   });
 
   it('FATF discrete mapping: black=0, gray=30, compliant=100', async () => {
