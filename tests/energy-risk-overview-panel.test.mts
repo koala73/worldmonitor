@@ -5,14 +5,23 @@
 // fallback. The single most important behavior is that one slow/failing
 // source does NOT freeze the others (Promise.allSettled, never .all).
 //
-// Test strategy: mock the four service modules (hormuz-tracker, economic,
-// market, supply-chain Connect-RPC client) and assert the rendered HTML
-// against shape per tile. We don't import the real panel (it would pull in
-// vite import.meta.env which doesn't resolve under node:test); instead we
-// re-implement the small set of pure helpers as a contract test.
+// Test strategy:
+//
+//  1. Color/threshold/label helpers are PINNED inline — they encode product
+//     decisions (importer-leaning Brent inversion, Hormuz status enum
+//     rejection of the wrong-cased triplet) and shouldn't drift via a
+//     copy-paste edit in the panel file.
+//
+//  2. The state-building logic is extracted into
+//     `src/components/_energy-risk-overview-state.ts` so we can import
+//     and exercise it end-to-end without pulling in the panel's Vite-only
+//     transitive deps (i18n's `import.meta.glob`, etc). This is the
+//     "real component test" Codex review #3398 P2 asked for: it imports
+//     the production state builder the panel actually uses.
 
 import { strict as assert } from 'node:assert';
 import { test, describe } from 'node:test';
+import { buildOverviewState, countDegradedTiles } from '../src/components/_energy-risk-overview-state.ts';
 
 // Pure helpers extracted from the panel for unit testing. The actual panel
 // uses these inline; this file pins their contract so future edits can't
@@ -227,5 +236,183 @@ describe('EnergyRiskOverviewPanel — degraded-mode contract', () => {
       renderTileShape('fulfilled'),
     ];
     assert.equal(tiles.filter(t => t.degraded).length, 1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Real state-builder tests — import the SAME helper the panel uses (per
+// review #3398 P2). Exercises the Promise.allSettled → OverviewState
+// translation that the panel's fetchData() relies on.
+// ─────────────────────────────────────────────────────────────────────────
+
+const NOW = 1735000000000; // fixed clock so fetchedAt assertions are deterministic
+
+function fulfilled<T>(value: T): PromiseFulfilledResult<T> {
+  return { status: 'fulfilled', value };
+}
+function rejected(reason = new Error('test')): PromiseRejectedResult {
+  return { status: 'rejected', reason };
+}
+
+describe('EnergyRiskOverviewPanel — buildOverviewState (real component logic)', () => {
+  test('all four sources fulfilled → 0 degraded tiles', () => {
+    const state = buildOverviewState(
+      fulfilled({ status: 'open' }),
+      fulfilled({ unavailable: false, fillPct: 75, fillPctChange1d: 0.5 }),
+      fulfilled({ data: [{ price: 88.5, change: -0.3 }] }),
+      fulfilled({ upstreamUnavailable: false, events: [{ endAt: null }, { endAt: '2026-01-01' }, { endAt: null }] }),
+      NOW,
+    );
+    assert.equal(countDegradedTiles(state), 0);
+    assert.equal(state.hormuz.status, 'fulfilled');
+    assert.equal(state.hormuz.value?.status, 'open');
+    assert.equal(state.euGas.value?.fillPct, 75);
+    assert.equal(state.brent.value?.price, 88.5);
+    assert.equal(state.activeDisruptions.value?.count, 2, 'only events with endAt === null are active');
+    assert.equal(state.hormuz.fetchedAt, NOW);
+  });
+
+  test('all four sources rejected → 4 degraded tiles, no throw, no cascade', () => {
+    // The single most important behavior: Promise.allSettled never throws,
+    // every tile resolves to a state independently. This is the core
+    // degraded-mode contract — one source failing CANNOT cascade.
+    const state = buildOverviewState(
+      rejected(),
+      rejected(),
+      rejected(),
+      rejected(),
+      NOW,
+    );
+    assert.equal(countDegradedTiles(state), 4);
+    for (const t of Object.values(state)) {
+      assert.equal(t.status, 'rejected');
+      assert.equal(t.fetchedAt, undefined, 'rejected tiles must not carry a fetchedAt');
+    }
+  });
+
+  test('mixed: hormuz fulfilled, others rejected → only hormuz tile populated', () => {
+    const state = buildOverviewState(
+      fulfilled({ status: 'disrupted' }),
+      rejected(),
+      rejected(),
+      rejected(),
+      NOW,
+    );
+    assert.equal(countDegradedTiles(state), 3);
+    assert.equal(state.hormuz.status, 'fulfilled');
+    assert.equal(state.hormuz.value?.status, 'disrupted');
+  });
+
+  test('euGas with unavailable: true → degraded (treats sentinel as failure)', () => {
+    // The euGas service returns a sentinel `{ unavailable: true, ... }`
+    // shape on relay outage. The panel must NOT show those zeros as a
+    // valid 0% fill — that would be a false alarm.
+    const state = buildOverviewState(
+      fulfilled({ status: 'open' }),
+      fulfilled({ unavailable: true, fillPct: 0, fillPctChange1d: 0 }),
+      fulfilled({ data: [{ price: 88, change: 0 }] }),
+      fulfilled({ upstreamUnavailable: false, events: [] }),
+      NOW,
+    );
+    assert.equal(state.euGas.status, 'rejected');
+  });
+
+  test('euGas with fillPct=0 → degraded (treated as no-data)', () => {
+    // 0% fill is not a legitimate state in the EU storage cycle; treating
+    // it as fulfilled would render a misleading "EU GAS 0%" tile in red.
+    const state = buildOverviewState(
+      rejected(),
+      fulfilled({ unavailable: false, fillPct: 0, fillPctChange1d: 0 }),
+      rejected(),
+      rejected(),
+      NOW,
+    );
+    assert.equal(state.euGas.status, 'rejected');
+  });
+
+  test('brent with empty data array → degraded', () => {
+    const state = buildOverviewState(
+      rejected(),
+      rejected(),
+      fulfilled({ data: [] }),
+      rejected(),
+      NOW,
+    );
+    assert.equal(state.brent.status, 'rejected');
+  });
+
+  test('brent with first quote price=null → degraded (no-data sentinel)', () => {
+    const state = buildOverviewState(
+      rejected(),
+      rejected(),
+      fulfilled({ data: [{ price: null, change: 0 }] }),
+      rejected(),
+      NOW,
+    );
+    assert.equal(state.brent.status, 'rejected');
+  });
+
+  test('disruptions with upstreamUnavailable: true → degraded', () => {
+    const state = buildOverviewState(
+      rejected(),
+      rejected(),
+      rejected(),
+      fulfilled({ upstreamUnavailable: true, events: [] }),
+      NOW,
+    );
+    assert.equal(state.activeDisruptions.status, 'rejected');
+  });
+
+  test('disruptions ongoing-only filter: only events with endAt===null count', () => {
+    const state = buildOverviewState(
+      rejected(),
+      rejected(),
+      rejected(),
+      fulfilled({
+        upstreamUnavailable: false,
+        events: [
+          { endAt: null },                // ongoing
+          { endAt: '2026-04-20' },        // resolved
+          { endAt: undefined },           // ongoing (undefined is falsy too)
+          { endAt: '' },                  // ongoing (empty string is falsy)
+          { endAt: null },                // ongoing
+        ],
+      }),
+      NOW,
+    );
+    assert.equal(state.activeDisruptions.value?.count, 4);
+  });
+
+  test('hormuz fulfilled but value.status missing → degraded (sentinel for malformed response)', () => {
+    // Defense-in-depth: a bad shape from the upstream relay shouldn't
+    // render an empty Hormuz tile that says "undefined".
+    const state = buildOverviewState(
+      fulfilled({} as { status?: string }),
+      rejected(),
+      rejected(),
+      rejected(),
+      NOW,
+    );
+    assert.equal(state.hormuz.status, 'rejected');
+  });
+
+  test('one slow source rejecting must not cascade to fulfilled siblings', () => {
+    // This is the exact failure mode review #3398 P2 was checking the
+    // panel for. With Promise.all, one rejection would short-circuit the
+    // whole batch. With Promise.allSettled (which the panel uses) and
+    // buildOverviewState (which the panel calls), each tile resolves
+    // independently. Pin that contract.
+    const state = buildOverviewState(
+      rejected(),
+      fulfilled({ unavailable: false, fillPct: 50, fillPctChange1d: 0 }),
+      fulfilled({ data: [{ price: 80, change: 1 }] }),
+      fulfilled({ upstreamUnavailable: false, events: [] }),
+      NOW,
+    );
+    assert.equal(state.hormuz.status, 'rejected');
+    assert.equal(state.euGas.status, 'fulfilled');
+    assert.equal(state.brent.status, 'fulfilled');
+    assert.equal(state.activeDisruptions.status, 'fulfilled');
+    assert.equal(countDegradedTiles(state), 1);
   });
 });

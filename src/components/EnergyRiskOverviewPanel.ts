@@ -25,6 +25,7 @@ import { fetchHormuzTracker, type HormuzTrackerData } from '@/services/hormuz-tr
 import { getEuGasStorageData } from '@/services/economic';
 import { fetchCommodityQuotes } from '@/services/market';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { buildOverviewState, type OverviewState } from './_energy-risk-overview-state';
 
 const supplyChain = new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
@@ -59,18 +60,12 @@ const HORMUZ_STATUS_LABEL: Record<HormuzTrackerData['status'], string> = {
   open:       'Open',
 };
 
-interface TileState<T> {
-  status: 'fulfilled' | 'rejected' | 'pending';
-  value?: T;
-  fetchedAt?: number;
-}
-
-interface OverviewState {
-  hormuz: TileState<HormuzTrackerData>;
-  euGas: TileState<{ fillPct: number; fillPctChange1d: number }>;
-  brent: TileState<{ price: number; change: number }>;
-  activeDisruptions: TileState<{ count: number }>;
-}
+// State shape lives in _energy-risk-overview-state.ts so it can be tested
+// under node:test without pulling in Vite-only modules. The panel's
+// `state` field is typed loosely (just OverviewState) — the per-tile
+// renderers cast `value` based on the tile they're rendering. The only
+// downside is the Hormuz tile loses its enum literal type from
+// HormuzTrackerData['status']; renderers narrow it again at use site.
 
 const EMPTY_STATE: OverviewState = {
   hormuz:            { status: 'pending' },
@@ -112,33 +107,7 @@ export class EnergyRiskOverviewPanel extends Panel {
       fetchCommodityQuotes(BRENT_META),
       supplyChain.listEnergyDisruptions({ assetId: '', assetType: '', ongoingOnly: false }),
     ]);
-
-    const now = Date.now();
-    this.state = {
-      hormuz: hormuz.status === 'fulfilled' && hormuz.value
-        ? { status: 'fulfilled', value: hormuz.value, fetchedAt: now }
-        : { status: 'rejected' },
-      euGas: euGas.status === 'fulfilled' && !euGas.value.unavailable && euGas.value.fillPct > 0
-        ? { status: 'fulfilled', value: { fillPct: euGas.value.fillPct, fillPctChange1d: euGas.value.fillPctChange1d }, fetchedAt: now }
-        : { status: 'rejected' },
-      brent: (() => {
-        if (brent.status !== 'fulfilled' || brent.value.data.length === 0) return { status: 'rejected' as const };
-        const q = brent.value.data[0];
-        if (!q || q.price === null) return { status: 'rejected' as const };
-        return {
-          status: 'fulfilled' as const,
-          value: { price: q.price, change: q.change ?? 0 },
-          fetchedAt: now,
-        };
-      })(),
-      activeDisruptions: disruptions.status === 'fulfilled' && !disruptions.value.upstreamUnavailable
-        ? {
-            status: 'fulfilled',
-            value: { count: disruptions.value.events.filter(e => !e.endAt).length },
-            fetchedAt: now,
-          }
-        : { status: 'rejected' },
-    };
+    this.state = buildOverviewState(hormuz, euGas, brent, disruptions, Date.now());
 
     if (!this.element?.isConnected) return;
     this.render();
@@ -172,8 +141,12 @@ export class EnergyRiskOverviewPanel extends Panel {
     if (t.status !== 'fulfilled' || !t.value) {
       return tileHtml('Hormuz', '—', '#7f8c8d', 'data-degraded="true"');
     }
-    const color = HORMUZ_STATUS_COLOR[t.value.status] ?? '#7f8c8d';
-    const label = HORMUZ_STATUS_LABEL[t.value.status] ?? t.value.status;
+    // After extracting state-builder into a Vite-free module, the Hormuz
+    // tile's value.status is typed as plain string (not the enum literal
+    // union). Cast at use site so the lookup tables index correctly.
+    const status = t.value.status as HormuzTrackerData['status'];
+    const color = HORMUZ_STATUS_COLOR[status] ?? '#7f8c8d';
+    const label = HORMUZ_STATUS_LABEL[status] ?? t.value.status;
     return tileHtml('Hormuz', label, color);
   }
 
