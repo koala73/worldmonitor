@@ -346,7 +346,7 @@ Sentry.init({
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
       if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
       const osName = ((event.contexts as any)?.os?.name as string) ?? '';
-      const isTouchOs = /^iOS|iPadOS$/.test(osName);
+      const isTouchOs = /^(iOS|iPadOS)$/.test(osName);
       const mainBundleFrames = nonInfraFrames.filter(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''));
       if (isTouchOs && mainBundleFrames.length === 1 && nonInfraFrames.length === mainBundleFrames.length) return null;
     }

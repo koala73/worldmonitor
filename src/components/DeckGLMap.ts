@@ -572,6 +572,12 @@ export class DeckGLMap {
   private radarRefreshIntervalId: ReturnType<typeof setInterval> | null = null;
   private radarActive = false;
   private radarTileUrl = '';
+  // Drop duplicate `once('idle', applyRadarLayer)` registrations when
+  // the source isn't loaded yet. Without this, both the style.load
+  // callback and the 5-minute refresh can register listeners in the
+  // same load window — they'd all fire on the next idle and call
+  // setTiles back-to-back. Idempotent today but wasteful.
+  private radarIdlePending = false;
   private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
   private lastCableHealthSignature = '';
@@ -727,7 +733,13 @@ export class DeckGLMap {
         // isSourceLoaded(id) is MapLibre's official "tiles fetched +
         // applied to GL state" check; defer to the next idle if false.
         if (!this.maplibreMap.isSourceLoaded('weather-radar')) {
-          this.maplibreMap.once('idle', () => this.applyRadarLayer());
+          if (!this.radarIdlePending) {
+            this.radarIdlePending = true;
+            this.maplibreMap.once('idle', () => {
+              this.radarIdlePending = false;
+              this.applyRadarLayer();
+            });
+          }
           return;
         }
         existing.setTiles([this.radarTileUrl]);
