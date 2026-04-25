@@ -273,12 +273,14 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
  * Applies the full gateway pipeline: origin check → CORS → OPTIONS preflight →
  * API key → rate limit → route match (with POST→GET compat) → execute → cache headers.
  */
+export type GatewayCtx = { waitUntil: (p: Promise<unknown>) => void };
+
 export function createDomainGateway(
   routes: RouteDescriptor[],
-): (req: Request) => Promise<Response> {
+): (req: Request, ctx: GatewayCtx) => Promise<Response> {
   const router = createRouter(routes);
 
-  return async function handler(originalRequest: Request): Promise<Response> {
+  return async function handler(originalRequest: Request, _ctx: GatewayCtx): Promise<Response> {
     let request = originalRequest;
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
