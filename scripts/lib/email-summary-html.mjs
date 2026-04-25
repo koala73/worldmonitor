@@ -55,7 +55,7 @@ export function injectEmailSummary(html, summary) {
     return html.replace('<div data-ai-summary-slot></div>', '');
   }
 
-  const escape = (s) => String(s)
+  const htmlEscape = (s) => String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -68,8 +68,8 @@ export function injectEmailSummary(html, summary) {
   // forcing an unordered list (cleaner in Gmail / Outlook clients).
   const threadsHtml = payload.threads.length > 0
     ? payload.threads.map((t) => {
-        const tag = escape(t?.tag ?? '');
-        const teaser = escape(t?.teaser ?? '');
+        const tag = htmlEscape(t?.tag ?? '');
+        const teaser = htmlEscape(t?.teaser ?? '');
         if (!tag || !teaser) return '';
         return `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:0 0 8px 0;"><b style="color:#f2ede4;">${tag}</b> — ${teaser}</div>`;
       }).filter(Boolean).join('')
@@ -80,7 +80,7 @@ export function injectEmailSummary(html, summary) {
   const signalsHtml = payload.signals.length > 0
     ? `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:14px 0 0 0;"><b style="color:#f2ede4;">Signals to watch:</b></div>` +
       payload.signals.map((s) => {
-        const text = escape(typeof s === 'string' ? s : '');
+        const text = htmlEscape(typeof s === 'string' ? s : '');
         if (!text) return '';
         return `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:4px 0 0 0;">• ${text}</div>`;
       }).filter(Boolean).join('')
