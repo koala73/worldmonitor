@@ -293,14 +293,15 @@ function loadExistingRegistry(filename) {
 }
 
 /**
- * Merge candidates into an existing registry envelope. Pure-ish: writes
- * to disk only at the very end after validation passes.
+ * Build (but do NOT write) a merged registry envelope. Pure: no disk I/O.
+ * Throws on validation failure so the caller can short-circuit before any
+ * file is written.
  *
  * @param {string} filename - 'pipelines-gas.json' or 'pipelines-oil.json'
  * @param {any[]} candidates - parser output for that fuel
- * @returns {{ added: number, skipped: number, total: number }}
+ * @returns {{ path: string, mergedEnvelope: any, added: number, skipped: number, total: number }}
  */
-function mergeIntoRegistry(filename, candidates) {
+function prepareMerge(filename, candidates) {
   const { path, envelope } = loadExistingRegistry(filename);
   const existing = Object.values(envelope.pipelines ?? {});
   const { toAdd, skippedDuplicates } = dedupePipelines(existing, candidates);
@@ -311,7 +312,7 @@ function mergeIntoRegistry(filename, candidates) {
   const mergedPipelines = { ...envelope.pipelines };
   for (const p of appended) mergedPipelines[p.id] = p;
 
-  const merged = {
+  const mergedEnvelope = {
     ...envelope,
     source: envelope.source?.includes('Global Energy Monitor')
       ? envelope.source
@@ -319,19 +320,46 @@ function mergeIntoRegistry(filename, candidates) {
     pipelines: mergedPipelines,
   };
 
-  if (!validateRegistry(merged)) {
+  if (!validateRegistry(mergedEnvelope)) {
     throw new Error(
-      `mergeIntoRegistry: merged ${filename} would FAIL validateRegistry. ` +
+      `prepareMerge: merged ${filename} would FAIL validateRegistry. ` +
       `Aborting before writing to disk. Inspect the diff with --print-candidates first.`,
     );
   }
 
-  writeFileSync(path, JSON.stringify(merged, null, 2) + '\n');
   return {
+    path,
+    mergedEnvelope,
     added: toAdd.length,
     skipped: skippedDuplicates.length,
     total: Object.keys(mergedPipelines).length,
   };
+}
+
+/**
+ * Cross-file-atomic merge: builds AND validates BOTH gas + oil envelopes
+ * before writing EITHER file. If oil validation fails after gas already
+ * succeeded, neither is written — prevents the half-imported state where
+ * gas has GEM rows on disk but oil doesn't.
+ *
+ * Two-phase: prepare both → write both. Pure prepare phase, side-effecting
+ * write phase. Order of writes is stable (gas first, oil second), but the
+ * "validate everything before any write" guarantee is what prevents
+ * partial state on failure.
+ *
+ * @returns {{ gas: ReturnType<typeof prepareMerge>, oil: ReturnType<typeof prepareMerge> }}
+ */
+function mergeBothRegistries(gasCandidates, oilCandidates) {
+  // Phase 1: prepare + validate BOTH. If either throws, neither file is
+  // touched on disk.
+  const gas = prepareMerge('pipelines-gas.json', gasCandidates);
+  const oil = prepareMerge('pipelines-oil.json', oilCandidates);
+
+  // Phase 2: both validated → write both.
+  writeFileSync(gas.path, JSON.stringify(gas.mergedEnvelope, null, 2) + '\n');
+  writeFileSync(oil.path, JSON.stringify(oil.mergedEnvelope, null, 2) + '\n');
+
+  return { gas, oil };
 }
 
 // CLI entry point: only fires when this file is the entry script.
@@ -347,8 +375,11 @@ if (process.argv[1] && process.argv[1].endsWith('import-gem-pipelines.mjs')) {
     process.stdout.write(JSON.stringify({ gas, oil }, null, 2) + '\n');
   } else if (args.has('--merge')) {
     try {
-      const gasResult = mergeIntoRegistry('pipelines-gas.json', gas);
-      const oilResult = mergeIntoRegistry('pipelines-oil.json', oil);
+      // mergeBothRegistries validates BOTH envelopes before writing
+      // either — so a validation failure on oil after gas succeeded
+      // leaves neither file modified on disk. Prevents the half-imported
+      // state the previous per-file flow could produce.
+      const { gas: gasResult, oil: oilResult } = mergeBothRegistries(gas, oil);
       console.error(`gas: +${gasResult.added} added, ${gasResult.skipped} duplicates skipped, ${gasResult.total} total`);
       console.error(`oil: +${oilResult.added} added, ${oilResult.skipped} duplicates skipped, ${oilResult.total} total`);
       console.error(
