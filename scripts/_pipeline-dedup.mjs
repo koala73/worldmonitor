@@ -118,11 +118,25 @@ export function dedupePipelines(existing, candidates) {
   const skippedDuplicates = [];
 
   for (const cand of candidates) {
+    // Compare against BOTH existing rows AND candidates already accepted
+    // into toAdd. Without this, two GEM rows that match each other but
+    // not anything in `existing` would both be added — duplicate-import
+    // bug. Existing rows still win on cross-set match (they have richer
+    // hand-curated evidence); within-toAdd matches retain the FIRST
+    // accepted candidate (deterministic by candidate-list order).
     let matched = null;
     for (const ex of existing) {
       if (isDuplicate(cand, ex)) {
         matched = ex;
         break;
+      }
+    }
+    if (!matched) {
+      for (const earlier of toAdd) {
+        if (isDuplicate(cand, earlier)) {
+          matched = earlier;
+          break;
+        }
       }
     }
     if (matched) {

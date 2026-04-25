@@ -32,7 +32,11 @@
 // runtime dependency surface tight and avoids the known CVE history of the
 // xlsx package for a quarterly one-shot operation.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dedupePipelines } from './_pipeline-dedup.mjs';
+import { validateRegistry } from './_pipeline-registry.mjs';
 
 /**
  * Canonical input columns. The operator's Excel-to-JSON conversion must
@@ -277,6 +281,59 @@ export function loadGemPipelinesFromFile(filePath) {
   return parseGemPipelines(data);
 }
 
+/**
+ * Read an existing registry file and return its parsed envelope.
+ * @param {string} filename
+ */
+function loadExistingRegistry(filename) {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const path = resolvePath(__dirname, 'data', filename);
+  const raw = readFileSync(path, 'utf-8');
+  return { path, envelope: JSON.parse(raw) };
+}
+
+/**
+ * Merge candidates into an existing registry envelope. Pure-ish: writes
+ * to disk only at the very end after validation passes.
+ *
+ * @param {string} filename - 'pipelines-gas.json' or 'pipelines-oil.json'
+ * @param {any[]} candidates - parser output for that fuel
+ * @returns {{ added: number, skipped: number, total: number }}
+ */
+function mergeIntoRegistry(filename, candidates) {
+  const { path, envelope } = loadExistingRegistry(filename);
+  const existing = Object.values(envelope.pipelines ?? {});
+  const { toAdd, skippedDuplicates } = dedupePipelines(existing, candidates);
+
+  // Append in a stable order (alphabetical-by-id) so repeated runs produce
+  // a clean diff. Hand-curated rows keep their original ordering at the top.
+  const appended = [...toAdd].sort((a, b) => a.id.localeCompare(b.id));
+  const mergedPipelines = { ...envelope.pipelines };
+  for (const p of appended) mergedPipelines[p.id] = p;
+
+  const merged = {
+    ...envelope,
+    source: envelope.source?.includes('Global Energy Monitor')
+      ? envelope.source
+      : `${envelope.source ?? 'Hand-curated'} + Global Energy Monitor (CC-BY 4.0)`,
+    pipelines: mergedPipelines,
+  };
+
+  if (!validateRegistry(merged)) {
+    throw new Error(
+      `mergeIntoRegistry: merged ${filename} would FAIL validateRegistry. ` +
+      `Aborting before writing to disk. Inspect the diff with --print-candidates first.`,
+    );
+  }
+
+  writeFileSync(path, JSON.stringify(merged, null, 2) + '\n');
+  return {
+    added: toAdd.length,
+    skipped: skippedDuplicates.length,
+    total: Object.keys(mergedPipelines).length,
+  };
+}
+
 // CLI entry point: only fires when this file is the entry script.
 if (process.argv[1] && process.argv[1].endsWith('import-gem-pipelines.mjs')) {
   const filePath = process.env.GEM_PIPELINES_FILE;
@@ -289,11 +346,21 @@ if (process.argv[1] && process.argv[1].endsWith('import-gem-pipelines.mjs')) {
   if (args.has('--print-candidates')) {
     process.stdout.write(JSON.stringify({ gas, oil }, null, 2) + '\n');
   } else if (args.has('--merge')) {
-    console.error(
-      '--merge is the dedup/merge step. Run scripts/_pipeline-dedup.mjs after parsing. ' +
-      'TODO: wire dedup invocation here once U3 lands.',
-    );
-    process.exit(2);
+    try {
+      const gasResult = mergeIntoRegistry('pipelines-gas.json', gas);
+      const oilResult = mergeIntoRegistry('pipelines-oil.json', oil);
+      console.error(`gas: +${gasResult.added} added, ${gasResult.skipped} duplicates skipped, ${gasResult.total} total`);
+      console.error(`oil: +${oilResult.added} added, ${oilResult.skipped} duplicates skipped, ${oilResult.total} total`);
+      console.error(
+        `Wrote merged data to scripts/data/pipelines-{gas,oil}.json. ` +
+        `Inspect the diff before committing. Per the operator runbook, ` +
+        `also update MIN_PIPELINES_PER_REGISTRY in scripts/_pipeline-registry.mjs ` +
+        `to a sensible new floor (e.g. 200) once the data is in.`,
+      );
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(2);
+    }
   } else {
     console.error('Pass --print-candidates (dry run) or --merge (write to data files).');
     process.exit(1);

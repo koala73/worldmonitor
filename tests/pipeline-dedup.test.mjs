@@ -176,6 +176,52 @@ describe('pipeline-dedup — determinism', () => {
   });
 });
 
+describe('pipeline-dedup — within-batch dedup (review fix)', () => {
+  test('two candidates that match each other but not any existing → only first is added', () => {
+    // Regression: pre-fix, dedup compared each candidate ONLY against the
+    // original `existing` array, so two GEM rows for the same pipeline (e.g.
+    // a primary entry and a duplicate from a different source spreadsheet)
+    // would BOTH end up in the registry.
+    const candidates = [
+      makePipeline('east-west-saudi', 'East-West Crude Pipeline', 25, 49, 24, 38),
+      // Same pipeline, slightly different name + endpoints (within match
+      // tolerance). Should be skipped as a duplicate of the first candidate.
+      makePipeline('saudi-petroline', 'East-West Crude', 25.001, 49.001, 24.001, 38.001),
+    ];
+    const { toAdd, skippedDuplicates } = dedupePipelines([], candidates);
+    assert.equal(toAdd.length, 1, 'second matching candidate must be skipped');
+    assert.equal(skippedDuplicates.length, 1);
+    assert.equal(toAdd[0].id, 'east-west-saudi', 'first-accepted candidate wins (deterministic)');
+    assert.equal(skippedDuplicates[0].matchedExistingId, 'east-west-saudi',
+      'skipped candidate matches the earlier-accepted one, not anything in `existing`');
+  });
+
+  test('three candidates with transitive matches collapse to one', () => {
+    const candidates = [
+      makePipeline('a', 'Druzhba', 52.6, 49.4, 52.32, 14.06),
+      makePipeline('b', 'Druzhba Pipeline', 52.601, 49.401, 52.321, 14.061),
+      makePipeline('c', 'Druzhba Line', 52.602, 49.402, 52.322, 14.062),
+    ];
+    const { toAdd } = dedupePipelines([], candidates);
+    assert.equal(toAdd.length, 1, 'three matching candidates must collapse to the first one accepted');
+  });
+
+  test('existing wins over already-accepted candidate', () => {
+    // If a candidate matches an existing row, it must be reported as
+    // matching the existing row (existing-vs-toAdd precedence). Names
+    // chosen so Jaccard exceeds 0.6 after stopword removal.
+    const existing = [makePipeline('canon', 'Druzhba Northern', 52.6, 49.4, 52.32, 14.06)];
+    const candidates = [
+      makePipeline('cand-1', 'Druzhba Northern', 60, 30, 50, 14),  // doesn't match existing (far endpoints)
+      makePipeline('cand-2', 'Druzhba Northern', 52.601, 49.401, 52.321, 14.061),  // matches existing (near + Jaccard=1)
+    ];
+    const { toAdd, skippedDuplicates } = dedupePipelines(existing, candidates);
+    assert.equal(toAdd.length, 1, 'cand-1 added; cand-2 skipped against existing');
+    assert.equal(skippedDuplicates[0].matchedExistingId, 'canon',
+      'cand-2 should be reported as matching the existing canon, not the earlier candidate');
+  });
+});
+
 describe('pipeline-dedup — empty inputs', () => {
   test('empty existing + N candidates → all N added, none skipped', () => {
     const candidates = [
