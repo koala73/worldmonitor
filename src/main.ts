@@ -265,6 +265,7 @@ Sentry.init({
     /Cannot read properties of \w+ \(reading '[^']*[^\x00-\x7F][^']*'\)/, // Non-ASCII property name in message = mojibake/corrupted identifier from injected extension; our bundle emits ASCII-only identifiers (WORLDMONITOR-NS)
     /Octal literals are not allowed in strict mode/, // Runtime SyntaxError from injected extension script; our TS bundle never emits octal literals and doesn't eval (WORLDMONITOR-NV)
     /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
+    /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -432,6 +433,16 @@ Sentry.init({
     // (WORLDMONITOR-NJ).
     if (/Cannot read properties of undefined \(reading 'fetchToken'\)/.test(msg)
         && frames.some(f => /tryToReauthenticate/.test(f.function ?? ''))) return null;
+    // Suppress `Failed to fetch (<host>)` when any frame is a browser extension URL.
+    // Some extensions (e.g. AdBlock-class fetch interceptors) wrap window.fetch and
+    // their replacement can fail for reasons unrelated to our backend. The maplibre
+    // host-allowlist filter above doesn't apply here because the failing host is our
+    // own (abacus.worldmonitor.app analytics, api.worldmonitor.app), and gating on
+    // an extension frame keeps signal for genuine first-party fetch failures from
+    // users without such extensions (WORLDMONITOR-P5).
+    if (excType === 'TypeError'
+        && /^Failed to fetch \([^)]+\)$/.test(msg)
+        && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? ''))) return null;
     if (hasAnyStack && !hasFirstParty && (
       /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
       || /Maximum call stack size exceeded/.test(msg)
