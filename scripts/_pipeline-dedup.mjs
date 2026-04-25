@@ -24,6 +24,16 @@ const STOPWORDS = new Set([
 
 const MATCH_DISTANCE_KM = 5;
 const MATCH_JACCARD_MIN = 0.6;
+// When the candidate's tokenized name equals the existing row's tokenized
+// name (Jaccard == 1.0 after stopword removal), accept the match if ANY
+// endpoint pairing is within MATCH_NAME_IDENTICAL_DISTANCE_KM. Catches PR
+// #3406 review's Dampier-Bunbury case: GEM digitized only the southern
+// 60% of the line, so the average-endpoint distance was 287km but the
+// shared Bunbury terminus matched within 13.7km. A pure name-only rule
+// would false-positive on coincidental collisions in different oceans
+// (e.g. unrelated "Nord Stream 1" in the Pacific), so we still require
+// SOME geographic anchor.
+const MATCH_NAME_IDENTICAL_DISTANCE_KM = 25;
 const EARTH_RADIUS_KM = 6371;
 
 /**
@@ -56,6 +66,24 @@ function averageEndpointDistanceKm(a, b) {
 }
 
 /**
+ * Minimum of all four cross-pairings between candidate and existing endpoints.
+ * Used by the name-identical short-circuit: if the candidate digitizes a
+ * different segment of the same physical pipeline, only ONE endpoint pair
+ * may match closely (e.g. Dampier-Bunbury: shared Bunbury terminus 13.7 km,
+ * other end 560 km away because GEM stopped at Onslow vs the full Dampier
+ * route). A tight average would miss this; the min of the four pairings
+ * doesn't.
+ */
+function minPairwiseEndpointDistanceKm(a, b) {
+  return Math.min(
+    haversineKm(a.startPoint, b.startPoint),
+    haversineKm(a.startPoint, b.endPoint),
+    haversineKm(a.endPoint, b.startPoint),
+    haversineKm(a.endPoint, b.endPoint),
+  );
+}
+
+/**
  * Tokenize a name: lowercased word tokens, ASCII-only word boundaries,
  * stopwords removed. Stable across invocations.
  */
@@ -85,12 +113,35 @@ function jaccard(a, b) {
 }
 
 /**
- * Decide if a candidate matches an existing row. Both criteria required.
+ * Decide if a candidate matches an existing row.
+ *
+ * Two acceptance paths:
+ *   (a) Token sets are IDENTICAL (Jaccard == 1.0 after stopword removal) —
+ *       the same pipeline regardless of how either source digitized its
+ *       endpoints. Catches the Dampier-Bunbury case (PR #3406 review):
+ *       GEM's GeoJSON terminus was 13.7 km from the curated terminus
+ *       (just over the 5 km distance gate) but both names tokenize to
+ *       {dampier, to, bunbury, natural, gas}, so they are clearly the
+ *       same physical pipeline.
+ *   (b) Distance ≤ 5 km AND Jaccard ≥ 0.6 — the original conjunctive rule
+ *       for slight name-variation cases (e.g. "Druzhba Pipeline" vs
+ *       "Druzhba Oil Pipeline").
  */
 function isDuplicate(candidate, existing) {
+  const sim = jaccard(candidate.name, existing.name);
+  // Path (a): identical token-set + at least one endpoint pair within 25 km.
+  // The geographic anchor distinguishes the Dampier-Bunbury case from a
+  // theoretical name-collision in a different ocean.
+  if (sim >= 1.0) {
+    const minDist = minPairwiseEndpointDistanceKm(candidate, existing);
+    if (minDist <= MATCH_NAME_IDENTICAL_DISTANCE_KM) return true;
+    // Identical names but no endpoint near each other → distinct pipelines
+    // sharing a name (rare but real). Fall through to the conjunctive rule
+    // below, which will return false because Jaccard 1.0 with > 25km min
+    // pair always exceeds 5 km average.
+  }
   const dist = averageEndpointDistanceKm(candidate, existing);
   if (dist > MATCH_DISTANCE_KM) return false;
-  const sim = jaccard(candidate.name, existing.name);
   return sim >= MATCH_JACCARD_MIN;
 }
 
@@ -160,6 +211,7 @@ export function dedupePipelines(existing, candidates) {
 export const _internal = {
   haversineKm,
   averageEndpointDistanceKm,
+  minPairwiseEndpointDistanceKm,
   tokenize,
   jaccard,
   isDuplicate,
@@ -167,4 +219,5 @@ export const _internal = {
   STOPWORDS,
   MATCH_DISTANCE_KM,
   MATCH_JACCARD_MIN,
+  MATCH_NAME_IDENTICAL_DISTANCE_KM,
 };

@@ -3467,36 +3467,6 @@
         "classifierConfidence": 0.4
       }
     },
-    "china-russia-east-pipeline-system-network-info-cn": {
-      "id": "china-russia-east-pipeline-system-network-info-cn",
-      "name": "China–Russia East Pipeline - SYSTEM/NETWORK INFO",
-      "operator": "National Pipe Network Group North Pipeline Co Ltd [100.00%]",
-      "commodityType": "gas",
-      "fromCountry": "CN",
-      "toCountry": "CN",
-      "transitCountries": [],
-      "capacityBcmYr": 38,
-      "lengthKm": 5111,
-      "inService": 2022,
-      "startPoint": {
-        "lat": 39.297164,
-        "lon": 116.51979
-      },
-      "endPoint": {
-        "lat": 39.297164,
-        "lon": 116.51979
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      }
-    },
     "china-russia-far-east-gas-pipeline-hulin-changchun-trunk-lin-cn": {
       "id": "china-russia-far-east-gas-pipeline-hulin-changchun-trunk-lin-cn",
       "name": "China–Russia Far East Gas Pipeline - Hulin–Changchun Trunk Line",
@@ -3755,36 +3725,6 @@
       "endPoint": {
         "lat": 24.489186,
         "lon": 77.137452
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      }
-    },
-    "dampier-to-bunbury-natural-gas-pipeline-au": {
-      "id": "dampier-to-bunbury-natural-gas-pipeline-au",
-      "name": "Dampier to Bunbury Natural Gas Pipeline",
-      "operator": "DUET Group [80.00%]; Alcoa [20.00%]",
-      "commodityType": "gas",
-      "fromCountry": "AU",
-      "toCountry": "AU",
-      "transitCountries": [],
-      "capacityBcmYr": 8.67,
-      "lengthKm": 1597,
-      "inService": 1984,
-      "startPoint": {
-        "lat": -33.265797,
-        "lon": 115.755682
-      },
-      "endPoint": {
-        "lat": -24.86854,
-        "lon": 113.674968
       },
       "evidence": {
         "physicalState": "flowing",
@@ -4877,36 +4817,6 @@
         "classifierConfidence": 0.4
       }
     },
-    "ichthys-gas-pipeline-au": {
-      "id": "ichthys-gas-pipeline-au",
-      "name": "Ichthys Gas Pipeline",
-      "operator": "INPEX Corp [50.00%]; TotalEnergies SE [30.00%]; Government of Taiwan [2.63%]; Tokyo Gas [1.58%]; Osaka Gas [1.20%]; Kansai Electric Power Co [1.20%]; Nuclear Damage Compensation and Decommissioning Facilitation Corp [0.37%]; Toho Gas [0.42%]; Chubu Electric Power [0.37%]",
-      "commodityType": "gas",
-      "fromCountry": "AU",
-      "toCountry": "AU",
-      "transitCountries": [],
-      "capacityBcmYr": 16.35,
-      "lengthKm": 889,
-      "inService": 2018,
-      "startPoint": {
-        "lat": -12.519356,
-        "lon": 128.393202
-      },
-      "endPoint": {
-        "lat": -12.519356,
-        "lon": 128.393202
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      }
-    },
     "igat-11-gas-pipeline-ir": {
       "id": "igat-11-gas-pipeline-ir",
       "name": "IGAT 11 Gas Pipeline",
@@ -5708,36 +5618,6 @@
       "endPoint": {
         "lat": -34.805,
         "lon": 138.52
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      }
-    },
-    "moomba-sydney-pipeline-system-au": {
-      "id": "moomba-sydney-pipeline-system-au",
-      "name": "Moomba Sydney Pipeline System",
-      "operator": "APA Group [100.00%]",
-      "commodityType": "gas",
-      "fromCountry": "AU",
-      "toCountry": "AU",
-      "transitCountries": [],
-      "capacityBcmYr": 4.48,
-      "lengthKm": 1300,
-      "inService": 1976,
-      "startPoint": {
-        "lat": -28.115865,
-        "lon": 140.206289
-      },
-      "endPoint": {
-        "lat": -33.96409,
-        "lon": 150.9806
       },
       "evidence": {
         "physicalState": "flowing",

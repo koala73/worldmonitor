@@ -274,6 +274,12 @@ def convert_one(props, geom, fuel_token):
         return None, "no_geom"
     s_lon, s_lat = pts[0][0], pts[0][1]
     e_lon, e_lat = pts[1][0], pts[1][1]
+    # Drop degenerate geometry (start == end). GEM occasionally publishes
+    # rows with a Point geometry or a single-coord LineString, which we'd
+    # otherwise emit as zero-length routes. PR #3406 review found 9 such
+    # rows (Trans-Alaska, Enbridge Line 3 Replacement, Ichthys, etc.).
+    if s_lat == e_lat and s_lon == e_lon:
+        return None, "zero_length"
 
     length = best_length_km(props)
     threshold = MIN_LENGTH_KM_GAS if fuel_token == "Gas" else MIN_LENGTH_KM_OIL

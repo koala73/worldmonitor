@@ -182,13 +182,17 @@ describe('import-gem-pipelines — minimum-viable evidence', () => {
 });
 
 describe('import-gem-pipelines — registry-shape conformance', () => {
+  // Compute the repeat count from the floor + the fixture row count so this
+  // test stays correct if the fixture is trimmed or the floor is raised. The
+  // hardcoded `for (let i = 0; i < 70; i++)` was fragile — Greptile P2 on PR
+  // #3406. +5 over the floor leaves a safety margin without inflating the test.
+  const REGISTRY_FLOOR = 200;
+
   test('emitted gas registry passes validateRegistry', () => {
-    // Build a synthetic registry of just the GEM-emitted gas rows; meets the
-    // validator's MIN_PIPELINES_PER_REGISTRY=200 floor by repeating the 3
-    // fixture rows so we exercise the schema, not the count.
     const { gas } = parseGemPipelines(fixture);
+    const reps = Math.ceil(REGISTRY_FLOOR / gas.length) + 5;
     const repeated = [];
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < reps; i++) {
       for (const p of gas) repeated.push({ ...p, id: `${p.id}-rep${i}` });
     }
     const reg = {
@@ -199,8 +203,9 @@ describe('import-gem-pipelines — registry-shape conformance', () => {
 
   test('emitted oil registry passes validateRegistry', () => {
     const { oil } = parseGemPipelines(fixture);
+    const reps = Math.ceil(REGISTRY_FLOOR / oil.length) + 5;
     const repeated = [];
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < reps; i++) {
       for (const p of oil) repeated.push({ ...p, id: `${p.id}-rep${i}` });
     }
     const reg = {

@@ -86,6 +86,22 @@ describe('pipeline-dedup — match logic', () => {
     assert.equal(skippedDuplicates[0].matchedExistingId, 'druzhba-north');
   });
 
+  test('identical names + one shared terminus (≤25 km) → deduped (PR #3406 Dampier-Bunbury regression)', () => {
+    // Real-world case from PR #3406 review: GEM digitized only the southern
+    // 60% of the line, so the shared Bunbury terminus matched at 13.7 km
+    // but the average-endpoint distance was 287 km (over the 5 km gate).
+    // Identical token sets + ≥1 close pairing = same physical pipeline.
+    const existing = [makePipeline('dampier-bunbury', 'Dampier to Bunbury Natural Gas Pipeline',
+      -20.68, 116.72, -33.33, 115.63)];
+    const candidates = [makePipeline('dampier-to-bunbury-natural-gas-pipeline-au',
+      'Dampier to Bunbury Natural Gas Pipeline',
+      -33.265797, 115.755682, -24.86854, 113.674968)];
+    const { toAdd, skippedDuplicates } = dedupePipelines(existing, candidates);
+    assert.equal(toAdd.length, 0);
+    assert.equal(skippedDuplicates.length, 1);
+    assert.equal(skippedDuplicates[0].matchedExistingId, 'dampier-bunbury');
+  });
+
   test('name-match only (endpoints in different ocean) → added', () => {
     const existing = [makePipeline('nord-stream-1', 'Nord Stream 1',
       60.08, 29.05, 54.14, 13.66)];

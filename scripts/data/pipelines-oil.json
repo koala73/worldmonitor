@@ -4896,37 +4896,6 @@
       },
       "productClass": "crude"
     },
-    "enbridge-line-3-oil-pipeline-line-3-replacement-project-ca": {
-      "id": "enbridge-line-3-oil-pipeline-line-3-replacement-project-ca",
-      "name": "Enbridge Line 3 Oil Pipeline - Line 3 Replacement Project",
-      "operator": "Enbridge [100.00%]",
-      "commodityType": "oil",
-      "fromCountry": "CA",
-      "toCountry": "US",
-      "transitCountries": [],
-      "capacityMbd": 0.844,
-      "lengthKm": 1889.37,
-      "inService": 2019,
-      "startPoint": {
-        "lat": 47.68948,
-        "lon": -95.4207
-      },
-      "endPoint": {
-        "lat": 47.68948,
-        "lon": -95.4207
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
     "enbridge-line-4-oil-pipeline-ca": {
       "id": "enbridge-line-4-oil-pipeline-ca",
       "name": "Enbridge Line 4 Oil Pipeline",
@@ -4945,37 +4914,6 @@
       "endPoint": {
         "lat": 46.690572,
         "lon": -92.067312
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
-    "enbridge-line-5-pipeline-us": {
-      "id": "enbridge-line-5-pipeline-us",
-      "name": "Enbridge Line 5 Pipeline",
-      "operator": "Enbridge [100.00%]",
-      "commodityType": "oil",
-      "fromCountry": "US",
-      "toCountry": "CA",
-      "transitCountries": [],
-      "capacityMbd": 0.54,
-      "lengthKm": 1038.03,
-      "inService": 1953,
-      "startPoint": {
-        "lat": 46.690572,
-        "lon": -92.067312
-      },
-      "endPoint": {
-        "lat": 42.95186,
-        "lon": -82.416
       },
       "evidence": {
         "physicalState": "flowing",
@@ -6014,37 +5952,6 @@
       },
       "productClass": "crude"
     },
-    "jayhawk-oil-pipeline-us": {
-      "id": "jayhawk-oil-pipeline-us",
-      "name": "Jayhawk Oil Pipeline",
-      "operator": "CHS Inc [unknown %]; Southwest Pipeline Holding Company LLC [unknown %]",
-      "commodityType": "oil",
-      "fromCountry": "US",
-      "toCountry": "US",
-      "transitCountries": [],
-      "capacityMbd": 0.14,
-      "lengthKm": 1609.34,
-      "inService": 1957,
-      "startPoint": {
-        "lat": 38.33994,
-        "lon": -98.3101
-      },
-      "endPoint": {
-        "lat": 38.33994,
-        "lon": -98.3101
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
     "jing-an-xianyang-oil-pipeline-cn": {
       "id": "jing-an-xianyang-oil-pipeline-cn",
       "name": "Jing'an-Xianyang Oil Pipeline",
@@ -6758,37 +6665,6 @@
       },
       "productClass": "crude"
     },
-    "loma-la-lata-bah-a-blanca-pipeline-ar": {
-      "id": "loma-la-lata-bah-a-blanca-pipeline-ar",
-      "name": "Loma La Lata - Bahía Blanca Pipeline",
-      "operator": "MEGA S.A. [100.00%]",
-      "commodityType": "oil",
-      "fromCountry": "AR",
-      "toCountry": "AR",
-      "transitCountries": [],
-      "capacityMbd": 0.033424800000000005,
-      "lengthKm": 600,
-      "inService": 2001,
-      "startPoint": {
-        "lat": -38.692348,
-        "lon": -62.427343
-      },
-      "endPoint": {
-        "lat": -38.692348,
-        "lon": -62.427343
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
     "lone-star-express-y-grade-pipeline-expansion-us": {
       "id": "lone-star-express-y-grade-pipeline-expansion-us",
       "name": "Lone Star Express Y-Grade Pipeline - Expansion",
@@ -7303,37 +7179,6 @@
       "endPoint": {
         "lat": 44.694109,
         "lon": -92.984845
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
-    "moomba-to-port-bonython-oil-pipeline-au": {
-      "id": "moomba-to-port-bonython-oil-pipeline-au",
-      "name": "Moomba to Port Bonython Oil Pipeline",
-      "operator": "Santos Limited [66.60%]; Beach Energy Limited [20.20%]; Origin Energy Limited [13.20%]",
-      "commodityType": "oil",
-      "fromCountry": "AU",
-      "toCountry": "AU",
-      "transitCountries": [],
-      "capacityMbd": 0.04,
-      "lengthKm": 659,
-      "inService": 1984,
-      "startPoint": {
-        "lat": -32.9602,
-        "lon": 137.7126
-      },
-      "endPoint": {
-        "lat": -32.9602,
-        "lon": 137.7126
       },
       "evidence": {
         "physicalState": "flowing",
@@ -8031,37 +7876,6 @@
       },
       "productClass": "crude"
     },
-    "osbra-pipeline-br": {
-      "id": "osbra-pipeline-br",
-      "name": "OSBRA Pipeline",
-      "operator": "Petrobras [unknown %]",
-      "commodityType": "oil",
-      "fromCountry": "BR",
-      "toCountry": "BR",
-      "transitCountries": [],
-      "capacityMbd": 0.10339397,
-      "lengthKm": 964,
-      "inService": 1996,
-      "startPoint": {
-        "lat": -16.692967,
-        "lon": -49.106089
-      },
-      "endPoint": {
-        "lat": -16.692967,
-        "lon": -49.106089
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
     "overland-pass-ngl-pipeline-us": {
       "id": "overland-pass-ngl-pipeline-us",
       "name": "Overland Pass NGL Pipeline",
@@ -8372,37 +8186,6 @@
       },
       "productClass": "crude"
     },
-    "permian-longview-and-louisiana-extension-pela-oil-pipeline-us": {
-      "id": "permian-longview-and-louisiana-extension-pela-oil-pipeline-us",
-      "name": "Permian Longview and Louisiana Extension (PELA) Oil Pipeline",
-      "operator": "Energy Transfer [unknown %]; ExxonMobil [unknown %]; SunVit Pipeline LLC [unknown %]",
-      "commodityType": "oil",
-      "fromCountry": "US",
-      "toCountry": "US",
-      "transitCountries": [],
-      "capacityMbd": 0.1,
-      "lengthKm": 1207.01,
-      "inService": 2016,
-      "startPoint": {
-        "lat": 32.521123,
-        "lon": -100.838587
-      },
-      "endPoint": {
-        "lat": 32.521123,
-        "lon": -100.838587
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
     "plains-west-coast-pipeline-us": {
       "id": "plains-west-coast-pipeline-us",
       "name": "Plains West Coast Pipeline",
@@ -8638,37 +8421,6 @@
       "endPoint": {
         "lat": 60.687678,
         "lon": 72.864469
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
-    "purovsk-yuzhny-balyk-tobolsk-product-pipeline-yuzhny-balyk-t-ru": {
-      "id": "purovsk-yuzhny-balyk-tobolsk-product-pipeline-yuzhny-balyk-t-ru",
-      "name": "Purovsk-Yuzhny Balyk-Tobolsk Product Pipeline - Yuzhny Balyk-Tobolsk Product Pipeline",
-      "operator": "Sibur Holding PJSC [100.00%]",
-      "commodityType": "oil",
-      "fromCountry": "RU",
-      "toCountry": "RU",
-      "transitCountries": [],
-      "capacityMbd": 0.1605475701574264,
-      "lengthKm": 410,
-      "inService": 2014,
-      "startPoint": {
-        "lat": 60.687678,
-        "lon": 72.864469
-      },
-      "endPoint": {
-        "lat": 58.262636,
-        "lon": 68.437988
       },
       "evidence": {
         "physicalState": "flowing",
@@ -9692,37 +9444,6 @@
       "endPoint": {
         "lat": 39.075042,
         "lon": 121.797759
-      },
-      "evidence": {
-        "physicalState": "flowing",
-        "physicalStateSource": "gem",
-        "operatorStatement": null,
-        "commercialState": "unknown",
-        "sanctionRefs": [],
-        "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
-        "classifierVersion": "gem-import-v1",
-        "classifierConfidence": 0.4
-      },
-      "productClass": "crude"
-    },
-    "trans-alaska-oil-pipeline-system-us": {
-      "id": "trans-alaska-oil-pipeline-system-us",
-      "name": "Trans-Alaska Oil Pipeline System",
-      "operator": "Harvest Alaska LLC [49.11%]; ConocoPhillips Transportation Alaska Inc [29.61%]; ExxonMobil Pipeline Company LLC [21.28%]",
-      "commodityType": "oil",
-      "fromCountry": "US",
-      "toCountry": "US",
-      "transitCountries": [],
-      "capacityMbd": 2.136,
-      "lengthKm": 1288,
-      "inService": 1977,
-      "startPoint": {
-        "lat": 68.172417,
-        "lon": -149.426171
-      },
-      "endPoint": {
-        "lat": 68.172417,
-        "lon": -149.426171
       },
       "evidence": {
         "physicalState": "flowing",

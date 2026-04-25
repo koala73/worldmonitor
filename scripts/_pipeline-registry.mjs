@@ -98,6 +98,13 @@ export function validateRegistry(data) {
     if (!p.endPoint || typeof p.endPoint.lat !== 'number' || typeof p.endPoint.lon !== 'number') return false;
     if (!isValidLatLon(p.startPoint.lat, p.startPoint.lon)) return false;
     if (!isValidLatLon(p.endPoint.lat, p.endPoint.lon)) return false;
+    // Reject degenerate routes where startPoint == endPoint. PR #3406 review
+    // surfaced 9 GEM rows (incl. Trans-Alaska, Enbridge Line 3, Ichthys)
+    // whose source GeoJSON had a Point geometry or a single-coord LineString,
+    // producing zero-length pipelines that render as map-point artifacts and
+    // skew aggregate-length statistics. Defense in depth — converter also
+    // drops these — but the validator gate makes the contract explicit.
+    if (p.startPoint.lat === p.endPoint.lat && p.startPoint.lon === p.endPoint.lon) return false;
 
     if (!p.evidence || typeof p.evidence !== 'object') return false;
     const ev = p.evidence;
