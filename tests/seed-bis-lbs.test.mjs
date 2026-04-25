@@ -129,6 +129,47 @@ describe('extractClaimsByCounterparty — SDMX-JSON shape parsing', () => {
     assert.equal(result.latestPeriod, null);
   });
 
+  it('drops counterparty when claim value exceeds 1e8 millions (upper-bound corruption guard)', () => {
+    // 2e8 millions = $200T — far above any plausible bilateral claim
+    // (global GDP is ~$110T). Treat as parser corruption, drop silently.
+    function buildFixtureWithCorruptValue(corruptVal) {
+      return {
+        data: {
+          dataSets: [
+            {
+              series: {
+                '0:0:0:0:0:0:0:0:0:0:0:0': { observations: { '0': [corruptVal] } },
+                '0:0:0:0:0:0:0:0:0:0:1:0': { observations: { '0': [50_000] } }, // legitimate
+              },
+            },
+          ],
+          structure: {
+            dimensions: {
+              series: [
+                { id: 'FREQ', values: [{ id: 'Q' }] },
+                { id: 'MEASURE', values: [{ id: 'S' }] },
+                { id: 'L_POSITION', values: [{ id: 'C' }] },
+                { id: 'L_INSTR', values: [{ id: 'A' }] },
+                { id: 'L_DENOM', values: [{ id: 'TO1' }] },
+                { id: 'L_CURR_TYPE', values: [{ id: 'A' }] },
+                { id: 'L_PARENT_CTY', values: [{ id: 'US' }] },
+                { id: 'L_REP_BANK_TYPE', values: [{ id: 'A' }] },
+                { id: 'L_REP_CTY', values: [{ id: '5A' }] },
+                { id: 'L_CP_SECTOR', values: [{ id: 'A' }] },
+                { id: 'L_CP_COUNTRY', values: [{ id: 'BR' }, { id: 'MX' }] },
+                { id: 'L_POS_TYPE', values: [{ id: 'N' }] },
+              ],
+              observation: [{ id: 'TIME_PERIOD', values: [{ id: '2024-Q4' }] }],
+            },
+          },
+        },
+      };
+    }
+    const result = extractClaimsByCounterparty(buildFixtureWithCorruptValue(2e8));
+    assert.ok(!('BR' in result.byCounterparty), 'corrupt value must be dropped');
+    assert.equal(result.byCounterparty.MX, 50_000, 'legitimate value passes through');
+  });
+
   it('throws when L_CP_COUNTRY dimension is missing (parser regression guard)', () => {
     const broken = {
       data: {
@@ -145,9 +186,9 @@ describe('validate', () => {
     assert.equal(validate({ countries: {} }), false);
   });
 
-  it('rejects payload below 100-country floor', () => {
+  it('rejects payload below 150-country floor', () => {
     const tiny = {};
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 100; i++) {
       tiny[`X${i.toString().padStart(2, '0')}`] = { totalXborderPctGdp: 5, parentCount: 2, parents: {}, gdpYear: 2024 };
     }
     assert.equal(validate({ countries: tiny }), false);
@@ -155,7 +196,7 @@ describe('validate', () => {
 
   it('accepts payload at or above the BIS LBS floor', () => {
     const ample = {};
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 160; i++) {
       ample[`X${i.toString().padStart(2, '0')}`] = { totalXborderPctGdp: 5, parentCount: 2, parents: {}, gdpYear: 2024 };
     }
     assert.equal(validate({ countries: ample }), true);

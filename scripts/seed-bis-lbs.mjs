@@ -143,6 +143,13 @@ export function extractClaimsByCounterparty(sdmxJson) {
       }
     }
     if (!Number.isFinite(latestVal) || latestVal < 0) continue;
+    // Upper-bound sanity guard: BIS reports claims in USD millions. The
+    // largest realistic single-bilateral claim is ~$2T = 2,000,000 millions.
+    // 1e8 millions = $100T = >half of global GDP — far above any plausible
+    // bilateral exposure. A value above this threshold indicates a parser
+    // or upstream-corruption fault; reject silently rather than corrupt
+    // the % of GDP ratio downstream.
+    if (latestVal > 1e8) continue;
 
     byCounterparty[cpCode] = latestVal;
     const period = obsValues[latestIdx]?.id;
@@ -160,6 +167,34 @@ async function fetchBisLbsForParent(parentIso2) {
   const url = `${BIS_BASE}/${key}?lastNObservations=4`;
   const json = await fetchSdmxJson(url);
   return extractClaimsByCounterparty(json);
+}
+
+// Bounded-concurrency runner. Sequential 16 parents × 60s timeout = 960s
+// worst-case, which exceeds the bundle's 600s timeoutMs. Parallel-4
+// caps wall time at ~4 × 60s = 240s on the slow path while staying
+// polite to BIS API (4 in-flight is well under any reasonable rate
+// limit). The runner returns the per-parent result map AND an errors
+// array so the caller can gate validation on the success-count.
+async function runParentFetchesConcurrent(parents, concurrency = 4) {
+  const results = {};
+  const errors = [];
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= parents.length) return;
+      const parent = parents[idx];
+      try {
+        results[parent] = await fetchBisLbsForParent(parent);
+      } catch (err) {
+        errors.push(`parent=${parent}: ${err.message}`);
+        results[parent] = { byCounterparty: {}, latestPeriod: null };
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, parents.length) }, () => worker());
+  await Promise.all(workers);
+  return { results, errors };
 }
 
 async function fetchGdpByCountry() {
@@ -232,24 +267,42 @@ export function combineLbsByCounterparty(perParent, gdpByCountry) {
   return countries;
 }
 
+// Minimum successful parents required for the seed payload to be
+// considered structurally valid. Below this threshold, the surviving
+// parents would skew Component 4 (financial-center redundancy) low for
+// every counterparty country until the next successful run — a covertly-
+// degraded payload that passes the >100-counterparty floor. Reject
+// instead so seed-meta is NOT refreshed and the previous valid payload
+// stays alive under cache TTL.
+const MIN_SUCCESSFUL_PARENTS = 12;
+
 export async function fetchBisLbs() {
-  const perParent = {};
-  const errors = [];
-  // Sequential to be polite to BIS API; ~16 quick queries total.
-  for (const parent of PARENT_COUNTRIES) {
-    try {
-      perParent[parent] = await fetchBisLbsForParent(parent);
-    } catch (err) {
-      errors.push(`parent=${parent}: ${err.message}`);
-      perParent[parent] = { byCounterparty: {}, latestPeriod: null };
-    }
+  const { results: perParent, errors } = await runParentFetchesConcurrent(PARENT_COUNTRIES, 4);
+  const successfulParents = PARENT_COUNTRIES.length - errors.length;
+  if (successfulParents < MIN_SUCCESSFUL_PARENTS) {
+    throw new Error(
+      `BIS LBS: only ${successfulParents}/${PARENT_COUNTRIES.length} parents succeeded ` +
+        `(min ${MIN_SUCCESSFUL_PARENTS} required to avoid skewing parentCount). Errors: ${errors.join('; ')}`,
+    );
   }
-  if (errors.length === PARENT_COUNTRIES.length) {
-    throw new Error(`BIS LBS: every parent fetch failed. ${errors.join('; ')}`);
+  if (errors.length > 0) {
+    console.warn(`[bis-lbs] ${errors.length}/${PARENT_COUNTRIES.length} parent fetches failed (proceeding with ${successfulParents} successful): ${errors.join('; ')}`);
   }
 
   const gdpByCountry = await fetchGdpByCountry();
   const countries = combineLbsByCounterparty(perParent, gdpByCountry);
+
+  // Provenance: counterparties seen in BIS LBS but dropped because no
+  // GDP record was available. Surfaces silent coverage gaps for ops
+  // triage without polluting the main `countries` map.
+  const droppedForMissingGdp = [];
+  const seenCounterparties = new Set();
+  for (const { byCounterparty } of Object.values(perParent)) {
+    for (const cp of Object.keys(byCounterparty)) seenCounterparties.add(cp);
+  }
+  for (const cp of seenCounterparties) {
+    if (!gdpByCountry[cp]) droppedForMissingGdp.push(cp);
+  }
 
   // Pick the most-common latestPeriod across parents (mode).
   const periods = Object.values(perParent).map((p) => p.latestPeriod).filter(Boolean);
@@ -260,6 +313,8 @@ export async function fetchBisLbs() {
     countries,
     bisQuarter,
     parentCountries: PARENT_COUNTRIES,
+    droppedForMissingGdp,
+    successfulParents,
     sources: [
       'https://stats.bis.org/api/v1/data/WS_LBS_D_PUB',
       'https://www.bis.org/statistics/about_banking_stats.htm',
@@ -269,11 +324,12 @@ export async function fetchBisLbs() {
   };
 }
 
-// BIS LBS counterparty coverage spans ~200+ jurisdictions. Floor of 100
-// catches catastrophic upstream failure while absorbing per-parent
-// sparseness for small economies.
+// BIS LBS counterparty coverage spans ~200+ jurisdictions. Floor of 150
+// is conservative — at this threshold, a fresh seed represents the
+// vast majority of manifest countries. Below 150 indicates a serious
+// upstream regression that should NOT silently refresh seed-meta.
 export function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 100;
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 150;
 }
 
 export function declareRecords(data) {

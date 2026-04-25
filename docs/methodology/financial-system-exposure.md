@@ -165,6 +165,33 @@ When the flag flips on, every country's `financialSystemExposure` score moves fr
 
 The BIS-derived indicators (Components 2 + 4) are tagged `non-commercial` / `enrichment` in `_indicator-registry.ts` per the existing BIS classification convention. The dimension itself is `core` (it contributes to the headline score) per Codex R1 #8 — a `core` dim with `enrichment` constituent indicators is permissible because the indicator-registry lint accepts the configuration.
 
+## Common operational footguns
+
+### BIS LBS `4F` is NOT a valid parent-country aggregate
+
+Codex Round 4 caught this: BIS publishes `4F` as a counterparty-country legacy code (Euro area), but `WS_LBS_D_PUB`'s `L_PARENT_CTY` codelist (`CL_BIS_IF_REF_AREA`) only accepts ISO 3166-1 alpha-2 country codes plus the BIS-defined parent aggregates `5J` (all parents) and `5M` (emerging markets). Querying `L_PARENT_CTY=4F` returns an empty SDMX result silently — a fresh seed-meta with zero claims looks plausible but produces 0% exposure for every counterparty. **Rule**: enumerate the individual euro-area parent ISO2 codes (DE, FR, IT, NL, ES, BE, AT, IE, LU) instead. The seeder's `PARENT_COUNTRIES` list pins this.
+
+### BIS LBS `L_CP_COUNTRY` uses ISO 3166-1, not M49
+
+Codex Round 4 also caught this: BIS LBS country dimensions follow the `CL_BIS_IF_REF_AREA` codelist, which is ISO 3166-1 alpha-2 for country members (`BR`, `US`, `GB`, etc.). No M49 numeric mapping is required — pass ISO2 codes directly to the SDMX key. The seeder uses `iso3-to-iso2.json` only for the GDP denominator (WB API returns ISO3).
+
+### Smoke test before flipping `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true`
+
+After running the 3 seeders manually but BEFORE flipping the flag in Vercel:
+
+```bash
+# Confirm seed envelopes published
+redis-cli GET 'seed-meta:economic:wb-external-debt' | jq '.fetchedAt, .recordCount'
+redis-cli GET 'seed-meta:economic:bis-lbs'          | jq '.fetchedAt, .recordCount'
+redis-cli GET 'seed-meta:economic:fatf-listing'     | jq '.fetchedAt, .recordCount'
+
+# Confirm BIS LBS payload is non-empty for a major economy
+redis-cli GET 'economic:bis-lbs:v1' | jq '.countries.BR'
+# Expected: { totalXborderPctGdp: <number>, parentCount: <2..16>, parents: {...}, gdpYear: <year> }
+```
+
+If any of these return null or empty, **do NOT flip the flag** — flipping with absent envelopes throws `ResilienceConfigurationError` on every `/api/resilience/*` request and stamps every country's `financialSystemExposure` as `imputationClass='source-failure'`. The fix is recoverable (flip the flag back OFF, fix the seeder, re-run, retry) but produces user-visible Sentry noise during the gap.
+
 ## Alternatives considered (and rejected)
 
 ### Alternative 1 — Patch `normalizeSanctionCount` only

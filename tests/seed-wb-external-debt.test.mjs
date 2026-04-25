@@ -39,7 +39,19 @@ describe('combineExternalDebt — formula composition', () => {
     const shortTermPctOfTotal = { GH: { value: 22, year: 2022 } };
     const totalDebtPctGni = { GH: { value: 30, year: 2023 } };
     const out = combineExternalDebt({ shortTermPctOfTotal, totalDebtPctGni });
-    assert.equal(out.GH.year, 2022);
+    assert.equal(out.GH.year, 2022, 'must use min(year) — older year is the binding constraint');
+    assert.equal(out.GH.yearMismatch, true, 'cross-year composition must be flagged for ops triage');
+    // Per-indicator years preserved so downstream consumers can see the
+    // actual source vintages without re-fetching.
+    assert.equal(out.GH.shortTermPctOfTotalDebtYear, 2022);
+    assert.equal(out.GH.totalDebtPctOfGniYear, 2023);
+  });
+
+  it('flags yearMismatch=false when both indicators are from the same year (preferred case)', () => {
+    const shortTermPctOfTotal = { ZA: { value: 18, year: 2023 } };
+    const totalDebtPctGni = { ZA: { value: 30, year: 2023 } };
+    const out = combineExternalDebt({ shortTermPctOfTotal, totalDebtPctGni });
+    assert.equal(out.ZA.yearMismatch, false, 'single-year payload must not be flagged');
   });
 
   it('drops country when either source indicator is missing', () => {

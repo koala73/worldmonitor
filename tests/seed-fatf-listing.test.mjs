@@ -79,10 +79,10 @@ describe('extractListedCountries — country-name lookup from publication HTML',
         <h3>Myanmar</h3>
       </body></html>
     `;
-    const set = extractListedCountries(html, buildLookup());
-    assert.ok(set.has('KP'), 'must extract DPRK');
-    assert.ok(set.has('IR'), 'must extract Iran');
-    assert.ok(set.has('MM'), 'must extract Myanmar');
+    const { listed } = extractListedCountries(html, buildLookup());
+    assert.ok(listed.has('KP'), 'must extract DPRK');
+    assert.ok(listed.has('IR'), 'must extract Iran');
+    assert.ok(listed.has('MM'), 'must extract Myanmar');
   });
 
   it('extracts country names from grey-list publication (typical 15-25 countries)', () => {
@@ -95,9 +95,9 @@ describe('extractListedCountries — country-name lookup from publication HTML',
         </ul>
       </body></html>
     `;
-    const set = extractListedCountries(html, buildLookup());
-    assert.ok(set.has('NG'));
-    assert.ok(set.has('ZA'));
+    const { listed } = extractListedCountries(html, buildLookup());
+    assert.ok(listed.has('NG'));
+    assert.ok(listed.has('ZA'));
   });
 
   it('ignores long paragraphs that happen to mention country names', () => {
@@ -106,10 +106,38 @@ describe('extractListedCountries — country-name lookup from publication HTML',
       <h3>Iran</h3>
       <p>The FATF expressed concern about Iran's continued failure to address financial system risks across many jurisdictions including but not limited to Iran's own. This is a long paragraph and should not match.</p>
     `;
-    const set = extractListedCountries(html, buildLookup());
-    assert.ok(set.has('IR'), 'h3 match still works');
+    const { listed } = extractListedCountries(html, buildLookup());
+    assert.ok(listed.has('IR'), 'h3 match still works');
     // The long paragraph mentioning Iran does NOT independently double-count.
-    assert.equal(set.size, 1);
+    assert.equal(listed.size, 1);
+  });
+
+  it('flags short capitalized text nodes that look like missing country names', () => {
+    // FATF introduces a new spelling not in country-names.json — must
+    // surface as unmatchedCandidate so ops can extend the aliases map.
+    const html = `
+      <html><body>
+        <h3>Mauretania</h3>  <!-- alternate spelling not in lookup -->
+        <h3>Iran</h3>
+      </body></html>
+    `;
+    const { listed, unmatchedCandidates } = extractListedCountries(html, buildLookup());
+    assert.ok(listed.has('IR'), 'matched country still resolves');
+    assert.ok(unmatchedCandidates.has('Mauretania'), 'unknown spelling surfaces as unmatched candidate');
+  });
+
+  it('does NOT flag known FATF section headers as unmatched', () => {
+    const html = `
+      <html><body>
+        <h2>High-Risk Jurisdictions Subject to a Call for Action</h2>
+        <h3>Iran</h3>
+      </body></html>
+    `;
+    const { unmatchedCandidates } = extractListedCountries(html, buildLookup());
+    // Section headers are too long (>80 chars after stripHtml is fine) AND
+    // they're in the SECTION_NOISE allow-list. None should appear as
+    // unmatched candidates.
+    assert.equal(unmatchedCandidates.size, 0, 'section headers must not be flagged as unmatched country names');
   });
 });
 
@@ -152,12 +180,17 @@ describe('validate', () => {
   });
 
   it('rejects payload with too few grey-listed jurisdictions (parser likely failed)', () => {
-    assert.equal(validate({ listings: { KP: 'black', IR: 'black' } }), false);
-  });
-
-  it('accepts payload with at least 1 black + 8 grey', () => {
+    // Floor tightened from 8 → 12 — historical FATF grey-list size has
+    // been 15+ since 2020. A grey count below 12 indicates real upstream
+    // failure or parser drift.
     const listings = { KP: 'black' };
     for (let i = 0; i < 10; i++) listings[`X${i.toString().padStart(2, '0')}`] = 'gray';
+    assert.equal(validate({ listings }), false);
+  });
+
+  it('accepts payload with at least 1 black + 12 grey', () => {
+    const listings = { KP: 'black' };
+    for (let i = 0; i < 14; i++) listings[`X${i.toString().padStart(2, '0')}`] = 'gray';
     assert.equal(validate({ listings }), true);
   });
 });

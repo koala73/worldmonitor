@@ -67,26 +67,39 @@ async function fetchHtml(url) {
   }
 }
 
-// Extract the first href to a publication page that contains the given
-// label-text fragment. FATF entry-page anchors look like:
-// `<a href="/en/publications/Fatfrecommendations/high-risk-jurisdictions-2026.html">High-risk jurisdictions subject to a call for action — February 2026</a>`
+// Extract the href to the most-recent publication page whose anchor text
+// contains the given label fragment. Defensive against FATF page layouts
+// where a sidebar/breadcrumb links to historical publications using the
+// same wording before the main-content anchor — preferring the highest-
+// year href catches drift even if document order isn't trustworthy.
+//
+// Returns the chosen URL or null. When multiple candidates match, logs
+// the full candidate list at WARN level for ops visibility.
 export function findPublicationLink(html, labelFragment) {
   const re = /<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const candidates = [];
   let m;
   while ((m = re.exec(html)) !== null) {
     const href = m[1];
     const text = stripHtml(m[2]);
     if (!text) continue;
     if (text.toLowerCase().includes(labelFragment.toLowerCase())) {
-      // Resolve relative URLs against the FATF origin.
-      try {
-        return new URL(href, FATF_ENTRY_URL).toString();
-      } catch {
-        continue;
-      }
+      let resolved;
+      try { resolved = new URL(href, FATF_ENTRY_URL).toString(); } catch { continue; }
+      // Year extracted from the URL slug (preferred) or anchor text.
+      const yearMatch = /\b(20\d{2})\b/.exec(href) ?? /\b(20\d{2})\b/.exec(text);
+      const year = yearMatch ? Number.parseInt(yearMatch[1], 10) : 0;
+      candidates.push({ url: resolved, text, year });
     }
   }
-  return null;
+  if (candidates.length === 0) return null;
+  // Prefer highest-year; fall back to document-order on ties (first match
+  // is usually the canonical link in FATF page templates as of 2026).
+  candidates.sort((a, b) => b.year - a.year);
+  if (candidates.length > 1) {
+    console.warn(`[fatf-listing] multiple "${labelFragment}" anchors found; using ${candidates[0].url} (year=${candidates[0].year}). Other candidates: ${candidates.slice(1).map((c) => `${c.url}(year=${c.year})`).join(', ')}`);
+  }
+  return candidates[0].url;
 }
 
 function stripHtml(s) {
@@ -97,8 +110,32 @@ function stripHtml(s) {
 // country typically appears as a header (h2/h3/h4) or strong tag.
 // Defensive: collect any text node that matches a known country name
 // from the lookup AND appears between the page's main listing markers.
+//
+// Also reports `unmatchedCandidates` — short text nodes that LOOK like
+// country names (capitalized, 2-5 words, not common section headers)
+// but don't match the lookup. Surfaces parser drift / new country
+// spellings that the lookup needs to learn.
 export function extractListedCountries(html, nameLookup) {
   const isoSet = new Set();
+  const unmatchedCandidates = new Set();
+  // Common section headers / FATF wording that should NOT be flagged
+  // as missing-country-spelling.
+  const SECTION_NOISE = new Set([
+    'high risk jurisdictions',
+    'jurisdictions under increased monitoring',
+    'call for action',
+    'high risk jurisdictions subject to a call for action',
+    'fatf',
+    'updated',
+    'overview',
+    'summary',
+    'introduction',
+    'background',
+    'process',
+    'february',
+    'june',
+    'october',
+  ]);
   // Scan all HTML headings + bold/strong elements + list-item leaders.
   const re = /<(?:h[1-6]|strong|b|li|p|td)[^>]*>([\s\S]*?)<\/(?:h[1-6]|strong|b|li|p|td)>/gi;
   let m;
@@ -107,9 +144,20 @@ export function extractListedCountries(html, nameLookup) {
     if (!text || text.length > 80) continue; // skip long paragraphs
     const norm = normalizeName(text);
     const iso2 = nameLookup.get(norm);
-    if (iso2) isoSet.add(iso2);
+    if (iso2) {
+      isoSet.add(iso2);
+      continue;
+    }
+    // Heuristic: 1-5 words, all-or-mostly capitalized, not a known noise
+    // header → likely a country name the lookup is missing.
+    const wordCount = norm.split(' ').filter(Boolean).length;
+    if (wordCount >= 1 && wordCount <= 5 && !SECTION_NOISE.has(norm) && /^[a-z][a-z0-9 ]+$/.test(norm)) {
+      // Only count text that originally had at least one capital letter
+      // (FATF page bodies don't use all-lowercase for country names).
+      if (/[A-Z]/.test(text)) unmatchedCandidates.add(text);
+    }
   }
-  return isoSet;
+  return { listed: isoSet, unmatchedCandidates };
 }
 
 // Try to extract the publication date from the URL slug or the page
@@ -147,13 +195,30 @@ export async function fetchFatfListings({
   ]);
 
   const nameLookup = buildNameLookup();
-  const blackSet = extractListedCountries(blackHtml, nameLookup);
-  const greySet = extractListedCountries(greyHtml, nameLookup);
+  const blackResult = extractListedCountries(blackHtml, nameLookup);
+  const greyResult = extractListedCountries(greyHtml, nameLookup);
 
   const listings = {};
-  for (const iso2 of blackSet) listings[iso2] = 'black';
-  for (const iso2 of greySet) {
+  for (const iso2 of blackResult.listed) listings[iso2] = 'black';
+  for (const iso2 of greyResult.listed) {
     if (!listings[iso2]) listings[iso2] = 'gray';
+  }
+
+  // Surface unmatched country-name candidates so ops can extend
+  // shared/country-names.json aliases when FATF introduces a new
+  // spelling. Reject the seed if too many candidates are missing —
+  // silent drops would otherwise re-classify the missed countries as
+  // "compliant" (default) and materially shift their financialSystemExposure
+  // score under a fresh seed-meta. Per memory `feedback_url_200_but_wrong_content_type_silent_zero`:
+  // "HTTP 200 + plausible bytes ≠ valid payload."
+  const unmatched = [...new Set([...blackResult.unmatchedCandidates, ...greyResult.unmatchedCandidates])];
+  if (unmatched.length > 0) {
+    console.warn(`[fatf-listing] ${unmatched.length} country-name candidates not found in shared/country-names.json: ${unmatched.join(', ')}. Extend the aliases map if any of these are real country names.`);
+  }
+  if (unmatched.length > 2) {
+    const msg = `FATF parser found ${unmatched.length} unmatched country-name candidates (max 2 tolerated): ${unmatched.join(', ')}. Previous valid payload remains under cache TTL — extend shared/country-names.json or fix the parser before next plenary.`;
+    console.warn(`[fatf-listing] parser sanity-check failed: ${msg}`);
+    throw new Error(msg);
   }
 
   // Sanity-check: FATF black list typically has 1-3 jurisdictions
@@ -162,16 +227,21 @@ export async function fetchFatfListings({
   const blackCount = Object.values(listings).filter((s) => s === 'black').length;
   const grayCount = Object.values(listings).filter((s) => s === 'gray').length;
   if (blackCount === 0 || blackCount > 6) {
-    throw new Error(`FATF black-list count ${blackCount} outside expected 1-6 band; parser likely failed`);
+    const msg = `FATF black-list count ${blackCount} outside expected 1-6 band; parser likely failed`;
+    console.warn(`[fatf-listing] parser sanity-check failed: ${msg}; previous valid payload remains under cache TTL`);
+    throw new Error(msg);
   }
-  if (grayCount < 8 || grayCount > 40) {
-    throw new Error(`FATF grey-list count ${grayCount} outside expected 8-40 band; parser likely failed`);
+  if (grayCount < 12 || grayCount > 40) {
+    const msg = `FATF grey-list count ${grayCount} outside expected 12-40 band; parser likely failed (historical band has been 15+ since 2020)`;
+    console.warn(`[fatf-listing] parser sanity-check failed: ${msg}; previous valid payload remains under cache TTL`);
+    throw new Error(msg);
   }
 
   return {
     listings,
     publicationDate: extractPublicationDate(blackUrl, blackHtml),
     counts: { black: blackCount, gray: grayCount },
+    unmatchedCandidates: unmatched,
     sources: [FATF_ENTRY_URL, blackUrl, greyUrl],
     seededAt: new Date().toISOString(),
   };
@@ -181,8 +251,11 @@ export function validate(data) {
   if (typeof data?.listings !== 'object') return false;
   const counts = Object.values(data.listings);
   // At least 1 black-listed jurisdiction (DPRK has been on every FATF
-  // call-for-action list since 2011) and at least 8 gray-listed.
-  return counts.filter((s) => s === 'black').length >= 1 && counts.filter((s) => s === 'gray').length >= 8;
+  // call-for-action list since 2011) and at least 12 gray-listed.
+  // Historical FATF grey-list size has been 15+ since 2020; floor of 12
+  // catches a real upstream regression while absorbing list churn during
+  // a plenary cycle.
+  return counts.filter((s) => s === 'black').length >= 1 && counts.filter((s) => s === 'gray').length >= 12;
 }
 
 export function declareRecords(data) {

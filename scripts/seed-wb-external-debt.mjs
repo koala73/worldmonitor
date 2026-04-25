@@ -93,12 +93,23 @@ export function combineExternalDebt({ shortTermPctOfTotal, totalDebtPctGni }) {
 
     // shortTermDebt as % of GNI = (shortTermShare / 100) * totalDebtPctOfGni.
     const value = Math.round(((stPct.value / 100) * totalPct.value) * 100) / 100;
+    // Use min(year) as the conservative "we have both" anchor. WB IDS
+    // publishes the two source indicators with different lag patterns;
+    // mixing different vintages is materially correct for resilience
+    // scoring (the older year's data is the binding constraint), but
+    // surface yearMismatch so the dashboard / scorer can flag countries
+    // with cross-year composition for ops triage.
+    const conservativeYear = Math.min(stPct.year, totalPct.year);
+    const yearMismatch = stPct.year !== totalPct.year;
     countries[iso2] = {
       value,
-      year: Math.min(stPct.year, totalPct.year),
-      // Provenance: which underlying values we composed.
+      year: conservativeYear,
+      yearMismatch,
+      // Provenance: which underlying values + per-indicator years.
       shortTermPctOfTotalDebt: Math.round(stPct.value * 100) / 100,
       totalDebtPctOfGni: Math.round(totalPct.value * 100) / 100,
+      shortTermPctOfTotalDebtYear: stPct.year,
+      totalDebtPctOfGniYear: totalPct.year,
     };
   }
   return countries;
