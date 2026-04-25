@@ -58,7 +58,37 @@ interface SnapshotCacheSlot {
 // Cache keyed by request shape: candidates, tankers, and quantized bbox.
 // Replaces the prior `with|without` keying which would silently serve
 // stale tanker data and collapse distinct bboxes.
+//
+// LRU-bounded: each distinct (includeCandidates, includeTankers, quantizedBbox)
+// triple creates a slot. With 1° quantization and a misbehaving client, the
+// keyspace is ~64,000 (180×360); without a cap the Map would grow unbounded
+// across the lifetime of the serverless instance. Realistic load is ~12 slots
+// (6 chokepoints × 2 flag combos), so a 128-slot cap leaves >10x headroom for
+// edge panning while making OOM impossible.
+const SNAPSHOT_CACHE_MAX_SLOTS = 128;
 const cache = new Map<string, SnapshotCacheSlot>();
+
+function touchSlot(key: string, slot: SnapshotCacheSlot): void {
+  // Move to end of insertion order so it's most-recently-used. Map iteration
+  // order = insertion order, so the first entry is the LRU candidate.
+  cache.delete(key);
+  cache.set(key, slot);
+}
+
+function evictIfNeeded(): void {
+  if (cache.size < SNAPSHOT_CACHE_MAX_SLOTS) return;
+  // Walk insertion order; evict the first slot that has no in-flight fetch.
+  // An in-flight slot is still in use by an awaiting caller — evicting it
+  // would orphan the promise.
+  for (const [k, s] of cache) {
+    if (s.inFlight === null) {
+      cache.delete(k);
+      return;
+    }
+  }
+  // All slots in flight — nothing to evict. Caller still inserts; we
+  // accept temporary growth past the cap until in-flight settles.
+}
 
 function cacheKeyFor(
   includeCandidates: boolean,
@@ -87,16 +117,19 @@ async function fetchVesselSnapshot(
   const key = cacheKeyFor(includeCandidates, includeTankers, bbox);
   let slot = cache.get(key);
   if (!slot) {
+    evictIfNeeded();
     slot = { snapshot: undefined, timestamp: 0, inFlight: null };
     cache.set(key, slot);
   }
   const now = Date.now();
   const ttl = ttlFor(includeTankers, bbox);
   if (slot.snapshot && (now - slot.timestamp) < ttl) {
+    touchSlot(key, slot);
     return slot.snapshot;
   }
 
   if (slot.inFlight) {
+    touchSlot(key, slot);
     return slot.inFlight;
   }
 
@@ -106,6 +139,7 @@ async function fetchVesselSnapshot(
     if (result) {
       slot.snapshot = result;
       slot.timestamp = Date.now();
+      touchSlot(key, slot);
     }
     return result ?? slot.snapshot; // serve stale on relay failure
   } finally {
