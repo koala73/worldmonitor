@@ -192,7 +192,11 @@ describe('composeBriefFromDigestStories — continued', () => {
     assert.deepEqual(env.data.stories.map((s) => s.headline), ['A', 'B']);
   });
 
-  it('caps at 12 stories per brief', () => {
+  it('caps at 16 stories per brief (post production-evidence bump)', () => {
+    // Bumped 12 → 16 in PR following #3387: production logs showed
+    // dropped_cap=18 for 73% of all-sensitivity users every tick.
+    // Larger cap admits more multi-member topic members before
+    // truncating, reducing topic-straddle losses.
     const many = Array.from({ length: 30 }, (_, i) =>
       digestStory({ hash: `h${i}`, title: `Story ${i}` }),
     );
@@ -202,7 +206,7 @@ describe('composeBriefFromDigestStories — continued', () => {
       { clusters: 30, multiSource: 15 },
       { nowMs: NOW },
     );
-    assert.equal(env.data.stories.length, 12);
+    assert.equal(env.data.stories.length, 16);
   });
 
   it('maps unknown severity to null → story is dropped', () => {

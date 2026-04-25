@@ -151,7 +151,18 @@ export function userDisplayNameFromId(userId) {
 
 // ── Compose a full brief for a single rule ──────────────────────────────────
 
-const MAX_STORIES_PER_USER = 12;
+// Bumped 12 → 16 based on production telemetry from PR #3387: 73% of
+// `sensitivity=all` users had `dropped_cap=18` per tick (30 qualified
+// stories truncated to 12). Multi-member topics straddling the cap
+// boundary lost members to truncation. Bumping to 16 lets larger
+// leading topics fit fully and reduces dropped_cap from ~18 to ~14
+// without affecting `sensitivity=critical` users (their pools cap at
+// 7-10 stories — well below either threshold).
+//
+// "Are we getting better" signal: watch the [digest] brief filter
+// drops log line on Railway — `dropped_cap=` should drop by ~4 per
+// tick after deploy.
+const MAX_STORIES_PER_USER = 16;
 
 /**
  * Filter + assemble a BriefEnvelope for one alert rule from a
