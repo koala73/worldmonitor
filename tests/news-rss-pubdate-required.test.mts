@@ -225,16 +225,26 @@ describe('parseRssXml — partial-feed preservation (R8)', () => {
     assert.equal(result!.droppedUndated, 3);
   });
 
-  it('a feed with no parseable items (no <item> or <entry>) still returns the struct with zero stats', () => {
-    // Genuinely empty feed (channel exists, no items in it). The 'empty'
-    // classification path in buildDigest's caller fires here, distinct from
-    // 'all-undated'. parseRssXml MUST NOT return null — null is reserved
-    // for the upstream fetch/no-XML path in fetchAndParseRss.
+  it('a feed with no parseable items (no <item> or <entry>) returns null for negative-cache short-TTL retry', () => {
+    // parsedTotal === 0 means the XML body had no recognizable items at all
+    // — genuinely empty channel, malformed response, or a Cloudflare/block
+    // page that doesn't match the item regexes. parseRssXml MUST return
+    // null here so cachedFetchJson writes NEG_SENTINEL with 120s TTL,
+    // letting the feed retry quickly instead of being pinned empty for the
+    // full 3600s positive-cache TTL. (Caught by reviewer of PR #3417 second
+    // review pass.) Distinct from the all-undated case (parsedTotal>0,
+    // items=[], droppedUndated>0) which DOES return the struct so the
+    // silent-zeroing detection signal survives.
     const xml = wrapRss(``);
     const result = parseRssXml(xml, FEED, 'full');
-    assert.ok(result);
-    assert.equal(result!.items.length, 0);
-    assert.equal(result!.parsedTotal, 0);
-    assert.equal(result!.droppedUndated, 0);
+    assert.equal(result, null);
+  });
+
+  it('a malformed/block-page response (no recognizable items) returns null', () => {
+    // Cloudflare-style interstitial. No <item> or <entry> blocks → null →
+    // short-TTL negative cache → fast retry on next poll.
+    const xml = '<html><body>Access denied. Please complete the challenge.</body></html>';
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.equal(result, null);
   });
 });

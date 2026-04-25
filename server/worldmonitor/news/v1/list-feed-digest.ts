@@ -243,7 +243,7 @@ function extractFirstDateTag(block: string, isAtom: boolean): string {
   return '';
 }
 
-function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult {
+function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
   let parsedTotal = 0;
   let droppedUndated = 0;
@@ -332,13 +332,22 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     );
   }
 
-  // Always return the struct so per-feed stats survive the cache layer —
-  // critical for distinguishing 'all-undated' (parsedTotal>0, items=[]) from
-  // 'empty' (parsedTotal=0, items=[]) downstream in buildDigest. Returning
-  // null here would let `fetchAndParseRss`'s `cached ?? { all-zero stats }`
-  // fallback erase the dropped count, making 'all-undated' classification
-  // unreachable. `null` is reserved for the upstream fetch/no-XML failure
-  // path in `fetchAndParseRss`.
+  // Two cases:
+  //
+  // (a) parsedTotal > 0 — we recognized at least one <item>/<entry> block in
+  //     the XML, so the stats are meaningful (whether all dropped, partially
+  //     dropped, or none dropped). Return the struct so cachedFetchJson
+  //     positive-caches it for the full TTL and the 'all-undated' branch in
+  //     buildDigest's caller can fire (parsedTotal>0 ∧ items=[] ∧ dropped>0).
+  //
+  // (b) parsedTotal === 0 — the XML body had no recognizable items at all.
+  //     This covers genuinely empty feeds (channel exists, no items),
+  //     malformed XML responses, transient block pages, and Cloudflare
+  //     interstitials that don't match the item/entry regexes. Return null
+  //     so cachedFetchJson writes NEG_SENTINEL with the short negativeTtl
+  //     (default 120s) — the feed retries quickly instead of being pinned
+  //     empty for the full 3600s TTL.
+  if (parsedTotal === 0) return null;
   return { items, parsedTotal, droppedUndated };
 }
 
