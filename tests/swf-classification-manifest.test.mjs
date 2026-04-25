@@ -33,20 +33,48 @@ describe('SWF classification manifest — shipped YAML', () => {
     );
   });
 
-  it('lists the first-release set of funds from plan §3.4', () => {
+  it('lists the first-release set of funds from plan §3.4 (KIA split per Phase 1B)', () => {
+    // Phase 1B (Plan 2026-04-25-001) split the original `KW:kia` entry
+    // into `KW:kia-grf` and `KW:kia-fgf` to correctly attribute GRF's
+    // 0.9 stabilization access to its ~5% sleeve and FGF's 0.20
+    // statutorily-gated access to the remaining ~95%. Both identifiers
+    // are now required.
     const expected = new Set([
       'NO:gpfg',
       'AE:adia',
       'AE:mubadala',
       'SA:pif',
-      'KW:kia',
+      'KW:kia-grf',
+      'KW:kia-fgf',
       'QA:qia',
       'SG:gic',
       'SG:temasek',
     ]);
     const actual = new Set(manifest.funds.map((f) => `${f.country}:${f.fund}`));
     for (const required of expected) {
-      assert.ok(actual.has(required), `plan §3.4 required fund missing from manifest: ${required}`);
+      assert.ok(actual.has(required), `plan §3.4 + Phase 1B required fund missing from manifest: ${required}`);
+    }
+  });
+
+  it('Phase 1 (Plan 2026-04-25-001) expansion adds 12 new funds across 7 new + extended countries', () => {
+    // Phase 1 expansion: UAE adds ICD/ADQ/EIA (3); KW splits kia → kia-grf+kia-fgf
+    // (1 net since kia is dropped); CN adds CIC/NSSF/SAFE-IC (3); HK adds HKMA-EF
+    // (1); KR adds KIC (1); AU adds Future Fund (1); OM adds OIA (1); BH adds
+    // Mumtalakat (1); TL adds Petroleum Fund (1). Net new identifiers: 12 over
+    // the original 8 + 1 from KIA split. Manifest total ≥ 20.
+    const required = new Set([
+      'AE:icd', 'AE:adq', 'AE:eia',
+      'CN:cic', 'CN:nssf', 'CN:safe-ic',
+      'HK:hkma-ef',
+      'KR:kic',
+      'AU:future-fund',
+      'OM:oia',
+      'BH:mumtalakat',
+      'TL:petroleum-fund',
+    ]);
+    const actual = new Set(manifest.funds.map((f) => `${f.country}:${f.fund}`));
+    for (const r of required) {
+      assert.ok(actual.has(r), `Phase 1 expansion fund missing from manifest: ${r}`);
     }
   });
 
