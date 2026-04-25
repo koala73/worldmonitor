@@ -186,12 +186,13 @@ describe('parseRssXml — integration with description', () => {
         <pubDate>Thu, 24 Apr 2026 08:02:00 GMT</pubDate>
       </item>
     `);
-    const items = parseRssXml(xml, FEED, 'full');
-    assert.ok(items, 'parseRssXml returns non-null for populated feed');
-    assert.strictEqual(items!.length, 2);
-    assert.ok(items![0]!.description.length > 0, 'first item has a real description');
-    assert.ok(items![0]!.description.includes('substantive'));
-    assert.strictEqual(items![1]!.description, '', 'second item falls back to empty string');
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result, 'parseRssXml returns non-null for populated feed');
+    const items = result!.items;
+    assert.strictEqual(items.length, 2);
+    assert.ok(items[0]!.description.length > 0, 'first item has a real description');
+    assert.ok(items[0]!.description.includes('substantive'));
+    assert.strictEqual(items[1]!.description, '', 'second item falls back to empty string');
   });
 
   it('Atom feed ParsedItems carry a description field from <summary>/<content>', () => {
@@ -203,10 +204,11 @@ describe('parseRssXml — integration with description', () => {
         <summary>An Atom summary body long enough to pass the minimum grounding gate for descriptions.</summary>
       </entry>
     `);
-    const items = parseRssXml(xml, FEED, 'full');
-    assert.ok(items);
-    assert.strictEqual(items!.length, 1);
-    assert.ok(items![0]!.description.startsWith('An Atom summary'));
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 1);
+    assert.ok(items[0]!.description.startsWith('An Atom summary'));
   });
 
   it('News24 Iran-leader reproduction: description contains the article-named actor, not the parametric one', () => {
@@ -222,10 +224,11 @@ describe('parseRssXml — integration with description', () => {
         <description><![CDATA[<p>Mojtaba Khamenei, 56, was seriously wounded in an attack this week, and has delegated operational authority to the Revolutionary Guards, multiple regional sources told News24.</p>]]></description>
       </item>
     `);
-    const items = parseRssXml(xml, FEED, 'full');
-    assert.ok(items);
-    assert.strictEqual(items!.length, 1);
-    const desc = items![0]!.description;
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 1);
+    const desc = items[0]!.description;
     assert.ok(desc.includes('Mojtaba'), 'grounding requires the article-named actor');
     assert.ok(!desc.toLowerCase().includes('ali khamenei'), 'description must not contain the parametric/hallucinated name');
   });

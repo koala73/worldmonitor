@@ -36,6 +36,18 @@ const FEED_TIMEOUT_MS = 8_000;
 const OVERALL_DEADLINE_MS = 25_000;
 const BATCH_CONCURRENCY = 20;
 
+// U3 — hard freshness floor (default 48h, env override NEWS_MAX_AGE_HOURS).
+// Items older than this are dropped before scoring. The 24h `recencyScore`
+// component already treats anything older than 24h as zero recency, so the
+// 48h default is a soft buffer beyond that. Out-of-range / unparseable env
+// values fall back to the default silently. See R3 in
+// docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
+function resolveMaxAgeMs(): number {
+  const raw = Number.parseInt(process.env.NEWS_MAX_AGE_HOURS ?? '', 10);
+  const hours = Number.isInteger(raw) && raw > 0 ? raw : 48;
+  return hours * 60 * 60 * 1000;
+}
+
 const LEVEL_TO_PROTO: Record<ThreatLevel, ProtoThreatLevel> = {
   critical: 'THREAT_LEVEL_CRITICAL',
   high: 'THREAT_LEVEL_HIGH',
@@ -155,15 +167,30 @@ async function fetchRssText(
   }
 }
 
+/**
+ * Parser output: items that survived all parse-time gates plus per-feed
+ * stats so the caller can classify feed health (e.g. silent zeroing from
+ * an unrecognized date dialect — see U2 in
+ * docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md).
+ */
+interface ParseResult {
+  items: ParsedItem[];
+  parsedTotal: number;     // count of <item>/<entry> blocks attempted
+  droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
+}
+
 async function fetchAndParseRss(
   feed: ServerFeed,
   variant: string,
   signal: AbortSignal,
-): Promise<ParsedItem[]> {
-  const cacheKey = `rss:feed:v1:${variant}:${feed.url}`;
+): Promise<ParseResult> {
+  // v2 cache shape carries items + stats; bump prevents v1 array values
+  // from being mistyped as the new struct after deploy. Old v1 entries
+  // TTL-expire within 1h.
+  const cacheKey = `rss:feed:v2:${variant}:${feed.url}`;
 
   try {
-    const cached = await cachedFetchJson<ParsedItem[]>(cacheKey, 3600, async () => {
+    const cached = await cachedFetchJson<ParseResult>(cacheKey, 3600, async () => {
       // Try direct fetch first
       let text = await fetchRssText(feed.url, signal).catch(() => null);
 
@@ -189,14 +216,37 @@ async function fetchAndParseRss(
       return parseRssXml(text, feed, variant);
     });
 
-    return cached ?? [];
+    return cached ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
   } catch {
-    return [];
+    return { items: [], parsedTotal: 0, droppedUndated: 0 };
   }
 }
 
-function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem[] | null {
+// Date-tag priority lists. RSS feeds typically carry <pubDate>; Atom carries
+// <published>/<updated>; ArXiv (and other Dublin Core dialects) carry <dc:date>
+// or <dc:Date.Issued>; some hybrid feeds emit RSS-shaped items with Atom-style
+// date tags. First non-empty hit wins.
+const DATE_TAG_PRIORITY = {
+  rss: ['pubDate', 'dc:date', 'dc:Date.Issued', 'published'] as const,
+  atom: ['published', 'updated', 'dc:date', 'dc:Date.Issued'] as const,
+};
+
+// Future-dated guard: items > 1h ahead of now are clock-skew or malformed.
+const FUTURE_DATE_TOLERANCE_MS = 60 * 60 * 1000;
+
+function extractFirstDateTag(block: string, isAtom: boolean): string {
+  const tags = isAtom ? DATE_TAG_PRIORITY.atom : DATE_TAG_PRIORITY.rss;
+  for (const tag of tags) {
+    const value = extractTag(block, tag);
+    if (value) return value;
+  }
+  return '';
+}
+
+function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
+  let parsedTotal = 0;
+  let droppedUndated = 0;
 
   const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
   const entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
@@ -211,6 +261,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
     const title = extractTag(block, 'title');
     if (!title) continue;
 
+    parsedTotal++;
+
     let link: string;
     if (isAtom) {
       const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
@@ -221,11 +273,26 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
     if (!/^https?:\/\//i.test(link)) link = '';
 
-    const pubDateStr = isAtom
-      ? (extractTag(block, 'published') || extractTag(block, 'updated'))
-      : extractTag(block, 'pubDate');
-    const parsedDate = pubDateStr ? new Date(pubDateStr) : new Date();
-    const publishedAt = Number.isNaN(parsedDate.getTime()) ? Date.now() : parsedDate.getTime();
+    // Strict date gate (R2): walk the dialect-specific tag priority list and
+    // require at least one non-empty, parseable, non-future timestamp. Items
+    // that fail the gate are dropped — never silently stamped with Date.now()
+    // (which is the bug that let static institutional pages reach the brief).
+    const pubDateStr = extractFirstDateTag(block, isAtom);
+    if (!pubDateStr) {
+      droppedUndated++;
+      continue;
+    }
+    const parsedDate = new Date(pubDateStr);
+    const parsedMs = parsedDate.getTime();
+    if (Number.isNaN(parsedMs)) {
+      droppedUndated++;
+      continue;
+    }
+    if (parsedMs > Date.now() + FUTURE_DATE_TOLERANCE_MS) {
+      droppedUndated++;
+      continue;
+    }
+    const publishedAt = parsedMs;
 
     const threat = classifyByKeyword(title, variant);
     const isAlert = threat.level === 'critical' || threat.level === 'high';
@@ -248,7 +315,29 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
     });
   }
 
-  return items.length > 0 ? items : null;
+  // Per-feed structured WARN when every parsed item was dropped for missing
+  // dates. Distinguishable from a genuinely empty feed (parsedTotal === 0)
+  // by the keyword `FEED_HEALTH_WARNING all-undated` — log aggregation can
+  // grep for it. Defers a Redis-backed health-key wiring to a follow-up;
+  // see the linked plan.
+  if (parsedTotal > 0 && items.length === 0 && droppedUndated > 0) {
+    console.warn(
+      `[digest] FEED_HEALTH_WARNING all-undated feed="${feed.name}" ` +
+        `variant=${variant} parsed=${parsedTotal} dropped=${droppedUndated}`,
+    );
+  } else if (droppedUndated > 0) {
+    console.warn(
+      `[digest] partial-undated feed="${feed.name}" variant=${variant} ` +
+        `parsed=${parsedTotal} dropped=${droppedUndated} kept=${items.length}`,
+    );
+  }
+
+  // Preserve the existing "no items → null" cache contract: when no items
+  // survive (whether genuinely empty OR all dropped), return null so the
+  // outer `?? { items: [], ...}` fallback kicks in. Stats are still surfaced
+  // when there's at least one survivor.
+  if (items.length === 0) return null;
+  return { items, parsedTotal, droppedUndated };
 }
 
 /**
@@ -314,7 +403,18 @@ function extractDescription(block: string, isAtom: boolean, title: string): stri
 }
 
 const TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
-const KNOWN_TAGS = ['title', 'link', 'pubDate', 'published', 'updated'] as const;
+const KNOWN_TAGS = [
+  'title',
+  'link',
+  'pubDate',
+  'published',
+  'updated',
+  // Dublin Core date dialects (ArXiv and similar feeds publish via these
+  // instead of <pubDate>). Pre-caching their regexes mirrors the perf
+  // pattern used for other hot-path tags.
+  'dc:date',
+  'dc:Date.Issued',
+] as const;
 for (const tag of KNOWN_TAGS) {
   TAG_REGEX_CACHE.set(tag, {
     cdata: new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i'),
@@ -614,10 +714,21 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       const batch = allEntries.slice(i, i + BATCH_CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map(async ({ category, feed }) => {
-          const items = await fetchAndParseRss(feed, variant, deadlineController.signal);
+          const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
           completedFeeds.add(feed.name);
-          if (items.length === 0) feedStatuses[feed.name] = 'empty';
-          return { category, items };
+          // Classify per-feed status. 'all-undated' is the silent-zeroing
+          // failure mode (every parsed item dropped for missing/unparseable
+          // dates) — distinguished from a genuinely empty fetch ('empty')
+          // so log aggregation can keyword-match. 'partial-undated' is
+          // informational (some items dropped, some kept).
+          if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
+            feedStatuses[feed.name] = 'all-undated';
+          } else if (result.items.length === 0) {
+            feedStatuses[feed.name] = 'empty';
+          } else if (result.droppedUndated > 0) {
+            feedStatuses[feed.name] = 'partial-undated';
+          }
+          return { category, items: result.items };
         }),
       );
 
@@ -635,6 +746,26 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       if (!completedFeeds.has(entry.feed.name)) {
         feedStatuses[entry.feed.name] = 'timeout';
       }
+    }
+
+    // U3 — hard freshness floor. Drop items older than NEWS_MAX_AGE_HOURS
+    // (default 48h) BEFORE corroboration counting so a stale duplicate of a
+    // fresh story can't inflate the cluster's source count. Runs after parse
+    // (where U2 already dropped undated items) so every item here carries a
+    // real publishedAt. See R3.
+    const maxAgeMs = resolveMaxAgeMs();
+    const freshnessCutoff = Date.now() - maxAgeMs;
+    let droppedStaleTotal = 0;
+    for (const [category, items] of results) {
+      const fresh = items.filter((it) => it.publishedAt >= freshnessCutoff);
+      droppedStaleTotal += items.length - fresh.length;
+      results.set(category, fresh);
+    }
+    if (droppedStaleTotal > 0) {
+      console.warn(
+        `[digest] freshness floor dropped ${droppedStaleTotal} stale items ` +
+          `(max age: ${maxAgeMs / (60 * 60 * 1000)}h)`,
+      );
     }
 
     // Flatten ALL items before any truncation so cross-category corroboration is counted.
@@ -737,7 +868,10 @@ export const __testing__ = {
   parseRssXml,
   extractDescription,
   extractRawTagBody,
+  extractFirstDateTag,
   buildStoryTrackHsetFields,
+  resolveMaxAgeMs,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
+  FUTURE_DATE_TOLERANCE_MS,
 };
