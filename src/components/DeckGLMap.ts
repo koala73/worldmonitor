@@ -4992,11 +4992,21 @@ export class DeckGLMap {
 
     this.container.appendChild(toggles);
 
-    // Unlock premium layers when auth state resolves (e.g., Clerk JWT arrives after map init).
-    // subscribeAuthState fires the callback synchronously if state is already available,
-    // so we defer the self-unsubscribe with queueMicrotask to ensure the assignment completes.
-    this._unsubscribeAuthState = subscribeAuthState((state) => {
-      if (!hasPremiumAccess(state)) return;
+    // Unlock premium layers when Pro status resolves. Pro can come from EITHER:
+    //   1. Clerk role === 'pro' (subscribeAuthState fires on Clerk changes)
+    //   2. Convex entitlement tier >= 1 (onEntitlementChange fires on Convex changes)
+    // Subscribing to BOTH covers Dodo subscribers whose Pro flag arrives via
+    // Convex (NOT via Clerk role). User-reported on energy.worldmonitor.app:
+    // "Pro Monthly" in settings UI but Resilience layer still showed the lock
+    // because subscribeAuthState alone never fires on Convex transitions.
+    //
+    // Whichever signal resolves Pro first does the unlock; the other becomes
+    // a no-op (early-return when not Pro; no-op .remove on already-removed
+    // class). queueMicrotask defers self-unsubscribe so both _unsubscribe*
+    // assignments complete before the unsubscribe runs. Greptile P2 fix:
+    // single helper instead of duplicated callback bodies.
+    const unlockIfPro = (): void => {
+      if (!hasPremiumAccess(getAuthState())) return;
       toggles.querySelectorAll('.layer-toggle-locked').forEach(label => {
         label.classList.remove('layer-toggle-locked');
         const input = label.querySelector('input') as HTMLInputElement | null;
@@ -5010,32 +5020,9 @@ export class DeckGLMap {
         this._unsubscribeEntitlement?.();
         this._unsubscribeEntitlement = null;
       });
-    });
-    // Pro can come from Convex (Dodo subscription) — subscribeAuthState above
-    // only listens to Clerk changes. A Dodo subscriber whose Pro arrives via
-    // Convex (tier>=1) NOT via Clerk role would never get the unlock fired.
-    // User-reported on energy.worldmonitor.app: "Pro Monthly" in settings UI
-    // but the Resilience layer still showed the lock. Mirror the auth-state
-    // subscription with an entitlement-change subscription that re-runs the
-    // same unlock logic. Whichever fires first with Pro performs the unlock;
-    // the other becomes a no-op via the early-return + already-unsubscribed
-    // queueMicrotask cleanup.
-    this._unsubscribeEntitlement = onEntitlementChange(() => {
-      if (!hasPremiumAccess(getAuthState())) return;
-      toggles.querySelectorAll('.layer-toggle-locked').forEach(label => {
-        label.classList.remove('layer-toggle-locked');
-        const input = label.querySelector('input') as HTMLInputElement | null;
-        if (input) input.disabled = false;
-        const labelSpan = label.querySelector('.toggle-label');
-        if (labelSpan) labelSpan.textContent = labelSpan.textContent!.replace(' 🔒', '');
-      });
-      queueMicrotask(() => {
-        this._unsubscribeAuthState?.();
-        this._unsubscribeAuthState = null;
-        this._unsubscribeEntitlement?.();
-        this._unsubscribeEntitlement = null;
-      });
-    });
+    };
+    this._unsubscribeAuthState = subscribeAuthState(() => unlockIfPro());
+    this._unsubscribeEntitlement = onEntitlementChange(() => unlockIfPro());
 
     // Bind toggle events
     toggles.querySelectorAll('.layer-toggle input').forEach(input => {
