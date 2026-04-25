@@ -3125,9 +3125,17 @@ function matchCountryNamesInText(text) {
   return [];
 }
 
+// v4 (2026-04-26): bumped from v3 in lockstep with
+// server/worldmonitor/intelligence/v1/_shared.ts and
+// server/worldmonitor/news/v1/list-feed-digest.ts to evict cache entries
+// that previously promoted static-page titles to high/critical via the
+// LLM classifier. The relay maintains its own inline helper because
+// .cjs cannot import from .ts; the prefix-audit static-analysis test
+// (tests/news-classify-cache-prefix-audit.test.mjs) cross-checks all
+// three sites. See U4 of the plan.
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v3:${hash}`;
+  return `classify:sebuf:v4:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS

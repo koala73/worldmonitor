@@ -14,6 +14,7 @@ import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
 import { classifyByKeyword, type ThreatLevel } from './_classifier';
+import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
 import { getSourceTier } from '../../../_shared/source-tiers';
 import {
   STORY_TRACK_KEY,
@@ -64,6 +65,38 @@ const SEVERITY_SCORES: Record<ThreatLevel, number> = {
   low: 25,
   info: 0,
 };
+
+/**
+ * Ordinal rank of each threat level, used by the LLM classify-cache
+ * upgrade cap (U4). Cap = +2 tiers above the keyword classification.
+ * Rationale: keyword=info (no-match fallback at confidence 0.3) jumping
+ * straight to high/critical is the static-institutional-page contamination
+ * path; capping at info+2=medium blocks it. Legitimate keyword=low →
+ * LLM=critical upgrades (e.g., "Markets crash" headline) are preserved
+ * because low+2=critical. See R4 in the plan.
+ */
+const LEVEL_RANK: Record<ThreatLevel, number> = {
+  info: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+const RANK_TO_LEVEL: ThreatLevel[] = ['info', 'low', 'medium', 'high', 'critical'];
+
+/**
+ * Cap an LLM-classified level to at most +2 tiers above the keyword level.
+ * Returns the original `llmLevel` when within the cap, otherwise the
+ * level at rank `keywordRank + 2`. Falls back to the keyword level when
+ * the LLM level is unrecognized (defensive).
+ */
+function capLlmUpgrade(keywordLevel: ThreatLevel, llmLevel: string): ThreatLevel {
+  const keywordRank = LEVEL_RANK[keywordLevel];
+  const rawLlmRank = LEVEL_RANK[llmLevel as ThreatLevel];
+  if (rawLlmRank == null) return keywordLevel;
+  const cappedRank = Math.min(rawLlmRank, keywordRank + 2);
+  return RANK_TO_LEVEL[cappedRank] ?? keywordLevel;
+}
 
 /**
  * Importance score component weights (must sum to 1.0).
@@ -460,10 +493,13 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   const candidates = items.filter(i => i.classSource === 'keyword');
   if (candidates.length === 0) return;
 
+  // Use the canonical buildClassifyCacheKey from intelligence/v1/_shared
+  // so the cache prefix (currently classify:sebuf:v4:) lives in exactly
+  // one place — bumping it again only requires touching _shared.ts and
+  // the relay's independent .cjs helper. See U4 of the plan.
   const keyMap = new Map<string, ParsedItem[]>();
   for (const item of candidates) {
-    const hash = (await sha256Hex(item.title.toLowerCase())).slice(0, 16);
-    const key = `classify:sebuf:v3:${hash}`;
+    const key = await buildClassifyCacheKey(item.title);
     const existing = keyMap.get(key) ?? [];
     existing.push(item);
     keyMap.set(key, existing);
@@ -478,11 +514,22 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
 
     for (const item of relatedItems) {
       if (0.9 <= item.confidence) continue;
-      item.level = hit.level as typeof item.level;
+      // Cap the LLM upgrade at +2 tiers above the keyword classification
+      // so a poisoned cache entry (e.g., "About Section 508" → high) can't
+      // promote an info-keyword item past medium. Legitimate low→critical
+      // upgrades (low+2 = critical) remain reachable. R4.
+      const cappedLevel = capLlmUpgrade(item.level, hit.level);
+      if (cappedLevel !== hit.level) {
+        console.warn(
+          `[classify] LLM upgrade capped: keyword=${item.level} ` +
+            `llm=${hit.level} applied=${cappedLevel} title="${item.title.slice(0, 60)}"`,
+        );
+      }
+      item.level = cappedLevel;
       item.category = hit.category;
       item.confidence = 0.9;
       item.classSource = 'llm';
-      item.isAlert = hit.level === 'critical' || hit.level === 'high';
+      item.isAlert = cappedLevel === 'critical' || cappedLevel === 'high';
     }
   }
 }
@@ -882,6 +929,7 @@ export const __testing__ = {
   extractFirstDateTag,
   buildStoryTrackHsetFields,
   resolveMaxAgeMs,
+  capLlmUpgrade,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,

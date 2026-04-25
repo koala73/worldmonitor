@@ -9,7 +9,15 @@ import { hashString, sha256Hex } from '../../../_shared/hash';
 // ========================================================================
 
 export const UPSTREAM_TIMEOUT_MS = 25_000;
-const CLASSIFY_CACHE_PREFIX = 'classify:sebuf:v3:';
+// v4 (2026-04-26): bumped from v3 to evict entries poisoned by static
+// institutional pages that previously promoted info-keyword titles to
+// high/critical via the LLM classifier. See PR for U4 of
+// docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
+// Three sites read/write this prefix: this canonical writer, the digest
+// reader at server/worldmonitor/news/v1/list-feed-digest.ts (now uses
+// buildClassifyCacheKey), and scripts/ais-relay.cjs (independent inline
+// helper — cannot import from .ts). All three were updated atomically.
+const CLASSIFY_CACHE_PREFIX = 'classify:sebuf:v4:';
 
 // ========================================================================
 // Tier-1 country definitions (used by risk-scores + country-intel-brief)
