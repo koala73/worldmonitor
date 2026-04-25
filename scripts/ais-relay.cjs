@@ -6611,7 +6611,12 @@ function processShipStaticDataForMeta(data) {
   const meta = data?.MetaData;
   const sd = data?.Message?.ShipStaticData;
   if (!meta || !sd) return;
-  const mmsi = String(meta.MMSI || '');
+  // MMSI fallback: AISStream's PositionReport wrapper puts MMSI under
+  // MetaData.MMSI, but the ShipStaticData payload sample shows MMSI mirrored
+  // as `UserID` on the message body itself. Read MetaData.MMSI first (the
+  // documented wrapper field), then fall back to the message-body field so
+  // a wrapper schema variant doesn't silently re-empty vesselMeta.
+  const mmsi = String(meta.MMSI || sd.UserID || '');
   if (!mmsi) return;
   // ShipType lives in the message body, not MetaData, on Type 5 frames.
   const shipType = Number(sd.Type);

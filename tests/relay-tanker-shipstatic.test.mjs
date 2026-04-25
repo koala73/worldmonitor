@@ -59,12 +59,53 @@ describe('ais-relay — tanker classification depends on ShipStaticData', () => 
     );
   });
 
+  test('processShipStaticDataForMeta reads ShipType from sd.Type (NOT meta.ShipType)', () => {
+    // Pre-fix root cause was reading from meta.ShipType which AISStream
+    // never populates on PositionReport. ShipStaticData puts ShipType under
+    // the message body as `Type` (capital T), not the wrapper MetaData. A
+    // typo regression (e.g., `Number(sd.Typ)`, `Number(sd.shipType)`,
+    // `Number(meta.ShipType)`) would re-empty the tanker layer silently —
+    // the tests in this file depend on the FIELD NAME being correct, so
+    // pin it explicitly.
+    assert.match(
+      RELAY,
+      /Number\(sd\.Type\)/,
+      'shipType must be parsed from sd.Type (the message-body field)',
+    );
+    assert.match(
+      RELAY,
+      /sd\.Name/,
+      'shipName should fall back to sd.Name from the message body',
+    );
+  });
+
+  test('processShipStaticDataForMeta accepts MMSI from meta.MMSI OR sd.UserID', () => {
+    // AISStream's ShipStaticData payload mirrors MMSI as UserID on the
+    // message body. Defense in depth against a wrapper-schema variant
+    // that omits MetaData.MMSI on Type 5 frames — without the fallback,
+    // such a frame would early-return and silently re-empty vesselMeta.
+    assert.match(
+      RELAY,
+      /String\(\s*meta\.MMSI\s*\|\|\s*sd\.UserID\s*\|\|\s*['"]['"]?\s*\)/,
+      'MMSI extraction must fall back to sd.UserID',
+    );
+  });
+
   test('tanker capture falls back to vesselMeta when position-report meta lacks ShipType', () => {
-    // Order matters: cachedMeta lookup must precede tanker classification.
-    const cacheLookupIdx = RELAY.indexOf('vesselMeta.get(mmsi)');
-    const tankerSetIdx = RELAY.indexOf('tankerReports.set(mmsi');
-    assert.ok(cacheLookupIdx > -1, 'vesselMeta.get(mmsi) must appear in tanker capture path');
-    assert.ok(tankerSetIdx > -1, 'tankerReports.set(mmsi) must appear');
+    // Scope the order assertion to the body of processPositionReportForSnapshot
+    // so a future change adding an earlier vesselMeta.get(...) elsewhere in
+    // the file can't satisfy the order check while removing the in-tanker-path
+    // lookup. The body extends until the next top-level function declaration.
+    const fnStart = RELAY.indexOf('function processPositionReportForSnapshot');
+    assert.ok(fnStart > -1, 'processPositionReportForSnapshot must exist');
+    // Find next top-level `function ` after the start (matches column-0 `function`)
+    const nextFnRel = RELAY.slice(fnStart + 1).search(/\nfunction\s/);
+    const fnEnd = nextFnRel > -1 ? fnStart + 1 + nextFnRel : RELAY.length;
+    const fnBody = RELAY.slice(fnStart, fnEnd);
+    const cacheLookupIdx = fnBody.indexOf('vesselMeta.get(mmsi)');
+    const tankerSetIdx = fnBody.indexOf('tankerReports.set(mmsi');
+    assert.ok(cacheLookupIdx > -1, 'vesselMeta.get(mmsi) must appear inside processPositionReportForSnapshot');
+    assert.ok(tankerSetIdx > -1, 'tankerReports.set(mmsi) must appear inside processPositionReportForSnapshot');
     assert.ok(
       cacheLookupIdx < tankerSetIdx,
       'vesselMeta lookup must precede tanker insertion so the fallback informs the predicate',
