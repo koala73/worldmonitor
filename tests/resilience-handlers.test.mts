@@ -28,7 +28,7 @@ describe('resilience handlers', () => {
     delete process.env.VERCEL_ENV;
 
     const { fetchImpl, redis, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
-    sortedSets.set('resilience:history:v7:US', [
+    sortedSets.set('resilience:history:v8:US', [
       { member: '2026-04-01:20', score: 20260401 },
       { member: '2026-04-02:30', score: 20260402 },
     ]);
@@ -58,16 +58,16 @@ describe('resilience handlers', () => {
     assert.ok(response.stressFactor >= 0 && response.stressFactor <= 0.5, `stressFactor out of bounds: ${response.stressFactor}`);
     assert.equal(response.dataVersion, '2024-04-03', 'dataVersion should be the ISO date from seed-meta fetchedAt');
 
-    const cachedScore = redis.get('resilience:score:v12:US');
+    const cachedScore = redis.get('resilience:score:v13:US');
     assert.ok(cachedScore, 'expected score cache to be written');
     assert.equal(JSON.parse(cachedScore || '{}').countryCode, 'US');
 
-    const history = sortedSets.get('resilience:history:v7:US') ?? [];
+    const history = sortedSets.get('resilience:history:v8:US') ?? [];
     assert.ok(history.some((entry) => entry.member.startsWith(today + ':')), 'expected today history member to be written');
 
     await getResilienceScore({ request: new Request('https://example.com') } as never, {
       countryCode: 'US',
     });
-    assert.equal((sortedSets.get('resilience:history:v7:US') ?? []).length, history.length, 'cache hit must not append history');
+    assert.equal((sortedSets.get('resilience:history:v8:US') ?? []).length, history.length, 'cache hit must not append history');
   });
 });

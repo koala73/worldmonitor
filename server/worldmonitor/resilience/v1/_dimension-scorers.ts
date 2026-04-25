@@ -9,7 +9,7 @@ import { failedDimensionsFromDatasets, readFailedDatasets } from './_source-fail
 export type ResilienceDimensionId =
   | 'macroFiscal'
   | 'currencyExternal'
-  | 'tradeSanctions'
+  | 'tradePolicy'
   | 'cyberDigital'
   | 'logisticsSupply'
   | 'infrastructure'
@@ -260,7 +260,15 @@ const RESILIENCE_BIS_DSR_KEY = 'economic:bis:dsr:v1';
 const RESILIENCE_NATIONAL_DEBT_KEY = 'economic:national-debt:v1';
 const RESILIENCE_IMF_MACRO_KEY = 'economic:imf:macro:v2';
 const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
-const RESILIENCE_SANCTIONS_KEY = 'sanctions:country-counts:v1';
+// RETIRED in plan 2026-04-25-004 Phase 1: the `RESILIENCE_SANCTIONS_KEY`
+// constant ('sanctions:country-counts:v1') is no longer read by any scorer
+// in this module — scoreTradePolicy dropped the OFAC component. The seed
+// key is still WRITTEN by scripts/seed-sanctions-pressure.mjs and consumed
+// by country-brief generation + ad-hoc analysis; only the resilience
+// scorer's binding was removed. Removing the constant entirely (rather
+// than retaining it as documentation) avoids a TS6133 unused-local error.
+// If Phase 2's financialSystemExposure re-introduces a sanctions signal,
+// re-add the constant there with the appropriate scope.
 const RESILIENCE_TRADE_RESTRICTIONS_KEY = 'trade:restrictions:v1:tariff-overview:50';
 const RESILIENCE_TRADE_BARRIERS_KEY = 'trade:barriers:v1:tariff-gap:50';
 const RESILIENCE_CYBER_KEY = 'cyber:threats:v2';
@@ -398,7 +406,7 @@ const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
 export const RESILIENCE_DIMENSION_WEIGHTS: Record<ResilienceDimensionId, number> = {
   macroFiscal: 1.0,
   currencyExternal: 1.0,
-  tradeSanctions: 1.0,
+  tradePolicy: 1.0,
   cyberDigital: 1.0,
   logisticsSupply: 1.0,
   infrastructure: 1.0,
@@ -422,7 +430,7 @@ export const RESILIENCE_DIMENSION_WEIGHTS: Record<ResilienceDimensionId, number>
 export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, ResilienceDomainId> = {
   macroFiscal: 'economic',
   currencyExternal: 'economic',
-  tradeSanctions: 'economic',
+  tradePolicy: 'economic',
   cyberDigital: 'infrastructure',
   logisticsSupply: 'infrastructure',
   infrastructure: 'infrastructure',
@@ -446,7 +454,7 @@ export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, Resilie
 export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
   'macroFiscal',
   'currencyExternal',
-  'tradeSanctions',
+  'tradePolicy',
   'cyberDigital',
   'logisticsSupply',
   'infrastructure',
@@ -481,7 +489,7 @@ export type ResilienceDimensionType = 'baseline' | 'stress' | 'mixed';
 export const RESILIENCE_DIMENSION_TYPES: Record<ResilienceDimensionId, ResilienceDimensionType> = {
   macroFiscal: 'baseline',
   currencyExternal: 'stress',
-  tradeSanctions: 'stress',
+  tradePolicy: 'stress',
   cyberDigital: 'stress',
   logisticsSupply: 'mixed',
   infrastructure: 'baseline',
@@ -531,14 +539,12 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
   return roundScore(ratio * 100);
 }
 
-// Piecewise scale: 0=100, 1-10=90-75, 11-50=75-50, 51-200=50-25, 201+=25→0
-function normalizeSanctionCount(count: number): number {
-  if (count === 0) return 100;
-  if (count <= 10) return roundScore(90 - (count - 1) * (15 / 9));
-  if (count <= 50) return roundScore(75 - (count - 10) * (25 / 40));
-  if (count <= 200) return roundScore(50 - (count - 50) * (25 / 150));
-  return roundScore(Math.max(0, 25 - (count - 200) * 0.1));
-}
+// `normalizeSanctionCount` retired in plan 2026-04-25-004 Phase 1. The
+// piecewise scale (0=100, 1-10=90-75, 11-50=75-50, 51-200=50-25, 201+=25→0)
+// only normalized the dropped OFAC `sanctionCount` component. Removed
+// rather than retained-but-unused to avoid TS6133 unused-local errors.
+// The historical anchors are preserved in the deleted test file
+// `tests/resilience-sanctions-field-mapping.test.mts` (see git history).
 
 function mean(values: number[]): number | null {
   if (!values.length) return null;
@@ -1054,20 +1060,30 @@ export async function scoreCurrencyExternal(
   };
 }
 
-export async function scoreTradeSanctions(
+// Renamed from scoreTradeSanctions in plan 2026-04-25-004 Phase 1 (Ship 1).
+// The OFAC-domicile-count component (sanctions:country-counts:v1, was weight
+// 0.45) was DROPPED — domicile-of-designated-entities is a corporate-finance
+// liability metric, not a country-resilience indicator. The remaining 3
+// trade-policy components are reweighted to total 1.0:
+//   WTO restrictions count → 0.30 (was 0.15)
+//   WTO barriers count     → 0.30 (was 0.15)
+//   applied tariff rate    → 0.40 (was 0.25)
+// `RESILIENCE_SANCTIONS_KEY` and `normalizeSanctionCount` are retained
+// (no longer read here) pending plan 2026-04-25-004 Phase 2, which adds the
+// `financialSystemExposure` dim built from BIS LBS + WB IDS + FATF status —
+// a structural-exposure construct that does not rely on the OFAC count.
+// `scripts/seed-sanctions-pressure.mjs` continues to write the seed key for
+// other consumers (country-brief generation, ad-hoc analysis).
+export async function scoreTradePolicy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [sanctionsRaw, restrictionsRaw, barriersRaw, staticRecord] = await Promise.all([
-    reader(RESILIENCE_SANCTIONS_KEY),
+  const [restrictionsRaw, barriersRaw, staticRecord] = await Promise.all([
     reader(RESILIENCE_TRADE_RESTRICTIONS_KEY),
     reader(RESILIENCE_TRADE_BARRIERS_KEY),
     readStaticCountry(countryCode, reader),
   ]);
 
-  // sanctions:country-counts:v1 is a plain ISO2→entryCount map covering ALL countries.
-  const sanctionsCounts = sanctionsRaw as Record<string, number> | null;
-  const sanctionCount = sanctionsCounts != null ? (sanctionsCounts[countryCode] ?? 0) : null;
   const restrictionCount = countTradeRestrictions(restrictionsRaw, countryCode);
   const barrierCount = countTradeBarriers(barriersRaw, countryCode);
 
@@ -1079,20 +1095,17 @@ export async function scoreTradeSanctions(
   const tariffRate = safeNum(staticRecord?.appliedTariffRate?.value);
 
   return weightedBlend([
-    sanctionsRaw == null
-      ? { score: null, weight: 0.45 }
-      : { score: normalizeSanctionCount(sanctionCount ?? 0), weight: 0.45 },
     restrictionsRaw == null
-      ? { score: null, weight: 0.15 }
+      ? { score: null, weight: 0.30 }
       : !inRestrictionsReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.15 },
+        ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
+        : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.30 },
     barriersRaw == null
-      ? { score: null, weight: 0.15 }
+      ? { score: null, weight: 0.30 }
       : !inBarriersReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.15 },
-    { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.25 },
+        ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
+        : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.30 },
+    { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.40 },
   ]);
 }
 
@@ -1872,7 +1885,7 @@ ResilienceDimensionId,
 > = {
   macroFiscal: scoreMacroFiscal,
   currencyExternal: scoreCurrencyExternal,
-  tradeSanctions: scoreTradeSanctions,
+  tradePolicy: scoreTradePolicy,
   cyberDigital: scoreCyberDigital,
   logisticsSupply: scoreLogisticsSupply,
   infrastructure: scoreInfrastructure,

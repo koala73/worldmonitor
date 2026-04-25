@@ -274,7 +274,7 @@ function decomposeContributions(scoreDoc, dimWeights) {
 const DIM_WEIGHTS = {
   macroFiscal: 1.0,
   currencyExternal: 1.0,
-  tradeSanctions: 1.0,
+  tradePolicy: 1.0,
   cyberDigital: 1.0,
   logisticsSupply: 1.0,
   infrastructure: 1.0,

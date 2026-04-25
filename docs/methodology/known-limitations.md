@@ -270,145 +270,60 @@ verifying.
 
 ---
 
-## tradeSanctions — "designated-party domicile" construct question (scoreTradeSanctions)
+## tradeSanctions → tradePolicy: OFAC-domicile component dropped (Ship 1, 2026-04-25)
 
-**Dimension.** `tradeSanctions` (`scoreTradeSanctions`, weight 0.45
-of the blend for the sanctions sub-component; 1.0 for the dim in
-the `economic` domain).
+**Status.** RESOLVED via plan 2026-04-25-004 Phase 1 (Ship 1). The
+construct question described below — "is OFAC-designated-party domicile
+count a country-resilience signal?" — was answered "no, drop it."
 
-**Source.** `sanctions:country-counts:v1`, a flat `ISO2 → count`
-map written by `scripts/seed-sanctions-pressure.mjs`. The seeder
-parses OFAC's Advanced XML (SDN + Consolidated lists), extracts
-each designated party's `Locations`, and increments
-`map[countryCode]` by 1 for every country listed in that
-party's locations.
+The dimension was renamed `tradeSanctions` → `tradePolicy` and the
+OFAC `sanctionCount` component (was weight 0.45) was REMOVED. The
+remaining 3 trade-policy components were reweighted to 0.30 (WTO
+restrictions) + 0.30 (WTO barriers) + 0.40 (applied tariff rate). The
+seeder `scripts/seed-sanctions-pressure.mjs` continues to write
+`sanctions:country-counts:v1` for other consumers (country brief
+generation, ad-hoc analysis); only the resilience scorer's binding was
+removed.
 
-### What the count ACTUALLY represents
+A separate `financialSystemExposure` dim is being added in plan Phase 2
+(Ship 2). It captures structural sanctions vulnerability via three
+signals — BIS Locational Banking Statistics by-parent cross-border
+claims, World Bank IDS short-term external debt as % of GNI, and FATF
+AML/CFT listing status — none of which conflate transit-hub corporate
+domicile with host-country resilience.
 
-The count is **"how many OFAC-designated parties list this
-country as a location"** — not "how many sanctions this country
-is under." A single designated entity's primary country gets +1;
-a shell that's domiciled in country X but operates via country Y
-will typically list both and increment both counts.
+**Decision rationale (preserved as a methodological reference).** The
+OFAC count was "how many designated parties list this country as a
+location," not "how many sanctions this country is under." It mixed
+three categories: country-level sanction targets (intended signal),
+domiciled sanctioned entities (debatable), and transit/shell entity
+listings (construct-incorrect). The third category dominated for
+financial hubs (UAE, Singapore, Hong Kong, Cyprus) — UAE's −28-point
+gap vs Kuwait/Qatar in the 2026-04-24 cohort audit was almost entirely
+driven by Iran-evasion shell-company listings and Russian-asset SPVs.
+Penalizing the host jurisdiction for shell-entity behavior conflated
+financial-system openness with state policy and produced systematic
+false signals for hub economies. Plan 2026-04-25-004 chose the
+structurally cleanest fix — drop the component and rebuild via
+audited cross-border banking + AML/CFT data — over the partial fixes
+that were considered (program-weight categorization, transit-hub
+exclusion lists).
 
-Consequence: the count conflates three semantically distinct
-categories that a resilience construct might want to treat
-differently.
+**Cross-reference.** Plan 2026-04-25-004
+(`docs/plans/2026-04-25-004-feat-financial-system-exposure-construct-plan.md`)
+Phase 1 ships the rename + drop; Phase 2 ships the
+`financialSystemExposure` dim. The earlier
+`docs/plans/2026-04-24-002-fix-resilience-cohort-ranking-structural-audit-plan.md`
+§PR 5.1 captured the original construct question and its three options
+(status quo / program-weight / transit-hub exclusion); plan
+2026-04-25-004 supersedes it with Option 4 (drop + rebuild).
 
-| Category | Example | Current scorer impact | Construct question |
-|---|---|---|---|
-| (a) **Country-level sanction target** | North Korea SDN listings | +1 per designated entity/person inside the sanctioned state | Penalizing the state is the INTENDED signal — resilience is genuinely degraded by comprehensive sanctions |
-| (b) **Domiciled sanctioned entity** | Russian bank HQ'd in Moscow, designated post-2022 invasion | +1 per listing | The country's resilience is indirectly penalized for hosting the sanctioned actor — debatable |
-| (c) **Transit / shell entity listing** | UAE-based trading company designated under SDGT for Iran oil smuggling; Cyprus-registered SPV facilitating a Russian oligarch's asset transfer | +1 per listing even when the country itself is NOT the sanctions target | The country is penalized because it's a financial hub that shell entities incorporate in — construct-debatable |
-
-### Observed effect in the 2026-04-24 cohort audit
-
-| Country | `tradeSanctions` dim score | Interpretation under current construct |
-|---|---|---|
-| KW | 82 | Low designated-party count (mostly a clean jurisdiction) |
-| QA | 82 | Low count |
-| AE | 54 | High count — dominated by category (c): Iran-evasion shell entities, Russian-asset SPVs |
-| SA | (similar) | Low count |
-
-AE's gap of −28 vs KW/QA is almost entirely driven by category
-(c) listings. Under the CURRENT scorer, AE's resilience is
-penalized for being a financial hub where sanctioned parties
-incorporate shells — regardless of whether the UAE state is
-complicit or targeted by the listing.
-
-### Construct options (not decided here)
-
-This PR deliberately does NOT pick an option; the scoring
-implication is large enough that the decision belongs to a
-separate construct-discussion PR with cohort snapshots.
-
-**Option 1 — Keep the current flat count (status quo).**
-
-- Rationale: financial-sanctions exposure IS a real resilience
-  risk even for transit-hub jurisdictions. A country that
-  functions as a shell-entity jurisdiction ends up correlated
-  with secondary-sanctions enforcement actions, correspondent-
-  banking isolation, and FATF grey-listing pressure.
-- Cost: countries whose domestic policy is NOT what earned them
-  the count (UAE-on-Iran, Cyprus-on-Russia) carry a score
-  penalty for the behavior of entities that happen to have
-  listed addresses there.
-
-**Option 2 — Weight by OFAC program category.**
-
-- Rationale: programs encode the nature of the designation.
-  `DPRK`, `IRAN`, `SYRIA`, `VENEZUELA`, `CUBA` are
-  country-comprehensive; `SDGT`, `SDNTK`, `CYBER`, `RUSSIA-EO`,
-  `GLOMAG` are typically entity-specific.
-- Approach: weight category-(a) programs at 1.0 and category-
-  (c)-ish programs at 0.3–0.5 based on a named mapping.
-- Cost: requires maintaining a program→category manifest;
-  program codes change over time; currently the seeder already
-  captures `programs` per entry (see
-  `scripts/seed-sanctions-pressure.mjs` lines 95-108) — the
-  data is there, the scorer just doesn't read it.
-
-**Option 3 — Exclude transit-hub jurisdictions from the
-domicile-count signal.**
-
-- Rationale: a small number of jurisdictions (AE, SG, HK, CY,
-  VG, KY) account for a disproportionate share of shell-entity
-  listings. A hardcoded exclusion list would remove the
-  category-(c) bias for those jurisdictions specifically.
-- Cost: hardcoded list is brittle + normative — who gets on it
-  decides who "wins" the scoring change.
-
-### Recommendation
-
-**Option 2** is the most defensible methodology change and is
-also the only one that requires data already being collected.
-The seeder captures `programs` per entry; a scorer update
-would read `sanctions:program-pressure:v1` or an extended
-`country-counts:v2` with per-program breakdowns and apply a
-rubric-mapped weight to each program.
-
-**This PR does NOT implement Option 2.** It:
-
-1. Documents the three categories explicitly (above)
-2. Pins the CURRENT `normalizeSanctionCount` piecewise scale
-   with regression tests so a future scorer refactor cannot
-   silently flip the behavior
-3. Flags the construct question for a methodology-decision PR
-
-### Follow-up audit (requires API key / Redis access)
-
-Per the plan's §PR 5.1 task list, an entity-level sample audit
-of the raw OFAC data would classify 10 entries per country
-for AE, HK, SG, CY, TR, RU, IR, US into categories (a)/(b)/(c)
-and produce a calibration point for an Option-2 program-weight
-mapping. Out of scope for this doc-only PR.
-
-### Regression-guard tests
-
-Pinned in
-`tests/resilience-sanctions-field-mapping.test.mts`:
-
-- `normalizeSanctionCount` piecewise anchors:
-  `count=0 → 100`, `count=1 → 90`, `count=10 → 75`,
-  `count=50 → 50`, `count=200 → 25`, `count=500 → ≤ 0`.
-- Monotonicity: more designated parties → lower score.
-- Scorer reads `sanctions:country-counts:v1[ISO2]` and defaults
-  to 0 (score=100) when the country is absent from the map —
-  intentional, since absence means "no designated parties
-  located here," not "data missing."
-- `sanctionsRaw == null` (seed outage) → null score slot,
-  NOT imputed — protects against silent data-outage scoring.
-
-**References.**
-
-- Seeder: `scripts/seed-sanctions-pressure.mjs` lines 83-93
-  (`buildCountryCounts`)
-- Scorer: `server/worldmonitor/resilience/v1/_dimension-scorers.ts`
-  lines 263 (`RESILIENCE_SANCTIONS_KEY`),
-  535 (`normalizeSanctionCount`), 1057 (`scoreTradeSanctions`)
-- OFAC SDN docs: https://ofac.treasury.gov/specially-designated-nationals-and-blocked-persons-list-sdn-human-readable-lists
-- Plan reference:
-  `docs/plans/2026-04-24-002-fix-resilience-cohort-ranking-structural-audit-plan.md`
-  §PR 5.1
-- Test regression guards:
-  `tests/resilience-sanctions-field-mapping.test.mts`
+**Retired-but-not-deleted code.** `RESILIENCE_SANCTIONS_KEY` constant
+and `normalizeSanctionCount` helper in
+`server/worldmonitor/resilience/v1/_dimension-scorers.ts` are retained
+with retire-tag comments pending Phase 2's decision on whether the OFAC
+count gets re-purposed inside `financialSystemExposure`. The historical
+`tests/resilience-sanctions-field-mapping.test.mts` was deleted; its
+formula-pinning role is replaced by
+`tests/resilience-trade-policy-formula.test.mts`, which pins the new
+3-component weighted-blend contract.

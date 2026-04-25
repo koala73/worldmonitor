@@ -12,7 +12,7 @@ import {
   scoreAllDimensions,
   scoreEnergy,
   scoreInfrastructure,
-  scoreTradeSanctions,
+  scoreTradePolicy,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
@@ -123,8 +123,15 @@ describe('resilience scorer contracts', () => {
     // populates the SWF seed; US has no manifest entry). Sum 390 / 8
     // = 48.75. Coverage-weighted domain aggregation (used by the real
     // scoring pipeline) is separately verified below.
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): economic 66.33 → 71. The
+    // OFAC-domicile component was dropped from the renamed tradePolicy
+    // dim, lifting the US `tradePolicy` score (US has many designated
+    // entities but those listings don't reflect on US resilience under
+    // the new construct). US-specific delta is small here because the
+    // US already had a high tariff-policy openness; the bigger movers
+    // are transit-hub jurisdictions (UAE/SG/HK).
     assert.deepEqual(domainAverages, {
-      economic: 66.33,
+      economic: 71,
       infrastructure: 79,
       energy: 80,
       'social-governance': 61.75,
@@ -182,10 +189,14 @@ describe('resilience scorer contracts', () => {
     assert.equal(baselineScore, 62.17);
     // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
     // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
-    // shifts and US stress score moves). stressFactor updates in lockstep:
-    //   1 - 67.21/100 = 0.3279, clamped to 0.5.
-    assert.equal(stressScore, 67.21);
-    assert.equal(stressFactor, 0.3279);
+    // shifts and US stress score moves).
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): 67.21 → 69.01. tradePolicy
+    // is in the 'stress' class (RESILIENCE_DIMENSION_TYPES) so its
+    // post-rename uplift (OFAC component dropped) propagates into the
+    // stress-only mean. stressFactor updates in lockstep:
+    //   1 - 69.01/100 = 0.3099, clamped to 0.5.
+    assert.equal(stressScore, 69.01);
+    assert.equal(stressFactor, 0.3099);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
@@ -215,7 +226,10 @@ describe('resilience scorer contracts', () => {
     // the recovery domain instead of the equal-share ~16.7%. The
     // under-weighted score-18 dim matters less, lifting US's recovery
     // contribution by ~3 points and the overall by ~0.79.
-    assert.equal(overallScore, 64.39);
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24. economic
+    // domain rises 66.33 → 71 with tradePolicy reweight (OFAC dropped),
+    // contributing economic_delta * 0.17 ≈ +0.79 to the overall score.
+    assert.equal(overallScore, 65.24);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -302,7 +316,9 @@ describe('resilience scorer contracts', () => {
     // PR 2 §3.4: 63.27 → 63.6 after reserveAdequacy retirement + split.
     // PR 2 §3.4 weight rebalance: 63.6 → 64.39 after dialing the two
     // new recovery dims down to weight=0.5 (~10% recovery share each).
-    assert.equal(expected, 64.39, 'overallScore should match sum(domainScore * domainWeight); 63.6 → 64.39 after PR 2 §3.4 recovery-domain weight rebalance');
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24 — economic
+    // domain rises with tradePolicy reweight (OFAC component dropped).
+    assert.equal(expected, 65.24, 'overallScore should match sum(domainScore * domainWeight); 64.39 → 65.24 after Ship 1 tradePolicy reweight');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {
@@ -405,18 +421,18 @@ describe('scoreInfrastructure: broadband penetration', () => {
   });
 });
 
-describe('scoreTradeSanctions WB tariff rate', () => {
+describe('scoreTradePolicy WB tariff rate', () => {
   it('WB tariff rate contributes to trade score', async () => {
     installRedis(RESILIENCE_FIXTURES);
-    const result = await scoreTradeSanctions('US');
+    const result = await scoreTradePolicy('US');
     assert.ok(result.score >= 0 && result.score <= 100, `score out of bounds: ${result.score}`);
     assert.ok(result.coverage > 0, 'coverage should be > 0 when tariff data is present');
   });
 
   it('high tariff rate country scores lower than low tariff rate', async () => {
     installRedis(RESILIENCE_FIXTURES);
-    const noResult = await scoreTradeSanctions('NO');
-    const yeResult = await scoreTradeSanctions('YE');
+    const noResult = await scoreTradePolicy('NO');
+    const yeResult = await scoreTradePolicy('YE');
     assert.ok(noResult.score > yeResult.score, `NO (${noResult.score}) should score higher than YE (${yeResult.score}) due to lower tariff rate`);
   });
 });

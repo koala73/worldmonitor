@@ -58,7 +58,7 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       dimensions: [
         { id: 'macroFiscal', score: 85, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
         { id: 'currencyExternal', score: 80, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
-        { id: 'tradeSanctions', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'tradePolicy', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -242,7 +242,7 @@ export function formatResilienceDataVersion(dataVersion: string | null | undefin
 const DIMENSION_LABELS: Record<string, string> = {
   macroFiscal: 'Macro',
   currencyExternal: 'Currency',
-  tradeSanctions: 'Trade',
+  tradePolicy: 'Trade',
   cyberDigital: 'Cyber',
   logisticsSupply: 'Logistics',
   infrastructure: 'Infra',

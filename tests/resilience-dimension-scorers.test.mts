@@ -28,7 +28,7 @@ import {
   scoreSovereignFiscalBuffer,
   scoreSocialCohesion,
   scoreStateContinuity,
-  scoreTradeSanctions,
+  scoreTradePolicy,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
@@ -48,15 +48,27 @@ function assertOrdered(label: string, no: number, us: number, ye: number) {
   assert.ok(us > ye, `${label}: expected US (${us}) > YE (${ye})`);
 }
 
+// Plan 2026-04-25-004 Phase 1 (Ship 1): tradePolicy formula now weights
+// applied tariff rate at 0.40. Norway's slightly higher applied tariff
+// (~5%) pulls its tradePolicy score below the US (~2.5%), while both
+// remain well above Yemen's (non-WTO-reporter, imputed). The strict
+// NO ≥ US assertion no longer holds for tradePolicy specifically; the
+// resilience contract for this dim is "developed-economy reporters
+// strictly above the imputation tier".
+function assertResilientAboveImputed(label: string, no: number, us: number, ye: number) {
+  assert.ok(no > ye, `${label}: expected NO (${no}) > YE (${ye})`);
+  assert.ok(us > ye, `${label}: expected US (${us}) > YE (${ye})`);
+}
+
 describe('resilience dimension scorers', () => {
   it('produce plausible country ordering for the economic dimensions', async () => {
     const macro = await scoreTriple(scoreMacroFiscal);
     const currency = await scoreTriple(scoreCurrencyExternal);
-    const trade = await scoreTriple(scoreTradeSanctions);
+    const trade = await scoreTriple(scoreTradePolicy);
 
     assertOrdered('macroFiscal', macro.no.score, macro.us.score, macro.ye.score);
     assertOrdered('currencyExternal', currency.no.score, currency.us.score, currency.ye.score);
-    assertOrdered('tradeSanctions', trade.no.score, trade.us.score, trade.ye.score);
+    assertResilientAboveImputed('tradePolicy', trade.no.score, trade.us.score, trade.ye.score);
   });
 
   it('produce plausible country ordering for infrastructure and energy', async () => {
@@ -150,83 +162,78 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, 'should have non-zero coverage even with null IEA');
   });
 
-  it('scoreTradeSanctions: country with 0 OFAC designations scores 100 (full-count key, not imputed)', async () => {
-    // country-counts:v1 covers ALL countries. A country absent from the map has 0 designations
-    // which is a real data point (score=100), not an imputed absence.
+  // Plan 2026-04-25-004 Phase 1 (Ship 1): tradeSanctions → tradePolicy
+  // rename + dropped OFAC component + reweight (restrictions 0.30,
+  // barriers 0.30, tariff 0.40). The tests below reflect the new formula;
+  // the OFAC sanctions key `sanctions:country-counts:v1` is no longer
+  // read by scoreTradePolicy. End-to-end formula contract is also
+  // pinned in `tests/resilience-trade-policy-formula.test.mts`.
+
+  it('scoreTradePolicy: WTO arrays present without reporter set + no static record → 100/0.6', async () => {
+    // Without _reporterCountries, isInWtoReporterSet returns true (default
+    // reporter-membership when the seed payload is non-null), so empty
+    // arrays mean "this country has 0 restrictions/0 barriers" → score 100.
+    // Static record absent → tariff null → weight 0.40 drops from blend.
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:country-counts:v1') return { RU: 500, IR: 350 }; // FI absent = 0
       if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [] };
       if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [] };
       return null;
     };
-    const score = await scoreTradeSanctions('FI', reader);
-    assert.equal(score.score, 100, 'FI with 0 designations must score 100 (not sanctioned)');
-    // WB tariff rate absent (no static record) reduces coverage from 1.0 to 0.75
-    assert.equal(score.coverage, 0.75, 'coverage reflects missing WB tariff rate');
+    const score = await scoreTradePolicy('FI', reader);
+    assert.equal(score.score, 100, 'FI with 0 WTO restrictions and 0 barriers must score 100');
+    // Coverage = (1.0*0.30 + 1.0*0.30 + 0*0.40) / 1.0 = 0.60
+    assert.equal(score.coverage, 0.60, 'coverage reflects 0.30+0.30 observed weights minus the absent tariff slot');
   });
 
-  it('scoreTradeSanctions: heavily sanctioned country scores low', async () => {
-    const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:country-counts:v1') return { RU: 500 };
-      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [] };
-      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [] };
-      return null;
-    };
-    const score = await scoreTradeSanctions('RU', reader);
-    // Sanctions metric alone = 0 (score floored); WTO sources are empty (no restrictions = 100).
-    // Available: 0.45+0.15+0.15 = 0.75. Score: (0*0.45 + 100*0.15 + 100*0.15)/0.75 = 40.
-    assert.ok(score.score < 55, `RU with 500 designations should score below midpoint, got ${score.score}`);
-  });
-
-  it('scoreTradeSanctions: seed outage (null source) does not impute as country-absent', async () => {
+  it('scoreTradePolicy: seed outage (null source) does not impute as country-absent', async () => {
     const reader = async (_key: string): Promise<unknown | null> => null;
-    const score = await scoreTradeSanctions('FI', reader);
+    const score = await scoreTradePolicy('FI', reader);
     assert.equal(score.coverage, 0, `seed outage must give coverage=0, got ${score.coverage}`);
     assert.equal(score.score, 0, `seed outage must give score=0, got ${score.score}`);
   });
 
-  it('scoreTradeSanctions: reporter-set country with zero restrictions scores 100 (real data)', async () => {
+  it('scoreTradePolicy: reporter-set country with zero restrictions scores 100 (real data)', async () => {
     const reporterSet = ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'];
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:country-counts:v1') return {};
       if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
       if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
       return null;
     };
-    const score = await scoreTradeSanctions('US', reader);
+    const score = await scoreTradePolicy('US', reader);
     assert.equal(score.score, 100, 'reporter with 0 restrictions must score 100 (genuine zero)');
-    // WB tariff rate absent (no static record) reduces coverage from 1.0 to 0.75
-    assert.equal(score.coverage, 0.75, 'coverage reflects missing WB tariff rate');
+    // WB tariff rate absent (no static record) reduces coverage from 1.0 to 0.60
+    // (0.30 restrictions + 0.30 barriers, tariff weight 0.40 unobserved).
+    assert.equal(score.coverage, 0.60, 'coverage reflects missing WB tariff rate against new 0.30/0.30/0.40 weights');
   });
 
-  it('scoreTradeSanctions: non-reporter country gets IMPUTE.wtoData (blended score=84, coverage=0.57)', async () => {
+  it('scoreTradePolicy: non-reporter country gets IMPUTE.wtoData (blended score=60, coverage=0.24)', async () => {
     const reporterSet = ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'];
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:country-counts:v1') return {};
       if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
       if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
       return null;
     };
-    const score = await scoreTradeSanctions('BF', reader);
-    // BF (Burkina Faso) not in reporter set: sanctions=100 (0 designations, weight 0.45),
-    // restrictions=60 (imputed, weight 0.15, cc=0.4), barriers=60 (imputed, weight 0.15, cc=0.4),
-    // WB tariff=null (weight 0.25). Available weight = 0.75.
-    // Blended score: (100*0.45 + 60*0.15 + 60*0.15) / 0.75 = 84
-    assert.equal(score.score, 84, 'non-reporter blended with sanctions=100 and imputed WTO=60');
-    // Coverage: (1.0*0.45 + 0.4*0.15 + 0.4*0.15 + 0*0.25) / 1.0 = 0.57
-    assert.equal(score.coverage, 0.57, 'non-reporter coverage reflects imputed WTO metrics and absent tariff');
+    const score = await scoreTradePolicy('BF', reader);
+    // BF (Burkina Faso) not in reporter set:
+    //   restrictions imputed score=60, weight 0.30, certaintyCoverage 0.4
+    //   barriers     imputed score=60, weight 0.30, certaintyCoverage 0.4
+    //   tariff       null, weight 0.40
+    // Blended score: (60*0.30 + 60*0.30) / (0.30+0.30) = 60
+    // Coverage    : (0.4*0.30 + 0.4*0.30 + 0*0.40) / 1.0 = 0.24
+    assert.equal(score.score, 60, 'non-reporter blended with imputed WTO=60 only (no sanctions component)');
+    assert.equal(score.coverage, 0.24, 'non-reporter coverage reflects imputed WTO certaintyCoverage and absent tariff');
   });
 
-  it('scoreTradeSanctions: WTO seed outage returns null for both trade metrics', async () => {
+  it('scoreTradePolicy: WTO seed outage with only tariff data scores from tariff alone', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:country-counts:v1') return { US: 10 };
+      if (key === 'resilience:static:US') return { appliedTariffRate: { value: 0 } };
       return null;
     };
-    const score = await scoreTradeSanctions('US', reader);
-    // Only sanctions loaded (weight 0.45). WTO restrictions + barriers + WB tariff null.
-    assert.ok(score.score > 0, 'sanctions data alone produces non-zero score');
-    assert.ok(score.coverage > 0.4 && score.coverage < 0.5,
-      `coverage should be ~0.45 (only sanctions loaded), got ${score.coverage}`);
+    const score = await scoreTradePolicy('US', reader);
+    // Restrictions + barriers null. Tariff = 0% → score 100 with weight 0.40.
+    // Available weight = 0.40 → blended score = 100. Coverage = 0.40.
+    assert.equal(score.score, 100, 'tariff-only path with 0% tariff must score 100');
+    assert.equal(score.coverage, 0.40, `coverage should be exactly 0.40 (tariff weight only), got ${score.coverage}`);
   });
 
   it('scoreCurrencyExternal: no IMF and no reserves → curated_list_absent imputation (score 50)', async () => {
@@ -848,7 +855,7 @@ describe('resilience dimension imputationClass propagation (T1.7)', () => {
       `foodWater should propagate stable-absence from IMPUTE.ipcFood, got ${result.imputationClass}`);
   });
 
-  it('single fully-imputed metric: tradeSanctions reports unmonitored via IMPUTE.wtoData', async () => {
+  it('single fully-imputed metric: tradePolicy reports unmonitored via IMPUTE.wtoData', async () => {
     // Non-reporter in WTO restrictions + barriers, no sanctions/tariff data.
     // Both imputed metrics share the unmonitored class.
     const reporterSet = ['US', 'DE'];
@@ -857,25 +864,28 @@ describe('resilience dimension imputationClass propagation (T1.7)', () => {
       if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
       return null;
     };
-    const result = await scoreTradeSanctions('BF', reader);
+    const result = await scoreTradePolicy('BF', reader);
     assert.equal(result.observedWeight, 0, 'no observed data for BF in this reader');
     assert.ok(result.imputedWeight > 0, 'WTO imputation should produce imputed weight');
     assert.equal(result.imputationClass, 'unmonitored',
-      `tradeSanctions should propagate unmonitored from IMPUTE.wtoData, got ${result.imputationClass}`);
+      `tradePolicy should propagate unmonitored from IMPUTE.wtoData, got ${result.imputationClass}`);
   });
 
   it('observed + imputed: imputationClass is null when the dimension has any real data', async () => {
-    // Mix: real sanctions data (observed) + WTO impute (imputed) → observedWeight > 0
-    // means imputationClass must be null.
+    // Plan 2026-04-25-004 Phase 1: sanctions component dropped. Real-data
+    // contribution is now driven via the static-record applied tariff
+    // rate, while non-reporter WTO components remain imputed. Observed
+    // tariff (weight 0.40) + imputed WTO (weight 0.30+0.30) together
+    // must yield observedWeight>0 and imputationClass=null.
     const reporterSet = ['US'];
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:country-counts:v1') return { BF: 2 };
       if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
       if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      if (key === 'resilience:static:BF') return { appliedTariffRate: { value: 8 } };
       return null;
     };
-    const result = await scoreTradeSanctions('BF', reader);
-    assert.ok(result.observedWeight > 0, 'sanctions provide observed weight');
+    const result = await scoreTradePolicy('BF', reader);
+    assert.ok(result.observedWeight > 0, 'tariff provides observed weight');
     assert.ok(result.imputedWeight > 0, 'WTO still imputes for non-reporter');
     assert.equal(result.imputationClass, null,
       `observed + imputed must yield null imputationClass, got ${result.imputationClass}`);
@@ -1001,7 +1011,7 @@ describe('resilience source-failure aggregation (T1.7)', () => {
     // score=0, imputationClass=null from weightedBlend. Even with the
     // source-failure set, it stays null because the decoration only
     // re-tags when imputationClass was already non-null. To exercise
-    // the real re-tagging branch, tradeSanctions is the right target:
+    // the real re-tagging branch, tradePolicy is the right target:
     // it has a WTO imputation fallback, and we put tradeToGdp into the
     // failed set below in the next test case. For this test, simply
     // assert the infrastructure row (in wgi's affected set only through
@@ -1011,10 +1021,10 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       'real-data infrastructure must not be re-tagged even if its adapter is failed');
   });
 
-  it('re-tags already-imputed dimensions to source-failure via tradeSanctions path', async () => {
-    // tradeSanctions imputes via IMPUTE.wtoData (unmonitored) when a
+  it('re-tags already-imputed dimensions to source-failure via tradePolicy path', async () => {
+    // tradePolicy imputes via IMPUTE.wtoData (unmonitored) when a
     // country is absent from the WTO reporter sets. Mark the
-    // appliedTariffRate adapter as failed → the tradeSanctions dim,
+    // appliedTariffRate adapter as failed → the tradePolicy dim,
     // which the mapping says depends on appliedTariffRate, keeps its
     // imputed WTO class from wbWto but the decoration flips it to
     // source-failure.
@@ -1030,14 +1040,14 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       return null;
     };
     const dims = await scoreAllDimensions('BF', reader);
-    // tradeSanctions had imputationClass='unmonitored' from the raw
+    // tradePolicy had imputationClass='unmonitored' from the raw
     // scorer (WTO impute), then the decoration pass flipped it to
     // 'source-failure' because appliedTariffRate is in failedDatasets
-    // and its mapping includes tradeSanctions.
-    assert.equal(dims.tradeSanctions.observedWeight, 0, 'no observed data for BF');
-    assert.ok(dims.tradeSanctions.imputedWeight > 0, 'WTO impute carries weight');
-    assert.equal(dims.tradeSanctions.imputationClass, 'source-failure',
-      `tradeSanctions must flip to source-failure when appliedTariffRate is in failedDatasets, got ${dims.tradeSanctions.imputationClass}`);
+    // and its mapping includes tradePolicy.
+    assert.equal(dims.tradePolicy.observedWeight, 0, 'no observed data for BF');
+    assert.ok(dims.tradePolicy.imputedWeight > 0, 'WTO impute carries weight');
+    assert.equal(dims.tradePolicy.imputationClass, 'source-failure',
+      `tradePolicy must flip to source-failure when appliedTariffRate is in failedDatasets, got ${dims.tradePolicy.imputationClass}`);
   });
 
   it('does not re-tag real-data dimensions even when their adapter is in failedDatasets', async () => {
@@ -1065,8 +1075,8 @@ describe('resilience source-failure aggregation (T1.7)', () => {
   });
 
   it('leaves unaffected dimensions alone when unrelated adapters fail', async () => {
-    // BF with WTO-impute for tradeSanctions (unmonitored), but the
-    // failed set contains only `wgi`. tradeSanctions is NOT in wgi's
+    // BF with WTO-impute for tradePolicy (unmonitored), but the
+    // failed set contains only `wgi`. tradePolicy is NOT in wgi's
     // affected set (only governanceInstitutional, macroFiscal), so its
     // unmonitored class must stay put.
     const reader = async (key: string): Promise<unknown | null> => {
@@ -1079,8 +1089,8 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       return null;
     };
     const dims = await scoreAllDimensions('BF', reader);
-    assert.equal(dims.tradeSanctions.imputationClass, 'unmonitored',
-      `tradeSanctions is not in wgi's affected set; class must stay unmonitored, got ${dims.tradeSanctions.imputationClass}`);
+    assert.equal(dims.tradePolicy.imputationClass, 'unmonitored',
+      `tradePolicy is not in wgi's affected set; class must stay unmonitored, got ${dims.tradePolicy.imputationClass}`);
   });
 
   it('is a no-op when seed-meta has no failedDatasets (healthy seed path)', async () => {

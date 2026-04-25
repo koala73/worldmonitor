@@ -264,8 +264,8 @@ const EXTRACTION_RULES = {
   fxVolatility: { type: 'not-implemented', reason: 'BIS REER annualized volatility needs scorer monthly-change std-dev; helper not exported' },
   fxDeviation: { type: 'not-implemented', reason: 'BIS REER absolute deviation from 100 needs scorer latest-value selection; helper not exported' },
 
-  // ── tradeSanctions ──────────────────────────────────────────────────
-  sanctionCount: { type: 'sanctions-count' },
+  // ── tradePolicy (renamed from tradeSanctions in plan 2026-04-25-004 Ship 1) ──
+  // sanctionCount indicator dropped — OFAC component removed from formula.
   tradeRestrictions: { type: 'count-trade-restrictions' },
   tradeBarriers: { type: 'count-trade-barriers' },
   appliedTariffRate: { type: 'static-path', path: ['appliedTariffRate', 'value'] },

@@ -157,8 +157,8 @@ describe('pillar constants', () => {
     assert.equal(PENALTY_ALPHA, 0.50);
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX is v10', () => {
-    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v12:');
+  it('RESILIENCE_SCORE_CACHE_PREFIX is v13', () => {
+    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v13:');
   });
 
   it('PILLAR_ORDER has 3 entries', () => {

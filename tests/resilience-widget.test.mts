@@ -190,7 +190,7 @@ test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
 test('getResilienceDimensionLabel returns short stable labels for all 21 dimensions', () => {
   assert.equal(getResilienceDimensionLabel('macroFiscal'), 'Macro');
   assert.equal(getResilienceDimensionLabel('currencyExternal'), 'Currency');
-  assert.equal(getResilienceDimensionLabel('tradeSanctions'), 'Trade');
+  assert.equal(getResilienceDimensionLabel('tradePolicy'), 'Trade');
   assert.equal(getResilienceDimensionLabel('cyberDigital'), 'Cyber');
   assert.equal(getResilienceDimensionLabel('logisticsSupply'), 'Logistics');
   assert.equal(getResilienceDimensionLabel('infrastructure'), 'Infra');
@@ -260,7 +260,7 @@ test('formatDimensionConfidence classifies partial dimensions (mixed observed an
 
 test('formatDimensionConfidence classifies all-imputed dimensions as imputed', () => {
   const result = formatDimensionConfidence({
-    id: 'tradeSanctions',
+    id: 'tradePolicy',
     coverage: 0.3,
     observedWeight: 0,
     imputedWeight: 1,

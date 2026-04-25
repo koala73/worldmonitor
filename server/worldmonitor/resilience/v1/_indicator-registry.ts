@@ -178,28 +178,19 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     license: 'non-commercial',
   },
 
-  // ── tradeSanctions (4 sub-metrics) ────────────────────────────────────────
-  {
-    id: 'sanctionCount',
-    dimension: 'tradeSanctions',
-    description: 'OFAC sanctions entity count per country; piecewise normalization (0=100, 200+=near 0)',
-    direction: 'lowerBetter',
-    goalposts: { worst: 200, best: 0 },
-    weight: 0.45,
-    sourceKey: 'sanctions:country-counts:v1',
-    scope: 'global',
-    cadence: 'daily',
-    tier: 'core',
-    coverage: 200,
-    license: 'public-domain',
-  },
+  // ── tradePolicy (3 sub-metrics) ───────────────────────────────────────────
+  // Renamed from tradeSanctions in plan 2026-04-25-004 Phase 1 (Ship 1).
+  // The OFAC `sanctionCount` indicator binding (was weight 0.45) is DROPPED;
+  // domicile-of-designated-entities is a corporate-finance liability metric,
+  // not a country-resilience indicator. Remaining 3 components reweighted
+  // to total 1.0 (0.30 / 0.30 / 0.40).
   {
     id: 'tradeRestrictions',
-    dimension: 'tradeSanctions',
+    dimension: 'tradePolicy',
     description: 'WTO trade restrictions count (IN_FORCE weighted 3x); curated reporter set',
     direction: 'lowerBetter',
     goalposts: { worst: 30, best: 0 },
-    weight: 0.15,
+    weight: 0.30,
     sourceKey: 'trade:restrictions:v1:tariff-overview:50',
     scope: 'curated',
     cadence: 'weekly',
@@ -213,11 +204,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   },
   {
     id: 'tradeBarriers',
-    dimension: 'tradeSanctions',
+    dimension: 'tradePolicy',
     description: 'WTO trade barrier notifications count; curated reporter set',
     direction: 'lowerBetter',
     goalposts: { worst: 40, best: 0 },
-    weight: 0.15,
+    weight: 0.30,
     sourceKey: 'trade:barriers:v1:tariff-gap:50',
     scope: 'curated',
     cadence: 'weekly',
@@ -228,11 +219,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   },
   {
     id: 'appliedTariffRate',
-    dimension: 'tradeSanctions',
+    dimension: 'tradePolicy',
     description: 'World Bank applied tariff rate, weighted mean, all products (TM.TAX.MRCH.WM.AR.ZS); 0%=free trade, 20%+=heavily restricted',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
-    weight: 0.25,
+    weight: 0.40,
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',

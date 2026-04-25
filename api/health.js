@@ -161,7 +161,7 @@ const STANDALONE_KEYS = {
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
-  resilienceRanking:        'resilience:ranking:v12',
+  resilienceRanking:        'resilience:ranking:v13',
   productCatalog:           'product-catalog:v2',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',

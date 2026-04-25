@@ -57,7 +57,7 @@ The index is organized into 6 domains. Each domain weight reflects its relative 
 
 | Domain | ID | Weight | Dimensions |
 |---|---|---|---|
-| Economic | `economic` | 0.17 | Macro-Fiscal, Currency & External, Trade & Sanctions |
+| Economic | `economic` | 0.17 | Macro-Fiscal, Currency & External, Trade Policy |
 | Infrastructure | `infrastructure` | 0.15 | Cyber & Digital, Logistics & Supply, Infrastructure |
 | Energy | `energy` | 0.11 | Energy |
 | Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Border Security, Information |
@@ -95,16 +95,23 @@ Coverage ladder (post-PR-3): both present → 0.85; inflation only → 0.55; res
 
 Retained as experimental (enrichment-only, ~64 BIS-reporting countries): `fxVolatility` (annualized BIS REER volatility, 50-0 goalpost) and `fxDeviation` (absolute deviation of BIS REER from 100, 35-0). These do not contribute to the core overall score; they surface on the country drill-down for BIS-tracked economies.
 
-#### Trade & Sanctions
+#### Trade Policy
+
+Renamed from "Trade & Sanctions" in plan 2026-04-25-004 Phase 1 (Ship 1).
+The OFAC `sanctionCount` component (was weight 0.45) was dropped — counting
+designated-party domicile locations is a corporate-finance liability metric,
+not a country-resilience indicator (a transit-hub like UAE or Singapore
+hosts many shell-company entries without that reflecting on the host
+country's structural resilience). The remaining 3 components were reweighted
+to total 1.0. A separate `financialSystemExposure` dim (plan Phase 2) will
+add structural sanctions exposure via BIS Locational Banking Statistics +
+WB IDS short-term external debt + FATF AML/CFT listing status.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| sanctionCount | OFAC sanctions entity count; piecewise normalization | Lower is better | 200 - 0 | 0.45 | OFAC | Daily |
-| tradeRestrictions | WTO trade restrictions count (IN_FORCE weighted 3x) | Lower is better | 30 - 0 | 0.15 | WTO | Weekly |
-| tradeBarriers | WTO trade barrier notifications count | Lower is better | 40 - 0 | 0.15 | WTO | Weekly |
-| appliedTariffRate | Applied tariff rate, weighted mean, all products (World Bank TM.TAX.MRCH.WM.AR.ZS) | Lower is better | 20 - 0 | 0.25 | World Bank | Annual |
-
-Sanctions use piecewise normalization: 0 entities = score 100, 1-10 = 90-75, 11-50 = 75-50, 51-200 = 50-25, 201+ tapers toward 0.
+| tradeRestrictions | WTO trade restrictions count (IN_FORCE weighted 3x) | Lower is better | 30 - 0 | 0.30 | WTO | Weekly |
+| tradeBarriers | WTO trade barrier notifications count | Lower is better | 40 - 0 | 0.30 | WTO | Weekly |
+| appliedTariffRate | Applied tariff rate, weighted mean, all products (World Bank TM.TAX.MRCH.WM.AR.ZS) | Lower is better | 20 - 0 | 0.40 | World Bank | Annual |
 
 ### Infrastructure Domain (weight 0.15)
 

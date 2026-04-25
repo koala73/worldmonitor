@@ -138,7 +138,13 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     // is exercised with actual registry data. Both resolve to drift
     // cases (v-strip + override) so this also exercises resolveSeedMetaKey.
     const sourceKeyA = 'economic:imf:macro:v2'; // macroFiscal -> seed-meta:economic:imf-macro
-    const sourceKeyB = 'sanctions:country-counts:v1'; // tradeSanctions -> seed-meta:sanctions:country-counts
+    // Replaced 'sanctions:country-counts:v1' here in plan 2026-04-25-004
+    // Phase 1: that source key is no longer registered (the OFAC
+    // sanctionCount indicator was dropped from the tradePolicy dim).
+    // Use a different drift-case sourceKey that IS still in the registry
+    // (the v-strip + override path goes through SOURCE_KEY_META_OVERRIDES
+    // in _dimension-freshness.ts and resolves to seed-meta:economic:bis-dsr).
+    const sourceKeyB = 'economic:bis:dsr:v1'; // -> seed-meta:economic:bis-dsr
     const metaKeyA = resolveSeedMetaKey(sourceKeyA);
     const metaKeyB = resolveSeedMetaKey(sourceKeyB);
     const reader = async (key: string): Promise<unknown | null> => {
@@ -201,7 +207,9 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
 
   it('swallows reader errors for a single key without failing the whole map', async () => {
     const failingSourceKey = 'economic:imf:macro:v2';
-    const goodSourceKey = 'sanctions:country-counts:v1';
+    // Replaced 'sanctions:country-counts:v1' here in plan 2026-04-25-004
+    // Phase 1: that source key is no longer registered.
+    const goodSourceKey = 'economic:bis:dsr:v1';
     const failingMetaKey = resolveSeedMetaKey(failingSourceKey);
     const goodMetaKey = resolveSeedMetaKey(goodSourceKey);
     const reader = async (key: string): Promise<unknown | null> => {

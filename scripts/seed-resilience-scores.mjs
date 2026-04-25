@@ -19,12 +19,14 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
   || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
-// Bumped v11 → v12 in lockstep with server/worldmonitor/resilience/v1/
-// _shared.ts for PR 3A §net-imports denominator (plan 2026-04-24-002).
-// Seeder and server MUST agree on the prefix or the seeder writes
-// scores the handler will never read.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v12:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v12';
+// Bumped v12 → v13 in lockstep with server/worldmonitor/resilience/v1/
+// _shared.ts for plan 2026-04-25-004 Phase 1 (Ship 1) — tradeSanctions
+// → tradePolicy rename + dropped OFAC component + reweighted formula.
+// Earlier: v11 → v12 for PR 3A §net-imports denominator (plan
+// 2026-04-24-002). Seeder and server MUST agree on the prefix or the
+// seeder writes scores the handler will never read.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v13:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v13';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.

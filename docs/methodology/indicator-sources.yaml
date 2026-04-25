@@ -117,25 +117,22 @@
   constructStatus: observed-mechanism
   reviewNotes: Also enters reserveAdequacy at 1.0 weight. Double-counting risk across dimensions; review in PR 2.
 
-- indicator: sanctionCount
-  dimension: tradeSanctions
-  domain: economic
-  weight: 0.45
-  direction: lower-better
-  source: OFAC
-  seriesId: Consolidated Sanctions List (count per country)
-  seriesUrl: https://sanctionslist.ofac.treas.gov/
-  coveragePct: 1.00
-  lastObservedYear: 2026
-  license: US Government public domain
-  mechanismTestRationale: Active sanctions restrict trade/finance channels; higher count = more channels restricted.
-  constructStatus: observed-mechanism
-  reviewNotes: OFAC-only. PR 4 adds EU/UK/CN sanctions for directional completeness.
-
+# tradeSanctions → tradePolicy renamed in plan 2026-04-25-004 Phase 1
+# (Ship 1). The OFAC `sanctionCount` indicator was DROPPED — counting
+# designated-party domicile locations is a corporate-finance liability
+# metric, not a country-resilience indicator (a transit-hub country like
+# UAE or Singapore hosts many shell-company entries without that
+# reflecting on the host country's structural resilience). The OFAC
+# source itself is preserved (still consumed by country-brief generation
+# and ad-hoc analysis); only the resilience-scorer binding was removed.
+# A separate `financialSystemExposure` dim (plan Phase 2) will add
+# structural sanctions-vulnerability via BIS Locational Banking
+# Statistics + WB IDS short-term external debt + FATF AML/CFT listing
+# status. Remaining 3 components reweighted to total 1.0:
 - indicator: tradeRestrictions
-  dimension: tradeSanctions
+  dimension: tradePolicy
   domain: economic
-  weight: 0.15
+  weight: 0.30
   direction: lower-better
   source: WTO
   seriesId: Trade Monitoring Database
@@ -147,9 +144,9 @@
   constructStatus: observed-mechanism
 
 - indicator: tradeBarriers
-  dimension: tradeSanctions
+  dimension: tradePolicy
   domain: economic
-  weight: 0.15
+  weight: 0.30
   direction: lower-better
   source: WTO
   seriesId: Trade Barriers Notifications
@@ -161,9 +158,9 @@
   constructStatus: observed-mechanism
 
 - indicator: appliedTariffRate
-  dimension: tradeSanctions
+  dimension: tradePolicy
   domain: economic
-  weight: 0.25
+  weight: 0.40
   direction: lower-better
   source: World Bank / WITS
   seriesId: TM.TAX.MRCH.WM.AR.ZS
