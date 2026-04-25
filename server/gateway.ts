@@ -293,10 +293,10 @@ export type GatewayCtx = { waitUntil: (p: Promise<unknown>) => void };
 
 export function createDomainGateway(
   routes: RouteDescriptor[],
-): (req: Request, ctx: GatewayCtx) => Promise<Response> {
+): (req: Request, ctx?: GatewayCtx) => Promise<Response> {
   const router = createRouter(routes);
 
-  return async function handler(originalRequest: Request, ctx: GatewayCtx): Promise<Response> {
+  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
     let request = originalRequest;
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
@@ -313,10 +313,15 @@ export function createDomainGateway(
       userApiKeyCustomerRef: null,
       tier: null,
     };
-    const domain = pathname.split('/')[2] ?? '';
+    // Domain segment for telemetry. Path layouts:
+    //   /api/<domain>/v1/<rpc>          → parts[2] = domain
+    //   /api/v2/<domain>/<rpc>          → parts[2] = "v2", parts[3] = domain
+    const _parts = pathname.split('/');
+    const domain = (/^v\d+$/.test(_parts[2] ?? '') ? _parts[3] : _parts[2]) ?? '';
     const reqBytes = deriveReqBytes(request);
 
     function emitRequest(status: number, reason: RequestReason, cacheTier: UsageCacheTier | null, resBytes = 0): void {
+      if (!ctx?.waitUntil) return;
       const identity = buildUsageIdentity(usage);
       // ua_hash is async (SHA-256) — fire-and-forget Promise inside waitUntil.
       ctx.waitUntil((async () => {
@@ -466,6 +471,13 @@ export function createDomainGateway(
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
             });
           }
+          // Capture identity for telemetry — legacy bearer auth bypasses the
+          // earlier resolveClerkSession() block (only runs for tier-gated routes),
+          // so without this premium bearer requests would emit as anonymous.
+          if (session.userId) {
+            sessionUserId = session.userId;
+            usage.sessionUserId = session.userId;
+          }
           // Accept EITHER a Clerk 'pro' role OR a Convex Dodo entitlement with
           // tier >= 1. The Dodo webhook pipeline writes Convex entitlements but
           // does NOT sync Clerk publicMetadata.role, so a paying subscriber's
@@ -520,6 +532,13 @@ export function createDomainGateway(
       if (entitlementResponse) {
         emitRequest(entitlementResponse.status, 'ok', null);
         return entitlementResponse;
+      }
+      // Allowed → record the resolved tier for telemetry. getEntitlements has
+      // its own Redis cache + in-flight coalescing, so the second lookup here
+      // does not double the cost when checkEntitlement already fetched.
+      if (isTierGated && sessionUserId && usage.tier === null) {
+        const ent = await getEntitlements(sessionUserId);
+        if (ent) usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
       }
     }
 
@@ -585,7 +604,7 @@ export function createDomainGateway(
     try {
       response = await runWithUsageScope(
         {
-          ctx,
+          ctx: ctx ?? { waitUntil: () => {} },
           requestId: deriveRequestId(originalRequest),
           customerId: identityForScope.customer_id,
           route: pathname,
