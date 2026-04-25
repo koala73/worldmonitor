@@ -63,6 +63,32 @@ describe('scoreTradePolicy — 3-component weighted-blend formula (Ship 1 contra
     );
   });
 
+  it('DOES read every expected component seed key (defends against accidental drops)', async () => {
+    // Symmetric counter-positive: if a future refactor accidentally
+    // drops one of the 3 remaining components, this test names the
+    // missing reader call directly. The static-record key is templated
+    // by `readStaticCountry` (resilience:static:{ISO2}); we accept any
+    // read that includes that prefix.
+    const observed = new Set<string>();
+    const reader: ResilienceSeedReader = async (key) => {
+      observed.add(key);
+      return null;
+    };
+    await scoreTradePolicy(TEST_ISO2, reader);
+    assert.ok(
+      observed.has('trade:restrictions:v1:tariff-overview:50'),
+      'scoreTradePolicy must call reader(trade:restrictions:v1:tariff-overview:50) — WTO restrictions component (weight 0.30)',
+    );
+    assert.ok(
+      observed.has('trade:barriers:v1:tariff-gap:50'),
+      'scoreTradePolicy must call reader(trade:barriers:v1:tariff-gap:50) — WTO barriers component (weight 0.30)',
+    );
+    assert.ok(
+      [...observed].some((k) => k.startsWith('resilience:static:')),
+      'scoreTradePolicy must read a resilience:static:{ISO2} key for the applied tariff rate component (weight 0.40)',
+    );
+  });
+
   it('reporter-set country with zero restrictions/barriers and no tariff scores 100', async () => {
     // Restrictions = 0 → 100 (lowerBetter at the best anchor).
     // Barriers     = 0 → 100.

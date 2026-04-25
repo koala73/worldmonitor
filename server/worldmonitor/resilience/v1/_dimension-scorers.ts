@@ -1068,12 +1068,14 @@ export async function scoreCurrencyExternal(
 //   WTO restrictions count → 0.30 (was 0.15)
 //   WTO barriers count     → 0.30 (was 0.15)
 //   applied tariff rate    → 0.40 (was 0.25)
-// `RESILIENCE_SANCTIONS_KEY` and `normalizeSanctionCount` are retained
-// (no longer read here) pending plan 2026-04-25-004 Phase 2, which adds the
-// `financialSystemExposure` dim built from BIS LBS + WB IDS + FATF status —
-// a structural-exposure construct that does not rely on the OFAC count.
-// `scripts/seed-sanctions-pressure.mjs` continues to write the seed key for
-// other consumers (country-brief generation, ad-hoc analysis).
+// The `sanctions:country-counts:v1` seed key is no longer read by this
+// module; only `scripts/seed-sanctions-pressure.mjs` continues to WRITE it
+// for country-brief generation and ad-hoc analysis. The retired
+// `RESILIENCE_SANCTIONS_KEY` constant and `normalizeSanctionCount` helper
+// were removed in this PR (see retire-tag at lines ~263 and ~542).
+// Phase 2 (Ship 2) adds the `financialSystemExposure` dim built from
+// BIS LBS + WB IDS + FATF status — a structural-exposure construct that
+// does not rely on the OFAC count.
 export async function scoreTradePolicy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
