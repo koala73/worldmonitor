@@ -5,7 +5,6 @@
  * Dynamic routes (with {param} segments) fall back to linear scan with pattern matching.
  */
 
-/** Same shape as the generated RouteDescriptor (defined locally to avoid importing from a specific generated file). */
 export interface RouteDescriptor {
   method: string;
   path: string;
@@ -17,19 +16,15 @@ export interface Router {
   allowedMethods(pathname: string): string[];
 }
 
-interface DynamicRoute {
-  method: string;
-  /** Number of path segments (for quick filtering). */
-  segmentCount: number;
-  /** Each segment is either a literal string or null (= path param wildcard). */
-  segments: (string | null)[];
-  handler: (req: Request) => Promise<Response>;
-}
-
 export function createRouter(allRoutes: RouteDescriptor[]): Router {
   const staticTable = new Map<string, (req: Request) => Promise<Response>>();
   const staticPaths = new Map<string, Set<string>>();
-  const dynamicRoutes: DynamicRoute[] = [];
+  const dynamicRoutes: Array<{
+    method: string;
+    segmentCount: number;
+    segments: (string | null)[];
+    handler: (req: Request) => Promise<Response>;
+  }> = [];
 
   for (const route of allRoutes) {
     if (route.path.includes('{')) {

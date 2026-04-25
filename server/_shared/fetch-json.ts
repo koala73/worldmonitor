@@ -3,6 +3,8 @@ import { CHROME_UA } from './constants';
 interface FetchJsonOptions {
   timeoutMs?: number;
   headers?: Record<string, string>;
+  provider?: string;
+  operation?: string;
 }
 
 export async function fetchJson<T>(

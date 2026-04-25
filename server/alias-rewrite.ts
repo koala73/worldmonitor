@@ -16,7 +16,8 @@
 export async function rewriteToSebuf(
   req: Request,
   newPath: string,
-  gateway: (req: Request) => Promise<Response>,
+  gateway: (req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }) => Promise<Response>,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   const url = new URL(req.url);
   url.pathname = newPath;
@@ -27,5 +28,5 @@ export async function rewriteToSebuf(
     headers: req.headers,
     body,
   });
-  return gateway(rewritten);
+  return gateway(rewritten, ctx);
 }

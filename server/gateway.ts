@@ -275,20 +275,48 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
  */
 export function createDomainGateway(
   routes: RouteDescriptor[],
-): (req: Request) => Promise<Response> {
+): (req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }) => Promise<Response> {
   const router = createRouter(routes);
 
-  return async function handler(originalRequest: Request): Promise<Response> {
+  return async function handler(originalRequest: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
     let request = originalRequest;
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
+    const t0 = Date.now();
+
+    const isUsageEnabled = process.env.USAGE_TELEMETRY === '1';
+
+    async function emitEvent(
+      status: number,
+      reason?: 'origin_403' | 'rate_limit_429',
+    ): Promise<void> {
+      if (!isUsageEnabled) return;
+      const { emitUsageEvents, buildRequestEvent } = require('./_shared/usage');
+      const { resolveUsageIdentity } = await import('./_shared/usage-identity');
+      const identity = await resolveUsageIdentity(request, sessionUserId, isUserApiKey);
+      emitUsageEvents(ctx, [
+        buildRequestEvent({
+          request,
+          identity,
+          rpc: pathname,
+          status,
+          duration_ms: Date.now() - t0,
+          cacheTier: 'medium',
+          cacheStatus: 'miss',
+          reason,
+          sentryTraceId: request.headers.get('sentry-trace') ?? undefined,
+        }),
+      ]);
+    }
 
     // Origin check — skip CORS headers for disallowed origins
     if (isDisallowedOrigin(request)) {
-      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      const resp = new Response(JSON.stringify({ error: 'Origin not allowed' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json' },
       });
+      ctx.waitUntil(emitEvent(403, 'origin_403'));
+      return resp;
     }
 
     let corsHeaders: Record<string, string>;
@@ -437,11 +465,17 @@ export function createDomainGateway(
 
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback
     const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);
-    if (endpointRlResponse) return endpointRlResponse;
+    if (endpointRlResponse) {
+      ctx.waitUntil(emitEvent(429, 'rate_limit_429'));
+      return endpointRlResponse;
+    }
 
     if (!hasEndpointRatePolicy(pathname)) {
       const rateLimitResponse = await checkRateLimit(request, corsHeaders);
-      if (rateLimitResponse) return rateLimitResponse;
+      if (rateLimitResponse) {
+        ctx.waitUntil(emitEvent(429, 'rate_limit_429'));
+        return rateLimitResponse;
+      }
     }
 
     // Route matching — if POST doesn't match, convert to GET for stale clients
