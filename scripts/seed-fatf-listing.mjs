@@ -304,16 +304,15 @@ function stripHtml(s) {
 // so ops can see new FATF spellings that need adding to country-names.json.
 //
 // Returns `{ listed, unmatchedCandidates }`.
-const FATF_DETAIL_LINK_RE = /<a\s+([^>]*)href="[^"]*\/en\/countries\/detail\/([^"]+?)\.html"([^>]*)>([\s\S]*?)<\/a>/gi;
-
 export function extractListedCountries(html, nameLookup) {
+  // Declared inside the function so each call gets a fresh regex with
+  // `lastIndex=0`. Module-scoped /g regexes are a classic footgun:
+  // sequential calls skip matches because lastIndex carries over.
+  const detailLinkRe = /<a\s+([^>]*)href="[^"]*\/en\/countries\/detail\/([^"]+?)\.html"([^>]*)>([\s\S]*?)<\/a>/gi;
   const isoSet = new Set();
   const unmatchedCandidates = new Set();
   let m;
-  // Reset lastIndex in case regex was used elsewhere — avoids the classic
-  // /g+lastIndex bug where sequential calls skip matches.
-  FATF_DETAIL_LINK_RE.lastIndex = 0;
-  while ((m = FATF_DETAIL_LINK_RE.exec(html)) !== null) {
+  while ((m = detailLinkRe.exec(html)) !== null) {
     const attrsBefore = m[1];
     const slug = m[2];
     const attrsAfter = m[3];
@@ -322,7 +321,11 @@ export function extractListedCountries(html, nameLookup) {
     // component which always tags the anchor with `cmp-list__item-link`.
     // Real publication-body anchors are plain `<a href="...">`.
     if (/cmp-list__item-link/.test(attrsBefore + attrsAfter)) continue;
-    const anchorText = stripHtml(decodeHtmlEntities(innerHtml));
+    // Strip HTML tags BEFORE decoding entities. If a malformed snapshot
+    // contained `&lt;note&gt;` inside the anchor, decoding first would
+    // produce `<note>` which stripHtml would then erase. Stripping first
+    // preserves the literal text.
+    const anchorText = decodeHtmlEntities(stripHtml(innerHtml));
     if (!anchorText) continue;
     // Try anchor text first (most reliable — FATF renders the canonical
     // display name like "Côte d'Ivoire" or "Democratic Republic of the
