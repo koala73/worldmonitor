@@ -29,7 +29,13 @@ export const PIPELINES_TTL_SECONDS = 21 * 24 * 3600;
 
 const VALID_PHYSICAL_STATES = new Set(['flowing', 'reduced', 'offline', 'unknown']);
 const VALID_COMMERCIAL_STATES = new Set(['under_contract', 'expired', 'suspended', 'unknown']);
-const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satellite', 'ais-relay']);
+// `gem` covers rows imported from Global Energy Monitor's Oil & Gas
+// Infrastructure Trackers (CC-BY 4.0). Treated as an evidence-bearing source
+// for non-flowing badges in the same way as `press` / `satellite` / `ais-relay`,
+// since GEM is an academic/curated dataset with traceable provenance — not a
+// silent default. Exported alongside VALID_OIL_PRODUCT_CLASSES so test suites
+// can assert against the same source of truth the validator uses.
+export const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satellite', 'ais-relay', 'gem']);
 // Required on every oil pipeline. `crude` = crude-oil lines (default),
 // `products` = refined-product lines (gasoline/diesel/jet), `mixed` =
 // dual-use bridges moving both. Gas pipelines don't carry this field
@@ -104,13 +110,16 @@ export function validateRegistry(data) {
 
     // Every non-`flowing` badge requires at least one evidence field with signal.
     // This prevents shipping an `offline` label with zero supporting evidence.
+    // `gem` joins the evidence-bearing sources because GEM is a curated
+    // academic dataset with traceable provenance, not a silent default.
     if (ev.physicalState !== 'flowing') {
       const hasEvidence =
         ev.operatorStatement != null ||
         ev.sanctionRefs.length > 0 ||
         ev.physicalStateSource === 'ais-relay' ||
         ev.physicalStateSource === 'satellite' ||
-        ev.physicalStateSource === 'press';
+        ev.physicalStateSource === 'press' ||
+        ev.physicalStateSource === 'gem';
       if (!hasEvidence) return false;
     }
   }

@@ -65,6 +65,25 @@ No human review queue gates the transition — quality comes from the tiered evi
 
 Pipeline-registry data derived from [Global Energy Monitor](https://globalenergymonitor.org) (CC-BY 4.0), with additional operator and regulator material incorporated under fair-use for news reporting.
 
+The hand-curated subset (operator/regulator/sanctions-bearing rows with classifier confidence ≥ 0.7) ships with full evidence bundles: operator statements, sanction references, last-evidence-update timestamps, and named source authorities. The GEM-imported subset (long-tail coverage rows) ships with minimum-viable evidence — `physicalStateSource: gem`, `classifierConfidence ≤ 0.5`, no operator statement, no sanction references. Both subsets pass the same registry validator and feed the same public-badge derivation.
+
+## Operator runbook — GEM import refresh
+
+GEM publishes new releases of the Oil & Gas Infrastructure Trackers roughly quarterly. The refresh is operator-mediated rather than cron-driven because the GEM download URL changes per release; a hardcoded URL would silently fetch a different version than the one we attribute. Steps:
+
+1. Visit the [GEM Oil & Gas Infrastructure Trackers](https://globalenergymonitor.org/projects/global-oil-gas-infrastructure-tracker/) page. Registration is required for direct download even though the data itself is CC-BY 4.0.
+2. Download the latest gas + oil tracker Excel workbooks. Record the release date and download URL.
+3. Pre-convert each workbook to JSON externally (Numbers / pandas / csvkit), normalizing column names to the canonical set documented in `scripts/import-gem-pipelines.mjs::REQUIRED_COLUMNS` and country names to ISO 3166-1 alpha-2 codes.
+4. Run a dry pass to inspect the candidate diff:
+   ```bash
+   GEM_PIPELINES_FILE=/tmp/gem.json node scripts/import-gem-pipelines.mjs --print-candidates | jq '.gas | length, .oil | length'
+   ```
+5. Run the merge to write the deduplicated rows into `scripts/data/pipelines-{gas,oil}.json`. Spot-check 5-10 random GEM-sourced rows manually before committing.
+6. Commit the data + bump `MIN_PIPELINES_PER_REGISTRY` in `scripts/_pipeline-registry.mjs` to a sensible new floor (e.g. 200) so future partial imports fail loud. Record the GEM release date, download URL, and SHA256 of the source workbook in the commit message.
+7. Verify `npm run test:data` is green before pushing.
+
+Schema-drift sentinel guards against silent failures when GEM renames columns between releases — the parser throws with a clear message naming the missing column rather than producing zero-data rows.
+
 ## Corrections
 
 See [`/corrections`](/corrections) for the planned revision-log shape

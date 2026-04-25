@@ -24,7 +24,7 @@ export type PipelinePublicBadge = 'flowing' | 'reduced' | 'offline' | 'disputed'
 
 export interface PipelineEvidenceInput {
   physicalState?: string;               // 'flowing'|'reduced'|'offline'|'unknown'
-  physicalStateSource?: string;         // 'operator'|'regulator'|'press'|'satellite'|'ais-relay'
+  physicalStateSource?: string;         // 'operator'|'regulator'|'press'|'satellite'|'ais-relay'|'gem'
   operatorStatement?: { text?: string; url?: string; date?: string } | null;
   commercialState?: string;             // 'under_contract'|'expired'|'suspended'|'unknown'
   sanctionRefs?: ReadonlyArray<{ authority?: string; listId?: string; date?: string; url?: string }>;
@@ -49,7 +49,7 @@ const EVIDENCE_STALENESS_DAYS = 14;
  *      → "offline" (high-confidence offline with paperwork)
  *   2. physical_state = "offline" AND operatorStatement != null
  *      → "offline" (operator-disclosed outage)
- *   3. physical_state = "offline" AND physicalStateSource ∈ {press, ais-relay, satellite}
+ *   3. physical_state = "offline" AND physicalStateSource ∈ {press, ais-relay, satellite, gem}
  *      → "disputed" (external-signal offline without operator/sanction confirmation)
  *   4. physical_state = "reduced"
  *      → "reduced"
@@ -77,7 +77,7 @@ export function derivePipelinePublicBadge(
       evidence.commercialState === 'expired' || evidence.commercialState === 'suspended';
     const hasOperatorStatement = evidence.operatorStatement != null &&
       ((evidence.operatorStatement.text?.length ?? 0) > 0);
-    const hasExternalSignal = ['press', 'ais-relay', 'satellite'].includes(
+    const hasExternalSignal = ['press', 'ais-relay', 'satellite', 'gem'].includes(
       evidence.physicalStateSource ?? '',
     );
 
