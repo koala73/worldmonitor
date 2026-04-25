@@ -40,6 +40,7 @@ import {
   shouldExitNonZero as shouldExitOnBriefFailures,
 } from './lib/brief-compose.mjs';
 import {
+  digestWindowStartMs,
   pickWinningCandidateWithPool,
   runSynthesisWithFallback,
   subjectForBrief,
@@ -127,12 +128,13 @@ const BRIEF_URL_SIGNING_SECRET = process.env.BRIEF_URL_SIGNING_SECRET ?? '';
 const WORLDMONITOR_PUBLIC_BASE_URL =
   process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://worldmonitor.app';
 const BRIEF_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-// The brief is a once-per-day editorial snapshot. 24h is the natural
-// window regardless of a user's email cadence (daily / twice_daily /
-// weekly) — weekly subscribers still expect a fresh brief each day
-// in the dashboard panel. Matches DIGEST_LOOKBACK_MS so first-send
-// users see identical story pools in brief and email.
-const BRIEF_STORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Brief story window: derived per-rule from the rule's lastSentAt via
+// digestWindowStartMs, identical to the send-loop window. The previous
+// fixed-24h constant decoupled the canonical brief lead from the
+// stories the email/Slack body actually shipped, reintroducing the
+// cross-surface divergence the canonical-brain refactor is designed to
+// eliminate (especially severe for weekly users — 7d email body vs 24h
+// lead).
 const INSIGHTS_KEY = 'news:insights:v1';
 
 // Operator kill switch — used to intentionally silence brief compose
@@ -1253,12 +1255,20 @@ async function composeBriefsForRun(rules, nowMs) {
   // inherits a looser populator's pool (the earlier populator "wins"
   // and decides which severity tiers enter the pool, so stricter
   // users get a pool that contains severities they never wanted).
-  const windowStart = nowMs - BRIEF_STORY_WINDOW_MS;
+  //
+  // windowStart is derived per-candidate from `lastSentAt`, matching
+  // the send loop's formula exactly (digestWindowStartMs). Without
+  // this, the canonical brief lead would be synthesized from a fixed
+  // 24h pool while the email/Slack body ships the actual cadence's
+  // window (7d for weekly, 12h for twice_daily) — a different flavor
+  // of the cross-surface divergence the canonical-brain refactor is
+  // designed to eliminate.
   const digestCache = new Map();
-  async function digestFor(candidate) {
-    const key = `${candidate.variant ?? 'full'}:${candidate.lang ?? 'en'}:${candidate.sensitivity ?? 'high'}:${windowStart}`;
+  async function digestFor(cand) {
+    const windowStart = digestWindowStartMs(cand.lastSentAt, nowMs, DIGEST_LOOKBACK_MS);
+    const key = `${cand.rule.variant ?? 'full'}:${cand.rule.lang ?? 'en'}:${cand.rule.sensitivity ?? 'high'}:${windowStart}`;
     if (digestCache.has(key)) return digestCache.get(key);
-    const stories = await buildDigest(candidate, windowStart);
+    const stories = await buildDigest(cand.rule, windowStart);
     digestCache.set(key, stories ?? []);
     return stories ?? [];
   }
@@ -1328,9 +1338,36 @@ async function composeBriefsForRun(rules, nowMs) {
  */
 async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, digestFor, nowMs) {
   // Two-pass walk extracted to a pure helper so it can be unit-tested
-  // (A6.l + A6.m). When no candidate has a non-empty pool, returns
-  // null — same outcome as today's behavior.
-  const winnerResult = await pickWinningCandidateWithPool(annotated, digestFor, (line) => console.log(line), userId);
+  // (A6.l + A6.m). When no candidate has a non-empty pool — OR when
+  // every non-empty candidate has its stories filtered out by the
+  // composer (URL/headline/shape filters) — returns null.
+  //
+  // The `tryCompose` callback is the filter-rejection fall-through:
+  // before the original PR, the legacy loop kept trying lower-priority
+  // candidates whenever compose returned null. Without this hook the
+  // helper would claim the first non-empty pool as winner and the
+  // caller would bail on filter-drop, suppressing briefs that a
+  // lower-priority candidate would have produced.
+  //
+  // We compose WITHOUT synthesis here (cheap — pure JS, no I/O) just
+  // to check filter survival; the real composition with synthesis
+  // splice-in happens once below, after the winner is locked in.
+  const log = (line) => console.log(line);
+  const winnerResult = await pickWinningCandidateWithPool(
+    annotated,
+    digestFor,
+    log,
+    userId,
+    (cand, stories) => {
+      const test = composeBriefFromDigestStories(
+        cand.rule,
+        stories,
+        insightsNumbers,
+        { nowMs },
+      );
+      return test ?? null;
+    },
+  );
   if (!winnerResult) return null;
   const { winner, stories: winnerStories } = winnerResult;
 
@@ -1598,7 +1635,7 @@ async function main() {
       continue;
     }
 
-    const windowStart = lastSentAt ?? (nowMs - DIGEST_LOOKBACK_MS);
+    const windowStart = digestWindowStartMs(lastSentAt, nowMs, DIGEST_LOOKBACK_MS);
     const stories = await buildDigest(rule, windowStart);
     if (!stories) {
       console.log(`[digest] No stories in window for ${rule.userId} (${rule.variant})`);

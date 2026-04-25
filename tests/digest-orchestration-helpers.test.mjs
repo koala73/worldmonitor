@@ -16,6 +16,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  digestWindowStartMs,
   pickWinningCandidateWithPool,
   runSynthesisWithFallback,
   subjectForBrief,
@@ -106,9 +107,9 @@ describe('pickWinningCandidateWithPool — winner walk', () => {
     const regionalHigh = rule({ variant: 'regional', sensitivity: 'high', updatedAt: 50 });
     const annotatedList = [annotated(fullCritical, true), annotated(regionalHigh, true)];
 
-    const digestFor = async (r) => {
-      if (r === fullCritical) return [];  // empty pool
-      if (r === regionalHigh) return [{ hash: 'h2', title: 'Story from regional' }];
+    const digestFor = async (c) => {
+      if (c.rule === fullCritical) return [];  // empty pool
+      if (c.rule === regionalHigh) return [{ hash: 'h2', title: 'Story from regional' }];
       return [];
     };
     const lines = [];
@@ -173,6 +174,156 @@ describe('pickWinningCandidateWithPool — winner walk', () => {
     const digestFor = async () => { calls++; return [{ hash: 'h' }]; };
     await pickWinningCandidateWithPool(annotatedList, digestFor, () => {}, 'u1');
     assert.equal(calls, 1, 'same rule must not be tried twice');
+  });
+
+  it('passes the FULL annotated candidate to digestFor (not just the rule) so callers can derive a per-candidate window from cand.lastSentAt', async () => {
+    // Regression guard for the canonical-vs-send window divergence.
+    // digestFor needs lastSentAt to compute its windowStart via
+    // digestWindowStartMs; passing only the rule strips that signal
+    // and forces a fixed-24h fallback that the email/Slack body
+    // doesn't honour.
+    const dueRule = rule({ variant: 'full' });
+    const passedArgs = [];
+    const digestFor = async (cand) => { passedArgs.push(cand); return [{ hash: 'h' }]; };
+    await pickWinningCandidateWithPool(
+      [annotated(dueRule, true, 1_700_000_000_000)],
+      digestFor,
+      () => {},
+      'u1',
+    );
+    assert.equal(passedArgs.length, 1);
+    assert.equal(passedArgs[0].rule, dueRule);
+    assert.equal(passedArgs[0].lastSentAt, 1_700_000_000_000);
+    assert.equal(passedArgs[0].due, true);
+  });
+
+  it('walks past a filter-rejected top-priority candidate to a lower-priority candidate that composes successfully (Risk 2 regression guard)', async () => {
+    // Pre-fix behaviour: helper returned the first NON-EMPTY pool as
+    // winner. If composer then dropped every story (URL/headline/shape
+    // filters), the caller bailed without trying lower-priority rules.
+    // Fix: tryCompose callback lets the helper continue walking when
+    // a candidate's pool survives buildDigest but compose returns null.
+    const fullCritical = rule({ variant: 'full', sensitivity: 'critical', updatedAt: 100 });
+    const regionalHigh = rule({ variant: 'regional', sensitivity: 'high', updatedAt: 50 });
+    const annotatedList = [annotated(fullCritical, true), annotated(regionalHigh, true)];
+    const digestFor = async () => [{ hash: 'h', title: 'pool member' }];
+    // tryCompose: top candidate gets filtered to nothing (returns null);
+    // lower-priority survives.
+    const tryCompose = (cand) => {
+      if (cand.rule === fullCritical) return null;        // simulate URL/headline filter dropping all
+      if (cand.rule === regionalHigh) return { envelope: 'ok' };
+      return null;
+    };
+    const lines = [];
+    const result = await pickWinningCandidateWithPool(
+      annotatedList,
+      digestFor,
+      (l) => lines.push(l),
+      'u1',
+      tryCompose,
+    );
+    assert.ok(result, 'lower-priority candidate must still win after top-priority filter-rejection');
+    assert.equal(result.winner.rule, regionalHigh);
+    assert.deepEqual(result.composeResult, { envelope: 'ok' });
+    assert.ok(
+      lines.some((l) => l.includes('outcome=filter-rejected') && l.includes('variant=full')),
+      'filter-rejected line must be logged for the skipped top candidate',
+    );
+  });
+
+  it('returns null when EVERY candidate is rejected by tryCompose (no fallthrough has a survivor)', async () => {
+    const a = rule({ variant: 'a' });
+    const b = rule({ variant: 'b' });
+    const annotatedList = [annotated(a, true), annotated(b, true)];
+    const digestFor = async () => [{ hash: 'h' }];
+    const tryCompose = () => null;  // nothing ever composes
+    const result = await pickWinningCandidateWithPool(
+      annotatedList,
+      digestFor,
+      () => {},
+      'u1',
+      tryCompose,
+    );
+    assert.equal(result, null);
+  });
+
+  it('forwards tryCompose return value as composeResult on success (lets caller skip a redundant compose call)', async () => {
+    const r = rule({ variant: 'full' });
+    const composedEnvelope = { data: { stories: [{ hash: 'h' }] } };
+    const result = await pickWinningCandidateWithPool(
+      [annotated(r, true)],
+      async () => [{ hash: 'h' }],
+      () => {},
+      'u1',
+      () => composedEnvelope,
+    );
+    assert.ok(result);
+    assert.equal(result.composeResult, composedEnvelope);
+  });
+
+  it('without tryCompose, preserves legacy "first non-empty pool wins" semantics (existing callers/tests unaffected)', async () => {
+    const r = rule({ variant: 'full' });
+    const result = await pickWinningCandidateWithPool(
+      [annotated(r, true)],
+      async () => [{ hash: 'h' }],
+      () => {},
+      'u1',
+      // no tryCompose
+    );
+    assert.ok(result);
+    assert.equal(result.winner.rule, r);
+    assert.equal(result.composeResult, undefined);
+  });
+});
+
+// ── digestWindowStartMs — Risk 1 (canonical vs send window parity) ────────
+
+describe('digestWindowStartMs — single source of truth for compose + send window', () => {
+  it('returns lastSentAt verbatim when present (rule has shipped before)', () => {
+    const lastSentAt = 1_700_000_000_000;
+    assert.equal(digestWindowStartMs(lastSentAt, 1_700_086_400_000, 24 * 60 * 60 * 1000), lastSentAt);
+  });
+
+  it('falls back to nowMs - defaultLookbackMs when lastSentAt is null (first send)', () => {
+    const nowMs = 1_700_086_400_000;
+    const lookback = 24 * 60 * 60 * 1000;
+    assert.equal(digestWindowStartMs(null, nowMs, lookback), nowMs - lookback);
+  });
+
+  it('falls back when lastSentAt is undefined', () => {
+    const nowMs = 1_700_086_400_000;
+    const lookback = 24 * 60 * 60 * 1000;
+    assert.equal(digestWindowStartMs(undefined, nowMs, lookback), nowMs - lookback);
+  });
+
+  it('weekly user (lastSentAt = 7d ago) → window covers exactly the prior 7d', () => {
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const nowMs = 2_000_000_000_000;
+    const lastSentAt = nowMs - sevenDaysMs;
+    const windowStart = digestWindowStartMs(lastSentAt, nowMs, 24 * 60 * 60 * 1000);
+    // The compose-path brief lead and the send-loop email body both
+    // call buildDigest(rule, windowStart) with this same value, so a
+    // weekly user's lead now summarizes the same 7-day pool that
+    // ships in the email body. Pre-fix, the lead came from a 24h pool
+    // while the email shipped 7d.
+    assert.equal(windowStart, lastSentAt);
+    assert.equal(nowMs - windowStart, sevenDaysMs);
+  });
+
+  it('twice-daily user (lastSentAt = 12h ago) → 12h window matches what ships', () => {
+    const twelveHoursMs = 12 * 60 * 60 * 1000;
+    const nowMs = 2_000_000_000_000;
+    const lastSentAt = nowMs - twelveHoursMs;
+    const windowStart = digestWindowStartMs(lastSentAt, nowMs, 24 * 60 * 60 * 1000);
+    assert.equal(windowStart, lastSentAt);
+    assert.equal(nowMs - windowStart, twelveHoursMs);
+  });
+
+  it('zero is a valid lastSentAt (epoch — exotic but legal); does not fall through to default', () => {
+    // ?? operator is explicit about this; guards against regressions
+    // toward `||` which would treat 0 as missing.
+    const nowMs = 1_700_000_000_000;
+    assert.equal(digestWindowStartMs(0, nowMs, 24 * 60 * 60 * 1000), 0);
   });
 });
 
