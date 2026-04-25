@@ -533,6 +533,44 @@ describe('filterTopStories — source-topic cap (U5/R6)', () => {
     assert.equal(out.length, 2, 'CBS News + General caps at 2');
   });
 
+  it('source-topic cap key uses non-space delimiter (collision-safe with embedded spaces)', () => {
+    // Regression guard: a naive `${source} ${category}` delimiter would
+    // collide ('Reuters', 'World Politics') with ('Reuters World',
+    // 'Politics'), causing the second pair to inherit the first's
+    // count and either over-drop or under-drop. The Map key uses
+    // ASCII Unit Separator (0x1F) so these stay distinct.
+    const out = filterTopStories({
+      stories: [
+        story({
+          primaryTitle: 'A',
+          primarySource: 'Reuters',
+          category: 'World Politics',
+        }),
+        story({
+          primaryTitle: 'B',
+          primarySource: 'Reuters',
+          category: 'World Politics',
+        }),
+        // Pair shares the naive-concatenation collision key with the
+        // Reuters+World Politics pair above; with the 0x1F delimiter
+        // it's a different pair and gets its own count.
+        story({
+          primaryTitle: 'C',
+          primarySource: 'Reuters World',
+          category: 'Politics',
+        }),
+        story({
+          primaryTitle: 'D',
+          primarySource: 'Reuters World',
+          category: 'Politics',
+        }),
+      ],
+      sensitivity: 'all',
+    });
+    // All 4 should survive (2 per pair, 2 distinct pairs).
+    assert.equal(out.length, 4);
+  });
+
   it('institutional-static-page URLs are dropped (U7/R7)', () => {
     const drops = [];
     const out = filterTopStories({

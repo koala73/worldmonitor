@@ -175,6 +175,18 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
 
   /** @type {BriefStory[]} */
   const out = [];
+  // Per-(source, category) survivor count. Updated atomically with each
+  // out.push() below so the U5 source-topic cap check is O(1) instead of
+  // O(n) per candidate. Key format: source + KEY_DELIM + category. The
+  // ASCII Unit Separator (0x1F) prevents collisions when source or
+  // category itself contains spaces (e.g. (source='Reuters',
+  // category='World Politics') vs (source='Reuters World',
+  // category='Politics') would both produce the same key under a space
+  // delimiter). Sources/categories never legitimately contain control
+  // characters so 0x1F is a safe sentinel.
+  const KEY_DELIM = String.fromCharCode(31);
+  /** @type {Map<string, number>} */
+  const pairCounts = new Map();
   for (let i = 0; i < orderedStories.length; i++) {
     const raw = orderedStories[i];
     if (out.length >= maxStories) {
@@ -248,11 +260,8 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     // — distinct stories the dedup correctly kept separate, but redundant
     // for a 12-story brief. Ranked-order rule above ensures the
     // highest-importance member of each pair survives.
-    let existingForPair = 0;
-    for (const s of out) {
-      if (s.source === source && s.category === category) existingForPair++;
-    }
-    if (existingForPair >= maxPerSourceTopic) {
+    const pairKey = source + KEY_DELIM + category;
+    if ((pairCounts.get(pairKey) ?? 0) >= maxPerSourceTopic) {
       if (emit) emit({ reason: 'source_topic_cap', severity: threatLevel, sourceUrl });
       continue;
     }
@@ -272,6 +281,7 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
       whyMatters:
         'Story flagged by your sensitivity settings. Open for context.',
     });
+    pairCounts.set(pairKey, (pairCounts.get(pairKey) ?? 0) + 1);
   }
   return out;
 }
