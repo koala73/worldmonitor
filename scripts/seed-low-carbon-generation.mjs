@@ -19,7 +19,10 @@
 // the power-system security intent.
 //
 // All three series are annual; WDI reports latest observed year per
-// country. We fetch the most-recent value (mrv=1) and sum by ISO2.
+// country. We fetch up to 5 most-recent years (mrv=5) and pick the
+// latest non-null per country, then sum by ISO2. The mrv=5 + null-skip
+// recipe is documented in skill `wb-bulk-mrv1-null-coverage-trap`;
+// applied to this file in PR #3432 (review fixup).
 // Missing any of the three (e.g. a country with no nuclear filing)
 // is treated as 0 for that slice — the scorer's 0..80 saturating
 // goalpost tolerates partial coverage without dropping the indicator
