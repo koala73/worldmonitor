@@ -6,6 +6,7 @@ import {
   writeFreshnessMetadata,
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -154,9 +155,20 @@ async function seedResilienceScores() {
   const { url, token } = getRedisCredentials();
 
   const index = await redisGetJson(url, token, RESILIENCE_STATIC_INDEX_KEY);
-  const countryCodes = (index?.countries ?? [])
+  // Plan 2026-04-26-002 §U2 (PR 1): defense-in-depth — filter to the
+  // rankable universe (193 UN members + 3 SARs) here too, in case the
+  // static index was seeded by an older version of seed-resilience-static
+  // that hadn't yet applied the same filter. Both seeders consume the
+  // same `isInRankableUniverse` helper to ensure their universes match;
+  // this defensive filter prevents transient mismatch during deploys.
+  const allCountries = (index?.countries ?? [])
     .map((c) => String(c || '').trim().toUpperCase())
     .filter((c) => /^[A-Z]{2}$/.test(c));
+  const countryCodes = allCountries.filter(isInRankableUniverse);
+  const droppedCount = allCountries.length - countryCodes.length;
+  if (droppedCount > 0) {
+    console.log(`[resilience-scores] Filtered ${droppedCount} non-rankable territories from static index (transitional — seed-resilience-static will catch up on next cron tick)`);
+  }
 
   if (countryCodes.length === 0) {
     console.warn('[resilience-scores] Static index is empty — has seed-resilience-static run this year?');

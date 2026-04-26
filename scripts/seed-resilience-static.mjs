@@ -20,6 +20,7 @@ import {
   normalizeCountryToken,
   resolveIso2,
 } from './_country-resolver.mjs';
+import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 
 export { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
 
@@ -744,11 +745,27 @@ async function fetchAppliedTariffRateDataset() {
 
 export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), seededAt = new Date().toISOString()) {
   const merged = new Map();
+  let droppedNonRankable = 0;
 
   for (const [datasetField, countryMap] of Object.entries(datasetMaps)) {
     for (const [iso2, payload] of countryMap.entries()) {
+      // Plan 2026-04-26-002 §U2 (PR 1): drop non-rankable territories
+      // (AS/GU/GL/IM/GI/FK/etc.) at universe-build time. Whitelist =
+      // 193 UN members + 3 SARs (HK/MO/TW). Earlier behavior admitted
+      // every ISO2 from any source map (~222 entries); now ~196.
+      // HK/MO/TW are tagged 'sar' and stay in the dataset; the future
+      // headlineEligible gate (PR 6) can separate them from the headline
+      // ranking if/when that policy ships.
+      if (!isInRankableUniverse(iso2)) {
+        droppedNonRankable++;
+        continue;
+      }
       upsertDatasetRecord(merged, iso2, datasetField, payload);
     }
+  }
+
+  if (droppedNonRankable > 0) {
+    console.log(`[resilience-static] Dropped ${droppedNonRankable} non-rankable territory entries (filter: 193 UN members + 3 SARs)`);
   }
 
   for (const [iso2, payload] of merged.entries()) {
