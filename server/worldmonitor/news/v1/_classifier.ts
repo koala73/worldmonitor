@@ -230,34 +230,77 @@ function matchKeywords(
  *   - "On this day: Iraq invasion 5 years ago"
  * Both contain a CRITICAL keyword AND an unmistakable retrospective marker.
  */
-const HISTORICAL_PREFIX_RE =
-  /^(?:science history|on this day|today in|this day in|throwback|flashback)\s*:?/i;
+// Highly-specific retrospective prefixes — bare "Today in" / "This day in"
+// were intentionally REMOVED after PR #3429 review (round 2). Both have
+// legitimate current-event uses ("Today in Ukraine: Russian missile strikes
+// Kyiv") that would have falsely downgraded real critical alerts. Only
+// patterns whose retrospective intent is unambiguous remain:
+//   - "Science history:" — Live Science series tag, never current.
+//   - "Throwback" / "Flashback" — always retrospective by definition.
+const HISTORICAL_PREFIX_RE = /^(?:science history|throwback|flashback)\s*:?/i;
+
+// "On this day in YYYY" requires a YEAR after the prefix — narrows out
+// "On this day, Iran fires missile" (current event) while keeping
+// "On this day in 1986, Chernobyl..." (retrospective).
+const HISTORICAL_PREFIX_WITH_YEAR_RE = /^on this day in\s+(?:19|20)\d{2}\b/i;
+
+// "This day in history" — specific phrasing, not the bare "This day in"
+// (which could prefix a current-event headline).
+const THIS_DAY_IN_HISTORY_RE = /^this day in history\b/i;
 
 const HISTORICAL_PHRASE_RE =
   /\b(?:\d+\s+(?:years?|decades?|months?)\s+(?:ago|after|later)|anniversary|in memoriam|remembering|remembered|commemorat(?:e|es|ed|ion)|retrospective)\b/i;
 
-// Full date in the headline (e.g. "April 26, 1986" or "1986-04-26"). A
-// 4-digit year ALONE is too noisy ("Russia warns of 2026 strike" trips it
-// falsely), but a year combined with month/day or ISO format is a strong
-// retrospective signal — current-event headlines rarely embed a full date.
+// Full date in the headline. The year must be ≥ 2 years in the past for
+// the date to count as retrospective — "April 26, 2026" (current year) or
+// "April 26, 2025" (last year) appear in plenty of current-event headlines
+// (court rulings, regulatory deadlines, scheduled events). Only dates from
+// 2024-and-earlier (in 2026) are unambiguously retrospective.
 const FULL_DATE_RE =
-  /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+(?:19|20)\d{2}\b/i;
+  /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+((?:19|20)\d{2})\b/i;
 
-const ISO_DATE_RE = /\b(?:19|20)\d{2}-\d{1,2}-\d{1,2}\b/;
+const ISO_DATE_RE = /\b((?:19|20)\d{2})-\d{1,2}-\d{1,2}\b/;
+
+/**
+ * Year is "past" for retrospective purposes when it's at least 2 years
+ * older than the current calendar year. Conservative cutoff: a 1-year-old
+ * date is often current-context (last year's court ruling, last year's
+ * outbreak) and we don't want to falsely downgrade those.
+ */
+function isPastRetrospectiveYear(year: number, nowMs: number): boolean {
+  const currentYear = new Date(nowMs).getUTCFullYear();
+  return year < currentYear - 1;
+}
 
 /**
  * Returns true if the title looks like a historical retrospective.
  * Used by classifyByKeyword to downgrade CRITICAL/HIGH keyword matches
- * (e.g. "meltdown") that appear in a backward-looking headline.
+ * (e.g. "meltdown") that appear in a backward-looking headline, AND by
+ * enrichWithAiCache as a defense-in-depth check on LLM-promoted levels.
+ *
+ * The `nowMs` parameter is exposed for unit testability (so tests can pin
+ * the "current year" without depending on wall-clock time). Production
+ * callers omit it and get `Date.now()`.
  *
  * Exported for test coverage — DO NOT call from production code paths
- * other than classifyByKeyword.
+ * other than classifyByKeyword and enrichWithAiCache.
  */
-export function hasHistoricalMarker(title: string): boolean {
+export function hasHistoricalMarker(title: string, nowMs: number = Date.now()): boolean {
   if (HISTORICAL_PREFIX_RE.test(title)) return true;
+  if (HISTORICAL_PREFIX_WITH_YEAR_RE.test(title)) return true;
+  if (THIS_DAY_IN_HISTORY_RE.test(title)) return true;
   if (HISTORICAL_PHRASE_RE.test(title)) return true;
-  if (FULL_DATE_RE.test(title)) return true;
-  if (ISO_DATE_RE.test(title)) return true;
+
+  const fullDateMatch = title.match(FULL_DATE_RE);
+  if (fullDateMatch && isPastRetrospectiveYear(parseInt(fullDateMatch[1]!, 10), nowMs)) {
+    return true;
+  }
+
+  const isoDateMatch = title.match(ISO_DATE_RE);
+  if (isoDateMatch && isPastRetrospectiveYear(parseInt(isoDateMatch[1]!, 10), nowMs)) {
+    return true;
+  }
+
   return false;
 }
 

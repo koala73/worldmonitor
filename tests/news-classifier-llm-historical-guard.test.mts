@@ -17,6 +17,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { hasHistoricalMarker } from '../server/worldmonitor/news/v1/_classifier';
 
+// Pin "current year" to 2026 so year-based marker tests are deterministic.
+const NOW = Date.UTC(2026, 3, 15, 0, 0, 0);
+
 describe('LLM-cache historical-marker guard — predicate', () => {
   // The actual cache-application code in enrichWithAiCache is integration-
   // level (requires Redis). We can't easily mount a Redis double here, so
@@ -28,7 +31,7 @@ describe('LLM-cache historical-marker guard — predicate', () => {
     const title =
       'Science history: Chernobyl nuclear power plant melts down, bringing the world to the brink of disaster — April 26, 1986';
     assert.equal(
-      hasHistoricalMarker(title),
+      hasHistoricalMarker(title, NOW),
       true,
       'historical marker must be detected so the LLM-cache guard fires when cache promotes this title',
     );
@@ -40,7 +43,7 @@ describe('LLM-cache historical-marker guard — predicate', () => {
     // info. If the LLM cache happens to have classified this as
     // CRITICAL/HIGH from a prior session, the guard catches it.
     assert.equal(
-      hasHistoricalMarker('Science history: Reactor melts down 40 years ago today'),
+      hasHistoricalMarker('Science history: Reactor melts down 40 years ago today', NOW),
       true,
     );
   });
@@ -52,17 +55,37 @@ describe('LLM-cache historical-marker guard — predicate', () => {
     // NOT downgrade (no marker present). Operators see the LLM call's
     // judgment, which is the correct behavior for current events.
     assert.equal(
-      hasHistoricalMarker('Reactor melts down at active nuclear plant'),
+      hasHistoricalMarker('Reactor melts down at active nuclear plant', NOW),
       false,
     );
   });
 
-  it('full date alone is enough to trigger', () => {
-    assert.equal(hasHistoricalMarker('Some headline — April 26, 1986'), true);
+  it('PAST full date alone is enough to trigger', () => {
+    assert.equal(hasHistoricalMarker('Some headline — April 26, 1986', NOW), true);
   });
 
-  it('ISO date alone is enough to trigger', () => {
-    assert.equal(hasHistoricalMarker('Some headline 1986-04-26 reflection'), true);
+  it('PAST ISO date alone is enough to trigger', () => {
+    assert.equal(hasHistoricalMarker('Some headline 1986-04-26 reflection', NOW), true);
+  });
+
+  it('SAFETY: current-year full date does NOT trigger (P2 reviewer fix on PR #3429 round 2)', () => {
+    // Reviewer-flagged regression: "Missile launch reported on April 26,
+    // 2026" used to falsely trigger. Year=2026=current must NOT mark
+    // the title as retrospective.
+    assert.equal(
+      hasHistoricalMarker('Missile launch reported on April 26, 2026', NOW),
+      false,
+    );
+  });
+
+  it('SAFETY: bare "Today in" prefix does NOT trigger (P2 reviewer fix on PR #3429 round 2)', () => {
+    // "Today in Ukraine: Russian missile strikes Kyiv" must NOT be
+    // marked as retrospective — bare "Today in" is a current-event
+    // headline pattern, not a historical one.
+    assert.equal(
+      hasHistoricalMarker('Today in Ukraine: Russian missile strikes Kyiv', NOW),
+      false,
+    );
   });
 });
 
@@ -76,7 +99,7 @@ describe('LLM-cache guard — semantics documentation (behavioral spec)', () => 
     const cappedLevel = 'critical';
     const title = 'Science history: nuclear meltdown - April 26, 1986';
     const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title)
+      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
         ? 'info'
         : cappedLevel;
     assert.equal(finalLevel, 'info');
@@ -86,7 +109,7 @@ describe('LLM-cache guard — semantics documentation (behavioral spec)', () => 
     const cappedLevel = 'high';
     const title = '40th anniversary of WWII airstrike on London';
     const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title)
+      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
         ? 'info'
         : cappedLevel;
     assert.equal(finalLevel, 'info');
@@ -96,7 +119,7 @@ describe('LLM-cache guard — semantics documentation (behavioral spec)', () => 
     const cappedLevel = 'medium';
     const title = '5-year anniversary of historic protests';
     const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title)
+      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
         ? 'info'
         : cappedLevel;
     assert.equal(finalLevel, 'medium', 'only CRITICAL/HIGH trip the guard; MEDIUM is left alone');
@@ -106,7 +129,7 @@ describe('LLM-cache guard — semantics documentation (behavioral spec)', () => 
     const cappedLevel = 'critical';
     const title = 'Reactor melts down at active plant — operators evacuating';
     const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title)
+      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
         ? 'info'
         : cappedLevel;
     assert.equal(finalLevel, 'critical', 'current events with no markers must still ship');
