@@ -16,18 +16,30 @@
  *   /pipeline call's response well under Upstash's per-request
  *   limit (50MB on our plan) and inside the 10-15s pipeline timeout.
  *
- * Why bail-on-short:
+ * Why bail-on-failure (return null):
  *   The caller pairs `trackResults[i]` with `hashes[i]` (see
  *   seed-digest-notifications.mjs buildDigest's stories.push hash
  *   field). `pipelineFn` is allowed to return `[]` (or `null` /
  *   undefined / a short array) on HTTP error; naive `out.push(...partial)`
  *   on a short result would shift every later position onto the wrong
  *   hash and publish stories with wrong source-set / embedding-cache
- *   linkage. We pad the remaining positions with `{result: null}`
- *   placeholders (downstream `Array.isArray(raw)` skips them, matching
- *   legacy single-pipeline-failure semantics where every row was a
- *   miss) and abort, so a sustained outage doesn't burn the full
- *   pipeline budget on N × per-chunk timeouts.
+ *   linkage.
+ *
+ *   We could pad the remaining positions with `{result: null}`
+ *   placeholders to keep length === hashes.length, but that would
+ *   regress the legacy semantic: pre-chunking, a single pipeline
+ *   failure returned [] from upstashPipeline → every row skipped →
+ *   buildDigest returned null → the cron skipped sending that user/
+ *   variant. With placeholders, a partial failure would now ship a
+ *   digest built from chunks 0..N-1, mark `digest:last-sent:v1` as
+ *   sent, and the user would never see the dropped stories on the
+ *   next tick. Worse: dropped stories would be silent — no operator
+ *   signal that the digest was incomplete.
+ *
+ *   So we return `null` on any chunk failure. Callers MUST treat
+ *   null as "skip this digest tick — Upstash partial outage" rather
+ *   than as empty-but-successful. Stops iterating so an outage
+ *   doesn't burn the full pipeline budget on N × per-chunk timeouts.
  */
 
 export const STORY_TRACK_HGETALL_BATCH = 500;
@@ -50,10 +62,9 @@ export async function readStoryTracksChunked(
     const failedAt = Math.floor(i / batchSize);
     const got = Array.isArray(partial) ? partial.length : 'non-array';
     log(
-      `[digest] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — padding remaining ${hashes.length - i} entries as misses and aborting`,
+      `[digest] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — aborting and returning null so caller skips this digest tick`,
     );
-    for (let j = i; j < hashes.length; j++) out.push({ result: null });
-    return out;
+    return null;
   }
   return out;
 }

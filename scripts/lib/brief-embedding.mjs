@@ -72,6 +72,16 @@ export function cacheKeyFor(normalizedTitle) {
 // Default (production) deps wiring lives in ./_upstash-pipeline.mjs so
 // the orchestrator and the embedding client share one implementation.
 
+// Symmetric to the cache-write FLUSH knob: a 512-dim vector
+// serialises to ~9.4KB, so an unbatched GET pipeline RESPONSE for
+// N unique titles is N×9.4KB. With ~8K cached titles in production
+// (live brief:emb:v1:* count), a cold-tick pipeline-GET response
+// would already be 75MB — well past Upstash's per-request limit
+// and likely to time out the 10s pipeline budget. 500 GETs ×
+// ~9.4KB = ~4.7MB per chunk response keeps the symmetric read
+// path under the same budget the writes target.
+const CACHE_GET_FLUSH = 500;
+
 /**
  * Look up a set of cache keys via the redis pipeline and return a
  * Map of key → vector for the hits. Misses, corrupt cells, pipeline
@@ -80,24 +90,42 @@ export function cacheKeyFor(normalizedTitle) {
  *
  * Kept as a helper so embedBatch's cognitive complexity stays
  * reviewable; there's no other caller.
+ *
+ * Chunked + bail-on-failure for parity with the cache-write path:
+ * the response body for a single GET pipeline scales linearly with
+ * uniqueKeys.length, and an outage would otherwise spend the full
+ * embed deadline on N × 10s timeouts inside this helper before the
+ * caller's deadline check fires. Per-chunk index alignment is
+ * preserved because each chunk reads its own contiguous
+ * uniqueKeys.slice(...) — no cross-chunk position arithmetic.
  */
-async function cacheGetBatched(uniqueKeys, pipelineImpl) {
+async function cacheGetBatched(uniqueKeys, pipelineImpl, deadline = Infinity, nowImpl = Date.now) {
   const hits = new Map();
   if (uniqueKeys.length === 0) return hits;
-  const getResults = await pipelineImpl(uniqueKeys.map((k) => ['GET', k]));
-  if (!Array.isArray(getResults)) return hits;
-  for (let i = 0; i < uniqueKeys.length; i++) {
-    const cell = getResults[i];
-    const raw = cell && typeof cell === 'object' && 'result' in cell ? cell.result : null;
-    if (typeof raw !== 'string') continue;
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length === EMBED_DIMS) {
-        hits.set(uniqueKeys[i], parsed);
+
+  for (let start = 0; start < uniqueKeys.length; start += CACHE_GET_FLUSH) {
+    if (nowImpl() > deadline) return hits;
+    const chunk = uniqueKeys.slice(start, start + CACHE_GET_FLUSH);
+    const getResults = await pipelineImpl(chunk.map((k) => ['GET', k]));
+    // Outage / short-response: treat the rest as misses. The caller
+    // will hit the API for them — strict optimisation only, never
+    // correctness. Don't keep iterating; remaining chunks would
+    // almost certainly hit the same outage and burn the deadline.
+    if (!Array.isArray(getResults) || getResults.length !== chunk.length) return hits;
+
+    for (let i = 0; i < chunk.length; i++) {
+      const cell = getResults[i];
+      const raw = cell && typeof cell === 'object' && 'result' in cell ? cell.result : null;
+      if (typeof raw !== 'string') continue;
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === EMBED_DIMS) {
+          hits.set(chunk[i], parsed);
+        }
+      } catch {
+        // Corrupt cache cell: treat as miss. Don't error — next
+        // successful API call will overwrite.
       }
-    } catch {
-      // Corrupt cache cell: treat as miss. Don't error — next
-      // successful API call will overwrite.
     }
   }
   return hits;
@@ -226,7 +254,7 @@ export async function embedBatch(normalizedTitles, deps = {}) {
   const keyByIndex = normalizedTitles.map((t) => cacheKeyFor(t));
   const uniqueKeys = [...new Set(keyByIndex)];
 
-  const vectorByKey = await cacheGetBatched(uniqueKeys, pipelineImpl);
+  const vectorByKey = await cacheGetBatched(uniqueKeys, pipelineImpl, deadline, nowImpl);
   if (nowImpl() > deadline) throw new EmbeddingTimeoutError();
 
   // Build the miss list, preserving the first normalised title we

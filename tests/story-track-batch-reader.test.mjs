@@ -1,14 +1,25 @@
 /**
  * Regression tests for scripts/lib/story-track-batch-reader.mjs.
  *
- * The contract under test: when the upstream pipeline returns a short,
- * non-array, or empty result for any chunk, the helper MUST preserve
- * index alignment between the input `hashes` array and the returned
- * `trackResults` array. The downstream caller in seed-digest-
- * notifications.mjs::buildDigest pairs `trackResults[i]` with
- * `hashes[i]` (line `stories.push({ hash: hashes[i], ... })`), so a
- * shifted result would publish stories with the wrong source-set /
- * embedding-cache linkage. Caught in PR #3428 review.
+ * Two interlocking contracts under test:
+ *
+ *   1. Per-chunk index alignment: `trackResults[i]` must always pair
+ *      with `hashes[i]` in the caller. A short / non-array chunk
+ *      response that's blindly spread into the output would shift
+ *      every later position onto the wrong hash → publish stories
+ *      with wrong source-set / embedding-cache linkage.
+ *
+ *   2. All-or-nothing on failure: returning a partially-filled array
+ *      (even one with placeholders) regresses the legacy semantic
+ *      where a single-pipeline failure made buildDigest return null
+ *      → cron skipped sending the digest for that user/variant. With
+ *      a partial array, the cron would ship a digest built from the
+ *      successful chunks AND mark `digest:last-sent:v1` as sent,
+ *      suppressing retry on the next tick. So the helper returns
+ *      null on any chunk failure; the caller must treat null as
+ *      "skip this digest tick".
+ *
+ * Both contracts caught in PR #3428 review.
  */
 
 import { describe, it } from 'node:test';
@@ -70,8 +81,8 @@ describe('readStoryTracksChunked', () => {
     });
   });
 
-  describe('partial failure — index alignment', () => {
-    it('pads remaining positions with null-result placeholders when a middle chunk returns []', async () => {
+  describe('partial failure — returns null (all-or-nothing)', () => {
+    it('returns null and discards prior success when a middle chunk returns []', async () => {
       const input = hashes(7); // chunks: [0..2], [3..5], [6]
       const calls = [];
       const flaky = (cmds) => {
@@ -86,24 +97,10 @@ describe('readStoryTracksChunked', () => {
         log: (line) => log.push(line),
       });
 
-      // Length MUST equal input.length so trackResults[i] ↔ hashes[i]
-      // remains valid in the caller.
-      assert.equal(out.length, input.length);
-
-      // First chunk's three positions hold real results.
-      for (let i = 0; i < 3; i++) {
-        assert.deepEqual(out[i], {
-          result: ['title', `t-story:track:v1:${input[i]}`, 'severity', 'high'],
-        });
-      }
-      // Failed chunk's three positions are null-result placeholders.
-      for (let i = 3; i < 6; i++) {
-        assert.deepEqual(out[i], { result: null });
-      }
-      // The trailing chunk MUST also be padded (we abort, not skip-and-
-      // continue) — otherwise a later success would re-introduce drift
-      // by shifting one entry into position 6.
-      assert.deepEqual(out[6], { result: null });
+      // null signals "skip this digest tick" — caller must NOT ship a
+      // digest built from chunk 0's results alone (would mark slot as
+      // sent, suppress retry on next tick, and silently drop stories).
+      assert.equal(out, null);
 
       // Pipeline was called exactly once for chunk 0 and once for the
       // failing chunk 1 — chunk 2 was skipped to preserve the dedup
@@ -115,10 +112,10 @@ describe('readStoryTracksChunked', () => {
       // One warning, surfacing the failed chunk index + observed length.
       assert.equal(log.length, 1);
       assert.match(log[0], /chunk 1 returned 0 of 3 expected/);
-      assert.match(log[0], /padding remaining 4 entries/);
+      assert.match(log[0], /aborting and returning null/);
     });
 
-    it('treats a non-array (null / undefined) pipeline result as failure', async () => {
+    it('returns null when a non-array (null / undefined) pipeline result is observed', async () => {
       const input = hashes(5); // chunks: [0..2], [3..4]
       const flaky = (cmds) => (cmds[0][1] === 'story:track:v1:h0000' ? null : ok(cmds));
       const log = [];
@@ -126,16 +123,15 @@ describe('readStoryTracksChunked', () => {
         batchSize: 3,
         log: (line) => log.push(line),
       });
-      assert.equal(out.length, input.length);
-      // Every position is a placeholder — first chunk failed, so we
-      // abort before reaching the second chunk.
-      for (const cell of out) assert.deepEqual(cell, { result: null });
+      assert.equal(out, null);
       assert.match(log[0], /returned non-array of 3 expected/);
     });
 
-    it('treats a short array (partial response) as failure', async () => {
+    it('returns null when a short array (partial response) is observed', async () => {
       const input = hashes(6); // chunks: [0..2], [3..5]
+      const calls = [];
       const flaky = (cmds) => {
+        calls.push(cmds.length);
         if (cmds[0][1] === 'story:track:v1:h0003') {
           // Upstream returned only 2 of 3 expected results.
           return ok(cmds.slice(0, 2));
@@ -147,14 +143,14 @@ describe('readStoryTracksChunked', () => {
         batchSize: 3,
         log: (line) => log.push(line),
       });
-      assert.equal(out.length, input.length);
-      // First chunk OK, rest padded.
-      assert.deepEqual(out[0].result.slice(0, 2), ['title', 't-story:track:v1:h0000']);
-      for (let i = 3; i < 6; i++) assert.deepEqual(out[i], { result: null });
+      // Even though chunk 0 succeeded, the partial chunk 1 voids the
+      // whole call — caller must skip the digest tick.
+      assert.equal(out, null);
+      assert.equal(calls.length, 2); // chunk 0 + failing chunk 1, no chunk 2 retry
       assert.match(log[0], /chunk 1 returned 2 of 3 expected/);
     });
 
-    it('aborts on the FIRST chunk failure when the very first chunk fails', async () => {
+    it('returns null and aborts after exactly one call when the first chunk fails', async () => {
       let callCount = 0;
       const counting = () => {
         callCount++;
@@ -164,8 +160,7 @@ describe('readStoryTracksChunked', () => {
         batchSize: 3,
         log: () => {},
       });
-      assert.equal(out.length, 10);
-      for (const cell of out) assert.deepEqual(cell, { result: null });
+      assert.equal(out, null);
       // Only one pipeline call — we did NOT keep retrying chunks 2/3/4.
       assert.equal(callCount, 1);
     });
