@@ -263,10 +263,20 @@ export async function embedBatch(normalizedTitles, deps = {}) {
     // request matches the chunking pattern used by sibling seeders
     // (PIPE_BATCH=50 in seed-resilience-intervals.mjs / seed-comtrade-
     // bilateral-hs4.mjs, SET_BATCH=30 in resilience/v1/_shared.ts).
+    //
+    // Outage break: defaultRedisPipeline returns null on HTTP error
+    // (does NOT throw), so the try/catch alone won't stop the loop.
+    // On a sustained Upstash outage with 5K misses, that would mean
+    // 27 chunks × ~10s timeout each ≈ 270s — well past the 45s
+    // wall-clock budget for dedup. Break on any non-array (null /
+    // short) chunk result, and on remaining-deadline exhaustion, so
+    // the caller stays inside its budget even on outage.
     try {
       const FLUSH = 200;
       for (let i = 0; i < cacheWrites.length; i += FLUSH) {
-        await pipelineImpl(cacheWrites.slice(i, i + FLUSH));
+        if (nowImpl() > deadline) break;
+        const result = await pipelineImpl(cacheWrites.slice(i, i + FLUSH));
+        if (!Array.isArray(result) || result.length !== Math.min(FLUSH, cacheWrites.length - i)) break;
       }
     } catch {
       // swallow

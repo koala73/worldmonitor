@@ -462,7 +462,27 @@ async function readStoryTracksChunked(hashes) {
     const partial = await upstashPipeline(
       chunk.map((h) => ['HGETALL', `story:track:v1:${h}`]),
     );
-    out.push(...partial);
+    // upstashPipeline returns [] on HTTP error, and a short result on
+    // any other shape mismatch. The downstream caller pairs
+    // trackResults[i] with hashes[i], so a missing chunk would shift
+    // every later result onto the wrong hash — publishing stories with
+    // wrong source-set / embedding-cache linkage. Bail out: pad the
+    // remaining positions with null-result placeholders so callers see
+    // the same row-skip behaviour as the legacy single-pipeline failure
+    // (no rows pass `Array.isArray(raw)` → buildDigest returns null).
+    // Stop iterating so an outage doesn't burn the full pipeline budget
+    // on N × 15s timeouts.
+    if (Array.isArray(partial) && partial.length === chunk.length) {
+      out.push(...partial);
+      continue;
+    }
+    const failedAt = i / STORY_TRACK_HGETALL_BATCH;
+    const got = Array.isArray(partial) ? partial.length : 'non-array';
+    console.warn(
+      `[digest] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — padding remaining ${hashes.length - i} entries as misses and aborting`,
+    );
+    for (let j = i; j < hashes.length; j++) out.push({ result: null });
+    return out;
   }
   return out;
 }
