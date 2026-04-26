@@ -48,6 +48,25 @@ import { internal } from "../_generated/api";
 
 const RESEND_API_BASE = "https://api.resend.com";
 
+// AGENTS.md requires User-Agent on every server-side fetch.
+const USER_AGENT = "WorldMonitor-PROLaunchExporter/1.0 (+https://worldmonitor.app)";
+
+/**
+ * Redact an email for log output: keep the first 2 chars of the local
+ * part and the full domain, mask the rest. `john.doe@example.com` →
+ * `jo******@example.com`. Convex dashboard logs are observable to anyone
+ * with project access; raw waitlist emails should never be written there.
+ */
+function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at <= 0) return "***";
+  const local = email.slice(0, at);
+  const domain = email.slice(at);
+  const visible = local.slice(0, Math.min(2, local.length));
+  const masked = "*".repeat(Math.max(1, local.length - visible.length));
+  return `${visible}${masked}${domain}`;
+}
+
 /**
  * Snapshot of suppressed normalizedEmails at call time.
  * Uses `.collect()` — bounded by the size of `emailSuppressions` (Convex's
@@ -114,13 +133,22 @@ export const getRegistrationsPage = internalQuery({
 });
 
 type ExportStats = {
-  upserted: number;
-  linkedExisting: number;
+  // Live-mode counters: result of actual Resend interactions on this page.
+  // All zero in dry-run mode (no Resend calls happen).
+  upserted: number;          // (created + linkedExisting) — landed in segment via this call
+  linkedExisting: number;    // pre-existing global contact, attached to our segment by this call
+  alreadyExists: number;     // verified already in this segment before this call
+  failed: number;
+  // Dedup-only counters: shared between live and dry-run (don't depend on Resend).
   suppressedSkipped: number;
   paidSkipped: number;
-  alreadyExists: number;
-  failed: number;
   emptyEmail: number;
+  // Dry-run-only: count of registrations that passed dedup and WOULD be
+  // upserted on a live run. Strictly disjoint from `upserted` so an
+  // operator comparing dry-run to live totals never confuses
+  // "would-attempt" with "successfully landed in segment."
+  wouldUpsertAfterDedup: number;
+  // Pagination
   isDone: boolean;
   continueCursor: string;
   pageProcessed: number;
@@ -189,6 +217,7 @@ async function upsertContactToSegment(
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
+      "User-Agent": USER_AGENT,
     },
     body: JSON.stringify({
       email,
@@ -216,6 +245,7 @@ async function upsertContactToSegment(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
+          "User-Agent": USER_AGENT,
         },
       },
     );
@@ -281,11 +311,12 @@ export const exportProLaunchAudience = internalAction({
     const stats: ExportStats = {
       upserted: 0,
       linkedExisting: 0,
-      suppressedSkipped: 0,
-      paidSkipped: 0,
       alreadyExists: 0,
       failed: 0,
+      suppressedSkipped: 0,
+      paidSkipped: 0,
       emptyEmail: 0,
+      wouldUpsertAfterDedup: 0,
       isDone: page.isDone,
       continueCursor: page.continueCursor,
       pageProcessed: page.page.length,
@@ -307,7 +338,11 @@ export const exportProLaunchAudience = internalAction({
       }
 
       if (dry) {
-        stats.upserted++;
+        // Dry-run measures dedup math only. We can't know if an email
+        // would land in `created` / `linkedExisting` / `alreadyInSegment`
+        // without actually calling Resend, so we count them all as
+        // "would-attempt" and leave the live-mode counters at zero.
+        stats.wouldUpsertAfterDedup++;
         continue;
       }
 
@@ -328,8 +363,11 @@ export const exportProLaunchAudience = internalAction({
           break;
         case "failed":
           stats.failed++;
+          // Mask the email — Convex dashboard logs are observable to
+          // anyone with project access; raw waitlist addresses must not
+          // land there.
           console.error(
-            `[exportProLaunchAudience] Resend failure for ${email}: ${outcome.reason}`,
+            `[exportProLaunchAudience] Resend failure for ${maskEmail(email)}: ${outcome.reason}`,
           );
           break;
       }
