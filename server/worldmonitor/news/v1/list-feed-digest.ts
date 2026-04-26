@@ -527,6 +527,38 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
 
     for (const item of relatedItems) {
+      // L3 defense-in-depth runs FIRST, BEFORE capLlmUpgrade. If the
+      // title carries a historical-retrospective marker, force info
+      // regardless of what the LLM cache claimed — retrospective content
+      // should never ship at any non-info level.
+      //
+      // Why before the cap (P1 fix on PR #3429 round 3): when keyword=info
+      // and hit=critical, capLlmUpgrade returns medium (info+2=medium).
+      // A post-cap check on `cappedLevel === 'critical' || === 'high'`
+      // would miss this — `medium` doesn't match — so the brief 2026-04-
+      // 26-1302 Chernobyl-style title would have shipped at MEDIUM (which
+      // still passes 'all' sensitivity briefs). Running the marker check
+      // on the original hit and forcing info — not on cappedLevel — closes
+      // that gap.
+      //
+      // Why force info unconditionally (not just critical/high): retro-
+      // spective markers should suppress the LLM verdict at every non-info
+      // level, including medium and low. A medium-level retrospective would
+      // still ship in 'all'-sensitivity briefs; the goal of this guard is
+      // "retrospective content NEVER ships, regardless of LLM verdict."
+      if (hasHistoricalMarker(item.title)) {
+        console.warn(
+          `[classify] LLM hit forced to info by historical marker: ` +
+            `keyword=${item.level} llm=${hit.level} title="${item.title.slice(0, 60)}"`,
+        );
+        item.level = 'info';
+        item.category = hit.category;
+        item.confidence = 0.9;
+        item.classSource = 'llm';
+        item.isAlert = false;
+        continue;
+      }
+
       // L1 (PR #3424): the prior `if (0.9 <= item.confidence) continue` skip
       // here meant the LLM cache result was IGNORED for keyword=critical
       // matches. That made the cache an upgrade-only path: keyword=info →
@@ -543,32 +575,12 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
       // medium→critical upgrades (medium+2=critical) remain reachable.
       // capLlmUpgrade is a Math.min so downgrades pass through freely.
       // See LEVEL_RANK doc + R4 for the full per-keyword cap table.
-      let cappedLevel = capLlmUpgrade(item.level, hit.level);
+      const cappedLevel = capLlmUpgrade(item.level, hit.level);
       if (cappedLevel !== hit.level) {
         console.warn(
           `[classify] LLM upgrade capped: keyword=${item.level} ` +
             `llm=${hit.level} applied=${cappedLevel} title="${item.title.slice(0, 60)}"`,
         );
-      }
-      // L3 defense-in-depth (PR #3424): if the LLM cache promoted an item
-      // to CRITICAL/HIGH but the title contains a historical-retrospective
-      // marker (e.g. "Science history:", "April 26, 1986", "5 years ago"),
-      // force info. The keyword classifier already does this for matches in
-      // CRITICAL_KEYWORDS / HIGH_KEYWORDS, but this catches the case where
-      // the keyword classifier returned info (no match — the trigger word
-      // wasn't in the keyword list, e.g. "melts down" doesn't match the
-      // "meltdown" keyword) BUT the LLM cache promoted the item anyway.
-      // Brief 2026-04-26-1302 case: "Science history: Chernobyl... melts
-      // down — April 26, 1986" shipped despite no keyword match.
-      if (
-        (cappedLevel === 'critical' || cappedLevel === 'high') &&
-        hasHistoricalMarker(item.title)
-      ) {
-        console.warn(
-          `[classify] LLM-promoted level forced to info by historical marker: ` +
-            `llm=${hit.level} applied=${cappedLevel}->info title="${item.title.slice(0, 60)}"`,
-        );
-        cappedLevel = 'info';
       }
       item.level = cappedLevel;
       item.category = hit.category;

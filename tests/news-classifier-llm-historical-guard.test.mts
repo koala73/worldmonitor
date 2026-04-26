@@ -91,47 +91,76 @@ describe('LLM-cache historical-marker guard — predicate', () => {
 
 describe('LLM-cache guard — semantics documentation (behavioral spec)', () => {
   // These tests document what enrichWithAiCache's L3 guard should do
-  // given the cache hit + title combinations. The integration coverage
-  // for the actual side-effecting code path lives in the
-  // ingest-pipeline e2e suite (not present in this test file's scope).
+  // given the RAW cache hit + title combinations. The guard runs BEFORE
+  // capLlmUpgrade (PR #3429 round 3 P1 fix) — so the model is:
+  //
+  //   if hasHistoricalMarker(title): final = 'info' (regardless of hit.level)
+  //   else: final = capLlmUpgrade(keywordLevel, hit.level)
+  //
+  // Prior model (post-cap, only critical/high) had a hole: when
+  // keyword='info' + hit='critical', capLlmUpgrade returns 'medium'
+  // (info+2=medium), which doesn't match the critical/high check, so the
+  // guard never fired and retrospective content shipped at MEDIUM.
+  //
+  // Integration coverage for the actual side-effecting code path lives
+  // in the ingest-pipeline e2e suite (not present in this test file's
+  // scope).
 
-  it('CRITICAL+marker → downgraded to info (the case this PR closes)', () => {
-    const cappedLevel = 'critical';
-    const title = 'Science history: nuclear meltdown - April 26, 1986';
-    const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
-        ? 'info'
-        : cappedLevel;
+  // Helper modeling the post-fix flow exactly.
+  function applyGuard(hitLevel: string, title: string, nowMs: number): string {
+    if (hasHistoricalMarker(title, nowMs)) return 'info';
+    return hitLevel;
+  }
+
+  it('CRITICAL hit + marker → forced to info (the case this PR closes)', () => {
+    const finalLevel = applyGuard(
+      'critical',
+      'Science history: nuclear meltdown - April 26, 1986',
+      NOW,
+    );
     assert.equal(finalLevel, 'info');
   });
 
-  it('HIGH+marker → downgraded to info', () => {
-    const cappedLevel = 'high';
-    const title = '40th anniversary of WWII airstrike on London';
-    const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
-        ? 'info'
-        : cappedLevel;
+  it('HIGH hit + marker → forced to info', () => {
+    const finalLevel = applyGuard('high', '40th anniversary of WWII airstrike on London', NOW);
     assert.equal(finalLevel, 'info');
   });
 
-  it('MEDIUM+marker → unchanged (only CRITICAL/HIGH get the guard)', () => {
-    const cappedLevel = 'medium';
-    const title = '5-year anniversary of historic protests';
-    const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
-        ? 'info'
-        : cappedLevel;
-    assert.equal(finalLevel, 'medium', 'only CRITICAL/HIGH trip the guard; MEDIUM is left alone');
+  it('SAFETY: keyword=info + LLM=critical + marker → info (NOT medium per cap) — round 3 P1 fix', () => {
+    // The reviewer's exact failure mode on PR #3429 round 3.
+    //
+    // Pre-fix flow (BROKEN): keyword=info + hit=critical → capLlmUpgrade
+    // returns medium (info+2=medium); then the post-cap guard checks
+    // `=== 'critical' || === 'high'` and SKIPS — final = medium, ships
+    // in 'all'-sensitivity briefs.
+    //
+    // Post-fix flow (THIS TEST): marker check runs on the RAW hit BEFORE
+    // capLlmUpgrade and forces info regardless of the cap arithmetic.
+    const title =
+      'Science history: Chernobyl nuclear power plant melts down, bringing the world to the brink of disaster — April 26, 1986';
+    const finalLevel = applyGuard('critical', title, NOW);
+    assert.equal(finalLevel, 'info', 'guard must force info, not let cap demote to medium');
   });
 
-  it('CRITICAL without marker → unchanged (current-event still ships)', () => {
-    const cappedLevel = 'critical';
-    const title = 'Reactor melts down at active plant — operators evacuating';
-    const finalLevel =
-      (cappedLevel === 'critical' || cappedLevel === 'high') && hasHistoricalMarker(title, NOW)
-        ? 'info'
-        : cappedLevel;
+  it('MEDIUM hit + marker → forced to info (any non-info level on retrospective is wrong)', () => {
+    // The post-fix semantics: retrospective markers suppress the LLM
+    // verdict at every non-info level. A 'medium' retrospective still
+    // ships in 'all'-sensitivity briefs, so the guard must catch it too.
+    const finalLevel = applyGuard('medium', '5-year anniversary of historic protests', NOW);
+    assert.equal(finalLevel, 'info', 'retrospective content never ships at any non-info level');
+  });
+
+  it('CRITICAL hit without marker → unchanged (current-event still ships)', () => {
+    const finalLevel = applyGuard(
+      'critical',
+      'Reactor melts down at active plant — operators evacuating',
+      NOW,
+    );
     assert.equal(finalLevel, 'critical', 'current events with no markers must still ship');
+  });
+
+  it('INFO hit without marker → unchanged (no false promotion)', () => {
+    const finalLevel = applyGuard('info', 'Routine policy update from agency', NOW);
+    assert.equal(finalLevel, 'info');
   });
 });
