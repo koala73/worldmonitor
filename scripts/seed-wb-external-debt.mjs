@@ -66,13 +66,24 @@ async function fetchWbIndicator(indicator) {
       const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
       const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
       if (!iso2) continue;
-      const value = Number(record?.value);
+      // CRITICAL: skip null records BEFORE Number() coercion.
+      // Number(null) === 0 (not NaN), passes Number.isFinite(), and would
+      // let a `value: null` record overwrite an older non-null record in
+      // the year-comparison below. The downstream country-level filter
+      // at `combineExternalDebt` only rejects `debt.value < 0`, not
+      // `< 0`, so a coerced 0 propagates through and publishes a false
+      // 0% short-term-debt-to-GNI for late-reporting LMICs. Same compound
+      // trap as PR #3427 / PR #3432 — original miss caught by reviewer
+      // post-PR-#3432 sweep.
+      if (record?.value == null) continue;
+      const value = Number(record.value);
       if (!Number.isFinite(value)) continue;
       const year = Number(record?.date);
       if (!Number.isFinite(year)) continue;
       // Per-key memory `feedback_wb_bulk_mrv1_null_coverage_trap`: mrv=1
       // returns SINGLE year across all countries with `value: null` for
       // late-reporters; mrv=5 + pickLatestPerCountry handles that.
+      // The explicit null-skip above is the second half of the trap fix.
       const existing = out[iso2];
       if (!existing || year > existing.year) {
         out[iso2] = { value, year };

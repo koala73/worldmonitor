@@ -201,7 +201,15 @@ async function fetchGdpByCountry() {
       const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
       const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
       if (!iso2) continue;
-      const value = Number(record?.value);
+      // Defense-in-depth: explicit null-skip BEFORE Number() coercion.
+      // Today the `value <= 0` filter below catches Number(null)=0 by side
+      // effect (GDP must be > 0), but per memory
+      // `feedback_wb_bulk_mrv1_null_coverage_trap` the protection is fragile.
+      // PR #3427's seeder defeated itself for exactly this reason; the
+      // explicit null-skip makes the picker null-safe regardless of any
+      // future filter relaxation.
+      if (record?.value == null) continue;
+      const value = Number(record.value);
       if (!Number.isFinite(value) || value <= 0) continue;
       const year = Number(record?.date);
       if (!Number.isFinite(year)) continue;
