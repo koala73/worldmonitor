@@ -16,7 +16,12 @@ async function fetchReserveAdequacy() {
   let totalPages = 1;
 
   while (page <= totalPages) {
-    const url = `${WB_BASE}/country/all/indicator/${INDICATOR}?format=json&per_page=500&page=${page}&mrv=1`;
+    // mrv=5 (NOT mrv=1) per memory `feedback_wb_bulk_mrv1_null_coverage_trap`:
+    // mrv=1 returns a SINGLE year across all countries with `value: null`
+    // for late-reporters (KW/QA/AE/etc. publish 1-2y behind G7), silently
+    // dropping them from the dataset. mrv=5 + per-country pickLatest gives
+    // a true latest-available-non-null per country.
+    const url = `${WB_BASE}/country/all/indicator/${INDICATOR}?format=json&per_page=500&page=${page}&mrv=5`;
     const resp = await fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(30_000),
@@ -38,11 +43,16 @@ async function fetchReserveAdequacy() {
     const value = Number(record?.value);
     if (!Number.isFinite(value)) continue;
     const year = Number(record?.date);
+    if (!Number.isFinite(year)) continue;
 
-    countries[iso2] = {
-      reserveMonths: value,
-      year: Number.isFinite(year) ? year : null,
-    };
+    // Per-country latest-non-null (mrv=5 returns up to 5 records per country).
+    const existing = countries[iso2];
+    if (!existing || year > existing.year) {
+      countries[iso2] = {
+        reserveMonths: value,
+        year,
+      };
+    }
   }
 
   return { countries, seededAt: new Date().toISOString() };

@@ -19,7 +19,13 @@ async function fetchWbIndicator(indicator) {
   let totalPages = 1;
 
   while (page <= totalPages) {
-    const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&per_page=500&page=${page}&mrv=1`;
+    // mrv=5 (NOT mrv=1) per memory `feedback_wb_bulk_mrv1_null_coverage_trap`:
+    // mrv=1 returns a SINGLE year across all countries with `value: null`
+    // for late-reporters (KW/QA/AE/etc. publish 1-2y behind G7), silently
+    // dropping them from the dataset. mrv=5 + per-country pickLatest gives
+    // a true latest-available-non-null per country. Same pattern used by
+    // `seed-wb-external-debt.mjs` for the financialSystemExposure dim.
+    const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&per_page=500&page=${page}&mrv=5`;
     let json;
     try {
       const resp = await fetch(url, {
@@ -43,7 +49,14 @@ async function fetchWbIndicator(indicator) {
       if (!iso2) continue;
       const value = Number(record?.value);
       if (!Number.isFinite(value)) continue;
-      out[iso2] = { value, year: Number(record?.date) || null };
+      const year = Number(record?.date);
+      if (!Number.isFinite(year)) continue;
+      // Per-country latest-non-null. Order-agnostic (mrv=5 returns up
+      // to 5 records per country, possibly across pages).
+      const existing = out[iso2];
+      if (!existing || year > existing.year) {
+        out[iso2] = { value, year };
+      }
     }
     page++;
   }
@@ -57,6 +70,7 @@ async function fetchExternalDebt() {
   ]);
 
   const countries = {};
+  let droppedHicZeroDebt = 0;
   const allCodes = new Set([...Object.keys(debtMap), ...Object.keys(reservesMap)]);
 
   for (const code of allCodes) {
@@ -64,10 +78,25 @@ async function fetchExternalDebt() {
     const reserves = reservesMap[code];
     if (!debt || !reserves || reserves.value <= 0) continue;
 
+    // Plan 2026-04-26 audit finding #7: WB IDS dataset (DT.DOD.DSTC.CD)
+    // is LMIC-scoped. High-income countries get value=0 from this series
+    // (not null — actually the literal zero), which under the previous
+    // code translated to debtToReservesRatio=0 → score 100. 72/164
+    // countries (44%) of the v15 ranking had this false-perfect signal,
+    // including NO/CH/DK/SE/FI/IS/KW/AE/SG/LU. Filter those out: a real
+    // LMIC-scoped IDS reading must have positive short-term debt. The
+    // construct semantically applies to LMICs only, so dropping HIC is
+    // correct (they get the dim's IMPUTE fallback score 50 / cov 0.3).
+    if (debt.value <= 0) { droppedHicZeroDebt++; continue; }
+
     countries[code] = {
       debtToReservesRatio: Math.round((debt.value / reserves.value) * 1000) / 1000,
       year: debt.year ?? reserves.year ?? null,
     };
+  }
+
+  if (droppedHicZeroDebt > 0) {
+    console.warn(`[recovery:external-debt] Dropped ${droppedHicZeroDebt} countries with debt=0 (HIC out-of-IDS-scope; would have falsely scored 100 on debtToReservesRatio).`);
   }
 
   return { countries, seededAt: new Date().toISOString() };
