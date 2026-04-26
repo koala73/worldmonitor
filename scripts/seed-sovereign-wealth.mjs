@@ -231,7 +231,15 @@ export function pickLatestPerCountry(records) {
     const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
     const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
     if (!iso2) continue;
-    const value = Number(record?.value);
+    // Defense-in-depth: explicit null-skip BEFORE Number() coercion.
+    // Number(null) === 0 (not NaN). Today the `value <= 0` filter below
+    // accidentally catches that (annual imports must be > 0), but the
+    // protection is fragile — any future copy-paste of this picker for
+    // an indicator where 0 is legitimate (e.g. % of GDP, % share) would
+    // silently break. Per memory `feedback_wb_bulk_mrv1_null_coverage_trap`
+    // and the compound-bug case study in PR #3427.
+    if (record?.value == null) continue;
+    const value = Number(record.value);
     if (!Number.isFinite(value) || value <= 0) continue;
     const year = Number(record?.date);
     if (!Number.isFinite(year)) continue;
