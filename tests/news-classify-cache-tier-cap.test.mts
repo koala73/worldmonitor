@@ -2,9 +2,11 @@
 //
 // LLM classify-cache upgrade cap. Caps the cache-driven `level` upgrade at
 // +2 tiers above the keyword classification so a poisoned cache entry can't
-// promote info-keyword static-page titles past medium. Legitimate
-// keyword=low → LLM=critical upgrades (e.g., "Markets crash") remain
-// reachable because low+2 = critical.
+// promote info-keyword static-page titles past medium (info+2=medium).
+// Legitimate keyword=medium → LLM=critical upgrades (e.g., "Markets crash"
+// in MEDIUM_KEYWORDS) remain reachable because medium+2=critical. The
+// bounded loss is keyword=low → LLM=critical, which caps at high
+// (low+2=high) and is logged on every cap-fire.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';

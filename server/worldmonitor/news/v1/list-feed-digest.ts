@@ -524,8 +524,11 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
       if (0.9 <= item.confidence) continue;
       // Cap the LLM upgrade at +2 tiers above the keyword classification
       // so a poisoned cache entry (e.g., "About Section 508" → high) can't
-      // promote an info-keyword item past medium. Legitimate low→critical
-      // upgrades (low+2 = critical) remain reachable. R4.
+      // promote an info-keyword item past medium (info+2=medium). Legitimate
+      // medium→critical upgrades (medium+2=critical) remain reachable; the
+      // bounded loss is keyword=low → LLM=critical, which caps at high
+      // (low+2=high) and is logged below. See LEVEL_RANK doc + R4 for the
+      // full per-keyword cap table.
       const cappedLevel = capLlmUpgrade(item.level, hit.level);
       if (cappedLevel !== hit.level) {
         console.warn(
