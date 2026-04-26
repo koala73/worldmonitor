@@ -13,7 +13,7 @@ import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
-import { classifyByKeyword, type ThreatLevel } from './_classifier';
+import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
 import { getSourceTier } from '../../../_shared/source-tiers';
 import {
@@ -129,7 +129,7 @@ interface ParsedItem {
   level: ThreatLevel;
   category: string;
   confidence: number;
-  classSource: 'keyword' | 'llm';
+  classSource: 'keyword' | 'keyword-historical-downgrade' | 'llm';
   importanceScore: number;
   corroborationCount: number;
   titleHash?: string;
@@ -348,7 +348,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       level: threat.level,
       category: threat.category,
       confidence: threat.confidence,
-      classSource: 'keyword',
+      classSource: threat.source,
       importanceScore: 0,
       corroborationCount: 1,
       lang: feed.lang ?? 'en',
@@ -498,7 +498,13 @@ function decodeXmlEntities(s: string): string {
 }
 
 async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
-  const candidates = items.filter(i => i.classSource === 'keyword');
+  // Apply the LLM cache to BOTH 'keyword' and 'keyword-historical-downgrade'
+  // sources. The historical-downgrade path forced an info level based on a
+  // headline-shape heuristic; the LLM cache (when warmed) is a stronger
+  // signal and should be allowed to either confirm or override.
+  const candidates = items.filter(
+    i => i.classSource === 'keyword' || i.classSource === 'keyword-historical-downgrade',
+  );
   if (candidates.length === 0) return;
 
   // Use the canonical buildClassifyCacheKey from intelligence/v1/_shared
@@ -521,20 +527,48 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
 
     for (const item of relatedItems) {
-      if (0.9 <= item.confidence) continue;
+      // L1 (PR #3424): the prior `if (0.9 <= item.confidence) continue` skip
+      // here meant the LLM cache result was IGNORED for keyword=critical
+      // matches. That made the cache an upgrade-only path: keyword=info →
+      // LLM=high could promote, but keyword=critical → LLM=info (e.g.
+      // retrospective/anniversary content tripping a critical keyword)
+      // could NEVER demote. Removed unconditionally — the U4 +2 tier cap
+      // below already protects against poisoned UPWARD promotions, and
+      // symmetric DOWNGRADES are unconditionally safer than keeping a
+      // suspect keyword classification.
+      //
       // Cap the LLM upgrade at +2 tiers above the keyword classification
       // so a poisoned cache entry (e.g., "About Section 508" → high) can't
       // promote an info-keyword item past medium (info+2=medium). Legitimate
-      // medium→critical upgrades (medium+2=critical) remain reachable; the
-      // bounded loss is keyword=low → LLM=critical, which caps at high
-      // (low+2=high) and is logged below. See LEVEL_RANK doc + R4 for the
-      // full per-keyword cap table.
-      const cappedLevel = capLlmUpgrade(item.level, hit.level);
+      // medium→critical upgrades (medium+2=critical) remain reachable.
+      // capLlmUpgrade is a Math.min so downgrades pass through freely.
+      // See LEVEL_RANK doc + R4 for the full per-keyword cap table.
+      let cappedLevel = capLlmUpgrade(item.level, hit.level);
       if (cappedLevel !== hit.level) {
         console.warn(
           `[classify] LLM upgrade capped: keyword=${item.level} ` +
             `llm=${hit.level} applied=${cappedLevel} title="${item.title.slice(0, 60)}"`,
         );
+      }
+      // L3 defense-in-depth (PR #3424): if the LLM cache promoted an item
+      // to CRITICAL/HIGH but the title contains a historical-retrospective
+      // marker (e.g. "Science history:", "April 26, 1986", "5 years ago"),
+      // force info. The keyword classifier already does this for matches in
+      // CRITICAL_KEYWORDS / HIGH_KEYWORDS, but this catches the case where
+      // the keyword classifier returned info (no match — the trigger word
+      // wasn't in the keyword list, e.g. "melts down" doesn't match the
+      // "meltdown" keyword) BUT the LLM cache promoted the item anyway.
+      // Brief 2026-04-26-1302 case: "Science history: Chernobyl... melts
+      // down — April 26, 1986" shipped despite no keyword match.
+      if (
+        (cappedLevel === 'critical' || cappedLevel === 'high') &&
+        hasHistoricalMarker(item.title)
+      ) {
+        console.warn(
+          `[classify] LLM-promoted level forced to info by historical marker: ` +
+            `llm=${hit.level} applied=${cappedLevel}->info title="${item.title.slice(0, 60)}"`,
+        );
+        cappedLevel = 'info';
       }
       item.level = cappedLevel;
       item.category = hit.category;

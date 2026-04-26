@@ -17,7 +17,14 @@ export interface ClassificationResult {
   level: ThreatLevel;
   category: EventCategory;
   confidence: number;
-  source: 'keyword';
+  // 'keyword' = pure keyword match (CRITICAL/HIGH/MEDIUM/LOW lists or
+  // info-level no-match fallback). 'keyword-historical-downgrade' = a
+  // CRITICAL/HIGH keyword matched, but the headline contained a historical
+  // retrospective marker (e.g. "Science history:", "April 26, 1986",
+  // "5 years ago"), so the level was forced to info. Distinct source tag
+  // lets downstream consumers + telemetry distinguish "no-match info"
+  // from "downgraded-from-critical info".
+  source: 'keyword' | 'keyword-historical-downgrade';
 }
 
 type KeywordMap = Record<string, EventCategory>;
@@ -212,6 +219,48 @@ function matchKeywords(
   return null;
 }
 
+/**
+ * Headline-shape patterns that flip a CRITICAL/HIGH keyword classification
+ * into a historical retrospective. Triggered ONLY after a critical/high
+ * keyword has already matched — i.e. these patterns alone don't downgrade
+ * unrelated content; they downgrade content where the trigger word
+ * (`meltdown`, `invasion`, `genocide`, …) appears in a historically-framed
+ * headline. Examples that tripped the prior classifier:
+ *   - "Science history: Chernobyl nuclear power plant melts down — April 26, 1986"
+ *   - "On this day: Iraq invasion 5 years ago"
+ * Both contain a CRITICAL keyword AND an unmistakable retrospective marker.
+ */
+const HISTORICAL_PREFIX_RE =
+  /^(?:science history|on this day|today in|this day in|throwback|flashback)\s*:?/i;
+
+const HISTORICAL_PHRASE_RE =
+  /\b(?:\d+\s+(?:years?|decades?|months?)\s+(?:ago|after|later)|anniversary|in memoriam|remembering|remembered|commemorat(?:e|es|ed|ion)|retrospective)\b/i;
+
+// Full date in the headline (e.g. "April 26, 1986" or "1986-04-26"). A
+// 4-digit year ALONE is too noisy ("Russia warns of 2026 strike" trips it
+// falsely), but a year combined with month/day or ISO format is a strong
+// retrospective signal — current-event headlines rarely embed a full date.
+const FULL_DATE_RE =
+  /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+(?:19|20)\d{2}\b/i;
+
+const ISO_DATE_RE = /\b(?:19|20)\d{2}-\d{1,2}-\d{1,2}\b/;
+
+/**
+ * Returns true if the title looks like a historical retrospective.
+ * Used by classifyByKeyword to downgrade CRITICAL/HIGH keyword matches
+ * (e.g. "meltdown") that appear in a backward-looking headline.
+ *
+ * Exported for test coverage — DO NOT call from production code paths
+ * other than classifyByKeyword.
+ */
+export function hasHistoricalMarker(title: string): boolean {
+  if (HISTORICAL_PREFIX_RE.test(title)) return true;
+  if (HISTORICAL_PHRASE_RE.test(title)) return true;
+  if (FULL_DATE_RE.test(title)) return true;
+  if (ISO_DATE_RE.test(title)) return true;
+  return false;
+}
+
 export function classifyByKeyword(title: string, variant?: string): ClassificationResult {
   const lower = title.toLowerCase();
 
@@ -220,12 +269,29 @@ export function classifyByKeyword(title: string, variant?: string): Classificati
   }
 
   const isTech = variant === 'tech';
+  // Historical-retrospective downgrade applies only to CRITICAL/HIGH
+  // keyword matches — those are the levels that score high enough to
+  // ship in briefs, and those are where the false-positive cost is
+  // highest (an anniversary listicle ranking like a current crisis).
+  // LOW/MEDIUM matches are left alone since they don't clear thresholds
+  // anyway, and the downgrade-to-info would be over-aggressive there.
+  const isRetrospective = hasHistoricalMarker(title);
 
   let match = matchKeywords(lower, CRITICAL_KEYWORDS);
-  if (match) return { level: 'critical', category: match.category, confidence: 0.9, source: 'keyword' };
+  if (match) {
+    if (isRetrospective) {
+      return { level: 'info', category: 'general', confidence: 0.85, source: 'keyword-historical-downgrade' };
+    }
+    return { level: 'critical', category: match.category, confidence: 0.9, source: 'keyword' };
+  }
 
   match = matchKeywords(lower, HIGH_KEYWORDS);
-  if (match) return { level: 'high', category: match.category, confidence: 0.8, source: 'keyword' };
+  if (match) {
+    if (isRetrospective) {
+      return { level: 'info', category: 'general', confidence: 0.85, source: 'keyword-historical-downgrade' };
+    }
+    return { level: 'high', category: match.category, confidence: 0.8, source: 'keyword' };
+  }
 
   if (isTech) {
     match = matchKeywords(lower, TECH_HIGH_KEYWORDS);
