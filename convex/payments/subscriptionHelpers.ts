@@ -333,6 +333,7 @@ export async function handleSubscriptionActive(
   // Upsert customer record so portal session creation can find dodoCustomerId
   const dodoCustomerId = data.customer?.customer_id;
   const email = data.customer?.email ?? "";
+  const normalizedEmail = email.trim().toLowerCase();
 
   if (dodoCustomerId) {
     const existingCustomer = await ctx.db
@@ -346,6 +347,7 @@ export async function handleSubscriptionActive(
       await ctx.db.patch(existingCustomer._id, {
         userId,
         email,
+        normalizedEmail,
         updatedAt: eventTimestamp,
       });
     } else {
@@ -353,6 +355,7 @@ export async function handleSubscriptionActive(
         userId,
         dodoCustomerId,
         email,
+        normalizedEmail,
         createdAt: eventTimestamp,
         updatedAt: eventTimestamp,
       });

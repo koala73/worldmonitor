@@ -223,11 +223,19 @@ export default defineSchema({
     userId: v.string(),
     dodoCustomerId: v.optional(v.string()),
     email: v.string(),
+    // Lowercased + trimmed mirror of `email`. Required for O(1) joins from
+    // `registrations`/`emailSuppressions` (both keyed on `normalizedEmail`)
+    // when building broadcast audiences — without this, dedup is a full
+    // table scan and paid users can leak into "buy PRO!" sends.
+    // Optional so existing rows pass schema validation; backfilled via
+    // `npx convex run payments/backfillCustomerNormalizedEmail:backfill`.
+    normalizedEmail: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoCustomerId", ["dodoCustomerId"]),
+    .index("by_dodoCustomerId", ["dodoCustomerId"])
+    .index("by_normalized_email", ["normalizedEmail"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),
