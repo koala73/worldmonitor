@@ -182,7 +182,12 @@ export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStr
     return emptyResult('Missing channel or videoId');
   }
 
-  const cacheKey = `aviation:yt-live:${videoId || channel}:v1`;
+  // Distinct request shapes (videoId-only, channel-only, both) MUST get distinct
+  // cache keys — a negative sentinel for one shape must not suppress the others.
+  // Channel handles normalized by stripping leading '@' so `foo` and `@foo` (which
+  // hit the same upstream via tryChannelScrape) share a cache entry.
+  const normalizedChannel = channel.replace(/^@/, '');
+  const cacheKey = `aviation:yt-live:vid:${videoId}:ch:${normalizedChannel}:v1`;
 
   try {
     const cached = await cachedFetchJson<GetYoutubeLiveStreamInfoResponse>(

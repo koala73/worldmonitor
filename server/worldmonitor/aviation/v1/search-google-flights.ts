@@ -26,6 +26,8 @@ export async function searchGoogleFlights(
     return { flights: [], degraded: true, error: 'relay unavailable' };
   }
 
+  // Clamp once so equivalent relay calls (e.g. passengers=99 → 9) share a cache entry.
+  const passengers = Math.max(1, Math.min(req.passengers ?? 1, 9));
   const airlines = parseStringArray(req.airlines);
   const params = new URLSearchParams({
     origin,
@@ -36,7 +38,7 @@ export async function searchGoogleFlights(
     ...(req.maxStops ? { max_stops: req.maxStops } : {}),
     ...(req.departureWindow ? { departure_window: req.departureWindow } : {}),
     ...(req.sortBy ? { sort_by: req.sortBy } : {}),
-    passengers: String(Math.max(1, Math.min(req.passengers ?? 1, 9))),
+    passengers: String(passengers),
   });
   for (const airline of airlines) {
     params.append('airlines', airline);
@@ -45,7 +47,7 @@ export async function searchGoogleFlights(
   // Cache key uses a sorted-airlines axis so input order doesn't fragment cache hits;
   // the relay still receives airlines in the caller's order via `params`.
   const sortedAirlinesKey = [...airlines].sort().join(',');
-  const cacheKey = `aviation:gf:${origin}:${destination}:${departureDate}:${req.returnDate ?? ''}:${req.cabinClass ?? ''}:${req.maxStops ?? ''}:${req.departureWindow ?? ''}:${req.sortBy ?? ''}:${req.passengers ?? 1}:${sortedAirlinesKey}:v1`;
+  const cacheKey = `aviation:gf:${origin}:${destination}:${departureDate}:${req.returnDate ?? ''}:${req.cabinClass ?? ''}:${req.maxStops ?? ''}:${req.departureWindow ?? ''}:${req.sortBy ?? ''}:${passengers}:${sortedAirlinesKey}:v1`;
 
   try {
     const data = await cachedFetchJson<{ flights: unknown[] }>(
