@@ -24,7 +24,15 @@
 // cohort shape gate scans `cohorts/` and would reject this file's
 // shape; keeping registries in their own directory avoids that
 // conflict.
-import sovereignStatus from './registries/sovereign-status.json' with { type: 'json' };
+//
+// Plain JSON import (no `with { type: 'json' }` attribute) matches the
+// rest of the codebase. Vercel's esbuild bundler does NOT support the
+// import-attribute syntax — it fails at build time with
+// "Expected ';' but found 'with'" on the generated .js. Sibling
+// modules use the same plain-import shape:
+//   `import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';`
+// (see _dimension-scorers.ts:1-2). Caught by reviewer post-PR-3435 push.
+import sovereignStatus from './registries/sovereign-status.json';
 
 export type SovereignStatus = 'un-member' | 'sar';
 
