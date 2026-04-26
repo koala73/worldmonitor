@@ -1,8 +1,12 @@
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireEnv } from "./lib/env";
+import { BROADCAST_TRACKED_EVENT_TYPES } from "./broadcast/metrics";
 
 const HANDLED_EVENTS = new Set(["email.bounced", "email.complained"]);
+const BROADCAST_TRACKED_SET: ReadonlySet<string> = new Set(
+  BROADCAST_TRACKED_EVENT_TYPES,
+);
 
 async function verifySignature(
   payload: string,
@@ -56,11 +60,54 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
     return new Response("Invalid signature", { status: 401 });
   }
 
-  let event: { type: string; data?: { to?: string[]; email_id?: string } };
+  let event: {
+    type: string;
+    created_at?: string;
+    data?: {
+      to?: string[];
+      email_id?: string;
+      broadcast_id?: string;
+    };
+  };
   try {
     event = JSON.parse(rawBody);
   } catch {
     return new Response("Invalid JSON", { status: 400 });
+  }
+
+  // Broadcast metrics — record any tracked event tagged with a
+  // `broadcast_id` into `broadcastEvents` for canary kill-gate decisions.
+  // Idempotent on svix-id (Resend retries on 5xx and we MUST treat each
+  // delivery as at-most-once).
+  const broadcastId = event.data?.broadcast_id;
+  if (broadcastId && BROADCAST_TRACKED_SET.has(event.type)) {
+    const svixId = request.headers.get("svix-id");
+    if (svixId) {
+      const occurredAt = event.created_at
+        ? Date.parse(event.created_at) || Date.now()
+        : Date.now();
+      try {
+        await ctx.runMutation(
+          internal.broadcast.metrics.recordBroadcastEvent,
+          {
+            webhookEventId: svixId,
+            broadcastId,
+            emailMessageId: event.data?.email_id,
+            eventType: event.type,
+            occurredAt,
+            rawPayload: event.data,
+          },
+        );
+      } catch (err) {
+        console.error(
+          `[resend-webhook] Failed to record broadcast event ${event.type} for ${broadcastId}:`,
+          err,
+        );
+        // Don't 500 the webhook on metrics-record failure — Resend would
+        // retry and we'd risk amplifying the issue. Suppression below is
+        // the more important path; metrics is best-effort.
+      }
+    }
   }
 
   if (!HANDLED_EVENTS.has(event.type)) {

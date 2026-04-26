@@ -11,6 +11,9 @@
 import type * as alertRules from "../alertRules.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as broadcast_audienceExport from "../broadcast/audienceExport.js";
+import type * as broadcast_metrics from "../broadcast/metrics.js";
+import type * as broadcast_proLaunchEmailContent from "../broadcast/proLaunchEmailContent.js";
+import type * as broadcast_sendBroadcast from "../broadcast/sendBroadcast.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
@@ -48,6 +51,9 @@ declare const fullApi: ApiFromModules<{
   alertRules: typeof alertRules;
   apiKeys: typeof apiKeys;
   "broadcast/audienceExport": typeof broadcast_audienceExport;
+  "broadcast/metrics": typeof broadcast_metrics;
+  "broadcast/proLaunchEmailContent": typeof broadcast_proLaunchEmailContent;
+  "broadcast/sendBroadcast": typeof broadcast_sendBroadcast;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
   contactMessages: typeof contactMessages;

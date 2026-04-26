@@ -288,4 +288,21 @@ export default defineSchema({
     suppressedAt: v.number(),
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),
+
+  // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
+  // Used to drive canary kill-gates (bounce > 4%, complaint > 0.08%) and
+  // post-send engagement reporting. Idempotent on `webhookEventId` — Resend
+  // retries on 5xx and we MUST treat every delivery as at-most-once.
+  // No recipient email stored — Convex dashboard logs are observable; we
+  // rely on Resend's `email_id` for traceability via their dashboard.
+  broadcastEvents: defineTable({
+    webhookEventId: v.string(),
+    broadcastId: v.string(),
+    emailMessageId: v.optional(v.string()),
+    eventType: v.string(),
+    occurredAt: v.number(),
+    rawPayload: v.any(),
+  })
+    .index("by_webhookEventId", ["webhookEventId"])
+    .index("by_broadcast_event", ["broadcastId", "eventType"]),
 });
