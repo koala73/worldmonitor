@@ -81,35 +81,36 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
   // delivery as at-most-once).
   const broadcastId = event.data?.broadcast_id;
   if (broadcastId && BROADCAST_TRACKED_SET.has(event.type)) {
-    const svixId = request.headers.get("svix-id");
-    if (svixId) {
-      const occurredAt = event.created_at
-        ? Date.parse(event.created_at) || Date.now()
-        : Date.now();
-      try {
-        await ctx.runMutation(
-          internal.broadcast.metrics.recordBroadcastEvent,
-          {
-            webhookEventId: svixId,
-            broadcastId,
-            emailMessageId: event.data?.email_id,
-            eventType: event.type,
-            occurredAt,
-            // Intentionally NOT forwarding event.data — it includes
-            // recipient emails (`to: string[]`), `from`, `subject`,
-            // etc. Identifier metadata above is enough; deeper
-            // inspection via emailMessageId in the Resend dashboard.
-          },
-        );
-      } catch (err) {
-        console.error(
-          `[resend-webhook] Failed to record broadcast event ${event.type} for ${broadcastId}:`,
-          err,
-        );
-        // Don't 500 the webhook on metrics-record failure — Resend would
-        // retry and we'd risk amplifying the issue. Suppression below is
-        // the more important path; metrics is best-effort.
-      }
+    // svix-id is guaranteed non-null here: verifySignature returns false
+    // (and we 401'd above) if any of svix-id / svix-timestamp /
+    // svix-signature were absent. Non-null assert rather than re-guard.
+    const svixId = request.headers.get("svix-id") as string;
+    const occurredAt = event.created_at
+      ? Date.parse(event.created_at) || Date.now()
+      : Date.now();
+    try {
+      await ctx.runMutation(
+        internal.broadcast.metrics.recordBroadcastEvent,
+        {
+          webhookEventId: svixId,
+          broadcastId,
+          emailMessageId: event.data?.email_id,
+          eventType: event.type,
+          occurredAt,
+          // Intentionally NOT forwarding event.data — it includes
+          // recipient emails (`to: string[]`), `from`, `subject`,
+          // etc. Identifier metadata above is enough; deeper
+          // inspection via emailMessageId in the Resend dashboard.
+        },
+      );
+    } catch (err) {
+      console.error(
+        `[resend-webhook] Failed to record broadcast event ${event.type} for ${broadcastId}:`,
+        err,
+      );
+      // Don't 500 the webhook on metrics-record failure — Resend would
+      // retry and we'd risk amplifying the issue. Suppression below is
+      // the more important path; metrics is best-effort.
     }
   }
 
