@@ -51,7 +51,7 @@ Most of it is in the free dashboard. PRO is where the two things you just read a
 
 AI Widget Builder. Plain language, live widget on your dashboard. Save as many as you want.
 
-Native AI context. MCP server plus a 27-endpoint REST API — full docs at https://www.worldmonitor.app/docs/documentation. Plug it into Claude, ChatGPT, Cursor, or anything you're building.
+Native AI context. MCP server plus a 27-endpoint REST API — full docs at https://worldmonitor.app/docs/documentation. Plug it into Claude, ChatGPT, Cursor, or anything you're building.
 
 Also included:
 - WM Analyst. AI analyst with the full signal stack: ticker, country, sector, sanctions package. Ask it what you'd Google for an hour.
@@ -91,7 +91,7 @@ export const PRO_LAUNCH_HTML = `<!DOCTYPE html><html><body style="margin:0;paddi
 <p>More than half of this didn't exist 45 days ago. The <a href="https://github.com/koala73/worldmonitor" style="color:#0066cc;">open-source repo</a> crossed 50,000 GitHub stars in the same window. That's the build pace.</p>
 <p>Most of it is in the free dashboard. PRO is where the two things you just read about earn their keep:</p>
 <p><strong>AI Widget Builder.</strong> Plain language, live widget on your dashboard. Save as many as you want.</p>
-<p><strong>Native AI context.</strong> MCP server plus a 27-endpoint REST API — <a href="https://www.worldmonitor.app/docs/documentation" style="color:#0066cc;">full docs</a>. Plug it into Claude, ChatGPT, Cursor, or anything you're building.</p>
+<p><strong>Native AI context.</strong> MCP server plus a 27-endpoint REST API — <a href="https://worldmonitor.app/docs/documentation" style="color:#0066cc;">full docs</a>. Plug it into Claude, ChatGPT, Cursor, or anything you're building.</p>
 <p>Also included:</p>
 <ul style="padding-left:20px;">
 <li><strong>WM Analyst.</strong> AI analyst with the full signal stack: ticker, country, sector, sanctions package. Ask it what you'd Google for an hour.</li>
