@@ -559,15 +559,31 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
         continue;
       }
 
-      // L1 (PR #3424): the prior `if (0.9 <= item.confidence) continue` skip
-      // here meant the LLM cache result was IGNORED for keyword=critical
-      // matches. That made the cache an upgrade-only path: keyword=info →
-      // LLM=high could promote, but keyword=critical → LLM=info (e.g.
-      // retrospective/anniversary content tripping a critical keyword)
-      // could NEVER demote. Removed unconditionally — the U4 +2 tier cap
-      // below already protects against poisoned UPWARD promotions, and
-      // symmetric DOWNGRADES are unconditionally safer than keeping a
-      // suspect keyword classification.
+      // Skip the LLM cache for high-confidence keyword=critical matches
+      // (confidence 0.9). Without this skip, capLlmUpgrade is a Math.min
+      // — a stale or wrong LLM cache entry saying 'info' would silently
+      // demote a genuine current critical event to info via min(critical,
+      // info) = info, with no remaining safeguard.
+      //
+      // The retrospective case the prior PR #3424 wanted to handle here
+      // is already handled UPSTREAM: a keyword=critical title with a
+      // historical marker becomes classSource='keyword-historical-
+      // downgrade' (confidence 0.85, level=info) inside classifyByKeyword
+      // BEFORE reaching this function, so the L3 marker check above
+      // catches it via the historical-downgrade source. Items reaching
+      // here at confidence 0.9 are by construction items where the
+      // keyword classifier saw a critical match AND saw no marker —
+      // the safer default for those is to trust the keyword verdict.
+      //
+      // The L3 marker check above intentionally runs BEFORE this skip so
+      // that keyword=info (confidence 0.3, no-match) titles with a
+      // marker — the brief 2026-04-26-1302 "Science history: melts
+      // down…" shape — still get forced to info via the cache hit.
+      // Belt-and-suspenders for substring-keyword-miss contamination.
+      //
+      // P1 fix on PR #3429 round 4 (Greptile review on commit 96d3c12d7).
+      if (0.9 <= item.confidence) continue;
+
       //
       // Cap the LLM upgrade at +2 tiers above the keyword classification
       // so a poisoned cache entry (e.g., "About Section 508" → high) can't
