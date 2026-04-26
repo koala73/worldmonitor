@@ -31,6 +31,48 @@ describe('isInstitutionalStaticPage — known contamination cases (true)', () =>
     );
   });
 
+  it('Pentagon /About bare segment (no trailing slash) — segment-boundary rule', () => {
+    // P2 from PR #3419 review: under naive `startsWith('/About/')` this
+    // would have returned false, missing the canonical landing-page form.
+    // The pathMatchesPrefix segment rule treats '/About/' as a bucket
+    // and matches both '/about' and '/about/anything'.
+    assert.equal(
+      isInstitutionalStaticPage('https://www.defense.gov/About'),
+      true,
+    );
+  });
+
+  it('Air Force /Strategy bare segment (no trailing slash)', () => {
+    assert.equal(
+      isInstitutionalStaticPage('https://www.af.mil/Strategy'),
+      true,
+    );
+  });
+
+  it('State Dept /Policy bare segment (no trailing slash)', () => {
+    assert.equal(
+      isInstitutionalStaticPage('https://www.state.gov/Policy'),
+      true,
+    );
+  });
+
+  it('does NOT over-match /aboutface (segment boundary enforced)', () => {
+    // The segment rule rejects /aboutface even though /aboutface starts
+    // with /about. Without the boundary check, every path that happens
+    // to begin with the prefix letters would over-trigger.
+    assert.equal(
+      isInstitutionalStaticPage('https://www.defense.gov/aboutface'),
+      false,
+    );
+  });
+
+  it('does NOT over-match /strategist (segment boundary enforced)', () => {
+    assert.equal(
+      isInstitutionalStaticPage('https://www.af.mil/strategist'),
+      false,
+    );
+  });
+
   it('Section-508 page on a different .gov host', () => {
     assert.equal(
       isInstitutionalStaticPage('https://www.state.gov/Section-508/'),

@@ -69,11 +69,19 @@ const SEVERITY_SCORES: Record<ThreatLevel, number> = {
 /**
  * Ordinal rank of each threat level, used by the LLM classify-cache
  * upgrade cap (U4). Cap = +2 tiers above the keyword classification.
+ *
  * Rationale: keyword=info (no-match fallback at confidence 0.3) jumping
  * straight to high/critical is the static-institutional-page contamination
- * path; capping at info+2=medium blocks it. Legitimate keyword=low →
- * LLM=critical upgrades (e.g., "Markets crash" headline) are preserved
- * because low+2=critical. See R4 in the plan.
+ * path; capping at info+2=medium blocks it. Cap behavior by keyword:
+ *   info(0)+2=medium    — blocks info→{high,critical} (the contamination class)
+ *   low(1)+2=high       — preserves low→{medium,high}; caps low→critical at high
+ *   medium(2)+2=critical — preserves medium→{high,critical} (e.g. "Markets crash" → critical)
+ *   high(3)+2=critical  — passes through (existing 0.9-confidence guard at
+ *                         enrichWithAiCache also skips cache for keyword=critical)
+ *
+ * The keyword=low → LLM=critical case (capped at high) is the bounded
+ * loss; logged on every cap-fire so operators can audit if any are real.
+ * See R4 in the plan.
  */
 const LEVEL_RANK: Record<ThreatLevel, number> = {
   info: 0,
