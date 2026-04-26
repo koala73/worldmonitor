@@ -2,12 +2,19 @@
 // of `scripts/shared/rankable-universe.mjs`.
 //
 // Both modules read the SAME canonical JSON at
-// `server/worldmonitor/resilience/v1/registries/sovereign-status.json`
-// — the .mjs version uses fs.readFileSync (so seeders can run under
-// plain `node`); this .ts version uses an ES JSON import (so server
-// handlers can use Vercel's bundler). The two are guaranteed to
-// agree because they read the same source file; the duplication is
-// the read-path, not the data.
+// `scripts/shared/sovereign-status.json` — the .mjs version uses
+// fs.readFileSync (so seeders can run under plain `node`); this .ts
+// version uses an ES JSON import (so server handlers can use Vercel's
+// bundler). The two are guaranteed to agree because they read the
+// same source file; the duplication is the read-path, not the data.
+//
+// **Location reason**: the seed-bundle-resilience Railway service
+// runs with rootDirectory=scripts/ and only ships files under
+// scripts/ (memory: `worldmonitor-scripts-package-json-install-scope`).
+// PR #3435 originally placed the JSON under server/.../registries/
+// — that resolved fine locally and on Vercel but ENOENT'd at Railway
+// runtime, taking the resilience cron down. Hotfix relocated to
+// scripts/shared/.
 //
 // **Why both surfaces matter**: PR #3435 added the universe filter
 // at universe-build time in `seed-resilience-static.mjs`, but reviewer
@@ -18,21 +25,13 @@
 // handler-side read too, so the rankable-universe contract is
 // enforced regardless of seed state.
 
-// Lives in `registries/` (not `cohorts/`) because its shape is a
-// per-country PROPERTY registry (`{ entries: [{iso2, status}] }`),
-// not a cohort membership list (`{ iso2: string[] }`). PR #3433's
-// cohort shape gate scans `cohorts/` and would reject this file's
-// shape; keeping registries in their own directory avoids that
-// conflict.
-//
-// Plain JSON import (no `with { type: 'json' }` attribute) matches the
-// rest of the codebase. Vercel's esbuild bundler does NOT support the
-// import-attribute syntax — it fails at build time with
-// "Expected ';' but found 'with'" on the generated .js. Sibling
-// modules use the same plain-import shape:
-//   `import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';`
-// (see _dimension-scorers.ts:1-2). Caught by reviewer post-PR-3435 push.
-import sovereignStatus from './registries/sovereign-status.json';
+// Plain JSON import (no `with { type: 'json' }` attribute) matches
+// the rest of the codebase. Vercel's esbuild bundler does NOT
+// support the import-attribute syntax. Sibling modules use the
+// same plain-import shape from scripts/shared/:
+//   `import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';`
+// (see _dimension-scorers.ts:1-2).
+import sovereignStatus from '../../../../scripts/shared/sovereign-status.json';
 
 export type SovereignStatus = 'un-member' | 'sar';
 

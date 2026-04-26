@@ -20,7 +20,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const SOVEREIGN_STATUS_PATH = resolve(
   here,
-  '../server/worldmonitor/resilience/v1/registries/sovereign-status.json',
+  '../scripts/shared/sovereign-status.json',
 );
 
 describe('rankable-universe whitelist (Plan 2026-04-26-002 §U2)', () => {

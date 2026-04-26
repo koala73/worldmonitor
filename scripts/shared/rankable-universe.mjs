@@ -2,15 +2,24 @@
 // "what's a country in the headline ranking" decision.
 //
 // Reads the committed JSON whitelist at
-// `server/worldmonitor/resilience/v1/registries/sovereign-status.json`
-// (193 UN member states + 3 standalone SARs: HK, MO, TW).
+// `scripts/shared/sovereign-status.json` (193 UN member states + 3
+// standalone SARs: HK, MO, TW).
 //
-// Lives in `registries/` (not `cohorts/`) because its shape is a
-// per-country PROPERTY registry (`{ entries: [{iso2, status}] }`),
-// not a cohort membership list (`{ iso2: string[] }`). The cohort
-// JSON shape gate in `tests/resilience-retired-dimensions-parity.test.mts`
-// (PR #3433) scans `cohorts/` and rejects non-cohort-shaped files —
-// keeping registries in their own directory avoids that conflict.
+// **Why scripts/shared/ and NOT server/.../cohorts/ or registries/:**
+// the seed-bundle-resilience Railway service runs with rootDirectory=scripts/
+// and ONLY ships files under scripts/ into the container (memory:
+// `worldmonitor-scripts-package-json-install-scope`). PR #3435 originally
+// put the JSON under `server/.../registries/` — that resolved fine
+// locally and on Vercel but ENOENT'd at Railway runtime, taking the
+// resilience cron down. `scripts/shared/` is the canonical location
+// for shared JSON consumed by both seeders and server-side code
+// (alongside iso2-to-iso3.json, country-names.json etc.).
+//
+// The JSON shape is a per-country PROPERTY registry
+// (`{ entries: [{iso2, status}] }`), not a cohort membership list.
+// PR #3433's cohort shape gate scans `server/.../cohorts/` and would
+// reject this file's shape; living in `scripts/shared/` keeps it
+// outside that gate's scope.
 //
 // Both seeders (`scripts/seed-resilience-static.mjs` and
 // `scripts/seed-resilience-scores.mjs`) consume `isInRankableUniverse`
@@ -33,17 +42,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SOVEREIGN_STATUS_PATH = resolve(
-  here,
-  '..',
-  '..',
-  'server',
-  'worldmonitor',
-  'resilience',
-  'v1',
-  'registries',
-  'sovereign-status.json',
-);
+// Sibling JSON in the same scripts/shared/ directory — no path
+// traversal, no cross-directory dependency, container-safe.
+const SOVEREIGN_STATUS_PATH = resolve(here, 'sovereign-status.json');
 
 const RANKABLE_UNIVERSE = (() => {
   const raw = readFileSync(SOVEREIGN_STATUS_PATH, 'utf8');
