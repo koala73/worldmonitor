@@ -115,6 +115,19 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.strictEqual((m.get('description') as string).length, 400);
   });
 
+  it('persists publishedAt as a stringified epoch ms (READ-time freshness contract)', () => {
+    // The READ-time freshness floor in scripts/seed-digest-notifications.mjs
+    // (buildDigest) parses track.publishedAt as int and drops rows older
+    // than DIGEST_READ_MAX_AGE_HOURS. The HSET helper MUST emit it as a
+    // numeric string for that parse to succeed. Skipping this would make
+    // the read-time gate silently inert.
+    const item = baseItem({ publishedAt: 1_745_000_000_000 });
+    const fields = buildStoryTrackHsetFields(item, '1745000000000', 42);
+    const m = fieldsToMap(fields);
+    assert.strictEqual(m.get('publishedAt'), '1745000000000');
+    assert.strictEqual(Number.parseInt(m.get('publishedAt') as string, 10), 1_745_000_000_000);
+  });
+
   it('stale-body overwrite: sequence of mentions for the same titleHash always reflects the CURRENT mention', () => {
     // Simulates the Codex-flagged scenario: Feed A at T0 has body, Feed B
     // at T1 body-less, Feed C at T2 has different body. All collapse to the

@@ -67,9 +67,27 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Reuters Business', url: gn('site:reuters.com business markets when:1d') },
     ],
     gov: [
-      { name: 'White House', url: gn('site:whitehouse.gov when:1d') },
+      // White House: two direct WordPress RSS feeds. Replaces
+      // gn('site:whitehouse.gov ...') so the publisher's pubDate is
+      // authoritative and old re-indexed pages can't slip through.
+      // briefings-statements covers daily press releases; presidential-actions
+      // covers EOs / proclamations / nominations.
+      { name: 'White House', url: 'https://www.whitehouse.gov/briefings-statements/feed/' },
+      { name: 'White House Actions', url: 'https://www.whitehouse.gov/presidential-actions/feed/' },
+      // State Dept, Treasury, DOJ: no working public RSS feed at any
+      // verified path (probed 2026-04-26). Federal Register fallback is
+      // bot-blocked. Stuck on Google News until a per-agency HTML scraper
+      // or destination-pubDate cross-check ships. The READ-time freshness
+      // floor in seed-digest-notifications.mjs::buildDigest mitigates the
+      // residue gap; PR-3417's when:1d gates new ingests by Google's
+      // honest-relayed source pubDate. See:
+      //   skill: ingest-gate-tightening-leaves-residue-in-read-path
       { name: 'State Dept', url: gn('(site:state.gov OR "State Department") when:1d') },
-      { name: 'Pentagon', url: gn('(site:defense.gov OR Pentagon) when:1d') },
+      // Pentagon: direct war.gov RSS (post-rebrand). Replaces
+      // gn('(site:defense.gov OR Pentagon) when:1d') for the same reason
+      // as White House — the publisher's pubDate is authoritative, no
+      // re-indexing surprises.
+      { name: 'Pentagon', url: 'https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945' },
       { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
       { name: 'SEC', url: 'https://www.sec.gov/news/pressreleases.rss' },
       { name: 'UN News', url: 'https://news.un.org/feed/subscribe/en/news/all/rss.xml' },

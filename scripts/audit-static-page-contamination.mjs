@@ -1,26 +1,61 @@
 #!/usr/bin/env node
-// Ops audit + cleanup for residual static-institutional-page contamination
-// in story:track:v1:* (U6 of docs/plans/2026-04-26-001-fix-brief-static-
-// page-contamination-plan.md).
+// Ops audit + cleanup for residual contamination in story:track:v1:* and the
+// digest accumulator (U6 of docs/plans/2026-04-26-001-fix-brief-static-page-
+// contamination-plan.md).
+//
+// Two cleanup modes:
+//
+//   --mode=url    (default): match by institutional-static-page URL pattern.
+//                            Catches direct-RSS pre-ingest entries where
+//                            track.link is a real defense.gov / .mil / .int
+//                            URL.
+//
+//   --mode=age    : match by track.publishedAt being older than --max-age-hours
+//                   (default 48). Catches Google-News-routed entries whose
+//                   `link` is an opaque news.google.com redirect (so the URL
+//                   classifier can't see the destination), AND any other
+//                   stale residue regardless of source. This is the primary
+//                   eviction mode after ingest-gate tightening (PR #3417's
+//                   when:1d), where pre-deploy ingests carry real but stale
+//                   publishedAt timestamps.
+//
+//   --mode=both   : run both classifiers and union the matches.
 //
 // Usage:
-//   node scripts/audit-static-page-contamination.mjs           # dry run, prints stats
-//   node scripts/audit-static-page-contamination.mjs --apply   # also DELs matched keys
-//
-// Run AFTER PR-1 (ingest gates) and PR-2 (LLM cache prefix bump) reach
-// production. The dry-run output drives whether U7's URL-classifier
-// regex needs widening (separate follow-up PR) and confirms the upstream
-// gates are catching new arrivals (matched count should fall over time).
+//   node scripts/audit-static-page-contamination.mjs                       # dry run, URL mode
+//   node scripts/audit-static-page-contamination.mjs --mode=age            # dry run, age mode (48h)
+//   node scripts/audit-static-page-contamination.mjs --mode=age --max-age-hours=24
+//   node scripts/audit-static-page-contamination.mjs --mode=both --apply   # delete by either signal
 //
 // Pure-helper coverage lives in tests/url-classifier.test.mjs. The Redis
 // scan is mechanical and exercised by manual dry runs — there is no unit
-// test for the side-effecting --apply path (would require a Redis
-// double; out of scope for this one-shot script).
+// test for the side-effecting --apply path (would require a Redis double;
+// out of scope for this one-shot script).
 
 import { isInstitutionalStaticPage } from './shared/url-classifier.js';
 import { getRedisCredentials } from './_seed-utils.mjs';
 
-const APPLY = process.argv.includes('--apply');
+function parseArgs(argv) {
+  const args = { mode: 'url', maxAgeHours: 48, apply: false };
+  for (const arg of argv) {
+    if (arg === '--apply') args.apply = true;
+    else if (arg.startsWith('--mode=')) args.mode = arg.slice('--mode='.length);
+    else if (arg.startsWith('--max-age-hours=')) {
+      const n = Number.parseInt(arg.slice('--max-age-hours='.length), 10);
+      if (Number.isInteger(n) && n > 0) args.maxAgeHours = n;
+    }
+  }
+  if (!['url', 'age', 'both'].includes(args.mode)) {
+    console.error(`Unknown --mode=${args.mode}; expected url|age|both`);
+    process.exit(2);
+  }
+  return args;
+}
+
+const ARGS = parseArgs(process.argv.slice(2));
+const APPLY = ARGS.apply;
+const MODE = ARGS.mode;
+const MAX_AGE_MS = ARGS.maxAgeHours * 60 * 60 * 1000;
 const SCAN_PATTERN = 'story:track:v1:*';
 const SCAN_BATCH = 100;
 const SCAN_TIMEOUT_MS = 15_000;
@@ -143,11 +178,33 @@ function summarizePerHostPath(matches) {
   return { byHost: fmt(hostCounts), byPathPattern: fmt(pathPatternCounts) };
 }
 
+function classifyTrack(track, nowMs) {
+  const reasons = [];
+  const link = typeof track.link === 'string' ? track.link : '';
+
+  if ((MODE === 'url' || MODE === 'both') && link && isInstitutionalStaticPage(link)) {
+    reasons.push('url');
+  }
+
+  if (MODE === 'age' || MODE === 'both') {
+    const pubMs = Number.parseInt(track.publishedAt ?? '', 10);
+    if (Number.isInteger(pubMs) && pubMs > 0 && nowMs - pubMs > MAX_AGE_MS) {
+      reasons.push('age');
+    }
+  }
+
+  return reasons;
+}
+
 async function main() {
   const { url, token } = getRedisCredentials();
-  console.log(`[audit] mode=${APPLY ? 'APPLY (will DELETE)' : 'DRY RUN'}`);
+  console.log(
+    `[audit] mode=${MODE} ${APPLY ? 'APPLY (will DELETE)' : 'DRY RUN'}` +
+      (MODE === 'age' || MODE === 'both' ? ` max-age-hours=${ARGS.maxAgeHours}` : ''),
+  );
   console.log(`[audit] scanning ${SCAN_PATTERN}…`);
 
+  const nowMs = Date.now();
   const matches = [];
   let scanned = 0;
 
@@ -160,17 +217,21 @@ async function main() {
         const key = slice[j];
         const t = tracks[j];
         if (!t || typeof t !== 'object') continue;
-        const link = t.link;
-        if (typeof link !== 'string' || link.length === 0) continue;
-        if (isInstitutionalStaticPage(link)) {
-          matches.push({
-            key,
-            link,
-            severity: t.severity ?? '?',
-            source: t.source ?? '?',
-            title: (t.title ?? '').slice(0, 80),
-          });
-        }
+        const reasons = classifyTrack(t, nowMs);
+        if (reasons.length === 0) continue;
+        const pubMs = Number.parseInt(t.publishedAt ?? '', 10);
+        const ageH = Number.isInteger(pubMs) && pubMs > 0
+          ? Math.round((nowMs - pubMs) / (60 * 60 * 1000))
+          : null;
+        matches.push({
+          key,
+          link: t.link ?? '',
+          severity: t.severity ?? '?',
+          source: t.source ?? '?',
+          title: (t.title ?? '').slice(0, 80),
+          reasons,
+          ageH,
+        });
       }
     }
     process.stderr.write(`\r[audit] scanned=${scanned} matched=${matches.length}`);
@@ -185,17 +246,34 @@ async function main() {
   console.log('');
   console.log(`[audit] matched ${matches.length} contaminated story:track:v1 entries:`);
   for (const m of matches) {
+    const reasons = m.reasons.join(',');
+    const ageStr = m.ageH != null ? ` age=${m.ageH}h` : '';
     console.log(
-      `  [${m.key}] severity=${m.severity} source="${m.source}" url=${m.link}`,
+      `  [${m.key}] reasons=${reasons}${ageStr} severity=${m.severity} source="${m.source}" url=${m.link}`,
     );
   }
 
   console.log('');
-  const summary = summarizePerHostPath(matches);
-  console.log('[audit] by host:');
-  for (const [host, n] of summary.byHost) console.log(`  ${host.padEnd(40)} ${n}`);
-  console.log('[audit] by path pattern:');
-  for (const [pattern, n] of summary.byPathPattern) console.log(`  ${pattern.padEnd(40)} ${n}`);
+  // Per-reason rollup so operators can tell URL hits from age hits at a glance.
+  const reasonCounts = new Map();
+  for (const m of matches) {
+    for (const r of m.reasons) reasonCounts.set(r, (reasonCounts.get(r) ?? 0) + 1);
+  }
+  console.log('[audit] by reason:');
+  for (const [r, n] of reasonCounts) console.log(`  ${r.padEnd(8)} ${n}`);
+
+  // Host/path rollup is only meaningful for matches with a parseable URL.
+  // Age-only matches with Google News redirect URLs would clutter it
+  // (every entry maps to news.google.com), so skip when MODE === 'age'.
+  if (MODE !== 'age') {
+    const summary = summarizePerHostPath(matches.filter((m) => m.reasons.includes('url')));
+    if (summary.byHost.length > 0) {
+      console.log('[audit] by host (url-mode matches only):');
+      for (const [host, n] of summary.byHost) console.log(`  ${host.padEnd(40)} ${n}`);
+      console.log('[audit] by path pattern (url-mode matches only):');
+      for (const [pattern, n] of summary.byPathPattern) console.log(`  ${pattern.padEnd(40)} ${n}`);
+    }
+  }
 
   if (!APPLY) {
     console.log('');

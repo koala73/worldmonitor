@@ -453,12 +453,40 @@ async function buildDigest(rule, windowStartMs) {
     hashes.map((h) => ['HGETALL', `story:track:v1:${h}`]),
   );
 
+  // READ-time freshness floor: drop story:track:v1 rows whose source
+  // publishedAt is older than DIGEST_READ_MAX_AGE_HOURS (default 48h).
+  // This complements PR #3417's INGEST-time floor by closing the residue
+  // window: when an ingest-side gate is tightened (e.g. when:1d added to a
+  // gn() query), pre-deploy entries persist in the accumulator + track
+  // table until natural TTL drainage. Without this READ-time check, those
+  // residual entries continue to ship in briefs even though their source
+  // pubDate is months old. See:
+  //   skill: ingest-gate-tightening-leaves-residue-in-read-path
+  // Set DIGEST_READ_MAX_AGE_HOURS=999 to disable (operator kill switch).
+  const readMaxAgeHoursRaw = Number.parseInt(process.env.DIGEST_READ_MAX_AGE_HOURS ?? '', 10);
+  const readMaxAgeHours = Number.isInteger(readMaxAgeHoursRaw) && readMaxAgeHoursRaw > 0
+    ? readMaxAgeHoursRaw
+    : 48;
+  const readMaxAgeMs = readMaxAgeHours * 60 * 60 * 1000;
+  const nowMs = Date.now();
+
   const stories = [];
+  let droppedStaleAtRead = 0;
   for (let i = 0; i < hashes.length; i++) {
     const raw = trackResults[i]?.result;
     if (!Array.isArray(raw) || raw.length === 0) continue;
     const track = flatArrayToObject(raw);
     if (!track.title || !track.severity) continue;
+
+    // Source publishedAt freshness check. Track rows missing publishedAt
+    // (legacy entries from before the field was persisted) are NOT dropped
+    // here — fall through to the existing gates so the change is back-
+    // compat for any pre-existing rows without the field.
+    const pubMs = Number.parseInt(track.publishedAt ?? '', 10);
+    if (Number.isInteger(pubMs) && pubMs > 0 && nowMs - pubMs > readMaxAgeMs) {
+      droppedStaleAtRead++;
+      continue;
+    }
 
     const phase = derivePhase(track);
     if (phase === 'fading') continue;
@@ -478,6 +506,13 @@ async function buildDigest(rule, windowStartMs) {
       // description. Downstream adapter falls back to the cleaned headline.
       description: typeof track.description === 'string' ? track.description : '',
     });
+  }
+
+  if (droppedStaleAtRead > 0) {
+    console.warn(
+      `[digest] buildDigest read-time freshness floor dropped ${droppedStaleAtRead} ` +
+        `stale items (max age: ${readMaxAgeHours}h) — likely pre-deploy residue`,
+    );
   }
 
   if (stories.length === 0) return null;

@@ -703,6 +703,13 @@ function buildStoryTrackHsetFields(
     'severity', item.level,
     'lang', item.lang,
     'description', item.description ?? '',
+    // Source publishedAt (the article's actual publication time as parsed
+    // from the RSS pubDate or Dublin Core fallback). Persisted so READ-time
+    // consumers — buildDigest's freshness floor and the U6 audit's
+    // age-mode — can drop residual stale entries that pre-date an
+    // ingest-side gate tightening. See:
+    //   skill: ingest-gate-tightening-leaves-residue-in-read-path.
+    'publishedAt', String(item.publishedAt),
   ];
 }
 
