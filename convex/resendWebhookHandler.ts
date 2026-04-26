@@ -95,7 +95,10 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
             emailMessageId: event.data?.email_id,
             eventType: event.type,
             occurredAt,
-            rawPayload: event.data,
+            // Intentionally NOT forwarding event.data — it includes
+            // recipient emails (`to: string[]`), `from`, `subject`,
+            // etc. Identifier metadata above is enough; deeper
+            // inspection via emailMessageId in the Resend dashboard.
           },
         );
       } catch (err) {

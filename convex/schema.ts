@@ -290,19 +290,36 @@ export default defineSchema({
   }).index("by_normalized_email", ["normalizedEmail"]),
 
   // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
-  // Used to drive canary kill-gates (bounce > 4%, complaint > 0.08%) and
-  // post-send engagement reporting. Idempotent on `webhookEventId` — Resend
-  // retries on 5xx and we MUST treat every delivery as at-most-once.
-  // No recipient email stored — Convex dashboard logs are observable; we
-  // rely on Resend's `email_id` for traceability via their dashboard.
+  // Used as forensic detail to drive engineer-level inspection alongside
+  // Resend's dashboard. Idempotent on `webhookEventId` — Resend retries
+  // on 5xx and we MUST treat every delivery as at-most-once.
+  //
+  // No recipient email stored, AND no rawPayload stored — Resend's
+  // `data` object includes `to: string[]` (recipient addresses), `from`,
+  // `subject`, etc. that are PII or PII-adjacent. Convex dashboard rows
+  // are observable to anyone with project access. We keep only the
+  // identifying metadata; if a specific event needs deeper inspection,
+  // look it up by `emailMessageId` in the Resend dashboard.
   broadcastEvents: defineTable({
     webhookEventId: v.string(),
     broadcastId: v.string(),
     emailMessageId: v.optional(v.string()),
     eventType: v.string(),
     occurredAt: v.number(),
-    rawPayload: v.any(),
   })
     .index("by_webhookEventId", ["webhookEventId"])
     .index("by_broadcast_event", ["broadcastId", "eventType"]),
+
+  // Pre-aggregated counter per (broadcastId, eventType). Updated by
+  // `recordBroadcastEvent` after a successful idempotent insert into
+  // `broadcastEvents`. Enables `getBroadcastStats` to run in O(N tracked
+  // event types) instead of O(events), so canary monitoring and
+  // post-send reporting work past Convex's 16,384-doc per-query read
+  // limit (a 30k-recipient send overruns it on `email.delivered` alone).
+  broadcastEventCounts: defineTable({
+    broadcastId: v.string(),
+    eventType: v.string(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_broadcast_event", ["broadcastId", "eventType"]),
 });

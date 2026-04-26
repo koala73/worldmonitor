@@ -38,6 +38,7 @@ import { internalAction } from "../_generated/server";
 import {
   PRO_LAUNCH_FROM,
   PRO_LAUNCH_HTML,
+  PRO_LAUNCH_PHYSICAL_ADDRESS,
   PRO_LAUNCH_REPLY_TO,
   PRO_LAUNCH_SUBJECT,
   PRO_LAUNCH_TEXT,
@@ -65,6 +66,22 @@ export const createProLaunchBroadcast = internalAction({
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       throw new Error("[createProLaunchBroadcast] RESEND_API_KEY not set");
+    }
+
+    // Hard-gate: refuse to ship the placeholder physical address.
+    // CAN-SPAM requires a valid postal address in every commercial
+    // email footer; sending the literal "physical address TBD" string
+    // is non-compliant and embarrassing. Edit
+    // `PRO_LAUNCH_PHYSICAL_ADDRESS` in proLaunchEmailContent.ts to the
+    // real postal address before invoking this action.
+    if (
+      PRO_LAUNCH_PHYSICAL_ADDRESS.includes("TBD") ||
+      PRO_LAUNCH_PHYSICAL_ADDRESS.includes("placeholder")
+    ) {
+      throw new Error(
+        `[createProLaunchBroadcast] PRO_LAUNCH_PHYSICAL_ADDRESS is still a placeholder ("${PRO_LAUNCH_PHYSICAL_ADDRESS}"). ` +
+          "Set the real CAN-SPAM postal address in convex/broadcast/proLaunchEmailContent.ts before sending.",
+      );
     }
 
     const name =
