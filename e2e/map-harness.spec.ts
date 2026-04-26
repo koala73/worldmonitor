@@ -11,13 +11,13 @@ type OverlaySnapshot = {
 
 type VisualScenarioSummary = {
   id: string;
-  variant: 'both' | 'full' | 'tech' | 'finance';
+  variant: 'both' | 'full' | 'tech' | 'finance' | 'energy';
 };
 
 type HarnessWindow = Window & {
   __mapHarness?: {
     ready: boolean;
-    variant: 'full' | 'tech' | 'finance';
+    variant: 'full' | 'tech' | 'finance' | 'energy';
     seedAllDynamicData: () => void;
     setProtestsScenario: (scenario: 'alpha' | 'beta') => void;
     setPulseProtestsScenario: (
@@ -126,6 +126,27 @@ const EXPECTED_FINANCE_DECK_LAYERS = [
   'gulf-investments-layer',
 ];
 
+const EXPECTED_ENERGY_DECK_LAYERS = [
+  'pipelines-layer',
+  'storage-facilities-layer',
+  'fuel-shortages-layer',
+  'live-tankers-layer',
+  'ais-density-layer',
+  'ais-disruptions-layer',
+  'commodity-hubs-layer',
+  'commodity-ports-layer',
+  'trade-routes-layer',
+  'trade-chokepoints-layer',
+  'waterways-layer',
+  'weather-layer',
+  'outages-layer',
+  'earthquakes-layer',
+  'natural-events-layer',
+  'minerals-layer',
+  'fires-layer',
+  'climate-heatmap-layer',
+];
+
 const waitForHarnessReady = async (
   page: import('@playwright/test').Page
 ): Promise<void> => {
@@ -177,6 +198,8 @@ test.describe('DeckGL map harness', () => {
 
     const expectedVariant = process.env.VITE_VARIANT === 'tech'
       ? 'tech'
+      : process.env.VITE_VARIANT === 'energy'
+      ? 'energy'
       : process.env.VITE_VARIANT === 'finance'
       ? 'finance'
       : 'full';
@@ -232,6 +255,8 @@ test.describe('DeckGL map harness', () => {
 
     const expectedDeckLayers = variant === 'tech'
       ? EXPECTED_TECH_DECK_LAYERS
+      : variant === 'energy'
+      ? EXPECTED_ENERGY_DECK_LAYERS
       : variant === 'finance'
       ? EXPECTED_FINANCE_DECK_LAYERS
       : EXPECTED_FULL_DECK_LAYERS;
@@ -434,6 +459,10 @@ test.describe('DeckGL map harness', () => {
       const w = window as HarnessWindow;
       return w.__mapHarness?.variant ?? 'full';
     });
+    // Energy currently reuses the shared "both" visual scenarios; until we
+    // record Atlas-only golden scenes, compare those shared scenarios against
+    // the existing full baselines rather than silently coercing the runtime.
+    const screenshotVariant = variant === 'energy' ? 'full' : variant;
 
     const scenarios = await page.evaluate(() => {
       const w = window as HarnessWindow;
@@ -449,7 +478,7 @@ test.describe('DeckGL map harness', () => {
       await test.step(`visual baseline: ${scenario.id}`, async () => {
         await prepareVisualScenario(page, scenario.id);
         await expect(mapWrapper).toHaveScreenshot(
-          `layer-${variant}-${scenario.id}.png`,
+          `layer-${screenshotVariant}-${scenario.id}.png`,
           {
             animations: 'disabled',
             caret: 'hide',

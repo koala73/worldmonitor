@@ -34,6 +34,7 @@ import type {
   CyberThreat,
   InternetOutage,
   MapLayers,
+  MilitaryBaseEnriched,
   MilitaryFlight,
   MilitaryFlightCluster,
   MilitaryVessel,
@@ -44,11 +45,15 @@ import type {
   SocialUnrestEvent,
 } from '../types';
 import type { AirportDelayAlert } from '../services/aviation';
+import type { ClimateAnomaly } from '../services/climate';
 import type { Earthquake } from '../services/earthquakes';
+import { setCachedFuelShortageRegistry } from '../shared/fuel-shortage-registry-store';
+import { setCachedPipelineRegistries } from '../shared/pipeline-registry-store';
+import { setCachedStorageFacilityRegistry } from '../shared/storage-facility-registry-store';
 import type { WeatherAlert } from '../services/weather';
 
 type Scenario = 'alpha' | 'beta';
-type HarnessVariant = 'full' | 'tech' | 'finance';
+type HarnessVariant = 'full' | 'tech' | 'finance' | 'energy';
 type HarnessLayerKey = keyof MapLayers;
 type PulseProtestScenario =
   | 'none'
@@ -74,6 +79,15 @@ type CameraState = {
   lon: number;
   lat: number;
   zoom: number;
+};
+
+type LiveTankerFixture = {
+  mmsi: string;
+  lat: number;
+  lon: number;
+  speed: number;
+  shipType: number;
+  name: string;
 };
 
 type VisualScenario = {
@@ -118,6 +132,8 @@ type MapHarness = {
   getCyberTooltipHtml: (indicator: string) => string;
   destroy: () => void;
 };
+
+const isEnergyHarnessVariant = SITE_VARIANT === 'energy';
 
 declare global {
   interface Window {
@@ -190,6 +206,9 @@ const allLayersEnabled: MapLayers = {
   commodityPorts: false,
   webcams: false,
   diseaseOutbreaks: true,
+  storageFacilities: false,
+  fuelShortages: false,
+  liveTankers: false,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -247,6 +266,9 @@ const allLayersDisabled: MapLayers = {
   commodityPorts: false,
   webcams: false,
   diseaseOutbreaks: true,
+  storageFacilities: false,
+  fuelShortages: false,
+  liveTankers: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{
@@ -263,11 +285,50 @@ const SEEDED_NEWS_LOCATIONS: Array<{
   },
 ];
 
+const SEEDED_LIVE_TANKERS: LiveTankerFixture[] = [
+  {
+    mmsi: '111000111',
+    lat: 26.45,
+    lon: 56.22,
+    speed: 0.2,
+    shipType: 80,
+    name: 'Harness VLCC Alpha',
+  },
+  {
+    mmsi: '222000222',
+    lat: 12.72,
+    lon: 43.5,
+    speed: 12.4,
+    shipType: 82,
+    name: 'Harness Aframax Beta',
+  },
+];
+
+const SEEDED_MILITARY_BASES: MilitaryBaseEnriched[] = (MILITARY_BASES as MilitaryBaseEnriched[])
+  .map((base) => ({ ...base }));
+
+const energyAllLayersEnabled: MapLayers = {
+  ...allLayersEnabled,
+  commodityPorts: true,
+  storageFacilities: true,
+  fuelShortages: true,
+  liveTankers: true,
+};
+
+const seededAllLayers: MapLayers = isEnergyHarnessVariant
+  ? energyAllLayersEnabled
+  : allLayersEnabled;
+
+const initialLayers: MapLayers = {
+  ...seededAllLayers,
+  liveTankers: false,
+};
+
 const map = new DeckGLMap(app, {
   zoom: 5,
   pan: { x: 0, y: 0 },
   view: 'global',
-  layers: allLayersEnabled,
+  layers: initialLayers,
   // Keep harness deterministic regardless of wall-clock date.
   timeRange: 'all',
 });
@@ -282,7 +343,32 @@ const internals = map as unknown as {
   newsPulseIntervalId?: ReturnType<typeof setInterval> | null;
   startupTime?: number;
   stopPulseAnimation?: () => void;
+  liveTankers?: LiveTankerFixture[];
+  loadLiveTankers?: () => Promise<void>;
+  serverBases?: MilitaryBaseEnriched[];
+  serverBaseClusters?: unknown[];
+  serverBasesLoaded?: boolean;
+  fetchServerBases?: () => void;
 };
+
+internals.loadLiveTankers = async (): Promise<void> => {
+  internals.liveTankers = SEEDED_LIVE_TANKERS.map((tanker) => ({ ...tanker }));
+};
+
+const seedHarnessBases = (): void => {
+  internals.serverBases = SEEDED_MILITARY_BASES.map((base) => ({ ...base }));
+  internals.serverBaseClusters = [];
+  internals.serverBasesLoaded = true;
+};
+
+// Keep the harness deterministic: the live RPC path can legitimately return an
+// empty viewport payload in local/dev runs, which would wipe the shared
+// `bases-layer` snapshot even though the harness is meant to exercise the
+// renderer with seeded fixture data.
+internals.fetchServerBases = (): void => {
+  seedHarnessBases();
+};
+seedHarnessBases();
 
 const buildLayerState = (enabledLayers: HarnessLayerKey[]): MapLayers => {
   const next: MapLayers = { ...allLayersDisabled };
@@ -329,12 +415,25 @@ const getDataCount = (data: unknown): number => {
   return data ? 1 : 0;
 };
 
+const normalizeLayerSnapshotId = (layerId: string): string =>
+  layerId === 'conflict-zones-layer-country-geometry'
+    ? 'conflict-zones-layer'
+    : layerId;
+
 const getDeckLayerSnapshot = (): LayerSnapshot[] => {
   const layers = internals.buildLayers?.() ?? [];
-  return layers.map((layer) => ({
-    id: layer.id,
-    dataCount: getDataCount(layer.props?.data),
-  }));
+  const counts = new Map<string, number>();
+
+  for (const layer of layers) {
+    const layerId = normalizeLayerSnapshotId(layer.id);
+    const dataCount = getDataCount(layer.props?.data);
+    const previous = counts.get(layerId) ?? 0;
+    if (dataCount > previous) {
+      counts.set(layerId, dataCount);
+    }
+  }
+
+  return [...counts.entries()].map(([id, dataCount]) => ({ id, dataCount }));
 };
 
 const getLayerDataCount = (layerId: string): number => {
@@ -346,7 +445,7 @@ const getLayerFirstScreenTransform = (layerId: string): string | null => {
   if (!maplibreMap) return null;
 
   const layers = internals.buildLayers?.() ?? [];
-  const target = layers.find((layer) => layer.id === layerId);
+  const target = layers.find((layer) => normalizeLayerSnapshotId(layer.id) === layerId);
   const data = target?.props?.data;
   if (!Array.isArray(data) || data.length === 0) return null;
 
@@ -748,6 +847,8 @@ const filterScenariosForVariant = (variant: HarnessVariant): VisualScenario[] =>
 
 const currentHarnessVariant: HarnessVariant = SITE_VARIANT === 'tech'
   ? 'tech'
+  : SITE_VARIANT === 'energy'
+  ? 'energy'
   : SITE_VARIANT === 'finance'
   ? 'finance'
   : 'full';
@@ -832,6 +933,68 @@ const buildHotspotActivityNews = (
 };
 
 const seedAllDynamicData = (): void => {
+  setCachedPipelineRegistries({
+    gas: {
+      pipelines: {
+        'e2e-gas-pipeline': {
+          id: 'e2e-gas-pipeline',
+          name: 'Harness Gas Trunkline',
+          operator: 'Harness Gas Co.',
+          commodityType: 'gas',
+          startPoint: { lat: 25.28, lon: 55.3 },
+          endPoint: { lat: 26.12, lon: 50.57 },
+        },
+      },
+      classifierVersion: 'e2e-harness-v1',
+      updatedAt: '2026-02-01T12:00:00.000Z',
+    },
+    oil: {
+      pipelines: {
+        'e2e-oil-pipeline': {
+          id: 'e2e-oil-pipeline',
+          name: 'Harness Crude Link',
+          operator: 'Harness Oil Co.',
+          commodityType: 'oil',
+          startPoint: { lat: 29.37, lon: 47.98 },
+          endPoint: { lat: 25.27, lon: 51.53 },
+        },
+      },
+      classifierVersion: 'e2e-harness-v1',
+      updatedAt: '2026-02-01T12:00:00.000Z',
+    },
+  });
+
+  setCachedStorageFacilityRegistry({
+    facilities: {
+      'e2e-storage-facility': {
+        id: 'e2e-storage-facility',
+        name: 'Harness LNG Export Terminal',
+        operator: 'Harness LNG',
+        facilityType: 'lng_export',
+        country: 'QA',
+        location: { lat: 25.98, lon: 51.61 },
+        capacityMtpa: 32.5,
+      },
+    },
+    classifierVersion: 'e2e-harness-v1',
+    updatedAt: '2026-02-01T12:00:00.000Z',
+  });
+
+  setCachedFuelShortageRegistry({
+    shortages: {
+      'e2e-fuel-shortage': {
+        id: 'e2e-fuel-shortage',
+        country: 'EG',
+        product: 'diesel',
+        severity: 'confirmed',
+        shortDescription: 'Harness shortage alert',
+        resolvedAt: null,
+      },
+    },
+    classifierVersion: 'e2e-harness-v1',
+    updatedAt: '2026-02-01T12:00:00.000Z',
+  });
+
   const earthquakes: Earthquake[] = [
     {
       id: 'e2e-eq-1',
@@ -1044,8 +1207,21 @@ const seedAllDynamicData = (): void => {
     },
   ];
 
+  const climateAnomalies: ClimateAnomaly[] = [
+    {
+      zone: 'Harness Heat Belt',
+      lat: 24.8,
+      lon: 54.9,
+      tempDelta: 3.2,
+      precipDelta: -12,
+      severity: 'extreme',
+      type: 'warm',
+      period: '2026-02',
+    },
+  ];
+
   map.setRenderPaused(true);
-  map.setLayers(allLayersEnabled);
+  map.setLayers(seededAllLayers);
   map.setZoom(5);
   map.setEarthquakes(earthquakes);
   map.setWeatherAlerts(weather);
@@ -1058,6 +1234,7 @@ const seedAllDynamicData = (): void => {
   map.setMilitaryFlights(militaryFlights, militaryFlightClusters);
   map.setMilitaryVessels(militaryVessels, militaryVesselClusters);
   map.setNaturalEvents(naturalEvents);
+  map.setClimateAnomalies(climateAnomalies);
   map.setFires([
     {
       lat: -5.4,
