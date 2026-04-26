@@ -64,6 +64,7 @@ import {
 } from './lib/brief-dedup.mjs';
 import { stripSourceSuffix } from './lib/brief-dedup-jaccard.mjs';
 import { writeReplayLog } from './lib/brief-dedup-replay-log.mjs';
+import { readStoryTracksChunked } from './lib/story-track-batch-reader.mjs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -441,52 +442,6 @@ function matchesSensitivity(ruleSensitivity, severity) {
 // is imported from the Jaccard module so the text/HTML formatters
 // below keep their current per-story title cleanup.
 
-// Chunked HGETALL over story:track:v1:<hash>. An accumulator ZSET can
-// hold tens of thousands of hashes (per-language `:full:<lang>` ZSETs
-// observed at 17K-21K entries — bounded only by ingest volume ×
-// DIGEST_ACCUMULATOR_TTL). Each story:track:v1 hash averages ~380B but
-// can reach ~1.2KB, so an unbatched pipeline RESPONSE for the largest
-// accumulator already crosses 7MB and grows linearly with ingest. Chunk
-// to keep each /pipeline call's response well under Upstash's per-
-// request limit (50MB on our plan) and to stay within the 10s pipeline
-// timeout in defaultRedisPipeline. 500 commands × ~1.2KB worst-case
-// per response = ~600KB per chunk — same chunking pattern used by
-// server/worldmonitor/resilience/v1/_shared.ts (SET_BATCH=30, smaller
-// because per-key payload there is much larger).
-const STORY_TRACK_HGETALL_BATCH = 500;
-
-async function readStoryTracksChunked(hashes) {
-  const out = [];
-  for (let i = 0; i < hashes.length; i += STORY_TRACK_HGETALL_BATCH) {
-    const chunk = hashes.slice(i, i + STORY_TRACK_HGETALL_BATCH);
-    const partial = await upstashPipeline(
-      chunk.map((h) => ['HGETALL', `story:track:v1:${h}`]),
-    );
-    // upstashPipeline returns [] on HTTP error, and a short result on
-    // any other shape mismatch. The downstream caller pairs
-    // trackResults[i] with hashes[i], so a missing chunk would shift
-    // every later result onto the wrong hash — publishing stories with
-    // wrong source-set / embedding-cache linkage. Bail out: pad the
-    // remaining positions with null-result placeholders so callers see
-    // the same row-skip behaviour as the legacy single-pipeline failure
-    // (no rows pass `Array.isArray(raw)` → buildDigest returns null).
-    // Stop iterating so an outage doesn't burn the full pipeline budget
-    // on N × 15s timeouts.
-    if (Array.isArray(partial) && partial.length === chunk.length) {
-      out.push(...partial);
-      continue;
-    }
-    const failedAt = i / STORY_TRACK_HGETALL_BATCH;
-    const got = Array.isArray(partial) ? partial.length : 'non-array';
-    console.warn(
-      `[digest] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — padding remaining ${hashes.length - i} entries as misses and aborting`,
-    );
-    for (let j = i; j < hashes.length; j++) out.push({ result: null });
-    return out;
-  }
-  return out;
-}
-
 async function buildDigest(rule, windowStartMs) {
   const variant = rule.variant ?? 'full';
   const lang = rule.lang ?? 'en';
@@ -497,7 +452,7 @@ async function buildDigest(rule, windowStartMs) {
   );
   if (!Array.isArray(hashes) || hashes.length === 0) return null;
 
-  const trackResults = await readStoryTracksChunked(hashes);
+  const trackResults = await readStoryTracksChunked(hashes, upstashPipeline);
 
   // READ-time freshness cutoff is anchored to the rule's own digest
   // window. Daily user (24h window) → 48h cutoff; weekly user (7d
