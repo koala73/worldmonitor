@@ -2,7 +2,7 @@
 // of `scripts/shared/rankable-universe.mjs`.
 //
 // Both modules read the SAME canonical JSON at
-// `server/worldmonitor/resilience/v1/cohorts/sovereign-status.json`
+// `server/worldmonitor/resilience/v1/registries/sovereign-status.json`
 // — the .mjs version uses fs.readFileSync (so seeders can run under
 // plain `node`); this .ts version uses an ES JSON import (so server
 // handlers can use Vercel's bundler). The two are guaranteed to
@@ -18,7 +18,13 @@
 // handler-side read too, so the rankable-universe contract is
 // enforced regardless of seed state.
 
-import sovereignStatus from './cohorts/sovereign-status.json' with { type: 'json' };
+// Lives in `registries/` (not `cohorts/`) because its shape is a
+// per-country PROPERTY registry (`{ entries: [{iso2, status}] }`),
+// not a cohort membership list (`{ iso2: string[] }`). PR #3433's
+// cohort shape gate scans `cohorts/` and would reject this file's
+// shape; keeping registries in their own directory avoids that
+// conflict.
+import sovereignStatus from './registries/sovereign-status.json' with { type: 'json' };
 
 export type SovereignStatus = 'un-member' | 'sar';
 

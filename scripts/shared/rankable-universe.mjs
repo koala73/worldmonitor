@@ -2,8 +2,15 @@
 // "what's a country in the headline ranking" decision.
 //
 // Reads the committed JSON whitelist at
-// `server/worldmonitor/resilience/v1/cohorts/sovereign-status.json`
+// `server/worldmonitor/resilience/v1/registries/sovereign-status.json`
 // (193 UN member states + 3 standalone SARs: HK, MO, TW).
+//
+// Lives in `registries/` (not `cohorts/`) because its shape is a
+// per-country PROPERTY registry (`{ entries: [{iso2, status}] }`),
+// not a cohort membership list (`{ iso2: string[] }`). The cohort
+// JSON shape gate in `tests/resilience-retired-dimensions-parity.test.mts`
+// (PR #3433) scans `cohorts/` and rejects non-cohort-shaped files —
+// keeping registries in their own directory avoids that conflict.
 //
 // Both seeders (`scripts/seed-resilience-static.mjs` and
 // `scripts/seed-resilience-scores.mjs`) consume `isInRankableUniverse`
@@ -34,7 +41,7 @@ const SOVEREIGN_STATUS_PATH = resolve(
   'worldmonitor',
   'resilience',
   'v1',
-  'cohorts',
+  'registries',
   'sovereign-status.json',
 );
 
