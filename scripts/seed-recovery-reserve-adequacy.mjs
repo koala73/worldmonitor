@@ -40,7 +40,14 @@ async function fetchReserveAdequacy() {
     const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
     const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
     if (!iso2) continue;
-    const value = Number(record?.value);
+    // CRITICAL: skip null records BEFORE Number() coercion.
+    // Number(null) === 0 (not NaN), which would pass Number.isFinite()
+    // and let a `value: null` record overwrite an older non-null record
+    // in the latest-picker below — silently defeating the mrv=5 +
+    // pickLatest fix. WB returns null for late-reporters; those must
+    // not be coerced to 0 reserveMonths. Spotted by reviewer post-PR-#3427.
+    if (record?.value == null) continue;
+    const value = Number(record.value);
     if (!Number.isFinite(value)) continue;
     const year = Number(record?.date);
     if (!Number.isFinite(year)) continue;

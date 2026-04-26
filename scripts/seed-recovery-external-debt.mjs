@@ -47,7 +47,15 @@ async function fetchWbIndicator(indicator) {
       const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
       const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
       if (!iso2) continue;
-      const value = Number(record?.value);
+      // CRITICAL: skip null records BEFORE Number() coercion.
+      // Number(null) === 0 (not NaN), which would pass Number.isFinite()
+      // and let a `value: null` record overwrite an older non-null
+      // record in the latest-picker below — silently defeating the
+      // mrv=5 + pickLatest fix. WB returns null for late-reporters
+      // and out-of-scope countries; both should be skipped, not
+      // coerced to 0. Spotted by reviewer post-PR-#3427-initial-push.
+      if (record?.value == null) continue;
+      const value = Number(record.value);
       if (!Number.isFinite(value)) continue;
       const year = Number(record?.date);
       if (!Number.isFinite(year)) continue;
