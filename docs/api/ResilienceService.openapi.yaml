@@ -181,9 +181,16 @@ components:
                 imputationClass:
                     type: string
                     description: |-
-                        Four-class imputation taxonomy (Phase 1 T1.7). Empty string when the
-                         dimension has any observed data. One of: "stable-absence", "unmonitored",
-                         "source-failure", "not-applicable". See docs/methodology/country-resilience-index.mdx.
+                        Four-class imputation taxonomy (Phase 1 T1.7). One of:
+                         "stable-absence", "unmonitored", "source-failure", "not-applicable".
+                         Empty string when the dimension has any observed data AND is not
+                         structurally not-applicable. The "not-applicable" value (plan
+                         2026-04-26-001 §U3) is emitted when the dim's construct does not
+                         apply to this country (e.g. sovereignFiscalBuffer for non-SWF
+                         economies); it is paired with coverage:0 and observed_weight:0 so
+                         the dim contributes nothing to the domain mean and is filtered
+                         out of user-facing confidence/coverage signals on both server and
+                         client. See docs/methodology/country-resilience-index.mdx.
                 freshness:
                     $ref: '#/components/schemas/DimensionFreshness'
         DimensionFreshness:
