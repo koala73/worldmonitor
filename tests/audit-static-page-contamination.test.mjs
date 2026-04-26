@@ -63,83 +63,109 @@ describe('classifyTrack — age mode', () => {
   });
 });
 
-describe('classifyTrack — residue mode (the P1 reviewer fix + safety guard)', () => {
-  // Default test setup: lastSeen 48h ago (well past the 24h default
-  // staleness gate), so missing publishedAt → residue.
-  const STALE_LAST_SEEN = String(NOW - 48 * HOUR);
+describe('classifyTrack — residue mode (P1 + weekly-user safety guard)', () => {
+  // Default residueMinStaleMs is 192h (8d = 7d max digest window + 24h
+  // buffer). Aligns with the readTimeAgeCutoffMs formula in
+  // digest-orchestration-helpers.mjs so residue mode never deletes a row
+  // still legitimately ship-able for ANY user (daily, twice-daily,
+  // weekly).
+  const RESIDUE_DEFAULT_MS = 192 * HOUR;
+  const ANCIENT_LAST_SEEN = String(NOW - 200 * HOUR); // 200h > 192h default
 
-  it('matches rows missing publishedAt AND lastSeen older than min-stale (the actual residue)', () => {
+  it('matches rows missing publishedAt AND lastSeen older than min-stale', () => {
     const t = {
       title: 'Stale Pentagon item',
       link: 'https://news.google.com/x',
-      lastSeen: STALE_LAST_SEEN,
+      lastSeen: ANCIENT_LAST_SEEN,
     };
     const r = classifyTrack(t, {
       mode: 'residue',
       maxAgeMs: 0,
       nowMs: NOW,
-      residueMinStaleMs: 24 * HOUR,
+      residueMinStaleMs: RESIDUE_DEFAULT_MS,
     });
     assert.deepEqual(r, ['residue']);
   });
 
-  it('SAFETY: does NOT match rows missing publishedAt if lastSeen is fresh (P2 reviewer fix)', () => {
-    // The reviewer-flagged risk: a legitimate recent story that just
-    // hasn't had publishedAt populated yet (write race, or first cron
-    // tick after deploy hasn't re-mentioned it but it WAS touched
-    // recently). Must NOT be deleted.
+  it('SAFETY: does NOT match weekly-user 5d-old story (P2 round-2 reviewer fix)', () => {
+    // The reviewer-flagged regression: a pre-PR-3422 row with no
+    // publishedAt but lastSeen 5 days ago is still legitimately
+    // ship-able for a weekly user (whose readTimeAgeCutoffMs is
+    // windowStart - 24h = 8d ago). Earlier 24h default would have
+    // deleted it. Default 192h aligns with weekly-user window and
+    // protects it.
     const t = {
-      title: 'Recent legitimate story',
-      lastSeen: String(NOW - 2 * HOUR), // 2h ago — well within fresh window
+      title: 'Weekly-user legitimate story',
+      lastSeen: String(NOW - 5 * 24 * HOUR), // 5d ago, within weekly window
     };
     const r = classifyTrack(t, {
       mode: 'residue',
       maxAgeMs: 0,
       nowMs: NOW,
-      residueMinStaleMs: 24 * HOUR,
+      residueMinStaleMs: RESIDUE_DEFAULT_MS,
+    });
+    assert.deepEqual(
+      r,
+      [],
+      '5d-old lastSeen must be PROTECTED — weekly users still need this row',
+    );
+  });
+
+  it('SAFETY: does NOT match recent (2h) lastSeen even when publishedAt is missing', () => {
+    // Original P2 review case: row touched recently, publishedAt missing
+    // due to write race. Must NOT be deleted.
+    const t = {
+      title: 'Just-touched row',
+      lastSeen: String(NOW - 2 * HOUR),
+    };
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: RESIDUE_DEFAULT_MS,
     });
     assert.deepEqual(r, [], 'fresh lastSeen must protect the row');
   });
 
   it('boundary: lastSeen exactly at min-stale threshold matches (>= boundary)', () => {
     const t = {
-      lastSeen: String(NOW - 24 * HOUR),
+      lastSeen: String(NOW - RESIDUE_DEFAULT_MS),
     };
     const r = classifyTrack(t, {
       mode: 'residue',
       maxAgeMs: 0,
       nowMs: NOW,
-      residueMinStaleMs: 24 * HOUR,
+      residueMinStaleMs: RESIDUE_DEFAULT_MS,
     });
     assert.deepEqual(r, ['residue']);
   });
 
   it('boundary: lastSeen 1ms newer than threshold does NOT match', () => {
     const t = {
-      lastSeen: String(NOW - 24 * HOUR + 1),
+      lastSeen: String(NOW - RESIDUE_DEFAULT_MS + 1),
     };
     const r = classifyTrack(t, {
       mode: 'residue',
       maxAgeMs: 0,
       nowMs: NOW,
-      residueMinStaleMs: 24 * HOUR,
+      residueMinStaleMs: RESIDUE_DEFAULT_MS,
     });
     assert.deepEqual(r, []);
   });
 
-  it('matches rows with empty-string publishedAt + stale lastSeen', () => {
+  it('matches rows with empty-string publishedAt + ancient lastSeen', () => {
     const r = classifyTrack(
-      { publishedAt: '', lastSeen: STALE_LAST_SEEN },
-      { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: 24 * HOUR },
+      { publishedAt: '', lastSeen: ANCIENT_LAST_SEEN },
+      { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: RESIDUE_DEFAULT_MS },
     );
     assert.deepEqual(r, ['residue']);
   });
 
-  it('matches rows with literal "undefined"/"NaN" publishedAt + stale lastSeen', () => {
+  it('matches rows with literal "undefined"/"NaN" publishedAt + ancient lastSeen', () => {
     assert.deepEqual(
       classifyTrack(
-        { publishedAt: 'undefined', lastSeen: STALE_LAST_SEEN },
-        { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: 24 * HOUR },
+        { publishedAt: 'undefined', lastSeen: ANCIENT_LAST_SEEN },
+        { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: RESIDUE_DEFAULT_MS },
       ),
       ['residue'],
     );
@@ -148,13 +174,13 @@ describe('classifyTrack — residue mode (the P1 reviewer fix + safety guard)', 
   it('does NOT match rows with a parseable publishedAt (residue is absence-of-evidence)', () => {
     const t = {
       publishedAt: String(NOW - 100 * 24 * HOUR), // 100 days old
-      lastSeen: STALE_LAST_SEEN,
+      lastSeen: ANCIENT_LAST_SEEN,
     };
     const r = classifyTrack(t, {
       mode: 'residue',
       maxAgeMs: 0,
       nowMs: NOW,
-      residueMinStaleMs: 24 * HOUR,
+      residueMinStaleMs: RESIDUE_DEFAULT_MS,
     });
     assert.deepEqual(r, [], 'old-but-known should be caught by --mode=age, not --mode=residue');
   });
@@ -162,7 +188,7 @@ describe('classifyTrack — residue mode (the P1 reviewer fix + safety guard)', 
   it('treats missing lastSeen as ancient (errs toward eviction in opt-in destructive mode)', () => {
     const r = classifyTrack(
       { title: 'Anomalous row, no lastSeen' },
-      { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: 24 * HOUR },
+      { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: RESIDUE_DEFAULT_MS },
     );
     assert.deepEqual(r, ['residue']);
   });
@@ -170,17 +196,30 @@ describe('classifyTrack — residue mode (the P1 reviewer fix + safety guard)', 
   it('does NOT include url match in residue mode (operator opts in explicitly)', () => {
     const t = {
       link: 'https://www.defense.gov/About/Section-508/',
-      lastSeen: STALE_LAST_SEEN,
+      lastSeen: ANCIENT_LAST_SEEN,
     };
     const r = classifyTrack(t, {
       mode: 'residue',
       maxAgeMs: 0,
       nowMs: NOW,
-      residueMinStaleMs: 24 * HOUR,
+      residueMinStaleMs: RESIDUE_DEFAULT_MS,
     });
-    // residue matches because publishedAt is missing AND lastSeen is stale;
-    // url is NOT additionally included because residue mode is
-    // single-classifier by design.
+    assert.deepEqual(r, ['residue']);
+  });
+
+  it('operator can override to 48h for daily-only fleet (--residue-min-stale-hours=48)', () => {
+    // Documented escape hatch in the script header: operators with
+    // confidence the fleet is daily-only can drop to 48h for faster
+    // cleanup. Verify the override works.
+    const t = {
+      lastSeen: String(NOW - 60 * HOUR), // 60h — past 48h, within 192h default
+    };
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: 48 * HOUR,
+    });
     assert.deepEqual(r, ['residue']);
   });
 });
@@ -224,24 +263,28 @@ describe('classifyTrack — both mode (url ∪ age)', () => {
 });
 
 describe('parseArgs — flag handling', () => {
-  it('defaults to mode=url, maxAgeHours=48, residueMinStaleHours=24, apply=false', () => {
+  it('defaults to mode=url, maxAgeHours=48, residueMinStaleHours=192, apply=false', () => {
+    // residueMinStaleHours = 192h = 7d max digest window + 24h buffer.
+    // Aligns with the readTimeAgeCutoffMs formula in
+    // digest-orchestration-helpers.mjs so residue mode never deletes a
+    // row still legitimately ship-able for any user (incl. weekly).
     const a = parseArgs([]);
     assert.equal(a.mode, 'url');
     assert.equal(a.maxAgeHours, 48);
-    assert.equal(a.residueMinStaleHours, 24);
+    assert.equal(a.residueMinStaleHours, 192);
     assert.equal(a.apply, false);
   });
 
-  it('--residue-min-stale-hours=N overrides default', () => {
+  it('--residue-min-stale-hours=N overrides default (e.g. 48 for daily-only fleet)', () => {
     assert.equal(parseArgs(['--residue-min-stale-hours=48']).residueMinStaleHours, 48);
   });
 
   it('--residue-min-stale-hours=foo silently ignores (default kept)', () => {
-    assert.equal(parseArgs(['--residue-min-stale-hours=foo']).residueMinStaleHours, 24);
+    assert.equal(parseArgs(['--residue-min-stale-hours=foo']).residueMinStaleHours, 192);
   });
 
   it('--residue-min-stale-hours=0 ignored (positive-only)', () => {
-    assert.equal(parseArgs(['--residue-min-stale-hours=0']).residueMinStaleHours, 24);
+    assert.equal(parseArgs(['--residue-min-stale-hours=0']).residueMinStaleHours, 192);
   });
 
   it('--apply flips to true', () => {

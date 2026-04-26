@@ -19,16 +19,20 @@
 //
 //   --mode=residue : match rows where track.publishedAt is missing/unparseable
 //                    AND track.lastSeen is older than --residue-min-stale-hours
-//                    (default 24). The lastSeen guard is the safety constraint:
-//                    a row that was re-mentioned recently MUST have publishedAt
-//                    (this PR's HSET always writes it), so a row missing the
-//                    field BUT with fresh lastSeen is anomalous and NOT touched.
-//                    Only rows that are both missing publishedAt AND haven't
-//                    been touched in N hours are treated as residue. This
-//                    prevents deleting legitimate recent stories that simply
-//                    didn't re-surface in the first post-deploy cron cycle.
-//                    Operator runbook: wait ≥24h post-deploy, then run with
-//                    default --residue-min-stale-hours=24.
+//                    (default 192 = 7d + 24h buffer = the maximum supported
+//                    digest window per digest-orchestration-helpers.mjs's
+//                    weekly-user readTimeAgeCutoffMs). The lastSeen guard is
+//                    the safety constraint: a row that was re-mentioned within
+//                    any user's digest window — including weekly users at 7d —
+//                    is still legitimately ship-able, so deleting it would
+//                    drop real stories from a user's brief. Only rows that
+//                    are both missing publishedAt AND haven't been touched
+//                    in N hours (default 8d) are treated as residue.
+//                    Operator runbook: wait ≥24h post-deploy (so still-active
+//                    rows have had publishedAt added via HSET re-mention),
+//                    then run with default --residue-min-stale-hours=192.
+//                    Operators with confidence the fleet is daily-only can
+//                    drop to --residue-min-stale-hours=48 for faster cleanup.
 //
 //   --mode=both    : run url + age. Does NOT include residue (use --mode=residue
 //                    explicitly so the operator opts into the destructive scan).
@@ -52,7 +56,12 @@ import { getRedisCredentials } from './_seed-utils.mjs';
 const VALID_MODES = ['url', 'age', 'residue', 'both'];
 
 export function parseArgs(argv) {
-  const args = { mode: 'url', maxAgeHours: 48, residueMinStaleHours: 24, apply: false };
+  // Default residueMinStaleHours = 192h = 7d + 24h buffer. Aligns with
+  // the maximum supported digest window (weekly users) so residue mode
+  // can never delete a row still legitimately ship-able for ANY user.
+  // See P2 review on PR #3422 — earlier 24h default would have deleted
+  // weekly users' 5d-old stories.
+  const args = { mode: 'url', maxAgeHours: 48, residueMinStaleHours: 192, apply: false };
   const unknown = [];
   for (const arg of argv) {
     if (arg === '--apply') args.apply = true;
@@ -238,16 +247,19 @@ export function classifyTrack(track, { mode, maxAgeMs, nowMs, residueMinStaleMs 
     // SAFETY-CRITICAL: residue is the only mode that deletes by absence-of-
     // evidence (no publishedAt) rather than evidence-of-staleness. Without
     // a guard, this would delete EVERY pre-PR-3422 row including legitimate
-    // recent stories that happen not to have been re-mentioned yet.
+    // weekly-user stories whose 5-7-day-old lastSeen is still well within
+    // their digest window.
     //
     // Two conditions required:
     //   1. publishedAt is missing/unparseable (legacy row, never had the
     //      field, OR future write race that left the field empty).
-    //   2. lastSeen is older than residueMinStaleMs (default 24h). Active
-    //      stories get HSET-touched on every re-mention; if a row hasn't
-    //      been touched in 24h it's not actively in any feed's results,
-    //      meaning the new ingest gate (when:1d) is correctly excluding
-    //      it. Safe to evict.
+    //   2. lastSeen is older than residueMinStaleMs (default 192h = 7d
+    //      buffer = max supported digest window). Aligns with the
+    //      readTimeAgeCutoffMs formula in digest-orchestration-helpers.mjs
+    //      so residue mode can never delete a row that's still
+    //      legitimately ship-able for ANY user (daily, twice-daily,
+    //      weekly). Active stories get HSET-touched on every re-mention,
+    //      so a row not touched in 8 days is unambiguously abandoned.
     //
     // Defensive fall-throughs: if lastSeen is missing/unparseable, treat
     // the row as if it were touched at epoch (i.e., consider it stale).
@@ -257,7 +269,8 @@ export function classifyTrack(track, { mode, maxAgeMs, nowMs, residueMinStaleMs 
     const pubMs = Number.parseInt(track?.publishedAt ?? '', 10);
     if (Number.isInteger(pubMs) && pubMs > 0) return reasons; // has publishedAt → not residue
 
-    const minStaleMs = residueMinStaleMs ?? 24 * 60 * 60 * 1000;
+    const DEFAULT_RESIDUE_MIN_STALE_MS = 192 * 60 * 60 * 1000; // 8d
+    const minStaleMs = residueMinStaleMs ?? DEFAULT_RESIDUE_MIN_STALE_MS;
     const lastSeenMs = Number.parseInt(track?.lastSeen ?? '', 10);
     const lastSeenAge = Number.isInteger(lastSeenMs) && lastSeenMs > 0
       ? nowMs - lastSeenMs
