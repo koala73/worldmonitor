@@ -253,9 +253,21 @@ export async function embedBatch(normalizedTitles, deps = {}) {
       cacheWrites.push(['SET', key, JSON.stringify(freshVectors[i]), 'EX', String(CACHE_TTL_SECONDS)]);
     }
     // Cache writes are best-effort — a failure costs us a re-embed
-    // on the next run, never a correctness bug.
+    // on the next run, never a correctness bug. Chunked because the
+    // 512-dim vector serialises to ~9.4KB per SET command; an unbatched
+    // pipeline of N misses sends one HTTP body of N×9.4KB to Upstash
+    // REST `/pipeline`, which trips the per-request body limit (50MB on
+    // our plan) at ~5,300 misses. Real ticks rarely approach that, but
+    // a cold cache on a high-volume language tick (or a future tick-
+    // size growth) would silently exceed it. 200 × 9.4KB ≈ 1.9MB per
+    // request matches the chunking pattern used by sibling seeders
+    // (PIPE_BATCH=50 in seed-resilience-intervals.mjs / seed-comtrade-
+    // bilateral-hs4.mjs, SET_BATCH=30 in resilience/v1/_shared.ts).
     try {
-      await pipelineImpl(cacheWrites);
+      const FLUSH = 200;
+      for (let i = 0; i < cacheWrites.length; i += FLUSH) {
+        await pipelineImpl(cacheWrites.slice(i, i + FLUSH));
+      }
     } catch {
       // swallow
     }
