@@ -15,7 +15,7 @@ export const PRO_LAUNCH_SUBJECT = "You waitlisted WorldMonitor PRO. It's live.";
 
 // CAN-SPAM physical address. Required in every commercial email footer.
 // Update if the company physical address changes.
-export const PRO_LAUNCH_PHYSICAL_ADDRESS = "WorldMonitor — physical address TBD before send";
+export const PRO_LAUNCH_PHYSICAL_ADDRESS = "WorldMonitor FZ LLC, Dubai - United Arab Emirates";
 
 // Token Resend auto-fills with the per-recipient unsubscribe URL.
 const UNSUBSCRIBE_TOKEN = "{{{RESEND_UNSUBSCRIBE_URL}}}";
