@@ -11,7 +11,7 @@
 
 export const PRO_LAUNCH_FROM = "Elie from WorldMonitor <news@worldmonitor.app>";
 export const PRO_LAUNCH_REPLY_TO = "elie@worldmonitor.app";
-export const PRO_LAUNCH_SUBJECT = "You waitlisted WorldMonitor PRO. It's live.";
+export const PRO_LAUNCH_SUBJECT = "You waitlisted WorldMonitor PRO. It's now live.";
 
 // Primary CTA destination. UTMs scoped to this campaign so we can attribute
 // conversions in analytics. Update if the upgrade page moves.
