@@ -115,6 +115,7 @@ export const getRegistrationsPage = internalQuery({
 
 type ExportStats = {
   upserted: number;
+  linkedExisting: number;
   suppressedSkipped: number;
   paidSkipped: number;
   alreadyExists: number;
@@ -126,15 +127,18 @@ type ExportStats = {
 };
 
 /**
- * Heuristic for distinguishing "this email is already in the segment"
- * (a 422 we want to count as success-equivalent) from every other
- * 422-flavored validation error (missing segment, invalid email,
+ * Heuristic for distinguishing duplicate-shaped 422 responses from other
+ * 422-flavored validation errors (missing segment, invalid email,
  * unauthorized field, etc., which we want to count as `failed` and log).
  *
  * Resend's error shape on 422 is `{ name, message, statusCode }`.
  * Duplicate responses use names like `email_already_exists` /
  * `contact_already_exists` and messages mentioning "already". We match
  * generously on the message in case the `name` evolves.
+ *
+ * Used for BOTH `POST /contacts` duplicates (contact exists globally) AND
+ * `POST /contacts/{email}/segments/{segmentId}` duplicates (contact is
+ * already in this specific segment) — same shape, same heuristic.
  */
 function isDuplicateContactError(body: unknown): boolean {
   if (!body || typeof body !== "object") return false;
@@ -144,6 +148,101 @@ function isDuplicateContactError(body: unknown): boolean {
   if (name.includes("already_exists") || name.includes("duplicate")) return true;
   if (/already (exists|in (the )?(audience|segment))|duplicate/.test(message)) return true;
   return false;
+}
+
+type UpsertOutcome =
+  | { kind: "created" }
+  | { kind: "linkedExisting" }
+  | { kind: "alreadyInSegment" }
+  | { kind: "failed"; reason: string };
+
+/**
+ * Two-step contact-to-segment upsert that guarantees the contact ends up
+ * in `segmentId` regardless of pre-existing global state:
+ *
+ *   1. `POST /contacts` with `segments: [{ id }]`. If the contact is brand
+ *      new globally, this creates it AND attaches to the segment in one
+ *      call → "created".
+ *   2. If step 1 returns a duplicate-shaped 422, the contact already
+ *      exists globally — but Resend's documented behaviour is that the
+ *      `segments` field on the duplicate path is NOT applied. We don't
+ *      know whether the contact is already in our segment or in some
+ *      OTHER segment / no segment at all. Resolve the ambiguity with an
+ *      explicit `POST /contacts/{email}/segments/{segmentId}`:
+ *        - 2xx → it was global-only or in another segment, now linked
+ *          → "linkedExisting"
+ *        - 422 duplicate-shaped → was already in this segment
+ *          → "alreadyInSegment"
+ *        - anything else → "failed"
+ *
+ * Without step 2, paid-customers-or-anyone-else who happen to already
+ * exist as global contacts can be silently OMITTED from the launch
+ * segment while the export reports success. (Caught in PR #3431 review.)
+ */
+async function upsertContactToSegment(
+  apiKey: string,
+  email: string,
+  segmentId: string,
+): Promise<UpsertOutcome> {
+  const createRes = await fetch(`${RESEND_API_BASE}/contacts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      email,
+      segments: [{ id: segmentId }],
+      unsubscribed: false,
+    }),
+  });
+
+  if (createRes.ok) return { kind: "created" };
+
+  if (createRes.status === 422) {
+    const createBody = await createRes.json().catch(() => null);
+    if (!isDuplicateContactError(createBody)) {
+      return {
+        kind: "failed",
+        reason: `POST /contacts 422 (non-duplicate): ${JSON.stringify(createBody)}`,
+      };
+    }
+
+    // Contact exists globally — attach to our segment explicitly.
+    const addRes = await fetch(
+      `${RESEND_API_BASE}/contacts/${encodeURIComponent(email)}/segments/${encodeURIComponent(segmentId)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+      },
+    );
+
+    if (addRes.ok) return { kind: "linkedExisting" };
+
+    if (addRes.status === 422) {
+      const addBody = await addRes.json().catch(() => null);
+      if (isDuplicateContactError(addBody)) return { kind: "alreadyInSegment" };
+      return {
+        kind: "failed",
+        reason: `POST /contacts/{email}/segments/{id} 422 (non-duplicate): ${JSON.stringify(addBody)}`,
+      };
+    }
+
+    const addText = await addRes.text().catch(() => "<no body>");
+    return {
+      kind: "failed",
+      reason: `POST /contacts/{email}/segments/{id} ${addRes.status}: ${addText}`,
+    };
+  }
+
+  const createText = await createRes.text().catch(() => "<no body>");
+  return {
+    kind: "failed",
+    reason: `POST /contacts ${createRes.status}: ${createText}`,
+  };
 }
 
 export const exportProLaunchAudience = internalAction({
@@ -181,6 +280,7 @@ export const exportProLaunchAudience = internalAction({
 
     const stats: ExportStats = {
       upserted: 0,
+      linkedExisting: 0,
       suppressedSkipped: 0,
       paidSkipped: 0,
       alreadyExists: 0,
@@ -211,46 +311,27 @@ export const exportProLaunchAudience = internalAction({
         continue;
       }
 
-      // Resend Contacts API (current 2026): POST /contacts with segments in
-      // the body. Audiences was renamed to Segments — the legacy
-      // /audiences/{id}/contacts endpoint may still resolve but is no
-      // longer the canonical path documented at
-      // https://resend.com/docs/api-reference/contacts/create-contact.
-      const res = await fetch(`${RESEND_API_BASE}/contacts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          email,
-          segments: [{ id: segmentId }],
-          unsubscribed: false,
-        }),
-      });
-
-      if (res.ok) {
-        stats.upserted++;
-      } else if (res.status === 422) {
-        // 422 covers BOTH duplicate-already-in-segment AND validation
-        // errors (missing segment, invalid email, etc.). Parse the body
-        // to distinguish — silently counting non-duplicate 422s as
-        // alreadyExists would mask configuration bugs.
-        const body = await res.json().catch(() => null);
-        if (isDuplicateContactError(body)) {
+      const outcome = await upsertContactToSegment(apiKey!, email, segmentId);
+      switch (outcome.kind) {
+        case "created":
+          stats.upserted++;
+          break;
+        case "linkedExisting":
+          // Pre-existing global contact, now linked to our segment.
+          // Counted as `upserted` (it ended up in the segment via this
+          // call) and tracked separately for diagnostics.
+          stats.upserted++;
+          stats.linkedExisting++;
+          break;
+        case "alreadyInSegment":
           stats.alreadyExists++;
-        } else {
+          break;
+        case "failed":
           stats.failed++;
           console.error(
-            `[exportProLaunchAudience] Resend 422 (non-duplicate) for ${email}: ${JSON.stringify(body)}`,
+            `[exportProLaunchAudience] Resend failure for ${email}: ${outcome.reason}`,
           );
-        }
-      } else {
-        stats.failed++;
-        const body = await res.text().catch(() => "<no body>");
-        console.error(
-          `[exportProLaunchAudience] Resend ${res.status} for ${email}: ${body}`,
-        );
+          break;
       }
     }
 
