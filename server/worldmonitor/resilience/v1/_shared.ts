@@ -12,6 +12,7 @@ export type { ScoreInterval };
 import { cachedFetchJson, getCachedJson, runRedisPipeline, setCachedJson } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { detectTrend, round } from '../../../_shared/resilience-stats';
+import { isInRankableUniverse } from './_rankable-universe';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
@@ -662,7 +663,17 @@ export async function listScorableCountries(): Promise<string[]> {
   const manifest = await getCachedJson(RESILIENCE_STATIC_INDEX_KEY, true) as ResilienceStaticIndex | null;
   return (manifest?.countries ?? [])
     .map((countryCode) => normalizeCountryCode(String(countryCode || '')))
-    .filter(Boolean);
+    .filter(Boolean)
+    // Plan 2026-04-26-002 §U2 (PR 1, review fixup): defense-in-depth
+    // universe filter at the handler-side read, so the rankable-universe
+    // contract is enforced regardless of the static index's seed
+    // version. Without this, a stale ~222-country manifest from a
+    // pre-PR-1 seed would still drive the ranking endpoint to serve
+    // all 222 countries even after PR 1 merges. The filter is
+    // idempotent: a fresh manifest from `seed-resilience-static.mjs`
+    // (post-bump to source-version v8) is already filtered, so this
+    // line is a no-op then.
+    .filter(isInRankableUniverse);
 }
 
 export async function getCachedResilienceScores(countryCodes: string[]): Promise<Map<string, GetResilienceScoreResponse>> {

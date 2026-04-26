@@ -35,7 +35,14 @@ export const RESILIENCE_STATIC_PREFIX = 'resilience:static:';
 // { countries: { ISO2: { ipcPhase, phase, peopleInCrisis, year } } }.
 export const RESILIENCE_STATIC_FAO_KEY = 'resilience:static:fao';
 export const RESILIENCE_STATIC_TTL_SECONDS = 400 * 24 * 60 * 60;
-export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v7';
+// Plan 2026-04-26-002 §U2 (PR 1) bumped v7 → v8 because this PR adds
+// the rankable-universe filter at finalizeCountryPayloads. Without
+// the version bump, `shouldSkipSeedYear` (line ~70) would no-op the
+// post-merge seeder run since prod already has a successful 2026 v7
+// seed — the new whitelist would never run, the static index would
+// remain at ~222 entries, and the universe filter would silently
+// not take effect. Caught by reviewer post-PR-3435 push.
+export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v8';
 export const RESILIENCE_STATIC_WINDOW_CRON = '0 */4 1-3 10 *';
 
 const LOCK_DOMAIN = 'resilience:static';
