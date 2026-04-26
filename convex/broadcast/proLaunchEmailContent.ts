@@ -40,7 +40,7 @@ It grew a new way to interact with it. Describe any visualization in plain langu
 
 And it became something your AI can use. WorldMonitor is accessible via REST API and MCP server. Connect it to Claude, ChatGPT, or Cursor in three minutes, and 28 live data tools become available inside your AI chat. Ask Claude "what's happening in the Taiwan Strait right now" and it pulls real-time data instead of training-set memories.
 
-More than half of this didn't exist 45 days ago. That's the build pace.
+More than half of this didn't exist 45 days ago. The open-source repo (https://github.com/koala73/worldmonitor) crossed 50,000 GitHub stars in the same window. That's the build pace.
 
 Most of it is in the free dashboard. PRO is where the two things you just read about earn their keep:
 
@@ -81,7 +81,7 @@ export const PRO_LAUNCH_HTML = `<!DOCTYPE html><html><body style="margin:0;paddi
 <p><strong>It grew a dedicated energy variant.</strong> <a href="https://energy.worldmonitor.app" style="color:#0066cc;">energy.worldmonitor.app</a>: live traffic and exposure on the four major shipping chokepoints, tanker positions in real time, 631 oil and gas pipelines mapped, EU gas storage, refinery utilization, retail fuel.</p>
 <p><strong>It grew a new way to interact with it.</strong> Describe any visualization in plain language: <em>"crude oil versus gold today," "worst international flight delays right now."</em> The AI builds it as a live widget on your dashboard. Save as many as you want.</p>
 <p><strong>And it became something your AI can use.</strong> WorldMonitor is accessible via REST API and MCP server. Connect it to Claude, ChatGPT, or Cursor in three minutes, and 28 live data tools become available inside your AI chat. Ask Claude <em>"what's happening in the Taiwan Strait right now"</em> and it pulls real-time data instead of training-set memories.</p>
-<p>More than half of this didn't exist 45 days ago. That's the build pace.</p>
+<p>More than half of this didn't exist 45 days ago. The <a href="https://github.com/koala73/worldmonitor" style="color:#0066cc;">open-source repo</a> crossed 50,000 GitHub stars in the same window. That's the build pace.</p>
 <p>Most of it is in the free dashboard. PRO is where the two things you just read about earn their keep:</p>
 <p><strong>AI Widget Builder.</strong> Plain language, live widget on your dashboard. Save as many as you want.</p>
 <p><strong>Native AI context.</strong> MCP server plus a 27-endpoint REST API. Plug it into Claude, ChatGPT, Cursor, or anything you're building.</p>
