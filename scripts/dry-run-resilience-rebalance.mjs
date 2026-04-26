@@ -83,8 +83,12 @@ async function redisGet(key) {
 }
 
 function unwrapEnvelope(raw) {
-  // payload may be a raw object or wrapped { data, source, fetchedAt }
-  if (raw && typeof raw === 'object' && 'data' in raw && raw.data != null) return raw.data;
+  // payload may be a raw object or wrapped { data, source, fetchedAt }.
+  // Always unwrap when the wrapper shape is detected — even when
+  // `data` is null — so the downstream null-check produces a clear
+  // FATAL instead of silently treating the wrapper object as the
+  // payload (which would yield empty rankings + empty pop map).
+  if (raw && typeof raw === 'object' && 'data' in raw) return raw.data;
   return raw;
 }
 
@@ -132,6 +136,29 @@ function indexRanking(payload) {
 
 const preByIso2 = indexRanking(preRanking);
 const postByIso2 = indexRanking(postRanking);
+
+// Fail-closed validation per review fixup: this script is the post-merge
+// validation gate for the v15 rebalance. It MUST NOT exit 0 on
+// empty/malformed payloads — silent success on a broken ranking would
+// flip the cohort gate from "validation passed" to "validation absent"
+// without anyone noticing.
+const MIN_RANKED_COUNTRIES = 20;
+function assertRankingHealth(name, byIso2) {
+  if (byIso2.size < MIN_RANKED_COUNTRIES) {
+    console.error(`FATAL: ${name} ranking has only ${byIso2.size} indexed countries (< ${MIN_RANKED_COUNTRIES}); payload is malformed or empty.`);
+    process.exit(7);
+  }
+  let finiteScored = 0;
+  for (const entry of byIso2.values()) {
+    if (Number.isFinite(entry.score)) finiteScored++;
+  }
+  if (finiteScored < MIN_RANKED_COUNTRIES) {
+    console.error(`FATAL: ${name} ranking has only ${finiteScored} countries with finite scores (< ${MIN_RANKED_COUNTRIES}); the score field is missing or non-numeric in the payload (got fields like .overallScore?).`);
+    process.exit(7);
+  }
+}
+assertRankingHealth('PRE', preByIso2);
+assertRankingHealth('POST', postByIso2);
 
 // --- Population enrichment ---------------------------------------------------
 
@@ -217,6 +244,16 @@ const csv = header + rows
 writeFileSync(outPath, csv, 'utf8');
 console.log('---');
 console.log(`Wrote ${rows.length} rows to ${outPath}`);
+
+// Fail-closed cohort gate: the top-20 composition check is meaningful only
+// when both rankings have enough population coverage in their top-20 to
+// make the comparison statistically reasonable. If knownPop is degenerate
+// for either side, refuse to declare success.
+const MIN_TOP20_POP_KNOWN = 15; // 15/20 with known population
+if (preTop20.knownPop < MIN_TOP20_POP_KNOWN || postTop20.knownPop < MIN_TOP20_POP_KNOWN) {
+  console.error(`FATAL: top-20 population coverage too thin for a reliable cohort gate (PRE: ${preTop20.knownPop}/20, POST: ${postTop20.knownPop}/20; minimum ${MIN_TOP20_POP_KNOWN}/20). Cannot validate the v15 rebalance from this run.`);
+  process.exit(8);
+}
 
 // Cohort target check (from plan §Cohort anchors): top-20 small-state count
 // should drop from ~12 to <=9.

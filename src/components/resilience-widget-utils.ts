@@ -23,6 +23,23 @@ const RESILIENCE_RETIRED_DIMENSION_IDS: ReadonlySet<string> = new Set([
   'reserveAdequacy',
 ]);
 
+// Plan 2026-04-26-001 §U3 (+ review fixup): client-side mirror of
+// `RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE` in
+// `server/worldmonitor/resilience/v1/_dimension-scorers.ts`. When a dim
+// in this set emits coverage=0, the construct doesn't apply to this
+// country (e.g. sovereignFiscalBuffer for non-SWF advanced economies)
+// and must be excluded from the user-facing Coverage % so the widget
+// matches the server's `overallCoverage` value. Sites carrying
+// positive coverage for this dim (countries WITH SWFs) still count
+// normally. Distinct from RETIRED (which excludes for ALL countries).
+//
+// The parity test parses this Set literally, so keep the array
+// contents as string literals only — do not interleave comments
+// between entries.
+const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = new Set([
+  'sovereignFiscalBuffer',
+]);
+
 // Gated locked-preview fixture rendered when the resilience widget is
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
@@ -167,19 +184,34 @@ export function getResilienceDomainLabel(domainId: string): string {
 
 export function formatResilienceConfidence(data: ResilienceScoreResponse): string {
   if (data.lowConfidence) return 'Low confidence — sparse data';
-  // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) from the
-  // displayed coverage percentage. Retirement is structural — the
-  // scorer returns coverage=0 by design and the dimension contributes
-  // zero weight to the domain score server-side — so including it in
-  // a flat client-side mean would drag the displayed percentage down
-  // for every country even though the dimension is not part of the
-  // score. Non-retired coverage=0 dims (genuine data sparsity) stay in
-  // the average because they reflect a real confidence signal for that
-  // country; the server already sets `lowConfidence` when the overall
-  // picture is too sparse, which short-circuits above.
+  // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) AND
+  // not-applicable-when-zero-coverage dimensions (sovereignFiscalBuffer
+  // for non-SWF countries, plan 2026-04-26-001 §U3) from the displayed
+  // coverage percentage. The same filter pair is applied server-side
+  // by `_shared.ts:computeOverallCoverage` — keeping them in lockstep
+  // ensures the widget Coverage % matches the server's
+  // `overallCoverage` field. Genuine data sparsity (non-retired,
+  // non-NA coverage=0) stays in the average because it reflects a
+  // real confidence signal; the server already sets `lowConfidence`
+  // when the overall picture is too sparse, which short-circuits above.
   const coverages = data.domains.flatMap((d) =>
     d.dimensions
-      .filter((dim) => !RESILIENCE_RETIRED_DIMENSION_IDS.has(dim.id))
+      .filter((dim) => {
+        if (RESILIENCE_RETIRED_DIMENSION_IDS.has(dim.id)) return false;
+        // Plan 2026-04-26-001 §U3 (+ review fixup): use the triple-zero
+        // Path-3 fingerprint (coverage===0 && observedWeight===0 &&
+        // imputedWeight===0), NOT just coverage===0. A real SWF country
+        // can produce coverage=0 if completeness collapses to 0 (Path 2
+        // with full data outage); that case must drag confidence down
+        // so an operator notices, not be silently filtered.
+        if (
+          RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS.has(dim.id) &&
+          dim.coverage === 0 &&
+          (dim.observedWeight ?? 0) === 0 &&
+          (dim.imputedWeight ?? 0) === 0
+        ) return false;
+        return true;
+      })
       .map((dim) => dim.coverage),
   );
   const avgCoverage = coverages.length > 0
@@ -298,7 +330,7 @@ export interface DimensionConfidenceInput {
   };
 }
 
-export type DimensionCoverageStatus = 'observed' | 'partial' | 'imputed' | 'absent';
+export type DimensionCoverageStatus = 'observed' | 'partial' | 'imputed' | 'absent' | 'not-applicable';
 
 export type DimensionImputationClass =
   | 'stable-absence'
@@ -414,11 +446,20 @@ export function formatDimensionConfidence(input: DimensionConfidenceInput): Dime
   const lastObservedAtMs = normalizeLastObservedAtMs(input.freshness?.lastObservedAtMs);
 
   if (total <= 0) {
+    // Plan 2026-04-26-001 §U3 (+ review fixup): differentiate
+    // "structurally not applicable to this country" (e.g. non-SWF
+    // economies on sovereignFiscalBuffer) from the original
+    // "data-collection bug" interpretation. The server emits
+    // imputationClass='not-applicable' for the deliberate case; the
+    // widget renders status='not-applicable' which has its own tooltip
+    // ("Not applicable: structurally N/A for this country") and symbol
+    // ("—"). `absent: true` stays so existing consumers reading the
+    // boolean still get the no-data signal.
     return {
       id: input.id,
       label,
       coveragePct: 0,
-      status: 'absent',
+      status: imputationClass === 'not-applicable' ? 'not-applicable' : 'absent',
       absent: true,
       imputationClass,
       staleness,

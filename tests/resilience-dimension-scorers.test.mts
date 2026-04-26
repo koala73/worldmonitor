@@ -747,6 +747,44 @@ describe('resilience dimension scorers', () => {
       assert.equal(result.imputationClass, null,
         'dim-level imputationClass MUST be null because GPI provides observed signal');
     });
+
+    // Plan 2026-04-26-001 §U2 review fixup: outage-vs-absence gating for unrest.
+    // Original §U2 conflated "displacement seed outage" (UNHCR seeder failed)
+    // with "country absent from registry" (intentional GPI-only mode), so
+    // an outage + zero-unrest combination would impute unrest at the lower
+    // GPI-only value (70) and pull peaceful-country scores down during
+    // transient seeder failures. Fix: gate the GPI-only impute on
+    // `displacementRaw != null && displacementMetric == null` so outage
+    // collapses to the same 85-anchor as the happy path.
+    it('outage-vs-absence: displacement OUTAGE + zero unrest must impute unrest at 85 (not 70 GPI-only)', async () => {
+      const outageReader = makeReader({
+        gpi: 1.5,
+        countryCode: 'XX',
+        displacementRaw: 'absent',     // UNHCR seeder failed
+        unrestRaw: 'present-zero',     // unrest registry healthy, country has zero events
+      });
+      const gpiOnlyReader = makeReader({
+        gpi: 1.5,
+        countryCode: 'XX',
+        displacementCountries: [],     // displacement registry HEALTHY but country absent (GPI-only mode)
+        unrestRaw: 'present-zero',
+      });
+      const outage = await scoreSocialCohesion('XX', outageReader);
+      const gpiOnly = await scoreSocialCohesion('XX', gpiOnlyReader);
+
+      // Outage path: gpiRow (0.55, observed) + displacementRow (DROPPED) + unrestRow (0.20, imputed AT 85).
+      //   availableWeight = 0.75; score = (80.8*0.55 + 85*0.20)/0.75 ≈ 81.9 → 82
+      // GPI-only path: gpiRow (0.55, observed) + displacementRow (0.25, imputed AT 70) + unrestRow (0.20, imputed AT 70).
+      //   availableWeight = 1.0; score = 80.8*0.55 + 70*0.25 + 70*0.20 ≈ 76.9 → 77
+      // Outage MUST score HIGHER than GPI-only (85-anchor pulls less down than 70-anchor).
+      // If the bug is present, outage would also use 70 → outage.score ≈ gpiOnly.score (modulo displacement).
+      assert.ok(outage.score > gpiOnly.score + 3,
+        `outage (${outage.score}) must score meaningfully higher than GPI-only (${gpiOnly.score}); outage uses 85-anchor, GPI-only uses 70-anchor. If they're close, the GPI-only impute is wrongly firing on outage path (Plan 2026-04-26-001 §U2 review fixup).`);
+      // Outage's observedWeight must be GPI-only (0.55); GPI-only mode has imputed displacement+unrest so observedWeight is also 0.55.
+      // The discriminator is availableWeight (which manifests in different blended scores).
+      assert.ok(Math.abs(outage.observedWeight - 0.55) < 0.01,
+        `outage observedWeight must be 0.55 (GPI only observed); got ${outage.observedWeight}`);
+    });
   });
 
   it('scoreEnergy: high import dependency country feels more energy price stress', async () => {
@@ -1357,7 +1395,8 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       assert.equal(score.coverage, 0, 'no-SWF country must report ZERO coverage (dim-not-applicable)');
       assert.equal(score.observedWeight, 0, 'observedWeight=0 means the dim contributes nothing to the coverage-weighted mean');
       assert.equal(score.imputedWeight, 0);
-      assert.equal(score.imputationClass, null);
+      assert.equal(score.imputationClass, 'not-applicable',
+        "dim-not-applicable emits the proto's structurally-not-applicable sentinel (review fixup on plan 2026-04-26-001 §U3)");
     });
 
     it('path 2: country with SWF → saturating transform on totalEffectiveMonths', async () => {

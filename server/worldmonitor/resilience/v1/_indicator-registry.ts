@@ -1044,12 +1044,13 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     cadence: 'quarterly',
     // tier='experimental' because the manifest ships with 8 funds (< the
     // 180-country core-tier threshold / 137-country §3.6 gate). Non-SWF
-    // countries are scored meaningfully (0 with full coverage — a
-    // substantive absence, not imputation — per plan §3.4), but the
-    // §3.6 coverage-and-influence gate counts upstream-data coverage,
-    // which is 8. Graduating to 'core' requires expanding the manifest
-    // past 137 entries, which is a follow-up PR after external data
-    // partners are identified.
+    // countries are scored as dim-not-applicable (score 0, coverage 0,
+    // imputationClass 'not-applicable') per plan 2026-04-26-001 §U3 —
+    // reframed from the original "substantive absence" decision in plan
+    // 2026-04-25-001 §3.4. The §3.6 coverage-and-influence gate counts
+    // upstream-data coverage, which is 8. Graduating to 'core' requires
+    // expanding the manifest past 137 entries, which is a follow-up PR
+    // after external data partners are identified.
     tier: 'experimental',
     coverage: 8,
     license: 'open-data',

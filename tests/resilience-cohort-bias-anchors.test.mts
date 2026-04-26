@@ -149,8 +149,8 @@ describe('resilience cohort bias anchors (Plan 2026-04-26-001 §U5)', () => {
         assert.equal(result.coverage, 0, `${fx.iso2} sovereignFiscalBuffer coverage must be 0 (dim-not-applicable; was 1.0 in v14)`);
         assert.equal(result.observedWeight, 0, `${fx.iso2} sovereignFiscalBuffer observedWeight must be 0 — the dim contributes nothing to the recovery-domain coverage-weighted mean`);
         assert.equal(result.imputedWeight, 0);
-        assert.equal(result.imputationClass, null,
-          `${fx.iso2} sovereignFiscalBuffer imputationClass must be null — this is a deliberate construct decision, not a source-failure`);
+        assert.equal(result.imputationClass, 'not-applicable',
+          `${fx.iso2} sovereignFiscalBuffer imputationClass must be 'not-applicable' (plan 2026-04-26-001 §U3 + review fixup) — the proto's structurally-not-applicable sentinel, distinct from null (any-observed-data) and source-failure`);
       });
     }
   });

@@ -18,8 +18,7 @@ import {
   RESILIENCE_DIMENSION_TYPES,
   RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
-  RESILIENCE_RETIRED_DIMENSIONS,
-  RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE,
+  isExcludedFromConfidenceMean,
   createMemoizedSeedReader,
   getResilienceDomainWeight,
   scoreAllDimensions,
@@ -420,17 +419,10 @@ export function computeLowConfidence(dimensions: ResilienceDimension[], imputati
   // "Low confidence" label is about data availability, not score
   // composition. The asymmetry is deliberate and mirrored in
   // `computeOverallCoverage` below.
-  const scoring = dimensions.filter((dimension) => {
-    const id = dimension.id as ResilienceDimensionId;
-    if (RESILIENCE_RETIRED_DIMENSIONS.has(id)) return false;
-    // Plan 2026-04-26-001 §U3: a dim that is "not-applicable" for this
-    // country (coverage=0 substantively, not from sparse data) is
-    // excluded so the construct decision doesn't manufacture a
-    // low-confidence signal. When the dim DOES apply (coverage > 0),
-    // it counts normally.
-    if (RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) && dimension.coverage === 0) return false;
-    return true;
-  });
+  // Plan 2026-04-26-001 §U3: filter via the single-source helper so the
+  // RETIRED + NOT_APPLICABLE_WHEN_ZERO_COVERAGE decision lives in one
+  // place across both readers (this one and computeOverallCoverage).
+  const scoring = dimensions.filter((dimension) => !isExcludedFromConfidenceMean(dimension));
   const averageCoverage = mean(scoring.map((dimension) => dimension.coverage)) ?? 0;
   return averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD || imputationShare > LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD;
 }
@@ -743,17 +735,7 @@ export function computeOverallCoverage(response: GetResilienceScoreResponse): nu
   // the coverage percentage as a data-quality indicator.
   const coverages = response.domains.flatMap((domain) =>
     domain.dimensions
-      .filter((dimension) => {
-        const id = dimension.id as ResilienceDimensionId;
-        if (RESILIENCE_RETIRED_DIMENSIONS.has(id)) return false;
-        // Plan 2026-04-26-001 §U3: same not-applicable filter as
-        // computeLowConfidence — a dim that is substantively not-applicable
-        // for this country (coverage=0) is excluded from the user-facing
-        // overall coverage so the construct decision doesn't drag down
-        // the data-availability indicator.
-        if (RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) && dimension.coverage === 0) return false;
-        return true;
-      })
+      .filter((dimension) => !isExcludedFromConfidenceMean(dimension))
       .map((dimension) => dimension.coverage),
   );
   if (coverages.length === 0) return 0;

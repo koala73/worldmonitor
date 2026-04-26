@@ -92,12 +92,14 @@ describe('resilience release gate', () => {
         }
         if (NA_FOR_SOME_COUNTRIES_DIMENSIONS.has(dimensionId) && score.coverage === 0) {
           // sovereignFiscalBuffer with coverage=0 = "country not in SWF manifest"
-          // (Plan 2026-04-26-001 §U3 dim-not-applicable). Must NOT carry an
-          // imputationClass — that would manufacture a "source-failure" warning
-          // for a deliberate construct decision. Note: countries WITH SWFs in
-          // the manifest still must score with positive coverage; that's
-          // covered by the construct-invariants test for this dim.
-          assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} dim-not-applicable must tag null imputationClass (not source-failure)`);
+          // (Plan 2026-04-26-001 §U3 dim-not-applicable + review fixup).
+          // Must carry imputationClass='not-applicable' (the proto's
+          // structurally-not-applicable sentinel — distinct from null
+          // "any observed data" and from "source-failure"). Countries
+          // WITH SWFs still score with positive coverage; that's covered
+          // by the construct-invariants test.
+          assert.equal(score.imputationClass, 'not-applicable',
+            `${countryCode} ${dimensionId} dim-not-applicable must tag 'not-applicable' imputationClass (the structurally-not-applicable sentinel)`);
           continue;
         }
         assert.ok(score.coverage > 0, `${countryCode} ${dimensionId} should not fall back to zero-coverage placeholder scoring`);

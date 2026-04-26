@@ -29,6 +29,7 @@ import {
   scoreImportConcentration,
   scoreExternalDebtCoverage,
   scoreSovereignFiscalBuffer,
+  isExcludedFromConfidenceMean,
   type ResilienceSeedReader,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 
@@ -164,6 +165,57 @@ describe('construct invariants — sovereignFiscalBuffer (saturating transform)'
     }));
     assert.equal(r.score, 0, `expected 0 when country has no manifest entry, got ${r.score}`);
     assert.equal(r.coverage, 0, `expected coverage=0 (dim-not-applicable for non-SWF country), got ${r.coverage}`);
-    assert.equal(r.imputationClass, null, `expected null imputation (not imputed), got ${r.imputationClass}`);
+    assert.equal(r.imputationClass, 'not-applicable',
+      `expected imputationClass='not-applicable' (the proto's structurally-not-applicable sentinel — review fixup on plan 2026-04-26-001 §U3), got ${r.imputationClass}`);
+  });
+
+  // Plan 2026-04-26-001 §U3 review fixup: the not-applicable filter must
+  // distinguish Path 3 (no manifest entry, true dim-not-applicable) from
+  // Path 2 with completeness=0 (manifest entry exists but the scrape
+  // collapsed). The latter is a DATA OUTAGE on a country that DOES carry
+  // the construct and MUST drag user-facing confidence down.
+  it('filter discriminator: Path 3 is excluded but Path 2 with completeness=0 is NOT (real data outage on a SWF country)', async () => {
+    // Path 3: country absent from manifest entirely.
+    const path3 = await scoreSovereignFiscalBuffer(TEST_ISO2, makeReader({
+      'resilience:recovery:sovereign-wealth:v1': { countries: {} },
+    }));
+    // Path 2: country IN manifest but completeness=0 (full scrape outage).
+    const path2OutageCompleteness = await scoreSovereignFiscalBuffer(TEST_ISO2, makeReader({
+      'resilience:recovery:sovereign-wealth:v1': {
+        countries: { [TEST_ISO2]: { totalEffectiveMonths: 12, completeness: 0 } },
+      },
+    }));
+
+    // Both can produce coverage=0 — that's why the naive filter is wrong.
+    assert.equal(path3.coverage, 0, 'Path 3 must have coverage=0');
+    assert.ok(path2OutageCompleteness.coverage < 0.01,
+      `Path 2 completeness=0 must produce ~0 coverage (got ${path2OutageCompleteness.coverage})`);
+
+    // The discriminator: Path 3 has observedWeight=0; Path 2 has observedWeight=1.
+    assert.equal(path3.observedWeight, 0, 'Path 3 observedWeight must be 0');
+    assert.equal(path2OutageCompleteness.observedWeight, 1, 'Path 2 observedWeight must be 1 even with completeness=0');
+
+    // The filter MUST exclude Path 3 (it's truly not applicable to this country)
+    // but MUST NOT exclude Path 2 (it's a data outage that should drag confidence).
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'sovereignFiscalBuffer',
+        coverage: path3.coverage,
+        observedWeight: path3.observedWeight,
+        imputedWeight: path3.imputedWeight,
+      }),
+      true,
+      'Path 3 (dim-not-applicable) MUST be excluded from confidence mean',
+    );
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'sovereignFiscalBuffer',
+        coverage: path2OutageCompleteness.coverage,
+        observedWeight: path2OutageCompleteness.observedWeight,
+        imputedWeight: path2OutageCompleteness.imputedWeight,
+      }),
+      false,
+      'Path 2 with completeness=0 (data outage on SWF country) MUST NOT be excluded — operator must see the low-confidence signal',
+    );
   });
 });

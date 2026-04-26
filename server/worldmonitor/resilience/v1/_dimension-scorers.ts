@@ -156,9 +156,12 @@ export const IMPUTE = {
   // PR 2 §3.4 — used when the sovereign-wealth seed key is absent
   // entirely (Railway cron has not fired yet on a fresh deploy).
   // Countries NOT in the manifest but payload present are handled
-  // separately by the scorer as "no SWF → score 0, full coverage"
-  // (substantive absence, not imputation — see plan §3.4 "What happens
-  // to no-SWF countries").
+  // separately by the scorer as "no SWF → score 0, coverage 0,
+  // imputationClass 'not-applicable'" (dim-not-applicable, plan
+  // 2026-04-26-001 §U3 — reframed from the original "substantive
+  // absence" decision in plan 2026-04-25-001 §3.4 because the
+  // deliberate penalty over-fired for advanced economies that hold
+  // reserves through Treasury / central-bank channels).
   recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   // Plan 2026-04-26-001 §U2 — gated GPI-only impute for socialCohesion.
   // These two entries fire ONLY when the dim is operating in degraded
@@ -1708,13 +1711,24 @@ export async function scoreSocialCohesion(
     // Seed outage — drop unrest weight (NOT imputed).
     unrestRow = { score: null, weight: 0.2 };
   } else if (unrest.unrestCount === 0 && unrest.fatalities === 0) {
-    // Zero unrest events. Two sub-cases:
-    //   (a) GPI-only mode (displacement also missing) → impute at the
-    //       lower GPI-only-mode value to pull the blend down for tiny states.
-    //   (b) Happy path (displacement observed) → impute at the historical
-    //       "stable-absence ≈ 85" value matching unhcrDisplacement.score
-    //       so peaceful + fully-monitored countries (Iceland, Norway) don't regress.
-    if (displacementMetric == null) {
+    // Zero unrest events. Three sub-cases — distinguished by displacement state:
+    //   (a) Displacement OUTAGE (displacementRaw == null) → impute at 85
+    //       (`unhcrDisplacement.score`). Outage is NOT a country-level absence
+    //       signal, so we must NOT pull the blend down via the GPI-only impute.
+    //       This mirrors the principle in scoreBorderSecurity: outage drops weight
+    //       on the affected metric ONLY, not on sibling metrics.
+    //   (b) GPI-only mode (displacementRaw present but country absent from
+    //       registry) → impute at 70 (`socialCohesionGpiOnlyUnrest.score`) to
+    //       pull the blend down for tiny peaceful states (TV/PW/NR).
+    //   (c) Happy path (displacement observed) → impute at 85
+    //       (`unhcrDisplacement.score`) so peaceful + fully-monitored
+    //       countries (Iceland, Norway) don't regress.
+    //
+    // The GPI-only branch is gated on `displacementRaw != null`. Cases (a)
+    // and (c) collapse to the same 85/0.6 impute because both represent
+    // "we have no signal that displacement is unusual" — only case (b) is the
+    // intentional cohort de-rate.
+    if (displacementRaw != null && displacementMetric == null) {
       unrestRow = {
         score: IMPUTE.socialCohesionGpiOnlyUnrest.score,
         weight: 0.2,
@@ -1980,12 +1994,19 @@ export async function scoreLiquidReserveAdequacy(
 //      country (AE = ADIA + Mubadala, SG = GIC + Temasek) shows up
 //      as lower confidence rather than a silently-understated total.
 //   3. Seed key present, country NOT in payload → the country has no
-//      sovereign wealth fund in the manifest. Per plan §3.4 "What
-//      happens to no-SWF countries": score 0 with FULL coverage (this
-//      is substantive absence, not imputation). The country stays in
-//      the recovery-pillar denominator with weight; 0 × weight = 0 in
-//      the numerator, so it correctly lowers relative recovery score
-//      vs SWF-holding peers.
+//      sovereign wealth fund in the manifest. Plan 2026-04-26-001 §U3:
+//      reframed from "substantive absence (score 0, FULL coverage 1.0)"
+//      to "dim-not-applicable (score 0, ZERO coverage,
+//      imputationClass 'not-applicable')". The original framing pinned
+//      every non-SWF country at score 0 with full weight, dragging the
+//      recovery domain down for advanced economies (DE, JP, FR, IT, UK,
+//      US) that hold reserves through Treasury / central-bank channels
+//      rather than dedicated SWFs. Now the row contributes 0 weight to
+//      the recovery-domain coverage-weighted mean so it's effectively
+//      excluded; the dim is also excluded from
+//      `computeLowConfidence` / `computeOverallCoverage` via the
+//      `RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE` set so non-SWF
+//      countries don't get falsely flagged as low-confidence.
 interface RecoverySovereignWealthCountry {
   totalEffectiveMonths?: number | null;
   completeness?: number | null;
@@ -2014,24 +2035,30 @@ export async function scoreSovereignFiscalBuffer(
   }
   const entry = payload.countries[countryCode.toUpperCase()] ?? null;
   // Path 3 — seed present, country not in manifest → no SWF.
-  // Plan 2026-04-26-001 §U3: reframed from "substantive absence
-  // (score 0, full coverage 1.0)" to "dim-not-applicable
-  // (score 0, ZERO coverage)". The original framing penalized advanced
-  // economies (DE, JP, FR, IT) that hold reserves through Treasury /
-  // central-bank channels rather than dedicated SWFs. The recovery
-  // domain's coverage-weighted mean now re-normalizes around the
-  // remaining recovery dims because this row contributes 0 weight.
-  // Score remains numeric (zero) per the
+  // Plan 2026-04-26-001 §U3 (+ review fixup): reframed from
+  // "substantive absence (score 0, full coverage 1.0,
+  // imputationClass null)" to "dim-not-applicable (score 0, ZERO
+  // coverage, imputationClass 'not-applicable')". The original
+  // framing penalized advanced economies (DE, JP, FR, IT) that hold
+  // reserves through Treasury / central-bank channels rather than
+  // dedicated SWFs. The recovery domain's coverage-weighted mean now
+  // re-normalizes around the remaining recovery dims because this
+  // row contributes 0 weight. Score remains numeric (zero) per the
   // ResilienceDimensionScore.score:number contract and the
   // release-gate Number.isFinite check; coverage:0 is what removes
-  // the dim from the mean.
+  // the dim from the mean. The 'not-applicable' tag is the proto's
+  // existing 4-class taxonomy member (alongside stable-absence /
+  // unmonitored / source-failure) — emitting it here is what the
+  // proto comment at imputation_class describes as the "structurally
+  // not applicable to this country" sentinel and is what allows
+  // client surfaces to mirror the server's exclusion symmetrically.
   if (!entry) {
     return {
       score: 0,
       coverage: 0,
       observedWeight: 0,
       imputedWeight: 0,
-      imputationClass: null,
+      imputationClass: 'not-applicable',
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
   }
@@ -2212,6 +2239,39 @@ export const RESILIENCE_RETIRED_DIMENSIONS: ReadonlySet<ResilienceDimensionId> =
 export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<ResilienceDimensionId> = new Set([
   'sovereignFiscalBuffer',
 ]);
+
+// Plan 2026-04-26-001 §U3 (+ review fixup): single-source-of-truth helper
+// for the "exclude this dim from user-facing confidence/coverage means"
+// decision. Used by `_shared.ts:computeLowConfidence` and
+// `computeOverallCoverage` so future construct-decision additions to
+// either set update both readers in lockstep — avoiding the
+// multi-site-grep trap documented in memory
+// `default-value-multi-site-grep-audit`.
+//
+// **The Path-3 discriminator is `coverage===0 && observedWeight===0 &&
+// imputedWeight===0`, NOT just `coverage===0`.** A real SWF country
+// can produce `coverage=0` if `weightedBlend` derates `certaintyCoverage`
+// to 0 (e.g. `completeness=0` on the manifest entry — Path 2) while
+// `observedWeight` stays at 1.0. That case is a DATA OUTAGE on a
+// country that DOES carry the construct, not a not-applicable case;
+// it MUST drag down user-facing confidence so an operator notices.
+// The triple-zero check is the unique fingerprint of the Path-3
+// "no manifest entry" return shape.
+export function isExcludedFromConfidenceMean(
+  dimension: { id: string; coverage: number; observedWeight?: number; imputedWeight?: number },
+): boolean {
+  const id = dimension.id as ResilienceDimensionId;
+  if (RESILIENCE_RETIRED_DIMENSIONS.has(id)) return true;
+  if (
+    RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) &&
+    dimension.coverage === 0 &&
+    (dimension.observedWeight ?? 0) === 0 &&
+    (dimension.imputedWeight ?? 0) === 0
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export async function scoreFuelStockDays(
   _countryCode: string,
