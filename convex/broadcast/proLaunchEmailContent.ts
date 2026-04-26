@@ -39,7 +39,7 @@ WorldMonitor stopped being only a real-time monitoring dashboard, though it stil
 
 The dashboard grew sideways. Conflicts stream live alongside sanctions, regime shifts, GPS jamming, displacement, climate anomalies. Bilateral trade flows, tariff trends, chokepoint indices, route disruption, cost-shock simulations, stability scoring across 137 countries with deep coverage on 40+ indicators. AI stock analysis with price targets, backtesting, a scanner for tickers trending on Reddit. Live aircraft tracking, civilian and military: fighter scrambles over the Taiwan Strait, carrier strike groups in the Persian Gulf, special-ops by callsign, 100+ airports for delays and cascades. Useful when something breaks at 3 a.m. and a price chart won't tell you why.
 
-It grew a dedicated energy variant. energy.worldmonitor.app: live traffic and exposure on the four major shipping chokepoints, tanker positions in real time, 631 oil and gas pipelines mapped, EU gas storage, refinery utilization, retail fuel.
+It grew a dedicated energy variant. energy.worldmonitor.app: live traffic and exposure on the four major shipping chokepoints, tanker positions in real time, 631 oil and gas pipelines mapped, global strategic storage atlas, refinery utilization, retail fuel prices.
 
 It grew a new way to interact with it. Describe any visualization in plain language: "crude oil versus gold today," "worst international flight delays right now." The AI builds it as a live widget on your dashboard. Save as many as you want.
 
@@ -51,7 +51,7 @@ Most of it is in the free dashboard. PRO is where the two things you just read a
 
 AI Widget Builder. Plain language, live widget on your dashboard. Save as many as you want.
 
-Native AI context. MCP server plus a 27-endpoint REST API. Plug it into Claude, ChatGPT, Cursor, or anything you're building.
+Native AI context. MCP server plus a 27-endpoint REST API — full docs at https://www.worldmonitor.app/docs/documentation. Plug it into Claude, ChatGPT, Cursor, or anything you're building.
 
 Also included:
 - WM Analyst. AI analyst with the full signal stack: ticker, country, sector, sanctions package. Ask it what you'd Google for an hour.
@@ -85,13 +85,13 @@ export const PRO_LAUNCH_HTML = `<!DOCTYPE html><html><body style="margin:0;paddi
 <p>Here's what it is now.</p>
 <p>WorldMonitor stopped being only a real-time monitoring dashboard, though it still excels at that. It's also a research tool now. It tracks what's happening, and it forecasts what happens next: scenario probabilities on conflicts, market reactions to headlines, supply-chain shock paths, country stability trajectories. You read the present and stress-test the future in the same place.</p>
 <p><strong>The dashboard grew sideways.</strong> Conflicts stream live alongside sanctions, regime shifts, GPS jamming, displacement, climate anomalies. Bilateral trade flows, tariff trends, chokepoint indices, route disruption, cost-shock simulations, stability scoring across 137 countries with deep coverage on 40+ indicators. AI stock analysis with price targets, backtesting, a scanner for tickers trending on Reddit. Live aircraft tracking, civilian and military: fighter scrambles over the Taiwan Strait, carrier strike groups in the Persian Gulf, special-ops by callsign, 100+ airports for delays and cascades. Useful when something breaks at 3 a.m. and a price chart won't tell you why.</p>
-<p><strong>It grew a dedicated energy variant.</strong> <a href="https://energy.worldmonitor.app" style="color:#0066cc;">energy.worldmonitor.app</a>: live traffic and exposure on the four major shipping chokepoints, tanker positions in real time, 631 oil and gas pipelines mapped, EU gas storage, refinery utilization, retail fuel.</p>
+<p><strong>It grew a dedicated energy variant.</strong> <a href="https://energy.worldmonitor.app" style="color:#0066cc;">energy.worldmonitor.app</a>: live traffic and exposure on the four major shipping chokepoints, tanker positions in real time, 631 oil and gas pipelines mapped, global strategic storage atlas, refinery utilization, retail fuel prices.</p>
 <p><strong>It grew a new way to interact with it.</strong> Describe any visualization in plain language: <em>"crude oil versus gold today," "worst international flight delays right now."</em> The AI builds it as a live widget on your dashboard. Save as many as you want.</p>
 <p><strong>And it became something your AI can use.</strong> WorldMonitor is accessible via REST API and MCP server. Connect it to Claude, ChatGPT, or Cursor in three minutes, and 28 live data tools become available inside your AI chat. Ask Claude <em>"what's happening in the Taiwan Strait right now"</em> and it pulls real-time data instead of training-set memories.</p>
 <p>More than half of this didn't exist 45 days ago. The <a href="https://github.com/koala73/worldmonitor" style="color:#0066cc;">open-source repo</a> crossed 50,000 GitHub stars in the same window. That's the build pace.</p>
 <p>Most of it is in the free dashboard. PRO is where the two things you just read about earn their keep:</p>
 <p><strong>AI Widget Builder.</strong> Plain language, live widget on your dashboard. Save as many as you want.</p>
-<p><strong>Native AI context.</strong> MCP server plus a 27-endpoint REST API. Plug it into Claude, ChatGPT, Cursor, or anything you're building.</p>
+<p><strong>Native AI context.</strong> MCP server plus a 27-endpoint REST API — <a href="https://www.worldmonitor.app/docs/documentation" style="color:#0066cc;">full docs</a>. Plug it into Claude, ChatGPT, Cursor, or anything you're building.</p>
 <p>Also included:</p>
 <ul style="padding-left:20px;">
 <li><strong>WM Analyst.</strong> AI analyst with the full signal stack: ticker, country, sector, sanctions package. Ask it what you'd Google for an hour.</li>
