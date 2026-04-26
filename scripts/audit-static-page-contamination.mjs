@@ -3,29 +3,40 @@
 // digest accumulator (U6 of docs/plans/2026-04-26-001-fix-brief-static-page-
 // contamination-plan.md).
 //
-// Two cleanup modes:
+// Cleanup modes:
 //
-//   --mode=url    (default): match by institutional-static-page URL pattern.
-//                            Catches direct-RSS pre-ingest entries where
-//                            track.link is a real defense.gov / .mil / .int
-//                            URL.
+//   --mode=url     (default): match by institutional-static-page URL pattern.
+//                             Catches direct-RSS pre-ingest entries where
+//                             track.link is a real defense.gov / .mil / .int
+//                             URL.
 //
-//   --mode=age    : match by track.publishedAt being older than --max-age-hours
-//                   (default 48). Catches Google-News-routed entries whose
-//                   `link` is an opaque news.google.com redirect (so the URL
-//                   classifier can't see the destination), AND any other
-//                   stale residue regardless of source. This is the primary
-//                   eviction mode after ingest-gate tightening (PR #3417's
-//                   when:1d), where pre-deploy ingests carry real but stale
-//                   publishedAt timestamps.
+//   --mode=age     : match by track.publishedAt being older than --max-age-hours
+//                    (default 48). Catches entries with a parseable publishedAt
+//                    that's stale — works for Google-News-routed entries (whose
+//                    track.link is an opaque news.google.com redirect) AND any
+//                    other source where the publisher's pubDate is honest.
+//                    REQUIRES rows to have publishedAt persisted (PR #3422+).
 //
-//   --mode=both   : run both classifiers and union the matches.
+//   --mode=residue : match rows where track.publishedAt is missing/unparseable.
+//                    This is the one-shot eviction mode for the immediate
+//                    PR-3422 deploy: pre-PR-3422 ingests never persisted
+//                    publishedAt, so neither --mode=age NOR the read-time
+//                    freshness floor can see them. Run AFTER waiting ≥1 cron
+//                    cycle so still-active stories have been re-mentioned and
+//                    had publishedAt added via HSET. Anything still missing
+//                    the field at that point is residue that won't be re-
+//                    mentioned (typically because the new ingest gate now
+//                    filters it out).
+//
+//   --mode=both    : run url + age. Does NOT include residue (use --mode=residue
+//                    explicitly so the operator opts into the destructive scan).
 //
 // Usage:
-//   node scripts/audit-static-page-contamination.mjs                       # dry run, URL mode
-//   node scripts/audit-static-page-contamination.mjs --mode=age            # dry run, age mode (48h)
+//   node scripts/audit-static-page-contamination.mjs                          # dry run, URL mode
+//   node scripts/audit-static-page-contamination.mjs --mode=age               # dry run, age mode (48h)
 //   node scripts/audit-static-page-contamination.mjs --mode=age --max-age-hours=24
-//   node scripts/audit-static-page-contamination.mjs --mode=both --apply   # delete by either signal
+//   node scripts/audit-static-page-contamination.mjs --mode=residue --apply   # one-shot post-PR-3422 cleanup
+//   node scripts/audit-static-page-contamination.mjs --mode=both --apply      # delete by URL OR age signal
 //
 // Pure-helper coverage lives in tests/url-classifier.test.mjs. The Redis
 // scan is mechanical and exercised by manual dry runs — there is no unit
@@ -35,27 +46,38 @@
 import { isInstitutionalStaticPage } from './shared/url-classifier.js';
 import { getRedisCredentials } from './_seed-utils.mjs';
 
-function parseArgs(argv) {
+const VALID_MODES = ['url', 'age', 'residue', 'both'];
+
+export function parseArgs(argv) {
   const args = { mode: 'url', maxAgeHours: 48, apply: false };
+  const unknown = [];
   for (const arg of argv) {
     if (arg === '--apply') args.apply = true;
     else if (arg.startsWith('--mode=')) args.mode = arg.slice('--mode='.length);
     else if (arg.startsWith('--max-age-hours=')) {
       const n = Number.parseInt(arg.slice('--max-age-hours='.length), 10);
       if (Number.isInteger(n) && n > 0) args.maxAgeHours = n;
+    } else {
+      // Catch typos like `--mode age` (space instead of equals) or
+      // misspelled flags before they silently use the default mode.
+      unknown.push(arg);
     }
   }
-  if (!['url', 'age', 'both'].includes(args.mode)) {
-    console.error(`Unknown --mode=${args.mode}; expected url|age|both`);
+  if (unknown.length > 0) {
+    console.error(`Unknown args: ${unknown.join(' ')}`);
+    console.error(`Expected: --mode=${VALID_MODES.join('|')} [--max-age-hours=N] [--apply]`);
+    process.exit(2);
+  }
+  if (!VALID_MODES.includes(args.mode)) {
+    console.error(`Unknown --mode=${args.mode}; expected ${VALID_MODES.join('|')}`);
     process.exit(2);
   }
   return args;
 }
 
-const ARGS = parseArgs(process.argv.slice(2));
-const APPLY = ARGS.apply;
-const MODE = ARGS.mode;
-const MAX_AGE_MS = ARGS.maxAgeHours * 60 * 60 * 1000;
+// Argv-derived state (APPLY, MODE, MAX_AGE_MS) is resolved inside main()
+// instead of at module load so unit tests can `import` this file
+// without parseArgs running against the test-runner's argv.
 const SCAN_PATTERN = 'story:track:v1:*';
 const SCAN_BATCH = 100;
 const SCAN_TIMEOUT_MS = 15_000;
@@ -178,18 +200,39 @@ function summarizePerHostPath(matches) {
   return { byHost: fmt(hostCounts), byPathPattern: fmt(pathPatternCounts) };
 }
 
-function classifyTrack(track, nowMs) {
+/**
+ * Pure classifier — exported so tests can exercise the matrix without
+ * spinning up the script (which has top-level argv side effects).
+ *
+ * @param {Record<string, string>} track — flatArrayToObject of HGETALL result
+ * @param {{ mode: 'url'|'age'|'residue'|'both', maxAgeMs: number, nowMs: number }} opts
+ * @returns {string[]} reasons (subset of ['url', 'age', 'residue']) — empty = no match
+ */
+export function classifyTrack(track, { mode, maxAgeMs, nowMs }) {
   const reasons = [];
-  const link = typeof track.link === 'string' ? track.link : '';
+  const link = typeof track?.link === 'string' ? track.link : '';
 
-  if ((MODE === 'url' || MODE === 'both') && link && isInstitutionalStaticPage(link)) {
+  if ((mode === 'url' || mode === 'both') && link && isInstitutionalStaticPage(link)) {
     reasons.push('url');
   }
 
-  if (MODE === 'age' || MODE === 'both') {
-    const pubMs = Number.parseInt(track.publishedAt ?? '', 10);
-    if (Number.isInteger(pubMs) && pubMs > 0 && nowMs - pubMs > MAX_AGE_MS) {
+  if (mode === 'age' || mode === 'both') {
+    const pubMs = Number.parseInt(track?.publishedAt ?? '', 10);
+    if (Number.isInteger(pubMs) && pubMs > 0 && nowMs - pubMs > maxAgeMs) {
       reasons.push('age');
+    }
+  }
+
+  if (mode === 'residue') {
+    // Match rows where publishedAt is missing or unparseable. This is the
+    // one-shot post-deploy cleanup signal for ingests that pre-date the
+    // PR-3422 HSET write of publishedAt. NOT included in --mode=both
+    // because it deletes by absence-of-evidence, not evidence-of-staleness;
+    // the operator opts in explicitly after waiting ≥1 cron cycle so
+    // active stories have had publishedAt populated by re-mention.
+    const pubMs = Number.parseInt(track?.publishedAt ?? '', 10);
+    if (!Number.isInteger(pubMs) || pubMs <= 0) {
+      reasons.push('residue');
     }
   }
 
@@ -197,6 +240,11 @@ function classifyTrack(track, nowMs) {
 }
 
 async function main() {
+  const ARGS = parseArgs(process.argv.slice(2));
+  const APPLY = ARGS.apply;
+  const MODE = ARGS.mode;
+  const MAX_AGE_MS = ARGS.maxAgeHours * 60 * 60 * 1000;
+
   const { url, token } = getRedisCredentials();
   console.log(
     `[audit] mode=${MODE} ${APPLY ? 'APPLY (will DELETE)' : 'DRY RUN'}` +
@@ -217,7 +265,7 @@ async function main() {
         const key = slice[j];
         const t = tracks[j];
         if (!t || typeof t !== 'object') continue;
-        const reasons = classifyTrack(t, nowMs);
+        const reasons = classifyTrack(t, { mode: MODE, maxAgeMs: MAX_AGE_MS, nowMs });
         if (reasons.length === 0) continue;
         const pubMs = Number.parseInt(t.publishedAt ?? '', 10);
         const ageH = Number.isInteger(pubMs) && pubMs > 0
@@ -291,7 +339,17 @@ async function main() {
   console.log(`[audit] deleted ${matches.length} contaminated entries.`);
 }
 
-main().catch((err) => {
-  console.error('[audit] failed:', err);
-  process.exit(1);
-});
+// Only run main() when this file is invoked directly (not when imported
+// by a unit test). Standard ESM idiom: compare import.meta.url against
+// the resolved CLI entry-point.
+const isDirectInvocation =
+  typeof process !== 'undefined' &&
+  process.argv[1] &&
+  import.meta.url === `file://${process.argv[1]}`;
+
+if (isDirectInvocation) {
+  main().catch((err) => {
+    console.error('[audit] failed:', err);
+    process.exit(1);
+  });
+}

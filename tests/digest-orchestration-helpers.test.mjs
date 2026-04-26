@@ -18,7 +18,9 @@ import assert from 'node:assert/strict';
 import {
   digestWindowStartMs,
   pickWinningCandidateWithPool,
+  readTimeAgeCutoffMs,
   runSynthesisWithFallback,
+  shouldDropTrackByAge,
   subjectForBrief,
 } from '../scripts/lib/digest-orchestration-helpers.mjs';
 
@@ -464,3 +466,107 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     assert.ok(result.synthesis);
   });
 });
+
+// ── readTimeAgeCutoffMs / shouldDropTrackByAge — buildDigest READ-time floor ──
+
+describe('readTimeAgeCutoffMs — window-aware cutoff', () => {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+
+  it('daily user (24h window) → 48h-ago cutoff', () => {
+    const now = Date.UTC(2026, 3, 26, 8, 0, 0);
+    const windowStart = now - 1 * DAY;
+    const cutoff = readTimeAgeCutoffMs(windowStart);
+    // Cutoff = windowStart - 24h buffer = now - 48h
+    assert.equal(now - cutoff, 2 * DAY);
+  });
+
+  it('weekly user (7d window) → 8d-ago cutoff', () => {
+    const now = Date.UTC(2026, 3, 26, 8, 0, 0);
+    const windowStart = now - 7 * DAY;
+    const cutoff = readTimeAgeCutoffMs(windowStart);
+    assert.equal(now - cutoff, 8 * DAY);
+  });
+
+  it('twice-daily user (12h window) → 36h-ago cutoff', () => {
+    const now = Date.UTC(2026, 3, 26, 8, 0, 0);
+    const windowStart = now - 12 * HOUR;
+    const cutoff = readTimeAgeCutoffMs(windowStart);
+    assert.equal(now - cutoff, 36 * HOUR);
+  });
+});
+
+describe('shouldDropTrackByAge — predicate matrix', () => {
+  const cutoff = Date.UTC(2026, 3, 24, 0, 0, 0); // arbitrary fixed cutoff
+
+  it('drops row with publishedAt strictly before cutoff', () => {
+    assert.equal(
+      shouldDropTrackByAge({ publishedAt: String(cutoff - 1) }, cutoff),
+      true,
+    );
+  });
+
+  it('keeps row with publishedAt exactly at cutoff (>= boundary)', () => {
+    assert.equal(
+      shouldDropTrackByAge({ publishedAt: String(cutoff) }, cutoff),
+      false,
+    );
+  });
+
+  it('keeps row with publishedAt after cutoff', () => {
+    assert.equal(
+      shouldDropTrackByAge({ publishedAt: String(cutoff + 1) }, cutoff),
+      false,
+    );
+  });
+
+  it('keeps row with missing publishedAt (legacy back-compat)', () => {
+    assert.equal(shouldDropTrackByAge({}, cutoff), false);
+  });
+
+  it('keeps row with empty-string publishedAt (defensive write from non-finite item)', () => {
+    assert.equal(shouldDropTrackByAge({ publishedAt: '' }, cutoff), false);
+  });
+
+  it('keeps row with unparseable publishedAt (e.g. literal "undefined")', () => {
+    assert.equal(shouldDropTrackByAge({ publishedAt: 'undefined' }, cutoff), false);
+  });
+
+  it('keeps row with zero or negative publishedAt (sentinel guard)', () => {
+    assert.equal(shouldDropTrackByAge({ publishedAt: '0' }, cutoff), false);
+    assert.equal(shouldDropTrackByAge({ publishedAt: '-1' }, cutoff), false);
+  });
+
+  it('handles null/undefined track defensively', () => {
+    assert.equal(shouldDropTrackByAge(null, cutoff), false);
+    assert.equal(shouldDropTrackByAge(undefined, cutoff), false);
+  });
+
+  it('integration: weekly user with 5d-old story is KEPT (window-aware vs naive 48h)', () => {
+    // Regression guard against the pre-fix behavior where the floor was a
+    // hardcoded 48h. A weekly user's 5-day-old story SHOULD survive because
+    // it's well within their 7d digest window.
+    const now = Date.UTC(2026, 3, 26, 8, 0, 0);
+    const weeklyWindowStart = now - 7 * 24 * 60 * 60 * 1000;
+    const weeklyCutoff = readTimeAgeCutoffMs(weeklyWindowStart); // = now - 8d
+    const fiveDaysAgo = now - 5 * 24 * 60 * 60 * 1000;
+    assert.equal(
+      shouldDropTrackByAge({ publishedAt: String(fiveDaysAgo) }, weeklyCutoff),
+      false,
+      '5d-old story must survive a weekly user\'s window — naive 48h would have dropped it',
+    );
+  });
+
+  it('integration: residue case (4-month-old Pentagon item) is dropped for daily user', () => {
+    const now = Date.UTC(2026, 3, 26, 8, 0, 0);
+    const dailyWindowStart = now - 24 * 60 * 60 * 1000;
+    const dailyCutoff = readTimeAgeCutoffMs(dailyWindowStart); // = now - 48h
+    const fourMonthsAgo = Date.UTC(2026, 0, 9, 0, 0, 0); // 2026-01-09
+    assert.equal(
+      shouldDropTrackByAge({ publishedAt: String(fourMonthsAgo) }, dailyCutoff),
+      true,
+      'Months-old residue with a real publishedAt must be dropped',
+    );
+  });
+});
+

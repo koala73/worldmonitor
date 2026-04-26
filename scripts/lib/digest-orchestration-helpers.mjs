@@ -199,3 +199,51 @@ export async function runSynthesisWithFallback(userId, stories, sensitivity, ctx
   noteTrace(3, 'success');
   return { synthesis: null, level: 3 };
 }
+
+/**
+ * READ-time freshness predicate. Returns true if the story:track:v1 row
+ * should be dropped because its source `publishedAt` is older than the
+ * cutoff. Used by buildDigest to keep pre-deploy residue (whose ingest
+ * gate has since been tightened) from shipping in briefs.
+ *
+ * Behaviour matrix:
+ *   - publishedAt is a positive integer epoch-ms AND < cutoff → drop (true).
+ *   - publishedAt is a positive integer epoch-ms AND ≥ cutoff → keep (false).
+ *   - publishedAt is missing/unparseable/zero/negative → keep (false).
+ *
+ * The "missing → keep" branch is back-compat for legacy story:track:v1
+ * rows written before publishedAt was persisted. Pre-deploy residue
+ * with no publishedAt is NOT caught here — handle it via the audit
+ * script's `--mode=residue` (one-shot eviction). Once that has run AND
+ * ≥1 cron cycle has refreshed publishedAt on still-active rows, any
+ * row reaching this predicate without publishedAt is anomalous, not
+ * residue.
+ *
+ * See: skill ingest-gate-tightening-leaves-residue-in-read-path.
+ *
+ * @param {Record<string, string> | null | undefined} track
+ * @param {number} ageCutoffMs — drop rows with publishedAt strictly less than this
+ * @returns {boolean}
+ */
+export function shouldDropTrackByAge(track, ageCutoffMs) {
+  const pubMs = Number.parseInt(track?.publishedAt ?? '', 10);
+  if (!Number.isInteger(pubMs) || pubMs <= 0) return false;
+  return pubMs < ageCutoffMs;
+}
+
+/**
+ * Compute the READ-time freshness cutoff for a given digest window.
+ * Cutoff is anchored to `windowStartMs` (from `digestWindowStartMs`)
+ * minus a 24h buffer that accommodates sustained stories whose first
+ * mention sits just before the window edge.
+ *
+ * Daily user (24h window) → 48h-ago cutoff.
+ * Weekly user (7d window) → 8d-ago cutoff.
+ *
+ * @param {number} windowStartMs
+ * @returns {number}
+ */
+export function readTimeAgeCutoffMs(windowStartMs) {
+  const STALE_BUFFER_MS = 24 * 60 * 60 * 1000;
+  return windowStartMs - STALE_BUFFER_MS;
+}

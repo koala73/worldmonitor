@@ -41,7 +41,9 @@ import {
 import {
   digestWindowStartMs,
   pickWinningCandidateWithPool,
+  readTimeAgeCutoffMs,
   runSynthesisWithFallback,
+  shouldDropTrackByAge,
   subjectForBrief,
 } from './lib/digest-orchestration-helpers.mjs';
 import { injectEmailSummary } from './lib/email-summary-html.mjs';
@@ -453,22 +455,13 @@ async function buildDigest(rule, windowStartMs) {
     hashes.map((h) => ['HGETALL', `story:track:v1:${h}`]),
   );
 
-  // READ-time freshness floor: drop story:track:v1 rows whose source
-  // publishedAt is older than DIGEST_READ_MAX_AGE_HOURS (default 48h).
-  // This complements PR #3417's INGEST-time floor by closing the residue
-  // window: when an ingest-side gate is tightened (e.g. when:1d added to a
-  // gn() query), pre-deploy entries persist in the accumulator + track
-  // table until natural TTL drainage. Without this READ-time check, those
-  // residual entries continue to ship in briefs even though their source
-  // pubDate is months old. See:
-  //   skill: ingest-gate-tightening-leaves-residue-in-read-path
-  // Set DIGEST_READ_MAX_AGE_HOURS=999 to disable (operator kill switch).
-  const readMaxAgeHoursRaw = Number.parseInt(process.env.DIGEST_READ_MAX_AGE_HOURS ?? '', 10);
-  const readMaxAgeHours = Number.isInteger(readMaxAgeHoursRaw) && readMaxAgeHoursRaw > 0
-    ? readMaxAgeHoursRaw
-    : 48;
-  const readMaxAgeMs = readMaxAgeHours * 60 * 60 * 1000;
-  const nowMs = Date.now();
+  // READ-time freshness cutoff is anchored to the rule's own digest
+  // window. Daily user (24h window) → 48h cutoff; weekly user (7d
+  // window) → 8d cutoff. See: skill ingest-gate-tightening-leaves-
+  // residue-in-read-path. Legacy rows without publishedAt fall through
+  // (back-compat); pre-deploy residue with no publishedAt is handled
+  // by audit --mode=residue (one-shot).
+  const ageCutoffMs = readTimeAgeCutoffMs(windowStartMs);
 
   const stories = [];
   let droppedStaleAtRead = 0;
@@ -478,12 +471,7 @@ async function buildDigest(rule, windowStartMs) {
     const track = flatArrayToObject(raw);
     if (!track.title || !track.severity) continue;
 
-    // Source publishedAt freshness check. Track rows missing publishedAt
-    // (legacy entries from before the field was persisted) are NOT dropped
-    // here — fall through to the existing gates so the change is back-
-    // compat for any pre-existing rows without the field.
-    const pubMs = Number.parseInt(track.publishedAt ?? '', 10);
-    if (Number.isInteger(pubMs) && pubMs > 0 && nowMs - pubMs > readMaxAgeMs) {
+    if (shouldDropTrackByAge(track, ageCutoffMs)) {
       droppedStaleAtRead++;
       continue;
     }
@@ -509,9 +497,10 @@ async function buildDigest(rule, windowStartMs) {
   }
 
   if (droppedStaleAtRead > 0) {
+    const cutoffH = Math.round((Date.now() - ageCutoffMs) / (60 * 60 * 1000));
     console.warn(
       `[digest] buildDigest read-time freshness floor dropped ${droppedStaleAtRead} ` +
-        `stale items (max age: ${readMaxAgeHours}h) — likely pre-deploy residue`,
+        `stale items (window cutoff: ${cutoffH}h ago) — likely pre-deploy residue`,
     );
   }
 

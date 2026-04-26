@@ -709,7 +709,12 @@ function buildStoryTrackHsetFields(
     // age-mode — can drop residual stale entries that pre-date an
     // ingest-side gate tightening. See:
     //   skill: ingest-gate-tightening-leaves-residue-in-read-path.
-    'publishedAt', String(item.publishedAt),
+    // Defensive cast: write '' when publishedAt isn't a finite number so
+    // the field never holds the literal "undefined"/"NaN" string. Read-side
+    // parseInt('') yields NaN → falls through the missing-field branch
+    // (treats as legacy row) instead of being mis-classified as a stale
+    // row with a bogus timestamp.
+    'publishedAt', Number.isFinite(item.publishedAt) ? String(item.publishedAt) : '',
   ];
 }
 
