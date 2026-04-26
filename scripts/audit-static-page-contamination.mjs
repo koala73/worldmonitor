@@ -17,16 +17,18 @@
 //                    other source where the publisher's pubDate is honest.
 //                    REQUIRES rows to have publishedAt persisted (PR #3422+).
 //
-//   --mode=residue : match rows where track.publishedAt is missing/unparseable.
-//                    This is the one-shot eviction mode for the immediate
-//                    PR-3422 deploy: pre-PR-3422 ingests never persisted
-//                    publishedAt, so neither --mode=age NOR the read-time
-//                    freshness floor can see them. Run AFTER waiting ≥1 cron
-//                    cycle so still-active stories have been re-mentioned and
-//                    had publishedAt added via HSET. Anything still missing
-//                    the field at that point is residue that won't be re-
-//                    mentioned (typically because the new ingest gate now
-//                    filters it out).
+//   --mode=residue : match rows where track.publishedAt is missing/unparseable
+//                    AND track.lastSeen is older than --residue-min-stale-hours
+//                    (default 24). The lastSeen guard is the safety constraint:
+//                    a row that was re-mentioned recently MUST have publishedAt
+//                    (this PR's HSET always writes it), so a row missing the
+//                    field BUT with fresh lastSeen is anomalous and NOT touched.
+//                    Only rows that are both missing publishedAt AND haven't
+//                    been touched in N hours are treated as residue. This
+//                    prevents deleting legitimate recent stories that simply
+//                    didn't re-surface in the first post-deploy cron cycle.
+//                    Operator runbook: wait ≥24h post-deploy, then run with
+//                    default --residue-min-stale-hours=24.
 //
 //   --mode=both    : run url + age. Does NOT include residue (use --mode=residue
 //                    explicitly so the operator opts into the destructive scan).
@@ -35,7 +37,8 @@
 //   node scripts/audit-static-page-contamination.mjs                          # dry run, URL mode
 //   node scripts/audit-static-page-contamination.mjs --mode=age               # dry run, age mode (48h)
 //   node scripts/audit-static-page-contamination.mjs --mode=age --max-age-hours=24
-//   node scripts/audit-static-page-contamination.mjs --mode=residue --apply   # one-shot post-PR-3422 cleanup
+//   node scripts/audit-static-page-contamination.mjs --mode=residue --apply              # one-shot, default 24h staleness gate
+//   node scripts/audit-static-page-contamination.mjs --mode=residue --residue-min-stale-hours=48 --apply
 //   node scripts/audit-static-page-contamination.mjs --mode=both --apply      # delete by URL OR age signal
 //
 // Pure-helper coverage lives in tests/url-classifier.test.mjs. The Redis
@@ -49,7 +52,7 @@ import { getRedisCredentials } from './_seed-utils.mjs';
 const VALID_MODES = ['url', 'age', 'residue', 'both'];
 
 export function parseArgs(argv) {
-  const args = { mode: 'url', maxAgeHours: 48, apply: false };
+  const args = { mode: 'url', maxAgeHours: 48, residueMinStaleHours: 24, apply: false };
   const unknown = [];
   for (const arg of argv) {
     if (arg === '--apply') args.apply = true;
@@ -57,6 +60,9 @@ export function parseArgs(argv) {
     else if (arg.startsWith('--max-age-hours=')) {
       const n = Number.parseInt(arg.slice('--max-age-hours='.length), 10);
       if (Number.isInteger(n) && n > 0) args.maxAgeHours = n;
+    } else if (arg.startsWith('--residue-min-stale-hours=')) {
+      const n = Number.parseInt(arg.slice('--residue-min-stale-hours='.length), 10);
+      if (Number.isInteger(n) && n > 0) args.residueMinStaleHours = n;
     } else {
       // Catch typos like `--mode age` (space instead of equals) or
       // misspelled flags before they silently use the default mode.
@@ -65,7 +71,7 @@ export function parseArgs(argv) {
   }
   if (unknown.length > 0) {
     console.error(`Unknown args: ${unknown.join(' ')}`);
-    console.error(`Expected: --mode=${VALID_MODES.join('|')} [--max-age-hours=N] [--apply]`);
+    console.error(`Expected: --mode=${VALID_MODES.join('|')} [--max-age-hours=N] [--residue-min-stale-hours=N] [--apply]`);
     process.exit(2);
   }
   if (!VALID_MODES.includes(args.mode)) {
@@ -205,10 +211,15 @@ function summarizePerHostPath(matches) {
  * spinning up the script (which has top-level argv side effects).
  *
  * @param {Record<string, string>} track — flatArrayToObject of HGETALL result
- * @param {{ mode: 'url'|'age'|'residue'|'both', maxAgeMs: number, nowMs: number }} opts
+ * @param {{
+ *   mode: 'url'|'age'|'residue'|'both',
+ *   maxAgeMs: number,
+ *   nowMs: number,
+ *   residueMinStaleMs?: number,
+ * }} opts
  * @returns {string[]} reasons (subset of ['url', 'age', 'residue']) — empty = no match
  */
-export function classifyTrack(track, { mode, maxAgeMs, nowMs }) {
+export function classifyTrack(track, { mode, maxAgeMs, nowMs, residueMinStaleMs }) {
   const reasons = [];
   const link = typeof track?.link === 'string' ? track.link : '';
 
@@ -224,14 +235,34 @@ export function classifyTrack(track, { mode, maxAgeMs, nowMs }) {
   }
 
   if (mode === 'residue') {
-    // Match rows where publishedAt is missing or unparseable. This is the
-    // one-shot post-deploy cleanup signal for ingests that pre-date the
-    // PR-3422 HSET write of publishedAt. NOT included in --mode=both
-    // because it deletes by absence-of-evidence, not evidence-of-staleness;
-    // the operator opts in explicitly after waiting ≥1 cron cycle so
-    // active stories have had publishedAt populated by re-mention.
+    // SAFETY-CRITICAL: residue is the only mode that deletes by absence-of-
+    // evidence (no publishedAt) rather than evidence-of-staleness. Without
+    // a guard, this would delete EVERY pre-PR-3422 row including legitimate
+    // recent stories that happen not to have been re-mentioned yet.
+    //
+    // Two conditions required:
+    //   1. publishedAt is missing/unparseable (legacy row, never had the
+    //      field, OR future write race that left the field empty).
+    //   2. lastSeen is older than residueMinStaleMs (default 24h). Active
+    //      stories get HSET-touched on every re-mention; if a row hasn't
+    //      been touched in 24h it's not actively in any feed's results,
+    //      meaning the new ingest gate (when:1d) is correctly excluding
+    //      it. Safe to evict.
+    //
+    // Defensive fall-throughs: if lastSeen is missing/unparseable, treat
+    // the row as if it were touched at epoch (i.e., consider it stale).
+    // That's the safer default for residue mode — we're already in an
+    // operator-opt-in destructive path; data without lastSeen is anomalous
+    // enough that erring toward "evict" is acceptable.
     const pubMs = Number.parseInt(track?.publishedAt ?? '', 10);
-    if (!Number.isInteger(pubMs) || pubMs <= 0) {
+    if (Number.isInteger(pubMs) && pubMs > 0) return reasons; // has publishedAt → not residue
+
+    const minStaleMs = residueMinStaleMs ?? 24 * 60 * 60 * 1000;
+    const lastSeenMs = Number.parseInt(track?.lastSeen ?? '', 10);
+    const lastSeenAge = Number.isInteger(lastSeenMs) && lastSeenMs > 0
+      ? nowMs - lastSeenMs
+      : Number.POSITIVE_INFINITY; // missing lastSeen → treat as ancient
+    if (lastSeenAge >= minStaleMs) {
       reasons.push('residue');
     }
   }
@@ -244,11 +275,17 @@ async function main() {
   const APPLY = ARGS.apply;
   const MODE = ARGS.mode;
   const MAX_AGE_MS = ARGS.maxAgeHours * 60 * 60 * 1000;
+  const RESIDUE_MIN_STALE_MS = ARGS.residueMinStaleHours * 60 * 60 * 1000;
 
   const { url, token } = getRedisCredentials();
+  const modeAnnotation =
+    MODE === 'age' || MODE === 'both'
+      ? ` max-age-hours=${ARGS.maxAgeHours}`
+      : MODE === 'residue'
+        ? ` residue-min-stale-hours=${ARGS.residueMinStaleHours}`
+        : '';
   console.log(
-    `[audit] mode=${MODE} ${APPLY ? 'APPLY (will DELETE)' : 'DRY RUN'}` +
-      (MODE === 'age' || MODE === 'both' ? ` max-age-hours=${ARGS.maxAgeHours}` : ''),
+    `[audit] mode=${MODE} ${APPLY ? 'APPLY (will DELETE)' : 'DRY RUN'}${modeAnnotation}`,
   );
   console.log(`[audit] scanning ${SCAN_PATTERN}…`);
 
@@ -265,7 +302,12 @@ async function main() {
         const key = slice[j];
         const t = tracks[j];
         if (!t || typeof t !== 'object') continue;
-        const reasons = classifyTrack(t, { mode: MODE, maxAgeMs: MAX_AGE_MS, nowMs });
+        const reasons = classifyTrack(t, {
+          mode: MODE,
+          maxAgeMs: MAX_AGE_MS,
+          nowMs,
+          residueMinStaleMs: RESIDUE_MIN_STALE_MS,
+        });
         if (reasons.length === 0) continue;
         const pubMs = Number.parseInt(t.publishedAt ?? '', 10);
         const ageH = Number.isInteger(pubMs) && pubMs > 0

@@ -63,43 +63,124 @@ describe('classifyTrack — age mode', () => {
   });
 });
 
-describe('classifyTrack — residue mode (the P1 reviewer fix)', () => {
-  it('matches rows missing publishedAt entirely (the actual pre-PR-3422 residue)', () => {
-    const t = { title: 'Stale Pentagon item', link: 'https://news.google.com/x' };
-    const r = classifyTrack(t, { mode: 'residue', maxAgeMs: 0, nowMs: NOW });
+describe('classifyTrack — residue mode (the P1 reviewer fix + safety guard)', () => {
+  // Default test setup: lastSeen 48h ago (well past the 24h default
+  // staleness gate), so missing publishedAt → residue.
+  const STALE_LAST_SEEN = String(NOW - 48 * HOUR);
+
+  it('matches rows missing publishedAt AND lastSeen older than min-stale (the actual residue)', () => {
+    const t = {
+      title: 'Stale Pentagon item',
+      link: 'https://news.google.com/x',
+      lastSeen: STALE_LAST_SEEN,
+    };
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: 24 * HOUR,
+    });
     assert.deepEqual(r, ['residue']);
   });
 
-  it('matches rows with empty-string publishedAt (defensive write)', () => {
-    const r = classifyTrack({ publishedAt: '' }, { mode: 'residue', maxAgeMs: 0, nowMs: NOW });
+  it('SAFETY: does NOT match rows missing publishedAt if lastSeen is fresh (P2 reviewer fix)', () => {
+    // The reviewer-flagged risk: a legitimate recent story that just
+    // hasn't had publishedAt populated yet (write race, or first cron
+    // tick after deploy hasn't re-mentioned it but it WAS touched
+    // recently). Must NOT be deleted.
+    const t = {
+      title: 'Recent legitimate story',
+      lastSeen: String(NOW - 2 * HOUR), // 2h ago — well within fresh window
+    };
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: 24 * HOUR,
+    });
+    assert.deepEqual(r, [], 'fresh lastSeen must protect the row');
+  });
+
+  it('boundary: lastSeen exactly at min-stale threshold matches (>= boundary)', () => {
+    const t = {
+      lastSeen: String(NOW - 24 * HOUR),
+    };
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: 24 * HOUR,
+    });
     assert.deepEqual(r, ['residue']);
   });
 
-  it('matches rows with literal "undefined"/"NaN" publishedAt', () => {
-    assert.deepEqual(
-      classifyTrack({ publishedAt: 'undefined' }, { mode: 'residue', maxAgeMs: 0, nowMs: NOW }),
-      ['residue'],
+  it('boundary: lastSeen 1ms newer than threshold does NOT match', () => {
+    const t = {
+      lastSeen: String(NOW - 24 * HOUR + 1),
+    };
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: 24 * HOUR,
+    });
+    assert.deepEqual(r, []);
+  });
+
+  it('matches rows with empty-string publishedAt + stale lastSeen', () => {
+    const r = classifyTrack(
+      { publishedAt: '', lastSeen: STALE_LAST_SEEN },
+      { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: 24 * HOUR },
     );
+    assert.deepEqual(r, ['residue']);
+  });
+
+  it('matches rows with literal "undefined"/"NaN" publishedAt + stale lastSeen', () => {
     assert.deepEqual(
-      classifyTrack({ publishedAt: 'NaN' }, { mode: 'residue', maxAgeMs: 0, nowMs: NOW }),
+      classifyTrack(
+        { publishedAt: 'undefined', lastSeen: STALE_LAST_SEEN },
+        { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: 24 * HOUR },
+      ),
       ['residue'],
     );
   });
 
   it('does NOT match rows with a parseable publishedAt (residue is absence-of-evidence)', () => {
-    const t = { publishedAt: String(NOW - 100 * 24 * HOUR) }; // 100 days old
-    const r = classifyTrack(t, { mode: 'residue', maxAgeMs: 0, nowMs: NOW });
+    const t = {
+      publishedAt: String(NOW - 100 * 24 * HOUR), // 100 days old
+      lastSeen: STALE_LAST_SEEN,
+    };
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: 24 * HOUR,
+    });
     assert.deepEqual(r, [], 'old-but-known should be caught by --mode=age, not --mode=residue');
+  });
+
+  it('treats missing lastSeen as ancient (errs toward eviction in opt-in destructive mode)', () => {
+    const r = classifyTrack(
+      { title: 'Anomalous row, no lastSeen' },
+      { mode: 'residue', maxAgeMs: 0, nowMs: NOW, residueMinStaleMs: 24 * HOUR },
+    );
+    assert.deepEqual(r, ['residue']);
   });
 
   it('does NOT include url match in residue mode (operator opts in explicitly)', () => {
     const t = {
       link: 'https://www.defense.gov/About/Section-508/',
-      // No publishedAt
+      lastSeen: STALE_LAST_SEEN,
     };
-    const r = classifyTrack(t, { mode: 'residue', maxAgeMs: 0, nowMs: NOW });
-    // residue matches because publishedAt is missing; url is NOT additionally
-    // included because residue mode is single-classifier by design.
+    const r = classifyTrack(t, {
+      mode: 'residue',
+      maxAgeMs: 0,
+      nowMs: NOW,
+      residueMinStaleMs: 24 * HOUR,
+    });
+    // residue matches because publishedAt is missing AND lastSeen is stale;
+    // url is NOT additionally included because residue mode is
+    // single-classifier by design.
     assert.deepEqual(r, ['residue']);
   });
 });
@@ -143,11 +224,24 @@ describe('classifyTrack — both mode (url ∪ age)', () => {
 });
 
 describe('parseArgs — flag handling', () => {
-  it('defaults to mode=url, maxAgeHours=48, apply=false', () => {
+  it('defaults to mode=url, maxAgeHours=48, residueMinStaleHours=24, apply=false', () => {
     const a = parseArgs([]);
     assert.equal(a.mode, 'url');
     assert.equal(a.maxAgeHours, 48);
+    assert.equal(a.residueMinStaleHours, 24);
     assert.equal(a.apply, false);
+  });
+
+  it('--residue-min-stale-hours=N overrides default', () => {
+    assert.equal(parseArgs(['--residue-min-stale-hours=48']).residueMinStaleHours, 48);
+  });
+
+  it('--residue-min-stale-hours=foo silently ignores (default kept)', () => {
+    assert.equal(parseArgs(['--residue-min-stale-hours=foo']).residueMinStaleHours, 24);
+  });
+
+  it('--residue-min-stale-hours=0 ignored (positive-only)', () => {
+    assert.equal(parseArgs(['--residue-min-stale-hours=0']).residueMinStaleHours, 24);
   });
 
   it('--apply flips to true', () => {
