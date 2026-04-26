@@ -189,17 +189,13 @@ export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStr
   const normalizedChannel = channel.replace(/^@/, '');
   const cacheKey = `aviation:yt-live:vid:${videoId}:ch:${normalizedChannel}:v1`;
 
-  try {
-    const cached = await cachedFetchJson<GetYoutubeLiveStreamInfoResponse>(
-      cacheKey,
-      POSITIVE_TTL,
-      () => fetchLiveStreamInfo(channel, videoId, params.toString()),
-      NEGATIVE_TTL,
-    );
-    if (cached) return cached;
-  } catch {
-    // Redis unavailable — fall through to live response.
-  }
+  const cached = await cachedFetchJson<GetYoutubeLiveStreamInfoResponse>(
+    cacheKey,
+    POSITIVE_TTL,
+    () => fetchLiveStreamInfo(channel, videoId, params.toString()),
+    NEGATIVE_TTL,
+  );
+  if (cached) return cached;
 
   return emptyResult('Failed to detect live status', Boolean(channel));
 };
