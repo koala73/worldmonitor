@@ -7,6 +7,7 @@ import type {
 
 import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
+import { isInRankableUniverse } from './_rankable-universe';
 import {
   GREY_OUT_COVERAGE_THRESHOLD,
   RESILIENCE_INTERVAL_KEY_PREFIX,
@@ -99,11 +100,32 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     // stale-formula hits so the recompute-and-publish path below runs.
     const tagMatches = cached != null && rankingCacheTagMatches(cached);
     if (tagMatches && (cached!.items.length > 0 || (cached!.greyedOut?.length ?? 0) > 0)) {
+      // Plan 2026-04-26-002 §U2 (PR 1, review fixup): defense-in-depth
+      // universe filter at the cached-response read too. Without this,
+      // the cache hit path returns a stale 222-country payload (pre-PR-1
+      // ranking) until either the 12h TTL expires or someone runs
+      // ?refresh=1. The filter is idempotent — a fresh post-PR-1 ranking
+      // is already universe-filtered, so this is a no-op then; a stale
+      // pre-PR-1 cached payload gets filtered at handler-time. Same
+      // recipe as `_shared.ts:listScorableCountries`. The filter
+      // preserves the rest of the cache hit (rankCounts, percentile
+      // anchors, etc.) so we don't pay the recompute cost just for
+      // universe membership.
+      const filteredItems = cached!.items.filter((item) => isInRankableUniverse(item.countryCode));
+      const filteredGreyedOut = (cached!.greyedOut ?? []).filter((item) => isInRankableUniverse(item.countryCode));
+      const droppedCount = (cached!.items.length - filteredItems.length) + ((cached!.greyedOut?.length ?? 0) - filteredGreyedOut.length);
+      if (droppedCount > 0) {
+        console.log(`[resilience-ranking] Filtered ${droppedCount} non-rankable territories from cached ranking response (transitional — next recompute will publish a clean payload)`);
+      }
       // Strip the cache-only tag before returning to callers so the
       // wire shape matches the generated proto response type.
       const { _formula: _drop, ...publicResponse } = cached!;
       void _drop;
-      return publicResponse as GetResilienceRankingResponse;
+      return {
+        ...(publicResponse as GetResilienceRankingResponse),
+        items: filteredItems,
+        greyedOut: filteredGreyedOut,
+      };
     }
   }
 

@@ -379,29 +379,40 @@ describe('resilience ranking contracts', () => {
       // formula check. An untagged sentinel would be silently
       // rejected by the formula gate and the refresh path would not
       // get tested as intended.
-      const stale = { items: [{ countryCode: 'ZZ', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [], _formula: 'd6' };
+      // Plan 2026-04-26-002 §U2 fixup: the stale-cache sentinel must use
+      // an ISO2 in the rankable universe (193 UN + 3 SARs). Previously
+      // this test used 'ZZ' but PR #3435's handler-side universe filter
+      // would correctly drop ZZ as non-rankable, defeating the
+      // auth-gate test's intent (which is "stale cached payload is
+      // returned when refresh is unauthenticated", not "any sentinel").
+      // 'NR' (Nauru) is a UN member with sparse data — perfect for the
+      // sentinel: real country, but won't accidentally appear in the
+      // recomputed ranking (NR is in static-index countries=['NO','US']
+      // fixture? No — but the auth-failed path returns the stale cache
+      // unmodified, so NR survives the cache-filter).
+      const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [], _formula: 'd6' };
       redis.set('resilience:ranking:v15', JSON.stringify(stale));
 
       // No X-WorldMonitor-Key → refresh must be ignored, stale cache returned.
       const unauth = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1');
       const unauthResp = await getResilienceRanking({ request: unauth } as never, {});
       assert.equal(unauthResp.items.length, 1);
-      assert.equal(unauthResp.items[0]?.countryCode, 'ZZ', 'refresh=1 without key must fall back to cached response');
+      assert.equal(unauthResp.items[0]?.countryCode, 'NR', 'refresh=1 without key must fall back to cached response');
 
       // Wrong key → same as no key.
       const wrongKey = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
         headers: { 'X-WorldMonitor-Key': 'bogus' },
       });
       const wrongResp = await getResilienceRanking({ request: wrongKey } as never, {});
-      assert.equal(wrongResp.items[0]?.countryCode, 'ZZ', 'refresh=1 with wrong key must fall back to cached response');
+      assert.equal(wrongResp.items[0]?.countryCode, 'NR', 'refresh=1 with wrong key must fall back to cached response');
 
-      // Valid seed key → refresh is honored, ZZ is NOT in the recomputed response.
+      // Valid seed key → refresh is honored, NR is NOT in the recomputed response (recompute uses static index = ['NO','US']).
       const authed = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
         headers: { 'X-WorldMonitor-Key': 'seed-secret' },
       });
       const authedResp = await getResilienceRanking({ request: authed } as never, {});
       const codes = (authedResp.items.concat(authedResp.greyedOut ?? [])).map((i) => i.countryCode);
-      assert.ok(!codes.includes('ZZ'), 'refresh=1 with valid seed key must recompute');
+      assert.ok(!codes.includes('NR'), 'refresh=1 with valid seed key must recompute');
     } finally {
       if (prevValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
       else process.env.WORLDMONITOR_VALID_KEYS = prevValidKeys;
