@@ -76,7 +76,11 @@ describe('tariffTrendsUs health-check maxStaleMin must not exceed TARIFF_TTL (si
   }
 
   function extractMaxStaleMin(name) {
-    const re = new RegExp(`${name}:\\s*\\{[^}]*maxStaleMin:\\s*(\\d+)`, 'm');
+    // Lazy `[^}]*?` instead of greedy + `ms` flag so the pattern still works
+    // if the entry ever grows multi-line or contains nested inline objects.
+    // Failure mode is noisy regardless — test throws when no match — but the
+    // lazy form is more forgiving against future formatting changes.
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
     const m = healthSrc.match(re);
     if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
     return parseInt(m[1], 10);
