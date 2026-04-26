@@ -160,6 +160,17 @@ export const IMPUTE = {
   // (substantive absence, not imputation — see plan §3.4 "What happens
   // to no-SWF countries").
   recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  // Plan 2026-04-26-001 §U2 — gated GPI-only impute for socialCohesion.
+  // These two entries fire ONLY when the dim is operating in degraded
+  // GPI-only mode (i.e. country is absent from the displacement registry).
+  // Both score lower than the GPI-norm output for low-violence countries,
+  // pulling the blend down so tiny peaceful states (TV, PW, NR, MC) don't
+  // ride GPI-only to a near-perfect dim score. For countries WITH observed
+  // displacement and zero unrest events, unrest is imputed at
+  // `unhcrDisplacement.score` (85) instead — preserving Iceland/Norway
+  // scoring (peaceful + fully-monitored should NOT regress).
+  socialCohesionGpiOnlyDisplacement: { score: 70, certaintyCoverage: 0.6, imputationClass: 'stable-absence' },
+  socialCohesionGpiOnlyUnrest:       { score: 70, certaintyCoverage: 0.5, imputationClass: 'stable-absence' },
 } as const satisfies Record<string, ImputationEntry>;
 
 interface StaticIndicatorValue {
@@ -1385,7 +1396,15 @@ export async function scoreLogisticsSupply(
   const transitStress = getTransitDisruptionScore(transitSummariesRaw);
 
   const tradeToGdp = safeNum(staticRecord?.tradeToGdp?.tradeToGdpPct);
-  const tradeExposure = staticRecord == null ? null : (tradeToGdp != null ? Math.min(tradeToGdp / 50, 1.0) : 0.5);
+  // Plan 2026-04-26-001 §U1: removed the prior `0.5` default fallback
+  // for missing `tradeToGdp`. The `100 * (1 - tradeExposure)` neutralizer
+  // below intentionally suppresses global-stress penalties for closed
+  // economies, but the 0.5 default extended that suppression to countries
+  // with NO observed trade-to-GDP at all (tiny island states),
+  // inflating their shipping/transit components to ~75. Now: missing
+  // tradeToGdp drops the exposure-weighted components entirely (cov derate)
+  // rather than imputing them at an "average openness" assumption.
+  const tradeExposure = tradeToGdp != null ? Math.min(tradeToGdp / 50, 1.0) : null;
 
   const shippingScore = shippingStress == null ? null : normalizeLowerBetter(shippingStress, 0, 100);
   const transitScore = transitStress == null ? null : normalizeLowerBetter(transitStress, 0, 30);
@@ -1635,19 +1654,92 @@ export async function scoreSocialCohesion(
   const displacementMetric = safeNum(displacement?.totalDisplaced);
   const unrestMetric = unrest.unrestCount + Math.sqrt(unrest.fatalities);
 
-  return weightedBlend([
-    // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
-    // above observed max) so the worst-peace countries score near 0, not 20.
-    // The old anchor of 4.0 gave Yemen (3.4) a score of 20 instead of ~8.
-    { score: gpiScore == null ? null : normalizeLowerBetter(gpiScore, 1.0, 3.6), weight: 0.55 },
-    {
-      score: displacementMetric == null
-        ? null
-        : normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7),
+  // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
+  // above observed max) so the worst-peace countries score near 0, not 20.
+  // The old anchor of 4.0 gave Yemen (3.4) a score of 20 instead of ~8.
+  const gpiRow: WeightedMetric = {
+    score: gpiScore == null ? null : normalizeLowerBetter(gpiScore, 1.0, 3.6),
+    weight: 0.55,
+  };
+
+  // Plan 2026-04-26-001 §U2: gated impute logic for displacement and unrest.
+  //
+  //   if displacementRaw is null:                  // seed outage
+  //     drop displacement weight
+  //   elif country not in displacement registry:   // GPI-only mode
+  //     impute displacement at 70/0.6
+  //     if unrestRaw present and zero unrest:
+  //       impute unrest at 70/0.5  (gated to GPI-only mode)
+  //   elif displacement metric exists:             // happy path
+  //     score directly
+  //     if unrest count == 0:
+  //       impute unrest at unhcrDisplacement.score (85)  // peaceful + observed
+  //
+  // Rationale: tiny states with no observed displacement/unrest were
+  // collapsing to GPI-only and inflating to ~95. Lower impute values in
+  // GPI-only mode pull the blend down. Countries WITH observed displacement
+  // and zero unrest events keep the historical "stable-absence ≈ 85" anchor
+  // so Iceland/Norway don't regress.
+  let displacementRow: WeightedMetric;
+  let unrestRow: WeightedMetric;
+
+  if (displacementRaw == null) {
+    // Seed outage — drop displacement weight (NOT imputed).
+    displacementRow = { score: null, weight: 0.25 };
+  } else if (displacementMetric == null) {
+    // Country not in registry → GPI-only mode. Impute at lower-than-GPI
+    // value to pull the blend down for tiny peaceful states.
+    displacementRow = {
+      score: IMPUTE.socialCohesionGpiOnlyDisplacement.score,
       weight: 0.25,
-    },
-    { score: unrestRaw != null ? normalizeLowerBetter(unrestMetric, 0, 20) : null, weight: 0.2 },
-  ]);
+      certaintyCoverage: IMPUTE.socialCohesionGpiOnlyDisplacement.certaintyCoverage,
+      imputed: true,
+      imputationClass: IMPUTE.socialCohesionGpiOnlyDisplacement.imputationClass,
+    };
+  } else {
+    // Happy path: country observed in displacement registry.
+    displacementRow = {
+      score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7),
+      weight: 0.25,
+    };
+  }
+
+  if (unrestRaw == null) {
+    // Seed outage — drop unrest weight (NOT imputed).
+    unrestRow = { score: null, weight: 0.2 };
+  } else if (unrest.unrestCount === 0 && unrest.fatalities === 0) {
+    // Zero unrest events. Two sub-cases:
+    //   (a) GPI-only mode (displacement also missing) → impute at the
+    //       lower GPI-only-mode value to pull the blend down for tiny states.
+    //   (b) Happy path (displacement observed) → impute at the historical
+    //       "stable-absence ≈ 85" value matching unhcrDisplacement.score
+    //       so peaceful + fully-monitored countries (Iceland, Norway) don't regress.
+    if (displacementMetric == null) {
+      unrestRow = {
+        score: IMPUTE.socialCohesionGpiOnlyUnrest.score,
+        weight: 0.2,
+        certaintyCoverage: IMPUTE.socialCohesionGpiOnlyUnrest.certaintyCoverage,
+        imputed: true,
+        imputationClass: IMPUTE.socialCohesionGpiOnlyUnrest.imputationClass,
+      };
+    } else {
+      unrestRow = {
+        score: IMPUTE.unhcrDisplacement.score,
+        weight: 0.2,
+        certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage,
+        imputed: true,
+        imputationClass: IMPUTE.unhcrDisplacement.imputationClass,
+      };
+    }
+  } else {
+    // Observed unrest events — score directly.
+    unrestRow = {
+      score: normalizeLowerBetter(unrestMetric, 0, 20),
+      weight: 0.2,
+    };
+  }
+
+  return weightedBlend([gpiRow, displacementRow, unrestRow]);
 }
 
 export async function scoreBorderSecurity(
@@ -1922,11 +2014,22 @@ export async function scoreSovereignFiscalBuffer(
   }
   const entry = payload.countries[countryCode.toUpperCase()] ?? null;
   // Path 3 — seed present, country not in manifest → no SWF.
+  // Plan 2026-04-26-001 §U3: reframed from "substantive absence
+  // (score 0, full coverage 1.0)" to "dim-not-applicable
+  // (score 0, ZERO coverage)". The original framing penalized advanced
+  // economies (DE, JP, FR, IT) that hold reserves through Treasury /
+  // central-bank channels rather than dedicated SWFs. The recovery
+  // domain's coverage-weighted mean now re-normalizes around the
+  // remaining recovery dims because this row contributes 0 weight.
+  // Score remains numeric (zero) per the
+  // ResilienceDimensionScore.score:number contract and the
+  // release-gate Number.isFinite check; coverage:0 is what removes
+  // the dim from the mean.
   if (!entry) {
     return {
       score: 0,
-      coverage: 1.0,
-      observedWeight: 1,
+      coverage: 0,
+      observedWeight: 0,
       imputedWeight: 0,
       imputationClass: null,
       freshness: { lastObservedAtMs: 0, staleness: '' },
@@ -2091,6 +2194,23 @@ export const RESILIENCE_RETIRED_DIMENSIONS: ReadonlySet<ResilienceDimensionId> =
   // RESILIENCE_DIMENSION_ORDER for structural continuity (tests,
   // cached payload shape, registry membership).
   'reserveAdequacy',
+]);
+
+// Plan 2026-04-26-001 §U3 — dimensions that are "not-applicable" for
+// some countries. When such a dim emits coverage=0, it means
+// "construct doesn't apply" rather than "sparse data" — and so it
+// should be excluded from the user-facing confidence / coverage means
+// for those countries (otherwise advanced economies without SWFs
+// would look low-confidence purely because we deliberately don't
+// score the SWF construct for them).
+//
+// Distinction from RESILIENCE_RETIRED_DIMENSIONS: a retired dim is
+// excluded for ALL countries (the construct is gone). A
+// not-applicable dim is excluded ONLY when its coverage is 0 (i.e.
+// the country doesn't carry the construct); when the country DOES
+// carry it (positive coverage), the dim contributes normally.
+export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<ResilienceDimensionId> = new Set([
+  'sovereignFiscalBuffer',
 ]);
 
 export async function scoreFuelStockDays(

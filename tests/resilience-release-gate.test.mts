@@ -65,6 +65,15 @@ describe('resilience release gate', () => {
     // When the flag flips on with seeders populating, this allow-list
     // entry should be removed in the same PR that flips the flag.
     const FLAG_GATED_DARK_DIMENSIONS = new Set(['financialSystemExposure']);
+    // plan 2026-04-26-001 §U3: sovereignFiscalBuffer reframed from
+    // "score 0, coverage 1.0 substantive absence" to "score 0,
+    // coverage 0 dim-not-applicable" for countries not in the SWF
+    // manifest. Required-dimension fixture countries (US, BF, BR)
+    // include non-SWF countries (US, BF) that now legitimately emit
+    // coverage=0 for this dim. The other 19 dims still must score
+    // with positive coverage; this allow-list narrows the
+    // zero-coverage assertion to the SWF dim only.
+    const NA_FOR_SOME_COUNTRIES_DIMENSIONS = new Set(['sovereignFiscalBuffer']);
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
       const entries = Object.entries(scores);
@@ -79,6 +88,16 @@ describe('resilience release gate', () => {
         if (FLAG_GATED_DARK_DIMENSIONS.has(dimensionId)) {
           assert.equal(score.coverage, 0, `${countryCode} ${dimensionId} is flag-gated dark (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED off) and must stay at coverage=0`);
           assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} flag-off must tag null imputationClass (not source-failure)`);
+          continue;
+        }
+        if (NA_FOR_SOME_COUNTRIES_DIMENSIONS.has(dimensionId) && score.coverage === 0) {
+          // sovereignFiscalBuffer with coverage=0 = "country not in SWF manifest"
+          // (Plan 2026-04-26-001 §U3 dim-not-applicable). Must NOT carry an
+          // imputationClass — that would manufacture a "source-failure" warning
+          // for a deliberate construct decision. Note: countries WITH SWFs in
+          // the manifest still must score with positive coverage; that's
+          // covered by the construct-invariants test for this dim.
+          assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} dim-not-applicable must tag null imputationClass (not source-failure)`);
           continue;
         }
         assert.ok(score.coverage > 0, `${countryCode} ${dimensionId} should not fall back to zero-coverage placeholder scoring`);

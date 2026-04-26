@@ -19,6 +19,7 @@ import {
   RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
   RESILIENCE_RETIRED_DIMENSIONS,
+  RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE,
   createMemoizedSeedReader,
   getResilienceDomainWeight,
   scoreAllDimensions,
@@ -143,7 +144,7 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // `financialSystemExposure` dim — adds a 20th dimension contributing to
 // the economic domain, so v13 entries (which lack the new dim's score)
 // would surface incomplete payloads on cache hit.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v14:';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v15:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -171,7 +172,12 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v14:';
 // plan 2026-04-25-004 Phase 2 (Ship 2) — same reasoning. Adding a new
 // dim shifts every country's overall-score baseline; mixing pre/post
 // points in the 30-day rolling window manufactures false trends.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v9:';
+// v9→v10 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v14→v15 for
+// plan 2026-04-26-001 §U4 (small-state bias fixes A+B+C). Mixing pre-fix
+// v9 history points with post-fix v15 score points inside the 30-day
+// rolling window would produce false-trend signals across the deploy
+// (memory: cache-prefix-bump-propagation-scope).
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v10:';
 // v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
 // for PR 3A §net-imports denominator. As with the score prefix, the
 // version bump is a belt — the suspenders are the `_formula` tag on
@@ -182,7 +188,7 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v9:';
 // in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for plan 2026-04-25-004
 // Phase 1 (Ship 1). v13→v14 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX
 // for plan 2026-04-25-004 Phase 2 (Ship 2).
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v14';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v15';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -414,9 +420,17 @@ export function computeLowConfidence(dimensions: ResilienceDimension[], imputati
   // "Low confidence" label is about data availability, not score
   // composition. The asymmetry is deliberate and mirrored in
   // `computeOverallCoverage` below.
-  const scoring = dimensions.filter(
-    (dimension) => !RESILIENCE_RETIRED_DIMENSIONS.has(dimension.id as ResilienceDimensionId),
-  );
+  const scoring = dimensions.filter((dimension) => {
+    const id = dimension.id as ResilienceDimensionId;
+    if (RESILIENCE_RETIRED_DIMENSIONS.has(id)) return false;
+    // Plan 2026-04-26-001 §U3: a dim that is "not-applicable" for this
+    // country (coverage=0 substantively, not from sparse data) is
+    // excluded so the construct decision doesn't manufacture a
+    // low-confidence signal. When the dim DOES apply (coverage > 0),
+    // it counts normally.
+    if (RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) && dimension.coverage === 0) return false;
+    return true;
+  });
   const averageCoverage = mean(scoring.map((dimension) => dimension.coverage)) ?? 0;
   return averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD || imputationShare > LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD;
 }
@@ -729,7 +743,17 @@ export function computeOverallCoverage(response: GetResilienceScoreResponse): nu
   // the coverage percentage as a data-quality indicator.
   const coverages = response.domains.flatMap((domain) =>
     domain.dimensions
-      .filter((dimension) => !RESILIENCE_RETIRED_DIMENSIONS.has(dimension.id as ResilienceDimensionId))
+      .filter((dimension) => {
+        const id = dimension.id as ResilienceDimensionId;
+        if (RESILIENCE_RETIRED_DIMENSIONS.has(id)) return false;
+        // Plan 2026-04-26-001 §U3: same not-applicable filter as
+        // computeLowConfidence — a dim that is substantively not-applicable
+        // for this country (coverage=0) is excluded from the user-facing
+        // overall coverage so the construct decision doesn't drag down
+        // the data-availability indicator.
+        if (RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) && dimension.coverage === 0) return false;
+        return true;
+      })
       .map((dimension) => dimension.coverage),
   );
   if (coverages.length === 0) return 0;

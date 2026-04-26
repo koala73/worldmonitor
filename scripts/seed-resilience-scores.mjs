@@ -29,8 +29,8 @@ const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 // Earlier: v11 → v12 for PR 3A §net-imports denominator (plan
 // 2026-04-24-002). Seeder and server MUST agree on the prefix or the
 // seeder writes scores the handler will never read.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v14:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v14';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v15:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v15';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.

@@ -154,6 +154,19 @@ For the full construct rationale, alternatives considered (program-weight catego
 | shippingStress | Global shipping stress score | Lower is better | 100 - 0 | 0.25 | Supply-chain monitor | Daily |
 | transitDisruption | Mean transit corridor disruption | Lower is better | 30 - 0 | 0.25 | Transit summaries | Daily |
 
+**v15 (2026-04-26) — small-state bias fix.** The exposure-weighting
+formula `shippingScore × tradeExposure + 100 × (1 − tradeExposure)`
+intentionally suppresses global-stress penalties for closed economies
+(low trade-to-GDP), but the prior `tradeExposure = 0.5` default for
+countries with NO observed trade-to-GDP extended that suppression to
+tiny states with no trade-to-GDP data at all (TV, PW, NR), inflating
+their shipping/transit components to ~75 in v14. v15 removes the 0.5
+default: missing trade-to-GDP now drops the exposure-weighted
+components from the dimension entirely (coverage derate to 0.5)
+rather than imputing them at "average openness". Closed economies
+WITH observed trade-to-GDP keep the neutralizer (Norway, Iceland,
+landlocked LICs continue to score correctly).
+
 #### Infrastructure
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
@@ -220,6 +233,24 @@ All six WGI indicators are equally weighted.
 | gpiScore | Global Peace Index score | Lower is better | 3.6 - 1.0 | 0.55 | IEP | Annual |
 | displacementTotal | UNHCR total displaced persons (log10 scale) | Lower is better | 7 - 0 | 0.25 | UNHCR | Annual |
 | unrestEvents | Severity-weighted unrest events + sqrt(fatalities) | Lower is better | 20 - 0 | 0.20 | Unrest monitoring | Realtime |
+
+**v15 (2026-04-26) — gated GPI-only impute for sparse-data tiny
+states.** When both displacement and unrest data were absent for a
+country (typical for tiny island states absent from UNHCR's
+displacement registry), the dimension previously collapsed to GPI
+alone. Tiny peaceful states (TV, PW, NR with GPI ~1.3) rode this to a
+near-perfect ~93 dim score. v15 introduces a gated impute: when the
+country is absent from the displacement registry, displacement is
+imputed at 70/coverage 0.6 (`stable-absence`), and zero unrest events
+are imputed at 70/coverage 0.5 — pulling the blend down to ~80.
+Critically, the unrest impute is gated to GPI-only mode: countries
+WITH observed displacement and zero unrest events keep the historical
+"stable-absence ≈ 85" anchor (matching `IMPUTE.unhcrDisplacement`),
+preserving Iceland/Norway scoring. Per-row imputation flags do not
+bubble up: dim-level `imputationClass` remains null because GPI is
+still observed. Seed-outage paths (raw payload absent) continue to
+drop the weight rather than imputing — the outage-vs-absence
+distinction is preserved.
 
 #### Border Security
 
@@ -317,11 +348,42 @@ effectiveMonths = Σ [ (aum / annualImports × 12) × access × liquidity × tra
 score           = 100 × (1 − exp(−effectiveMonths / 12))
 ```
 
-The exponential saturation prevents Norway-type outliers (effective months in the 100s) from dominating the recovery pillar out of proportion to their marginal resilience benefit. Countries not in the SWF manifest (`scripts/shared/swf-classification-manifest.yaml`) score `0` with **full coverage** — this is substantive absence, not imputation: a country without a deployable sovereign-wealth buffer legitimately scores lower on this dim than a SWF-holding peer.
+The exponential saturation prevents Norway-type outliers (effective months in the 100s) from dominating the recovery pillar out of proportion to their marginal resilience benefit.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
 | recoverySovereignWealthEffectiveMonths | Haircut-weighted sovereign-wealth assets in months of imports, saturating | Higher is better | 0 - 60 | 1.00 | Wikipedia SWF list + per-fund articles (CC-BY-SA), haircut by swf-classification-manifest.yaml | Quarterly |
+
+**v15 (2026-04-26) — construct reframing for non-SWF countries.**
+The original PR 2 §3.4 construct treated countries not in the SWF
+manifest (`scripts/shared/swf-classification-manifest.yaml`) as
+**substantive absence**: `score=0, coverage=1.0` — a deliberate
+penalty meant to lower their recovery-pillar score relative to
+SWF-holding peers. Empirically this over-fired for advanced economies
+(DE, JP, FR, IT, UK, US, NL, AT, BE, ES, PT) that hold reserves
+through Treasury / central-bank channels rather than dedicated
+sovereign-wealth funds, dragging their recovery-pillar coverage and
+ranking artificially low.
+
+v15 reframes Path 3 from **substantive absence** (`score=0,
+coverage=1.0`) to **dim-not-applicable** (`score=0, coverage=0`).
+The score field stays numeric (zero) per the
+`ResilienceDimensionScore.score: number` contract; the `coverage:0`
+is what causes the dim to contribute nothing to the
+coverage-weighted recovery-domain mean. The recovery domain
+re-normalizes around the OTHER recovery dims for non-SWF countries,
+which continue to score them via their own data sources
+(`liquidReserveAdequacy`, `externalDebtCoverage`, `importConcentration`,
+`fiscalSpace`, etc.). No double-counting of reserves.
+
+User-facing widget signals (`computeLowConfidence`,
+`computeOverallCoverage`) also exclude this dim when its coverage is
+0 — same pattern as `RESILIENCE_RETIRED_DIMENSIONS`, but gated to
+the country level rather than the construct level via
+`RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE`. Countries WITH SWFs
+in the manifest still score normally with positive coverage; the
+dim continues to differentiate Norway / Kuwait / Singapore / UAE
+from each other based on `effectiveMonths`.
 
 #### External Debt Coverage
 

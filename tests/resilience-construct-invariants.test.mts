@@ -148,14 +148,22 @@ describe('construct invariants — sovereignFiscalBuffer (saturating transform)'
       `expected strictly increasing; got em=3:${r3.score}, em=12:${r12.score}, em=24:${r24.score}`);
   });
 
-  it('country not in manifest → score 0, coverage 1.0 (legitimate zero, not imputed)', async () => {
-    // Seed present but country absent = "no SWF" (legitimate structural zero).
-    // This is distinct from "seed missing entirely" which returns IMPUTE.
+  it('country not in manifest → score 0, coverage 0 (dim-not-applicable, plan 2026-04-26-001 §U3)', async () => {
+    // Plan 2026-04-26-001 §U3 reframed Path 3 from "substantive
+    // absence (score 0, full coverage 1.0)" to "dim-not-applicable
+    // (score 0, ZERO coverage)". The original framing penalized
+    // advanced economies (DE, JP, FR, IT) that hold reserves through
+    // Treasury / central-bank channels rather than dedicated SWFs.
+    // The recovery domain's coverage-weighted mean now re-normalizes
+    // around the remaining recovery dims because this row contributes
+    // 0 weight. Score remains numeric (zero) per the
+    // ResilienceDimensionScore.score:number contract and the
+    // release-gate Number.isFinite check.
     const r = await scoreSovereignFiscalBuffer(TEST_ISO2, makeReader({
       'resilience:recovery:sovereign-wealth:v1': { countries: {} },
     }));
     assert.equal(r.score, 0, `expected 0 when country has no manifest entry, got ${r.score}`);
-    assert.equal(r.coverage, 1.0, `expected coverage=1.0 (legitimate observation), got ${r.coverage}`);
+    assert.equal(r.coverage, 0, `expected coverage=0 (dim-not-applicable for non-SWF country), got ${r.coverage}`);
     assert.equal(r.imputationClass, null, `expected null imputation (not imputed), got ${r.imputationClass}`);
   });
 });

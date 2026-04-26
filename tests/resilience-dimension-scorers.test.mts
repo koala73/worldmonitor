@@ -575,16 +575,11 @@ describe('resilience dimension scorers', () => {
       `Open economy (trade/GDP=100%, score=${openEconomy.score}) should score lower than autarky (trade/GDP=10%, score=${autarky.score}) under shipping stress`);
   });
 
-  it('scoreLogisticsSupply: missing tradeToGdp defaults to 0.5 exposure factor', async () => {
-    const withTrade25 = async (key: string): Promise<unknown | null> => {
-      if (key === 'resilience:static:XX') return {
-        infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 80, year: 2025 } } },
-        tradeToGdp: { tradeToGdpPct: 25, year: 2023, source: 'worldbank' },
-      };
-      if (key === 'supply_chain:shipping_stress:v1') return { stressScore: 70 };
-      if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 10, incidentCount7d: 5 } } };
-      return null;
-    };
+  // Plan 2026-04-26-001 §U1: the prior 0.5 default for missing tradeToGdp
+  // is removed. Tiny states with shipping/transit data but no tradeToGdp
+  // now drop the exposure-weighted components (cov derate) instead of
+  // imputing them at "average openness".
+  it('scoreLogisticsSupply: missing tradeToGdp drops shipping/transit components (cov derate, no inflation)', async () => {
     const withoutTrade = async (key: string): Promise<unknown | null> => {
       if (key === 'resilience:static:XX') return {
         infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 80, year: 2025 } } },
@@ -593,10 +588,165 @@ describe('resilience dimension scorers', () => {
       if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 10, incidentCount7d: 5 } } };
       return null;
     };
-    const known = await scoreLogisticsSupply('XX', withTrade25);
-    const unknown = await scoreLogisticsSupply('XX', withoutTrade);
-    assert.equal(known.score, unknown.score,
-      `trade/GDP=25% gives exposure=0.5 which equals the default 0.5, so scores should match`);
+    const result = await scoreLogisticsSupply('XX', withoutTrade);
+    // Only roadsPaved (weight 0.5) contributes; shipping & transit drop.
+    // roadsPaved=80 → normalizeHigherBetter(80, 0, 100) = 80.
+    assert.equal(result.score, 80, 'only roadsPaved contributes when tradeToGdp is missing');
+    assert.equal(result.coverage, 0.5, 'cov drops to 0.5 when shipping+transit components are dropped');
+  });
+
+  it('scoreLogisticsSupply: closed economy with observed tradeToGdp still benefits from neutralizer', async () => {
+    // Regression guard: the 100*(1-tradeExposure) neutralizer is preserved
+    // for countries WITH observed tradeToGdp. A closed economy (tradeToGdp=10)
+    // should still see less global-stress penalty than an open one (tradeToGdp=100).
+    const makeReader = (tradeToGdpPct: number) => async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 80, year: 2025 } } },
+        tradeToGdp: { tradeToGdpPct, year: 2023, source: 'worldbank' },
+      };
+      if (key === 'supply_chain:shipping_stress:v1') return { stressScore: 90 };
+      if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 20, incidentCount7d: 10 } } };
+      return null;
+    };
+    const closed = await scoreLogisticsSupply('XX', makeReader(10));
+    const open = await scoreLogisticsSupply('XX', makeReader(100));
+    assert.ok(closed.score > open.score,
+      `closed economy (score=${closed.score}) must STILL score higher than open economy (score=${open.score}) under heavy global stress — the neutralizer must remain active for observed tradeToGdp`);
+  });
+
+  it('scoreLogisticsSupply: tiny state with NEITHER shipping nor tradeToGdp scores roads-only at full weight', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:TV') return {
+        infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 70, year: 2025 } } },
+      };
+      // no shipping_stress, no transit-summaries — both return null
+      return null;
+    };
+    const result = await scoreLogisticsSupply('TV', reader);
+    assert.equal(result.score, 70, 'roads-only score = normalizeHigherBetter(70,0,100) = 70');
+    assert.equal(result.coverage, 0.5, 'roads is the only observed component');
+  });
+
+  // Plan 2026-04-26-001 §U2 — scoreSocialCohesion gated GPI-only impute.
+  describe('scoreSocialCohesion — gated GPI-only impute (Plan 2026-04-26-001 §U2)', () => {
+    const currentYear = new Date().getFullYear();
+    const displacementKey = `displacement:summary:v1:${currentYear}`;
+    const unrestKey = 'unrest:events:v1';
+
+    function makeReader(opts: {
+      gpi?: number;
+      displacementCountries?: Array<{ code: string; totalDisplaced: number }>;
+      displacementRaw?: 'present-empty' | 'absent';
+      unrestRaw?: 'present-zero' | 'present-events' | 'absent';
+      unrestCount?: number;
+      unrestFatalities?: number;
+      countryCode?: string;
+    }) {
+      return async (key: string): Promise<unknown | null> => {
+        const cc = opts.countryCode ?? 'XX';
+        if (key === `resilience:static:${cc}`) {
+          return opts.gpi == null ? null : { gpi: { score: opts.gpi } };
+        }
+        if (key === displacementKey) {
+          if (opts.displacementRaw === 'absent') return null;
+          return { summary: { countries: opts.displacementCountries ?? [] } };
+        }
+        if (key === unrestKey) {
+          if (opts.unrestRaw === 'absent') return null;
+          if (opts.unrestRaw === 'present-events') {
+            return { events: [{ country: cc, type: 'protest', fatalities: opts.unrestFatalities ?? 0 }] };
+          }
+          // present-zero: empty events array — country has no unrest events.
+          return { events: [] };
+        }
+        return null;
+      };
+    }
+
+    it('TV (GPI 1.3, no displacement registry entry, no unrest events) → blended ~80, dim-level imputationClass null', async () => {
+      const reader = makeReader({
+        gpi: 1.3,
+        countryCode: 'TV',
+        displacementCountries: [], // TV not in registry
+        unrestRaw: 'present-zero',
+      });
+      const result = await scoreSocialCohesion('TV', reader);
+      // GPI 1.3 → norm(1.3, 1.0, 3.6) = (3.6-1.3)/(3.6-1.0) = 2.3/2.6 ≈ 88.46
+      // Blended: 88.46*0.55 + 70*0.25 + 70*0.20 = 48.65 + 17.5 + 14 = 80.15
+      assert.ok(result.score <= 83 && result.score >= 78,
+        `TV must blend to ~80 (got ${result.score}); plan §U2 cohort target is ≤83 with ≥8pt drop from v14 ~93`);
+      // Dim-level imputationClass MUST be null because GPI is observed.
+      // Per-row imputed:true is set on displacement+unrest rows but
+      // weightedBlend correctly null-s the dim-level class when observedWeight > 0.
+      assert.equal(result.imputationClass, null,
+        'dim-level imputationClass must be null when GPI is observed (per-row imputation does not bubble up)');
+      assert.ok(result.observedWeight > 0, 'GPI observation must register as observedWeight');
+      assert.ok(result.imputedWeight > 0, 'displacement + unrest are imputed → imputedWeight > 0');
+    });
+
+    it('Iceland-shape (GPI 1.1, observed displacement low, zero unrest events) → high score, no regression', async () => {
+      const reader = makeReader({
+        gpi: 1.1,
+        countryCode: 'IS',
+        displacementCountries: [{ code: 'IS', totalDisplaced: 100 }],
+        unrestRaw: 'present-zero',
+      });
+      const result = await scoreSocialCohesion('IS', reader);
+      // GPI 1.1 → norm(1.1, 1.0, 3.6) = 2.5/2.6 ≈ 96.15
+      // Displacement 100 → log10(100)=2, norm(2,0,7) = 5/7 ≈ 71.4 → score 71
+      // Unrest: zero events but displacement OBSERVED → impute at 85 (NOT 70)
+      // Blended: 96*0.55 + 71*0.25 + 85*0.2 = 52.8 + 17.75 + 17 = 87.55
+      assert.ok(result.score >= 82,
+        `Iceland-shape must score >=82 (got ${result.score}); the gated impute MUST NOT use the lower 70 value when displacement is observed`);
+      assert.equal(result.imputationClass, null,
+        'Iceland: GPI + displacement both observed → dim-level imputationClass null');
+    });
+
+    it('seed outage (displacementRaw absent) → displacement weight DROPPED, not imputed', async () => {
+      const reader = makeReader({
+        gpi: 1.5,
+        countryCode: 'XX',
+        displacementRaw: 'absent',
+        unrestRaw: 'present-events',
+        unrestCount: 3,
+        unrestFatalities: 0,
+      });
+      const result = await scoreSocialCohesion('XX', reader);
+      // Displacement weight (0.25) dropped → only GPI(0.55) + unrest(0.20) contribute.
+      // Coverage should reflect 0.55+0.20 = 0.75 of total weight observed.
+      // Compare against the all-observed case: same GPI + same unrest + observed displacement.
+      const allObserved = makeReader({
+        gpi: 1.5,
+        countryCode: 'XX',
+        displacementCountries: [{ code: 'XX', totalDisplaced: 1000 }],
+        unrestRaw: 'present-events',
+        unrestCount: 3,
+        unrestFatalities: 0,
+      });
+      const fullResult = await scoreSocialCohesion('XX', allObserved);
+      // The outage version must NOT have a displacement contribution at all
+      // (different blended score because the imputation isn't firing).
+      assert.notEqual(result.score, fullResult.score,
+        'displacement outage and observed-displacement must produce different scores (outage drops weight, does not impute at 70)');
+      assert.equal(result.imputationClass, null, 'GPI + unrest observed → dim-level imputationClass null');
+    });
+
+    it('per-row imputation flags: GPI-only mode populates imputedWeight, dim-level remains null', async () => {
+      const reader = makeReader({
+        gpi: 1.4,
+        countryCode: 'PW',
+        displacementCountries: [],   // Palau not in registry
+        unrestRaw: 'present-zero',   // no unrest events
+      });
+      const result = await scoreSocialCohesion('PW', reader);
+      // observedWeight should be 0.55 (GPI only); imputedWeight should be 0.45 (displacement + unrest).
+      assert.ok(Math.abs(result.observedWeight - 0.55) < 0.01,
+        `observedWeight must equal GPI weight (0.55), got ${result.observedWeight}`);
+      assert.ok(Math.abs(result.imputedWeight - 0.45) < 0.01,
+        `imputedWeight must equal displacement+unrest weight (0.45), got ${result.imputedWeight}`);
+      assert.equal(result.imputationClass, null,
+        'dim-level imputationClass MUST be null because GPI provides observed signal');
+    });
   });
 
   it('scoreEnergy: high import dependency country feels more energy price stress', async () => {
@@ -1191,15 +1341,21 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       assert.equal(score.score, 50);
     });
 
-    it('path 3: country not in manifest → score=0, coverage=1.0 (substantive absence)', async () => {
-      // Payload present but country missing → no SWF per plan §3.4
-      // "What happens to no-SWF countries." Must NOT fall through to
-      // IMPUTE.
+    it('path 3: country not in manifest → score=0, coverage=0 (dim-not-applicable, plan 2026-04-26-001 §U3)', async () => {
+      // Plan 2026-04-26-001 §U3 reframed Path 3 from "substantive
+      // absence (score 0, full coverage 1.0)" to "dim-not-applicable
+      // (score 0, ZERO coverage)". The original framing penalized
+      // advanced economies (DE, JP, FR, IT) that hold reserves
+      // through Treasury / central-bank channels rather than dedicated
+      // SWFs. The recovery domain's coverage-weighted mean now
+      // re-normalizes around the remaining recovery dims because this
+      // row contributes 0 weight. Score remains numeric (zero) per
+      // ResilienceDimensionScore.score:number contract.
       const reader = async (_key: string) => ({ countries: { NO: { totalEffectiveMonths: 60, completeness: 1.0 } } });
       const score = await scoreSovereignFiscalBuffer('US', reader);
-      assert.equal(score.score, 0, 'no-SWF country must score 0');
-      assert.equal(score.coverage, 1.0, 'no-SWF country must report FULL coverage (substantive, not imputed)');
-      assert.equal(score.observedWeight, 1);
+      assert.equal(score.score, 0, 'no-SWF country must score 0 (numeric, not null)');
+      assert.equal(score.coverage, 0, 'no-SWF country must report ZERO coverage (dim-not-applicable)');
+      assert.equal(score.observedWeight, 0, 'observedWeight=0 means the dim contributes nothing to the coverage-weighted mean');
       assert.equal(score.imputedWeight, 0);
       assert.equal(score.imputationClass, null);
     });
