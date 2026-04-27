@@ -1,22 +1,28 @@
 // Plan 2026-04-26-002 §U7 (PR 6) — pinning tests for the
-// headline-eligible gate logic + the ranking-handler filter.
+// headline-eligible gate logic AND the ranking-handler filter.
 //
 // PR 6 swaps `headlineEligible` from the PR-2 default `true` to actual
 // eligibility per origin Q2 + Q5:
 //   coverage >= 0.65 AND (population >= 200k OR coverage >= 0.85) AND !lowConfidence
 //
-// These tests pin the truth table directly via `computeHeadlineEligible`
-// and assert the ranking handler filters by the field.
+// Two layers of coverage:
+// 1. Truth-table tests over `computeHeadlineEligible` directly
+// 2. End-to-end integration: a cached ranking payload with one
+//    headlineEligible:false item must surface that item in greyedOut[],
+//    NOT items[] — i.e. the handler's `passesHeadlineGate` actually fires.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
 import {
   computeHeadlineEligible,
   HEADLINE_ELIGIBLE_HIGH_COVERAGE,
   HEADLINE_ELIGIBLE_MIN_COVERAGE,
   HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
 describe('computeHeadlineEligible truth table (Plan 2026-04-26-002 §U7)', () => {
   it('happy path: high coverage + large population + not lowConfidence → true', () => {
@@ -97,5 +103,68 @@ describe('computeHeadlineEligible truth table (Plan 2026-04-26-002 §U7)', () =>
       false,
       '0.19M < 0.2M → fails population branch; coverage 0.7 < 0.85 → fails coverage branch',
     );
+  });
+});
+
+describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
+  it('moves headlineEligible:false items to greyedOut[], NOT items[]', async () => {
+    // Greptile P2 review fix: previously the only handler-level
+    // coverage of the §U7 filter was indirect (via cache-hit tests
+    // using post-PR-6 fixtures). This integration test seeds a cached
+    // ranking with a deliberately mixed payload (one eligible + one
+    // ineligible item) and asserts the handler's `passesHeadlineGate`
+    // predicate actually splits them — the eligible item lands in
+    // items[], the ineligible item in greyedOut[].
+    //
+    // Mutation-test verified: replacing the predicate body with
+    // `() => true` (i.e. disabling the filter) makes this test fail.
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const cachedPublic = {
+      items: [
+        // Eligible — should land in items[]
+        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true },
+        // Ineligible — should move to greyedOut[]
+        { countryCode: 'TV', overallScore: 70, level: 'medium', lowConfidence: false, overallCoverage: 0.7, headlineEligible: false },
+      ],
+      greyedOut: [],
+    };
+    redis.set('resilience:ranking:v17', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    const itemCodes = response.items.map((item) => item.countryCode);
+    const greyedCodes = response.greyedOut.map((item) => item.countryCode);
+
+    assert.ok(itemCodes.includes('NO'),
+      `eligible item NO must remain in items[]; got items=${itemCodes.join(',')}`);
+    assert.ok(!itemCodes.includes('TV'),
+      `ineligible item TV must NOT appear in items[]; got items=${itemCodes.join(',')}`);
+    assert.ok(greyedCodes.includes('TV'),
+      `ineligible item TV must surface in greyedOut[]; got greyedOut=${greyedCodes.join(',')}`);
+  });
+
+  it('headlineEligible:true items pass even when overallCoverage is below the legacy GREY_OUT threshold', async () => {
+    // Pins the rationale for Greptile P2's "redundant coverage check"
+    // simplification. After dropping the legacy
+    // `overallCoverage >= GREY_OUT_COVERAGE_THRESHOLD (0.40)` conjunct
+    // from `passesHeadlineGate`, the handler trusts the gate alone.
+    // The §U7 contract guarantees `headlineEligible: true` already
+    // implies `overallCoverage >= 0.65`, so this test really only
+    // exercises a corrupted-cache safety property: even if a payload
+    // somehow arrives with low coverage AND `headlineEligible: true`,
+    // the handler still returns it in items[] (gate is the SoT).
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const cachedPublic = {
+      items: [
+        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.30, headlineEligible: true },
+      ],
+      greyedOut: [],
+    };
+    redis.set('resilience:ranking:v17', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.ok(response.items.some((item) => item.countryCode === 'NO'),
+      'gate is the source of truth — coverage alone does not eject an item flagged eligible');
   });
 });
