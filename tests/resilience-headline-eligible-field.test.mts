@@ -80,6 +80,45 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
     });
   });
 
+  describe('cache-read backfill (PR 2 review fix)', () => {
+    it('stripCacheMeta defaults headlineEligible=true when the cached payload predates the field', async () => {
+      // Simulate a v16 cached payload written before PR 2 landed (no
+      // headlineEligible field). The stripCacheMeta read-path must
+      // backfill so the wire response satisfies the generated type.
+      // Driven through ensureResilienceScoreCached → cachedFetchJson
+      // by pre-seeding Redis with a legacy payload.
+      const { setCachedJson } = await import('../server/_shared/redis.ts');
+      const { RESILIENCE_SCORE_CACHE_PREFIX } = await import('../server/worldmonitor/resilience/v1/_shared.ts');
+      const legacyKey = `${RESILIENCE_SCORE_CACHE_PREFIX}TT`;
+      // Note: this test runs against the test redis fake; in CI/dev this
+      // is an in-memory map, not real Upstash. The point is to exercise
+      // the read-path backfill — production legacy payloads have the
+      // exact same shape (fields up to schemaVersion, no headlineEligible).
+      const legacyPayload = {
+        countryCode: 'TT',
+        overallScore: 60,
+        baselineScore: 65,
+        stressScore: 55,
+        stressFactor: 0.45,
+        level: 'medium',
+        domains: [],
+        trend: 'stable',
+        change30d: 0,
+        lowConfidence: false,
+        imputationShare: 0.2,
+        dataVersion: 'v16',
+        pillars: [],
+        schemaVersion: '2.0',
+        _formula: 'pc',
+        // headlineEligible deliberately omitted
+      };
+      await setCachedJson(legacyKey, legacyPayload, 300);
+      const response = await ensureResilienceScoreCached('TT');
+      assert.equal(response.headlineEligible, true,
+        'cache-read backfill must default missing headlineEligible to true (PR-2 contract)');
+    });
+  });
+
   describe('PR 2 contract: every code path emits the field', () => {
     it('happy-path response includes headlineEligible (compile-time + runtime)', () => {
       // The TypeScript compiler enforces this at compile time via the
