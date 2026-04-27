@@ -256,9 +256,15 @@ const SEED_META = {
   // specific dataset published fresh entries — so a single-dataset BIS outage
   // (e.g. WS_DSR 500s) goes stale in health without falsely dragging down the
   // healthy ones. 24h = 2× 12h cron.
-  bisDsr:                { key: 'seed-meta:economic:bis-dsr',                  maxStaleMin: 1440 },
-  bisPropertyResidential:{ key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
-  bisPropertyCommercial: { key: 'seed-meta:economic:bis-property-commercial',  maxStaleMin: 1440 },
+  // BIS-Extended bundle interval is 12h (720min) per scripts/seed-bundle-macro.mjs.
+  // 1440min was exactly 2× the cron interval = ZERO grace for cron jitter, Railway
+  // boot delay, or single missed run with retry. All three keys were flipping to
+  // STALE_SEED synchronously at minute 1442 (one missed cron) — observed 2026-04-27.
+  // 2160 = 3× interval matches the project convention for cron-driven keys
+  // (portwatchPortActivity, chokepointTransits, transitSummaries all follow 3×).
+  bisDsr:                { key: 'seed-meta:economic:bis-dsr',                  maxStaleMin: 2160 },
+  bisPropertyResidential:{ key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 2160 },
+  bisPropertyCommercial: { key: 'seed-meta:economic:bis-property-commercial',  maxStaleMin: 2160 },
   imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 100800 }, // monthly seed; 100800min = 70 days = 2× interval (absorbs one missed run)
   imfGrowth:        { key: 'seed-meta:economic:imf-growth',       maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro (same WEO release cadence)
   imfLabor:         { key: 'seed-meta:economic:imf-labor',        maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro

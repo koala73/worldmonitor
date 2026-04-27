@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   parseBisCSV,
@@ -257,4 +260,66 @@ describe('seed-bis-extended parser', () => {
     const out = selectBestSeriesByCountry(rows, { countryColumns: ['REF_AREA'], prefs: { PP_VALUATION: 'R' } });
     assert.equal(out.size, 0);
   });
+});
+
+describe('BIS-Extended health-check maxStaleMin co-pinned to 3× bundle interval', () => {
+  // Regression-locks the fix for the 2026-04-27 false-STALE event where all
+  // three BIS-Extended health entries (bisDsr, bisPropertyResidential,
+  // bisPropertyCommercial) flipped to STALE_SEED simultaneously at
+  // seedAgeMin=1442, just 2 minutes past maxStaleMin=1440. Root cause: the
+  // BIS-Extended bundle interval is 12h (720min); maxStaleMin was set to
+  // exactly 2× interval = ZERO grace for cron jitter / Railway boot delay /
+  // single missed run with retry. Following the project's 3× cron-driven
+  // convention (see portwatchPortActivity, chokepointTransits, etc.), the
+  // correct value is 3 × 720 = 2160min (36h).
+
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const root = resolve(__dirname, '..');
+  const healthSrc = readFileSync(resolve(root, 'api/health.js'), 'utf-8');
+  const bundleSrc = readFileSync(resolve(root, 'scripts/seed-bundle-macro.mjs'), 'utf-8');
+
+  function extractBundleIntervalHours(label) {
+    // Match `{ label: 'BIS-Extended', ..., intervalMs: 12 * HOUR, ... }`
+    const re = new RegExp(`label:\\s*'${label}'[\\s\\S]*?intervalMs:\\s*(\\d+)\\s*\\*\\s*HOUR`, 'm');
+    const m = bundleSrc.match(re);
+    if (!m) throw new Error(`could not find bundle entry for ${label}`);
+    return parseInt(m[1], 10);
+  }
+
+  function extractMaxStaleMin(name) {
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
+    const m = healthSrc.match(re);
+    if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
+    return parseInt(m[1], 10);
+  }
+
+  it('BIS-Extended bundle interval is 12h — pinned so the relationship below stays meaningful', () => {
+    assert.equal(extractBundleIntervalHours('BIS-Extended'), 12);
+  });
+
+  for (const name of ['bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial']) {
+    it(`${name}.maxStaleMin is 2160min (3× the 12h bundle interval)`, () => {
+      assert.equal(extractMaxStaleMin(name), 2160);
+    });
+
+    it(`${name}.maxStaleMin >= 2.5× bundle interval (no false-STALE on a single missed cron + retry)`, () => {
+      const intervalMin = extractBundleIntervalHours('BIS-Extended') * 60;
+      const maxStale = extractMaxStaleMin(name);
+      assert.ok(
+        maxStale >= intervalMin * 2.5,
+        `${name}.maxStaleMin (${maxStale}) must be >= ${intervalMin * 2.5} (2.5× bundle interval); ` +
+        `tighter values flip to STALE_SEED on routine cron jitter — see 2026-04-27 incident.`,
+      );
+    });
+
+    it(`${name}.maxStaleMin <= 4× bundle interval (still catches a real outage within 2 days)`, () => {
+      const intervalMin = extractBundleIntervalHours('BIS-Extended') * 60;
+      const maxStale = extractMaxStaleMin(name);
+      assert.ok(
+        maxStale <= intervalMin * 4,
+        `${name}.maxStaleMin (${maxStale}) must be <= ${intervalMin * 4} (4× bundle interval); ` +
+        `looser values mask real upstream outages from the alerting threshold.`,
+      );
+    });
+  }
 });
