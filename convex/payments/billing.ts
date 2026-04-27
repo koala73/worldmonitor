@@ -473,3 +473,148 @@ export const grantComplimentaryEntitlement = internalMutation({
     };
   },
 });
+
+/**
+ * Deletes a subscription row from Convex by Dodo subscription_id.
+ *
+ * Ops tool. Use when a Dodo subscription was cancelled/refunded admin-side
+ * but you don't want its eventual `subscription.expired` webhook to clobber
+ * the user's entitlement (e.g. user upgraded by buying a separate higher-tier
+ * sub on the same userId — see the multi-active-sub guard in
+ * subscriptionHelpers.ts; this mutation is the explicit-cleanup counterpart
+ * for cases where you want zero-risk by removing the row entirely).
+ *
+ * Recomputes the entitlement from the user's remaining active subs after
+ * deletion. If none remain, downgrades to free.
+ *
+ * The audit trail (paymentEvents, webhookEvents) is preserved.
+ *
+ * Typical usage (CLI):
+ *   npx convex run 'payments/billing:deleteSubscriptionByDodoId' \
+ *     '{"dodoSubscriptionId":"sub_XXX","reason":"refunded by admin, user has higher-tier active sub"}'
+ */
+export const deleteSubscriptionByDodoId = internalMutation({
+  args: {
+    dodoSubscriptionId: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", args.dodoSubscriptionId),
+      )
+      .unique();
+    if (!sub) {
+      throw new Error(
+        `[billing] deleteSubscriptionByDodoId: no subscription found with dodoSubscriptionId="${args.dodoSubscriptionId}"`,
+      );
+    }
+
+    const userId = sub.userId;
+    await ctx.db.delete(sub._id);
+    console.log(
+      `[billing] deleteSubscriptionByDodoId userId=${userId} dodoSubscriptionId=${args.dodoSubscriptionId} planKey=${sub.planKey} reason="${args.reason}"`,
+    );
+
+    // Recompute entitlement from any remaining active sub. If none, downgrade
+    // to free — but only if no compUntil floor is in place.
+    const now = Date.now();
+    const remaining = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+
+    let best: (typeof remaining)[number] | null = null;
+    let bestTier = -Infinity;
+    for (const s of remaining) {
+      const isCovering =
+        s.status === "active" ||
+        s.status === "on_hold" ||
+        (s.status === "cancelled" && s.currentPeriodEnd > now);
+      if (!isCovering) continue;
+      const tier = getFeaturesForPlan(s.planKey).tier;
+      if (tier > bestTier) {
+        best = s;
+        bestTier = tier;
+      }
+    }
+
+    const entitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    if (best) {
+      const features = getFeaturesForPlan(best.planKey);
+      if (entitlement) {
+        await ctx.db.patch(entitlement._id, {
+          planKey: best.planKey,
+          features,
+          validUntil: best.currentPeriodEnd,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.insert("entitlements", {
+          userId,
+          planKey: best.planKey,
+          features,
+          validUntil: best.currentPeriodEnd,
+          updatedAt: now,
+        });
+      }
+      if (process.env.UPSTASH_REDIS_REST_URL) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payments.cacheActions.syncEntitlementCache,
+          { userId, planKey: best.planKey, features, validUntil: best.currentPeriodEnd },
+        );
+      }
+      return {
+        deleted: { _id: sub._id, dodoSubscriptionId: args.dodoSubscriptionId, planKey: sub.planKey },
+        entitlementAfter: { planKey: best.planKey, validUntil: best.currentPeriodEnd },
+      };
+    }
+
+    // No remaining active sub. Honour comp floor if present.
+    if (entitlement?.compUntil && entitlement.compUntil > now) {
+      console.log(
+        `[billing] deleteSubscriptionByDodoId — no active subs remain, but compUntil=${new Date(entitlement.compUntil).toISOString()} preserves entitlement`,
+      );
+      return {
+        deleted: { _id: sub._id, dodoSubscriptionId: args.dodoSubscriptionId, planKey: sub.planKey },
+        entitlementAfter: { planKey: entitlement.planKey, validUntil: entitlement.validUntil, compUntil: entitlement.compUntil },
+      };
+    }
+
+    // Downgrade to free.
+    const freeFeatures = getFeaturesForPlan("free");
+    if (entitlement) {
+      await ctx.db.patch(entitlement._id, {
+        planKey: "free",
+        features: freeFeatures,
+        validUntil: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("entitlements", {
+        userId,
+        planKey: "free",
+        features: freeFeatures,
+        validUntil: now,
+        updatedAt: now,
+      });
+    }
+    if (process.env.UPSTASH_REDIS_REST_URL) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.cacheActions.syncEntitlementCache,
+        { userId, planKey: "free", features: freeFeatures, validUntil: now },
+      );
+    }
+    return {
+      deleted: { _id: sub._id, dodoSubscriptionId: args.dodoSubscriptionId, planKey: sub.planKey },
+      entitlementAfter: { planKey: "free", validUntil: now },
+    };
+  },
+});

@@ -280,3 +280,155 @@ describe("handleSubscriptionExpired comp guard", () => {
     expect(row!.compUntil).toBeGreaterThan(Date.now() + 80 * DAY_MS);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Multi-active-sub guard
+//
+// The entitlements table is keyed by_userId (one row per user), but Dodo
+// allows multiple concurrent subscriptions per user. Without this guard,
+// expiring or replacing one sub would clobber the entitlement to "free"
+// (or to a lower tier) even when another paid sub still covers the user.
+// ---------------------------------------------------------------------------
+
+describe("multi-active-sub guard", () => {
+  async function seedTwoActiveSubs(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      lower: { subscriptionId: string; planKey: string; productId: string };
+      higher: { subscriptionId: string; planKey: string; productId: string; tier: number };
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: opts.lower.subscriptionId,
+        dodoProductId: opts.lower.productId,
+        planKey: opts.lower.planKey,
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: opts.higher.subscriptionId,
+        dodoProductId: opts.higher.productId,
+        planKey: opts.higher.planKey,
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      // Entitlement reflects the higher-tier sub (last-write-wins from when
+      // the user upgraded).
+      await ctx.db.insert("entitlements", {
+        userId: USER_ID,
+        planKey: opts.higher.planKey,
+        features: {
+          tier: opts.higher.tier,
+          maxDashboards: 25,
+          apiAccess: true,
+          apiRateLimit: 60,
+          prioritySupport: false,
+          exportFormats: ["csv", "pdf", "json"],
+        },
+        validUntil: Date.now() + 30 * DAY_MS,
+        updatedAt: Date.now() - 1000,
+      });
+    });
+  }
+
+  test("subscription.expired on the lower-tier sub preserves higher-tier entitlement", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoActiveSubs(t, {
+      lower: {
+        subscriptionId: "sub_pro_monthly",
+        planKey: "pro_monthly",
+        productId: "pdt_0Nbtt71uObulf7fGXhQup",
+      },
+      higher: {
+        subscriptionId: "sub_api_starter",
+        planKey: "api_starter",
+        productId: "pdt_0NbttVmG1SERrxhygbbUq",
+        tier: 2,
+      },
+    });
+
+    await fireSubscriptionExpired(t, "sub_pro_monthly");
+
+    const row = await readEntitlement(t);
+    // CRITICAL: must NOT downgrade to free — the api_starter sub is still active.
+    expect(row!.planKey).toBe("api_starter");
+    expect(row!.features.tier).toBe(2);
+    // validUntil should track the surviving sub's currentPeriodEnd.
+    expect(row!.validUntil).toBeGreaterThan(Date.now() + 25 * DAY_MS);
+  });
+
+  test("subscription.expired on the only sub still downgrades to free", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubAndEntitlement(t, {
+      subscriptionId: "sub_solo",
+      entitlementValidUntil: Date.now() + DAY_MS,
+    });
+    await fireSubscriptionExpired(t, "sub_solo");
+
+    const row = await readEntitlement(t);
+    expect(row!.planKey).toBe("free");
+    expect(row!.features.tier).toBe(0);
+  });
+
+  test("subscription.expired on cancelled-but-still-covering other sub is treated as covering", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      // Sub A: active, lower tier — about to expire.
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: "sub_a_active_lower",
+        dodoProductId: "pdt_0Nbtt71uObulf7fGXhQup",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      // Sub B: cancelled but currentPeriodEnd is in the future — still covers.
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: "sub_b_cancelled_higher",
+        dodoProductId: "pdt_0NbttVmG1SERrxhygbbUq",
+        planKey: "api_starter",
+        status: "cancelled",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + 60 * DAY_MS,
+        cancelledAt: Date.now() - 5 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: USER_ID,
+        planKey: "api_starter",
+        features: {
+          tier: 2,
+          maxDashboards: 25,
+          apiAccess: true,
+          apiRateLimit: 60,
+          prioritySupport: false,
+          exportFormats: ["csv", "pdf", "json"],
+        },
+        validUntil: Date.now() + 60 * DAY_MS,
+        updatedAt: Date.now() - 1000,
+      });
+    });
+
+    await fireSubscriptionExpired(t, "sub_a_active_lower");
+
+    const row = await readEntitlement(t);
+    // Sub B is cancelled but its paid period extends 60 days — the user
+    // should keep tier 2 access for that period.
+    expect(row!.planKey).toBe("api_starter");
+    expect(row!.features.tier).toBe(2);
+  });
+});
