@@ -681,18 +681,25 @@ type CachedScorePayload = GetResilienceScoreResponse & { _formula?: CacheFormula
 function stripCacheMeta(payload: CachedScorePayload): GetResilienceScoreResponse {
   const { _formula: _drop, ...rest } = payload;
   void _drop;
-  // Plan 2026-04-26-002 §U3 (PR 2) review fix — backfill the
-  // `headlineEligible` field on read for cached payloads written before
-  // this PR. The v16 cache prefix predates this field; without the
-  // backfill, cache hits would return objects missing the now-required
-  // boolean (TypeScript types are erased at runtime, so the field would
-  // be `undefined` on the wire and break any downstream `=== true /
-  // === false` discriminator). Defaulting to `true` matches the PR-2
-  // contract for successful score builds. PR 6 / §U7 swaps the build-
-  // time logic to compute real eligibility, at which point the new
-  // payloads will overwrite this default on the next cron tick.
+  // Plan 2026-04-26-002 §U3+§U7 — `headlineEligible` backfill semantic
+  // changes per cache prefix:
+  //
+  //   v16 (PR 2): every score build emitted true unconditionally.
+  //   Missing-from-cache meant "pre-field v16 entry" → backfill `true`
+  //   matched the PR-2 contract.
+  //
+  //   v17 (PR 6 / §U7): every legitimate score writer stamps the field
+  //   explicitly via computeHeadlineEligible. Missing-from-cache is
+  //   anomalous (partially-migrated, manual seed, future writer bug),
+  //   so the conservative default is `false` per Greptile P2 review of
+  //   PR #3469. Anything not explicitly stamped is not trusted to pass
+  //   the gate; the next cron tick will overwrite with real eligibility.
+  //
+  // TypeScript types are erased at runtime so without this backfill the
+  // wire response would carry `undefined` and break downstream
+  // `=== true / === false` discriminators.
   if (rest.headlineEligible === undefined) {
-    return { ...rest, headlineEligible: true };
+    return { ...rest, headlineEligible: false };
   }
   return rest;
 }

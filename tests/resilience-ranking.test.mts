@@ -72,11 +72,12 @@ describe('resilience ranking contracts', () => {
   });
 
   it('backfills headlineEligible on cached items written before PR 2 (review fix)', async () => {
-    // Plan 002 §U3 review fix: existing v16 ranking cache entries
-    // (committed by #3452 before PR 2 added the field) lack the
-    // headlineEligible boolean. The handler must backfill on read so
-    // wire responses always carry the field. Pre-PR-2 cache fixture
-    // here deliberately omits the field on every item.
+    // Plan 002 §U3+§U7: at v17, missing-from-cache is anomalous (every
+    // legitimate writer stamps the field), so the conservative default
+    // is `false` — items lacking the field move to greyedOut[] until
+    // the next recompute. Test seeds a deliberately field-omitting
+    // fixture and asserts both the backfill default AND the gate
+    // routing (NO without the field → greyedOut, not items).
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const legacyCached = {
       items: [
@@ -90,10 +91,18 @@ describe('resilience ranking contracts', () => {
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.equal(response.items[0]?.headlineEligible, true,
-      'cache-read backfill must default missing headlineEligible to true on items[]');
-    assert.equal(response.greyedOut[0]?.headlineEligible, true,
-      'cache-read backfill must default missing headlineEligible to true on greyedOut[]');
+    // NO had headlineEligible undefined in the cache; conservative
+    // backfill flips it to false, then the gate routes it to greyedOut.
+    const noItem = [...response.items, ...response.greyedOut].find((item) => item.countryCode === 'NO');
+    const ssItem = [...response.items, ...response.greyedOut].find((item) => item.countryCode === 'SS');
+    assert.equal(noItem?.headlineEligible, false,
+      'v17 cache-read backfill must default missing headlineEligible to false (conservative — gate is SoT)');
+    assert.equal(ssItem?.headlineEligible, false,
+      'v17 cache-read backfill must default missing headlineEligible to false on greyedOut[] too');
+    assert.ok(response.greyedOut.some((item) => item.countryCode === 'NO'),
+      'NO with missing headlineEligible must route to greyedOut[] (not items[]) after conservative backfill + gate filter');
+    assert.ok(!response.items.some((item) => item.countryCode === 'NO'),
+      'NO must NOT appear in items[] — conservative default sends it to greyedOut');
   });
 
   it('returns all-greyed-out cached payload without rewarming (items=[], greyedOut non-empty)', async () => {
@@ -548,7 +557,10 @@ describe('resilience ranking contracts', () => {
       // recomputed ranking (NR is in static-index countries=['NO','US']
       // fixture? No — but the auth-failed path returns the stale cache
       // unmodified, so NR survives the cache-filter).
-      const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [], _formula: 'd6' };
+      // §U7: post-PR-6 cache writes stamp headlineEligible. The auth-
+      // fallback test isn't about gate filtering — keep the field
+      // present so the test exercises the auth path cleanly.
+      const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5, headlineEligible: true }], greyedOut: [], _formula: 'd6' };
       redis.set('resilience:ranking:v17', JSON.stringify(stale));
 
       // No X-WorldMonitor-Key → refresh must be ignored, stale cache returned.

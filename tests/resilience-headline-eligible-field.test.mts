@@ -113,16 +113,17 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
         // would force a rebuild and test the build-path instead of
         // the backfill-path). 'd6' is the default flag-off tag.
         _formula: 'd6',
-        // headlineEligible deliberately omitted — the post-PR-2 wire
-        // type lists it as required, but pre-PR-2 cached payloads do
-        // not carry it. Backfill on read must default to true.
+        // headlineEligible deliberately omitted — at v17 (PR 6 / §U7),
+        // every legitimate writer stamps the field. Missing-from-cache
+        // is anomalous, so the conservative backfill default is `false`
+        // (per Greptile P2 review of PR #3469).
       };
       redis.set(legacyKey, JSON.stringify(legacyPayload));
 
       const response = await ensureResilienceScoreCached('TT');
 
-      assert.equal(response.headlineEligible, true,
-        'cache-read backfill must default missing headlineEligible to true (PR-2 contract)');
+      assert.equal(response.headlineEligible, false,
+        'v17 cache-read backfill must default missing headlineEligible to false (conservative — gate is SoT)');
       // Verify we hit the cache path, not the build path. If the
       // cache-read backfill is wired correctly, the response should
       // carry the legacy payload's stable-but-arbitrary scores
