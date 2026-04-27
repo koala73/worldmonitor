@@ -16,6 +16,7 @@ import type * as broadcast_audienceWaveExport from "../broadcast/audienceWaveExp
 import type * as broadcast_backfillCanaryWaveStamps from "../broadcast/backfillCanaryWaveStamps.js";
 import type * as broadcast_metrics from "../broadcast/metrics.js";
 import type * as broadcast_proLaunchEmailContent from "../broadcast/proLaunchEmailContent.js";
+import type * as broadcast_rampRunner from "../broadcast/rampRunner.js";
 import type * as broadcast_sendBroadcast from "../broadcast/sendBroadcast.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   "broadcast/backfillCanaryWaveStamps": typeof broadcast_backfillCanaryWaveStamps;
   "broadcast/metrics": typeof broadcast_metrics;
   "broadcast/proLaunchEmailContent": typeof broadcast_proLaunchEmailContent;
+  "broadcast/rampRunner": typeof broadcast_rampRunner;
   "broadcast/sendBroadcast": typeof broadcast_sendBroadcast;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
