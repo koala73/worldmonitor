@@ -381,7 +381,6 @@ export async function handleSubscriptionActive(
         userEmail: email,
         planKey,
         userId,
-        subscriptionId: data.subscription_id,
         recurringPreTaxAmount: data.recurring_pre_tax_amount,
         currency: data.currency,
         taxInclusive: data.tax_inclusive,

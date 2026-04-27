@@ -251,7 +251,18 @@ function buildPriceRowsHtml(args: {
     rows.push(
       `<tr><td style="color: #888; padding-right: 16px;">Amount Paid:</td><td style="color: #fff;">${formatMoney(paid, currency)}${taxNote}</td></tr>`,
     );
-    if (typeof listCents === "number" && listCents > 0 && listCents !== paid) {
+    // List Price / Saved comparison is USD-only. PRODUCT_CATALOG.priceCents is
+    // hard-coded in USD, so subtracting it from a non-USD `paid` (Dodo's
+    // adaptive-currency mode bills EUR/GBP/etc.) would produce a meaningless
+    // delta with the wrong currency label. Skip the comparison rows in that
+    // case rather than show misleading numbers — Amount Paid + Discount are
+    // still rendered.
+    if (
+      currency.toUpperCase() === "USD" &&
+      typeof listCents === "number" &&
+      listCents > 0 &&
+      listCents !== paid
+    ) {
       const savedCents = listCents - paid;
       const pct = Math.round((savedCents / listCents) * 100);
       rows.push(
@@ -281,7 +292,11 @@ export const sendSubscriptionEmails = internalAction({
     userEmail: v.string(),
     planKey: v.string(),
     userId: v.string(),
-    subscriptionId: v.string(),
+    // Optional: previously rendered as a "Subscription:" row in the admin
+    // email, now dropped (opaque sub_… IDs were never the question being
+    // answered when the email landed). Kept as v.optional so any in-flight
+    // scheduled action enqueued before this deploy still validates on retry.
+    subscriptionId: v.optional(v.string()),
     recurringPreTaxAmount: v.optional(v.number()),
     currency: v.optional(v.string()),
     taxInclusive: v.optional(v.boolean()),
