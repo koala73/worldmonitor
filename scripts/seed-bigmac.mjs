@@ -116,7 +116,12 @@ async function searchExa(query, includeDomains = null) {
 
   const resp = await fetch('https://api.exa.ai/search', {
     method: 'POST',
-    headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    headers: {
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json',
+      'User-Agent': CHROME_UA,
+      'x-exa-integration': 'worldmonitor',
+    },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15_000),
   });
