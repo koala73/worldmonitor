@@ -213,6 +213,31 @@ export default defineSchema({
     lastRunStatus: v.optional(v.string()),
     lastRunAt: v.optional(v.number()),
     lastRunError: v.optional(v.string()),
+    // Lease for the in-flight cron run. Set atomically by `_claimTierForRun`
+    // BEFORE the runner makes any external side effects (assignAndExportWave,
+    // createProLaunchBroadcast, sendProLaunchBroadcast). Cleared by
+    // `_recordWaveSent` (success), `_recordRunOutcome` (failure for the
+    // owning runId), `recoverFromPartialFailure` (operator), or
+    // `forceReleaseLease` (operator, last-resort). Two overlapping cron runs
+    // both attempting `_claimTierForRun` will see a lease already held and
+    // exit before any duplicate emails go out. There is NO automatic
+    // staleness override — long-running side effects (large waves) must not
+    // be racable just because they exceed an arbitrary clock; recovery from
+    // a genuinely-stuck lease is operator-only via `forceReleaseLease`.
+    pendingRunId: v.optional(v.string()),
+    pendingRunStartedAt: v.optional(v.number()),
+    // Per-step progress markers persisted by the in-flight run AFTER each
+    // external action succeeds. Lets `recoverFromPartialFailure` recover
+    // without operator-supplied metadata when the action dies between steps
+    // (e.g. Convex action timeout, OOM) before the catch can record
+    // partial-failure. Cleared on successful `_recordWaveSent` and on
+    // `recoverFromPartialFailure` completion.
+    pendingWaveLabel: v.optional(v.string()),
+    pendingSegmentId: v.optional(v.string()),
+    pendingAssigned: v.optional(v.number()),
+    pendingExportAt: v.optional(v.number()),
+    pendingBroadcastId: v.optional(v.string()),
+    pendingBroadcastAt: v.optional(v.number()),
   }).index("by_key", ["key"]),
 
   // Phase 9 / Todo #223 — Clerk-user referral codes.
