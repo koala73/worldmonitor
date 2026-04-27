@@ -9,6 +9,7 @@
 import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { PLAN_PRECEDENCE } from "../config/productCatalog";
 import { verifyUserId } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 
@@ -121,6 +122,135 @@ export async function upsertEntitlements(
       { userId, planKey, features, validUntil },
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Coverage helpers
+// ---------------------------------------------------------------------------
+
+type SubscriptionRow = {
+  _id: import("../_generated/dataModel").Id<"subscriptions">;
+  userId: string;
+  dodoSubscriptionId: string;
+  planKey: string;
+  status: "active" | "on_hold" | "cancelled" | "expired";
+  currentPeriodEnd: number;
+};
+
+/**
+ * A subscription is "still covering" the user when it is active, on-hold
+ * (payment retry window — entitlement preserved per business policy), or
+ * cancelled-but-paid-through (currentPeriodEnd in the future).
+ */
+function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "currentPeriodEnd">>(
+  s: T,
+  at: number,
+): boolean {
+  return (
+    s.status === "active" ||
+    s.status === "on_hold" ||
+    (s.status === "cancelled" && s.currentPeriodEnd > at)
+  );
+}
+
+/**
+ * Deterministic comparator over covering subscriptions. Returns positive when
+ * `a` outranks `b`, negative when `b` outranks `a`, zero only when fully
+ * indistinguishable. Tie-break order:
+ *
+ *   1. higher `features.tier` wins (primary)
+ *   2. higher `PLAN_PRECEDENCE[planKey]` wins (capability tie-break — e.g.
+ *      api_business beats api_starter at tier 2; pro_annual beats pro_monthly
+ *      at tier 1)
+ *   3. later `currentPeriodEnd` wins (duration tie-break — keep the longest-
+ *      lived covering sub)
+ *
+ * Exported for testing; use `pickBestCoveringSub` for the picker.
+ */
+export function compareSubscriptionsByCoverage<
+  T extends Pick<SubscriptionRow, "planKey" | "currentPeriodEnd">,
+>(a: T, b: T): number {
+  const tierDelta = getFeaturesForPlan(a.planKey).tier - getFeaturesForPlan(b.planKey).tier;
+  if (tierDelta !== 0) return tierDelta;
+  const rankDelta = (PLAN_PRECEDENCE[a.planKey] ?? 0) - (PLAN_PRECEDENCE[b.planKey] ?? 0);
+  if (rankDelta !== 0) return rankDelta;
+  return a.currentPeriodEnd - b.currentPeriodEnd;
+}
+
+/**
+ * Picks the strongest covering subscription for a user, or null if none
+ * cover. Reads ALL of the user's subscriptions via `by_userId`; pass the
+ * post-write timestamp so a sub that was just patched (e.g. expired) is
+ * correctly excluded.
+ */
+async function pickBestCoveringSub(
+  ctx: MutationCtx,
+  userId: string,
+  at: number,
+): Promise<SubscriptionRow | null> {
+  const candidates = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .collect();
+
+  let best: SubscriptionRow | null = null;
+  for (const s of candidates) {
+    if (!isCoveringAt(s, at)) continue;
+    if (best === null || compareSubscriptionsByCoverage(s, best) > 0) {
+      best = s as SubscriptionRow;
+    }
+  }
+  return best;
+}
+
+/**
+ * Recomputes the user's entitlement from ALL of their subscriptions.
+ *
+ * This is the ONE entitlement-write path for subscription event handlers.
+ * It exists because the `entitlements` table is one-row-per-user but a single
+ * user can hold multiple concurrent Dodo subscriptions on the same userId
+ * (e.g. upgraded by buying a higher-tier plan instead of plan-change in the
+ * customer portal). A naive per-event `upsertEntitlements(userId, planKey, ...)`
+ * silently clobbers the entitlement row with the *event's* sub even when
+ * another paid sub still covers the user — see review feedback on PR #3470.
+ *
+ * Algorithm:
+ *   1. Honor a standing comp floor: if compUntil is in the future, leave
+ *      the entitlement untouched (goodwill credit outlives Dodo state).
+ *   2. Pick the strongest covering sub via the deterministic comparator
+ *      (tier > PLAN_PRECEDENCE > currentPeriodEnd).
+ *   3. If a covering sub exists, write its (planKey, currentPeriodEnd).
+ *   4. Otherwise downgrade to free.
+ *
+ * Note: callers MUST persist their own subscription row patch BEFORE calling
+ * this helper so the recompute sees the post-event state.
+ */
+export async function recomputeEntitlementFromAllSubs(
+  ctx: MutationCtx,
+  userId: string,
+  eventTimestamp: number,
+): Promise<void> {
+  const entitlement = await ctx.db
+    .query("entitlements")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  if (entitlement?.compUntil && entitlement.compUntil > eventTimestamp) {
+    console.log(
+      `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
+    );
+    return;
+  }
+
+  const best = await pickBestCoveringSub(ctx, userId, eventTimestamp);
+  if (best) {
+    await upsertEntitlements(ctx, userId, best.planKey, best.currentPeriodEnd, eventTimestamp);
+    return;
+  }
+
+  // No covering sub — downgrade to free. validUntil = eventTimestamp marks the
+  // immediate-revoke point; entitlement queries fall back to free-tier defaults
+  // when validUntil is in the past.
+  await upsertEntitlements(ctx, userId, "free", eventTimestamp, eventTimestamp);
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +462,9 @@ export async function handleSubscriptionActive(
     }
   }
 
-  await upsertEntitlements(ctx, userId, planKey, currentPeriodEnd, eventTimestamp);
+  // Recompute from ALL subs on this userId — the event's sub may be a
+  // duplicate or lower-tier than another active sub (multi-active-sub guard).
+  await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
 
   // Upsert customer record so portal session creation can find dodoCustomerId
   const dodoCustomerId = data.customer?.customer_id;
@@ -426,14 +558,9 @@ export async function handleSubscriptionRenewed(
     updatedAt: eventTimestamp,
   });
 
-  // Resolve userId from subscription record
-  await upsertEntitlements(
-    ctx,
-    existing.userId,
-    existing.planKey,
-    currentPeriodEnd,
-    eventTimestamp,
-  );
+  // Recompute from ALL subs — a renewal on a lower-tier sub must NOT
+  // clobber a higher-tier active sub on the same userId.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
 }
 
 /**
@@ -549,27 +676,10 @@ export async function handleSubscriptionPlanChanged(
     updatedAt: eventTimestamp,
   });
 
-  // Multi-active-sub guard: this user may hold a higher-tier sub that the
-  // entitlement row currently reflects. Naively pushing this sub's new plan
-  // would overwrite that. Pick the best across (this sub at its new plan)
-  // plus any OTHER covering sub, and write the highest-tier one.
-  const otherBest = await pickBestActiveSubExcluding(ctx, existing.userId, existing._id, eventTimestamp);
-  const newTier = getFeaturesForPlan(newPlanKey).tier;
-  if (otherBest && getFeaturesForPlan(otherBest.planKey).tier > newTier) {
-    console.log(
-      `[subscriptionHelpers] subscription.plan_changed for ${existing.userId} (${data.subscription_id} -> ${newPlanKey}) — other active sub ${otherBest.dodoSubscriptionId} (${otherBest.planKey}) is higher tier, preserving entitlement`,
-    );
-    await upsertEntitlements(ctx, existing.userId, otherBest.planKey, otherBest.currentPeriodEnd, eventTimestamp);
-    return;
-  }
-
-  await upsertEntitlements(
-    ctx,
-    existing.userId,
-    newPlanKey,
-    existing.currentPeriodEnd,
-    eventTimestamp,
-  );
+  // Recompute from ALL subs — the new plan may be lower-tier than another
+  // active sub on the same userId, in which case we must NOT clobber the
+  // entitlement with the downgrade.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
 }
 
 /**
@@ -605,81 +715,11 @@ export async function handleSubscriptionExpired(
     updatedAt: eventTimestamp,
   });
 
-  // Honour a standing complimentary entitlement before revoking. Support
-  // tooling writes compUntil via grantComplimentaryEntitlement; a Dodo
-  // subscription expiring after a cancellation or refund must not wipe the
-  // goodwill credit before it runs out. If the comp is still valid we
-  // leave the entitlement as-is — compUntil already acts as a floor for
-  // validUntil (grant logic keeps them synced).
-  const entitlement = await ctx.db
-    .query("entitlements")
-    .withIndex("by_userId", (q) => q.eq("userId", existing.userId))
-    .first();
-  if (entitlement?.compUntil && entitlement.compUntil > eventTimestamp) {
-    console.log(
-      `[subscriptionHelpers] subscription.expired for ${existing.userId} — complimentary entitlement still valid until ${new Date(entitlement.compUntil).toISOString()}, preserving`,
-    );
-    return;
-  }
-
-  // The entitlements table is one-row-per-user, but a single user can hold
-  // multiple concurrent Dodo subscriptions (e.g. user upgraded by subscribing
-  // to a new plan instead of plan-change, or admin cancelled an old plan
-  // while a higher-tier sub stays active). Without this guard the expiry of
-  // ANY sub would clobber the entitlement to "free", silently downgrading
-  // users who are still actively paying for a different sub.
-  const best = await pickBestActiveSubExcluding(ctx, existing.userId, existing._id, eventTimestamp);
-  if (best) {
-    console.log(
-      `[subscriptionHelpers] subscription.expired for ${existing.userId} (${data.subscription_id}) — other active sub ${best.dodoSubscriptionId} (${best.planKey}) still covers user, recomputing entitlement instead of free-downgrade`,
-    );
-    await upsertEntitlements(ctx, existing.userId, best.planKey, best.currentPeriodEnd, eventTimestamp);
-    return;
-  }
-
-  // Revoke entitlements by downgrading to free tier
-  await upsertEntitlements(ctx, existing.userId, "free", eventTimestamp, eventTimestamp);
-}
-
-/**
- * Returns the highest-tier still-covering subscription for a userId, excluding
- * the given subscription `_id`. Used to prevent a one-row-per-user entitlement
- * table from being clobbered to "free" when one of several concurrent
- * subscriptions expires or is replaced. A sub is "still covering" if it is
- * `active`, `on_hold`, or `cancelled`-with-future-`currentPeriodEnd` (the
- * standard "valid until end of paid period" state).
- *
- * Returns null when the user has no other coverage, in which case the caller
- * should fall through to its default behaviour (free-downgrade for expired,
- * or apply the new plan_changed plan).
- */
-async function pickBestActiveSubExcluding(
-  ctx: MutationCtx,
-  userId: string,
-  excludeId: import("../_generated/dataModel").Id<"subscriptions">,
-  eventTimestamp: number,
-) {
-  const candidates = await ctx.db
-    .query("subscriptions")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .collect();
-
-  let best: (typeof candidates)[number] | null = null;
-  let bestTier = -Infinity;
-  for (const s of candidates) {
-    if (s._id === excludeId) continue;
-    const isCovering =
-      s.status === "active" ||
-      s.status === "on_hold" ||
-      (s.status === "cancelled" && s.currentPeriodEnd > eventTimestamp);
-    if (!isCovering) continue;
-    const tier = getFeaturesForPlan(s.planKey).tier;
-    if (tier > bestTier) {
-      best = s;
-      bestTier = tier;
-    }
-  }
-  return best;
+  // Recompute from ALL subs (post-patch). The expired sub is now status:
+  // "expired" so it's automatically excluded by isCoveringAt; if any other
+  // sub still covers the user we keep them on its tier, else free-downgrade.
+  // The recompute helper also honours the comp-floor for goodwill credits.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
 }
 
 /**

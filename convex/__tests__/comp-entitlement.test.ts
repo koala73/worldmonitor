@@ -431,4 +431,251 @@ describe("multi-active-sub guard", () => {
     expect(row!.planKey).toBe("api_starter");
     expect(row!.features.tier).toBe(2);
   });
+
+  // ---------------------------------------------------------------------
+  // Reviewer P1 #1 — guard must cover subscription.active and
+  // subscription.renewed paths, not just expired/plan_changed.
+  // ---------------------------------------------------------------------
+
+  async function fireSubscriptionRenewed(
+    t: ReturnType<typeof convexTest>,
+    subscriptionId: string,
+    productId: string,
+  ) {
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: `msg_test_${subscriptionId}_renewed`,
+      eventType: "subscription.renewed",
+      rawPayload: {
+        type: "subscription.renewed",
+        data: {
+          subscription_id: subscriptionId,
+          product_id: productId,
+          customer: { customer_id: "cus_test" },
+          metadata: { wm_user_id: USER_ID },
+          previous_billing_date: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+          next_billing_date: new Date(Date.now() + 30 * DAY_MS).toISOString(),
+        },
+      },
+      timestamp: Date.now(),
+    });
+  }
+
+  test("subscription.renewed on lower-tier sub does NOT clobber higher-tier active sub", async () => {
+    const t = convexTest(schema, modules);
+    await seedTwoActiveSubs(t, {
+      lower: {
+        subscriptionId: "sub_pro_renewed",
+        planKey: "pro_monthly",
+        productId: "pdt_0Nbtt71uObulf7fGXhQup",
+      },
+      higher: {
+        subscriptionId: "sub_api_starter",
+        planKey: "api_starter",
+        productId: "pdt_0NbttVmG1SERrxhygbbUq",
+        tier: 2,
+      },
+    });
+
+    // The lower-tier sub renews monthly. Without the multi-active-sub guard
+    // covering the renewal path, this would write planKey="pro_monthly" tier=1
+    // into the entitlement row, silently downgrading the user.
+    await fireSubscriptionRenewed(t, "sub_pro_renewed", "pdt_0Nbtt71uObulf7fGXhQup");
+
+    const row = await readEntitlement(t);
+    expect(row!.planKey).toBe("api_starter");
+    expect(row!.features.tier).toBe(2);
+  });
+
+  test("subscription.active for a NEW lower-tier sub does NOT clobber existing higher-tier sub", async () => {
+    const t = convexTest(schema, modules);
+    // subscription.active calls resolvePlanKey (productPlans) and resolveUserId
+    // (HMAC-verified metadata OR customers lookup). Seed both — the customer
+    // row simulates the existing api_starter customer joining a second sub.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("productPlans", {
+        dodoProductId: "pdt_0Nbtt71uObulf7fGXhQup",
+        planKey: "pro_monthly",
+        displayName: "Pro Monthly",
+        isActive: true,
+      });
+      await ctx.db.insert("customers", {
+        userId: USER_ID,
+        dodoCustomerId: "cus_test",
+        email: "test@example.com",
+        normalizedEmail: "test@example.com",
+        createdAt: Date.now() - 60 * DAY_MS,
+        updatedAt: Date.now() - 60 * DAY_MS,
+      });
+    });
+    // Seed an existing higher-tier (api_starter) sub + entitlement.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: "sub_api_starter_existing",
+        dodoProductId: "pdt_0NbttVmG1SERrxhygbbUq",
+        planKey: "api_starter",
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: USER_ID,
+        planKey: "api_starter",
+        features: {
+          tier: 2,
+          maxDashboards: 25,
+          apiAccess: true,
+          apiRateLimit: 60,
+          prioritySupport: false,
+          exportFormats: ["csv", "pdf", "json"],
+        },
+        validUntil: Date.now() + 30 * DAY_MS,
+        updatedAt: Date.now() - 1000,
+      });
+    });
+
+    // User accidentally subscribes to pro_monthly on the same userId
+    // (e.g. via an old checkout link). Dodo fires subscription.active.
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "msg_test_pro_active",
+      eventType: "subscription.active",
+      rawPayload: {
+        type: "subscription.active",
+        data: {
+          subscription_id: "sub_pro_new",
+          product_id: "pdt_0Nbtt71uObulf7fGXhQup",
+          customer: { customer_id: "cus_test", email: "test@example.com" },
+          metadata: { wm_user_id: USER_ID },
+          previous_billing_date: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+          next_billing_date: new Date(Date.now() + 30 * DAY_MS).toISOString(),
+        },
+      },
+      timestamp: Date.now(),
+    });
+
+    const row = await readEntitlement(t);
+    // Entitlement must NOT have been clobbered to pro_monthly tier 1.
+    expect(row!.planKey).toBe("api_starter");
+    expect(row!.features.tier).toBe(2);
+  });
+
+  // ---------------------------------------------------------------------
+  // Reviewer P1 #2 — same-tier plans need a deterministic precedence.
+  // tier alone is insufficient: api_business and api_starter are both
+  // tier 2; pro_annual and pro_monthly are both tier 1.
+  // ---------------------------------------------------------------------
+
+  test("same-tier precedence: api_business outranks api_starter when both cover", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      // Two tier-2 subs. PLAN_PRECEDENCE gives api_business=30 over
+      // api_starter=20, so api_business must win regardless of insertion
+      // order or currentPeriodEnd.
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: "sub_api_starter",
+        dodoProductId: "pdt_0NbttVmG1SERrxhygbbUq",
+        planKey: "api_starter",
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        // Longer-lived than api_business deliberately — verifies that the
+        // capability tie-break (PLAN_PRECEDENCE) wins over the duration
+        // tie-break (currentPeriodEnd).
+        currentPeriodEnd: Date.now() + 90 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: "sub_api_business",
+        dodoProductId: "pdt_0Nbttg7NuOJrhbyBGCius",
+        planKey: "api_business",
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      // Seed entitlement to whatever — the test asserts what recompute writes.
+      await ctx.db.insert("entitlements", {
+        userId: USER_ID,
+        planKey: "free",
+        features: {
+          tier: 0,
+          maxDashboards: 3,
+          apiAccess: false,
+          apiRateLimit: 0,
+          prioritySupport: false,
+          exportFormats: ["csv"],
+        },
+        validUntil: 0,
+        updatedAt: Date.now() - 1000,
+      });
+    });
+
+    // Trigger a recompute by firing renewed on the lower-precedence sub.
+    await fireSubscriptionRenewed(t, "sub_api_starter", "pdt_0NbttVmG1SERrxhygbbUq");
+
+    const row = await readEntitlement(t);
+    expect(row!.planKey).toBe("api_business");
+    // api_business has tier 2, but distinct features from api_starter:
+    // higher rate limit + priority support.
+    expect(row!.features.apiRateLimit).toBe(300);
+    expect(row!.features.prioritySupport).toBe(true);
+  });
+
+  test("comparator tie-break by currentPeriodEnd: same plan, longer-lived sub wins", async () => {
+    // This validates the comparator's third tie-break level. Two subs on the
+    // same planKey (both pro_monthly) — the recompute should pick the one
+    // with the later currentPeriodEnd, so the user's entitlement reflects
+    // their longest paid coverage.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: "sub_pro_short",
+        dodoProductId: "pdt_0Nbtt71uObulf7fGXhQup",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + 5 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: "sub_pro_long",
+        dodoProductId: "pdt_0Nbtt71uObulf7fGXhQup",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + 60 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: USER_ID,
+        planKey: "free",
+        features: {
+          tier: 0,
+          maxDashboards: 3,
+          apiAccess: false,
+          apiRateLimit: 0,
+          prioritySupport: false,
+          exportFormats: ["csv"],
+        },
+        validUntil: 0,
+        updatedAt: Date.now() - 1000,
+      });
+    });
+
+    await fireSubscriptionRenewed(t, "sub_pro_short", "pdt_0Nbtt71uObulf7fGXhQup");
+
+    const row = await readEntitlement(t);
+    expect(row!.planKey).toBe("pro_monthly");
+    // Recompute should pick the longer-lived one.
+    expect(row!.validUntil).toBeGreaterThan(Date.now() + 50 * DAY_MS);
+  });
 });

@@ -16,6 +16,7 @@ import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
+import { recomputeEntitlementFromAllSubs } from "./subscriptionHelpers";
 
 // UUID v4 regex matching values produced by crypto.randomUUID() in user-identity.ts.
 // Hoisted to module scope to avoid re-allocation on every claimSubscription call.
@@ -517,104 +518,29 @@ export const deleteSubscriptionByDodoId = internalMutation({
       `[billing] deleteSubscriptionByDodoId userId=${userId} dodoSubscriptionId=${args.dodoSubscriptionId} planKey=${sub.planKey} reason="${args.reason}"`,
     );
 
-    // Recompute entitlement from any remaining active sub. If none, downgrade
-    // to free — but only if no compUntil floor is in place.
+    // Re-derive the entitlement from the user's REMAINING subscriptions
+    // through the same shared helper that subscription event handlers use.
+    // This guarantees identical precedence (tier > PLAN_PRECEDENCE >
+    // currentPeriodEnd) and identical comp-floor handling, so admin cleanup
+    // can never produce an entitlement state that an organic webhook flow
+    // wouldn't have produced.
     const now = Date.now();
-    const remaining = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .collect();
+    await recomputeEntitlementFromAllSubs(ctx, userId, now);
 
-    let best: (typeof remaining)[number] | null = null;
-    let bestTier = -Infinity;
-    for (const s of remaining) {
-      const isCovering =
-        s.status === "active" ||
-        s.status === "on_hold" ||
-        (s.status === "cancelled" && s.currentPeriodEnd > now);
-      if (!isCovering) continue;
-      const tier = getFeaturesForPlan(s.planKey).tier;
-      if (tier > bestTier) {
-        best = s;
-        bestTier = tier;
-      }
-    }
-
-    const entitlement = await ctx.db
+    const entitlementAfter = await ctx.db
       .query("entitlements")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
 
-    if (best) {
-      const features = getFeaturesForPlan(best.planKey);
-      if (entitlement) {
-        await ctx.db.patch(entitlement._id, {
-          planKey: best.planKey,
-          features,
-          validUntil: best.currentPeriodEnd,
-          updatedAt: now,
-        });
-      } else {
-        await ctx.db.insert("entitlements", {
-          userId,
-          planKey: best.planKey,
-          features,
-          validUntil: best.currentPeriodEnd,
-          updatedAt: now,
-        });
-      }
-      if (process.env.UPSTASH_REDIS_REST_URL) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.payments.cacheActions.syncEntitlementCache,
-          { userId, planKey: best.planKey, features, validUntil: best.currentPeriodEnd },
-        );
-      }
-      return {
-        deleted: { _id: sub._id, dodoSubscriptionId: args.dodoSubscriptionId, planKey: sub.planKey },
-        entitlementAfter: { planKey: best.planKey, validUntil: best.currentPeriodEnd },
-      };
-    }
-
-    // No remaining active sub. Honour comp floor if present.
-    if (entitlement?.compUntil && entitlement.compUntil > now) {
-      console.log(
-        `[billing] deleteSubscriptionByDodoId — no active subs remain, but compUntil=${new Date(entitlement.compUntil).toISOString()} preserves entitlement`,
-      );
-      return {
-        deleted: { _id: sub._id, dodoSubscriptionId: args.dodoSubscriptionId, planKey: sub.planKey },
-        entitlementAfter: { planKey: entitlement.planKey, validUntil: entitlement.validUntil, compUntil: entitlement.compUntil },
-      };
-    }
-
-    // Downgrade to free.
-    const freeFeatures = getFeaturesForPlan("free");
-    if (entitlement) {
-      await ctx.db.patch(entitlement._id, {
-        planKey: "free",
-        features: freeFeatures,
-        validUntil: now,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("entitlements", {
-        userId,
-        planKey: "free",
-        features: freeFeatures,
-        validUntil: now,
-        updatedAt: now,
-      });
-    }
-    if (process.env.UPSTASH_REDIS_REST_URL) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.payments.cacheActions.syncEntitlementCache,
-        { userId, planKey: "free", features: freeFeatures, validUntil: now },
-      );
-    }
     return {
       deleted: { _id: sub._id, dodoSubscriptionId: args.dodoSubscriptionId, planKey: sub.planKey },
-      entitlementAfter: { planKey: "free", validUntil: now },
+      entitlementAfter: entitlementAfter
+        ? {
+            planKey: entitlementAfter.planKey,
+            validUntil: entitlementAfter.validUntil,
+            ...(entitlementAfter.compUntil !== undefined ? { compUntil: entitlementAfter.compUntil } : {}),
+          }
+        : null,
     };
   },
 });
