@@ -641,9 +641,13 @@ describe('climate-anomalies CACHE_TTL + maxStaleMin co-pinned to 3h cron cadence
   // seedAgeMin (~3h+drift) was still < maxStaleMin (4h). Production logs
   // 2026-04-27T00:00:59 + 03:03:35 show the 3h+3min drift pattern.
   //
-  // Fix: TTL = 6h (2× cron cadence) so data survives single missed cron;
-  // maxStaleMin = 9h (3× cron cadence per project convention) so alarm
-  // fires on a real outage but tolerates routine drift.
+  // Fix: TTL = 9h (3× cron cadence) so data survives one missed cron + drift,
+  // co-pinned to maxStaleMin (also 9h / 540min) so the data key is always
+  // alive when the alarm would fire — no silent-EMPTY window. maxStaleMin =
+  // 9h (3× cron cadence per project convention) fires on a real outage but
+  // tolerates routine drift. (An earlier draft used TTL=6h but the
+  // `TTL_min >= maxStaleMin` test below caught the residual 6h-9h gap and
+  // forced TTL up to match.)
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const root = resolve(__dirname, '..');
