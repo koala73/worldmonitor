@@ -163,7 +163,7 @@ async function postCloudPrefs(
   variant: string,
   data: Record<string, string>,
   expectedSyncVersion: number,
-): Promise<{ syncVersion: number } | { conflict: true }> {
+): Promise<{ syncVersion: number } | { conflict: true; actualSyncVersion?: number }> {
   const res = await fetch('/api/user-prefs', {
     method: 'POST',
     headers: {
@@ -172,7 +172,15 @@ async function postCloudPrefs(
     },
     body: JSON.stringify({ variant, data, expectedSyncVersion, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION }),
   });
-  if (res.status === 409) return { conflict: true };
+  if (res.status === 409) {
+    // Server now echoes the row's current syncVersion in the 409 body
+    // (when available) so we can advance local state without a follow-up
+    // GET. Fall back to undefined for older edge deploys that don't yet
+    // include the field — the existing re-fetch path still handles those.
+    const body = await res.json().catch(() => ({} as Record<string, unknown>));
+    const actualSyncVersion = typeof body.actualSyncVersion === 'number' ? body.actualSyncVersion : undefined;
+    return { conflict: true, actualSyncVersion };
+  }
   if (!res.ok) throw new Error(`post prefs: ${res.status}`);
   return (await res.json()) as { syncVersion: number };
 }

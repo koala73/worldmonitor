@@ -16,6 +16,8 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
+// @ts-expect-error — JS module, no declaration file
+import { extractConvexErrorKind, readConvexErrorNumber } from './_convex-error.js';
 import { ConvexHttpClient } from 'convex/browser';
 import { validateBearerToken } from '../server/auth-session';
 
@@ -66,6 +68,7 @@ export default async function handler(
       return jsonResponse(prefs ?? null, 200, cors);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const kind = extractConvexErrorKind(err, msg);
       // UNAUTHENTICATED on this path means the Clerk token PASSED our edge's
       // `validateBearerToken` but Convex still rejected it — i.e. genuine
       // auth/audience/issuer drift between our Clerk JWKS validation and
@@ -74,7 +77,7 @@ export default async function handler(
       // caught earlier (the `validateBearerToken` 401 above) and never reach
       // this catch. Capture before returning 401 so the drift surfaces under
       // a stable Sentry bucket instead of silently 401'ing every request.
-      if (msg.includes('UNAUTHENTICATED')) {
+      if (kind === 'UNAUTHENTICATED') {
         console.error('[user-prefs] GET convex auth drift:', err);
         captureSilentError(err, buildSentryContext(err, msg, {
           method: 'GET', convexFn: 'userPreferences:getPreferences',
@@ -118,13 +121,24 @@ export default async function handler(
     return jsonResponse(result, 200, cors);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('CONFLICT')) {
-      return jsonResponse({ error: 'CONFLICT' }, 409, cors);
+    const kind = extractConvexErrorKind(err, msg);
+    if (kind === 'CONFLICT') {
+      // Echo `actualSyncVersion` from the structured ConvexError when present
+      // and numeric so the client can refresh its local sync state without a
+      // follow-up GET. Type-guarded at the boundary — the response contract
+      // is `actualSyncVersion?: number`, so we drop non-numeric values rather
+      // than forwarding them as `unknown`.
+      const actualSyncVersion = readConvexErrorNumber(err, 'actualSyncVersion');
+      return jsonResponse(
+        actualSyncVersion !== undefined ? { error: 'CONFLICT', actualSyncVersion } : { error: 'CONFLICT' },
+        409,
+        cors,
+      );
     }
-    if (msg.includes('BLOB_TOO_LARGE')) {
+    if (kind === 'BLOB_TOO_LARGE') {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
     }
-    if (msg.includes('UNAUTHENTICATED')) {
+    if (kind === 'UNAUTHENTICATED') {
       // See GET branch above — UNAUTHENTICATED here means Clerk-vs-Convex
       // auth drift (token already passed validateBearerToken). Capture
       // before returning 401 so the drift is visible.
@@ -149,6 +163,7 @@ export default async function handler(
     return jsonResponse({ error: 'Failed to save preferences' }, 500, cors);
   }
 }
+
 
 /**
  * Build a captureSilentError context that carries enough provenance to triage
