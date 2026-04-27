@@ -65,6 +65,30 @@ async function importPatchedTsModule(relPath, replacements) {
   };
 }
 
+function isSetRequest(url, init) {
+  if (url.includes('/set/')) {
+    return true;
+  }
+  try {
+    const body = JSON.parse(String(init?.body ?? 'null'));
+    return Array.isArray(body) && body[0] === 'SET';
+  } catch {
+    return false;
+  }
+}
+
+function parseSetRequest(url, init) {
+  if (url.includes('/set/')) {
+    const parts = url.split('/set/').pop().split('/');
+    return {
+      key: decodeURIComponent(parts[0]),
+      value: decodeURIComponent(parts[1]),
+    };
+  }
+  const body = JSON.parse(String(init.body));
+  return { key: body[1], value: body[2] };
+}
+
 describe('redis caching behavior', { concurrency: 1 }, () => {
   it('coalesces concurrent misses into one upstream fetcher execution', async () => {
     const redis = await importRedisFresh();
@@ -78,13 +102,13 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
 
     let getCalls = 0;
     let setCalls = 0;
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         getCalls += 1;
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         setCalls += 1;
         return jsonResponse({ result: 'OK' });
       }
@@ -198,10 +222,10 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) return jsonResponse({ result: undefined });
-      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -228,10 +252,10 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) return jsonResponse({ result: undefined });
-      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -274,7 +298,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
 
     // First call: cache miss. Second call (from a "different instance"): cache hit.
     let getCalls = 0;
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         getCalls += 1;
@@ -282,7 +306,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
         // Simulate another instance populating cache between calls
         return jsonResponse({ result: JSON.stringify({ value: 'from-other-instance' }) });
       }
-      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -320,17 +344,15 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const store = new Map();
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/').pop() || '');
         const val = store.get(key);
         return jsonResponse({ result: val ?? undefined });
       }
-      if (raw.includes('/set/')) {
-        const parts = raw.split('/set/').pop().split('/');
-        const key = decodeURIComponent(parts[0]);
-        const value = decodeURIComponent(parts[1]);
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
         store.set(key, value);
         return jsonResponse({ result: 'OK' });
       }
@@ -369,17 +391,15 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const store = new Map();
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/').pop() || '');
         const val = store.get(key);
         return jsonResponse({ result: val ?? undefined });
       }
-      if (raw.includes('/set/')) {
-        const parts = raw.split('/set/').pop().split('/');
-        const key = decodeURIComponent(parts[0]);
-        const value = decodeURIComponent(parts[1]);
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
         store.set(key, value);
         return jsonResponse({ result: 'OK' });
       }
@@ -414,10 +434,10 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     let setCalls = 0;
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) return jsonResponse({ result: undefined });
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         setCalls += 1;
         return jsonResponse({ result: 'OK' });
       }
@@ -514,7 +534,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
 
     const staleData = { theaters: [{ theater: 'stale-test', postureLevel: 'normal', activeFlights: 1, trackedVessels: 0, activeOperations: [], assessedAt: 1 }] };
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/').pop() || '');
@@ -526,7 +546,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
         }
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('opensky-network.org')) {
@@ -558,12 +578,12 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('opensky-network.org')) {
@@ -591,12 +611,12 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const cacheWrites = [];
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/') || raw.includes('/pipeline')) {
+      if (isSetRequest(url, init) || raw.includes('/pipeline')) {
         cacheWrites.push(raw);
         return jsonResponse({ result: 'OK' });
       }
@@ -665,10 +685,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         const key = parseRedisKey(raw, 'get');
         return jsonResponse({ result: store.get(key) });
       }
-      if (raw.includes('/set/')) {
-        const key = parseRedisKey(raw, 'set');
-        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
-        store.set(key, decodeURIComponent(encodedValue));
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
+        store.set(key, value);
         if (!key.startsWith('seed-meta:')) setKeys.push(key);
         return jsonResponse({ result: 'OK' });
       }
@@ -729,10 +748,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         const key = parseRedisKey(raw, 'get');
         return jsonResponse({ result: store.get(key) });
       }
-      if (raw.includes('/set/')) {
-        const key = parseRedisKey(raw, 'set');
-        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
-        store.set(key, decodeURIComponent(encodedValue));
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
+        store.set(key, value);
         if (!key.startsWith('seed-meta:')) setKeys.push(key);
         return jsonResponse({ result: 'OK' });
       }
