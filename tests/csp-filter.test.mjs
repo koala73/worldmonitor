@@ -82,6 +82,14 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('suppresses safari-web-extension', () => {
       assert.ok(suppress('enforce', 'script-src', 'safari-web-extension://abc', '', false));
     });
+
+    it('suppresses ms-browser-extension blocked URI (Edge)', () => {
+      assert.ok(suppress('enforce', 'font-src', 'ms-browser-extension://abc/font.woff2', '', false));
+    });
+
+    it('suppresses ms-browser-extension source file (Edge)', () => {
+      assert.ok(suppress('enforce', 'script-src', 'https://x.com/a.js', 'ms-browser-extension://abc/inject.js', false));
+    });
   });
 
   describe('scheme-only and special values', () => {
@@ -115,6 +123,18 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
 
     it('suppresses android-webview-video-poster', () => {
       assert.ok(suppress('enforce', 'img-src', 'android-webview-video-poster', '', false));
+    });
+
+    it('suppresses about (scheme-only) for frame-src — Smart TV browsers / extensions', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'about', '', false));
+    });
+
+    it('suppresses about:blank frame-src', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'about:blank', '', false));
+    });
+
+    it('suppresses about:srcdoc frame-src', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'about:srcdoc', '', false));
     });
   });
 
