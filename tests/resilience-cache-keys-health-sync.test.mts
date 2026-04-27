@@ -173,4 +173,68 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
       });
     }
   });
+
+  describe('resilienceIntervals maxStaleMin co-pinned to actual ~2h writer cadence', () => {
+    // Regression-locks the fix for the 2026-04-27 false-OK incident where
+    // resilienceIntervals had maxStaleMin=20160 (14d) — 168× the actual ~2h
+    // writer cadence. With the v15→v16 cache prefix bump in PR #3452 plus
+    // Upstash optimistic-OK-but-not-persisted (see PR #3458), production
+    // data was missing in Redis for 11h+ but health stayed STALE-free
+    // because seedAgeMin (671) was still far under 20160.
+    //
+    // CADENCE BASELINE — the authoritative source is the bundle script's
+    // own comment, NOT the runbook (which is stale). Per
+    // scripts/seed-bundle-resilience.mjs:5-12, the Resilience-Scores
+    // section runs at intervalMs=2h with hourly Railway fires + 96min
+    // skip-window → effective ~2h cadence. 360 = 3× the real 2h cadence,
+    // matching the project's 3× convention used by portwatchPortActivity,
+    // chokepointTransits, transitSummaries, and the bisDsr triplet.
+    //
+    // First-pass fix shipped at 1080 (18h) trusting the runbook's
+    // `0 */6 * * *`; reviewer caught the bundle script overrides that.
+    const healthSrc = readFileSync(join(repoRoot, 'api/health.js'), 'utf-8');
+    const bundleSrc = readFileSync(join(repoRoot, 'scripts/seed-bundle-resilience.mjs'), 'utf-8');
+
+    function extractMaxStaleMin(name: string): number {
+      const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
+      const m = healthSrc.match(re);
+      if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
+      return parseInt(m[1]!, 10);
+    }
+
+    function extractSectionGateHours(label: string): number {
+      const re = new RegExp(`label:\\s*'${label}'[\\s\\S]*?intervalMs:\\s*(\\d+)\\s*\\*\\s*HOUR`, 'm');
+      const m = bundleSrc.match(re);
+      if (!m) throw new Error(`could not find bundle entry for ${label}`);
+      return parseInt(m[1]!, 10);
+    }
+
+    it('Resilience-Scores section gate is 2h (load-bearing — combined with hourly Railway fires gives ~2h effective cadence)', () => {
+      assert.equal(extractSectionGateHours('Resilience-Scores'), 2);
+    });
+
+    it('resilienceIntervals.maxStaleMin is 360min (3× the real ~2h writer cadence)', () => {
+      assert.equal(extractMaxStaleMin('resilienceIntervals'), 360);
+    });
+
+    it('resilienceIntervals.maxStaleMin >= 180 (no false-STALE on a single missed 2h tick + retry)', () => {
+      const maxStale = extractMaxStaleMin('resilienceIntervals');
+      assert.ok(
+        maxStale >= 180,
+        `resilienceIntervals.maxStaleMin (${maxStale}) must be >= 180 (1.5× ~2h cadence); ` +
+        `tighter values flip to STALE_SEED on routine cron jitter.`,
+      );
+    });
+
+    it('resilienceIntervals.maxStaleMin <= 480 (still catches a real outage within 8h)', () => {
+      const maxStale = extractMaxStaleMin('resilienceIntervals');
+      assert.ok(
+        maxStale <= 480,
+        `resilienceIntervals.maxStaleMin (${maxStale}) must be <= 480 (4× ~2h cadence); ` +
+        `looser values mask real upstream outages from the alerting threshold — ` +
+        `the 2026-04-27 incident's 14d (20160) setting hid an 11h outage; ` +
+        `the first-pass 1080 (18h) was 9× the real cadence and still over-permissive.`,
+      );
+    });
+  });
 });
