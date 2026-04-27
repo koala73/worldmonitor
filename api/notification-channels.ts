@@ -411,6 +411,54 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         return json({ ok: true }, 200, corsHeaders);
       }
 
+      // Atomic update of (digestMode, sensitivity) and any subset of the alert-rule
+      // fields. The UI's delivery-mode change flow uses this to avoid the two-call
+      // race against the cross-field validator.
+      // Critical: 400 responses from the relay must pass through with their body
+      // intact so the client can render INCOMPATIBLE_DELIVERY helper text.
+      // See plans/forbid-realtime-all-events.md §1f.
+      if (action === 'set-notification-config') {
+        const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
+        const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone } = body;
+        if (!variant) return json({ error: 'variant required' }, 400, corsHeaders);
+        if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
+          return json({ error: 'invalid sensitivity' }, 400, corsHeaders);
+        }
+        if (digestMode !== undefined && !VALID_DIGEST_MODE.has(digestMode)) {
+          return json({ error: 'invalid digestMode' }, 400, corsHeaders);
+        }
+        const resp = await convexRelay({
+          action: 'set-notification-config',
+          userId: session.userId,
+          variant,
+          enabled,
+          eventTypes,
+          sensitivity,
+          channels,
+          aiDigestEnabled,
+          digestMode,
+          digestHour,
+          digestTimezone,
+        });
+        if (!resp.ok) {
+          // 400 from convex/http means user-facing validation failure (e.g.
+          // INCOMPATIBLE_DELIVERY). Pass body through so client renders the
+          // real reason instead of a generic toast.
+          if (resp.status === 400) {
+            const text = await resp.text().catch(() => '');
+            let payload: unknown = { error: 'Validation failed' };
+            if (text) {
+              try { payload = JSON.parse(text); } catch { /* keep default */ }
+            }
+            return json(payload, 400, corsHeaders);
+          }
+          console.error('[notification-channels] POST set-notification-config relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
+        return json({ ok: true }, 200, corsHeaders);
+      }
+
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
