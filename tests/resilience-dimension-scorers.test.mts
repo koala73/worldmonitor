@@ -663,7 +663,7 @@ describe('resilience dimension scorers', () => {
       };
     }
 
-    it('TV (GPI 1.3, no displacement registry entry, no unrest events) → blended ~80, dim-level imputationClass null', async () => {
+    it('TV (GPI 1.3, no displacement registry entry, no unrest events) → blended ~76, dim-level imputationClass null', async () => {
       const reader = makeReader({
         gpi: 1.3,
         countryCode: 'TV',
@@ -672,9 +672,12 @@ describe('resilience dimension scorers', () => {
       });
       const result = await scoreSocialCohesion('TV', reader);
       // GPI 1.3 → norm(1.3, 1.0, 3.6) = (3.6-1.3)/(3.6-1.0) = 2.3/2.6 ≈ 88.46
-      // Blended: 88.46*0.55 + 70*0.25 + 70*0.20 = 48.65 + 17.5 + 14 = 80.15
-      assert.ok(result.score <= 83 && result.score >= 78,
-        `TV must blend to ~80 (got ${result.score}); plan §U2 cohort target is ≤83 with ≥8pt drop from v14 ~93`);
+      // Plan 2026-04-26-002 §U5 dropped GPI-only unrest impute from 70 → 50
+      // (unrest:events:v1 is non-comprehensive). Blended: 88.46*0.55 +
+      // 70*0.25 + 50*0.20 = 48.65 + 17.5 + 10 = 76.15. Plan target was
+      // "TV socialCohesion ≤ 80" (per AE4 in plan 002), satisfied.
+      assert.ok(result.score <= 80 && result.score >= 73,
+        `TV must blend to ~76 (got ${result.score}); plan 002 §U5 cohort target is ≤80 (was ≤83 in plan 001 §U2)`);
       // Dim-level imputationClass MUST be null because GPI is observed.
       // Per-row imputed:true is set on displacement+unrest rows but
       // weightedBlend correctly null-s the dim-level class when observedWeight > 0.

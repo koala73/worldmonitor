@@ -35,9 +35,19 @@ import {
 // stays ~65-72, fragile states drop to ~15-35. The re-anchored bands
 // preserve the "high" vs "low" separation without pinning numbers that
 // are only valid for the legacy formula.
-const HIGH_BAND_FLOOR = 60;
+//
+// Plan 2026-04-26-002 §U4 (combined PR 3+4+5) coverage-penalty drop:
+// halving the weight of fully-imputed dims (IPC stable-absence in
+// foodWater, BIS/WTO unmonitored in economic) shifts NO down ~2pt
+// because Norway's IPC stable-absence-imputed foodWater rows were
+// pulling its foodWater dim UP at the prior weight; with the penalty
+// the observed (lower-scoring) AQUASTAT components carry more weight.
+// HIGH_BAND_FLOOR re-anchored 60 → 55 to absorb the v16 score-formula
+// shift without losing the "elite stays comfortably above mid-tier"
+// invariant the floor encodes.
+const HIGH_BAND_FLOOR = 55;
 const LOW_BAND_CEILING = 40;
-const MIN_HIGH_LOW_SEPARATION = 20;
+const MIN_HIGH_LOW_SEPARATION = 15;
 
 const fixtures = buildReleaseGateFixtures();
 
@@ -224,7 +234,7 @@ describe('pillar-combined score activation', () => {
       { request: new Request('https://example.com?countryCode=NO') } as never,
       { countryCode: 'NO' },
     );
-    assert.ok(firstRead.overallScore >= 70, `flag-off NO should score ≥70, got ${firstRead.overallScore}`);
+    assert.ok(firstRead.overallScore >= 65, `flag-off NO should score ≥65, got ${firstRead.overallScore}`);
 
     // Flip the flag. The cached entry in Redis still carries
     // _formula='d6' from the first read. Without the stale-formula
@@ -240,8 +250,8 @@ describe('pillar-combined score activation', () => {
       `flag-on rebuild must drop NO's score below the 6-domain value (penalty factor ≤ 1); got first=${firstRead.overallScore} second=${secondRead.overallScore}. If these are equal, the stale-formula cache gate is not firing and a flag flip in production would serve legacy values for up to the 6h TTL.`,
     );
     assert.ok(
-      secondRead.overallScore >= 60,
-      `flag-on NO should still meet the re-anchored 60 floor, got ${secondRead.overallScore}`,
+      secondRead.overallScore >= HIGH_BAND_FLOOR,
+      `flag-on NO should still meet the re-anchored high-band floor (${HIGH_BAND_FLOOR}), got ${secondRead.overallScore}`,
     );
   });
 });

@@ -124,15 +124,17 @@ describe('resilience cohort bias anchors (Plan 2026-04-26-001 §U5)', () => {
 
   describe('U2 (Fix C) — tiny peaceful states (GPI-only mode) must NOT inflate socialCohesion', () => {
     for (const fx of TINY_PEACEFUL) {
-      it(`${fx.iso2}: socialCohesion <= 83 (gated GPI-only impute pulls blend down)`, async () => {
+      it(`${fx.iso2}: socialCohesion <= 80 (gated GPI-only impute + §U5 unrest fallback pull blend down)`, async () => {
         const reader = buildReader(fx);
         const result = await scoreSocialCohesion(fx.iso2, reader);
-        // GPI 1.3 → norm(1.3, 1.0, 3.6) ≈ 88; with both displacement+unrest
-        // imputed at 70 (GPI-only mode) → blended ≈ 80.4.
-        assert.ok(result.score <= 83,
-          `${fx.iso2} socialCohesion must be <= 83 (got ${result.score}); v14 ~93 collapsed to GPI alone`);
-        assert.ok(result.score >= 75,
-          `${fx.iso2} socialCohesion must remain plausible (>=75) — over-correction would punish genuinely peaceful tiny states`);
+        // GPI 1.3 → norm(1.3, 1.0, 3.6) ≈ 88; displacement imputed at 70
+        // (UNHCR comprehensive=true, GPI-only mode), unrest imputed at 50
+        // (plan 002 §U5: unrest:events:v1 is non-comprehensive → fall back
+        // to unmonitored 50/0.3) → blended ≈ 76.
+        assert.ok(result.score <= 80,
+          `${fx.iso2} socialCohesion must be <= 80 (got ${result.score}); v14 ~93 collapsed to GPI alone, plan 002 §U5 lowered ceiling 83 → 80`);
+        assert.ok(result.score >= 70,
+          `${fx.iso2} socialCohesion must remain plausible (>=70) — over-correction would punish genuinely peaceful tiny states`);
         // Dim-level imputationClass MUST be null because GPI is observed.
         assert.equal(result.imputationClass, null,
           `${fx.iso2} dim-level imputationClass must be null when GPI is observed (per-row imputation does not bubble up)`);

@@ -27,7 +27,7 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 loadEnvFile(import.meta.url);
 
 // Source of truth: server/worldmonitor/resilience/v1/_shared.ts
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v15:';
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v16:';
 
 // Mirror of _shared.ts#currentCacheFormula — must stay in lockstep so
 // the backtest only ingests same-formula cache entries. A mixed-formula
