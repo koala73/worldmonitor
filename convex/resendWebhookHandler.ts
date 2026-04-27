@@ -88,30 +88,26 @@ export const resendWebhookHandler = httpAction(async (ctx, request) => {
     const occurredAt = event.created_at
       ? Date.parse(event.created_at) || Date.now()
       : Date.now();
-    try {
-      await ctx.runMutation(
-        internal.broadcast.metrics.recordBroadcastEvent,
-        {
-          webhookEventId: svixId,
-          broadcastId,
-          emailMessageId: event.data?.email_id,
-          eventType: event.type,
-          occurredAt,
-          // Intentionally NOT forwarding event.data — it includes
-          // recipient emails (`to: string[]`), `from`, `subject`,
-          // etc. Identifier metadata above is enough; deeper
-          // inspection via emailMessageId in the Resend dashboard.
-        },
-      );
-    } catch (err) {
-      console.error(
-        `[resend-webhook] Failed to record broadcast event ${event.type} for ${broadcastId}:`,
-        err,
-      );
-      // Don't 500 the webhook on metrics-record failure — Resend would
-      // retry and we'd risk amplifying the issue. Suppression below is
-      // the more important path; metrics is best-effort.
-    }
+    // Let mutation throws propagate as 5xx so Resend retries. The
+    // earlier `try/catch + 200` here silently dropped 53 of 250 canary
+    // delivered events when an OCC contention bug threw inside the
+    // mutation — Resend saw success and never retried, and the per-event
+    // log row was lost with the failed mutation. Sentry caught the
+    // throws (issue WORLDMONITOR-PA, 54 events) but operationally we
+    // were blind. Now: throw → 5xx → Resend retries → eventual
+    // consistency on the event log.
+    //
+    // Intentionally NOT forwarding event.data — it includes recipient
+    // emails (`to: string[]`), `from`, `subject`, etc. Identifier
+    // metadata above is enough; deeper inspection via emailMessageId in
+    // the Resend dashboard.
+    await ctx.runMutation(internal.broadcast.metrics.recordBroadcastEvent, {
+      webhookEventId: svixId,
+      broadcastId,
+      emailMessageId: event.data?.email_id,
+      eventType: event.type,
+      occurredAt,
+    });
   }
 
   if (!HANDLED_EVENTS.has(event.type)) {

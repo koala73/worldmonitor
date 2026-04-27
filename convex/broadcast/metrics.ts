@@ -9,9 +9,26 @@
  * Resend webhook events that count:
  *   email.delivered, email.bounced, email.complained, email.opened,
  *   email.clicked, email.delivery_delayed, email.suppressed, email.failed
+ *
+ * Storage model: `broadcastEvents` is the sole source of truth — one row
+ * per (svix-id) tracked event. There is no derived counter table; an
+ * earlier `broadcastEventCounts` aggregate caused OCC contention under
+ * webhook burst (every event raced for the same `(broadcastId, eventType)`
+ * counter row, exhausted Convex's mutation retry budget, and the entire
+ * mutation rolled back — losing the per-event row too).
+ *
+ * `getBroadcastStats` paginates the event log at read time. Read cost is
+ * O(events / page_size) per stats call — fine for 30s polling cadence
+ * even at 30k+ recipients, since each page is its own function execution
+ * with its own 16,384-doc budget.
  */
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "../_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "../_generated/server";
+import { internal } from "../_generated/api";
 
 export const BROADCAST_TRACKED_EVENT_TYPES = [
   "email.delivered",
@@ -28,15 +45,13 @@ const TRACKED_SET: ReadonlySet<string> = new Set(BROADCAST_TRACKED_EVENT_TYPES);
 
 /**
  * Record one Resend webhook event against a broadcast. Idempotent on
- * `webhookEventId` — Resend retries on 5xx and the same event may be
- * delivered multiple times. We trust the svix-id header (passed in as
- * `webhookEventId`) for de-duplication.
+ * `webhookEventId` (the svix-id header) — Resend retries on 5xx and the
+ * same event may be delivered multiple times. The webhook handler MUST
+ * propagate any throw from this mutation back as a 5xx HTTP response so
+ * Resend retries, otherwise events are silently lost.
  *
- * On a successful first-write, also bumps the matching aggregate row in
- * `broadcastEventCounts` so `getBroadcastStats` can read in O(N tracked
- * event types) instead of scanning the full event log. Counter increment
- * is gated on insert success, so duplicate webhook deliveries cannot
- * inflate the count.
+ * Single insert into `broadcastEvents`. No counter bump — counts are
+ * derived at read time by `getBroadcastStats`.
  *
  * No `rawPayload` accepted — Resend's `data` object includes recipient
  * emails (`to: string[]`), `from`, `subject`, etc. that are PII or
@@ -44,8 +59,8 @@ const TRACKED_SET: ReadonlySet<string> = new Set(BROADCAST_TRACKED_EVENT_TYPES);
  * identifying metadata. Deeper inspection lives in the Resend dashboard
  * via `emailMessageId`.
  *
- * Returns `{ inserted }` so the caller can distinguish first-write from
- * a retry.
+ * Returns `{ inserted, reason }` so the caller can distinguish first-write
+ * from a retry.
  */
 export const recordBroadcastEvent = internalMutation({
   args: {
@@ -75,32 +90,6 @@ export const recordBroadcastEvent = internalMutation({
     }
 
     await ctx.db.insert("broadcastEvents", args);
-
-    // Bump (or create) the aggregate counter. Read-then-write is safe
-    // here because Convex mutations run serializably — no two
-    // concurrent recordBroadcastEvent calls for the same
-    // (broadcastId, eventType) can interleave.
-    const counterRow = await ctx.db
-      .query("broadcastEventCounts")
-      .withIndex("by_broadcast_event", (q) =>
-        q.eq("broadcastId", args.broadcastId).eq("eventType", args.eventType),
-      )
-      .unique();
-    const now = Date.now();
-    if (counterRow) {
-      await ctx.db.patch(counterRow._id, {
-        count: counterRow.count + 1,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.insert("broadcastEventCounts", {
-        broadcastId: args.broadcastId,
-        eventType: args.eventType,
-        count: 1,
-        updatedAt: now,
-      });
-    }
-
     return { inserted: true, reason: "ok" as const };
   },
 });
@@ -123,30 +112,80 @@ type BroadcastStats = {
 const BOUNCE_KILL_THRESHOLD = 0.04; // 4%
 const COMPLAINT_KILL_THRESHOLD = 0.0008; // 0.08%
 
+// Convex paginate caps at 16,384 docs per page; we pick a smaller page so
+// each query execution stays well under its read budget and finishes
+// quickly. At 4096/page, a 30k-recipient `email.delivered` count is 8
+// pages — comfortably under the 10s action time limit even with network
+// jitter, and still 1 page for any event type with <4k events.
+const PAGE_SIZE = 4096;
+
+/**
+ * Internal helper — one paginated page of event counts for a given
+ * (broadcastId, eventType). Each call is its own function execution, so
+ * the 16,384-doc per-query read budget resets between pages.
+ *
+ * Not exported by name to callers — the public surface is
+ * `getBroadcastStats` below, which loops over this until `isDone`.
+ */
+export const _countBroadcastEventsPage = internalQuery({
+  args: {
+    broadcastId: v.string(),
+    eventType: v.string(),
+    cursor: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, { broadcastId, eventType, cursor }) => {
+    const result = await ctx.db
+      .query("broadcastEvents")
+      .withIndex("by_broadcast_event", (q) =>
+        q.eq("broadcastId", broadcastId).eq("eventType", eventType),
+      )
+      .paginate({ cursor, numItems: PAGE_SIZE });
+    return {
+      count: result.page.length,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
+
 /**
  * Live aggregate for one broadcast. Designed for operator polling during
  * a canary send — call from a watch script every few seconds and stop
  * the rollout the moment a kill-gate trips.
  *
- * Reads from `broadcastEventCounts` (one row per `(broadcastId, eventType)`)
- * — N index lookups per call (N = tracked event types = 8), constant
- * time regardless of broadcast size. The previous implementation
- * `.collect()`-ed `broadcastEvents` per type and would have thrown
- * Convex's 16,384-doc read limit on a 30k-recipient main send the
- * moment `email.delivered` overflowed.
+ * Implementation: an internal action that iterates `broadcastEvents` per
+ * tracked event type via `_countBroadcastEventsPage`. Read cost per stats
+ * call is O(total events / PAGE_SIZE), but each page is a separate query
+ * execution with its own read budget so we are not capped by Convex's
+ * 16,384-doc per-query limit. At 30k recipients × 8 event types, expect
+ * ~10-15 page reads per call (most event types fit in 1 page).
+ *
+ * This is an action (not a query) because Convex queries can't paginate
+ * across executions — they're a single read transaction. The action
+ * pattern lets us stitch arbitrary numbers of pages together.
  */
-export const getBroadcastStats = internalQuery({
+export const getBroadcastStats = internalAction({
   args: { broadcastId: v.string() },
   handler: async (ctx, { broadcastId }): Promise<BroadcastStats> => {
     const counts: Record<string, number> = {};
     for (const eventType of BROADCAST_TRACKED_EVENT_TYPES) {
-      const row = await ctx.db
-        .query("broadcastEventCounts")
-        .withIndex("by_broadcast_event", (q) =>
-          q.eq("broadcastId", broadcastId).eq("eventType", eventType),
-        )
-        .unique();
-      counts[eventType] = row?.count ?? 0;
+      let total = 0;
+      let cursor: string | null = null;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const page: {
+          count: number;
+          isDone: boolean;
+          continueCursor: string;
+        } = await ctx.runQuery(
+          internal.broadcast.metrics._countBroadcastEventsPage,
+          { broadcastId, eventType, cursor },
+        );
+        total += page.count;
+        if (page.isDone) break;
+        cursor = page.continueCursor;
+      }
+      counts[eventType] = total;
     }
 
     const delivered = counts["email.delivered"] ?? 0;

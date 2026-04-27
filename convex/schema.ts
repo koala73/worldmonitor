@@ -309,17 +309,4 @@ export default defineSchema({
   })
     .index("by_webhookEventId", ["webhookEventId"])
     .index("by_broadcast_event", ["broadcastId", "eventType"]),
-
-  // Pre-aggregated counter per (broadcastId, eventType). Updated by
-  // `recordBroadcastEvent` after a successful idempotent insert into
-  // `broadcastEvents`. Enables `getBroadcastStats` to run in O(N tracked
-  // event types) instead of O(events), so canary monitoring and
-  // post-send reporting work past Convex's 16,384-doc per-query read
-  // limit (a 30k-recipient send overruns it on `email.delivered` alone).
-  broadcastEventCounts: defineTable({
-    broadcastId: v.string(),
-    eventType: v.string(),
-    count: v.number(),
-    updatedAt: v.number(),
-  }).index("by_broadcast_event", ["broadcastId", "eventType"]),
 });
