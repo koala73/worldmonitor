@@ -362,6 +362,7 @@
     "geoHubs": "Geopolitical Hubs",
     "liveWebcams": "Live Webcams",
     "windyWebcams": "Windy Live Webcam",
+    "liveIpCameras": "Live IP Cameras",
     "gulfEconomies": "Gulf Economies",
     "groceryBasket": "Grocery Index",
     "groceryItem": "Item",
@@ -801,6 +802,18 @@
     },
     "pinnedWebcams": {
       "pinFromMap": "Pin a webcam from the map"
+    },
+    "ipCameras": {
+      "paused": "IP Cameras paused",
+      "offline": "Stream offline",
+      "regions": {
+        "all": "ALL",
+        "americas": "AMERICAS",
+        "europe": "EUROPE",
+        "asia": "ASIA",
+        "middleeast": "MIDEAST",
+        "africa": "AFRICA"
+      }
     },
     "positiveNewsFeed": {
       "noStories": "No stories in this category yet"

@@ -3039,6 +3039,99 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   }
 }
 
+/* ── Live IP Cameras Panel ──────────────────────────────────────────────── */
+
+.ip-cam-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.ip-cam-cell {
+  min-height: 140px;
+}
+
+.ip-cam-cell--offline .ip-cam-img {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+.ip-cam-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ip-cam-single .ip-cam-img {
+  width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  background: #000;
+}
+
+.ip-cam-meta-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.ip-cam-meta-city {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ip-cam-meta-country {
+  color: var(--text-dim);
+}
+
+.ip-cam-type-badge {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.ip-cam-cell-label {
+  pointer-events: none;
+}
+
+.ip-cam-cell-label .ip-cam-type-badge {
+  pointer-events: none;
+}
+
+.ip-cam-offline-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 3;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+@media (max-width: 768px) {
+  .ip-cam-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+  }
+
+  .ip-cam-grid .ip-cam-cell:nth-child(n+5) {
+    display: none;
+  }
+}
+
 
 
 /* Mobile: make toolbars swipeable (horizontal scroll) */

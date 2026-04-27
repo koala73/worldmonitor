@@ -31,6 +31,7 @@ import {
   loadChannelsFromStorage,
   LiveWebcamsPanel,
   PinnedWebcamsPanel,
+  LiveIpCamerasPanel,
   CIIPanel,
   CascadePanel,
   StrategicRiskPanel,
@@ -1192,6 +1193,10 @@ export class PanelLayoutManager implements AppModule {
 
     if (this.shouldCreatePanel('windy-webcams')) {
       this.ctx.panels['windy-webcams'] = new PinnedWebcamsPanel();
+    }
+
+    if (this.shouldCreatePanel('live-ip-cameras')) {
+      this.ctx.panels['live-ip-cameras'] = new LiveIpCamerasPanel();
     }
 
     this.createPanel('events', () => new TechEventsPanel('events', () => this.ctx.allNews));
