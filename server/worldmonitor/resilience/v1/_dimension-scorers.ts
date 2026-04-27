@@ -3,7 +3,6 @@ import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
-import { isIndicatorComprehensive } from './_indicator-registry';
 import { getLanguageCoverageFactor } from './_language-coverage';
 import { failedDimensionsFromDatasets, readFailedDatasets } from './_source-failure';
 
@@ -1764,25 +1763,29 @@ export async function scoreSocialCohesion(
     // "we have no signal that displacement is unusual" — only case (b) is the
     // intentional cohort de-rate.
     if (displacementRaw != null && displacementMetric == null) {
-      // Plan 2026-04-26-002 §U5 — registry-driven source-comprehensiveness
-      // fallback. The unrest:events:v1 source is non-comprehensive (event-
-      // scraping feed, English-biased, ACLED-style coverage gaps), so per
-      // the plan, absence of unrest data should NOT impute at the stable-
-      // absence anchor. When the indicator is non-comprehensive, fall back
-      // to IMPUTATION.curated_list_absent (50/0.3, 'unmonitored') instead
-      // of the stable-absence anchor (70/0.5). This pulls the GPI-only
-      // blend down for tiny peaceful states (TV/PW/NR/MC) that previously
-      // rode the 70 anchor to a near-perfect dim score; comprehensive-
-      // source countries are unaffected.
-      const unrestImpute = isIndicatorComprehensive('unrestEvents')
-        ? IMPUTE.socialCohesionGpiOnlyUnrest
-        : IMPUTATION.curated_list_absent;
+      // Plan 2026-04-26-002 §U5 — non-comprehensive source fallback.
+      // The unrest:events:v1 source is non-comprehensive (event-scraping
+      // feed, English-biased, ACLED-style coverage gaps), so per the
+      // plan, absence of unrest data does NOT impute at the stable-
+      // absence anchor (70/0.5). It falls back to unmonitored (50/0.3),
+      // pulling the GPI-only blend down for tiny peaceful states (TV/PW/
+      // NR/MC) that previously rode the 70 anchor to a near-perfect dim
+      // score; comprehensive-source countries are unaffected.
+      //
+      // The §U5 contract is enforced by the registry assertion in
+      // tests/resilience-source-comprehensive-flag.test.mts (unrestEvents
+      // pinned `comprehensive: false`); IF a future PR ever flips that
+      // flag, the pinning test fires and the contributor must also
+      // restore the higher-anchor IMPUTE here. Inlining (rather than
+      // wrapping in `isIndicatorComprehensive('unrestEvents') ? ...`)
+      // keeps the code path active and tested instead of relying on a
+      // dead-by-construction conditional.
       unrestRow = {
-        score: unrestImpute.score,
+        score: IMPUTATION.curated_list_absent.score,
         weight: 0.2,
-        certaintyCoverage: unrestImpute.certaintyCoverage,
+        certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
         imputed: true,
-        imputationClass: unrestImpute.imputationClass,
+        imputationClass: IMPUTATION.curated_list_absent.imputationClass,
       };
     } else {
       unrestRow = {
