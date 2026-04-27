@@ -18,10 +18,18 @@
  *   npx convex run broadcast/rampRunner:initRamp '{
  *     "rampCurve": [500, 1500, 5000, 15000, 25000],
  *     "waveLabelPrefix": "wave",
- *     "waveLabelOffset": 3
+ *     "waveLabelOffset": 3,
+ *     "seedLastWaveBroadcastId": "<wave-2 broadcastId>",
+ *     "seedLastWaveSentAt": <wave-2 sentAt epoch ms>,
+ *     "seedLastWaveLabel": "wave-2",
+ *     "seedLastWaveSegmentId": "<wave-2 segmentId>",
+ *     "seedLastWaveAssigned": 500
  *   }'
  *   # tier 0 -> "wave-3", tier 1 -> "wave-4", etc. The offset lets
  *   # the auto-ramp pick up after manually-sent canary-250 + wave-2.
+ *   # Seed args are REQUIRED when waveLabelOffset > 0 — without them
+ *   # the first cron tick has no prior broadcastId to read stats from
+ *   # and would silently skip the kill-gate.
  *
  *   npx convex run broadcast/rampRunner:pauseRamp '{}'
  *   npx convex run broadcast/rampRunner:resumeRamp '{}'
@@ -42,6 +50,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+import type { WaveExportStats } from "./audienceWaveExport";
 
 const DEFAULT_BOUNCE_KILL_THRESHOLD = 0.04;
 const DEFAULT_COMPLAINT_KILL_THRESHOLD = 0.0008;
@@ -85,6 +94,21 @@ export const initRamp = internalMutation({
     waveLabelOffset: v.optional(v.number()),
     bounceKillThreshold: v.optional(v.number()),
     complaintKillThreshold: v.optional(v.number()),
+    // Seed args: pass these when starting the auto-ramp AFTER one or
+    // more manually-sent waves so the first cron tick can pull
+    // bounce/complaint stats from the prior (manual) wave and apply
+    // the kill-gate. Without these, the first tick has no
+    // `lastWaveBroadcastId` and silently skips the kill-gate — exactly
+    // the failure mode flagged in PR #3473 review.
+    //
+    // Required as a pair when `waveLabelOffset > 0` (operational
+    // signal that the ramp is resuming after manual waves). The very
+    // first wave ever (offset=0) is exempt because there is no prior.
+    seedLastWaveBroadcastId: v.optional(v.string()),
+    seedLastWaveSentAt: v.optional(v.number()),
+    seedLastWaveLabel: v.optional(v.string()),
+    seedLastWaveSegmentId: v.optional(v.string()),
+    seedLastWaveAssigned: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     if (args.rampCurve.length === 0) {
@@ -92,6 +116,19 @@ export const initRamp = internalMutation({
     }
     if (args.rampCurve.some((n) => !Number.isInteger(n) || n <= 0)) {
       throw new Error("[initRamp] rampCurve entries must be positive integers");
+    }
+    const offset = args.waveLabelOffset ?? 0;
+    const hasSeedBroadcast = !!args.seedLastWaveBroadcastId;
+    const hasSeedSentAt = typeof args.seedLastWaveSentAt === "number";
+    if (hasSeedBroadcast !== hasSeedSentAt) {
+      throw new Error(
+        "[initRamp] seedLastWaveBroadcastId and seedLastWaveSentAt must be provided together.",
+      );
+    }
+    if (offset > 0 && !hasSeedBroadcast) {
+      throw new Error(
+        `[initRamp] waveLabelOffset=${offset} signals resumption after manual waves; seedLastWaveBroadcastId + seedLastWaveSentAt are required so the first cron tick can apply the kill-gate against the prior wave. Pass them, or set waveLabelOffset=0 to start a fresh ramp.`,
+      );
     }
     const existing = await ctx.db
       .query("broadcastRampConfig")
@@ -108,12 +145,17 @@ export const initRamp = internalMutation({
       rampCurve: args.rampCurve,
       currentTier: -1,
       waveLabelPrefix: args.waveLabelPrefix,
-      waveLabelOffset: args.waveLabelOffset ?? 0,
+      waveLabelOffset: offset,
       bounceKillThreshold:
         args.bounceKillThreshold ?? DEFAULT_BOUNCE_KILL_THRESHOLD,
       complaintKillThreshold:
         args.complaintKillThreshold ?? DEFAULT_COMPLAINT_KILL_THRESHOLD,
       killGateTripped: false,
+      lastWaveBroadcastId: args.seedLastWaveBroadcastId,
+      lastWaveSentAt: args.seedLastWaveSentAt,
+      lastWaveLabel: args.seedLastWaveLabel,
+      lastWaveSegmentId: args.seedLastWaveSegmentId,
+      lastWaveAssigned: args.seedLastWaveAssigned,
     });
     return { ok: true };
   },
@@ -422,11 +464,7 @@ export const runDailyRamp = internalAction({
     const waveLabel = `${row.waveLabelPrefix}-${nextTier + row.waveLabelOffset}`;
 
     // ──── Step 3: pick + stamp + create segment + push ────
-    let exportResult: {
-      segmentId: string;
-      assigned: number;
-      underfilled: boolean;
-    };
+    let exportResult: WaveExportStats;
     try {
       exportResult = await ctx.runAction(
         internal.broadcast.audienceWaveExport.assignAndExportWave,
@@ -439,6 +477,25 @@ export const runDailyRamp = internalAction({
         { status: "partial-failure", error: msg },
       );
       throw err; // bubble so Convex auto-Sentry captures
+    }
+
+    // Treat any non-zero export failure counter as a partial-failure
+    // and refuse to send. Without this, a wave that requested 500 and
+    // got 250 push failures + 250 successes would still proceed to
+    // create + send the broadcast — the cron would record the wave as
+    // a clean tier advance even though half the audience was dropped
+    // and `stampFailed > 0` would silently leak duplicate-email risk
+    // into the next pick (pushed but unstamped → re-eligible).
+    // Operator clears via the same `lastRunStatus === partial-failure`
+    // gate that handles other partial-failure paths.
+    if (exportResult.failed > 0 || exportResult.stampFailed > 0) {
+      const reason = `assignAndExportWave partial: failed=${exportResult.failed}, stampFailed=${exportResult.stampFailed} (segment=${exportResult.segmentId}, assigned=${exportResult.assigned}, requested=${count}). Investigate Resend logs + Convex stamp errors before resuming; stampFailed contacts are in the segment but unstamped (duplicate-email risk).`;
+      console.error(`[runDailyRamp] ${reason}`);
+      await ctx.runMutation(
+        internal.broadcast.rampRunner._recordRunOutcome,
+        { status: "partial-failure", error: reason },
+      );
+      return { status: "partial-failure", detail: reason };
     }
 
     if (
