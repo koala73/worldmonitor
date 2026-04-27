@@ -155,6 +155,66 @@ export default defineSchema({
     // tens of thousands of registrations.
     .index("by_proLaunchWave", ["proLaunchWave"]),
 
+  // Singleton config for the cron-driven broadcast ramp runner. One
+  // row, keyed by the literal string "current" so admin mutations
+  // can target it without juggling Convex ids.
+  //
+  // The daily cron reads this row, checks the previous wave's
+  // kill-gate metrics, and (if green) advances to the next tier in
+  // `rampCurve`. Operator interventions (pause / resume / clear
+  // kill-gate / abort) are admin mutations on this row.
+  //
+  // We DELIBERATELY don't auto-clear `killGateTripped` — once the
+  // ramp halts itself, an operator must explicitly clear before the
+  // next cron run resumes. Better one extra dashboard click than a
+  // silent resumption after a real deliverability incident.
+  broadcastRampConfig: defineTable({
+    key: v.string(), // always "current"
+    active: v.boolean(),
+    // Wave sizes in order. e.g. [500, 1500, 5000, 15000, 25000].
+    // Each cron tick advances `currentTier` by 1 and uses
+    // `rampCurve[currentTier]` as the next wave's count.
+    rampCurve: v.array(v.number()),
+    // Index into rampCurve. -1 = not started; ramp ends when
+    // currentTier === rampCurve.length - 1.
+    currentTier: v.number(),
+    // Naming prefix for waves; e.g. "wave" → "wave-2", "wave-3".
+    // The number suffix is `currentTier + waveLabelOffset` so the
+    // first auto-ramp wave can pick up where manual canary/wave-2
+    // left off (default offset 3 means tier 0 → "wave-3").
+    waveLabelPrefix: v.string(),
+    waveLabelOffset: v.number(),
+    // Kill thresholds. Defaults match metrics.ts: 4% bounce, 0.08%
+    // complaint. Stored on the config so an operator can tighten
+    // them without redeploying.
+    bounceKillThreshold: v.number(),
+    complaintKillThreshold: v.number(),
+    // Kill-gate latch. Set to true by the cron when the prior
+    // wave's stats trip a threshold. Cleared only by explicit
+    // operator action.
+    killGateTripped: v.boolean(),
+    killGateReason: v.optional(v.string()),
+    // Tracking the last successfully-sent wave so the next cron
+    // tick can fetch its stats for the kill-gate check.
+    lastWaveLabel: v.optional(v.string()),
+    lastWaveBroadcastId: v.optional(v.string()),
+    lastWaveSegmentId: v.optional(v.string()),
+    lastWaveSentAt: v.optional(v.number()),
+    lastWaveAssigned: v.optional(v.number()),
+    // Status of the last cron run — distinct from the last wave.
+    // `succeeded`        — wave sent cleanly
+    // `kill-gate-tripped`— prior-wave check halted the ramp
+    // `pool-drained`     — assignAndExportWave returned underfilled
+    //                      with assigned < threshold
+    // `partial-failure`  — wave action threw mid-flight; needs ops
+    //                      intervention before next run
+    // `awaiting-prior-stats` — prior wave hasn't accumulated enough
+    //                      delivered events yet; cron will retry
+    lastRunStatus: v.optional(v.string()),
+    lastRunAt: v.optional(v.number()),
+    lastRunError: v.optional(v.string()),
+  }).index("by_key", ["key"]),
+
   // Phase 9 / Todo #223 — Clerk-user referral codes.
   // The `registrations.referralCode` column uses a 6-char hash of
   // the registering email; share-button codes are an 8-char HMAC

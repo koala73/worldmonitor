@@ -233,7 +233,7 @@ export const _stampWaveByNormalizedEmail = internalMutation({
   },
 });
 
-type WaveExportStats = {
+export type WaveExportStats = {
   waveLabel: string;
   segmentId: string;
   segmentName: string;
