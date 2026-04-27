@@ -50,6 +50,8 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
+  'upcoming-earnings': { name: 'Upcoming Earnings', enabled: true, priority: 2 },
+  'recent-earnings': { name: 'Recent Earnings', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
 };
 
@@ -57,7 +59,6 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-
 
   conflicts: true,
   bases: true,
@@ -119,7 +120,6 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
   satellites: false,
-
 
   conflicts: true,
   bases: false,

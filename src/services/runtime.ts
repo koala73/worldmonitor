@@ -1,5 +1,8 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { getClerkToken } from '@/services/clerk';
+import { detectDesktopRuntime } from '@/config/runtime';
+
+export { detectDesktopRuntime } from '@/config/runtime';
 
 const ENV = (() => {
   try {
@@ -54,39 +57,6 @@ export function getLocalApiPort(): number {
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
-}
-
-type RuntimeProbe = {
-  hasTauriGlobals: boolean;
-  userAgent: string;
-  locationProtocol: string;
-  locationHost: string;
-  locationOrigin: string;
-};
-
-export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
-  const tauriInUserAgent = probe.userAgent.includes('Tauri');
-  const secureLocalhostOrigin = (
-    probe.locationProtocol === 'https:' && (
-      probe.locationHost === 'localhost' ||
-      probe.locationHost.startsWith('localhost:') ||
-      probe.locationHost === '127.0.0.1' ||
-      probe.locationHost.startsWith('127.0.0.1:')
-    )
-  );
-
-  // Tauri production windows can expose tauri-like hosts/schemes without
-  // always exposing bridge globals at first paint.
-  const tauriLikeLocation = (
-    probe.locationProtocol === 'tauri:' ||
-    probe.locationProtocol === 'asset:' ||
-    probe.locationHost === 'tauri.localhost' ||
-    probe.locationHost.endsWith('.tauri.localhost') ||
-    probe.locationOrigin.startsWith('tauri://') ||
-    secureLocalhostOrigin
-  );
-
-  return probe.hasTauriGlobals || tauriInUserAgent || tauriLikeLocation;
 }
 
 export function isDesktopRuntime(): boolean {
@@ -168,6 +138,24 @@ export function getRemoteApiBaseUrl(): string {
   // Desktop builds may not set VITE_WS_API_URL; default to production.
   if (isDesktopRuntime()) return 'https://worldmonitor.app';
   return '';
+}
+
+export function getSseEndpointUrl(): string {
+  const configuredSseUrl = ENV.VITE_SSE_API_URL || ENV.VITE_WS_RELAY_URL;
+  if (configuredSseUrl) {
+    return `${normalizeBaseUrl(configuredSseUrl)}/sse`;
+  }
+
+  const remoteApi = getRemoteApiBaseUrl();
+  if (!remoteApi) return '/sse';
+  
+  try {
+    const u = new URL(remoteApi);
+    // Vercel apps map /sse to the relay via vercel.json rewrites, or it runs on the API origin directly
+    return `${u.origin}/sse`;
+  } catch {
+    return '/sse';
+  }
 }
 
 export function toRuntimeUrl(path: string): string {

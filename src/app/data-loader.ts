@@ -80,6 +80,7 @@ import {
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
+import { fetchEarningsReports } from '@/services/earnings';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { fetchStockAnalysesForTargets, getStockAnalysisTargets, type StockAnalysisResult } from '@/services/stock-analysis';
 import { fetchInsiderTransactions } from '@/services/insider-transactions';
@@ -140,6 +141,7 @@ import {
   StockAnalysisPanel,
   StockBacktestPanel,
   HeatmapPanel,
+  EarningsPanel,
   CommoditiesPanel,
   CryptoPanel,
   CryptoHeatmapPanel,
@@ -1462,6 +1464,8 @@ export class DataLoaderManager implements AppModule {
         }
       }
 
+      void this.loadEarnings();
+
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
       const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
       const mapCommodity = (c: MarketData) => ({ symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
@@ -1581,6 +1585,35 @@ export class DataLoaderManager implements AppModule {
         aiPanel?.showRetrying(t('common.failedCryptoData'));
         otherPanel?.showRetrying(t('common.failedCryptoData'));
       }
+    }
+  }
+
+  async loadEarnings(): Promise<void> {
+    const upcomingPanel = this.ctx.panels['upcoming-earnings'] as EarningsPanel | undefined;
+    const recentPanel = this.ctx.panels['recent-earnings'] as EarningsPanel | undefined;
+    if (!upcomingPanel && !recentPanel) return;
+
+    try {
+      const [upcoming, recent] = await Promise.allSettled([
+        fetchEarningsReports('upcoming'),
+        fetchEarningsReports('recent'),
+      ]);
+
+      if (upcoming.status === 'fulfilled') {
+        upcomingPanel?.renderEarnings(upcoming.value.reports, upcoming.value.skipReason);
+      } else {
+        console.error('[DataLoader] Failed to load upcoming earnings:', upcoming.reason);
+        upcomingPanel?.renderEarnings([], 'Failed to load upcoming earnings.');
+      }
+
+      if (recent.status === 'fulfilled') {
+        recentPanel?.renderEarnings(recent.value.reports, recent.value.skipReason);
+      } else {
+        console.error('[DataLoader] Failed to load recent earnings:', recent.reason);
+        recentPanel?.renderEarnings([], 'Failed to load recent earnings.');
+      }
+    } catch (err) {
+      console.error('[DataLoader] Unexpected error loading earnings:', err);
     }
   }
 
