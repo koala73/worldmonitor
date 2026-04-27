@@ -785,6 +785,35 @@ function getImfLaborEntry(raw: unknown, countryCode: string): ImfLaborEntry | nu
   return (countries[countryCode] as ImfLaborEntry | undefined) ?? null;
 }
 
+/**
+ * Plan 2026-04-26-002 §U6 — robust population-in-millions reader for the
+ * per-capita normalization in scoreSocialCohesion + scoreBorderSecurity.
+ *
+ * Always returns a number ≥ 0.5 (the plan's tiny-state floor).
+ *
+ * Defensive raw-persons detection: the historical IMF labor seed stored
+ * the LP indicator's raw-persons value in a field misleadingly named
+ * `populationMillions` (e.g. US ≈ 342_594_000 instead of 342.6). The
+ * seeder is fixed in the same PR, but cached payloads from prior cron
+ * runs may still carry raw persons until the next refresh. Any value
+ * >= 10_000 is impossible as "millions" (China = ~1430 millions = the
+ * realistic ceiling), so treat it as raw persons and divide by 1e6.
+ * The threshold is INCLUSIVE: live cache currently has TV's value at
+ * exactly 10_000 (Tuvalu's actual headcount), and a `> 10_000` check
+ * would let it through as "10000M" instead of converting to 0.01M.
+ * The IMF labor bundle is 30-day gated; without inclusive comparison
+ * a microstate is mis-handled until the next bundle refresh.
+ *
+ * Once the cache cycles to post-fix values (everything in the 0.01-1500
+ * range), this branch becomes a no-op.
+ */
+function readPopulationMillions(imfLaborRaw: unknown, countryCode: string): number {
+  const raw = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions);
+  if (raw == null) return 0.5;
+  const millions = raw >= 10_000 ? raw / 1_000_000 : raw;
+  return Math.max(millions, 0.5);
+}
+
 // getCountryBisExchangeRates() removed in PR 3 §3.5: only scoreCurrencyExternal
 // called it, and that scorer no longer reads BIS EER. Drill-down panels
 // that want BIS series read it via their own dedicated handler.
@@ -1646,16 +1675,28 @@ export async function scoreSocialCohesion(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [staticRecord, displacementRaw, unrestRaw] = await Promise.all([
+  const [staticRecord, displacementRaw, unrestRaw, imfLaborRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
     reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
     reader(RESILIENCE_UNREST_KEY),
+    reader(RESILIENCE_IMF_LABOR_KEY),
   ]);
   const gpiScore = safeNum(staticRecord?.gpi?.score);
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
   const unrest = summarizeUnrest(unrestRaw, countryCode);
   const displacementMetric = safeNum(displacement?.totalDisplaced);
-  const unrestMetric = unrest.unrestCount + Math.sqrt(unrest.fatalities);
+  // Plan 2026-04-26-002 §U6 — per-capita normalization. Event counts are
+  // divided by max(populationMillions, 0.5) so 0 events on TV (12k pop)
+  // does not score above 5 events on Yemen (33M pop). The 0.5-million
+  // floor protects against divide-by-zero/inflation for tiny states
+  // (Tuvalu/Nauru/Palau ≈ 0.01M-0.02M); the floor's effect is to anchor
+  // micro-state per-capita rates at "as-if 500k population" rather than
+  // amplifying single events into towering rates. Goalposts re-anchored
+  // 0..10 events/M; Iceland ≈ 0 events/M, Yemen ≈ 6 events/M, Lebanon
+  // outliers ≈ 10 events/M (calibrated empirically against the live
+  // unrest:events:v1 distribution).
+  const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
+  const unrestMetric = (unrest.unrestCount + Math.sqrt(unrest.fatalities)) / popDenominator;
 
   // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
   // above observed max) so the worst-peace countries score near 0, not 20.
@@ -1729,12 +1770,29 @@ export async function scoreSocialCohesion(
     // "we have no signal that displacement is unusual" — only case (b) is the
     // intentional cohort de-rate.
     if (displacementRaw != null && displacementMetric == null) {
+      // Plan 2026-04-26-002 §U5 — non-comprehensive source fallback.
+      // The unrest:events:v1 source is non-comprehensive (event-scraping
+      // feed, English-biased, ACLED-style coverage gaps), so per the
+      // plan, absence of unrest data does NOT impute at the stable-
+      // absence anchor (70/0.5). It falls back to unmonitored (50/0.3),
+      // pulling the GPI-only blend down for tiny peaceful states (TV/PW/
+      // NR/MC) that previously rode the 70 anchor to a near-perfect dim
+      // score; comprehensive-source countries are unaffected.
+      //
+      // The §U5 contract is enforced by the registry assertion in
+      // tests/resilience-source-comprehensive-flag.test.mts (unrestEvents
+      // pinned `comprehensive: false`); IF a future PR ever flips that
+      // flag, the pinning test fires and the contributor must also
+      // restore the higher-anchor IMPUTE here. Inlining (rather than
+      // wrapping in `isIndicatorComprehensive('unrestEvents') ? ...`)
+      // keeps the code path active and tested instead of relying on a
+      // dead-by-construction conditional.
       unrestRow = {
-        score: IMPUTE.socialCohesionGpiOnlyUnrest.score,
+        score: IMPUTATION.curated_list_absent.score,
         weight: 0.2,
-        certaintyCoverage: IMPUTE.socialCohesionGpiOnlyUnrest.certaintyCoverage,
+        certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
         imputed: true,
-        imputationClass: IMPUTE.socialCohesionGpiOnlyUnrest.imputationClass,
+        imputationClass: IMPUTATION.curated_list_absent.imputationClass,
       };
     } else {
       unrestRow = {
@@ -1746,9 +1804,11 @@ export async function scoreSocialCohesion(
       };
     }
   } else {
-    // Observed unrest events — score directly.
+    // Observed unrest events — score directly. Plan §U6 per-capita
+    // anchor: 10 events/M = "worst" (Lebanon-class), 0 events/M = "best"
+    // (Iceland). Was 0..20 in raw event-count units before §U6.
     unrestRow = {
-      score: normalizeLowerBetter(unrestMetric, 0, 20),
+      score: normalizeLowerBetter(unrestMetric, 0, 10),
       weight: 0.2,
     };
   }
@@ -1760,17 +1820,31 @@ export async function scoreBorderSecurity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [ucdpRaw, displacementRaw] = await Promise.all([
+  const [ucdpRaw, displacementRaw, imfLaborRaw] = await Promise.all([
     reader(RESILIENCE_UCDP_KEY),
     reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
+    reader(RESILIENCE_IMF_LABOR_KEY),
   ]);
   const ucdp = summarizeUcdp(ucdpRaw, countryCode);
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
-  const conflictMetric = ucdp.eventCount * 2 + ucdp.typeWeight + Math.sqrt(ucdp.deaths);
+  // Plan 2026-04-26-002 §U6 — UCDP per-capita event normalization, same
+  // pattern as scoreSocialCohesion above. eventCount and deaths are
+  // population-normalized so 0 events on TV doesn't ride above 5 events
+  // on Yemen. typeWeight is dimensionless (severity tag, not a count) so
+  // it stays as-is. Goalposts re-anchored 0..15 events/M (slightly higher
+  // ceiling than socialCohesion because UCDP eventCount * 2 multiplier
+  // already lifts the metric magnitude).
+  const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
+  // Plan §U6 review fix: typeWeight is event-count-scaled (incremented
+  // per-event in summarizeUcdp:907), not a per-event severity tag, so it
+  // must scale per-capita too. Pre-fix the unnormalized typeWeight could
+  // dominate the per-capita metric for high-event countries (US/IN type
+  // peaceful but high-volume), defeating §U6's intended scaling.
+  const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + Math.sqrt(ucdp.deaths)) / popDenominator;
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
   return weightedBlend([
-    { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 30) : null, weight: 0.65 },
+    { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 15) : null, weight: 0.65 },
     // Not in UNHCR displacement registry → crisis_monitoring_absent (country is not a
     // significant refugee source or host). Only impute if source was loaded; null source
     // means seed outage, not country absence.

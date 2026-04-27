@@ -32,6 +32,20 @@ export type IndicatorSpec = {
   tier: IndicatorTier; // Core = moves the public overall score, Enrichment = drill-down only, Experimental = internal
   coverage: number; // expected country count; the tier linter enforces Core >= 180
   license: IndicatorLicense; // source license category for the audit trail
+  // Plan 2026-04-26-002 §U5 (combined PR 3+4+5) — source-comprehensiveness flag.
+  // True when the upstream source enumerates ALL UN-member countries
+  // (or as close as the underlying universe allows): IPC, UNHCR, UCDP,
+  // FATF listings, WHO global indicators, IMF WEO, WB annual statistical
+  // series. False when the source is an event-scraping feed, English-
+  // biased, a curated subset (BIS LBS by-parent reporters list, WTO
+  // tariff-overview top-50 reporters, IEA OECD-only series), or a
+  // real-time signal whose absence does not encode "stable absence."
+  // Used by IMPUTE callers in _dimension-scorers.ts: when reaching for
+  // a stable-absence anchor (85/0.6 or 88/0.7), if the underlying source
+  // is non-comprehensive, fall back to `unmonitored` (50/0.3) instead.
+  // Conservative default: when in doubt, mark `false` (the lower-confidence
+  // impute is the safer error-mode per the plan §risk-mitigation row).
+  comprehensive: boolean;
 };
 
 export const INDICATOR_REGISTRY: IndicatorSpec[] = [
@@ -49,6 +63,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 212,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'debtGrowthRate',
@@ -63,6 +78,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'currentAccountPct',
@@ -77,6 +93,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'unemploymentPct',
@@ -91,6 +108,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 150,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'householdDebtService',
@@ -106,6 +124,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 40,
     license: 'non-commercial',
+    comprehensive: false,
   },
 
   // ── currencyExternal ─────────────────────────────────────────────────────
@@ -132,6 +151,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 185,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'fxReservesAdequacy',
@@ -146,6 +166,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'fxVolatility',
@@ -161,6 +182,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 60,
     license: 'non-commercial',
+    comprehensive: false,
   },
   {
     id: 'fxDeviation',
@@ -176,6 +198,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 60,
     license: 'non-commercial',
+    comprehensive: false,
   },
 
   // ── tradePolicy (3 sub-metrics) ───────────────────────────────────────────
@@ -201,6 +224,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 50,
     license: 'open-data',
+    comprehensive: false,
   },
   {
     id: 'tradeBarriers',
@@ -216,6 +240,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 50,
     license: 'open-data',
+    comprehensive: false,
   },
   {
     id: 'appliedTariffRate',
@@ -230,6 +255,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── financialSystemExposure (4 sub-metrics) ───────────────────────────────
@@ -261,6 +287,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 125,
     license: 'open-data',
+    // §U5 review fix: comprehensive=false. WB IDS coverage is the LMIC
+    // subset (~125 countries), NOT the universe. HIC absence from this
+    // source is NOT a stable-absence signal — those countries fall through
+    // to the BIS LBS structural-exposure component instead. Marking
+    // comprehensive=true would let any future IMPUTE caller treat HIC
+    // absence as the high stable-absence anchor (85+), which would
+    // misrepresent HIC financial-system exposure.
+    comprehensive: false,
   },
   {
     id: 'bisLbsXborderPctGdp',
@@ -284,6 +318,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 200,
     license: 'non-commercial', // BIS terms of use; redistributed under attribution
+    comprehensive: false,
   },
   {
     id: 'fatfListingStatus',
@@ -298,6 +333,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 200,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'financialCenterRedundancy',
@@ -312,6 +348,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 200,
     license: 'non-commercial',
+    comprehensive: false,
   },
 
   // ── cyberDigital (3 sub-metrics) ──────────────────────────────────────────
@@ -328,6 +365,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'internetOutages',
@@ -342,6 +380,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'gpsJamming',
@@ -356,6 +395,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── logisticsSupply (3 sub-metrics) ───────────────────────────────────────
@@ -372,6 +412,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'shippingStress',
@@ -386,6 +427,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'transitDisruption',
@@ -400,6 +442,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── infrastructure (3 sub-metrics) ────────────────────────────────────────
@@ -416,6 +459,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 217,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'roadsPavedInfra',
@@ -430,6 +474,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'infraOutages',
@@ -444,6 +489,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── energy (7 sub-metrics) ────────────────────────────────────────────────
@@ -460,6 +506,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'gasShare',
@@ -474,6 +521,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'coalShare',
@@ -488,6 +536,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'renewShare',
@@ -502,6 +551,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'gasStorageStress',
@@ -518,6 +568,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 38,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'energyPriceStress',
@@ -532,6 +583,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'electricityConsumption',
@@ -546,6 +598,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 217,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── PR 1 energy-construct v2 (tier='experimental' until RESILIENCE_ENERGY_V2_ENABLED ──
@@ -568,6 +621,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'lowCarbonGenerationShare',
@@ -583,6 +637,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'powerLossesPct',
@@ -598,6 +653,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   // reserveMarginPct is DEFERRED per plan §3.1 open-question: IEA
   // electricity-balance data is sparse outside OECD+G20 and the
@@ -623,6 +679,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiPoliticalStability',
@@ -637,6 +694,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiGovernmentEffectiveness',
@@ -651,6 +709,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiRegulatoryQuality',
@@ -665,6 +724,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiRuleOfLaw',
@@ -679,6 +739,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiControlOfCorruption',
@@ -693,6 +754,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
 
   // ── socialCohesion (3 sub-metrics) ────────────────────────────────────────
@@ -714,6 +776,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 163,
     license: 'non-commercial',
+    comprehensive: true,
   },
   {
     id: 'displacementTotal',
@@ -728,6 +791,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 200,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'unrestEvents',
@@ -742,6 +806,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── borderSecurity (2 sub-metrics) ────────────────────────────────────────
@@ -762,6 +827,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 193,
     license: 'research-only',
+    comprehensive: true,
   },
   {
     id: 'displacementHosted',
@@ -777,6 +843,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 200,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── informationCognitive (3 sub-metrics) ──────────────────────────────────
@@ -797,6 +864,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 180,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'socialVelocity',
@@ -811,6 +879,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'newsThreatScore',
@@ -825,6 +894,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── healthPublicService (3 sub-metrics) ───────────────────────────────────
@@ -841,6 +911,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 194,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'measlesCoverage',
@@ -855,6 +926,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 194,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'hospitalBeds',
@@ -869,6 +941,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 194,
     license: 'public-domain',
+    comprehensive: true,
   },
 
   // ── foodWater (3 sub-metrics) ─────────────────────────────────────────────
@@ -889,6 +962,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'ipcPhase',
@@ -904,6 +978,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'aquastatWaterStress',
@@ -918,6 +993,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'aquastatWaterAvailability',
@@ -932,6 +1008,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── fiscalSpace (3 sub-metrics) ──────────────────────────────────────────
@@ -948,6 +1025,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'recoveryFiscalBalance',
@@ -962,6 +1040,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'recoveryDebtToGdp',
@@ -976,6 +1055,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── reserveAdequacy (RETIRED in PR 2 §3.4) ───────────────────────────────
@@ -996,6 +1076,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── liquidReserveAdequacy (1 sub-metric) ─────────────────────────────────
@@ -1016,6 +1097,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── sovereignFiscalBuffer (1 sub-metric) ─────────────────────────────────
@@ -1054,6 +1136,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 8,
     license: 'open-data',
+    comprehensive: false,
   },
 
   // ── externalDebtCoverage (1 sub-metric) ──────────────────────────────────
@@ -1077,6 +1160,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 185,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── importConcentration (1 sub-metric) ───────────────────────────────────
@@ -1093,6 +1177,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'public-domain',
+    comprehensive: true,
   },
 
   // ── stateContinuity (3 sub-metrics, derived from existing keys) ──────────
@@ -1109,6 +1194,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'recoveryConflictPressure',
@@ -1123,6 +1209,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 193,
     license: 'research-only',
+    comprehensive: true,
   },
   {
     id: 'recoveryDisplacementVelocity',
@@ -1137,6 +1224,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 200,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── fuelStockDays (1 sub-metric) ─────────────────────────────────────────
@@ -1167,5 +1255,32 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'experimental',
     coverage: 45,
     license: 'open-data',
+    comprehensive: false,
   },
 ];
+
+// Plan 2026-04-26-002 §U5 helpers — registry-driven check used by IMPUTE
+// callers in _dimension-scorers.ts. Keeping this lookup here (rather than
+// inlining .find() at every scorer) makes the comprehensiveness contract
+// auditable (one source of truth for the rule "absence on a non-
+// comprehensive source falls back to unmonitored").
+
+const INDICATOR_BY_ID: ReadonlyMap<string, IndicatorSpec> = new Map(
+  INDICATOR_REGISTRY.map((spec) => [spec.id, spec]),
+);
+
+/**
+ * Returns true when the upstream source for the given indicator id
+ * enumerates ALL UN-member countries (or as close as the underlying
+ * universe allows). Returns false for non-comprehensive sources (event
+ * feeds, curated subsets, regional registries).
+ *
+ * Conservative default for unknown ids: false — matches the plan's
+ * "when in doubt, mark `comprehensive: false`" risk-mitigation rule.
+ * Returning false for an unknown id means a stable-absence IMPUTE caller
+ * falls back to `unmonitored` (50/0.3), which is the safer error mode.
+ */
+export function isIndicatorComprehensive(indicatorId: string): boolean {
+  const spec = INDICATOR_BY_ID.get(indicatorId);
+  return spec?.comprehensive ?? false;
+}

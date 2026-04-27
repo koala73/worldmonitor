@@ -140,11 +140,20 @@ describe('resilience scorer contracts', () => {
     // the coverage-weighted-mean path which CORRECTLY drops a coverage=0
     // dim from the blend; the headline overall is unaffected by the
     // flag-off baseline beyond the small tradePolicy-reweight shift.
+    // Plan 2026-04-26-002 §U6 (combined PR 3+4+5): social-governance
+    // 61.75 → 66.25. Per-capita normalization of unrest event counts +
+    // UCDP eventCount + typeWeight + deaths lifts the US (333M pop)
+    // socialCohesion and borderSecurity dim scores — fixture event counts
+    // of ~5-10 events become 0.015-0.03 events/M, well inside the 0..10
+    // / 0..15 lowerBetter anchors → higher scores. typeWeight is now also
+    // per-capita normalized (review fix: it's an event-count-scaled term,
+    // not dimensionless), accounting for the additional +1.0pt vs the
+    // initial commit's 65.25 expectation.
     assert.deepEqual(domainAverages, {
       economic: 53.25,
       infrastructure: 79,
       energy: 80,
-      'social-governance': 61.75,
+      'social-governance': 66.25,
       'health-food': 60.5,
       recovery: 48.75,
     });
@@ -152,14 +161,14 @@ describe('resilience scorer contracts', () => {
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
     // Mirror of the production coverage-weighted mean (see
     // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
-    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS so the expected
-    // values here track the production aggregation after the PR 2 §3.4
-    // recovery-domain weight rebalance.
-    function coverageWeightedMean(dims: { id: string; score: number; coverage: number }[]) {
+    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS and the §U4
+    // imputation half-weight factor so expected values track production.
+    function coverageWeightedMean(dims: { id: string; score: number; coverage: number; imputationClass: string | null }[]) {
       let totalW = 0, sum = 0;
       for (const d of dims) {
         const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
-        const effective = d.coverage * w;
+        const imputationFactor = d.imputationClass ? 0.5 : 1.0;
+        const effective = d.coverage * w * imputationFactor;
         totalW += effective;
         sum += d.score * effective;
       }
@@ -171,6 +180,7 @@ describe('resilience scorer contracts', () => {
       id,
       score: round(scoreMap[id].score),
       coverage: round(scoreMap[id].coverage),
+      imputationClass: scoreMap[id].imputationClass,
     }));
     const baselineDims = dimensions.filter((d) => {
       const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
@@ -196,7 +206,12 @@ describe('resilience scorer contracts', () => {
     // the low-scoring liquidReserveAdequacy (18) and partial-coverage
     // sovereignFiscalBuffer (50 × 0.3) contribute ~half as much to
     // the US baseline aggregate as under the equal-weight default.
-    assert.equal(baselineScore, 62.17);
+    // Plan 2026-04-26-002 §U4 (combined PR 3+4+5): 62.17 → 62.72. The
+    // coverage penalty halves the weight of fully-imputed dims (US has
+    // sovereignFiscalBuffer at IMPUTE 50/0.3 since US has no SWF
+    // manifest entry — fixture defaults). Halving its already-low
+    // contribution lifts the baseline mean.
+    assert.equal(baselineScore, 62.72);
     // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
     // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
     // shifts and US stress score moves).
@@ -209,20 +224,37 @@ describe('resilience scorer contracts', () => {
     // `financialSystemExposure` dim is also stress-class and ships
     // flag-gated off → score 0 → drags the stress-only mean down.
     //   1 - 67.98/100 = 0.3202, clamped to 0.5.
-    assert.equal(stressScore, 67.98);
-    assert.equal(stressFactor, 0.3202);
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 67.98 → 69.08.
+    // U4 halves the weight of US's fully-imputed stress dims (BIS DSR
+    // imputed at 60, WTO trade imputed at 60, financialSystemExposure
+    // imputed at 50/0.3); U6 lifts borderSecurity for US (333M pop) via
+    // per-capita normalization. Net positive shift in the stress mean,
+    // raising the stress factor proportionally.
+    //   1 - 69.08/100 = 0.3092, clamped to 0.5.
+    // typeWeight per-capita review fix: stress score lifts further on
+    // borderSecurity (typeWeight is now divided by population denominator).
+    //   1 - 69.63/100 = 0.3037, clamped to 0.5.
+    assert.equal(stressScore, 69.63);
+    assert.equal(stressFactor, 0.3037);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
         const dimScores = RESILIENCE_DIMENSION_ORDER
           .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === domainId)
-          .map((id) => ({ id, score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage) }));
-        // Mirror production: apply per-dim weight to each dim's
-        // effective coverage before computing the mean.
+          .map((id) => ({
+            id,
+            score: round(scoreMap[id].score),
+            coverage: round(scoreMap[id].coverage),
+            imputationClass: scoreMap[id].imputationClass,
+          }));
+        // Mirror production: apply per-dim weight + §U4 imputation
+        // half-weight factor to each dim's effective coverage before
+        // computing the mean.
         let totalW = 0, sum = 0;
         for (const d of dimScores) {
           const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
-          const eff = d.coverage * w;
+          const imputationFactor = d.imputationClass ? 0.5 : 1.0;
+          const eff = d.coverage * w * imputationFactor;
           totalW += eff;
           sum += d.score * eff;
         }
@@ -253,7 +285,14 @@ describe('resilience scorer contracts', () => {
     // flag flips on in production with seeders populated, the dim will
     // contribute its own signal; the expected value here will move
     // accordingly in a future PR.
-    assert.equal(overallScore, 64.78);
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
+    // Same delta as the local-helper-based test above; both apply the
+    // imputation half-weight factor + per-capita normalization (with
+    // the typeWeight-per-capita review fix), which shift the US overall
+    // by ~+0.86 (imputed dims contribute less, population-normalized
+    // event-counts boost socialCohesion + borderSecurity for high-pop
+    // countries).
+    assert.equal(overallScore, 65.64);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -302,12 +341,15 @@ describe('resilience scorer contracts', () => {
     // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
     // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS so the expected
     // values here track the production aggregation after the PR 2 §3.4
-    // recovery-domain weight rebalance.
-    function coverageWeightedMean(dims: { id: string; score: number; coverage: number }[]) {
+    // recovery-domain weight rebalance. Plan 2026-04-26-002 §U4 added
+    // the imputation-class half-weight factor; mirror it here so the
+    // local helper stays in sync with the production formula.
+    function coverageWeightedMean(dims: { id: string; score: number; coverage: number; imputationClass: string | null }[]) {
       let totalW = 0, sum = 0;
       for (const d of dims) {
         const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
-        const effective = d.coverage * w;
+        const imputationFactor = d.imputationClass ? 0.5 : 1.0;
+        const effective = d.coverage * w * imputationFactor;
         totalW += effective;
         sum += d.score * effective;
       }
@@ -316,7 +358,10 @@ describe('resilience scorer contracts', () => {
     }
 
     const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
-      id, score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage),
+      id,
+      score: round(scoreMap[id].score),
+      coverage: round(scoreMap[id].coverage),
+      imputationClass: scoreMap[id].imputationClass,
     }));
 
     const grouped = new Map<string, typeof dimensions>();
@@ -348,7 +393,12 @@ describe('resilience scorer contracts', () => {
     // off by default, so it contributes coverage=0 and drops from the
     // coverage-weighted mean. When the flag flips on with seeders
     // populated, the expected here will shift accordingly.
-    assert.equal(expected, 64.78, 'overallScore should match sum(domainScore * domainWeight); 65.24 → 64.78 after Ship 2 dim added (flag-off baseline)');
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
+    // U4 coverage penalty halves the weight of fully-imputed dims (US has
+    // a couple of WTO/BIS imputes); U6 per-capita normalization (incl.
+    // typeWeight per the review fix) bumps social-cohesion + border-
+    // security for the US (333M pop) since event-counts/M are tiny.
+    assert.equal(expected, 65.64, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 → 65.64');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {
