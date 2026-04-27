@@ -34,6 +34,7 @@
  *   npx convex run broadcast/rampRunner:pauseRamp '{}'
  *   npx convex run broadcast/rampRunner:resumeRamp '{}'
  *   npx convex run broadcast/rampRunner:clearKillGate '{"reason":"investigated, false alarm"}'
+ *   npx convex run broadcast/rampRunner:clearPartialFailure '{"reason":"3 stamp failures retried manually"}'
  *   npx convex run broadcast/rampRunner:getRampStatus '{}'
  *   npx convex run broadcast/rampRunner:abortRamp '{}'  # full stop, sets active=false
  *
@@ -198,6 +199,38 @@ export const clearKillGate = internalMutation({
       killGateTripped: false,
       killGateReason: undefined,
       lastRunStatus: `kill-gate-cleared: ${reason.slice(0, 200)}`,
+    });
+    return { ok: true };
+  },
+});
+
+/**
+ * Clear a `partial-failure` block recorded by `runDailyRamp`. The runner
+ * refuses to advance while `lastRunStatus === "partial-failure"` (so a
+ * half-pushed export can't slip into a tier advance), and `clearKillGate`
+ * does NOT clear this state — the kill-gate latch and the partial-failure
+ * block are independent recovery paths with different operator
+ * investigation requirements (kill-gate = email-reputation issue,
+ * partial-failure = mechanical export/send failure). Without this
+ * mutation, a partial-failure would block the cron forever short of
+ * `abortRamp` or hand-patching the DB.
+ *
+ * Operator should investigate per the recorded `lastRunError` (e.g.
+ * Resend logs for `failed > 0`, Convex logs for `stampFailed > 0`,
+ * dashboard for `createProLaunchBroadcast` / `sendProLaunchBroadcast`
+ * throws) BEFORE clearing.
+ */
+export const clearPartialFailure = internalMutation({
+  args: { reason: v.string() },
+  handler: async (ctx, { reason }) => {
+    const row = await loadConfig(ctx);
+    if (!row) throw new Error("[clearPartialFailure] no ramp configured");
+    if (row.lastRunStatus !== "partial-failure") {
+      return { ok: true, noop: true, currentStatus: row.lastRunStatus };
+    }
+    await ctx.db.patch(row._id, {
+      lastRunStatus: `partial-failure-cleared: ${reason.slice(0, 200)}`,
+      lastRunError: undefined,
     });
     return { ok: true };
   },
