@@ -9,20 +9,22 @@ const USER = { subject: "user-tests-alertrules", tokenIdentifier: "clerk|user-te
 const VARIANT = "full";
 
 // ---------------------------------------------------------------------------
-// Cross-field invariant: (digestMode='realtime', sensitivity='all') is forbidden.
+// Cross-field invariant: realtime is for `critical`-tier events only.
+// Both `(realtime, all)` and `(realtime, high)` are forbidden.
 // See plans/forbid-realtime-all-events.md.
 // ---------------------------------------------------------------------------
 
-describe("alertRules — (realtime, all) cross-field invariant", () => {
+describe("alertRules — realtime+non-critical cross-field invariant", () => {
   test("setAlertRules({sensitivity:'all'}) against existing realtime row → throws", async () => {
     const t = convexTest(schema, modules);
     const asUser = t.withIdentity(USER);
-    // Seed an existing row in realtime mode with high sensitivity (compatible).
+    // Seed an existing row in realtime mode with critical sensitivity (compatible
+    // under the tightened rule — only 'critical' is allowed alongside realtime).
     await asUser.mutation(api.alertRules.setAlertRules, {
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
-      sensitivity: "high",
+      sensitivity: "critical",
       channels: [],
     });
     // Attempting to widen to 'all' must throw INCOMPATIBLE_DELIVERY.
@@ -34,7 +36,31 @@ describe("alertRules — (realtime, all) cross-field invariant", () => {
         sensitivity: "all",
         channels: [],
       }),
-    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery requires/i);
+    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery is for Critical/i);
+  });
+
+  test("setAlertRules({sensitivity:'high'}) against existing realtime row → throws (tightened rule)", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity(USER);
+    // Seed compatible realtime+critical state.
+    await asUser.mutation(api.alertRules.setAlertRules, {
+      variant: VARIANT,
+      enabled: true,
+      eventTypes: [],
+      sensitivity: "critical",
+      channels: [],
+    });
+    // Attempting to widen to 'high' is now ALSO forbidden — was allowed under
+    // the previous rule, tightened 2026-04-27.
+    await expect(
+      asUser.mutation(api.alertRules.setAlertRules, {
+        variant: VARIANT,
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "high",
+        channels: [],
+      }),
+    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery is for Critical/i);
   });
 
   test("setAlertRules({sensitivity:'all'}) against existing daily-digest row → succeeds", async () => {
@@ -78,7 +104,7 @@ describe("alertRules — (realtime, all) cross-field invariant", () => {
         variant: VARIANT,
         digestMode: "realtime",
       }),
-    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery requires/i);
+    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery is for Critical/i);
   });
 
   test("setDigestSettings({digestMode:'daily'}) against existing sensitivity:'all' realtime → succeeds, sensitivity preserved", async () => {
@@ -111,13 +137,14 @@ describe("alertRules — (realtime, all) cross-field invariant", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Insert-only default flip: sensitivity:'all' → sensitivity:'high' on fresh
-// insert ONLY. Patch path must NEVER silently rewrite an existing row's
+// Insert-only default: sensitivity:'critical' on fresh insert ONLY (under the
+// tightened rule, was 'high' before 2026-04-27). Patch path must NEVER silently
+// rewrite an existing row's
 // sensitivity when the caller omits the field.
 // ---------------------------------------------------------------------------
 
 describe("alertRules — insert-only default for sensitivity", () => {
-  test("setAlertRulesForUser with no existing row, sensitivity omitted → defaults to 'high'", async () => {
+  test("setAlertRulesForUser with no existing row, sensitivity omitted → defaults to 'critical'", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.alertRules.setAlertRulesForUser, {
       userId: USER.subject,
@@ -133,7 +160,9 @@ describe("alertRules — insert-only default for sensitivity", () => {
         .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", VARIANT))
         .collect(),
     );
-    expect(rows[0]?.sensitivity).toBe("high");
+    // Under the tightened rule (2026-04-27), realtime insert default is 'critical'
+    // not 'high' — only 'critical' is compatible with the implicit realtime mode.
+    expect(rows[0]?.sensitivity).toBe("critical");
   });
 
   test("setAlertRulesForUser with existing daily+all row, sensitivity omitted → preserves 'all'", async () => {
@@ -173,7 +202,7 @@ describe("alertRules — insert-only default for sensitivity", () => {
     expect(rows[0]?.eventTypes).toEqual(["something"]);
   });
 
-  test("setQuietHoursForUser with no existing row → inserts with sensitivity:'high', not 'all'", async () => {
+  test("setQuietHoursForUser with no existing row → inserts with sensitivity:'critical', not 'all'/'high'", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.alertRules.setQuietHoursForUser, {
       userId: USER.subject,
@@ -189,7 +218,7 @@ describe("alertRules — insert-only default for sensitivity", () => {
         .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", VARIANT))
         .collect(),
     );
-    expect(rows[0]?.sensitivity).toBe("high");
+    expect(rows[0]?.sensitivity).toBe("critical");
   });
 
   test("setQuietHoursForUser does NOT throw on pre-migration forbidden row (Greptile P1)", async () => {
@@ -246,10 +275,10 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
         digestMode: "realtime",
         sensitivity: "all",
       }),
-    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery requires/i);
+    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery is for Critical/i);
   });
 
-  test("daily+all → realtime+high lands atomically (no race)", async () => {
+  test("daily+all → realtime+critical lands atomically (no race) — tightened rule requires critical", async () => {
     const t = convexTest(schema, modules);
     // Seed daily+all (the legitimate prior state).
     await t.run(async (ctx) => {
@@ -270,7 +299,7 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
       userId: USER.subject,
       variant: VARIANT,
       digestMode: "realtime",
-      sensitivity: "high",
+      sensitivity: "critical",
     });
     const rows = await t.run(async (ctx) =>
       ctx.db
@@ -279,7 +308,20 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
         .collect(),
     );
     expect(rows[0]?.digestMode).toBe("realtime");
-    expect(rows[0]?.sensitivity).toBe("high");
+    expect(rows[0]?.sensitivity).toBe("critical");
+  });
+
+  test("setNotificationConfigForUser({digestMode:'realtime', sensitivity:'high'}) → throws (tightened rule)", async () => {
+    // The tightened rule (2026-04-27) forbids realtime+high alongside realtime+all.
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.alertRules.setNotificationConfigForUser, {
+        userId: USER.subject,
+        variant: VARIANT,
+        digestMode: "realtime",
+        sensitivity: "high",
+      }),
+    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery is for Critical/i);
   });
 
   test("partial update {enabled:true} against existing forbidden row → throws (re-validation)", async () => {
@@ -306,7 +348,7 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
         enabled: true,
         // no digestMode/sensitivity in args — but existing pair is forbidden
       }),
-    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery requires/i);
+    ).rejects.toThrow(/INCOMPATIBLE_DELIVERY|Real-time delivery is for Critical/i);
   });
 
   test("omitted sensitivity on patch preserves existing value", async () => {

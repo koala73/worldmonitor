@@ -307,10 +307,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           <div class="ai-flow-section-label" style="margin-top:8px">Sensitivity</div>
           <select class="unified-settings-select" id="usNotifSensitivity">
             <option value="all"${isRealtime ? ' disabled' : ''}${sensitivity === 'all' && !isRealtime ? ' selected' : ''}>All events${isRealtime ? ' (digest only)' : ''}</option>
-            <option value="high"${sensitivity === 'high' || (sensitivity === 'all' && isRealtime) ? ' selected' : ''}>High &amp; critical</option>
-            <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
+            <option value="high"${isRealtime ? ' disabled' : ''}${sensitivity === 'high' && !isRealtime ? ' selected' : ''}>High &amp; critical${isRealtime ? ' (digest only)' : ''}</option>
+            <option value="critical"${sensitivity === 'critical' || ((sensitivity === 'all' || sensitivity === 'high') && isRealtime) ? ' selected' : ''}>Critical only</option>
           </select>
-          <div class="ai-flow-toggle-desc" id="usSensitivityHint" style="margin-top:4px;${isRealtime ? '' : 'display:none'}">Real-time delivery requires High or Critical. To receive all events, switch to a digest cadence.</div>
+          <div class="ai-flow-toggle-desc" id="usSensitivityHint" style="margin-top:4px;${isRealtime ? '' : 'display:none'}">Real-time delivery is for Critical events only. To receive High or All events, switch to a digest cadence.</div>
           <div id="usRealtimeSection" style="${isRealtime ? '' : 'display:none'}">
             <div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
@@ -497,23 +497,32 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           // See plans/forbid-realtime-all-events.md §2c, §2d.
           const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
           const allOption = sensitivityEl?.querySelector<HTMLOptionElement>('option[value="all"]');
+          const highOption = sensitivityEl?.querySelector<HTMLOptionElement>('option[value="high"]');
+          // Tightened rule: realtime is for Critical only — disable BOTH `all`
+          // and `high` options when realtime, only `critical` is allowed.
           if (allOption) {
             allOption.disabled = isRt;
             allOption.textContent = isRt ? 'All events (digest only)' : 'All events';
           }
-          // The sensitivity hint only applies in realtime mode (where 'all' is
-          // disabled); hide it in digest mode. Greptile P2 on PR #3461.
+          if (highOption) {
+            highOption.disabled = isRt;
+            highOption.textContent = isRt ? 'High & critical (digest only)' : 'High & critical';
+          }
+          // The sensitivity hint only applies in realtime mode (where non-critical
+          // options are disabled); hide it in digest mode.
           const hintEl = container.querySelector<HTMLElement>('#usSensitivityHint');
           if (hintEl) hintEl.style.display = isRt ? '' : 'none';
           let snappedSensitivity: 'all' | 'high' | 'critical' | undefined;
-          if (isRt && sensitivityEl?.value === 'all') {
-            sensitivityEl.value = 'high';
-            snappedSensitivity = 'high';
+          if (isRt && (sensitivityEl?.value === 'all' || sensitivityEl?.value === 'high')) {
+            const previousValue = sensitivityEl.value;
+            sensitivityEl.value = 'critical';
+            snappedSensitivity = 'critical';
             // Tiny inline notice — the user just lost a setting; tell them why.
             const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
             if (hint) {
               const original = hint.textContent;
-              hint.textContent = "Switched to High & critical — real-time delivery doesn't support All events.";
+              const fromLabel = previousValue === 'all' ? 'All events' : 'High & critical';
+              hint.textContent = `Switched to Critical only — real-time delivery doesn't support ${fromLabel}.`;
               setTimeout(() => { if (hint && original) hint.textContent = original; }, 4000);
             }
           }

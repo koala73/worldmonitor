@@ -41,14 +41,20 @@ describe('notifications-settings.ts — sensitivity dropdown placement', () => {
     );
   });
 
-  it("'all' option carries an isRealtime-conditional disabled attribute", () => {
-    // The all option must be disabled when isRealtime is true. This catches the
-    // foot-gun the whole plan exists to prevent — without disable, the user can
-    // re-pick (realtime, all) through the UI.
+  it("'all' AND 'high' options both carry an isRealtime-conditional disabled attribute (tightened rule)", () => {
+    // The all+high options must both be disabled when isRealtime is true. Under
+    // the tightened rule (2026-04-27), only `critical` is allowed alongside
+    // realtime. This catches the foot-gun without disable: user re-picking
+    // (realtime, all) OR (realtime, high) through the UI.
     assert.match(
       src,
       /<option value="all"\$\{isRealtime \? ' disabled' : ''\}/,
       "the 'all' <option> must include `${isRealtime ? ' disabled' : ''}`",
+    );
+    assert.match(
+      src,
+      /<option value="high"\$\{isRealtime \? ' disabled' : ''\}/,
+      "the 'high' <option> must include `${isRealtime ? ' disabled' : ''}`",
     );
   });
 
@@ -57,7 +63,7 @@ describe('notifications-settings.ts — sensitivity dropdown placement', () => {
     // confuses users who hit the constraint from different surfaces.
     assert.match(
       src,
-      /Real-time delivery requires High or Critical/,
+      /Real-time delivery is for Critical events only/,
       'sensitivity helper text must match the server error wording',
     );
   });
@@ -79,31 +85,37 @@ describe('notifications-settings.ts — sensitivity dropdown placement', () => {
 });
 
 describe('notifications-settings.ts — mode-change behavior', () => {
-  it('snaps sensitivity to high when switching TO realtime with sensitivity=all', () => {
-    // The mode-change handler must snap the value AND ALSO record the snapped
-    // sensitivity so the atomic save sends it to the server.
+  it("snaps sensitivity to 'critical' when switching TO realtime with sensitivity in {all, high} (tightened rule)", () => {
+    // Under the tightened rule, both 'all' AND 'high' must trigger the snap.
+    // The handler must snap the value AND ALSO record the snapped sensitivity
+    // so the atomic save sends it to the server.
     assert.match(
       src,
-      /isRt\s*&&\s*sensitivityEl\?\.value\s*===\s*'all'/,
-      'mode-change must detect (switching to realtime) AND (current value is all)',
+      /isRt\s*&&\s*\(sensitivityEl\?\.value\s*===\s*'all'\s*\|\|\s*sensitivityEl\?\.value\s*===\s*'high'\)/,
+      'mode-change must detect (switching to realtime) AND (current value is "all" OR "high")',
     );
     assert.match(
       src,
-      /sensitivityEl\.value\s*=\s*'high'/,
-      'mode-change must set the dropdown value to high',
+      /sensitivityEl\.value\s*=\s*'critical'/,
+      "mode-change must set the dropdown value to 'critical' (was 'high' before the tightened rule)",
     );
     assert.match(
       src,
-      /snappedSensitivity\s*=\s*'high'/,
-      'mode-change must record snappedSensitivity so the atomic save includes it',
+      /snappedSensitivity\s*=\s*'critical'/,
+      "mode-change must record snappedSensitivity = 'critical' so the atomic save includes it",
     );
   });
 
-  it("toggles the 'all' option's disabled attribute on mode change", () => {
+  it("toggles BOTH 'all' AND 'high' option disabled attributes on mode change", () => {
     assert.match(
       src,
       /allOption\.disabled\s*=\s*isRt/,
       "mode-change handler must toggle allOption.disabled with isRt",
+    );
+    assert.match(
+      src,
+      /highOption\.disabled\s*=\s*isRt/,
+      "mode-change handler must toggle highOption.disabled with isRt (tightened rule disables high too)",
     );
   });
 
