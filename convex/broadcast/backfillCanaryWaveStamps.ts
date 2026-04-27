@@ -147,8 +147,14 @@ export const backfillCanary250 = internalAction({
     let after: string | null = null;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const url = new URL(`${RESEND_API_BASE}/contacts`);
-      url.searchParams.set("segment_id", CANARY_SEGMENT_ID);
+      // Resend's per-segment contact-listing endpoint is
+      // `GET /segments/{id}/contacts` (NOT `/contacts?segment_id=...`).
+      // The `/contacts` endpoint exists but its `segment_id` param is
+      // documented inconsistently across Resend's docs pages — only
+      // the `/segments/{id}/contacts` route is canonical.
+      const url = new URL(
+        `${RESEND_API_BASE}/segments/${encodeURIComponent(CANARY_SEGMENT_ID)}/contacts`,
+      );
       url.searchParams.set("limit", String(RESEND_PAGE_SIZE));
       if (after) url.searchParams.set("after", after);
 
@@ -205,6 +211,13 @@ export const backfillCanary250 = internalAction({
             );
           }
         } catch (err) {
+          // sentry-coverage-ok: per-contact stamp failure is counted
+          // into `stats.failed` and surfaced in the action's return
+          // value — that's the operator's visible surface for partial
+          // failures. Re-throwing would abort the loop and leave most
+          // contacts unstamped, defeating the point. Convex auto-Sentry
+          // still captures the underlying mutation throw inside the
+          // mutation itself, before it bubbles up here as a rejection.
           stats.failed++;
           console.error(
             `[backfillCanary250] stamp failed for ${maskEmail(normalizedEmail)}:`,
