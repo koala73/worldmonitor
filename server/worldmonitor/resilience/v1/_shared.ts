@@ -19,9 +19,11 @@ import {
   RESILIENCE_DIMENSION_TYPES,
   RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
+  RESILIENCE_IMF_LABOR_KEY,
   isExcludedFromConfidenceMean,
   createMemoizedSeedReader,
   getResilienceDomainWeight,
+  readCountryPopulationMillionsForGate,
   scoreAllDimensions,
   type ImputationClass,
   type ResilienceDimensionId,
@@ -152,7 +154,14 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // UCDP) normalize per-million-population (U6). Every country's score
 // shifts; mixing v15 + v16 cached scores in the same response would
 // create internally-inconsistent rankings.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v16:';
+// v16→v17 bump for plan 2026-04-26-002 §U7 (PR 6): `headlineEligible`
+// flips from PR 2's "true everywhere" to actual eligibility logic
+// (coverage >= 0.65 AND (population >= 200k OR coverage >= 0.85) AND
+// !lowConfidence). Cached v16 score entries carry headlineEligible:true
+// for every country (the PR 2 default), which would let ineligible
+// countries through the headline ranking filter for the full 6h TTL
+// post-deploy. Bump forces a clean recompute aligned with the new gate.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v17:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -190,7 +199,15 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v16:';
 // v10 history points with post-fix v16 score points inside the 30-day
 // rolling window would produce false-trend signals — the score-formula
 // shift this PR introduces is one of the largest in the index's history.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v11:';
+// v11→v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v16→v17
+// for plan 2026-04-26-002 §U7 (PR 6). Per the cache-prefix-bump-
+// propagation-scope skill: history points written under v11 reflect
+// the PR-2 "all-true headlineEligible" world; mixing them with v17
+// score points across the rolling 30-day window risks no behavior
+// shift on history (history doesn't carry the field), but rotating
+// in lockstep keeps the bump pattern consistent and the audit trail
+// clean.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v12:';
 // v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
 // for PR 3A §net-imports denominator. As with the score prefix, the
 // version bump is a belt — the suspenders are the `_formula` tag on
@@ -203,7 +220,13 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v11:';
 // for plan 2026-04-25-004 Phase 2 (Ship 2).
 // v15→v16 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for
 // plan 2026-04-26-002 §U4+U5+U6 (combined PR 3+4+5).
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v16';
+// v16→v17 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for
+// plan 2026-04-26-002 §U7 (PR 6). v16 cached rankings include items
+// flagged headlineEligible:true unconditionally (PR 2 default); they
+// would serve as the front-of-house ranking for the full 6h TTL even
+// after the gate logic flips. Bump forces a clean recompute against
+// the v17 score entries, which now carry the real headlineEligible.
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v17';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 // Plan 2026-04-26-002 §U4+U5+U6 (combined PR 3+4+5) — intervals bump
 // v1 → v2. The pre-PR interval seeders used the OLD 5-domain weights
@@ -445,6 +468,38 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   return history.sort((left, right) => left.date.localeCompare(right.date));
 }
 
+// Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate. Per origin
+// Q2 + Q5: a country is eligible for the headline ranking iff
+//   coverage >= 0.65 AND
+//   (population >= 200k OR coverage >= 0.85) AND
+//   NOT lowConfidence
+// Population is in millions; 200k = 0.2M. The coverage>=0.85 branch is
+// the data-quality compensator: a tiny state with high data quality
+// (Iceland, Liechtenstein, Monaco) can still earn headline status
+// even though its population is below the 200k threshold.
+//
+// `populationMillions` is `null` when the country has no IMF labor
+// entry. Per the conservative-default rule, unknown population fails
+// the population branch — eligibility then depends entirely on the
+// coverage>=0.85 branch. This avoids inflating eligibility by
+// assuming a default population.
+export const HEADLINE_ELIGIBLE_MIN_COVERAGE = 0.65;
+export const HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS = 0.2;
+export const HEADLINE_ELIGIBLE_HIGH_COVERAGE = 0.85;
+
+export function computeHeadlineEligible(args: {
+  overallCoverage: number;
+  populationMillions: number | null;
+  lowConfidence: boolean;
+}): boolean {
+  if (args.lowConfidence) return false;
+  if (args.overallCoverage < HEADLINE_ELIGIBLE_MIN_COVERAGE) return false;
+  const popOk = args.populationMillions != null
+    && args.populationMillions >= HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS;
+  const highCoverageOk = args.overallCoverage >= HEADLINE_ELIGIBLE_HIGH_COVERAGE;
+  return popOk || highCoverageOk;
+}
+
 export function computeLowConfidence(dimensions: ResilienceDimension[], imputationShare: number): boolean {
   // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) from the
   // confidence reading. They contribute zero weight to domain scoring
@@ -514,7 +569,11 @@ async function buildResilienceScore(
     ? new Date(staticMeta.fetchedAt).toISOString().slice(0, 10)
     : todayIsoDate();
 
-  const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
+  // Plan §U7 (PR 6) — memoize the seed reader once at the top of the
+  // build so the IMF labor seed read for the headline-eligible gate
+  // (below) shares the cache with the dimension scorers' reads.
+  const seedReader = reader ?? createMemoizedSeedReader();
+  const scoreMap = await scoreAllDimensions(normalizedCountryCode, seedReader);
   const dimensions = buildDimensionList(scoreMap);
   const domains = buildDomainList(dimensions);
   const pillars = buildPillarList(domains, true);
@@ -569,6 +628,31 @@ async function buildResilienceScore(
 
   await appendHistory(normalizedCountryCode, overallScore, formula);
 
+  const lowConfidence = computeLowConfidence(dimensions, imputationShare);
+  // Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate flips from
+  // PR 2's "true everywhere" to actual eligibility logic. Three
+  // conjuncts (per origin Q2 + Q5):
+  //   1. coverage >= 0.65 (≥ 65% of dims have observed data)
+  //   2. population >= 200k OR coverage >= 0.85 (real-state size OR
+  //      data quality high enough to compensate for tiny pop)
+  //   3. NOT lowConfidence (which already gates ≥ 50% imputation share)
+  // Population is read fresh from IMF labor; the helper returns the
+  // REAL population (no §U6 0.5M floor) so a tiny state with known
+  // sub-200k pop is correctly excluded via conjunct 2 — falling
+  // through to the floor would inflate the gate's permissiveness.
+  // Unknown population is treated as `null` → conjunct 2 evaluates
+  // to "coverage >= 0.85" alone, which is the conservative behavior:
+  // an unknown-pop country only earns headline status via high data
+  // quality, not via assumption.
+  const imfLaborRaw = await seedReader(RESILIENCE_IMF_LABOR_KEY);
+  const overallCoverageForGate = computeOverallCoverage({ domains } as GetResilienceScoreResponse);
+  const populationMillionsForGate = readCountryPopulationMillionsForGate(imfLaborRaw, normalizedCountryCode);
+  const headlineEligible = computeHeadlineEligible({
+    overallCoverage: overallCoverageForGate,
+    populationMillions: populationMillionsForGate,
+    lowConfidence,
+  });
+
   return {
     countryCode: normalizedCountryCode,
     overallScore,
@@ -579,17 +663,12 @@ async function buildResilienceScore(
     domains,
     trend: detectTrend(scoreSeries),
     change30d: oldestScore == null ? 0 : round(overallScore - oldestScore),
-    lowConfidence: computeLowConfidence(dimensions, imputationShare),
+    lowConfidence,
     imputationShare,
     dataVersion,
     pillars,
     schemaVersion: '2.0',
-    // Plan 2026-04-26-002 §U3 (PR 2) — populate `true` for every country.
-    // PR 6 / §U7 swaps to `coverage >= 0.65 && (population >= 200k ||
-    // coverage >= 0.85) && !lowConfidence`. The field exists from PR 2
-    // onward so downstream readers can begin consuming it (informational
-    // only) before the gate logic flips.
-    headlineEligible: true,
+    headlineEligible,
   };
 }
 
