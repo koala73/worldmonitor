@@ -156,9 +156,17 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       // wire shape matches the generated proto response type.
       const { _formula: _drop, ...publicResponse } = cached!;
       void _drop;
+      // Re-sort items[] after the symmetric promotion. A high-scoring
+      // item promoted from greyedOut[] would otherwise be appended at
+      // the end of items[] instead of landing in its correct rank
+      // position. The recompute path always sorts before publishing
+      // (line ~225 below), so the cache-hit path must too — otherwise
+      // a cache-hit response visibly differs from a fresh recompute
+      // for the same data, breaking the front-of-house ranking sort.
+      // Per Greptile P2 review of PR #3472 follow-up.
       return {
         ...(publicResponse as GetResilienceRankingResponse),
-        items: [...eligibleItems, ...promotedFromGreyed],
+        items: sortRankingItems([...eligibleItems, ...promotedFromGreyed]),
         greyedOut: [...stillGreyed, ...ineligibleFromItems],
       };
     }
