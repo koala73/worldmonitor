@@ -45,11 +45,7 @@ import {
   internalQuery,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
-
-const RESEND_API_BASE = "https://api.resend.com";
-
-// AGENTS.md requires User-Agent on every server-side fetch.
-const USER_AGENT = "WorldMonitor-PROLaunchExporter/1.0 (+https://worldmonitor.app)";
+import { upsertContactToSegment } from "./_resendContacts";
 
 /**
  * Redact an email for log output: keep the first 2 chars of the local
@@ -161,126 +157,9 @@ type ExportStats = {
   pageProcessed: number;
 };
 
-/**
- * Heuristic for distinguishing duplicate-shaped 422 responses from other
- * 422-flavored validation errors (missing segment, invalid email,
- * unauthorized field, etc., which we want to count as `failed` and log).
- *
- * Resend's error shape on 422 is `{ name, message, statusCode }`.
- * Duplicate responses use names like `email_already_exists` /
- * `contact_already_exists` and messages mentioning "already". We match
- * generously on the message in case the `name` evolves.
- *
- * Used for BOTH `POST /contacts` duplicates (contact exists globally) AND
- * `POST /contacts/{email}/segments/{segmentId}` duplicates (contact is
- * already in this specific segment) — same shape, same heuristic.
- */
-function isDuplicateContactError(body: unknown): boolean {
-  if (!body || typeof body !== "object") return false;
-  const obj = body as Record<string, unknown>;
-  const name = typeof obj.name === "string" ? obj.name.toLowerCase() : "";
-  const message = typeof obj.message === "string" ? obj.message.toLowerCase() : "";
-  if (name.includes("already_exists") || name.includes("duplicate")) return true;
-  if (/already (exists|in (the )?(audience|segment))|duplicate/.test(message)) return true;
-  return false;
-}
-
-type UpsertOutcome =
-  | { kind: "created" }
-  | { kind: "linkedExisting" }
-  | { kind: "alreadyInSegment" }
-  | { kind: "failed"; reason: string };
-
-/**
- * Two-step contact-to-segment upsert that guarantees the contact ends up
- * in `segmentId` regardless of pre-existing global state:
- *
- *   1. `POST /contacts` with `segments: [{ id }]`. If the contact is brand
- *      new globally, this creates it AND attaches to the segment in one
- *      call → "created".
- *   2. If step 1 returns a duplicate-shaped 422, the contact already
- *      exists globally — but Resend's documented behaviour is that the
- *      `segments` field on the duplicate path is NOT applied. We don't
- *      know whether the contact is already in our segment or in some
- *      OTHER segment / no segment at all. Resolve the ambiguity with an
- *      explicit `POST /contacts/{email}/segments/{segmentId}`:
- *        - 2xx → it was global-only or in another segment, now linked
- *          → "linkedExisting"
- *        - 422 duplicate-shaped → was already in this segment
- *          → "alreadyInSegment"
- *        - anything else → "failed"
- *
- * Without step 2, paid-customers-or-anyone-else who happen to already
- * exist as global contacts can be silently OMITTED from the launch
- * segment while the export reports success. (Caught in PR #3431 review.)
- */
-async function upsertContactToSegment(
-  apiKey: string,
-  email: string,
-  segmentId: string,
-): Promise<UpsertOutcome> {
-  const createRes = await fetch(`${RESEND_API_BASE}/contacts`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "User-Agent": USER_AGENT,
-    },
-    body: JSON.stringify({
-      email,
-      segments: [{ id: segmentId }],
-      unsubscribed: false,
-    }),
-  });
-
-  if (createRes.ok) return { kind: "created" };
-
-  if (createRes.status === 422) {
-    const createBody = await createRes.json().catch(() => null);
-    if (!isDuplicateContactError(createBody)) {
-      return {
-        kind: "failed",
-        reason: `POST /contacts 422 (non-duplicate): ${JSON.stringify(createBody)}`,
-      };
-    }
-
-    // Contact exists globally — attach to our segment explicitly.
-    const addRes = await fetch(
-      `${RESEND_API_BASE}/contacts/${encodeURIComponent(email)}/segments/${encodeURIComponent(segmentId)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "User-Agent": USER_AGENT,
-        },
-      },
-    );
-
-    if (addRes.ok) return { kind: "linkedExisting" };
-
-    if (addRes.status === 422) {
-      const addBody = await addRes.json().catch(() => null);
-      if (isDuplicateContactError(addBody)) return { kind: "alreadyInSegment" };
-      return {
-        kind: "failed",
-        reason: `POST /contacts/{email}/segments/{id} 422 (non-duplicate): ${JSON.stringify(addBody)}`,
-      };
-    }
-
-    const addText = await addRes.text().catch(() => "<no body>");
-    return {
-      kind: "failed",
-      reason: `POST /contacts/{email}/segments/{id} ${addRes.status}: ${addText}`,
-    };
-  }
-
-  const createText = await createRes.text().catch(() => "<no body>");
-  return {
-    kind: "failed",
-    reason: `POST /contacts ${createRes.status}: ${createText}`,
-  };
-}
+// `isDuplicateContactError`, `UpsertOutcome`, `upsertContactToSegment`,
+// and the Resend constants live in `./_resendContacts.ts` so the
+// per-wave exporter can reuse the same logic without duplication.
 
 export const exportProLaunchAudience = internalAction({
   args: {
