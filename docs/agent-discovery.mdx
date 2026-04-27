@@ -46,7 +46,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | (extension) | Long-form variant covering all data layers, panels, and data sources |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
 
-All endpoints serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600`.
+All endpoints serve `Access-Control-Allow-Origin: *`. The static discovery assets (`.well-known/*`, `/openapi.yaml`, `/llms*.txt`) are cached `public, max-age=3600` — safe to memoize. `/api/health` is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
 
 ## Agent walkthroughs
 
@@ -69,19 +69,17 @@ The bundled spec covers all 30+ services in a single document, so one codegen pa
 ### Connect an MCP client to live data
 
 ```bash
-# 1. Read the server card
+# 1. Read the server card — this is the canonical descriptor for MCP
 curl -s https://worldmonitor.app/.well-known/mcp/server-card.json
-# → endpoint, transport, OAuth resource, scopes
+# → endpoint (https://worldmonitor.app/mcp), transport, OAuth scopes,
+#   and authorization_servers: ["https://api.worldmonitor.app"]
 
-# 2. Discover the OAuth authorization server
-curl -s https://worldmonitor.app/.well-known/oauth-protected-resource \
-  | jq -r '.authorization_servers[0]'
-# → https://api.worldmonitor.app
-
-# 3. Fetch authorization-server metadata
+# 2. Fetch authorization-server metadata from that host
 curl -s https://api.worldmonitor.app/.well-known/oauth-authorization-server
 # → token / authorize / registration endpoints, PKCE required, etc.
 ```
+
+`/.well-known/oauth-protected-resource` is also available, but its `authorization_servers` field is derived from the request `Host` header so each origin (apex, www, api) reports itself — same-origin metadata that satisfies strict MCP scanners. Use the **MCP server card** for the cross-origin auth-server URL the actual MCP endpoint expects.
 
 Or skip the manual flow entirely — most clients (Claude Desktop, claude.ai, Cursor, MCP Inspector, Claude Code) accept the MCP URL directly and run discovery + OAuth automatically:
 
