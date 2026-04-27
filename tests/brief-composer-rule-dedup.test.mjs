@@ -88,6 +88,57 @@ describe('dedupeRulesByUser', () => {
     assert.equal(out1[0].updatedAt, 1_000);
     assert.equal(out2[0].updatedAt, 1_000);
   });
+
+  describe('undefined sensitivity ranks as "high" (NOT "all")', () => {
+    // PR #3387 review (P2): the rank function used to default to 'all',
+    // which would place a legacy undefined-sensitivity rule FIRST in
+    // the candidate order — but composeBriefFromDigestStories now
+    // applies a 'high' filter to undefined-sensitivity rules. Result:
+    // an explicit 'all' rule for the same user would never be tried,
+    // and the user would silently receive a narrower brief. Rank must
+    // match what compose actually applies.
+    function ruleWithoutSensitivity(overrides = {}) {
+      const r = rule(overrides);
+      delete r.sensitivity;
+      return r;
+    }
+
+    it('explicit "all" rule beats undefined-sensitivity rule of same variant + age', () => {
+      const explicitAll = rule({ variant: 'full', sensitivity: 'all', updatedAt: 1_000 });
+      const undefSens = ruleWithoutSensitivity({ variant: 'full', updatedAt: 1_000 });
+      // Both arrival orders must produce the same winner.
+      const out1 = dedupeRulesByUser([explicitAll, undefSens]);
+      const out2 = dedupeRulesByUser([undefSens, explicitAll]);
+      assert.equal(out1[0].sensitivity, 'all');
+      assert.equal(out2[0].sensitivity, 'all');
+    });
+
+    it('undefined-sensitivity rule ties with explicit "high" (decided by updatedAt)', () => {
+      // Both should rank as 'high' → tiebreak by updatedAt → newer (older?)
+      // matches existing semantics: earlier updatedAt wins per the
+      // "stable under input reordering" test above.
+      const undefSens = ruleWithoutSensitivity({ variant: 'full', updatedAt: 1_000 });
+      const explicitHigh = rule({ variant: 'full', sensitivity: 'high', updatedAt: 2_000 });
+      const out1 = dedupeRulesByUser([undefSens, explicitHigh]);
+      const out2 = dedupeRulesByUser([explicitHigh, undefSens]);
+      // Earlier updatedAt wins → undefined rule (1_000 < 2_000).
+      assert.equal(out1[0].updatedAt, 1_000);
+      assert.equal(out2[0].updatedAt, 1_000);
+    });
+
+    it('candidate order in groupEligibleRulesByUser respects new ranking', () => {
+      // groupEligibleRulesByUser sorts candidates so the most-permissive
+      // (and most-preferred) is tried first by composeAndStoreBriefForUser.
+      // After the rank-default fix, undefined-sensitivity should sit
+      // BELOW explicit 'all' in the try order.
+      const explicitAll = rule({ variant: 'full', sensitivity: 'all', updatedAt: 1_000 });
+      const undefSens = ruleWithoutSensitivity({ variant: 'full', updatedAt: 2_000 });
+      const grouped = groupEligibleRulesByUser([undefSens, explicitAll]);
+      const candidates = grouped.get('user_abc');
+      assert.equal(candidates[0].sensitivity, 'all', 'explicit "all" should be tried first');
+      assert.equal(candidates[1].sensitivity, undefined, 'undefined sensitivity should come second');
+    });
+  });
 });
 
 describe('aiDigestEnabled default parity', () => {

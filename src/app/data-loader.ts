@@ -242,6 +242,11 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
     ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
     ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
+    // Cleaned RSS description (U3 proto field 12). Only populated when the
+    // upstream feed carried a usable <description>/<content:encoded>/<summary>;
+    // empty string otherwise. Consumers render the headline and fall back to
+    // snippet as a secondary line when non-empty.
+    ...(p.snippet ? { snippet: p.snippet } : {}),
   };
 }
 
@@ -471,8 +476,8 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
       }
 
-      // Trade policy data (FULL and FINANCE only)
-      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity') {
+      // Trade policy + supply-chain data (FULL, FINANCE, COMMODITY, ENERGY variants use supply-chain surface)
+      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
         if (shouldLoad('trade-policy')) {
           tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
         }
@@ -1621,7 +1626,9 @@ export class DataLoaderManager implements AppModule {
         frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
         newsCategories: SITE_VARIANT === 'commodity'
           ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
-          : undefined,
+          : SITE_VARIANT === 'energy'
+            ? ['live-news', 'energy', 'supply-chain']
+            : undefined,
       });
 
       if (this.dailyBriefGeneration !== gen) return;
@@ -2791,6 +2798,10 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadTradePolicy(): Promise<void> {
+    // Trade-policy is PRO-gated. Short-circuit for anonymous/free users so
+    // we don't fire 6 RPCs that all 401 on every page load — fixes the
+    // console-noise + Sentry-noise bug from the 2026-04-22 trace.
+    if (!hasPremiumAccess()) return;
     const tradePanel = this.ctx.panels['trade-policy'] as TradePolicyPanel | undefined;
     if (!tradePanel) return;
 

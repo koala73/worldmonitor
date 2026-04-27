@@ -14,7 +14,7 @@ function mockFetch(mxResponse) {
 }
 
 // Import after fetch is available (module is Edge-compatible, no node: imports)
-const { validateEmail } = await import('../api/_email-validation.js');
+const { validateEmail } = await import('../server/_shared/email-validation.ts');
 
 describe('validateEmail', () => {
   beforeEach(() => {

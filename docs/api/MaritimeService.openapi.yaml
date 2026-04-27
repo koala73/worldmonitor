@@ -39,6 +39,26 @@ paths:
                   schema:
                     type: number
                     format: double
+                - name: include_candidates
+                  in: query
+                  description: |-
+                    When true, populate VesselSnapshot.candidate_reports with per-vessel
+                     position reports. Clients with no position callbacks should leave this
+                     false to keep responses small.
+                  required: false
+                  schema:
+                    type: boolean
+                - name: include_tankers
+                  in: query
+                  description: |-
+                    When true, populate VesselSnapshot.tanker_reports with per-vessel
+                     position reports for AIS ship-type 80-89 (tanker class). Used by the
+                     Energy Atlas live-tanker map layer. Stored separately from
+                     candidate_reports (which is military-only) so consumers self-select
+                     via this flag rather than the response field changing meaning.
+                  required: false
+                  schema:
+                    type: boolean
             responses:
                 "200":
                     description: Successful response
@@ -156,6 +176,20 @@ components:
                     type: number
                     format: double
                     description: South-west corner longitude of bounding box.
+                includeCandidates:
+                    type: boolean
+                    description: |-
+                        When true, populate VesselSnapshot.candidate_reports with per-vessel
+                         position reports. Clients with no position callbacks should leave this
+                         false to keep responses small.
+                includeTankers:
+                    type: boolean
+                    description: |-
+                        When true, populate VesselSnapshot.tanker_reports with per-vessel
+                         position reports for AIS ship-type 80-89 (tanker class). Used by the
+                         Energy Atlas live-tanker map layer. Stored separately from
+                         candidate_reports (which is military-only) so consumers self-select
+                         via this flag rather than the response field changing meaning.
             description: GetVesselSnapshotRequest specifies filters for the vessel snapshot.
         GetVesselSnapshotResponse:
             type: object
@@ -178,6 +212,22 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/AisDisruption'
+                sequence:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Monotonic sequence number from the relay. Clients use this to detect stale
+                         responses during polling.
+                status:
+                    $ref: '#/components/schemas/AisSnapshotStatus'
+                candidateReports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SnapshotCandidateReport'
+                tankerReports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SnapshotCandidateReport'
             description: VesselSnapshot represents a point-in-time view of civilian AIS vessel data.
         AisDensityZone:
             type: object
@@ -281,6 +331,61 @@ components:
             required:
                 - id
             description: AisDisruption represents a detected anomaly in AIS vessel tracking data.
+        AisSnapshotStatus:
+            type: object
+            properties:
+                connected:
+                    type: boolean
+                    description: Whether the relay WebSocket is connected to the AIS provider.
+                vessels:
+                    type: integer
+                    format: int32
+                    description: Number of vessels currently tracked by the relay.
+                messages:
+                    type: integer
+                    format: int32
+                    description: Total AIS messages processed in the current session.
+            description: AisSnapshotStatus reports relay health at the time of the snapshot.
+        SnapshotCandidateReport:
+            type: object
+            properties:
+                mmsi:
+                    type: string
+                    description: Maritime Mobile Service Identity.
+                name:
+                    type: string
+                    description: Vessel name (may be empty if unknown).
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude in decimal degrees.
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude in decimal degrees.
+                shipType:
+                    type: integer
+                    format: int32
+                    description: AIS ship type code (0 if unknown).
+                heading:
+                    type: integer
+                    format: int32
+                    description: Heading in degrees (0-359, or 511 for unavailable).
+                speed:
+                    type: number
+                    format: double
+                    description: Speed over ground in knots.
+                course:
+                    type: integer
+                    format: int32
+                    description: Course over ground in degrees.
+                timestamp:
+                    type: integer
+                    format: int64
+                    description: 'Report timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: |-
+                SnapshotCandidateReport is a per-vessel position report attached to a
+                 snapshot. Used to drive the client-side position callback system.
         ListNavigationalWarningsRequest:
             type: object
             properties:

@@ -9,7 +9,7 @@
 //
 // What is deliberately NOT in this module:
 //
-// - No changes to the 13 dimension scorers. Propagating `lastObservedAt`
+// - No changes to the 19 dimension scorers. Propagating `lastObservedAt`
 //   through each scorer and aggregating max age per dimension is the
 //   next slice of T1.5 and will depend on this classifier. Keeping the
 //   classifier in its own module means that slice becomes a simple

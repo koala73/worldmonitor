@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// rebuild-trigger: 2026-04-23
 
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -15,6 +16,58 @@ const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
 const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
 export { CHROME_UA };
+
+/**
+ * Unwrap fetch / network errors so log lines surface the actual cause
+ * (DNS / TCP reset / TLS abort) instead of undici's bare "fetch failed".
+ * Pulls `err.cause.code` (preferred — `ENOTFOUND`, `ECONNRESET`, etc.),
+ * `err.cause.errno`, or `err.cause.message` in that order; falls back to
+ * the outer error message when no cause is attached. Used by seeders
+ * with multi-tier fallback chains (FATF, GDELT) where the failure mode
+ * dictates the next-tier decision and operators need to distinguish
+ * routing / DNS / handshake failures from per-host throttling.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function describeErr(err) {
+  if (!err) return 'unknown';
+  const cause = err.cause;
+  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
+  return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
+}
+
+/**
+ * Return the bundle-run start timestamp injected by `_bundle-runner.mjs`
+ * as the `BUNDLE_RUN_STARTED_AT_MS` env var, or `null` when the seeder
+ * is running STANDALONE (manual invocation outside the bundle).
+ *
+ * All sibling seeders in a single bundle run share ONE value (captured
+ * at `runBundle` start, not at spawn time). Use this when a consumer
+ * seeder reads a peer's output inside the same bundle and must detect
+ * stale data from a previous bundle tick:
+ *
+ *   const bundleStartMs = getBundleRunStartedAtMs();
+ *   if (bundleStartMs != null && fetchedAt < bundleStartMs) {
+ *     // in-bundle context + peer did NOT run in THIS bundle → fallback
+ *   }
+ *
+ * The null-on-unset contract matters. Earlier designs fell back to
+ * `Date.now()` when the env was absent, which regressed standalone
+ * runs: a sibling seeder invoked manually just before the consumer
+ * wrote `fetchedAt = (process start - 5s)`, and the consumer's own
+ * `bundleStartMs = Date.now()` rejected that perfectly-fresh peer
+ * envelope as "stale". Returning null keeps the gate scoped to its
+ * real purpose: protecting against across-bundle-tick staleness,
+ * which has no analog outside a bundle context.
+ *
+ * @returns {number | null} epoch milliseconds when spawned by the
+ *   bundle runner; null when running standalone.
+ */
+export function getBundleRunStartedAtMs() {
+  const raw = Number(process.env.BUNDLE_RUN_STARTED_AT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
 
 // Canonical FX fallback rates — used when Yahoo Finance returns null/zero.
 // Single source of truth shared by seed-bigmac, seed-grocery-basket, seed-fx-rates.
@@ -820,11 +873,67 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   }
 
+  // SIGTERM handler — installed BEFORE fetch and KEPT installed through
+  // publish. _bundle-runner.mjs sends SIGTERM when a section's timeout
+  // fires, then SIGKILL after KILL_GRACE_MS (5s). Without a publish-phase
+  // handler, a timeout that fires during atomicPublish or extendExistingTtl
+  // leaves seed-lock:<domain>:<resource> dangling for the full lockTtlMs
+  // (default 120s). For seeders bundled in fast-firing crons (e.g.
+  // seed-bis-lbs.mjs in seed-bundle-macro.mjs) the next tick can collide
+  // with that orphaned lock and SKIP repeatedly — the canonical key never
+  // gets published and /api/health reports `EMPTY`.
+  //
+  // The handler is phase-aware so it preserves the strict-floor invariant
+  // (emptyDataIsFailure seeders MUST NOT refresh seed-meta on validation
+  // reject — see imf-external Railway log 2026-04-13). During fetch we
+  // release lock + extend existing-data TTL so consumers keep seeing
+  // last-good. During publish we release lock ONLY: data was fetched but
+  // not yet stored; refreshing TTL here would silently re-anchor stale
+  // data and corrupt the strict-floor retry path.
+  //
+  // Releases run in parallel (disjoint keys; serializing compounds Upstash
+  // latency during the exact failure mode this handler exists to handle).
+  // Exit 143 = POSIX convention for SIGTERM-terminated process.
+  let currentPhase = 'fetch';
+  const sigTermHandler = async () => {
+    console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
+    try {
+      if (currentPhase === 'fetch') {
+        const ttl = ttlSeconds || 600;
+        const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
+        if (extraKeys) keys.push(...extraKeys.map((ek) => ek.key));
+        await Promise.allSettled([
+          releaseLock(`${domain}:${resource}`, runId),
+          extendExistingTtl(keys, ttl),
+        ]);
+      } else {
+        await releaseLock(`${domain}:${resource}`, runId);
+      }
+    } catch (err) {
+      console.error(`  [${domain}:${resource}] SIGTERM cleanup error: ${err?.message || err}`);
+    } finally {
+      process.exit(143);
+    }
+  };
+  process.once('SIGTERM', sigTermHandler);
+
   // Phase 1: Fetch data (graceful on failure — extend TTL on stale data)
   let data;
   try {
     data = await withRetry(fetchFn);
   } catch (err) {
+    // Keep the SIGTERM handler installed across the fetch-failure
+    // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`
+    // here, which opened a new leak window: SIGTERM during the
+    // releaseLock + extendExistingTtl awaits below would fall through
+    // to Node's default termination and could strand seed-lock or skip
+    // the TTL extension. Both paths (this catch's manual ops and the
+    // handler's parallel ops) are idempotent — the LUA verify-and-DEL
+    // releases at most once for a given runId, and EXPIRE pipelines on
+    // existing keys are safely re-runnable — so a race between the
+    // catch path and the handler converges on the correct end state.
+    // process.exit(0) below terminates before any pending SIGTERM can
+    // fire on the success path of cleanup.
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
@@ -838,6 +947,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     process.exit(0);
   }
+  // Transition to publish phase — handler stays installed but switches
+  // behavior via the phase tracker.
+  currentPhase = 'publish';
 
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {

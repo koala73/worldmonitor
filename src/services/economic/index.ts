@@ -8,6 +8,7 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
 import {
   EconomicServiceClient,
   ApiError,
@@ -53,7 +54,14 @@ import { toApiUrl } from '@/services/runtime';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+// premiumFetch for the whole client: 1 of ~16 methods (getNationalDebt) targets a
+// PREMIUM_RPC_PATHS path. globalThis.fetch here would 401 signed-in browser pros
+// on getNationalDebt with no WORLDMONITOR_API_KEY (gateway runs validateApiKey
+// with forceKey=true on premium paths). premiumFetch no-ops safely when no
+// credentials are available, so the public methods (FRED, BLS, energy, BIS,
+// EU, oil) keep working unchanged. See src/services/supply-chain/index.ts for
+// the same pattern + #3242 review HIGH(new) #1 for the bug class this prevents.
+const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 const WB_BREAKERS_WARN_THRESHOLD = 50;
 const wbBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<ListWorldBankIndicatorsResponse>>>();
 

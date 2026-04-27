@@ -224,8 +224,12 @@ paths:
                 - name: keys
                   in: query
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response

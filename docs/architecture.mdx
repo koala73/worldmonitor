@@ -271,7 +271,7 @@ World Monitor uses 60+ Vercel Edge Functions as a lightweight API layer, split i
 - **BIS Integration** — policy rates, real effective exchange rates, and credit-to-GDP ratios from the Bank for International Settlements, cached with 30-minute TTL
 - **WTO Trade Policy** — trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers from the World Trade Organization
 - **Supply Chain Intelligence** — maritime chokepoint disruption scores (cross-referencing NGA warnings + AIS data), FRED shipping freight indices with spike detection, and critical mineral supply concentration via Herfindahl-Hirschman Index analysis
-- **Company Enrichment** — `/api/enrichment/company` aggregates GitHub organization data, inferred tech stack (derived from repository language distributions weighted by star count), SEC EDGAR public filings (10-K, 10-Q, 8-K), and Hacker News mentions into a single response. `/api/enrichment/signals` surfaces real-time company activity signals — funding events, hiring surges, executive changes, and expansion announcements — sourced from Hacker News and GitHub, each classified by signal type and scored for strength based on engagement, comment volume, and recency
+- **Company Enrichment** — `IntelligenceService.GetCompanyEnrichment` aggregates GitHub organization data, inferred tech stack (derived from repository language distributions weighted by star count), SEC EDGAR public filings (10-K, 10-Q, 8-K), and Hacker News mentions into a single response. `IntelligenceService.ListCompanySignals` surfaces real-time company activity signals — funding events, hiring surges, executive changes, and expansion announcements — sourced from Hacker News and GitHub, each classified by signal type and scored for strength based on engagement, comment volume, and recency
 
 All edge functions include circuit breaker logic and return cached stale data when upstream APIs are unavailable, ensuring the dashboard never shows blank panels.
 
@@ -923,3 +923,27 @@ Historical filtering is client-side—all data is fetched but filtered for displ
 **Local-first.** No accounts, no cloud sync. All preferences and history stored locally. The only network traffic is fetching public data. Your monitoring configuration is yours alone.
 
 **Compute where it matters.** CPU-intensive operations (clustering, correlation) run in Web Workers to keep the UI responsive. The main thread handles only rendering and user interaction.
+
+---
+
+## News Grounding Pipeline
+
+Every LLM-adjacent surface that consumes news (brief magazine description card, brief whyMatters analyst blurb, dashboard News summary, email digest, notification relay, MCP world-brief tool) grounds on the article's cleaned RSS description so the model paraphrases what the article actually says instead of filling headline role-labels from its parametric priors.
+
+```
+RSS <description>/<content:encoded>/<summary>/<content>
+  └─► parser (list-feed-digest.ts): strip HTML, decode entities, clip 400,
+      reject <40 chars / dup-of-headline
+      └─► story:track:v1.description  (HSET additive, empty → absent)
+          └─► NewsItem.snippet        (proto field 12)
+              ├─► brief adapter → buildStoryDescriptionPrompt `Context: <body>`
+              ├─► brief whyMatters → buildWhyMattersUserPrompt `description` field
+              ├─► SummarizeArticleRequest.bodies → buildArticlePrompts `    Context:`
+              ├─► client NewsItem.snippet → NewsPanel render + summarizeHeadlines bodies
+              ├─► BreakingAlert.description → /api/notify payload.description
+              │     └─► relay formatMessage (NOTIFY_RELAY_INCLUDE_SNIPPET-gated)
+              ├─► email digest: snippet line under each headline
+              └─► MCP world-brief: bodies[] paired with headlines[]
+```
+
+Fallback rule everywhere: empty description → consumer behavior is byte-identical to headline-only. No regression path. The notification-relay audit (`tests/notification-relay-payload-audit.test.mjs`) enforces that RSS-origin producers set `payload.description` and domain-origin producers do not.

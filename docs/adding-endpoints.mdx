@@ -2,11 +2,13 @@
 title: "Adding API Endpoints"
 description: "All JSON API endpoints in World Monitor must use sebuf. This guide walks through adding a new RPC to an existing service and adding an entirely new service."
 ---
-All JSON API endpoints in World Monitor **must** use sebuf. Do not create standalone `api/*.js` files — the legacy pattern is deprecated and being removed.
+All JSON API endpoints in World Monitor **must** use sebuf. Do not create standalone `api/*.js` or `api/*.ts` files for new data APIs — the legacy pattern is deprecated and being removed.
 
 This guide walks through adding a new RPC to an existing service and adding an entirely new service.
 
-> **Important:** After modifying any `.proto` file, you **must** run `make generate` before building or pushing. The generated TypeScript files in `src/generated/` are checked into the repo and must stay in sync with the proto definitions. CI does not run generation yet — this is your responsibility until we add it to the pipeline (see [#200](https://github.com/koala73/worldmonitor/issues/200)).
+> **Enforcement:** `npm run lint:api-contract` runs in CI (see `.github/workflows/lint-code.yml`). It walks every file under `api/`, pairs each sebuf gateway (`api/<domain>/v<N>/[rpc].ts`) with a generated service under `src/generated/server/worldmonitor/`, and rejects any file that is neither a gateway nor listed in `api/api-route-exceptions.json`. The manifest is the only escape hatch for endpoints that genuinely cannot be proto — OAuth callbacks, binary responses, upstream proxies, operator plumbing — and every entry is pinned to @SebastienMelki via `.github/CODEOWNERS`. Expect reviewer pushback on new entries.
+>
+> **Generation freshness:** After modifying any `.proto` file, run `make generate` before pushing. The generated TypeScript in `src/generated/` is checked in and must stay in sync; `.github/workflows/proto-check.yml` fails the PR if it drifts.
 
 ## Prerequisites
 

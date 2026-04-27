@@ -6,12 +6,13 @@ import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_SCORERS,
   RESILIENCE_DIMENSION_TYPES,
+  RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
   getResilienceDomainWeight,
   scoreAllDimensions,
   scoreEnergy,
   scoreInfrastructure,
-  scoreTradeSanctions,
+  scoreTradePolicy,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
@@ -60,10 +61,25 @@ describe('resilience scorer contracts', () => {
     //     source-failure when the adapter is in seed-meta failedDatasets. This is the
     //     single source of truth for "no currency data"; null-imputationClass paths
     //     on non-real-data return branches are no longer permitted.
+    // PR 3 §3.5: fuelStockDays retired (coverage=0 + imputationClass=null).
+    // PR 2 §3.4: reserveAdequacy retired (same shape). Both pass the
+    // default coverage=0 assertion below instead of the T1.7 fall-through
+    // assertion.
+    //
+    // liquidReserveAdequacy (PR 2 §3.4) is NEW and falls through to
+    // IMPUTE.recoveryLiquidReserveAdequacy (imputationClass=unmonitored)
+    // when its seed is missing — same taxonomy as the other recovery
+    // dims in this set.
+    //
+    // sovereignFiscalBuffer (PR 2 §3.4) falls through to
+    // IMPUTE.recoverySovereignFiscalBuffer when the SWF seed key is
+    // absent entirely. Added here alongside the other recovery
+    // fall-throughs.
     const coverageZeroExempt = new Set([
       'currencyExternal',
-      'fiscalSpace', 'reserveAdequacy', 'externalDebtCoverage',
-      'importConcentration', 'stateContinuity', 'fuelStockDays',
+      'fiscalSpace', 'externalDebtCoverage',
+      'importConcentration', 'stateContinuity',
+      'liquidReserveAdequacy', 'sovereignFiscalBuffer',
     ]);
     for (const [dimensionId, scorer] of Object.entries(RESILIENCE_DIMENSION_SCORERS)) {
       const result = await scorer('US');
@@ -92,26 +108,79 @@ describe('resilience scorer contracts', () => {
       return [domainId, average];
     }));
 
+    // PR 3 §3.5: economic 68.33 → 66.33 after currencyExternal rebuild.
+    // Recovery 54.83 → 47.33 after externalDebtCoverage goalpost was
+    // tightened from (0..5) to (0..2) per §3.5 point 3 (US ratio=1.5
+    // now scores 25 instead of 70).
+    //
+    // PR 2 §3.4: recovery 47.33 → 48.75 after the split. The flat mean
+    // now covers 8 dims for US: fiscalSpace=44, reserveAdequacy=50
+    // (retired, coverage=0 but still in the flat mean), externalDebt=25,
+    // importConcentration=88, stateContinuity=65, fuelStockDays=50
+    // (retired, same shape), liquidReserveAdequacy=18 (US has ~1 month
+    // of reserves via WB FI.RES.TOTL.MO normalized 1..12 → 18), and
+    // sovereignFiscalBuffer=50 (IMPUTE fallback until Railway cron
+    // populates the SWF seed; US has no manifest entry). Sum 390 / 8
+    // = 48.75. Coverage-weighted domain aggregation (used by the real
+    // scoring pipeline) is separately verified below.
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): economic 66.33 → 71. The
+    // OFAC-domicile component was dropped from the renamed tradePolicy
+    // dim, lifting the US `tradePolicy` score (US has many designated
+    // entities but those listings don't reflect on US resilience under
+    // the new construct). US-specific delta is small here because the
+    // US already had a high tariff-policy openness; the bigger movers
+    // are transit-hub jurisdictions (UAE/SG/HK).
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): economic 71 → 53.25. The
+    // new `financialSystemExposure` dim is added to the economic domain
+    // but ships flag-gated off by default (rollout pattern matches
+    // energy v2). Flag-off ⇒ score=0, so the simple-average computed
+    // here drops 71 = (78+68+67)/3 → 53.25 = (78+68+67+0)/4. NOTE
+    // this domainAverages computation is a flat mean (NOT the
+    // production coverage-weighted mean). The next test below uses
+    // the coverage-weighted-mean path which CORRECTLY drops a coverage=0
+    // dim from the blend; the headline overall is unaffected by the
+    // flag-off baseline beyond the small tradePolicy-reweight shift.
+    // Plan 2026-04-26-002 §U6 (combined PR 3+4+5): social-governance
+    // 61.75 → 66.25. Per-capita normalization of unrest event counts +
+    // UCDP eventCount + typeWeight + deaths lifts the US (333M pop)
+    // socialCohesion and borderSecurity dim scores — fixture event counts
+    // of ~5-10 events become 0.015-0.03 events/M, well inside the 0..10
+    // / 0..15 lowerBetter anchors → higher scores. typeWeight is now also
+    // per-capita normalized (review fix: it's an event-count-scaled term,
+    // not dimensionless), accounting for the additional +1.0pt vs the
+    // initial commit's 65.25 expectation.
     assert.deepEqual(domainAverages, {
-      economic: 68.33,
+      economic: 53.25,
       infrastructure: 79,
       energy: 80,
-      'social-governance': 61.75,
+      'social-governance': 66.25,
       'health-food': 60.5,
-      recovery: 54.83,
+      recovery: 48.75,
     });
 
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
-    function coverageWeightedMean(dims: { score: number; coverage: number }[]) {
-      const totalCov = dims.reduce((s, d) => s + d.coverage, 0);
-      if (!totalCov) return 0;
-      return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+    // Mirror of the production coverage-weighted mean (see
+    // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
+    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS and the §U4
+    // imputation half-weight factor so expected values track production.
+    function coverageWeightedMean(dims: { id: string; score: number; coverage: number; imputationClass: string | null }[]) {
+      let totalW = 0, sum = 0;
+      for (const d of dims) {
+        const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
+        const imputationFactor = d.imputationClass ? 0.5 : 1.0;
+        const effective = d.coverage * w * imputationFactor;
+        totalW += effective;
+        sum += d.score * effective;
+      }
+      if (!totalW) return 0;
+      return sum / totalW;
     }
 
     const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
       id,
       score: round(scoreMap[id].score),
       coverage: round(scoreMap[id].coverage),
+      imputationClass: scoreMap[id].imputationClass,
     }));
     const baselineDims = dimensions.filter((d) => {
       const t = RESILIENCE_DIMENSION_TYPES[d.id as keyof typeof RESILIENCE_DIMENSION_TYPES];
@@ -126,21 +195,104 @@ describe('resilience scorer contracts', () => {
     const stressScore = round(coverageWeightedMean(stressDims));
     const stressFactor = round(Math.max(0, Math.min(1 - stressScore / 100, 0.5)), 4);
 
-    assert.equal(baselineScore, 62.64);
-    assert.equal(stressScore, 65.84);
-    assert.equal(stressFactor, 0.3416);
+    // PR 3 §3.5: 62.64 → 63.63 (fuelStockDays retirement) → 60.12
+    // (externalDebtCoverage goalpost tightened).
+    // PR 2 §3.4: 60.12 → 60.35 — split adds liquidReserveAdequacy
+    // (US ≈ 1 month WB reserves → score 18 at cov=1.0) and
+    // sovereignFiscalBuffer (IMPUTE at 50 / cov=0.3) into the baseline
+    // coverage-weighted mean.
+    // PR 2 §3.4 weight rebalance: 60.35 → 62.17. The two new recovery
+    // dims now carry weight=0.5 (RESILIENCE_DIMENSION_WEIGHTS), so
+    // the low-scoring liquidReserveAdequacy (18) and partial-coverage
+    // sovereignFiscalBuffer (50 × 0.3) contribute ~half as much to
+    // the US baseline aggregate as under the equal-weight default.
+    // Plan 2026-04-26-002 §U4 (combined PR 3+4+5): 62.17 → 62.72. The
+    // coverage penalty halves the weight of fully-imputed dims (US has
+    // sovereignFiscalBuffer at IMPUTE 50/0.3 since US has no SWF
+    // manifest entry — fixture defaults). Halving its already-low
+    // contribution lifts the baseline mean.
+    assert.equal(baselineScore, 62.72);
+    // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
+    // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
+    // shifts and US stress score moves).
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): 67.21 → 69.01. tradePolicy
+    // is in the 'stress' class (RESILIENCE_DIMENSION_TYPES) so its
+    // post-rename uplift (OFAC component dropped) propagates into the
+    // stress-only mean. stressFactor updates in lockstep:
+    //   1 - 69.01/100 = 0.3099, clamped to 0.5.
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): 69.01 → 67.98. The new
+    // `financialSystemExposure` dim is also stress-class and ships
+    // flag-gated off → score 0 → drags the stress-only mean down.
+    //   1 - 67.98/100 = 0.3202, clamped to 0.5.
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 67.98 → 69.08.
+    // U4 halves the weight of US's fully-imputed stress dims (BIS DSR
+    // imputed at 60, WTO trade imputed at 60, financialSystemExposure
+    // imputed at 50/0.3); U6 lifts borderSecurity for US (333M pop) via
+    // per-capita normalization. Net positive shift in the stress mean,
+    // raising the stress factor proportionally.
+    //   1 - 69.08/100 = 0.3092, clamped to 0.5.
+    // typeWeight per-capita review fix: stress score lifts further on
+    // borderSecurity (typeWeight is now divided by population denominator).
+    //   1 - 69.63/100 = 0.3037, clamped to 0.5.
+    assert.equal(stressScore, 69.63);
+    assert.equal(stressFactor, 0.3037);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
         const dimScores = RESILIENCE_DIMENSION_ORDER
           .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === domainId)
-          .map((id) => ({ score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage) }));
-        const totalCov = dimScores.reduce((sum, d) => sum + d.coverage, 0);
-        const cwMean = totalCov ? dimScores.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCov : 0;
+          .map((id) => ({
+            id,
+            score: round(scoreMap[id].score),
+            coverage: round(scoreMap[id].coverage),
+            imputationClass: scoreMap[id].imputationClass,
+          }));
+        // Mirror production: apply per-dim weight + §U4 imputation
+        // half-weight factor to each dim's effective coverage before
+        // computing the mean.
+        let totalW = 0, sum = 0;
+        for (const d of dimScores) {
+          const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
+          const imputationFactor = d.imputationClass ? 0.5 : 1.0;
+          const eff = d.coverage * w * imputationFactor;
+          totalW += eff;
+          sum += d.score * eff;
+        }
+        const cwMean = totalW ? sum / totalW : 0;
         return round(cwMean) * getResilienceDomainWeight(domainId);
       }).reduce((sum, v) => sum + v, 0),
     );
-    assert.equal(overallScore, 65.57);
+    // PR 3 §3.5: 65.57 → 65.82 (fuelStockDays retirement) → 65.52
+    // (currencyExternal rebuild) → 63.27 (externalDebtCoverage goalpost
+    // tightened 0..5 → 0..2; US recovery-domain contribution drops).
+    // PR 2 §3.4: 63.27 → 63.6 after the reserveAdequacy split.
+    // PR 2 §3.4 weight rebalance: 63.6 → 64.39. The two new recovery
+    // dims (liquidReserveAdequacy @ score=18, sovereignFiscalBuffer @
+    // score=50/cov=0.3) now carry weight=0.5 so they're each ~10% of
+    // the recovery domain instead of the equal-share ~16.7%. The
+    // under-weighted score-18 dim matters less, lifting US's recovery
+    // contribution by ~3 points and the overall by ~0.79.
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24. economic
+    // domain rises 66.33 → 71 with tradePolicy reweight (OFAC dropped),
+    // contributing economic_delta * 0.17 ≈ +0.79 to the overall score.
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): 65.24 → 64.78. Adding
+    // `financialSystemExposure` to the economic domain reweights
+    // tradePolicy 1.0 → 0.5 (to keep the domain's total dim weight
+    // conserved). The new dim ships dark behind a flag (default off)
+    // and contributes coverage=0 → drops from the coverage-weighted
+    // mean. The half-weight on tradePolicy shifts the economic domain
+    // mean slightly, dropping the overall by ~0.46 points. When the
+    // flag flips on in production with seeders populated, the dim will
+    // contribute its own signal; the expected value here will move
+    // accordingly in a future PR.
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
+    // Same delta as the local-helper-based test above; both apply the
+    // imputation half-weight factor + per-capita normalization (with
+    // the typeWeight-per-capita review fix), which shift the US overall
+    // by ~+0.86 (imputed dims contribute less, population-normalized
+    // event-counts boost socialCohesion + borderSecurity for high-pop
+    // countries).
+    assert.equal(overallScore, 65.64);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -185,14 +337,31 @@ describe('resilience scorer contracts', () => {
     installRedis(RESILIENCE_FIXTURES);
     const scoreMap = await scoreAllDimensions('US');
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
-    function coverageWeightedMean(dims: { score: number; coverage: number }[]) {
-      const totalCov = dims.reduce((s, d) => s + d.coverage, 0);
-      if (!totalCov) return 0;
-      return dims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
+    // Mirror of the production coverage-weighted mean (see
+    // server/worldmonitor/resilience/v1/_shared.ts). Must apply the
+    // per-dim weight from RESILIENCE_DIMENSION_WEIGHTS so the expected
+    // values here track the production aggregation after the PR 2 §3.4
+    // recovery-domain weight rebalance. Plan 2026-04-26-002 §U4 added
+    // the imputation-class half-weight factor; mirror it here so the
+    // local helper stays in sync with the production formula.
+    function coverageWeightedMean(dims: { id: string; score: number; coverage: number; imputationClass: string | null }[]) {
+      let totalW = 0, sum = 0;
+      for (const d of dims) {
+        const w = (RESILIENCE_DIMENSION_WEIGHTS as Record<string, number>)[d.id] ?? 1.0;
+        const imputationFactor = d.imputationClass ? 0.5 : 1.0;
+        const effective = d.coverage * w * imputationFactor;
+        totalW += effective;
+        sum += d.score * effective;
+      }
+      if (!totalW) return 0;
+      return sum / totalW;
     }
 
     const dimensions = RESILIENCE_DIMENSION_ORDER.map((id) => ({
-      id, score: round(scoreMap[id].score), coverage: round(scoreMap[id].coverage),
+      id,
+      score: round(scoreMap[id].score),
+      coverage: round(scoreMap[id].coverage),
+      imputationClass: scoreMap[id].imputationClass,
     }));
 
     const grouped = new Map<string, typeof dimensions>();
@@ -211,7 +380,25 @@ describe('resilience scorer contracts', () => {
     );
 
     assert.ok(expected > 0, 'overall should be positive');
-    assert.equal(expected, 65.57, 'overallScore should match sum(domainScore * domainWeight)');
+    // PR 3 §3.5: 65.82 → 65.52 (currencyExternal rebuild) → 63.27 after
+    // externalDebtCoverage goalpost tightened from (0..5) to (0..2).
+    // PR 2 §3.4: 63.27 → 63.6 after reserveAdequacy retirement + split.
+    // PR 2 §3.4 weight rebalance: 63.6 → 64.39 after dialing the two
+    // new recovery dims down to weight=0.5 (~10% recovery share each).
+    // Plan 2026-04-25-004 Phase 1 (Ship 1): 64.39 → 65.24 — economic
+    // domain rises with tradePolicy reweight (OFAC component dropped).
+    // Plan 2026-04-25-004 Phase 2 (Ship 2): 65.24 → 64.78 — adding
+    // `financialSystemExposure` to the economic domain at weight 0.5
+    // reweights tradePolicy 1.0 → 0.5; the new dim ships flag-gated
+    // off by default, so it contributes coverage=0 and drops from the
+    // coverage-weighted mean. When the flag flips on with seeders
+    // populated, the expected here will shift accordingly.
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
+    // U4 coverage penalty halves the weight of fully-imputed dims (US has
+    // a couple of WTO/BIS imputes); U6 per-capita normalization (incl.
+    // typeWeight per the review fix) bumps social-cohesion + border-
+    // security for the US (333M pop) since event-counts/M are tiny.
+    assert.equal(expected, 65.64, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 → 65.64');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {
@@ -314,18 +501,18 @@ describe('scoreInfrastructure: broadband penetration', () => {
   });
 });
 
-describe('scoreTradeSanctions WB tariff rate', () => {
+describe('scoreTradePolicy WB tariff rate', () => {
   it('WB tariff rate contributes to trade score', async () => {
     installRedis(RESILIENCE_FIXTURES);
-    const result = await scoreTradeSanctions('US');
+    const result = await scoreTradePolicy('US');
     assert.ok(result.score >= 0 && result.score <= 100, `score out of bounds: ${result.score}`);
     assert.ok(result.coverage > 0, 'coverage should be > 0 when tariff data is present');
   });
 
   it('high tariff rate country scores lower than low tariff rate', async () => {
     installRedis(RESILIENCE_FIXTURES);
-    const noResult = await scoreTradeSanctions('NO');
-    const yeResult = await scoreTradeSanctions('YE');
+    const noResult = await scoreTradePolicy('NO');
+    const yeResult = await scoreTradePolicy('YE');
     assert.ok(noResult.score > yeResult.score, `NO (${noResult.score}) should score higher than YE (${yeResult.score}) due to lower tariff rate`);
   });
 });

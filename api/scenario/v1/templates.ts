@@ -1,27 +1,8 @@
 export const config = { runtime: 'edge' };
 
-import { SCENARIO_TEMPLATES } from '../../../server/worldmonitor/supply-chain/v1/scenario-templates';
+import gateway from './[rpc]';
+import { rewriteToSebuf } from '../../../server/alias-rewrite';
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'GET') {
-    return new Response('', { status: 405 });
-  }
-
-  const templates = SCENARIO_TEMPLATES.map(t => ({
-    id: t.id,
-    name: t.name,
-    affectedChokepointIds: t.affectedChokepointIds,
-    disruptionPct: t.disruptionPct,
-    durationDays: t.durationDays,
-    affectedHs2: t.affectedHs2,
-    costShockMultiplier: t.costShockMultiplier,
-  }));
-
-  return new Response(JSON.stringify({ templates }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=3600',
-    },
-  });
-}
+// Alias for documented v1 URL. See server/alias-rewrite.ts.
+export default (req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }) =>
+  rewriteToSebuf(req, '/api/scenario/v1/list-scenario-templates', gateway, ctx);

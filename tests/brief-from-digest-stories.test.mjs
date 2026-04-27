@@ -192,9 +192,18 @@ describe('composeBriefFromDigestStories — continued', () => {
     assert.deepEqual(env.data.stories.map((s) => s.headline), ['A', 'B']);
   });
 
-  it('caps at 12 stories per brief', () => {
+  it('caps at 12 stories per brief by default (env-tunable via DIGEST_MAX_STORIES_PER_USER)', () => {
+    // Default kept at 12. Offline sweep harness against 2026-04-24
+    // production replay showed cap=16 dropped visible_quality from
+    // 0.916 → 0.716 at the active 0.45 threshold (positions 13-16
+    // are mostly singletons or "should-separate" members at this
+    // threshold, so they dilute without helping adjacency). The
+    // constant is env-tunable so a Railway flip can experiment with
+    // cap values once new sweep evidence justifies them.
+    // Vary sources so U5's source-topic cap (default 2 per source+category)
+    // doesn't dominate the maxStories cap we're testing here.
     const many = Array.from({ length: 30 }, (_, i) =>
-      digestStory({ hash: `h${i}`, title: `Story ${i}` }),
+      digestStory({ hash: `h${i}`, title: `Story ${i}`, sources: [`Source${i}`] }),
     );
     const env = composeBriefFromDigestStories(
       rule(),
@@ -260,5 +269,256 @@ describe('composeBriefFromDigestStories — continued', () => {
     const a = composeBriefFromDigestStories(rule(), input, { clusters: 1, multiSource: 0 }, { nowMs: NOW });
     const b = composeBriefFromDigestStories(rule(), input, { clusters: 1, multiSource: 0 }, { nowMs: NOW });
     assert.deepEqual(a, b);
+  });
+
+  // ── Description plumbing (U4) ────────────────────────────────────────────
+
+  it('forwards real RSS description when present on the digest story', () => {
+    const realBody = 'Mojtaba Khamenei, 56, was seriously wounded in an attack this week and has delegated authority to the Revolutionary Guards, multiple regional sources told News24.';
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({
+        title: "Iran's new supreme leader seriously wounded, delegates power to Revolutionary Guards",
+        description: realBody,
+      })],
+      { clusters: 1, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    const s = env.data.stories[0];
+    // Real RSS body grounds the description card; LLM grounding now
+    // operates over article-named actors instead of parametric priors.
+    assert.ok(s.description.includes('Mojtaba'), 'brief description should carry the article-named actor when upstream persists it');
+    assert.notStrictEqual(
+      s.description,
+      "Iran's new supreme leader seriously wounded, delegates power to Revolutionary Guards",
+      'brief description must not fall back to headline when upstream has a real body',
+    );
+  });
+
+  it('falls back to cleaned headline when digest story has no description (R6)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ description: '' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(
+      env.data.stories[0].description,
+      'Iran threatens to close Strait of Hormuz',
+      'empty description must preserve today behavior — cleaned headline baseline',
+    );
+  });
+
+  it('treats whitespace-only description as empty (falls back to headline)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ description: '   \n  ' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].description, 'Iran threatens to close Strait of Hormuz');
+  });
+
+  describe('undefined sensitivity defaults to "high" (NOT "all")', () => {
+    // PR #3387 review (P2): the previous `?? 'all'` default would
+    // silently widen to {medium, low} for any non-prefiltered caller
+    // with undefined sensitivity, while operator telemetry labeled the
+    // attempt as 'high' (matching buildDigest's default). The two
+    // defaults must agree to keep the per-attempt log accurate and to
+    // prevent unintended severity widening through this entry point.
+    function ruleWithoutSensitivity() {
+      const r = rule();
+      delete r.sensitivity;
+      return r;
+    }
+
+    it('admits critical and high stories when sensitivity is undefined', () => {
+      const env = composeBriefFromDigestStories(
+        ruleWithoutSensitivity(),
+        [
+          digestStory({ hash: 'a', title: 'Critical event', severity: 'critical' }),
+          digestStory({ hash: 'b', title: 'High event', severity: 'high' }),
+        ],
+        { clusters: 0, multiSource: 0 },
+        { nowMs: NOW },
+      );
+      assert.ok(env);
+      assert.equal(env.data.stories.length, 2);
+    });
+
+    it('drops medium and low stories when sensitivity is undefined', () => {
+      const env = composeBriefFromDigestStories(
+        ruleWithoutSensitivity(),
+        [
+          digestStory({ hash: 'a', title: 'Medium event', severity: 'medium' }),
+          digestStory({ hash: 'b', title: 'Low event', severity: 'low' }),
+        ],
+        { clusters: 0, multiSource: 0 },
+        { nowMs: NOW },
+      );
+      // No critical/high stories survive → composer returns null per
+      // the empty-survivor contract (caller falls back to next variant).
+      assert.equal(env, null);
+    });
+
+    it('emits onDrop reason=severity for medium/low when sensitivity is undefined', () => {
+      // Locks in alignment with the per-attempt telemetry: if compose
+      // were to default to 'all' again, medium/low would NOT fire a
+      // severity drop and the log would silently misreport the filter.
+      const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
+      composeBriefFromDigestStories(
+        ruleWithoutSensitivity(),
+        [
+          digestStory({ hash: 'a', title: 'Medium', severity: 'medium' }),
+          digestStory({ hash: 'b', title: 'Low', severity: 'low' }),
+        ],
+        { clusters: 0, multiSource: 0 },
+        { nowMs: NOW, onDrop: (ev) => { tally[ev.reason]++; } },
+      );
+      assert.equal(tally.severity, 2);
+    });
+  });
+});
+
+// ── synthesis splice (Codex Round-3 plan, Step 3) ─────────────────────────
+
+describe('composeBriefFromDigestStories — synthesis splice', () => {
+  it('substitutes envelope.digest.lead/threads/signals/publicLead from synthesis', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'h1', title: 'Story 1' }), digestStory({ hash: 'h2', title: 'Story 2' })],
+      { clusters: 12, multiSource: 3 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'A canonical executive lead from the orchestration layer that exceeds the 40-char floor.',
+          threads: [{ tag: 'Energy', teaser: 'Hormuz tensions resurface today.' }],
+          signals: ['Watch for naval redeployment in the Gulf.'],
+          publicLead: 'A non-personalised lead suitable for the share-URL surface.',
+        },
+      },
+    );
+    assert.ok(env);
+    assert.match(env.data.digest.lead, /A canonical executive lead/);
+    assert.equal(env.data.digest.threads.length, 1);
+    assert.equal(env.data.digest.threads[0].tag, 'Energy');
+    assert.deepEqual(env.data.digest.signals, ['Watch for naval redeployment in the Gulf.']);
+    assert.match(env.data.digest.publicLead, /share-URL surface/);
+  });
+
+  it('falls back to stub lead when synthesis is omitted (legacy callers)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'h1' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },  // no synthesis arg
+    );
+    assert.ok(env);
+    // Stub lead from assembleStubbedBriefEnvelope: "Today's brief surfaces N threads…"
+    assert.match(env.data.digest.lead, /Today's brief surfaces/);
+    // publicLead absent on the stub path — the renderer's public-mode
+    // fail-safe omits the pull-quote rather than leaking personalised lead.
+    assert.equal(env.data.digest.publicLead, undefined);
+  });
+
+  it('partial synthesis (only lead) does not clobber threads/signals stubs', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'h1', title: 'X', sources: ['Reuters'] })],
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Custom lead at least forty characters long for validator pass-through.',
+          // threads + signals omitted — must keep the stub defaults.
+        },
+      },
+    );
+    assert.ok(env);
+    assert.match(env.data.digest.lead, /Custom lead/);
+    // Threads default from deriveThreadsFromStories (stub path).
+    assert.ok(env.data.digest.threads.length >= 1);
+  });
+
+  it('rankedStoryHashes re-orders the surfaced pool BEFORE the cap is applied', () => {
+    // Vary sources so U5's source-topic cap (default 2) doesn't drop the
+    // 3rd story — this test verifies ranking, not the per-pair cap.
+    const stories = [
+      digestStory({ hash: 'aaaa1111', title: 'First by digest order', sources: ['SrcA'] }),
+      digestStory({ hash: 'bbbb2222', title: 'Second by digest order', sources: ['SrcB'] }),
+      digestStory({ hash: 'cccc3333', title: 'Third by digest order', sources: ['SrcC'] }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          // Re-rank: third story should lead, then first, then second.
+          rankedStoryHashes: ['cccc3333', 'aaaa1111', 'bbbb2222'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'Third by digest order');
+    assert.equal(env.data.stories[1].headline, 'First by digest order');
+    assert.equal(env.data.stories[2].headline, 'Second by digest order');
+  });
+
+  it('rankedStoryHashes matches by short-hash prefix (model emits 8-char prefixes)', () => {
+    const stories = [
+      digestStory({ hash: 'longhash1234567890abc', title: 'First' }),
+      digestStory({ hash: 'otherhashfullsuffix', title: 'Second' }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          // Model emits 8-char prefixes; helper must prefix-match the
+          // story's full hash.
+          rankedStoryHashes: ['otherhash', 'longhash'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'Second');
+    assert.equal(env.data.stories[1].headline, 'First');
+  });
+
+  it('stories not present in rankedStoryHashes go after, in original order', () => {
+    // Vary sources so U5's source-topic cap (default 2) doesn't drop the
+    // 3rd story — this test verifies ranking-then-original-order, not the
+    // per-pair cap.
+    const stories = [
+      digestStory({ hash: 'unranked-A', title: 'Unranked A', sources: ['SrcA'] }),
+      digestStory({ hash: 'ranked-B', title: 'Ranked B', sources: ['SrcB'] }),
+      digestStory({ hash: 'unranked-C', title: 'Unranked C', sources: ['SrcC'] }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          rankedStoryHashes: ['ranked-B'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'Ranked B');
+    // A and C keep their original relative order (A then C).
+    assert.equal(env.data.stories[1].headline, 'Unranked A');
+    assert.equal(env.data.stories[2].headline, 'Unranked C');
   });
 });

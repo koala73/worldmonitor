@@ -215,6 +215,7 @@
     "sourcesEnabled": "{{enabled}}/{{total}} enabled",
     "finance": "FINANCE",
     "commodity": "COMMODITY",
+    "energy": "ENERGY",
     "toggleTheme": "Toggle dark/light mode",
     "panelDisplayCaption": "Choose which panels to show on the dashboard",
     "tabGeneral": "General",
@@ -2891,6 +2892,11 @@
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
     "copyCoordinates": "Copy Coordinates"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "createAccount": "Create account",
+    "settings": "Settings"
   },
   "mcp": {
     "connectPanel": "Connect MCP",

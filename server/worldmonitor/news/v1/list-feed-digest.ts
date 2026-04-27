@@ -13,7 +13,8 @@ import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
-import { classifyByKeyword, type ThreatLevel } from './_classifier';
+import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
+import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
 import { getSourceTier } from '../../../_shared/source-tiers';
 import {
   STORY_TRACK_KEY,
@@ -36,6 +37,18 @@ const FEED_TIMEOUT_MS = 8_000;
 const OVERALL_DEADLINE_MS = 25_000;
 const BATCH_CONCURRENCY = 20;
 
+// U3 — hard freshness floor (default 48h, env override NEWS_MAX_AGE_HOURS).
+// Items older than this are dropped before scoring. The 24h `recencyScore`
+// component already treats anything older than 24h as zero recency, so the
+// 48h default is a soft buffer beyond that. Out-of-range / unparseable env
+// values fall back to the default silently. See R3 in
+// docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
+function resolveMaxAgeMs(): number {
+  const raw = Number.parseInt(process.env.NEWS_MAX_AGE_HOURS ?? '', 10);
+  const hours = Number.isInteger(raw) && raw > 0 ? raw : 48;
+  return hours * 60 * 60 * 1000;
+}
+
 const LEVEL_TO_PROTO: Record<ThreatLevel, ProtoThreatLevel> = {
   critical: 'THREAT_LEVEL_CRITICAL',
   high: 'THREAT_LEVEL_HIGH',
@@ -52,6 +65,46 @@ const SEVERITY_SCORES: Record<ThreatLevel, number> = {
   low: 25,
   info: 0,
 };
+
+/**
+ * Ordinal rank of each threat level, used by the LLM classify-cache
+ * upgrade cap (U4). Cap = +2 tiers above the keyword classification.
+ *
+ * Rationale: keyword=info (no-match fallback at confidence 0.3) jumping
+ * straight to high/critical is the static-institutional-page contamination
+ * path; capping at info+2=medium blocks it. Cap behavior by keyword:
+ *   info(0)+2=medium    — blocks info→{high,critical} (the contamination class)
+ *   low(1)+2=high       — preserves low→{medium,high}; caps low→critical at high
+ *   medium(2)+2=critical — preserves medium→{high,critical} (e.g. "Markets crash" → critical)
+ *   high(3)+2=critical  — passes through (existing 0.9-confidence guard at
+ *                         enrichWithAiCache also skips cache for keyword=critical)
+ *
+ * The keyword=low → LLM=critical case (capped at high) is the bounded
+ * loss; logged on every cap-fire so operators can audit if any are real.
+ * See R4 in the plan.
+ */
+const LEVEL_RANK: Record<ThreatLevel, number> = {
+  info: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+const RANK_TO_LEVEL: ThreatLevel[] = ['info', 'low', 'medium', 'high', 'critical'];
+
+/**
+ * Cap an LLM-classified level to at most +2 tiers above the keyword level.
+ * Returns the original `llmLevel` when within the cap, otherwise the
+ * level at rank `keywordRank + 2`. Falls back to the keyword level when
+ * the LLM level is unrecognized (defensive).
+ */
+function capLlmUpgrade(keywordLevel: ThreatLevel, llmLevel: string): ThreatLevel {
+  const keywordRank = LEVEL_RANK[keywordLevel];
+  const rawLlmRank = LEVEL_RANK[llmLevel as ThreatLevel];
+  if (rawLlmRank == null) return keywordLevel;
+  const cappedRank = Math.min(rawLlmRank, keywordRank + 2);
+  return RANK_TO_LEVEL[cappedRank] ?? keywordLevel;
+}
 
 /**
  * Importance score component weights (must sum to 1.0).
@@ -76,12 +129,25 @@ interface ParsedItem {
   level: ThreatLevel;
   category: string;
   confidence: number;
-  classSource: 'keyword' | 'llm';
+  classSource: 'keyword' | 'keyword-historical-downgrade' | 'llm';
   importanceScore: number;
   corroborationCount: number;
   titleHash?: string;
   lang: string;
+  // Cleaned RSS/Atom article description: HTML-stripped, entity-decoded,
+  // whitespace-normalised, clipped to MAX_DESCRIPTION_LEN. Empty string when
+  // absent, too short, or indistinguishable from the headline. Grounding input
+  // for brief / whyMatters / SummarizeArticle LLMs.
+  description: string;
 }
+
+const MAX_DESCRIPTION_LEN = 400;
+const MIN_DESCRIPTION_LEN = 40;
+
+const DESCRIPTION_TAG_PRIORITY = {
+  rss: ['description', 'content:encoded'] as const,
+  atom: ['summary', 'content'] as const,
+};
 
 function computeImportanceScore(
   level: ThreatLevel,
@@ -142,15 +208,30 @@ async function fetchRssText(
   }
 }
 
+/**
+ * Parser output: items that survived all parse-time gates plus per-feed
+ * stats so the caller can classify feed health (e.g. silent zeroing from
+ * an unrecognized date dialect — see U2 in
+ * docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md).
+ */
+interface ParseResult {
+  items: ParsedItem[];
+  parsedTotal: number;     // count of <item>/<entry> blocks attempted
+  droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
+}
+
 async function fetchAndParseRss(
   feed: ServerFeed,
   variant: string,
   signal: AbortSignal,
-): Promise<ParsedItem[]> {
-  const cacheKey = `rss:feed:v1:${variant}:${feed.url}`;
+): Promise<ParseResult> {
+  // v2 cache shape carries items + stats; bump prevents v1 array values
+  // from being mistyped as the new struct after deploy. Old v1 entries
+  // TTL-expire within 1h.
+  const cacheKey = `rss:feed:v2:${variant}:${feed.url}`;
 
   try {
-    const cached = await cachedFetchJson<ParsedItem[]>(cacheKey, 3600, async () => {
+    const cached = await cachedFetchJson<ParseResult>(cacheKey, 3600, async () => {
       // Try direct fetch first
       let text = await fetchRssText(feed.url, signal).catch(() => null);
 
@@ -176,14 +257,37 @@ async function fetchAndParseRss(
       return parseRssXml(text, feed, variant);
     });
 
-    return cached ?? [];
+    return cached ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
   } catch {
-    return [];
+    return { items: [], parsedTotal: 0, droppedUndated: 0 };
   }
 }
 
-function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem[] | null {
+// Date-tag priority lists. RSS feeds typically carry <pubDate>; Atom carries
+// <published>/<updated>; ArXiv (and other Dublin Core dialects) carry <dc:date>
+// or <dc:Date.Issued>; some hybrid feeds emit RSS-shaped items with Atom-style
+// date tags. First non-empty hit wins.
+const DATE_TAG_PRIORITY = {
+  rss: ['pubDate', 'dc:date', 'dc:Date.Issued', 'published'] as const,
+  atom: ['published', 'updated', 'dc:date', 'dc:Date.Issued'] as const,
+};
+
+// Future-dated guard: items > 1h ahead of now are clock-skew or malformed.
+const FUTURE_DATE_TOLERANCE_MS = 60 * 60 * 1000;
+
+function extractFirstDateTag(block: string, isAtom: boolean): string {
+  const tags = isAtom ? DATE_TAG_PRIORITY.atom : DATE_TAG_PRIORITY.rss;
+  for (const tag of tags) {
+    const value = extractTag(block, tag);
+    if (value) return value;
+  }
+  return '';
+}
+
+function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
+  let parsedTotal = 0;
+  let droppedUndated = 0;
 
   const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
   const entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
@@ -198,6 +302,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
     const title = extractTag(block, 'title');
     if (!title) continue;
 
+    parsedTotal++;
+
     let link: string;
     if (isAtom) {
       const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
@@ -208,14 +314,30 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
     if (!/^https?:\/\//i.test(link)) link = '';
 
-    const pubDateStr = isAtom
-      ? (extractTag(block, 'published') || extractTag(block, 'updated'))
-      : extractTag(block, 'pubDate');
-    const parsedDate = pubDateStr ? new Date(pubDateStr) : new Date();
-    const publishedAt = Number.isNaN(parsedDate.getTime()) ? Date.now() : parsedDate.getTime();
+    // Strict date gate (R2): walk the dialect-specific tag priority list and
+    // require at least one non-empty, parseable, non-future timestamp. Items
+    // that fail the gate are dropped — never silently stamped with Date.now()
+    // (which is the bug that let static institutional pages reach the brief).
+    const pubDateStr = extractFirstDateTag(block, isAtom);
+    if (!pubDateStr) {
+      droppedUndated++;
+      continue;
+    }
+    const parsedDate = new Date(pubDateStr);
+    const parsedMs = parsedDate.getTime();
+    if (Number.isNaN(parsedMs)) {
+      droppedUndated++;
+      continue;
+    }
+    if (parsedMs > Date.now() + FUTURE_DATE_TOLERANCE_MS) {
+      droppedUndated++;
+      continue;
+    }
+    const publishedAt = parsedMs;
 
     const threat = classifyByKeyword(title, variant);
     const isAlert = threat.level === 'critical' || threat.level === 'high';
+    const description = extractDescription(block, isAtom, title);
 
     items.push({
       source: feed.name,
@@ -226,18 +348,125 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
       level: threat.level,
       category: threat.category,
       confidence: threat.confidence,
-      classSource: 'keyword',
+      classSource: threat.source,
       importanceScore: 0,
       corroborationCount: 1,
       lang: feed.lang ?? 'en',
+      description,
     });
   }
 
-  return items.length > 0 ? items : null;
+  // Per-feed structured WARN when every parsed item was dropped for missing
+  // dates. Distinguishable from a genuinely empty feed (parsedTotal === 0)
+  // by the keyword `FEED_HEALTH_WARNING all-undated` — log aggregation can
+  // grep for it. Defers a Redis-backed health-key wiring to a follow-up;
+  // see the linked plan.
+  if (parsedTotal > 0 && items.length === 0 && droppedUndated > 0) {
+    console.warn(
+      `[digest] FEED_HEALTH_WARNING all-undated feed="${feed.name}" ` +
+        `variant=${variant} parsed=${parsedTotal} dropped=${droppedUndated}`,
+    );
+  } else if (droppedUndated > 0) {
+    console.warn(
+      `[digest] partial-undated feed="${feed.name}" variant=${variant} ` +
+        `parsed=${parsedTotal} dropped=${droppedUndated} kept=${items.length}`,
+    );
+  }
+
+  // Two cases:
+  //
+  // (a) parsedTotal > 0 — we recognized at least one <item>/<entry> block in
+  //     the XML, so the stats are meaningful (whether all dropped, partially
+  //     dropped, or none dropped). Return the struct so cachedFetchJson
+  //     positive-caches it for the full TTL and the 'all-undated' branch in
+  //     buildDigest's caller can fire (parsedTotal>0 ∧ items=[] ∧ dropped>0).
+  //
+  // (b) parsedTotal === 0 — the XML body had no recognizable items at all.
+  //     This covers genuinely empty feeds (channel exists, no items),
+  //     malformed XML responses, transient block pages, and Cloudflare
+  //     interstitials that don't match the item/entry regexes. Return null
+  //     so cachedFetchJson writes NEG_SENTINEL with the short negativeTtl
+  //     (default 120s) — the feed retries quickly instead of being pinned
+  //     empty for the full 3600s TTL.
+  if (parsedTotal === 0) return null;
+  return { items, parsedTotal, droppedUndated };
+}
+
+/**
+ * Raw-body extractor for HTML-carrying tags (description, content:encoded,
+ * summary, content). Non-greedy `[\s\S]*?` captures the full tag body including
+ * nested markup; the CDATA end is anchored to the closing tag so internal `]]>`
+ * sequences followed by more content do not truncate the match prematurely.
+ * Returns the raw content without entity decoding — caller strips HTML and
+ * decodes entities via `decodeXmlEntities`.
+ */
+const DESCRIPTION_TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
+
+function extractRawTagBody(xml: string, tag: string): string {
+  let cached = DESCRIPTION_TAG_REGEX_CACHE.get(tag);
+  if (!cached) {
+    cached = {
+      cdata: new RegExp(
+        `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`,
+        'i',
+      ),
+      plain: new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'),
+    };
+    DESCRIPTION_TAG_REGEX_CACHE.set(tag, cached);
+  }
+  const cdataMatch = xml.match(cached.cdata);
+  if (cdataMatch) return cdataMatch[1] ?? '';
+
+  const match = xml.match(cached.plain);
+  return match ? match[1] ?? '' : '';
+}
+
+function normalizeForDescriptionEquality(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Extract + clean the article description/summary for an RSS `<item>` or Atom
+ * `<entry>` block. Picks the LONGEST non-empty candidate across the dialect's
+ * tag priority list after HTML-strip + entity-decode + whitespace-normalise.
+ * Returns '' when the best candidate is empty, shorter than
+ * MIN_DESCRIPTION_LEN, or normalises-equal to the headline — in those cases
+ * downstream consumers must fall back to the cleaned headline (R6).
+ */
+function extractDescription(block: string, isAtom: boolean, title: string): string {
+  const tags = isAtom ? DESCRIPTION_TAG_PRIORITY.atom : DESCRIPTION_TAG_PRIORITY.rss;
+
+  let best = '';
+  for (const tag of tags) {
+    const raw = extractRawTagBody(block, tag);
+    if (!raw) continue;
+    const cleaned = decodeXmlEntities(raw)
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (cleaned.length > best.length) best = cleaned;
+  }
+
+  if (best.length === 0) return '';
+  if (best.length < MIN_DESCRIPTION_LEN) return '';
+  if (normalizeForDescriptionEquality(best) === normalizeForDescriptionEquality(title)) return '';
+
+  return best.slice(0, MAX_DESCRIPTION_LEN);
 }
 
 const TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
-const KNOWN_TAGS = ['title', 'link', 'pubDate', 'published', 'updated'] as const;
+const KNOWN_TAGS = [
+  'title',
+  'link',
+  'pubDate',
+  'published',
+  'updated',
+  // Dublin Core date dialects (ArXiv and similar feeds publish via these
+  // instead of <pubDate>). Pre-caching their regexes mirrors the perf
+  // pattern used for other hot-path tags.
+  'dc:date',
+  'dc:Date.Issued',
+] as const;
 for (const tag of KNOWN_TAGS) {
   TAG_REGEX_CACHE.set(tag, {
     cdata: new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i'),
@@ -269,13 +498,22 @@ function decodeXmlEntities(s: string): string {
 }
 
 async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
-  const candidates = items.filter(i => i.classSource === 'keyword');
+  // Apply the LLM cache to BOTH 'keyword' and 'keyword-historical-downgrade'
+  // sources. The historical-downgrade path forced an info level based on a
+  // headline-shape heuristic; the LLM cache (when warmed) is a stronger
+  // signal and should be allowed to either confirm or override.
+  const candidates = items.filter(
+    i => i.classSource === 'keyword' || i.classSource === 'keyword-historical-downgrade',
+  );
   if (candidates.length === 0) return;
 
+  // Use the canonical buildClassifyCacheKey from intelligence/v1/_shared
+  // so the cache prefix (currently classify:sebuf:v4:) lives in exactly
+  // one place — bumping it again only requires touching _shared.ts and
+  // the relay's independent .cjs helper. See U4 of the plan.
   const keyMap = new Map<string, ParsedItem[]>();
   for (const item of candidates) {
-    const hash = (await sha256Hex(item.title.toLowerCase())).slice(0, 16);
-    const key = `classify:sebuf:v3:${hash}`;
+    const key = await buildClassifyCacheKey(item.title);
     const existing = keyMap.get(key) ?? [];
     existing.push(item);
     keyMap.set(key, existing);
@@ -289,12 +527,82 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
 
     for (const item of relatedItems) {
+      // L3 defense-in-depth runs FIRST, BEFORE capLlmUpgrade. If the
+      // title carries a historical-retrospective marker, force info
+      // regardless of what the LLM cache claimed — retrospective content
+      // should never ship at any non-info level.
+      //
+      // Why before the cap (P1 fix on PR #3429 round 3): when keyword=info
+      // and hit=critical, capLlmUpgrade returns medium (info+2=medium).
+      // A post-cap check on `cappedLevel === 'critical' || === 'high'`
+      // would miss this — `medium` doesn't match — so the brief 2026-04-
+      // 26-1302 Chernobyl-style title would have shipped at MEDIUM (which
+      // still passes 'all' sensitivity briefs). Running the marker check
+      // on the original hit and forcing info — not on cappedLevel — closes
+      // that gap.
+      //
+      // Why force info unconditionally (not just critical/high): retro-
+      // spective markers should suppress the LLM verdict at every non-info
+      // level, including medium and low. A medium-level retrospective would
+      // still ship in 'all'-sensitivity briefs; the goal of this guard is
+      // "retrospective content NEVER ships, regardless of LLM verdict."
+      if (hasHistoricalMarker(item.title)) {
+        console.warn(
+          `[classify] LLM hit forced to info by historical marker: ` +
+            `keyword=${item.level} llm=${hit.level} title="${item.title.slice(0, 60)}"`,
+        );
+        item.level = 'info';
+        item.category = hit.category;
+        item.confidence = 0.9;
+        item.classSource = 'llm';
+        item.isAlert = false;
+        continue;
+      }
+
+      // Skip the LLM cache for high-confidence keyword=critical matches
+      // (confidence 0.9). Without this skip, capLlmUpgrade is a Math.min
+      // — a stale or wrong LLM cache entry saying 'info' would silently
+      // demote a genuine current critical event to info via min(critical,
+      // info) = info, with no remaining safeguard.
+      //
+      // The retrospective case the prior PR #3424 wanted to handle here
+      // is already handled UPSTREAM: a keyword=critical title with a
+      // historical marker becomes classSource='keyword-historical-
+      // downgrade' (confidence 0.85, level=info) inside classifyByKeyword
+      // BEFORE reaching this function, so the L3 marker check above
+      // catches it via the historical-downgrade source. Items reaching
+      // here at confidence 0.9 are by construction items where the
+      // keyword classifier saw a critical match AND saw no marker —
+      // the safer default for those is to trust the keyword verdict.
+      //
+      // The L3 marker check above intentionally runs BEFORE this skip so
+      // that keyword=info (confidence 0.3, no-match) titles with a
+      // marker — the brief 2026-04-26-1302 "Science history: melts
+      // down…" shape — still get forced to info via the cache hit.
+      // Belt-and-suspenders for substring-keyword-miss contamination.
+      //
+      // P1 fix on PR #3429 round 4 (Greptile review on commit 96d3c12d7).
       if (0.9 <= item.confidence) continue;
-      item.level = hit.level as typeof item.level;
+
+      //
+      // Cap the LLM upgrade at +2 tiers above the keyword classification
+      // so a poisoned cache entry (e.g., "About Section 508" → high) can't
+      // promote an info-keyword item past medium (info+2=medium). Legitimate
+      // medium→critical upgrades (medium+2=critical) remain reachable.
+      // capLlmUpgrade is a Math.min so downgrades pass through freely.
+      // See LEVEL_RANK doc + R4 for the full per-keyword cap table.
+      const cappedLevel = capLlmUpgrade(item.level, hit.level);
+      if (cappedLevel !== hit.level) {
+        console.warn(
+          `[classify] LLM upgrade capped: keyword=${item.level} ` +
+            `llm=${hit.level} applied=${cappedLevel} title="${item.title.slice(0, 60)}"`,
+        );
+      }
+      item.level = cappedLevel;
       item.category = hit.category;
       item.confidence = 0.9;
       item.classSource = 'llm';
-      item.isAlert = hit.level === 'critical' || hit.level === 'high';
+      item.isAlert = cappedLevel === 'critical' || cappedLevel === 'high';
     }
   }
 }
@@ -382,6 +690,7 @@ function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsIte
       source: item.classSource,
     },
     locationName: '',
+    snippet: item.description ?? '',
   };
 }
 
@@ -428,6 +737,49 @@ export async function listFeedDigest(
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
 
+/**
+ * Build the HSET field list for a story:track:v1 row.
+ *
+ * Description is written UNCONDITIONALLY (empty string when the current
+ * mention has no body). Rationale: story:track rows are collapsed by
+ * normalized-title hash, so multiple wire reports of the same event share a
+ * row. If we only wrote description when non-empty, an earlier mention's
+ * body would persist on subsequent body-less mentions for up to STORY_TTL
+ * (7 days), and consumers would unknowingly ground LLMs on "some mention's
+ * body" rather than "this mention's body" — violating the grounding
+ * contract advertised to brief / whyMatters / SummarizeArticle. Writing
+ * empty is the authoritative signal that the current mention has no body;
+ * consumers then fall back to the cleaned headline (R6) honestly, and the
+ * next mention with a body re-populates the field naturally.
+ */
+function buildStoryTrackHsetFields(
+  item: ParsedItem,
+  nowStr: string,
+  score: number,
+): Array<string | number> {
+  return [
+    'lastSeen', nowStr,
+    'currentScore', score,
+    'title', item.title,
+    'link', item.link,
+    'severity', item.level,
+    'lang', item.lang,
+    'description', item.description ?? '',
+    // Source publishedAt (the article's actual publication time as parsed
+    // from the RSS pubDate or Dublin Core fallback). Persisted so READ-time
+    // consumers — buildDigest's freshness floor and the U6 audit's
+    // age-mode — can drop residual stale entries that pre-date an
+    // ingest-side gate tightening. See:
+    //   skill: ingest-gate-tightening-leaves-residue-in-read-path.
+    // Defensive cast: write '' when publishedAt isn't a finite number so
+    // the field never holds the literal "undefined"/"NaN" string. Read-side
+    // parseInt('') yields NaN → falls through the missing-field branch
+    // (treats as legacy row) instead of being mis-classified as a stale
+    // row with a bogus timestamp.
+    'publishedAt', Number.isFinite(item.publishedAt) ? String(item.publishedAt) : '',
+  ];
+}
+
 async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[]): Promise<void> {
   if (items.length === 0) return;
   const now = Date.now();
@@ -447,16 +799,11 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       const nowStr = String(now);
       const ttl = STORY_TTL;
 
+      const hsetFields = buildStoryTrackHsetFields(item, nowStr, score);
+
       commands.push(
         ['HINCRBY', trackKey, 'mentionCount', '1'],
-        ['HSET', trackKey,
-          'lastSeen', nowStr,
-          'currentScore', score,
-          'title', item.title,
-          'link', item.link,
-          'severity', item.level,
-          'lang', item.lang,
-        ],
+        ['HSET', trackKey, ...hsetFields],
         ['HSETNX', trackKey, 'firstSeen', nowStr],
         ['ZADD', peakKey, 'GT', score, 'peak'],
         ['SADD', sourcesKey, item.source],
@@ -510,10 +857,21 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       const batch = allEntries.slice(i, i + BATCH_CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map(async ({ category, feed }) => {
-          const items = await fetchAndParseRss(feed, variant, deadlineController.signal);
+          const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
           completedFeeds.add(feed.name);
-          if (items.length === 0) feedStatuses[feed.name] = 'empty';
-          return { category, items };
+          // Classify per-feed status. 'all-undated' is the silent-zeroing
+          // failure mode (every parsed item dropped for missing/unparseable
+          // dates) — distinguished from a genuinely empty fetch ('empty')
+          // so log aggregation can keyword-match. 'partial-undated' is
+          // informational (some items dropped, some kept).
+          if (result.parsedTotal > 0 && result.items.length === 0 && result.droppedUndated > 0) {
+            feedStatuses[feed.name] = 'all-undated';
+          } else if (result.items.length === 0) {
+            feedStatuses[feed.name] = 'empty';
+          } else if (result.droppedUndated > 0) {
+            feedStatuses[feed.name] = 'partial-undated';
+          }
+          return { category, items: result.items };
         }),
       );
 
@@ -531,6 +889,26 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       if (!completedFeeds.has(entry.feed.name)) {
         feedStatuses[entry.feed.name] = 'timeout';
       }
+    }
+
+    // U3 — hard freshness floor. Drop items older than NEWS_MAX_AGE_HOURS
+    // (default 48h) BEFORE corroboration counting so a stale duplicate of a
+    // fresh story can't inflate the cluster's source count. Runs after parse
+    // (where U2 already dropped undated items) so every item here carries a
+    // real publishedAt. See R3.
+    const maxAgeMs = resolveMaxAgeMs();
+    const freshnessCutoff = Date.now() - maxAgeMs;
+    let droppedStaleTotal = 0;
+    for (const [category, items] of results) {
+      const fresh = items.filter((it) => it.publishedAt >= freshnessCutoff);
+      droppedStaleTotal += items.length - fresh.length;
+      results.set(category, fresh);
+    }
+    if (droppedStaleTotal > 0) {
+      console.warn(
+        `[digest] freshness floor dropped ${droppedStaleTotal} stale items ` +
+          `(max age: ${maxAgeMs / (60 * 60 * 1000)}h)`,
+      );
     }
 
     // Flatten ALL items before any truncation so cross-category corroboration is counted.
@@ -627,3 +1005,17 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     clearTimeout(deadlineTimeout);
   }
 }
+
+/** Internal exports for unit tests only — do not import in production code. */
+export const __testing__ = {
+  parseRssXml,
+  extractDescription,
+  extractRawTagBody,
+  extractFirstDateTag,
+  buildStoryTrackHsetFields,
+  resolveMaxAgeMs,
+  capLlmUpgrade,
+  MAX_DESCRIPTION_LEN,
+  MIN_DESCRIPTION_LEN,
+  FUTURE_DATE_TOLERANCE_MS,
+};

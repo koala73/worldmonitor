@@ -8199,6 +8199,71 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     assert.equal(store[CANONICAL_KEY].generatedAt, newerTs, 'canonical generatedAt preserved');
   });
 
+  it('WD-20b: redisAtomicPatchSimDecorations — patches inside seed-contract envelope ({_seed, data}) and preserves wrapper on write', async () => {
+    // Regression for the production bug observed 2026-04-23 in seed-forecasts-simulation +
+    // seed-forecasts-deep workers logging "Cannot patch canonical key — predictions missing
+    // or not an array" on every successful run. Root cause: PR #3097 (seed-contract envelope
+    // dual-write) wraps the canonical key as {_seed: {...}, data: {predictions: [...]}}, but
+    // the Lua patcher and JS test path read payload.predictions directly → returns 'MISSING'
+    // → simulation decorations never reach the canonical feed → ForecastPanel shows stale or
+    // missing simulation enrichment for entire forecasts.
+    const runTs = Date.now() - 2_000;
+    const store = {
+      [CANONICAL_KEY]: {
+        _seed: { fetchedAt: runTs, recordCount: 1, sourceVersion: 'detectors+llm-pipeline', schemaVersion: 1 },
+        data: {
+          generatedAt: runTs,
+          predictions: [
+            { id: 'fc-env-01', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Enveloped 01' },
+          ],
+        },
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    const byForecastId = { 'fc-env-01': { simulationAdjustment: 0.21, simPathConfidence: 0.87, demotedBySimulation: true } };
+    const status = await redisAtomicPatchSimDecorations('http://test', 'test', CANONICAL_KEY, byForecastId, runTs, 21600);
+
+    assert.ok(status.startsWith('PATCHED:'), `expected PATCHED, got ${status}`);
+    // Envelope wrapper preserved on write — _seed metadata stays intact
+    assert.ok(store[CANONICAL_KEY]._seed, 'envelope _seed wrapper preserved on write');
+    assert.equal(store[CANONICAL_KEY]._seed.recordCount, 1, '_seed metadata fields preserved');
+    // Inner data patched
+    const inner = store[CANONICAL_KEY].data;
+    assert.equal(inner.predictions[0].simulationAdjustment, 0.21, 'sim adjustment applied through envelope');
+    assert.equal(inner.predictions[0].simPathConfidence, 0.87, 'sim confidence applied through envelope');
+    assert.equal(inner.predictions[0].demotedBySimulation, true, 'demotion applied through envelope');
+  });
+
+  it('WD-20c: redisAtomicPatchSimDecorations — JS envelope guard matches Lua table check (truthy-non-object _seed falls through to bare path)', async () => {
+    // Parity regression for greptile PR #3348 P2. Lua uses
+    // `type(payload._seed) == 'table'`; if JS used `!!published._seed` instead,
+    // a fixture with `_seed: 'bogus'` (truthy but not an object) would make JS
+    // treat the payload as enveloped and look for `published.data.predictions`,
+    // while Lua would fall through to the bare path and read `payload.predictions`.
+    // Both paths must agree: non-table `_seed` → bare read.
+    const runTs = Date.now() - 1_000;
+    const store = {
+      [CANONICAL_KEY]: {
+        _seed: 'bogus-string-not-a-table',        // truthy, but non-object
+        generatedAt: runTs,
+        predictions: [
+          { id: 'fc-bare-01', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Bare 01' },
+        ],
+        // no `.data` field — bare shape
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    const byForecastId = { 'fc-bare-01': { simulationAdjustment: 0.33, simPathConfidence: 0.66, demotedBySimulation: true } };
+    const status = await redisAtomicPatchSimDecorations('http://test', 'test', CANONICAL_KEY, byForecastId, runTs, 21600);
+
+    // Must succeed via bare path — same behavior Lua would produce
+    assert.ok(status.startsWith('PATCHED:'), `expected PATCHED via bare path, got ${status}`);
+    assert.equal(store[CANONICAL_KEY].predictions[0].simulationAdjustment, 0.33, 'bare-path patch applied');
+    assert.equal(store[CANONICAL_KEY]._seed, 'bogus-string-not-a-table', 'non-table _seed preserved untouched');
+  });
+
   it('WD-21: writeSimulationDecorations skips side key and canonical patch when existing side key is from a newer run', async () => {
     // Scenario: run B (newer) has already written forecast:sim-decorations:v1.
     // run A (older) finishes late and calls writeSimulationDecorations — must not overwrite.

@@ -146,10 +146,10 @@ Redirects to the matching asset on the latest GitHub release of `koala73/worldmo
 
 Caches the 302 for 5 minutes (`s-maxage=300`, `stale-while-revalidate=60`, `stale-if-error=600`).
 
-### `POST /api/contact`
+### `POST /api/leads/v1/submit-contact`
 
-Public contact form. Turnstile-verified, rate-limited per IP.
+Public enterprise contact form. Turnstile-verified, rate-limited per IP. Part of `LeadsService`.
 
-### `POST /api/register-interest`
+### `POST /api/leads/v1/register-interest`
 
-Captures email for desktop-app early-access waitlist. Writes to Convex.
+Captures email for Pro-waitlist signup. Writes to Convex and sends a confirmation email. Part of `LeadsService`.

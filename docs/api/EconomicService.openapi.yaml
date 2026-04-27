@@ -114,8 +114,12 @@ paths:
                   in: query
                   description: Optional commodity filter. Empty returns all tracked commodities.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -175,8 +179,12 @@ paths:
                     Energy source codes to query (e.g., "SUN", "WND", "COL").
                      Empty returns all tracked sources (SUN, WND, COL).
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: years
                   in: query
                   description: Number of years of historical data. Default 20 if not set.

@@ -1,10 +1,50 @@
 import type { ResilienceScoreResponse } from '@/services/resilience';
 
+// Client-side mirror of the server-side authoritative set
+// (`RESILIENCE_RETIRED_DIMENSIONS` in
+// server/worldmonitor/resilience/v1/_dimension-scorers.ts). Duplicated
+// because the widget module cannot import server code; kept in lockstep
+// by `tests/resilience-retired-dimensions-parity.test.mts`. Retired
+// dimensions are filtered out of the displayed coverage percentage so
+// a deliberate construct retirement does not silently drag the user-
+// facing confidence reading down for every country.
+//
+// Retirement index:
+//   - fuelStockDays    (PR 3 §3.5) — IEA days-of-stock incomparable across
+//                                     net importers vs net exporters.
+//   - reserveAdequacy  (PR 2 §3.4) — superseded by the
+//                                     liquidReserveAdequacy +
+//                                     sovereignFiscalBuffer split.
+//
+// The parity test parses this Set literally, so keep the array contents
+// as string literals only — do not interleave comments between entries.
+const RESILIENCE_RETIRED_DIMENSION_IDS: ReadonlySet<string> = new Set([
+  'fuelStockDays',
+  'reserveAdequacy',
+]);
+
+// Plan 2026-04-26-001 §U3 (+ review fixup): client-side mirror of
+// `RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE` in
+// `server/worldmonitor/resilience/v1/_dimension-scorers.ts`. When a dim
+// in this set emits coverage=0, the construct doesn't apply to this
+// country (e.g. sovereignFiscalBuffer for non-SWF advanced economies)
+// and must be excluded from the user-facing Coverage % so the widget
+// matches the server's `overallCoverage` value. Sites carrying
+// positive coverage for this dim (countries WITH SWFs) still count
+// normally. Distinct from RETIRED (which excludes for ALL countries).
+//
+// The parity test parses this Set literally, so keep the array
+// contents as string literals only — do not interleave comments
+// between entries.
+const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = new Set([
+  'sovereignFiscalBuffer',
+]);
+
 // Gated locked-preview fixture rendered when the resilience widget is
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
 // the exact values do not need to match any real country. They just
-// need to populate the 5 domain bars AND the 13-cell per-dimension
+// need to populate the 6 domain bars AND the 19-cell per-dimension
 // confidence grid (T1.6) with realistic-looking data so the gated
 // card is not a blank gap. Raised in PR #2949 review. Lives in this
 // dependency-free utils module so tests can import it without
@@ -35,7 +75,7 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       dimensions: [
         { id: 'macroFiscal', score: 85, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
         { id: 'currencyExternal', score: 80, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
-        { id: 'tradeSanctions', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'tradePolicy', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -120,6 +160,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   energy: 'Energy',
   'social-governance': 'Social & Gov',
   'health-food': 'Health & Food',
+  recovery: 'Recovery',
 };
 
 export function getResilienceVisualLevel(score: number): ResilienceVisualLevel {
@@ -143,7 +184,36 @@ export function getResilienceDomainLabel(domainId: string): string {
 
 export function formatResilienceConfidence(data: ResilienceScoreResponse): string {
   if (data.lowConfidence) return 'Low confidence — sparse data';
-  const coverages = data.domains.flatMap((d) => d.dimensions.map((dim) => dim.coverage));
+  // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) AND
+  // not-applicable-when-zero-coverage dimensions (sovereignFiscalBuffer
+  // for non-SWF countries, plan 2026-04-26-001 §U3) from the displayed
+  // coverage percentage. The same filter pair is applied server-side
+  // by `_shared.ts:computeOverallCoverage` — keeping them in lockstep
+  // ensures the widget Coverage % matches the server's
+  // `overallCoverage` field. Genuine data sparsity (non-retired,
+  // non-NA coverage=0) stays in the average because it reflects a
+  // real confidence signal; the server already sets `lowConfidence`
+  // when the overall picture is too sparse, which short-circuits above.
+  const coverages = data.domains.flatMap((d) =>
+    d.dimensions
+      .filter((dim) => {
+        if (RESILIENCE_RETIRED_DIMENSION_IDS.has(dim.id)) return false;
+        // Plan 2026-04-26-001 §U3 (+ review fixup): use the triple-zero
+        // Path-3 fingerprint (coverage===0 && observedWeight===0 &&
+        // imputedWeight===0), NOT just coverage===0. A real SWF country
+        // can produce coverage=0 if completeness collapses to 0 (Path 2
+        // with full data outage); that case must drag confidence down
+        // so an operator notices, not be silently filtered.
+        if (
+          RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS.has(dim.id) &&
+          dim.coverage === 0 &&
+          (dim.observedWeight ?? 0) === 0 &&
+          (dim.imputedWeight ?? 0) === 0
+        ) return false;
+        return true;
+      })
+      .map((dim) => dim.coverage),
+  );
   const avgCoverage = coverages.length > 0
     ? Math.round((coverages.reduce((s, c) => s + c, 0) / coverages.length) * 100)
     : 0;
@@ -163,10 +233,14 @@ export function formatBaselineStress(baseline: number, stress: number): string {
 }
 
 // Formats the dataVersion field (ISO date YYYY-MM-DD, sourced from the
-// seed-meta key) for display in the widget footer. Returns an empty string
-// when dataVersion is missing, malformed, or not a real calendar date so
-// the caller can skip rendering. Format is stable and regex + calendar
-// tested by resilience-widget.test.mts.
+// seed-meta:resilience:static.fetchedAt key) for display in the widget
+// footer. Returns an empty string when dataVersion is missing, malformed,
+// or not a real calendar date so the caller can skip rendering. The
+// "Seed date" label is narrower than "Data" — the value reflects the
+// static-seed refresh only, not the freshness of every live input that
+// contributes to the score (individual dimension freshness is surfaced
+// separately via the per-dimension freshness badge). Format is stable
+// and regex + calendar tested by resilience-widget.test.mts.
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 export function formatResilienceDataVersion(dataVersion: string | null | undefined): string {
   if (typeof dataVersion !== 'string' || !ISO_DATE_PATTERN.test(dataVersion)) return '';
@@ -179,22 +253,20 @@ export function formatResilienceDataVersion(dataVersion: string | null | undefin
   const parsed = new Date(dataVersion);
   if (Number.isNaN(parsed.getTime())) return '';
   if (parsed.toISOString().slice(0, 10) !== dataVersion) return '';
-  return `Data ${dataVersion}`;
+  return `Seed date ${dataVersion}`;
 }
 
 // T1.6 Phase 1 of the country-resilience reference-grade upgrade plan.
 // Per-dimension confidence helpers. The widget uses these to render a
-// compact confidence grid below the 5-domain rows so analysts can see
+// compact confidence grid below the 6-domain rows so analysts can see
 // per-dimension data coverage without opening the deep-dive panel.
 //
 // This slice uses ONLY the existing ResilienceDimension fields (`id`,
-// `coverage`, `observedWeight`, `imputedWeight`) already on every
-// response, so no proto or schema changes are needed. The downstream
-// adds (imputation class icon from T1.7, freshness badge from T1.5)
-// land as additional columns in later PRs once the schema exposes
-// those fields through the response type.
+// `coverage`, `observedWeight`, `imputedWeight`, `imputationClass`,
+// `freshness`) already on every response, so no proto or schema
+// changes are needed to render the full grid.
 
-// Short labels for each of the 13 dimensions so the compact grid does
+// Short labels for each of the 19 dimensions so the compact grid does
 // not wrap. Keys match `ResilienceDimensionId` from
 // server/worldmonitor/resilience/v1/_dimension-scorers.ts. The doc
 // linter test (resilience-methodology-lint.test.mts) already pins the
@@ -202,7 +274,8 @@ export function formatResilienceDataVersion(dataVersion: string | null | undefin
 const DIMENSION_LABELS: Record<string, string> = {
   macroFiscal: 'Macro',
   currencyExternal: 'Currency',
-  tradeSanctions: 'Trade',
+  tradePolicy: 'Trade',
+  financialSystemExposure: 'Fin. Exposure',
   cyberDigital: 'Cyber',
   logisticsSupply: 'Logistics',
   infrastructure: 'Infra',
@@ -219,6 +292,12 @@ const DIMENSION_LABELS: Record<string, string> = {
   importConcentration: 'Imports',
   stateContinuity: 'Continuity',
   fuelStockDays: 'Fuel',
+  // PR 2 §3.4 — new active dimensions. Labels chosen to stay short
+  // enough for the 19/21-cell confidence grid without leaking the
+  // internal ID. "Reserves" is already taken by the retired
+  // reserveAdequacy so the replacement disambiguates with "Liquid".
+  liquidReserveAdequacy: 'Liquid Reserves',
+  sovereignFiscalBuffer: 'Sovereign Wealth',
 };
 
 export function getResilienceDimensionLabel(dimensionId: string): string {
@@ -251,7 +330,7 @@ export interface DimensionConfidenceInput {
   };
 }
 
-export type DimensionCoverageStatus = 'observed' | 'partial' | 'imputed' | 'absent';
+export type DimensionCoverageStatus = 'observed' | 'partial' | 'imputed' | 'absent' | 'not-applicable';
 
 export type DimensionImputationClass =
   | 'stable-absence'
@@ -367,11 +446,20 @@ export function formatDimensionConfidence(input: DimensionConfidenceInput): Dime
   const lastObservedAtMs = normalizeLastObservedAtMs(input.freshness?.lastObservedAtMs);
 
   if (total <= 0) {
+    // Plan 2026-04-26-001 §U3 (+ review fixup): differentiate
+    // "structurally not applicable to this country" (e.g. non-SWF
+    // economies on sovereignFiscalBuffer) from the original
+    // "data-collection bug" interpretation. The server emits
+    // imputationClass='not-applicable' for the deliberate case; the
+    // widget renders status='not-applicable' which has its own tooltip
+    // ("Not applicable: structurally N/A for this country") and symbol
+    // ("—"). `absent: true` stays so existing consumers reading the
+    // boolean still get the no-data signal.
     return {
       id: input.id,
       label,
       coveragePct: 0,
-      status: 'absent',
+      status: imputationClass === 'not-applicable' ? 'not-applicable' : 'absent',
       absent: true,
       imputationClass,
       staleness,

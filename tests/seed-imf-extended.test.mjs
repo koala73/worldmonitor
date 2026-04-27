@@ -106,10 +106,14 @@ describe('seed-imf-labor', () => {
     assert.equal(LABOR_TTL, 35 * 24 * 3600);
   });
 
-  it('buildLaborCountries surfaces unemployment and population per ISO2', () => {
+  it('buildLaborCountries surfaces unemployment and population per ISO2 (LP raw persons → millions)', () => {
+    // Plan 002 review fix: IMF SDMX `LP` returns Population in PERSONS
+    // (raw count), not millions. Mock here matches real upstream shape:
+    // US ≈ 333.3M people = 333_300_000 raw. The seeder now divides by 1e6
+    // so the field name (populationMillions) matches its semantic.
     const countries = buildLaborCountries({
       unemployment: { USA: { [YEAR]: 4.1 }, FRA: { [YEAR]: 7.5 } },
-      population:   { USA: { [YEAR]: 333.3 }, FRA: { [YEAR]: 67.9 }, ZAF: { [YEAR]: 60.2 } },
+      population:   { USA: { [YEAR]: 333_300_000 }, FRA: { [YEAR]: 67_900_000 }, ZAF: { [YEAR]: 60_200_000 } },
     });
     assert.deepEqual(countries.US, {
       unemploymentPct: 4.1, populationMillions: 333.3, year: Number(YEAR),

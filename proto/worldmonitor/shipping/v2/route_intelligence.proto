@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package worldmonitor.shipping.v2;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// RouteIntelligenceRequest scopes a route-intelligence query by origin and
+// destination country. Query-parameter names are preserved verbatim from the
+// legacy partner contract (fromIso2/toIso2/cargoType/hs2 — camelCase).
+message RouteIntelligenceRequest {
+  // Origin country, ISO-3166-1 alpha-2 uppercase.
+  string from_iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = { name: "fromIso2" }
+  ];
+  // Destination country, ISO-3166-1 alpha-2 uppercase.
+  string to_iso2 = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = { name: "toIso2" }
+  ];
+  // Cargo type — one of: container (default), tanker, bulk, roro.
+  // Empty string defers to the server default. Unknown values are coerced to
+  // "container" to preserve legacy behavior.
+  string cargo_type = 3 [(sebuf.http.query) = { name: "cargoType" }];
+  // 2-digit HS commodity code (default "27" — mineral fuels). Non-digit
+  // characters are stripped server-side to match legacy behavior.
+  string hs2 = 4 [(sebuf.http.query) = { name: "hs2" }];
+}
+
+// Single chokepoint exposure for a route.
+message ChokepointExposure {
+  string chokepoint_id = 1;
+  string chokepoint_name = 2;
+  int32 exposure_pct = 3;
+}
+
+// Single bypass-corridor option around a disrupted chokepoint.
+message BypassOption {
+  string id = 1;
+  string name = 2;
+  // Type of bypass (e.g., "maritime_detour", "land_corridor").
+  string type = 3;
+  int32 added_transit_days = 4;
+  double added_cost_multiplier = 5;
+  // Enum-like string, e.g., "DISRUPTION_SCORE_60".
+  string activation_threshold = 6;
+}
+
+// RouteIntelligenceResponse wire shape preserved byte-for-byte from the
+// pre-migration JSON at docs/api-shipping-v2.mdx. `fetched_at` is intentionally
+// a string (ISO-8601) rather than int64 epoch ms because partners depend on
+// the ISO-8601 shape.
+message RouteIntelligenceResponse {
+  string from_iso2 = 1;
+  string to_iso2 = 2;
+  string cargo_type = 3;
+  string hs2 = 4;
+  string primary_route_id = 5;
+  repeated ChokepointExposure chokepoint_exposures = 6;
+  repeated BypassOption bypass_options = 7;
+  // War-risk tier enum string, e.g., "WAR_RISK_TIER_NORMAL" or "WAR_RISK_TIER_ELEVATED".
+  string war_risk_tier = 8;
+  // Disruption score of the primary chokepoint, 0-100.
+  int32 disruption_score = 9;
+  // ISO-8601 timestamp of when the response was assembled.
+  string fetched_at = 10;
+}

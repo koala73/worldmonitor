@@ -63,7 +63,7 @@ When an alert fires, registered webhook URLs receive:
 Signature verification: `hmac_sha256(rawBody, channelSecret) == X-WM-Signature[7:]`.
 
 <Warning>
-The envelope version is **shared across three producers** (`notification-relay`, `proactive-intelligence`, `seed-digest-notifications`). Bumping it requires coordinated updates.
+The envelope version is **shared across two producers** (`notification-relay`, `seed-digest-notifications`). Bumping it requires coordinated updates.
 </Warning>
 
 ### `POST /api/notify`

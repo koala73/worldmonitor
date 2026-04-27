@@ -5,130 +5,58 @@ import assert from 'node:assert/strict';
 
 const root = join(import.meta.dirname, '..');
 
-// ─── Edge endpoint ──────────────────────────────────────────────────────────
+// ─── sebuf handler ───────────────────────────────────────────────────────────
 
-describe('Country products endpoint (api/supply-chain/v1/country-products.ts)', () => {
-  const filePath = join(root, 'api', 'supply-chain', 'v1', 'country-products.ts');
+describe('getCountryProducts sebuf handler (server/worldmonitor/supply-chain/v1/get-country-products.ts)', () => {
+  const filePath = join(root, 'server', 'worldmonitor', 'supply-chain', 'v1', 'get-country-products.ts');
   const src = readFileSync(filePath, 'utf-8');
 
-  it('exports edge config with runtime: edge', () => {
+  it('exports getCountryProducts as the sebuf handler entry point', () => {
     assert.ok(
-      src.includes("runtime: 'edge'"),
-      'country-products.ts: must export edge config with runtime: "edge"',
+      /export\s+async\s+function\s+getCountryProducts/.test(src),
+      'must export an async getCountryProducts(ctx, req) handler',
     );
   });
 
-  it('has a default export handler function', () => {
-    assert.ok(
-      /export\s+default\s+async\s+function\s+handler/.test(src),
-      'country-products.ts: must have a default async function handler export',
-    );
-  });
-
-  it('returns 405 for non-GET requests', () => {
-    assert.ok(
-      src.includes("req.method !== 'GET'") || src.includes('req.method !== "GET"'),
-      'country-products.ts: must check for GET method and return 405 for other methods',
-    );
-    assert.ok(
-      src.includes('status: 405'),
-      'country-products.ts: must return 405 status for non-GET',
-    );
-  });
-
-  it('validates iso2 parameter with /^[A-Z]{2}$/ pattern', () => {
+  it('validates iso2 with the /^[A-Z]{2}$/ pattern', () => {
     assert.ok(
       src.includes('[A-Z]{2}'),
-      'country-products.ts: must validate iso2 with a two-uppercase-letter regex',
+      'must validate iso2 with a two-uppercase-letter regex',
     );
   });
 
-  it('returns 400 for invalid iso2', () => {
-    assert.ok(
-      src.includes('status: 400'),
-      'country-products.ts: must return 400 for invalid or missing iso2',
-    );
-  });
-
-  it('uses isCallerPremium for PRO gating', () => {
+  it('uses isCallerPremium for PRO gating against ctx.request', () => {
     assert.ok(
       src.includes('isCallerPremium'),
-      'country-products.ts: must use isCallerPremium for PRO-gating',
+      'must use isCallerPremium for PRO-gating',
     );
-    const importIdx = src.indexOf('isCallerPremium');
-    const callIdx = src.indexOf('isCallerPremium(req)');
     assert.ok(
-      importIdx !== -1 && callIdx !== -1,
-      'country-products.ts: must import and invoke isCallerPremium(req)',
+      src.includes('isCallerPremium(ctx.request)'),
+      'must invoke isCallerPremium(ctx.request) so the sebuf gateway request is authorised',
     );
   });
 
-  it('returns 403 for non-PRO users', () => {
+  it('returns the typed empty payload for both non-PRO and invalid-iso2 paths', () => {
     assert.ok(
-      src.includes('status: 403'),
-      'country-products.ts: must return 403 for non-PRO callers',
+      /products: \[\], fetchedAt: ''/.test(src),
+      'empty fallback must have empty products array and empty fetchedAt',
     );
+    const proIdx = src.indexOf('isPro');
+    const validIdx = src.indexOf('[A-Z]{2}');
+    assert.ok(proIdx !== -1 && validIdx !== -1, 'must reference both PRO and validation gates');
+  });
+
+  it('reads from raw Upstash Redis (skip env-prefix) so seeder writes resolve', () => {
     assert.ok(
-      src.includes('PRO subscription required'),
-      'country-products.ts: 403 response must include descriptive error message',
+      /getCachedJson\([^,]+,\s*true\)/.test(src),
+      'must call getCachedJson(key, true) so the raw seeder key is read',
     );
   });
 
-  it('uses private Cache-Control (not public) for successful responses', () => {
+  it('reads the comtrade:bilateral-hs4 key keyed by iso2', () => {
     assert.ok(
-      src.includes("'Cache-Control': 'private"),
-      'country-products.ts: Cache-Control for PRO data must be private, not public',
-    );
-    assert.ok(
-      !src.includes("'Cache-Control': 'public"),
-      'country-products.ts: must not use public Cache-Control for PRO-gated data',
-    );
-  });
-
-  it('Vary header includes Authorization', () => {
-    assert.ok(
-      src.includes("'Vary'") || src.includes('"Vary"'),
-      'country-products.ts: must include Vary header',
-    );
-    assert.ok(
-      src.includes('Authorization'),
-      'country-products.ts: Vary header must include Authorization for PRO-gated responses',
-    );
-  });
-
-  it('non-PRO/empty-data path uses no-store cache control', () => {
-    assert.ok(
-      src.includes('no-store'),
-      'country-products.ts: empty data / fallback path must use no-store cache control',
-    );
-  });
-
-  it('reads from Upstash Redis via readJsonFromUpstash', () => {
-    assert.ok(
-      src.includes('readJsonFromUpstash'),
-      'country-products.ts: must read cached data from Upstash Redis',
-    );
-  });
-
-  it('passes a timeout to readJsonFromUpstash', () => {
-    const match = src.match(/readJsonFromUpstash\(\s*key\s*,\s*(\d[\d_]*)\s*\)/);
-    assert.ok(
-      match,
-      'country-products.ts: must pass a timeout parameter to readJsonFromUpstash to bound Redis reads',
-    );
-    const timeout = Number(match[1].replace(/_/g, ''));
-    assert.ok(
-      timeout > 0 && timeout <= 10_000,
-      `country-products.ts: readJsonFromUpstash timeout should be reasonable (got ${timeout}ms)`,
-    );
-  });
-
-  it('iso2 validation happens after PRO gate (prevents free users probing keys)', () => {
-    const proIdx = src.indexOf('isCallerPremium');
-    const isoIdx = src.indexOf('[A-Z]{2}');
-    assert.ok(
-      proIdx < isoIdx,
-      'country-products.ts: PRO gate must come before iso2 validation to prevent free users probing parameter patterns',
+      /comtrade:bilateral-hs4:\$\{iso2\}:v1/.test(src),
+      'must read comtrade:bilateral-hs4:${iso2}:v1',
     );
   });
 });
@@ -345,37 +273,37 @@ describe('fetchCountryProducts service (src/services/supply-chain/index.ts)', ()
     );
   });
 
-  it('CountryProductsResponse type is exported', () => {
+  it('CountryProductsResponse alias is exported for legacy callsites', () => {
     assert.ok(
-      src.includes('export interface CountryProductsResponse'),
-      'supply-chain/index.ts: must export CountryProductsResponse interface',
+      src.includes('export type CountryProductsResponse = GetCountryProductsResponse'),
+      'supply-chain/index.ts: must export CountryProductsResponse as alias of GetCountryProductsResponse',
     );
   });
 
-  it('CountryProduct type is exported', () => {
+  it('CountryProduct type is re-exported from the generated client', () => {
     assert.ok(
-      src.includes('export interface CountryProduct'),
-      'supply-chain/index.ts: must export CountryProduct interface',
+      /export type \{[\s\S]*?\bCountryProduct\b/.test(src),
+      'supply-chain/index.ts: must re-export CountryProduct from the generated sebuf client',
     );
   });
 
-  it('ProductExporter type is exported', () => {
+  it('ProductExporter type is re-exported from the generated client', () => {
     assert.ok(
-      src.includes('export interface ProductExporter'),
-      'supply-chain/index.ts: must export ProductExporter interface',
+      /export type \{[\s\S]*?\bProductExporter\b/.test(src),
+      'supply-chain/index.ts: must re-export ProductExporter from the generated sebuf client',
     );
   });
 
-  it('uses premiumFetch (not plain fetch) for PRO-gated data', () => {
+  it('calls the generated sebuf client.getCountryProducts (not premiumFetch)', () => {
     const fnStart = src.indexOf('async function fetchCountryProducts');
     const fnBody = src.slice(fnStart, src.indexOf('\n}\n', fnStart) + 3);
     assert.ok(
-      fnBody.includes('premiumFetch'),
-      'fetchCountryProducts: must use premiumFetch to attach auth credentials',
+      fnBody.includes('client.getCountryProducts('),
+      'fetchCountryProducts: must call the generated client.getCountryProducts',
     );
     assert.ok(
-      !fnBody.includes('globalThis.fetch('),
-      'fetchCountryProducts: must not use globalThis.fetch directly for PRO endpoints',
+      !fnBody.includes('premiumFetch'),
+      'fetchCountryProducts: must not bypass the typed client with premiumFetch',
     );
   });
 
@@ -396,10 +324,15 @@ describe('fetchCountryProducts service (src/services/supply-chain/index.ts)', ()
     );
   });
 
-  it('CountryProduct interface has expected fields', () => {
-    const ifaceStart = src.indexOf('export interface CountryProduct');
-    const ifaceEnd = src.indexOf('}', ifaceStart);
-    const iface = src.slice(ifaceStart, ifaceEnd + 1);
+  it('CountryProduct generated interface has expected fields', () => {
+    const generated = readFileSync(
+      join(root, 'src', 'generated', 'client', 'worldmonitor', 'supply_chain', 'v1', 'service_client.ts'),
+      'utf-8',
+    );
+    const ifaceStart = generated.indexOf('export interface CountryProduct');
+    assert.ok(ifaceStart !== -1, 'generated client must define CountryProduct interface');
+    const ifaceEnd = generated.indexOf('}', ifaceStart);
+    const iface = generated.slice(ifaceStart, ifaceEnd + 1);
     assert.ok(iface.includes('hs4: string'), 'CountryProduct must have hs4: string');
     assert.ok(iface.includes('description: string'), 'CountryProduct must have description: string');
     assert.ok(iface.includes('totalValue: number'), 'CountryProduct must have totalValue: number');

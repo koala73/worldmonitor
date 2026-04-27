@@ -13,11 +13,20 @@
  * Prev-alerted state is persisted to Redis so short-lived cron invocations don't
  * re-notify on every tick.
  *
+ * @notification-source: domain (aviation)
+ *   publishNotificationEvent() calls in this file build payload.title from
+ *   structured airport/ICAO/delay/NOTAM fields. Events are NOT RSS-origin
+ *   and MUST NOT set payload.description. Enforced by
+ *   tests/notification-relay-payload-audit.test.mjs.
+ *
  * Supersedes: scripts/seed-airport-delays.mjs (deleted) + the in-process seed
  * loops that used to live inside scripts/ais-relay.cjs (stripped). ais-relay still
  * hosts the /aviationstack live proxy for user-triggered flight lookups.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
   loadEnvFile,
   CHROME_UA,
@@ -28,6 +37,7 @@ import {
   releaseLock,
   getRedisCredentials,
 } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -37,11 +47,18 @@ const INTL_KEY         = 'aviation:delays:intl:v3';
 const FAA_KEY          = 'aviation:delays:faa:v1';
 const NOTAM_KEY        = 'aviation:notam:closures:v2';
 const NEWS_KEY         = 'aviation:news::24:v1';
+// Page-load hydration aggregate. Health (api/health.js BOOTSTRAP_KEYS.flightDelays)
+// reads STRLEN here. Historically only written as a 1800s RPC side-effect inside
+// list-airport-delays.ts — quiet user windows >30min would let it expire, tripping
+// EMPTY (CRIT) even with healthy upstream feeds. Now produced canonically by this
+// seeder; RPC keeps its write at the same TTL as a courtesy mid-tick refresh.
+const BOOTSTRAP_KEY = 'aviation:delays-bootstrap:v1';
 
-const INTL_TTL  = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
-const FAA_TTL   = 7_200;  // 2h
-const NOTAM_TTL = 7_200;  // 2h
-const NEWS_TTL  = 2_400;  // 40min
+const INTL_TTL      = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
+const FAA_TTL       = 7_200;  // 2h
+const NOTAM_TTL     = 7_200;  // 2h
+const NEWS_TTL      = 2_400;  // 40min
+const BOOTSTRAP_TTL = 7_200;  // 2h — matches FAA/NOTAM; survives ~4 missed cron ticks
 
 // health.js expects these exact meta keys (api/health.js:222,223,269)
 const INTL_META_KEY  = 'seed-meta:aviation:intl';
@@ -249,6 +266,15 @@ async function upstashGet(key) {
     if (!result?.result) return null;
     try { return JSON.parse(result.result); } catch { return null; }
   } catch { return null; }
+}
+
+// Envelope-aware GET. runSeed wraps canonical keys in `{_seed, data}` when the
+// seeder opts into the seed contract (declareRecords + envelopeMeta) — INTL_KEY
+// is one such key (see runSeed call w/ declareRecords below). Bare values
+// (FAA_KEY, NOTAM_KEY via writeExtraKey w/o envelopeMeta) pass through.
+async function upstashGetUnwrapped(key) {
+  const raw = await upstashGet(key);
+  return unwrapEnvelope(raw).data;
 }
 
 async function upstashSet(key, value, ttlSeconds) {
@@ -558,6 +584,12 @@ async function seedFaaDelays() {
 
 const ICAO_NOTAM_URL = 'https://dataservices.icao.int/api/notams-realtime-list';
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
+// Restrictions: NOTAM Q-codes RA (restricted area) and RO (overfly prohibited)
+// + restricted code45s and text patterns. Mirrors NOTAM_RESTRICTION_QCODES +
+// the restriction-text regex in server/worldmonitor/aviation/v1/_shared.ts:29,
+// :440-444 — keep in lockstep so seeded NOTAM data matches the live RPC's
+// classifier.
+const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
 // Returns: Array of NOTAMs on success, null on quota exhaustion, [] on other errors.
 async function fetchIcaoNotams() {
@@ -600,17 +632,18 @@ async function fetchIcaoNotams() {
 async function seedNotamClosures() {
   if (!process.env.ICAO_API_KEY) {
     console.log('[NOTAM] No ICAO_API_KEY — skipping');
-    return { closedIcaos: [], reasons: {}, quotaExhausted: false, skipped: true };
+    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: false, skipped: true };
   }
   const t0 = Date.now();
   const notams = await fetchIcaoNotams();
   if (notams === null) {
     // Quota exhausted — don't blank the key; signal upstream to touch TTL.
-    return { closedIcaos: [], reasons: {}, quotaExhausted: true, skipped: false };
+    return { closedIcaos: [], restrictedIcaos: [], reasons: {}, quotaExhausted: true, skipped: false };
   }
 
   const now = Math.floor(Date.now() / 1000);
   const closedSet = new Set();
+  const restrictedSet = new Set();
   const reasons = {};
 
   for (const n of notams) {
@@ -620,17 +653,26 @@ async function seedNotamClosures() {
     const code23 = (n.code23 || '').toUpperCase();
     const code45 = (n.code45 || '').toUpperCase();
     const text = (n.iteme || '').toUpperCase();
-    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) &&
-      (code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW');
+    const closureCode45 = code45 === 'LC' || code45 === 'AS' || code45 === 'AU' || code45 === 'XX' || code45 === 'AW';
+    const restrictionCode45 = code45 === 'RE' || code45 === 'RT';
+    const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) && closureCode45;
+    const isRestrictionCode = (NOTAM_RESTRICTION_QCODES.has(code23) || NOTAM_CLOSURE_QCODES.has(code23)) && restrictionCode45;
     const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
+    const isRestrictionText = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/.test(text);
+    // Closure wins over restriction for the same NOTAM (mirrors _shared.ts
+    // if/else chain at line 446-452).
     if (isClosureCode || isClosureText) {
       closedSet.add(icao);
       reasons[icao] = n.iteme || 'Airport closure (NOTAM)';
+    } else if (isRestrictionCode || isRestrictionText) {
+      restrictedSet.add(icao);
+      reasons[icao] = n.iteme || 'Airspace restriction (NOTAM)';
     }
   }
   const closedIcaos = [...closedSet];
-  console.log(`[NOTAM] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { closedIcaos, reasons, quotaExhausted: false, skipped: false };
+  const restrictedIcaos = [...restrictedSet];
+  console.log(`[NOTAM] ${notams.length} raw NOTAMs, ${closedIcaos.length} closures, ${restrictedIcaos.length} restrictions in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return { closedIcaos, restrictedIcaos, reasons, quotaExhausted: false, skipped: false };
 }
 
 // ─── Section 4: Aviation RSS news prewarmer ──────────────────────────────────
@@ -747,6 +789,216 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
   }
 }
 
+// ─── Page-load bootstrap aggregate ───────────────────────────────────────────
+// Mirror of the alerts-array assembly in
+// server/worldmonitor/aviation/v1/list-airport-delays.ts (FAA + intl + NOTAM
+// merge + Normal-operations filler from AIRPORTS). Keep the two builders in
+// lockstep — when the RPC's NOTAM merge / filler shape / enum mapping changes,
+// update both. Enum-string forms here match SEVERITY_MAP/DELAY_TYPE_MAP/REGION_MAP
+// at the top of this file so consumers parse identically to the RPC's output.
+
+const SEV_ORDER = ['normal', 'minor', 'moderate', 'major', 'severe'];
+
+function buildNormalOpsAlert(airport) {
+  return {
+    id: `status-${airport.iata}`,
+    iata: airport.iata,
+    icao: airport.icao,
+    name: airport.name,
+    city: airport.city ?? '',
+    country: airport.country,
+    location: { latitude: airport.lat ?? 0, longitude: airport.lon ?? 0 },
+    region: REGION_MAP[airport.region] ?? 'AIRPORT_REGION_AMERICAS',
+    delayType: 'FLIGHT_DELAY_TYPE_GENERAL',
+    severity: 'FLIGHT_DELAY_SEVERITY_NORMAL',
+    avgDelayMinutes: 0,
+    delayedFlightsPct: 0,
+    cancelledFlights: 0,
+    totalFlights: 0,
+    reason: 'Normal operations',
+    source: 'FLIGHT_DELAY_SOURCE_COMPUTED',
+    updatedAt: Date.now(),
+  };
+}
+
+function buildNotamAlert(airport, reason, severity = 'severe', delayType = 'closure') {
+  const trimmed = reason.length > 200 ? reason.slice(0, 200) + '…' : reason;
+  return {
+    id: `notam-${airport.iata}`,
+    iata: airport.iata,
+    icao: airport.icao,
+    name: airport.name,
+    city: airport.city ?? '',
+    country: airport.country,
+    location: { latitude: airport.lat ?? 0, longitude: airport.lon ?? 0 },
+    region: REGION_MAP[airport.region] ?? 'AIRPORT_REGION_AMERICAS',
+    delayType: DELAY_TYPE_MAP[delayType] ?? 'FLIGHT_DELAY_TYPE_CLOSURE',
+    severity: SEVERITY_MAP[severity] ?? 'FLIGHT_DELAY_SEVERITY_SEVERE',
+    avgDelayMinutes: 0,
+    delayedFlightsPct: 0,
+    cancelledFlights: 0,
+    totalFlights: 0,
+    reason: trimmed,
+    source: 'FLIGHT_DELAY_SOURCE_NOTAM',
+    updatedAt: Date.now(),
+  };
+}
+
+function mergeNotamWithExistingAlert(airport, notamReason, existing, severity = 'severe', delayType = 'closure') {
+  if (!existing || existing.totalFlights === 0) {
+    return buildNotamAlert(airport, notamReason, severity, delayType);
+  }
+  const cancelRate = (existing.cancelledFlights / existing.totalFlights) * 100;
+  const notamCancelSev = cancelRate >= 50 ? 'severe' : cancelRate >= 25 ? 'major' : cancelRate >= 10 ? 'moderate' : 'minor';
+  const existingSevName = (existing.severity ?? '')
+    .replace('FLIGHT_DELAY_SEVERITY_', '').toLowerCase() || 'normal';
+  const effectiveSev = SEV_ORDER[Math.max(
+    SEV_ORDER.indexOf(existingSevName),
+    SEV_ORDER.indexOf(notamCancelSev),
+    SEV_ORDER.indexOf('moderate'), // notamFloor
+  )] ?? 'moderate';
+  const cancelText = `${Math.round(cancelRate)}% cxl`;
+  const reason = `NOTAM: ${notamReason.slice(0, 120)} — ${cancelText}`;
+  const trimmed = reason.length > 200 ? reason.slice(0, 200) + '…' : reason;
+  return {
+    ...existing,
+    id: `notam-${airport.iata}`,
+    severity: SEVERITY_MAP[effectiveSev] ?? 'FLIGHT_DELAY_SEVERITY_MODERATE',
+    delayType: DELAY_TYPE_MAP[delayType] ?? 'FLIGHT_DELAY_TYPE_CLOSURE',
+    reason: trimmed,
+    source: 'FLIGHT_DELAY_SOURCE_NOTAM',
+    updatedAt: Date.now(),
+  };
+}
+
+// Parse src/config/airports.ts as text to recover the live RPC's MONITORED_AIRPORTS
+// registry without a TS build step. The RPC iterates this for "Normal operations"
+// filler; the seeder's local AIRPORTS list is a related-but-different set
+// (carries `sources` for which feed covers each airport, omits some RPC-only
+// entries, has some seeder-only entries). Today the two diverge by ~45 iata codes.
+// We read both at runtime and union them by iata so the bootstrap covers every
+// airport either registry knows about — match RPC output exactly + future-proof
+// against drift in either direction.
+//
+// Memoised: read-once at module load. If parse fails (unexpected file shape, file
+// missing in some packaging), we degrade to seeder's AIRPORTS only and warn —
+// bootstrap is still produced, just without the RPC-only iata coverage.
+let _monitoredAirportsCache = null;
+function loadMonitoredAirportsFromConfigFile() {
+  if (_monitoredAirportsCache !== null) return _monitoredAirportsCache;
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = join(here, '..', 'src', 'config', 'airports.ts');
+    const src = readFileSync(path, 'utf8');
+    const rows = [];
+    // Match rows of shape: { iata: 'XXX', icao: 'YYYY', name: '...', city: '...',
+    // country: '...', lat: N, lon: N, region: '...' }. Allows both single + double
+    // quotes for `name` (some rows use double-quote to embed apostrophes).
+    const rowRe = /\{\s*iata:\s*'([A-Z]{3})'\s*,\s*icao:\s*'([A-Z0-9]{3,4})'\s*,\s*name:\s*(?:'([^']*)'|"([^"]*)")\s*,\s*city:\s*(?:'([^']*)'|"([^"]*)")\s*,\s*country:\s*(?:'([^']*)'|"([^"]*)")\s*,\s*lat:\s*(-?\d+(?:\.\d+)?)\s*,\s*lon:\s*(-?\d+(?:\.\d+)?)\s*,\s*region:\s*'([a-z]+)'\s*\}/g;
+    let m;
+    while ((m = rowRe.exec(src)) !== null) {
+      rows.push({
+        iata:    m[1],
+        icao:    m[2],
+        name:    m[3] ?? m[4],
+        city:    m[5] ?? m[6],
+        country: m[7] ?? m[8],
+        lat:     parseFloat(m[9]),
+        lon:     parseFloat(m[10]),
+        region:  m[11],
+      });
+    }
+    if (rows.length === 0) {
+      console.warn(`[Bootstrap] parsed 0 rows from ${path} — falling back to seeder AIRPORTS only`);
+      _monitoredAirportsCache = [];
+      return _monitoredAirportsCache;
+    }
+    _monitoredAirportsCache = rows;
+    return rows;
+  } catch (err) {
+    console.warn(`[Bootstrap] failed to parse src/config/airports.ts: ${err?.message || err} — falling back to seeder AIRPORTS only`);
+    _monitoredAirportsCache = [];
+    return _monitoredAirportsCache;
+  }
+}
+
+// Union the seeder's AIRPORTS with RPC's MONITORED_AIRPORTS by iata. Seeder rows
+// win on conflict (they have the more recent canonical NOTAM/AviationStack meta).
+// Logs a warning summary on first divergence so registry drift surfaces in cron
+// logs without blocking writes.
+let _filterRegistryWarnLogged = false;
+function buildFillerRegistry() {
+  const monitored = loadMonitoredAirportsFromConfigFile();
+  const byIata = new Map();
+  for (const a of monitored) byIata.set(a.iata, a);
+  for (const a of AIRPORTS)  byIata.set(a.iata, a); // seeder wins on conflict
+  if (!_filterRegistryWarnLogged) {
+    const seederIatas    = new Set(AIRPORTS.map(a => a.iata));
+    const monitoredIatas = new Set(monitored.map(a => a.iata));
+    const monitoredOnly  = [...monitoredIatas].filter(i => !seederIatas.has(i));
+    const seederOnly     = [...seederIatas].filter(i => !monitoredIatas.has(i));
+    if (monitoredOnly.length > 0 || seederOnly.length > 0) {
+      console.warn(`[Bootstrap] registry drift: ${monitoredOnly.length} RPC-only iatas (${monitoredOnly.slice(0, 10).join(',')}${monitoredOnly.length > 10 ? '…' : ''}), ${seederOnly.length} seeder-only iatas (${seederOnly.slice(0, 10).join(',')}${seederOnly.length > 10 ? '…' : ''}). Bootstrap covers union of both (${byIata.size} airports).`);
+    }
+    _filterRegistryWarnLogged = true;
+  }
+  return [...byIata.values()];
+}
+
+// Build + write the page-load bootstrap aggregate. Pass `intlAlertsOverride` to
+// use this-tick's intl from afterPublish (skips the Redis round-trip and avoids
+// a one-tick lag); omit to fall back to the last-good intl in Redis (used by
+// the pre-runSeed call so a current-tick intl failure still refreshes bootstrap).
+async function writeDelaysBootstrap(intlAlertsOverride) {
+  try {
+    const [faaPayload, intlPayload, notamPayload] = await Promise.all([
+      upstashGetUnwrapped(FAA_KEY),
+      intlAlertsOverride ? Promise.resolve({ alerts: intlAlertsOverride }) : upstashGetUnwrapped(INTL_KEY),
+      upstashGetUnwrapped(NOTAM_KEY),
+    ]);
+
+    const faaAlerts  = Array.isArray(faaPayload?.alerts)  ? faaPayload.alerts  : [];
+    const intlAlerts = Array.isArray(intlPayload?.alerts) ? intlPayload.alerts : [];
+    const closedIcaos     = Array.isArray(notamPayload?.closedIcaos)     ? notamPayload.closedIcaos     : [];
+    const restrictedIcaos = Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos : [];
+    const reasons = (notamPayload?.reasons && typeof notamPayload.reasons === 'object') ? notamPayload.reasons : {};
+
+    const allAlerts = [...faaAlerts, ...intlAlerts];
+    // Union of seeder AIRPORTS + RPC MONITORED_AIRPORTS so the bootstrap matches
+    // what the live RPC produces even when registries drift.
+    const fillerRegistry = buildFillerRegistry();
+    const existingIatas = new Set(allAlerts.map(a => a.iata));
+    const applyNotam = (icao, severity, delayType, fallback) => {
+      const airport = fillerRegistry.find(a => a.icao === icao);
+      if (!airport) return;
+      const reason = reasons[icao] || fallback;
+      if (existingIatas.has(airport.iata)) {
+        const idx = allAlerts.findIndex(a => a.iata === airport.iata);
+        if (idx >= 0) allAlerts[idx] = mergeNotamWithExistingAlert(airport, reason, allAlerts[idx], severity, delayType);
+      } else {
+        allAlerts.push(buildNotamAlert(airport, reason, severity, delayType));
+        existingIatas.add(airport.iata);
+      }
+    };
+    for (const icao of closedIcaos)     applyNotam(icao, 'severe', 'closure', 'Airport closure (NOTAM)');
+    for (const icao of restrictedIcaos) applyNotam(icao, 'major',  'general', 'Airspace restriction (NOTAM)');
+
+    const alertedIatas = new Set(allAlerts.map(a => a.iata));
+    for (const airport of fillerRegistry) {
+      if (!alertedIatas.has(airport.iata)) allAlerts.push(buildNormalOpsAlert(airport));
+    }
+
+    const ok = await upstashSet(BOOTSTRAP_KEY, { alerts: allAlerts }, BOOTSTRAP_TTL);
+    if (ok) {
+      console.log(`[Bootstrap] wrote ${allAlerts.length} alerts to ${BOOTSTRAP_KEY} (faa=${faaAlerts.length}, intl=${intlAlerts.length}, notam-closed=${closedIcaos.length}, notam-restricted=${restrictedIcaos.length})`);
+    } else {
+      console.warn(`[Bootstrap] SET ${BOOTSTRAP_KEY} returned false`);
+    }
+  } catch (err) {
+    console.warn(`[Bootstrap] build/write error: ${err?.message || err}`);
+  }
+}
+
 // ─── Orchestration ───────────────────────────────────────────────────────────
 // runSeed's primary key = INTL (largest spend, most-consumed). FAA + NOTAM +
 // News are written as "extra keys" after the primary publish. Each has its own
@@ -817,12 +1069,12 @@ async function runNotamSideCar() {
       }
       await writeExtraKeyWithMeta(
         NOTAM_KEY,
-        { closedIcaos: notam.closedIcaos, reasons: notam.reasons },
+        { closedIcaos: notam.closedIcaos, restrictedIcaos: notam.restrictedIcaos, reasons: notam.reasons },
         NOTAM_TTL,
-        notam.closedIcaos.length,
+        notam.closedIcaos.length + notam.restrictedIcaos.length,
         NOTAM_META_KEY,
       );
-      console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures to ${NOTAM_KEY}`);
+      console.log(`[NOTAM] wrote ${notam.closedIcaos.length} closures + ${notam.restrictedIcaos.length} restrictions to ${NOTAM_KEY}`);
       try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
       catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
     } catch (err) {
@@ -878,8 +1130,18 @@ function publishTransform(data) {
 }
 
 async function afterPublishIntl(data) {
+  // CONTRACT: runSeed forwards the RAW fetchIntl() result here, NOT the
+  // publishTransform()'d shape. fetchIntl returns seedIntlDelays' output
+  // ({ alerts, healthy, skipped, ... }), so data.alerts is the same array
+  // publishTransform wraps into INTL_KEY. If publishTransform ever filters
+  // or mutates alerts (today it's a pass-through wrapper), this bootstrap
+  // write would silently diverge from INTL_KEY — keep them in lockstep.
   try { await dispatchAviationNotifications(data.alerts); }
   catch (e) { console.warn(`[Intl] notify error: ${e?.message || e}`); }
+  // Refresh the page-load bootstrap with this-tick intl. The pre-runSeed call
+  // in main() already wrote a bootstrap using last-good intl; this overwrite
+  // upgrades it to current.
+  await writeDelaysBootstrap(data?.alerts);
 }
 
 function validate(publishData) {
@@ -896,6 +1158,12 @@ async function main() {
   await runFaaSideCar();
   await runNotamSideCar();
   await runNewsSideCar();
+
+  // Pre-runSeed bootstrap write: ensures the page-load aggregate refreshes even
+  // if intl fetch fails this tick (runSeed's catch-path skips afterPublish).
+  // Uses last-good intl from Redis; afterPublishIntl will overwrite with fresh
+  // intl on success.
+  await writeDelaysBootstrap();
 
   return runSeed('aviation', 'intl', INTL_KEY, fetchIntl, {
     validateFn: validate,

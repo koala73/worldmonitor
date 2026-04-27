@@ -7,7 +7,6 @@ import type {
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
-  deduplicateHeadlines,
   buildArticlePrompts,
   getProviderCredentials,
   getCacheKey,
@@ -46,6 +45,7 @@ export async function summarizeArticle(
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
+  const MAX_BODY_LEN = 400;
 
   // Bounded raw headlines — used for cache key so browser/server keys agree.
   // Only structural patterns stripped (delimiters, control chars); semantic
@@ -60,6 +60,17 @@ export async function summarizeArticle(
   const sanitizedGeoContext = sanitizeForPrompt(
     typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '',
   );
+
+  // Bodies (RSS descriptions) paired 1:1 with headlines. Full injection
+  // sanitisation applied — bodies are untrusted upstream text identical in
+  // trust-level to geoContext. Padded to match headlines length so pair-wise
+  // cache-key identity stays stable. Callers may omit (old path) or pass a
+  // shorter/longer array (handler tolerates).
+  const rawBodies = Array.isArray(req.bodies) ? req.bodies : [];
+  const bodies = headlines.map((_, i) => {
+    const b = rawBodies[i];
+    return typeof b === 'string' ? sanitizeForPrompt(b.slice(0, MAX_BODY_LEN)) : '';
+  });
 
   // Provider credential check
   const skipReasons: Record<string, string> = {
@@ -101,7 +112,7 @@ export async function summarizeArticle(
   }
 
   try {
-    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined);
+    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
@@ -115,13 +126,36 @@ export async function summarizeArticle(
         // Headlines are re-sanitized here (not at cache-key time) so that
         // the cache key stays aligned with the browser while the actual
         // prompt is protected against semantic injection phrases.
-        const promptHeadlines = sanitizeHeadlines(headlines);
-        const uniqueHeadlines = deduplicateHeadlines(promptHeadlines.slice(0, 5));
+        //
+        // Pair headlines with bodies BEFORE deduping so sanitizeHeadlines
+        // drops / merges don't break the 1:1 mapping. sanitizeHeadlines
+        // operates elementwise so paired indices survive per-element
+        // replacement; we then dedup pairs together (seen-set on the
+        // sanitized headline) to preserve the pairing post-dedup.
+        const paired = headlines.map((h, i) => ({
+          h: sanitizeHeadlines([h])[0] ?? '',
+          b: bodies[i] ?? '',
+        }));
+        const nonEmpty = paired.filter((p) => p.h.length > 0);
+        const uniquePairs: Array<{ h: string; b: string }> = [];
+        const seen = new Set<string>();
+        for (const p of nonEmpty.slice(0, 5)) {
+          if (!seen.has(p.h)) {
+            seen.add(p.h);
+            uniquePairs.push(p);
+          }
+        }
+        // Preserves the existing variable name for downstream prompt
+        // builder callers that expect the full sanitised-headline list.
+        const promptHeadlines = nonEmpty.map((p) => p.h);
+        const uniqueHeadlines = uniquePairs.map((p) => p.h);
+        const uniqueBodies = uniquePairs.map((p) => p.b);
         const { systemPrompt, userPrompt } = buildArticlePrompts(promptHeadlines, uniqueHeadlines, {
           mode,
           geoContext: sanitizedGeoContext,
           variant,
           lang,
+          bodies: uniqueBodies,
         });
 
         const sanitizedAppend = systemAppend ? sanitizeForPrompt(systemAppend) : '';

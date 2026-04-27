@@ -234,6 +234,19 @@ make install-buf       # Install buf CLI (requires Go)
 make install-plugins   # Install sebuf protoc-gen plugins (requires Go)
 ```
 
+The pinned sebuf version is set by `SEBUF_VERSION` in the `Makefile` (currently **v0.11.1**). All three plugins — `protoc-gen-ts-client`, `protoc-gen-ts-server`, `protoc-gen-openapiv3` — must be installed from the same sebuf release. If you see codegen drift after pulling, rerun `make install-plugins` to resync.
+
+### OpenAPI Output
+
+`make generate` (i.e. `cd proto && buf generate`) produces:
+
+| File | Purpose |
+| --- | --- |
+| `docs/api/{Service}.openapi.yaml` / `.json` | Per-service specs — referenced individually by Mintlify in `docs/docs.json` |
+| `docs/api/worldmonitor.openapi.yaml` | **Unified bundle** spanning every service (sebuf ≥ v0.11.0) — use this for external consumers, API explorers, or anywhere you want a single spec covering all RPCs |
+
+The unified bundle is emitted by a third `protoc-gen-openapiv3` invocation in `proto/buf.gen.yaml` using `bundle=true`, `bundle_only=true`, and `strategy: all`. Regenerate alongside the per-service files; do not edit by hand.
+
 ## Adding Data Sources
 
 To add a new data layer to the map:

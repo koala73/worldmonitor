@@ -18,16 +18,24 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
   || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
-const INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
+const INTERVAL_KEY_PREFIX = 'resilience:intervals:v2:';
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DRAWS = 100;
 
+// Plan 2026-04-26-002 review fix: 6-domain weights (recovery added) in
+// lockstep with server/worldmonitor/resilience/v1/_dimension-scorers.ts
+// `RESILIENCE_DOMAIN_WEIGHTS`. The pre-PR 5-domain weights here mixed
+// recovery into nothing, then computed a 5-domain score-band band that
+// the server's 6-domain coverage-weighted overall score never matched.
+// Bumped INTERVAL_KEY_PREFIX v1 → v2 in lockstep so post-bump readers
+// see only post-fix bands.
 const DOMAIN_WEIGHTS = {
-  economic: 0.22,
-  infrastructure: 0.20,
-  energy: 0.15,
-  'social-governance': 0.25,
-  'health-food': 0.18,
+  economic: 0.17,
+  infrastructure: 0.15,
+  energy: 0.11,
+  'social-governance': 0.19,
+  'health-food': 0.13,
+  recovery: 0.25,
 };
 
 const DOMAIN_ORDER = [
@@ -36,6 +44,7 @@ const DOMAIN_ORDER = [
   'energy',
   'social-governance',
   'health-food',
+  'recovery',
 ];
 
 export function computeIntervals(domainScores, domainWeights, draws = DRAWS) {

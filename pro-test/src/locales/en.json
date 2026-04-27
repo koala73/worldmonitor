@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Reserve Your Early Access",
     "signIn": "Sign In",
-    "upgradeToPro": "Upgrade to Pro"
+    "upgradeToPro": "Upgrade to Pro",
+    "goToDashboard": "Go to Dashboard"
   },
   "hero": {
     "noiseWord": "Noise",
@@ -18,6 +19,7 @@
     "emailPlaceholder": "Enter your email",
     "emailAriaLabel": "Email address for waitlist",
     "choosePlan": "Choose Your Plan",
+    "goToDashboard": "Go to Dashboard",
     "signIn": "Sign In"
   },
   "wired": {

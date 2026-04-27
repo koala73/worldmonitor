@@ -513,7 +513,11 @@ components:
                     description: Aircraft callsign.
                 hexCode:
                     type: string
-                    description: ICAO 24-bit hex address.
+                    description: |-
+                        ICAO 24-bit hex address. Canonical form is UPPERCASE — seeders and
+                         handlers must uppercase before writing so hex-based lookups
+                         (src/services/military-flights.ts:getFlightByHex) match regardless of
+                         upstream source casing.
                 registration:
                     type: string
                     description: Aircraft registration number.

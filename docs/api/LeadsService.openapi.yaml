@@ -1,0 +1,173 @@
+openapi: 3.1.0
+info:
+    title: LeadsService API
+    version: 1.0.0
+paths:
+    /api/leads/v1/submit-contact:
+        post:
+            tags:
+                - LeadsService
+            summary: SubmitContact
+            description: SubmitContact stores an enterprise contact submission in Convex and emails ops.
+            operationId: SubmitContact
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SubmitContactRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SubmitContactResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/leads/v1/register-interest:
+        post:
+            tags:
+                - LeadsService
+            summary: RegisterInterest
+            description: RegisterInterest adds an email to the Pro waitlist and sends a confirmation email.
+            operationId: RegisterInterest
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RegisterInterestRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RegisterInterestResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        SubmitContactRequest:
+            type: object
+            properties:
+                email:
+                    type: string
+                name:
+                    type: string
+                organization:
+                    type: string
+                phone:
+                    type: string
+                message:
+                    type: string
+                source:
+                    type: string
+                website:
+                    type: string
+                    description: Honeypot — bots auto-fill this hidden field; real submissions leave it empty.
+                turnstileToken:
+                    type: string
+                    description: Cloudflare Turnstile token proving the submitter is human.
+            description: SubmitContactRequest carries an enterprise contact form submission.
+        SubmitContactResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: Always "sent" on success.
+                emailSent:
+                    type: boolean
+                    description: True when the Resend notification to ops was delivered.
+            description: SubmitContactResponse reports the outcome of storing the lead and notifying ops.
+        RegisterInterestRequest:
+            type: object
+            properties:
+                email:
+                    type: string
+                source:
+                    type: string
+                appVersion:
+                    type: string
+                referredBy:
+                    type: string
+                website:
+                    type: string
+                    description: Honeypot — bots auto-fill this hidden field; real submissions leave it empty.
+                turnstileToken:
+                    type: string
+                    description: Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+            description: RegisterInterestRequest carries a Pro-waitlist signup.
+        RegisterInterestResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: '"registered" for a new signup; "already_registered" for a returning email.'
+                referralCode:
+                    type: string
+                    description: Stable referral code for this email.
+                referralCount:
+                    type: integer
+                    format: int32
+                    description: Number of signups credited to this email.
+                position:
+                    type: integer
+                    format: int32
+                    description: Waitlist position at registration time. Present only when status == "registered".
+                emailSuppressed:
+                    type: boolean
+                    description: True when the email is on the suppression list (prior bounce) and no confirmation was sent.
+            description: RegisterInterestResponse mirrors the Convex registerInterest:register return shape.

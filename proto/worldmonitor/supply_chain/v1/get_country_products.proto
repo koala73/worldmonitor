@@ -1,0 +1,36 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message ProductExporter {
+  int32 partner_code = 1;
+  string partner_iso2 = 2;
+  double value = 3;
+  double share = 4;
+}
+
+message CountryProduct {
+  string hs4 = 1;
+  string description = 2;
+  double total_value = 3;
+  repeated ProductExporter top_exporters = 4;
+  int32 year = 5;
+}
+
+message GetCountryProductsRequest {
+  string iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "iso2"}
+  ];
+}
+
+message GetCountryProductsResponse {
+  string iso2 = 1;
+  repeated CountryProduct products = 2;
+  // ISO timestamp from the seeded payload (empty when no data is cached).
+  string fetched_at = 3;
+}

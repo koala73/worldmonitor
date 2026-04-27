@@ -19,7 +19,7 @@ Applies to all `/api/*` routes that don't have a stricter override. Implemented 
 |-------|-------|--------|
 | Per API key (MCP tools) | **60 requests** | 60 s |
 
-See [MCP](/mcp) for details.
+See [MCP](/mcp-server) for details.
 
 ## OAuth endpoints
 
@@ -37,10 +37,10 @@ Exceeding any of these during the OAuth flow will cause the MCP client to fail t
 
 | Endpoint | Limit | Window | Scope |
 |----------|-------|--------|-------|
-| `POST /api/scenario/v1/run` | 10 | 60 s | Per user |
-| `POST /api/scenario/v1/run` (queue depth) | 100 in-flight | — | Global |
-| `POST /api/register-interest` | 5 | 60 min | Per IP + Turnstile |
-| `POST /api/contact` | 3 | 60 min | Per IP + Turnstile |
+| `POST /api/scenario/v1/run-scenario` | 10 | 60 s | Per IP |
+| `POST /api/scenario/v1/run-scenario` (queue depth) | 100 in-flight | — | Global |
+| `POST /api/leads/v1/register-interest` | 5 | 60 min | Per IP + Turnstile (desktop sources bypass Turnstile) |
+| `POST /api/leads/v1/submit-contact` | 3 | 60 min | Per IP + Turnstile |
 
 Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, `/api/customer-portal`, etc.) fall back to the default per-IP limit above.
 
@@ -74,5 +74,5 @@ Content-Type: application/json
 
 - Webhook callback URLs must be HTTPS (except localhost).
 - `api/download` file sizes capped at ~50 MB per request.
-- `POST /api/scenario/v1/run` globally pauses new jobs when the pending queue exceeds **100** — returns 429 with `Retry-After: 30`.
+- `POST /api/scenario/v1/run-scenario` globally pauses new jobs when the pending queue exceeds **100** — returns 429.
 - `api/v2/shipping/webhooks` TTL is **30 days** — re-register to extend.

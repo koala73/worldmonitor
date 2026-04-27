@@ -17,7 +17,7 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
-import { premiumFetch } from '@/services/premium-fetch';
+import { runScenario, getScenarioStatus } from '@/services/scenario';
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
@@ -847,14 +847,8 @@ export class SupplyChainPanel extends Panel {
       // Hard timeout on POST /run so a hanging edge function can't leave
       // the button in "Computing…" indefinitely.
       const runSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
-      const runResp = await premiumFetch('/api/scenario/v1/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenarioId }),
-        signal: runSignal,
-      });
-      if (!runResp.ok) throw new Error(`Run failed: ${runResp.status}`);
-      const { jobId } = await runResp.json() as { jobId: string };
+      const runResp = await runScenario({ scenarioId, iso2: '' }, { signal: runSignal });
+      const jobId = runResp.jobId;
       let result: ScenarioResult | null = null;
       // 60 × 1s = 60s max (worker typically completes in <1s). 1s poll keeps
       // the perceived latency <2s in the common case. First iteration polls
@@ -864,9 +858,7 @@ export class SupplyChainPanel extends Panel {
         if (signal.aborted) { resetButton('Simulate Closure'); return; }
         if (!this.content.isConnected) return; // panel gone — nothing to update
         if (i > 0) await new Promise(r => setTimeout(r, 1000));
-        const statusResp = await premiumFetch(`/api/scenario/v1/status?jobId=${encodeURIComponent(jobId)}`, { signal });
-        if (!statusResp.ok) throw new Error(`Status poll failed: ${statusResp.status}`);
-        const status = await statusResp.json() as { status: string; result?: ScenarioResult };
+        const status = await getScenarioStatus(jobId, { signal });
         if (status.status === 'done') {
           const r = status.result;
           if (!r || !Array.isArray(r.topImpactCountries)) throw new Error('done without valid result');

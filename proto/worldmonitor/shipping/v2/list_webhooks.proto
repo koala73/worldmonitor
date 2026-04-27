@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.shipping.v2;
+
+// ListWebhooksRequest has no fields — the owner is derived from the caller's
+// API-key fingerprint (SHA-256 of X-WorldMonitor-Key).
+message ListWebhooksRequest {}
+
+// Single webhook record in the list response. `secret` is intentionally
+// omitted; use rotate-secret to obtain a new one.
+message WebhookSummary {
+  string subscriber_id = 1;
+  string callback_url = 2;
+  repeated string chokepoint_ids = 3;
+  int32 alert_threshold = 4;
+  // ISO-8601 timestamp of registration.
+  string created_at = 5;
+  bool active = 6;
+}
+
+// ListWebhooksResponse wire shape preserved exactly: the `webhooks` field
+// name and the omission of `secret` are part of the partner contract.
+message ListWebhooksResponse {
+  repeated WebhookSummary webhooks = 1;
+}

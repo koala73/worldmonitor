@@ -1,0 +1,147 @@
+---
+title: "Revision Log (Planned)"
+description: "Specification for the public revision log that will surface every evidence change and public-badge transition across the Energy Atlas registries. The page documents the planned shape and status — the log itself is not yet live."
+---
+
+<Note>
+**Status — v1 launch:** This page documents the planned
+revision-log surface. **The public log itself is not yet live.**
+What ships today on the Energy Atlas: the evidence bundles inside each
+RPC response (`ListPipelines`, `ListStorageFacilities`,
+`ListFuelShortages`, `ListEnergyDisruptions`), and the methodology pages
+that describe how public badges are derived from those bundles. The
+classifier that writes revision-log entries as a byproduct of normal
+operation ships in a post-launch release. Until then:
+`GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`
+return empty arrays, and there is no automated correction-intake path.
+This page exists so the data contract and submission policy are
+documented **before** the surface goes live — not after.
+</Note>
+
+## What the revision log will be (when it ships)
+
+WorldMonitor's Energy Atlas publishes evidence bundles — not opinions —
+for pipelines, storage facilities, fuel shortages, and disruption
+events. A deterministic, versioned classifier turns those bundles into
+public badges (`flowing` / `reduced` / `offline` / `disputed` for
+assets; `confirmed` / `watch` for shortages).
+
+When the classifier goes live, every time it changes a public field —
+because evidence updated, because staleness decayed a badge, because a
+new classifier version re-derived an old asset, or because an
+operator/regulator-submitted correction was applied — it will write an
+append-only entry here.
+
+This is the designed audit surface. The evidence registries themselves
+are forward-looking snapshots; this log, once live, will be the history
+of how each status arrived at where it is today.
+
+## Planned data shape
+
+Each entry is planned as a row with the following fields:
+
+```ts
+{
+  date: string,                 // ISO8601 — when the change was written
+  assetOrEventId: string,       // matches an id in the pipeline / storage / shortage / disruption registry
+  fieldChanged: string,         // e.g. 'publicBadge', 'physicalState', 'severity', 'evidence.sanctionRefs'
+  previousValue: unknown,       // value before the change
+  newValue: unknown,            // value after the change
+  trigger: 'classifier' | 'source' | 'decay' | 'override',
+  sourcesUsed: string[],        // URLs cited by the classifier for this change
+  classifierVersion: string,    // version that produced newValue (e.g. 'badge-deriver-v1')
+}
+```
+
+The matching proto surface lives at
+`GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`.
+Both currently return empty arrays by design — the handlers document
+"Revision log arrives in a post-launch release" in their code comments
+rather than pretending the surface is live.
+
+### Planned trigger vocabulary
+
+- **`classifier`** — a routine classifier pass re-derives the field
+  from the current evidence bundle. Expected to be the most common
+  trigger once live.
+- **`source`** — a new evidence source arrives (regulator filing,
+  operator press release, sanction list update) and the classifier
+  re-derives accordingly.
+- **`decay`** — the evidence is older than the staleness window
+  (14 days for registry fields, 30 days for shortage evidence) and the
+  classifier demotes a non-positive badge to `disputed` or `watch`.
+- **`override`** — a break-glass manual override is applied. Reserved
+  for demonstrably-wrong classifier outputs flagged by readers.
+  Overrides will carry the same `sourcesUsed` discipline as classifier
+  entries.
+
+## What IS live today (v1 launch)
+
+- **Evidence bundles on every asset.** Click any pipeline, storage
+  facility, or shortage pin on the [Energy Atlas](https://energy.worldmonitor.app)
+  and you see its full evidence bundle: physical state, commercial
+  state, operator statements (with URL and date), sanction references
+  (with authority + list ID + URL), classifier version and confidence,
+  and the timestamp of the most recent evidence update. This is the
+  primary audit surface today.
+- **Public methodology pages.** The derivation rules, staleness
+  windows, and evidence-threshold specs are all publicly documented:
+  - [Pipeline Registry](/methodology/pipelines)
+  - [Storage Facilities](/methodology/storage)
+  - [Fuel Shortages](/methodology/shortages)
+  - [Disruption Event Log](/methodology/disruptions)
+  - [Chokepoints](/methodology/chokepoints)
+- **Versioned classifier output.** Every RPC response carries a
+  `classifier_version` field. A reader can pin expectations to a
+  version today even though the revision-log history-of-versions
+  surface isn't yet published.
+
+## What is NOT live today
+
+- The revision-log entries themselves (this page will list real rows
+  once the classifier ships).
+- An automated correction-intake pipeline. If you spot something
+  wrong, use the feedback channels at
+  [worldmonitor.app](https://worldmonitor.app) or open a GitHub issue
+  at the [public repository](https://github.com/koala73/worldmonitor/issues).
+  Corrections are not yet on the classifier's path — they're handled
+  manually today.
+- The `override`-trigger entry writer. Same dependency: ships with the
+  classifier.
+
+## Verifying a badge today (pre-classifier)
+
+Until the revision log is live, the audit path for any status on the
+Energy Atlas is:
+
+1. Open the asset drawer (click the pipeline / storage dot / shortage
+   pin).
+2. Read the evidence bundle — every source is linked with publication
+   date and authority (`regulator` / `operator` / `press` /
+   `satellite`).
+3. Check the methodology page for the asset class — the derivation
+   rules are deterministic and versioned.
+4. If all evidence is current and the public badge still looks wrong
+   after walking the rules, open an issue on the public repository
+   with the asset id, the current evidence bundle, and your reasoning.
+   The manual review path will seed `override` entries once the
+   revision log ships.
+
+## Why document this surface before it ships
+
+Two reasons to publish the spec before the writer lands:
+
+1. **Contract stability.** The shape of `revisions` in
+   `GetPipelineDetail.revisions` / `GetStorageFacilityDetail.revisions`
+   is part of the RPC contract that agents and MCP clients consume.
+   Documenting it now means downstream consumers can code against the
+   stable shape before live data arrives.
+2. **Policy signalling.** Evidence-first classification only works if
+   the audit trail is committed-to in public, not treated as an
+   internal implementation detail. Publishing the planned shape and
+   submission policy ahead of the writer is the commitment.
+
+Neither reason justifies overstating the current state. When live
+entries start appearing on this page, the `Status` callout at the top
+will be replaced with a "last updated" timestamp and the "NOT live"
+section will be removed.

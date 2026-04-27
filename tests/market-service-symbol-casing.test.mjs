@@ -83,7 +83,7 @@ describe('market service symbol casing', () => {
 
     globalThis.fetch = async (input) => {
       const url = getRequestUrl(input);
-      requests.push(url.searchParams.get('symbols'));
+      requests.push(url.searchParams.getAll('symbols'));
       return new Response(JSON.stringify(marketResponse([
         quote('btc-usd', 101),
         quote('BTC-USD', 202),
@@ -100,7 +100,7 @@ describe('market service symbol casing', () => {
         { symbol: 'BTC-USD', name: 'Upper BTC', display: 'BTC upper' },
       ]);
 
-      assert.equal(requests[0], 'btc-usd,BTC-USD');
+      assert.deepEqual(requests[0], ['btc-usd', 'BTC-USD']);
       assert.deepEqual(
         result.data.map((entry) => entry.symbol),
         ['btc-usd', 'BTC-USD'],
@@ -127,8 +127,7 @@ describe('market service symbol casing', () => {
     globalThis.fetch = async (input) => {
       fetchCount += 1;
       const url = getRequestUrl(input);
-      const symbols = url.searchParams.get('symbols');
-      const [symbol = ''] = (symbols ?? '').split(',');
+      const [symbol = ''] = url.searchParams.getAll('symbols');
       const price = symbol === 'BTC-USD' ? 222 : 111;
       return new Response(JSON.stringify(marketResponse([quote(symbol, price)])), {
         status: 200,

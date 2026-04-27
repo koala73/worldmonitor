@@ -7,6 +7,7 @@
 
 import { BRIEF_ENVELOPE_VERSION } from './brief-envelope.js';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
+import { isInstitutionalStaticPage } from './url-classifier.js';
 
 /**
  * @typedef {import('./brief-envelope.js').BriefEnvelope} BriefEnvelope
@@ -94,24 +95,128 @@ function clip(v, cap) {
 }
 
 /**
- * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number }} input
+ * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape'|'cap'|'source_topic_cap'|'institutional_static_page', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
+ */
+
+/**
+ * Re-order `stories` so entries whose `hash` matches an entry in
+ * `rankedStoryHashes` come first, in ranking order. Entries not in
+ * the ranking keep their original relative order and come after.
+ * Match is by short-hash prefix: a ranking entry of "abc12345"
+ * matches a story whose `hash` starts with "abc12345" (≥4 chars).
+ * The canonical synthesis prompt emits 8-char prefixes; stories
+ * carry the full hash. Defensive check: when ranking is missing /
+ * empty / not an array, returns the original array unchanged.
+ *
+ * Pure helper — does not mutate the input. Stable for stories that
+ * share rank slots (preserves original order within a slot).
+ *
+ * @param {Array<{ hash?: unknown }>} stories
+ * @param {unknown} rankedStoryHashes
+ * @returns {Array<{ hash?: unknown }>}
+ */
+function applyRankedOrder(stories, rankedStoryHashes) {
+  if (!Array.isArray(rankedStoryHashes) || rankedStoryHashes.length === 0) {
+    return stories;
+  }
+  const ranking = rankedStoryHashes
+    .filter((x) => typeof x === 'string' && x.length >= 4)
+    .map((x) => x);
+  if (ranking.length === 0) return stories;
+
+  // For each story, compute its rank index — the smallest index of a
+  // ranking entry that is a PREFIX of the story's hash. Stories with
+  // no match get Infinity so they sort last while preserving their
+  // original order via the secondary index.
+  const annotated = stories.map((story, originalIndex) => {
+    const storyHash = typeof story?.hash === 'string' ? story.hash : '';
+    let rank = Infinity;
+    if (storyHash.length > 0) {
+      for (let i = 0; i < ranking.length; i++) {
+        if (storyHash.startsWith(ranking[i])) {
+          rank = i;
+          break;
+        }
+      }
+    }
+    return { story, originalIndex, rank };
+  });
+  annotated.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    return a.originalIndex - b.originalIndex;
+  });
+  return annotated.map((a) => a.story);
+}
+
+/**
+ * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number; maxPerSourceTopic?: number; onDrop?: DropMetricsFn; rankedStoryHashes?: string[] }} input
  * @returns {BriefStory[]}
  */
-export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
+export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPerSourceTopic = 2, onDrop, rankedStoryHashes }) {
   if (!Array.isArray(stories)) return [];
   const allowed = ALLOWED_LEVELS_BY_SENSITIVITY[sensitivity];
   if (!allowed) return [];
 
+  // Per Solution 0 of the topic-adjacency plan: when the caller passes
+  // onDrop, we emit one event per filter drop so the seeder can
+  // aggregate counts and log per-tick drop rates. onDrop is optional
+  // and synchronous — any throw is the caller's problem (tested above).
+  const emit = typeof onDrop === 'function' ? onDrop : null;
+
+  // Optional editorial ranking — when supplied, stories are sorted by
+  // the position of `story.hash` in `rankedStoryHashes` BEFORE the
+  // cap is applied, so the canonical synthesis brain's judgment of
+  // editorial importance survives the MAX_STORIES_PER_USER cut.
+  // Stories not in the ranking go after, in their original order.
+  // Match is by short-hash prefix (≥4 chars) to tolerate the
+  // ranker's emit format (the prompt uses 8-char prefixes; the
+  // story carries the full hash). Empty/missing array = no-op.
+  const orderedStories = applyRankedOrder(stories, rankedStoryHashes);
+
   /** @type {BriefStory[]} */
   const out = [];
-  for (const raw of stories) {
-    if (out.length >= maxStories) break;
-    if (!raw || typeof raw !== 'object') continue;
+  // Per-(source, category) survivor count. Updated atomically with each
+  // out.push() below so the U5 source-topic cap check is O(1) instead of
+  // O(n) per candidate. Key format: source + KEY_DELIM + category. The
+  // ASCII Unit Separator (0x1F) prevents collisions when source or
+  // category itself contains spaces (e.g. (source='Reuters',
+  // category='World Politics') vs (source='Reuters World',
+  // category='Politics') would both produce the same key under a space
+  // delimiter). Sources/categories never legitimately contain control
+  // characters so 0x1F is a safe sentinel.
+  const KEY_DELIM = String.fromCharCode(31);
+  /** @type {Map<string, number>} */
+  const pairCounts = new Map();
+  for (let i = 0; i < orderedStories.length; i++) {
+    const raw = orderedStories[i];
+    if (out.length >= maxStories) {
+      // Cap-truncation: remaining stories are not evaluated. Emit one
+      // event per skipped story so operators can reconcile in vs out
+      // counts (`in - out - sum(dropped_severity|headline|url|shape)
+      // == dropped_cap`). Without this, cap-truncated stories are
+      // invisible to Sol-0 telemetry and Sol-3's gating signal is
+      // undercounted by up to (DIGEST_MAX_ITEMS - MAX_STORIES_PER_USER)
+      // per user per tick.
+      if (emit) {
+        for (let j = i; j < orderedStories.length; j++) emit({ reason: 'cap' });
+      }
+      break;
+    }
+    if (!raw || typeof raw !== 'object') {
+      if (emit) emit({ reason: 'shape' });
+      continue;
+    }
     const threatLevel = normaliseThreatLevel(raw.threatLevel);
-    if (!threatLevel || !allowed.has(threatLevel)) continue;
+    if (!threatLevel || !allowed.has(threatLevel)) {
+      if (emit) emit({ reason: 'severity', severity: threatLevel ?? undefined });
+      continue;
+    }
 
     const headline = clip(asTrimmedString(raw.primaryTitle), MAX_HEADLINE_LEN);
-    if (!headline) continue;
+    if (!headline) {
+      if (emit) emit({ reason: 'headline', severity: threatLevel });
+      continue;
+    }
 
     // v2: every surfaced story must have a working outgoing link so
     // the magazine can wrap the source line in a UTM anchor. A story
@@ -121,7 +226,20 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
     // populated on every ingested item; the check exists so one bad
     // row can't slip through.
     const sourceUrl = normaliseSourceUrl(raw.primaryLink);
-    if (!sourceUrl) continue;
+    if (!sourceUrl) {
+      if (emit) emit({ reason: 'url', severity: threatLevel, sourceUrl: typeof raw.primaryLink === 'string' ? raw.primaryLink : undefined });
+      continue;
+    }
+
+    // U7: defense-in-depth URL/path denylist for static institutional
+    // pages on .gov/.mil/.int. The upstream ingest gates (U1+U2+U3)
+    // should keep these out, but a regression in the feed registry or
+    // a new dialect bypassing U2 could let one through — this gate
+    // ensures the brief surface stays clean even then. R7.
+    if (isInstitutionalStaticPage(sourceUrl)) {
+      if (emit) emit({ reason: 'institutional_static_page', severity: threatLevel, sourceUrl });
+      continue;
+    }
 
     const description = clip(
       asTrimmedString(raw.description) || headline,
@@ -133,6 +251,20 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
     );
     const category = asTrimmedString(raw.category) || 'General';
     const country = asTrimmedString(raw.countryCode) || 'Global';
+
+    // Source-topic cap (R6, U5): prevent more than maxPerSourceTopic
+    // (default 2) stories sharing the same (source, category) pair from
+    // reaching a single brief. Surgical fix for editorial-clutter cases
+    // like the 2026-04-25 brief shipping both "Millions under tornado
+    // threat" and "Watch tornadoes swirl through Oklahoma" from CBS News
+    // — distinct stories the dedup correctly kept separate, but redundant
+    // for a 12-story brief. Ranked-order rule above ensures the
+    // highest-importance member of each pair survives.
+    const pairKey = source + KEY_DELIM + category;
+    if ((pairCounts.get(pairKey) ?? 0) >= maxPerSourceTopic) {
+      if (emit) emit({ reason: 'source_topic_cap', severity: threatLevel, sourceUrl });
+      continue;
+    }
 
     out.push({
       category,
@@ -149,6 +281,7 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12 }) {
       whyMatters:
         'Story flagged by your sensitivity settings. Open for context.',
     });
+    pairCounts.set(pairKey, (pairCounts.get(pairKey) ?? 0) + 1);
   }
   return out;
 }

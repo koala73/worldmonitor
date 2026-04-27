@@ -107,15 +107,38 @@ function streamLines(stream, onLine) {
   stream.on('error', (err) => onLine(`<stdio error: ${err.message}>`));
 }
 
-function spawnSeed(scriptPath, { timeoutMs, label }) {
+function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
   return new Promise((resolve) => {
     const t0 = Date.now();
+    // Capture the child's structured `seed_complete` event if emitted, so
+    // the parent can re-emit the key fields on a single bundle-level line.
+    // Railway log ingestion drops child-stdout lines when many seeders log
+    // at similar timestamps (observed across Storage-Facilities /
+    // Energy-Disruptions / Pipelines-Gas in PR #3294 launch run: each
+    // dropped a different subset of Run ID / Mode / seed_complete lines
+    // despite identical code paths). Bundle-level lines survive reliably.
+    let lastSeedComplete = null;
+    // BUNDLE_RUN_STARTED_AT_MS lets consumer seeders detect when a cohort
+    // peer's seed-meta predates the current bundle run and fall back to a
+    // hard default instead of reading a stale peer key. See plan
+    // 2026-04-24-003 §"Phase 2 — SWF seeder" bundle-freshness guard.
     const child = spawn(process.execPath, [scriptPath], {
-      env: process.env,
+      env: {
+        ...process.env,
+        BUNDLE_RUN_STARTED_AT_MS: String(bundleStartedAtMs ?? Date.now()),
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    streamLines(child.stdout, (line) => console.log(`  [${label}] ${line}`));
+    streamLines(child.stdout, (line) => {
+      console.log(`  [${label}] ${line}`);
+      const idx = line.indexOf('{"event":"seed_complete"');
+      if (idx >= 0) {
+        try {
+          lastSeedComplete = JSON.parse(line.slice(idx));
+        } catch { /* malformed JSON — keep previous */ }
+      }
+    });
     streamLines(child.stderr, (line) => console.warn(`  [${label}] ${line}`));
 
     let settled = false;
@@ -156,7 +179,7 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
         // Terminal reason already logged by softKill — just record the outcome.
         settle({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})`, alreadyLogged: true });
       } else if (code === 0) {
-        settle({ elapsed, ok: true });
+        settle({ elapsed, ok: true, seedComplete: lastSeedComplete });
       } else {
         settle({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
       }
@@ -173,10 +196,33 @@ function spawnSeed(scriptPath, { timeoutMs, label }) {
  *   canonicalKey?: string,   // PR 2+: reads envelope from the canonical data key
  *   intervalMs: number,
  *   timeoutMs?: number,
+ *   dependsOn?: string[],    // labels that MUST run earlier in the array
  * }>} sections
  * @param {{ maxBundleMs?: number }} [opts]
  */
 export async function runBundle(label, sections, opts = {}) {
+  // Topological-order assertion. A consumer seeder reading a peer's
+  // Redis output in-bundle depends on the peer running first; if a
+  // future edit (e.g. alphabetizing sections) reorders them, the
+  // consumer reads last-bundle's stale output. The freshness-guard in
+  // the consumer is a safety net; this assertion is the contract.
+  // Throws on violation so misconfiguration surfaces before any cron
+  // tick runs.
+  const labelIndex = new Map(sections.map((s, i) => [s.label, i]));
+  for (let i = 0; i < sections.length; i++) {
+    const deps = sections[i].dependsOn;
+    if (!Array.isArray(deps)) continue;
+    for (const depLabel of deps) {
+      const depIdx = labelIndex.get(depLabel);
+      if (depIdx == null) {
+        throw new Error(`[Bundle:${label}] section '${sections[i].label}' dependsOn unknown label '${depLabel}'`);
+      }
+      if (depIdx >= i) {
+        throw new Error(`[Bundle:${label}] section '${sections[i].label}' dependsOn '${depLabel}' but '${depLabel}' is at index ${depIdx} (must be < ${i})`);
+      }
+    }
+  }
+
   const t0 = Date.now();
   const maxBundleMs = opts.maxBundleMs ?? Infinity;
   const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
@@ -212,14 +258,33 @@ export async function runBundle(label, sections, opts = {}) {
       continue;
     }
 
-    const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label });
+    const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label, bundleStartedAtMs: t0 });
     if (result.ok) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);
+      // Bundle-level per-section summary — emitted from parent stdout so
+      // Railway log ingestion captures it reliably even when child lines
+      // drop. Observability tools should key off this line, not per-section
+      // Run ID / Mode / seed_complete lines which are best-effort only.
+      const sc = result.seedComplete;
+      if (sc && typeof sc === 'object') {
+        console.log(`[Bundle:${label}] section=${section.label} status=OK durationMs=${sc.durationMs ?? ''} records=${sc.recordCount ?? ''} state=${sc.state || 'OK'}`);
+      } else {
+        // Seeder didn't emit seed_complete (legacy non-contract seeders, or
+        // the child's event line was dropped before parsing).
+        console.log(`[Bundle:${label}] section=${section.label} status=OK elapsed=${result.elapsed}s`);
+      }
       ran++;
     } else {
       if (!result.alreadyLogged) {
         console.error(`  [${section.label}] Failed after ${result.elapsed}s: ${result.reason}`);
       }
+      // Emit the FAILED summary to stderr (same stream as the Failed line
+      // and SIGKILL escalation log) so chronological ordering in combined
+      // output is preserved. If we went to stdout here, the line would
+      // appear before those stderr lines when consumers concatenate
+      // stdout+stderr, breaking tests (and log readers) that rely on
+      // signal-escalation ordering.
+      console.error(`[Bundle:${label}] section=${section.label} status=FAILED elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
       failed++;
     }
   }

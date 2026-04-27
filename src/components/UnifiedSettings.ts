@@ -11,8 +11,9 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
-import { isEntitled, hasFeature, onEntitlementChange } from '@/services/entitlements';
-import { getSubscription, openBillingPortal } from '@/services/billing';
+import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 
 function showToast(msg: string): void {
@@ -62,6 +63,14 @@ export class UnifiedSettings {
   private apiKeysError = '';
   private newlyCreatedKey: string | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
+  // Bounded "entitlement snapshot might still arrive" window. Starts false
+  // on open() when currentState is null, flips true on first snapshot OR
+  // after a fallback timeout so signed-in free users aren't stranded on an
+  // empty placeholder when Convex is disabled / auth times out / init
+  // silently fails (all of which leave currentState === null forever — see
+  // src/services/entitlements.ts:41,47,58,78).
+  private entitlementReady = false;
+  private entitlementReadyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -97,7 +106,12 @@ export class UnifiedSettings {
       }
 
       if (target.closest('.manage-billing-btn')) {
-        openBillingPortal();
+        // Pre-reserve the portal tab synchronously inside the click
+        // handler so the popup blocker doesn't suppress the eventual
+        // window.open inside openBillingPortal (which runs after an
+        // await of the Convex action).
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin);
         return;
       }
 
@@ -216,6 +230,10 @@ export class UnifiedSettings {
   public open(tab?: TabId): void {
     if (tab) this.activeTab = tab;
     this.resetPanelDraft();
+    // Seed entitlementReady BEFORE render() so the first paint of
+    // renderUpgradeSection branches on the current snapshot state, not the
+    // stale value left over from a previous open/close cycle.
+    this.entitlementReady = getEntitlementState() !== null;
     this.render();
     this.overlay.classList.add('active');
     localStorage.setItem('wm-settings-open', '1');
@@ -227,6 +245,7 @@ export class UnifiedSettings {
     // delivers data, so a paid API Starter user sees the upgrade CTA briefly).
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = onEntitlementChange(() => {
+      this.entitlementReady = true;
       const panel = this.overlay.querySelector<HTMLElement>('[data-panel-id="api-keys"]');
       if (panel) {
         panel.innerHTML = this.renderApiKeysContent();
@@ -236,7 +255,38 @@ export class UnifiedSettings {
           void this.loadApiKeys();
         }
       }
+      this.replaceUpgradeSection();
     });
+    // Bounded fallback: the entitlement listener can legitimately never
+    // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
+    // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
+    // Without this timer, the signed-in-free branch of renderUpgradeSection
+    // would show a blank placeholder for the entire session. 12s > the 10s
+    // auth timeout so the healthy-but-slow path lands on the real state;
+    // any later path falls back to "Upgrade to Pro" with handleUpgradeClick
+    // defensively re-checking isEntitled() at click time.
+    if (this.entitlementReadyTimer) clearTimeout(this.entitlementReadyTimer);
+    if (!this.entitlementReady) {
+      this.entitlementReadyTimer = setTimeout(() => {
+        this.entitlementReadyTimer = null;
+        if (this.entitlementReady) return;
+        this.entitlementReady = true;
+        this.replaceUpgradeSection();
+      }, 12_000);
+    }
+  }
+
+  /**
+   * Swap the .upgrade-pro-section wrapper in place. Click handlers are
+   * delegated at overlay level, so replacing the node needs no rebind.
+   */
+  private replaceUpgradeSection(): void {
+    const upgradeSection = this.overlay.querySelector('.upgrade-pro-section');
+    if (!upgradeSection) return;
+    const fresh = document.createElement('template');
+    fresh.innerHTML = this.renderUpgradeSection().trim();
+    const next = fresh.content.firstElementChild;
+    if (next) upgradeSection.replaceWith(next);
   }
 
   public close(): void {
@@ -249,6 +299,10 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    if (this.entitlementReadyTimer) {
+      clearTimeout(this.entitlementReadyTimer);
+      this.entitlementReadyTimer = null;
+    }
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -278,6 +332,15 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    // Mirror close() — without this, a destroy() during the 12s fallback
+    // window leaves the timer live; it fires after teardown and calls
+    // replaceUpgradeSection() against a detached overlay (no-op via the
+    // querySelector early return, but a stray async callback + DOM
+    // reference alive longer than intended).
+    if (this.entitlementReadyTimer) {
+      clearTimeout(this.entitlementReadyTimer);
+      this.entitlementReadyTimer = null;
+    }
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
   }
@@ -419,6 +482,34 @@ export class UnifiedSettings {
   }
 
   private renderUpgradeSection(): string {
+    // Non-Dodo premium (API key / tester key / Clerk pro role without a
+    // Convex subscription): neither "Upgrade" nor "Manage Billing" is
+    // actionable. Checked FIRST so these users don't get stuck on the
+    // loading placeholder below — their Convex entitlement snapshot may
+    // never arrive at all.
+    if (!isEntitled() && hasPremiumAccess()) {
+      return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
+    }
+    // Signed-in user whose Convex entitlement snapshot has not arrived yet
+    // AND whose bounded-wait window has not expired. Rendering "Upgrade to
+    // Pro" in this window is how paying users click through to
+    // /api/create-checkout and hit 409 duplicate_subscription — same race
+    // as the 2026-04-17/18 panel-overlay incident fixed in panel-gating.ts,
+    // different surface. The entitlementReady flag is flipped either by
+    // the onEntitlementChange listener (healthy path) or by a 12s fallback
+    // timer in open() (Convex-disabled / auth-timeout / init-fail paths
+    // where currentState would otherwise stay null forever and strand a
+    // signed-in free user on an empty placeholder).
+    if (!this.entitlementReady && getAuthState().user && getEntitlementState() === null) {
+      // `hidden` so the browser's default `[hidden] { display: none }`
+      // suppresses the empty card — without it, the base `.upgrade-pro-
+      // section` styles (margin + padding + border + surface background
+      // in main.css:22833) paint a visibly empty bordered box during the
+      // Convex cold-load window, which is exactly the state we're trying
+      // to clean up. Element stays queryable for the replaceWith swap in
+      // open().
+      return '<div class="upgrade-pro-section upgrade-pro-loading" hidden aria-hidden="true"></div>';
+    }
     if (isEntitled()) {
       const sub = getSubscription();
       const planName = sub?.displayName ?? 'Pro';
@@ -452,6 +543,27 @@ export class UnifiedSettings {
       `;
     }
 
+    // Fallback branch: 12s timer fired but Convex never delivered a
+    // snapshot. entitlementReady===true does NOT prove the user is free —
+    // it just means we've given up waiting. A paying user whose auth/query
+    // is simply very slow (beyond the 10s waitForConvexAuth timeout) would
+    // otherwise race into in-modal startCheckout here and reproduce the
+    // 409 duplicate_subscription cascade this PR exists to eliminate.
+    // Render the card with a plain anchor to /pro instead: /pro has its
+    // own entitlement gating on fresh page load, and navigating away is a
+    // no-op for backend subscription state. The `upgrade-pro-cta-link`
+    // class does NOT match the `.upgrade-pro-cta` delegated click handler
+    // (line ~95), so the browser handles the navigation natively.
+    if (getAuthState().user && getEntitlementState() === null) {
+      return `
+        <div class="upgrade-pro-section upgrade-pro-fallback">
+          <div class="upgrade-pro-title">Upgrade to Pro</div>
+          <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
+          <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
+        </div>
+      `;
+    }
+
     return `
       <div class="upgrade-pro-section">
         <div class="upgrade-pro-title">Upgrade to Pro</div>
@@ -462,6 +574,20 @@ export class UnifiedSettings {
   }
 
   private handleUpgradeClick(): void {
+    // Defense in depth: the upgrade CTA can only be clicked when either (a)
+    // the user is genuinely free-tier, or (b) the 12s fallback timer fired
+    // before the Convex snapshot arrived. In (b), the snapshot might land
+    // AFTER the timer but BEFORE the click — re-check isEntitled() here so
+    // a late-arriving "you're a paying user" state routes to the billing
+    // portal instead of triggering /api/create-checkout against an active
+    // subscription (which would 409 and re-enter the duplicate_subscription
+    // → getCustomerPortalUrl cascade this PR is trying to eliminate).
+    if (isEntitled()) {
+      this.close();
+      const reservedWin = prereserveBillingPortalTab();
+      void openBillingPortal(reservedWin);
+      return;
+    }
     this.close();
     if (this.config.isDesktopApp) {
       window.open('https://worldmonitor.app/pro', '_blank');

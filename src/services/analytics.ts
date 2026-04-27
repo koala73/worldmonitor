@@ -7,6 +7,7 @@
 
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
+import { getClerkUserCreatedAt } from './clerk';
 
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
@@ -49,6 +50,9 @@ const EVENTS = {
   'mcp-connect-attempt': true,
   'mcp-connect-success': true,
   'mcp-panel-add': true,
+  // WebMCP (in-page agent tool surface)
+  'webmcp-registered': true,
+  'webmcp-tool-invoked': true,
   // Route Explorer
   'route-explorer:opened': true,
   'route-explorer:query': true,
@@ -129,6 +133,29 @@ export function initAuthAnalytics(): void {
     const nextUserId = state.user?.id ?? null;
     if (prevUserId !== nextUserId) {
       _lastSub = null;
+      // Detect a genuine sign-UP (not a sign-in). Null→non-null id transition
+      // plus a createdAt within FRESH_SIGNUP_WINDOW_MS of now means Clerk
+      // just created this account. Firing trackSignUp on the button click
+      // would conflate "opened the sign-up modal" with "completed the flow";
+      // gating on createdAt freshness captures the successful-completion
+      // signal we actually want to measure.
+      //
+      // Durable fire-once guard: `_lastAuth` resets to null on every page
+      // load, so without a persisted marker the null→user transition looks
+      // identical on the completion reload and on any reload within the
+      // 60s freshness window. We'd re-fire trackSignUp on every tab
+      // refresh until createdAt ages out, inflating the signup count.
+      // sessionStorage scopes the marker to the browser tab — tight enough
+      // that re-install / new session reliably re-counts, wide enough that
+      // a reload mid-signup doesn't double-count.
+      if (
+        nextUserId !== null &&
+        !hasTrackedSignupInSession(nextUserId) &&
+        isLikelyFreshSignup(prevUserId, nextUserId, getClerkUserCreatedAt(), Date.now())
+      ) {
+        trackSignUp('clerk');
+        markSignupTrackedInSession(nextUserId);
+      }
     }
     _lastAuth = state;
     _syncIdentity();
@@ -161,6 +188,84 @@ export function trackSignIn(method: string): void {
 
 export function trackSignUp(method: string): void {
   track('sign-up', { method });
+}
+
+/**
+ * Window during which a freshly-observed Clerk `createdAt` is treated
+ * as "this user just signed up." 60s is conservative enough to survive
+ * network jitter between Clerk's user.created and the client seeing
+ * the auth-state transition, while staying tight enough to reject
+ * returning-user sign-ins on accounts created weeks ago.
+ */
+export const FRESH_SIGNUP_WINDOW_MS = 60_000;
+
+/**
+ * Pure predicate: was the just-observed auth transition a fresh sign-up?
+ *
+ * Exported for testability. Do not read Date.now() or Clerk state from
+ * inside this function — callers pass both, so tests can pin time and
+ * user state.
+ */
+/**
+ * Lower bound for clock skew. A createdAt earlier-than-now by up to
+ * this amount is treated as "now" for freshness purposes — tolerates
+ * client clocks that lag the server. Bigger negatives (createdAt
+ * unrealistically far in the future) are rejected as malformed.
+ */
+const FRESH_SIGNUP_CLOCK_SKEW_MS = 5_000;
+
+/**
+ * localStorage-backed fire-once guard, keyed by user id. Originally used
+ * sessionStorage but sessionStorage is per-TAB — a user who signs up and
+ * then opens a second tab on the app within the 60s createdAt freshness
+ * window would fire a second trackSignUp from that fresh tab's
+ * `_lastAuth=null → user` transition. localStorage is shared across
+ * tabs in the same browser profile, so once any tab marks the user as
+ * tracked, no other tab for the same user will re-fire.
+ *
+ * Keyed per user id so account switches within the same browser still
+ * correctly track each user's first signup (rare but valid). The key
+ * never needs to be cleaned up because Clerk user ids are effectively
+ * unique forever — a deleted user's key is harmless and the storage
+ * footprint is trivial (one byte per user who ever signed up here).
+ *
+ * Read/write are try/catched because storage throws in private-mode /
+ * quota-exceeded / disabled scenarios; we fail open (track, don't
+ * persist) rather than swallow signups.
+ */
+const SIGNUP_TRACKED_KEY_PREFIX = 'wm-signup-tracked:';
+
+export function hasTrackedSignupInSession(userId: string): boolean {
+  try {
+    return window.localStorage.getItem(SIGNUP_TRACKED_KEY_PREFIX + userId) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markSignupTrackedInSession(userId: string): void {
+  try {
+    window.localStorage.setItem(SIGNUP_TRACKED_KEY_PREFIX + userId, '1');
+  } catch {
+    // Storage unavailable — we'll just risk a single double-count on
+    // reload instead of crashing analytics init.
+  }
+}
+
+export function isLikelyFreshSignup(
+  prevUserId: string | null,
+  nextUserId: string | null,
+  createdAtMs: number | null,
+  nowMs: number,
+): boolean {
+  if (prevUserId !== null) return false;
+  if (nextUserId === null) return false;
+  if (createdAtMs === null) return false;
+  const age = nowMs - createdAtMs;
+  // Accept:   -5s  ≤ age ≤ 60s  (brief clock skew tolerance + fresh window)
+  // Reject: < -5s (createdAt unrealistically far in the future — malformed)
+  //         > 60s (returning user, not a fresh signup)
+  return age >= -FRESH_SIGNUP_CLOCK_SKEW_MS && age <= FRESH_SIGNUP_WINDOW_MS;
 }
 
 export function trackSignOut(): void {

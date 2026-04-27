@@ -192,39 +192,74 @@ describe('getCacheKey determinism', () => {
 describe('getVesselSnapshot caching (HIGH-1)', () => {
   const src = readSrc('server/worldmonitor/maritime/v1/get-vessel-snapshot.ts');
 
-  it('has in-memory cache variables at module scope', () => {
-    assert.match(src, /let cachedSnapshot/);
-    assert.match(src, /let cacheTimestamp/);
-    assert.match(src, /let inFlightRequest/);
+  it('cache is keyed by request shape (candidates, tankers, quantized bbox)', () => {
+    // PR 3 (parity-push) replaced the prior `Record<'with'|'without'>` cache
+    // with a Map<string, SnapshotCacheSlot> where the key embeds all three
+    // axes that change response payload: includeCandidates, includeTankers,
+    // and (when present) a 1°-quantized bbox. This prevents distinct bboxes
+    // from collapsing onto a single cached response.
+    assert.match(src, /const\s+cache\s*=\s*new\s+Map<string,\s*SnapshotCacheSlot>/,
+      'cache should be a Map<string, SnapshotCacheSlot> keyed by request shape');
+    assert.match(src, /cacheKeyFor\s*\(/,
+      'cacheKeyFor() helper should compose the cache key');
+    // Key must distinguish includeCandidates, includeTankers, and bbox.
+    assert.match(src, /includeCandidates\s*\?\s*'1'\s*:\s*'0'/,
+      'cache key must encode includeCandidates');
+    assert.match(src, /includeTankers\s*\?\s*'1'\s*:\s*'0'/,
+      'cache key must encode includeTankers');
   });
 
-  it('has 5-minute TTL cache', () => {
-    assert.match(src, /SNAPSHOT_CACHE_TTL_MS\s*=\s*300[_]?000/,
-      'TTL should be 5 minutes (300000ms)');
+  it('has split TTLs for base (5min) and live tanker / bbox (60s) reads', () => {
+    // Base path (density + military-detection consumers) keeps the prior
+    // 5-min cache. Live-tanker and bbox-filtered paths drop to 60s to honor
+    // the freshness contract that drives the Energy Atlas LiveTankersLayer.
+    assert.match(src, /SNAPSHOT_CACHE_TTL_BASE_MS\s*=\s*300[_]?000/,
+      'base TTL should remain 5 minutes (300000ms) for density/disruption consumers');
+    assert.match(src, /SNAPSHOT_CACHE_TTL_LIVE_MS\s*=\s*60[_]?000/,
+      'live tanker / bbox TTL should be 60s to match the gateway live tier s-maxage');
   });
 
   it('checks cache before calling relay', () => {
-    // fetchVesselSnapshot should check cachedSnapshot before fetchVesselSnapshotFromRelay
-    const cacheCheckIdx = src.indexOf('cachedSnapshot && (now - cacheTimestamp)');
-    const relayCallIdx = src.indexOf('fetchVesselSnapshotFromRelay()');
-    assert.ok(cacheCheckIdx > -1, 'Should check cache');
+    // fetchVesselSnapshot should check slot freshness before fetchVesselSnapshotFromRelay
+    const cacheCheckIdx = src.indexOf('slot.snapshot && (now - slot.timestamp)');
+    const relayCallIdx = src.indexOf('fetchVesselSnapshotFromRelay(');
+    assert.ok(cacheCheckIdx > -1, 'Should check slot freshness');
     assert.ok(relayCallIdx > -1, 'Should have relay fetch function');
     assert.ok(cacheCheckIdx < relayCallIdx,
       'Cache check should come before relay call');
   });
 
-  it('has in-flight dedup via shared promise', () => {
-    assert.match(src, /if\s*\(inFlightRequest\)/,
-      'Should check for in-flight request');
-    assert.match(src, /inFlightRequest\s*=\s*fetchVesselSnapshotFromRelay/,
-      'Should assign in-flight promise');
-    assert.match(src, /inFlightRequest\s*=\s*null/,
+  it('has in-flight dedup via per-slot promise', () => {
+    assert.match(src, /if\s*\(slot\.inFlight\)/,
+      'Should check for in-flight request on the selected slot');
+    assert.match(src, /slot\.inFlight\s*=\s*fetchVesselSnapshotFromRelay/,
+      'Should assign in-flight promise on the slot');
+    assert.match(src, /slot\.inFlight\s*=\s*null/,
       'Should clear in-flight promise in finally block');
   });
 
   it('serves stale snapshot when relay fetch fails', () => {
-    assert.match(src, /return\s+result\s*\?\?\s*cachedSnapshot/,
-      'Should return stale cached snapshot when fresh relay fetch fails');
+    assert.match(src, /return\s+result\s*\?\?\s*slot\.snapshot/,
+      'Should return stale cached snapshot from the selected slot when fresh relay fetch fails');
+  });
+
+  it('rejects oversized bbox AND out-of-range coords with statusCode=400', () => {
+    // PR 3 (parity-push): server-side guard against a malicious or buggy
+    // global-bbox query that would pull every tanker through one request.
+    // Range guard added in #3402 review-fix: relay silently drops malformed
+    // bboxes and serves global capped subsets — handler MUST validate
+    // -90..90 / -180..180 before calling relay. Error must carry
+    // statusCode=400 or error-mapper.ts maps it to a generic 500.
+    assert.match(src, /MAX_BBOX_DEGREES\s*=\s*10/,
+      'should declare a 10° max-bbox guard');
+    assert.match(src, /class\s+BboxValidationError/,
+      'should throw BboxValidationError on invalid bbox');
+    assert.match(src, /readonly\s+statusCode\s*=\s*400/,
+      'BboxValidationError must carry statusCode=400 (error-mapper surfaces it as HTTP 400 only when the error has a statusCode property)');
+    assert.match(src, /lat\s*>=\s*-90\s*&&\s*lat\s*<=\s*90/,
+      'must validate lat is in [-90, 90]');
+    assert.match(src, /lon\s*>=\s*-180\s*&&\s*lon\s*<=\s*180/,
+      'must validate lon is in [-180, 180]');
   });
 
   // NOTE: Full integration test (mocking fetch, verifying cache hits) requires

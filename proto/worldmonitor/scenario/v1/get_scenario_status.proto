@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package worldmonitor.scenario.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ScenarioImpactCountry carries a single country's scenario impact score.
+message ScenarioImpactCountry {
+  // 2-letter ISO country code.
+  string iso2 = 1;
+  // Raw weighted impact value aggregated across the country's exposed HS2
+  // chapters. Relative-only — not a currency amount.
+  double total_impact = 2;
+  // Impact as a 0-100 share of the worst-hit country.
+  int32 impact_pct = 3;
+}
+
+// ScenarioResultTemplate carries template parameters echoed into the worker's
+// computed result so clients can render them without re-looking up the
+// template registry.
+message ScenarioResultTemplate {
+  // Display name (worker derives this from affected_chokepoint_ids; may be
+  // `tariff_shock` for tariff-type scenarios).
+  string name = 1;
+  // 0-100 percent of chokepoint capacity blocked.
+  int32 disruption_pct = 2;
+  // Estimated duration of disruption in days.
+  int32 duration_days = 3;
+  // Freight cost multiplier applied on top of bypass corridor costs.
+  double cost_shock_multiplier = 4;
+}
+
+// ScenarioResult is the computed payload the scenario-worker writes back
+// under the `scenario-result:{job_id}` Redis key. Populated only when
+// GetScenarioStatusResponse.status == "done".
+message ScenarioResult {
+  // Chokepoint ids disrupted by this scenario.
+  repeated string affected_chokepoint_ids = 1;
+  // Top 20 countries by aggregated impact, sorted desc by total_impact.
+  repeated ScenarioImpactCountry top_impact_countries = 2;
+  // Template parameters echoed from the registry.
+  ScenarioResultTemplate template = 3;
+}
+
+// GetScenarioStatusRequest polls the worker result for an enqueued job id.
+message GetScenarioStatusRequest {
+  // Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
+  // guarded by JOB_ID_RE in the handler.
+  string job_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^scenario:[0-9]{13}:[a-z0-9]{8}$",
+    (sebuf.http.query) = {name: "jobId"}
+  ];
+}
+
+// GetScenarioStatusResponse reflects the worker's lifecycle state.
+// "pending" — no key yet (job still queued or very-recent enqueue).
+// "processing" — worker has claimed the job but hasn't completed compute.
+// "done" — compute succeeded; `result` is populated.
+// "failed" — compute errored; `error` is populated.
+message GetScenarioStatusResponse {
+  string status = 1;
+  // Populated only when status == "done".
+  ScenarioResult result = 2;
+  // Populated only when status == "failed".
+  string error = 3;
+}

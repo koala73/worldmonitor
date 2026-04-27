@@ -1,0 +1,43 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://api.worldmonitor.app/",
+      "service-desc": [
+        {
+          "href": "https://www.worldmonitor.app/openapi.yaml",
+          "type": "application/vnd.oai.openapi"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://www.worldmonitor.app/docs/documentation",
+          "type": "text/html"
+        }
+      ],
+      "status": [
+        {
+          "href": "https://api.worldmonitor.app/api/health",
+          "type": "application/json"
+        }
+      ]
+    },
+    {
+      "anchor": "https://worldmonitor.app/mcp",
+      "service-desc": [
+        {
+          "href": "https://worldmonitor.app/.well-known/mcp/server-card.json",
+          "type": "application/json"
+        }
+      ]
+    },
+    {
+      "anchor": "https://worldmonitor.app/",
+      "agent-skills-index": [
+        {
+          "href": "https://worldmonitor.app/.well-known/agent-skills/index.json",
+          "type": "application/json"
+        }
+      ]
+    }
+  ]
+}

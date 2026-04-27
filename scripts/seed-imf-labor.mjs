@@ -56,9 +56,19 @@ export function buildLaborCountries({ unemployment = {}, population = {} }) {
 
     if (!lur && !lp) continue;
 
+    // IMF SDMX `LP` indicator returns Population in PERSONS (raw count,
+    // e.g. US ≈ 342_594_000), not millions. The downstream field is named
+    // `populationMillions` and consumed as such by every reader (resilience
+    // per-capita normalization in _dimension-scorers.ts; cohort builder in
+    // dry-run-resilience-rebalance.mjs; src/services/imf-country-data.ts).
+    // Divide by 1e6 here so the field name matches its semantic. Pre-fix
+    // the field stored raw persons, silently breaking the §U6 per-capita
+    // normalization (denominator was 1e6× too large → unrest score
+    // saturated at 100 for every country).
+    const popMillions = lp?.value != null ? lp.value / 1_000_000 : null;
     countries[iso2] = {
       unemploymentPct: lur?.value ?? null,
-      populationMillions: lp?.value ?? null,
+      populationMillions: popMillions,
       year: lur?.year ?? lp?.year ?? null,
     };
   }

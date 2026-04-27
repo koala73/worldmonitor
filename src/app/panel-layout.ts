@@ -65,6 +65,12 @@ import {
   DisasterCorrelationPanel,
   DefensePatentsPanel,
   HormuzPanel,
+  ChokepointStripPanel,
+  PipelineStatusPanel,
+  StorageFacilityMapPanel,
+  FuelShortagePanel,
+  EnergyDisruptionsPanel,
+  EnergyRiskOverviewPanel,
   MacroTilesPanel,
   FSIPanel,
   YieldCurvePanel,
@@ -105,7 +111,8 @@ import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/bill
 import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag } from '@/services/checkout';
+import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
@@ -184,11 +191,28 @@ export class PanelLayoutManager implements AppModule {
     //      subscription_id/status URL params and cleans them.
     //   2. Dodo overlay success — setTimeout(reload) with no URL params;
     //      we stash a session flag before the reload and consume it here.
-    const returnedFromCheckoutUrl = handleCheckoutReturn();
+    const returnResult = handleCheckoutReturn();
     const returnedFromOverlay = consumePostCheckoutFlag();
-    const returnedFromCheckout = returnedFromCheckoutUrl || returnedFromOverlay;
+    const returnedFromCheckout = returnResult.kind === 'success' || returnedFromOverlay;
     if (returnedFromCheckout) {
-      showCheckoutSuccess();
+      // Full-page return cleared its URL params; belt-and-braces clear
+      // of the attempt record here catches the success path where the
+      // overlay handler never ran (direct Dodo redirect).
+      clearCheckoutAttempt('success');
+      // waitForEntitlement: true keeps the banner mounted across the
+      // entitlement-watcher reload (post-PR-4 the watcher is the single
+      // reload source). If the user is already entitled on mount the
+      // banner goes straight to the "active" state; otherwise it waits
+      // up to 30s for the transition before surfacing a manual-refresh
+      // CTA. `email` is read from auth-state (authoritative on the main
+      // app) and masked in the banner before rendering to keep the raw
+      // address out of screenshots / screen-shares of the banner.
+      showCheckoutSuccess({
+        waitForEntitlement: true,
+        email: getAuthState().user?.email ?? null,
+      });
+    } else if (returnResult.kind === 'failed') {
+      showCheckoutFailureBanner(returnResult.rawStatus);
     }
 
     const userId = getUserId();
@@ -198,7 +222,17 @@ export class PanelLayoutManager implements AppModule {
       this.unsubscribePaymentFailureBanner = initPaymentFailureBanner();
     }
 
-    initCheckoutOverlay(() => showCheckoutSuccess());
+    // Overlay success fires BEFORE the entitlement-watcher reload. The
+    // banner stays mounted through the reload via waitForEntitlement so
+    // the user sees visual continuity from "Payment received!" through
+    // "Premium activated" without a blank intermediate state. Read the
+    // email lazily at fire-time (not at register-time) so a just-signed-
+    // in buyer who completes checkout in the same session still sees
+    // the receipt acknowledgement.
+    initCheckoutOverlay(() => showCheckoutSuccess({
+      waitForEntitlement: true,
+      email: getAuthState().user?.email ?? null,
+    }));
 
     // Reload only on a free→pro transition. Legacy-pro users whose first
     // snapshot is already pro (lastEntitled === null) must not trigger a
@@ -212,6 +246,15 @@ export class PanelLayoutManager implements AppModule {
     // transition detector would swallow that snapshot as "legacy-pro" and
     // the user would see locked panels until a manual refresh — exactly the
     // symptom that caused the 2026-04-17/18 duplicate-subscription incident.
+    //
+    // REQUIRES_SKIP_INITIAL_SNAPSHOT_BEHAVIOR — the watcher is the SOLE
+    // automatic reload source for post-checkout success (the overlay
+    // handler in checkout.ts deliberately does NOT reload). If PR #3163's
+    // fix to `skipInitialSnapshot` is ever reverted, this detector
+    // swallows the activation silently and users see locked panels for
+    // 30s until the extended-unlock timeout fires a manual-refresh CTA.
+    // Regression guard: tests/entitlement-transition.test.mts locks the
+    // "incident sequence" semantics; see mirror marker in checkout.ts.
     let lastEntitled: boolean | null = returnedFromCheckout ? false : null;
     this.unsubscribeEntitlementChange = onEntitlementChange(() => {
       const entitled = isEntitled();
@@ -426,6 +469,15 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-label">${t('header.commodity')}</span>
             </a>
             <span class="variant-divider"></span>
+            <a href="${vHref('energy', 'https://energy.worldmonitor.app')}"
+               class="variant-option ${SITE_VARIANT === 'energy' ? 'active' : ''}"
+               data-variant="energy"
+               ${vTarget('energy')}
+               title="${t('header.energy')}${SITE_VARIANT === 'energy' ? ` ${t('common.currentVariant')}` : ''}">
+              <span class="variant-icon">⚡</span>
+              <span class="variant-label">${t('header.energy')}</span>
+            </a>
+            <span class="variant-divider"></span>
             <a href="${vHref('happy', 'https://happy.worldmonitor.app')}"
                class="variant-option ${SITE_VARIANT === 'happy' ? 'active' : ''}"
                data-variant="happy"
@@ -491,6 +543,7 @@ export class PanelLayoutManager implements AppModule {
           { key: 'tech', icon: '💻', label: t('header.tech') },
           { key: 'finance', icon: '📈', label: t('header.finance') },
           { key: 'commodity', icon: '⛏️', label: t('header.commodity') },
+          { key: 'energy', icon: '⚡', label: t('header.energy') },
           { key: 'happy', icon: '☀️', label: 'Good News' },
         ];
         return variants.map(v =>
@@ -834,6 +887,12 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('energy-complex', () => new EnergyComplexPanel());
     this.createPanel('oil-inventories', () => new OilInventoriesPanel());
     this.createPanel('energy-crisis', () => new EnergyCrisisPanel());
+    this.createPanel('chokepoint-strip', () => new ChokepointStripPanel());
+    this.createPanel('pipeline-status', () => new PipelineStatusPanel());
+    this.createPanel('storage-facility-map', () => new StorageFacilityMapPanel());
+    this.createPanel('fuel-shortages', () => new FuelShortagePanel());
+    this.createPanel('energy-disruptions', () => new EnergyDisruptionsPanel());
+    this.createPanel('energy-risk-overview', () => new EnergyRiskOverviewPanel());
     this.createPanel('polymarket', () => new PredictionPanel());
 
     this.createNewsPanel('gov', 'panels.gov');

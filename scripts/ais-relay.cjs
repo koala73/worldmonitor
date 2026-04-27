@@ -7,6 +7,12 @@
  *   AISSTREAM_API_KEY=your_key
  *
  * Local: node scripts/ais-relay.cjs
+ *
+ * @notification-source: domain (ais)
+ *   Every publishNotificationEvent() call in this file builds payload.title
+ *   from structured AIS/vessel/port domain fields (MMSI, vessel name, ETA,
+ *   port code, etc.). Events are NOT RSS-origin and MUST NOT set
+ *   payload.description. Enforced by tests/notification-relay-payload-audit.test.mjs.
  */
 
 const http = require('http');
@@ -3119,9 +3125,17 @@ function matchCountryNamesInText(text) {
   return [];
 }
 
+// v4 (2026-04-26): bumped from v3 in lockstep with
+// server/worldmonitor/intelligence/v1/_shared.ts and
+// server/worldmonitor/news/v1/list-feed-digest.ts to evict cache entries
+// that previously promoted static-page titles to high/critical via the
+// LLM classifier. The relay maintains its own inline helper because
+// .cjs cannot import from .ts; the prefix-audit static-analysis test
+// (tests/news-classify-cache-prefix-audit.test.mjs) cross-checks all
+// three sites. See U4 of the plan.
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v3:${hash}`;
+  return `classify:sebuf:v4:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
@@ -6354,11 +6368,37 @@ const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.AIS_SNAPSHOT_INTE
 const CANDIDATE_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_DENSITY_ZONES = 200;
 const MAX_CANDIDATE_REPORTS = 1500;
+// Hard size cap for vesselMeta. Active global AIS fleet is ~50-70k unique
+// MMSIs at any given time (UNCTAD/MarineTraffic estimates). 50k headroom
+// covers steady state with the 24h TTL; a hostile or buggy upstream that
+// floods unique MMSIs gets bounded after this cap. Pairs with the TTL
+// loop in cleanupAggregates so eviction has both age-based and size-based
+// gates, matching the pattern used by tankerReports / candidateReports /
+// densityGrid / vesselHistory.
+const MAX_VESSEL_META = 50000;
 
 const vessels = new Map();
 const vesselHistory = new Map();
 const densityGrid = new Map();
 const candidateReports = new Map();
+// Parallel store for tanker (AIS ship type 80-89) position reports — populated
+// alongside candidateReports but with a different inclusion predicate.
+// Required by the Energy Atlas live-tanker map layer (parity-push PR 3).
+// Kept SEPARATE from candidateReports so the existing military-detection
+// consumer's contract is unchanged.
+const tankerReports = new Map();
+
+// MMSI → { shipType, shipName, lastSeen } cache populated from
+// ShipStaticData messages. AISStream's PositionReport message does NOT
+// carry ShipType in MetaData (per their schema), so a relay that filters
+// to PositionReport-only never gets the type signal — tanker classification
+// (which needs shipType ∈ 80..89) is impossible on PositionReport alone.
+// Static data arrives every ~6 minutes per MMSI so the cache hits steady
+// state quickly. Without this, tankerReports stays permanently empty and
+// the live-tanker layer renders zero vessels — root cause identified
+// 2026-04-25 when the layer shipped (#3402) but rendered empty.
+const vesselMeta = new Map();
+const VESSEL_META_TTL_MS = 24 * 60 * 60 * 1000; // 24h — well over the 6-min broadcast cycle
 
 let snapshotSequence = 0;
 let lastSnapshot = null;
@@ -6418,9 +6458,15 @@ function getGridKey(lat, lon) {
   return `${gridLat},${gridLon}`;
 }
 
-function isLikelyMilitaryCandidate(meta) {
+function isLikelyMilitaryCandidate(meta, resolvedShipType) {
   const mmsi = String(meta?.MMSI || '');
-  const shipType = Number(meta?.ShipType);
+  // Prefer caller-resolved shipType (typically from vesselMeta cache) so
+  // PositionReport callers — where MetaData lacks ShipType — still hit the
+  // type-based military arm (35/55/50-59) instead of relying purely on
+  // NAVAL_PREFIX_RE + MMSI-suffix fallbacks.
+  const shipType = Number.isFinite(Number(resolvedShipType))
+    ? Number(resolvedShipType)
+    : Number(meta?.ShipType);
   const name = (meta?.ShipName || '').trim().toUpperCase();
 
   if (Number.isFinite(shipType) && (shipType === 35 || shipType === 55 || (shipType >= 50 && shipType <= 59))) {
@@ -6555,6 +6601,12 @@ function processRawUpstreamMessage(raw) {
     const parsed = JSON.parse(raw);
     if (parsed?.MessageType === 'PositionReport') {
       processPositionReportForSnapshot(parsed);
+    } else if (parsed?.MessageType === 'ShipStaticData') {
+      // Cache ShipType + ShipName by MMSI so subsequent PositionReports
+      // can classify the vessel as a tanker. AISStream broadcasts static
+      // data ~every 6 min per vessel; in steady state the cache covers
+      // most active MMSIs within minutes of relay startup.
+      processShipStaticDataForMeta(parsed);
     }
   } catch {
     // Ignore malformed upstream payloads
@@ -6575,6 +6627,34 @@ function processRawUpstreamMessage(raw) {
   }
 }
 
+function processShipStaticDataForMeta(data) {
+  // AISStream Type 5 (ShipStaticData). Carries ShipType, ShipName, IMO,
+  // CallSign, dimensions. We only need ShipType + ShipName for classification.
+  const meta = data?.MetaData;
+  const sd = data?.Message?.ShipStaticData;
+  if (!meta || !sd) return;
+  // MMSI fallback: AISStream's PositionReport wrapper puts MMSI under
+  // MetaData.MMSI, but the ShipStaticData payload sample shows MMSI mirrored
+  // as `UserID` on the message body itself. Read MetaData.MMSI first (the
+  // documented wrapper field), then fall back to the message-body field so
+  // a wrapper schema variant doesn't silently re-empty vesselMeta.
+  const mmsi = String(meta.MMSI || sd.UserID || '');
+  if (!mmsi) return;
+  // ShipType lives in the message body, not MetaData, on Type 5 frames.
+  // Gate on `> 0` (not just `Number.isFinite`) so that Number(null) === 0
+  // and AIS code 0 ("Not available" per ITU-R M.1371) don't overwrite a
+  // previously-cached valid type. Otherwise a vessel that broadcasts
+  // {Type: 85} then later {Type: null} would be downgraded to non-tanker
+  // because the second write replaces the first with shipType=0.
+  const shipType = Number(sd.Type);
+  if (!Number.isFinite(shipType) || shipType <= 0) return;
+  vesselMeta.set(mmsi, {
+    shipType,
+    shipName: (sd.Name || meta.ShipName || '').trim(),
+    lastSeen: Date.now(),
+  });
+}
+
 function processPositionReportForSnapshot(data) {
   const meta = data?.MetaData;
   const pos = data?.Message?.PositionReport;
@@ -6589,13 +6669,29 @@ function processPositionReportForSnapshot(data) {
 
   const now = Date.now();
 
+  // Resolve ShipType ONCE per position report and feed it to every consumer
+  // below (vessels record, military classifier, tanker capture). Pre-fix,
+  // each consumer read meta.ShipType directly — but AISStream's PositionReport
+  // MetaData does NOT carry that field; ShipType only arrives via Type 5
+  // ShipStaticData frames cached in vesselMeta. The consequence wasn't just
+  // an empty tanker layer (PR #3410 original scope) — `vessels[mmsi].shipType`
+  // was also undefined, so classifyVesselType(vessel?.shipType) used by
+  // chokepoint transit logging at line ~6555 always returned 'other'. That
+  // silently broke per-type transit counts in /seedChokepointTransits and
+  // every downstream consumer of transit-by-type breakdowns. PR3410 review
+  // catch — same root cause, same vesselMeta cache fixes all three sites.
+  const cachedMeta = vesselMeta.get(mmsi);
+  const effectiveShipType = Number.isFinite(Number(meta.ShipType))
+    ? Number(meta.ShipType)
+    : (cachedMeta ? cachedMeta.shipType : undefined);
+
   vessels.set(mmsi, {
     mmsi,
-    name: meta.ShipName || '',
+    name: meta.ShipName || (cachedMeta && cachedMeta.shipName) || '',
     lat,
     lon,
     timestamp: now,
-    shipType: meta.ShipType,
+    shipType: effectiveShipType,
     heading: pos.TrueHeading,
     speed: pos.Sog,
     course: pos.Cog,
@@ -6624,13 +6720,33 @@ function processPositionReportForSnapshot(data) {
   // Maintain exact chokepoint membership so moving vessels don't get "stuck" in old buckets.
   updateVesselChokepoints(mmsi, lat, lon);
 
-  if (isLikelyMilitaryCandidate(meta)) {
+  if (isLikelyMilitaryCandidate(meta, effectiveShipType)) {
     candidateReports.set(mmsi, {
       mmsi,
-      name: meta.ShipName || '',
+      name: meta.ShipName || (cachedMeta && cachedMeta.shipName) || '',
       lat,
       lon,
-      shipType: meta.ShipType,
+      shipType: effectiveShipType,
+      heading: pos.TrueHeading,
+      speed: pos.Sog,
+      course: pos.Cog,
+      timestamp: now,
+    });
+  }
+
+  // Tanker capture for the Energy Atlas live-tanker layer. AIS ship type
+  // 80-89 covers all tanker subtypes per ITU-R M.1371 (oil/chemical tanker,
+  // hazardous cargo classes A-D, and other tanker variants). Stored in a
+  // SEPARATE Map from candidateReports so the existing military-detection
+  // consumer never sees tankers (their contract is unchanged).
+  const shipType = Number.isFinite(Number(effectiveShipType)) ? Number(effectiveShipType) : NaN;
+  if (Number.isFinite(shipType) && shipType >= 80 && shipType <= 89) {
+    tankerReports.set(mmsi, {
+      mmsi,
+      name: (cachedMeta && cachedMeta.shipName) || meta.ShipName || '',
+      lat,
+      lon,
+      shipType,
       heading: pos.TrueHeading,
       speed: pos.Sog,
       course: pos.Cog,
@@ -6694,6 +6810,32 @@ function cleanupAggregates() {
   }
   // Hard cap: keep freshest candidate reports.
   evictMapByTimestamp(candidateReports, MAX_CANDIDATE_REPORTS, (report) => report.timestamp || 0);
+
+  // Tanker reports: same retention window as candidate reports — a vessel
+  // that hasn't broadcast a position in CANDIDATE_RETENTION_MS is no longer
+  // useful for a live-tanker map layer. Cap at 2× the per-response cap so
+  // we have headroom for bbox filtering to find recent fixes anywhere on
+  // the globe (not just one chokepoint).
+  for (const [mmsi, report] of tankerReports) {
+    if (report.timestamp < now - CANDIDATE_RETENTION_MS) {
+      tankerReports.delete(mmsi);
+    }
+  }
+  evictMapByTimestamp(tankerReports, MAX_TANKER_REPORTS_PER_RESPONSE * 10, (report) => report.timestamp || 0);
+
+  // vesselMeta TTL eviction: drop entries older than VESSEL_META_TTL_MS so
+  // long-running relays don't accumulate metadata for vessels that have
+  // sailed out of any tracked region. ShipStaticData is rebroadcast every
+  // ~6 min, so a 24h TTL covers vessels with intermittent visibility.
+  for (const [mmsi, entry] of vesselMeta) {
+    if (entry.lastSeen < now - VESSEL_META_TTL_MS) {
+      vesselMeta.delete(mmsi);
+    }
+  }
+  // Hard size cap as defense-in-depth against a hostile/buggy upstream
+  // flooding unique MMSIs faster than the TTL eviction can drain them.
+  // Matches the pattern used by every peer Map in this function.
+  evictMapByTimestamp(vesselMeta, MAX_VESSEL_META, (entry) => entry.lastSeen || 0);
 
   // Clean chokepoint buckets: remove stale vessels
   for (const [cpName, bucket] of chokepointBuckets) {
@@ -6836,6 +6978,55 @@ function getCandidateReportsSnapshot() {
   return Array.from(candidateReports.values())
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, MAX_CANDIDATE_REPORTS);
+}
+
+// Server-side cap for tanker_reports per request — protects the response
+// payload from a misbehaving filter that returns thousands of vessels.
+// 200/zone × 6 chokepoints in worst case is well under any practical
+// CDN/edge payload budget. Energy Atlas live-tanker layer also caps
+// client-side on top of this.
+const MAX_TANKER_REPORTS_PER_RESPONSE = 200;
+
+/**
+ * Parse a "bbox" query param of the form "swLat,swLon,neLat,neLon" into a
+ * {sw: {lat, lon}, ne: {lat, lon}} or null if absent / malformed.
+ *
+ * Validates:
+ *   - 4 comma-separated finite numbers
+ *   - sw <= ne (after normalization)
+ *   - bbox size ≤ 10° on both lat and lon (10° max per parity-push plan U7;
+ *     prevents pulling every vessel through one query)
+ *
+ * @param {string | null | undefined} raw
+ * @returns {{ sw: {lat:number, lon:number}, ne: {lat:number, lon:number} } | null}
+ */
+function parseBbox(raw) {
+  if (!raw) return null;
+  const parts = String(raw).split(',').map(Number);
+  if (parts.length !== 4 || parts.some((v) => !Number.isFinite(v))) return null;
+  const [swLat, swLon, neLat, neLon] = parts;
+  if (swLat > neLat || swLon > neLon) return null;
+  if (swLat < -90 || neLat > 90 || swLon < -180 || neLon > 180) return null;
+  if (neLat - swLat > 10 || neLon - swLon > 10) return null; // 10° guard
+  return { sw: { lat: swLat, lon: swLon }, ne: { lat: neLat, lon: neLon } };
+}
+
+/**
+ * Filtered + capped tanker reports. Sorted by recency of last fix so the
+ * 200-cap keeps the most-recently-seen vessels rather than a random subset.
+ *
+ * @param {{ sw: {lat:number,lon:number}, ne: {lat:number,lon:number} } | null} bbox
+ */
+function getTankerReportsSnapshot(bbox) {
+  let arr = Array.from(tankerReports.values());
+  if (bbox) {
+    arr = arr.filter(
+      (r) => r.lat >= bbox.sw.lat && r.lat <= bbox.ne.lat &&
+             r.lon >= bbox.sw.lon && r.lon <= bbox.ne.lon,
+    );
+  }
+  arr.sort((a, b) => b.timestamp - a.timestamp);
+  return arr.slice(0, MAX_TANKER_REPORTS_PER_RESPONSE);
 }
 
 function buildSnapshot() {
@@ -8785,19 +8976,40 @@ const server = http.createServer(async (req, res) => {
     buildSnapshot(); // ensures cache is warm
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const includeCandidates = url.searchParams.get('candidates') === 'true';
-    const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
-    const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
-    const br = includeCandidates ? lastSnapshotWithCandBrotli : lastSnapshotBrotli;
+    const includeTankers = url.searchParams.get('tankers') === 'true';
+    const bbox = parseBbox(url.searchParams.get('bbox'));
 
-    if (json) {
-      sendPreGzipped(req, res, 200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=2',
-        'CDN-Cache-Control': 'public, max-age=10',
-      }, json, gz, br);
+    // Fast path: pre-gzipped cache covers the {with|without}-candidates
+    // case only (no tankers, no bbox). Used by the existing AIS density +
+    // military-detection consumers, which are the vast majority of traffic.
+    if (!includeTankers && !bbox) {
+      const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
+      const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
+      const br = includeCandidates ? lastSnapshotWithCandBrotli : lastSnapshotBrotli;
+      if (json) {
+        sendPreGzipped(req, res, 200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=2',
+          'CDN-Cache-Control': 'public, max-age=10',
+        }, json, gz, br);
+      } else {
+        const payload = { ...lastSnapshot, candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [], tankerReports: [] };
+        sendCompressed(req, res, 200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=2',
+          'CDN-Cache-Control': 'public, max-age=10',
+        }, JSON.stringify(payload));
+      }
     } else {
-      // Cold start fallback
-      const payload = { ...lastSnapshot, candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [] };
+      // Live-tanker path: bbox-filtered + tanker-included responses skip the
+      // pre-gzipped cache (bbox space would explode the cache key set).
+      // Handler-side 60s cache (server/worldmonitor/maritime/v1/get-vessel-snapshot.ts)
+      // and the gateway 'live' tier absorb identical-bbox requests.
+      const payload = {
+        ...lastSnapshot,
+        candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [],
+        tankerReports: includeTankers ? getTankerReportsSnapshot(bbox) : [],
+      };
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=2',
@@ -10484,7 +10696,13 @@ function connectUpstream() {
     socket.send(JSON.stringify({
       APIKey: API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
-      FilterMessageTypes: ['PositionReport'],
+      // ShipStaticData (AIS Type 5) carries ShipType, which PositionReport
+      // does not. Required for tanker classification on the Energy Atlas
+      // live-tanker layer — without it, vesselMeta cache stays empty and
+      // tankerReports never populates. Static data is broadcast every ~6
+      // min per vessel (ITU-R M.1371), so the volume add is small relative
+      // to PositionReport (which broadcasts every 2-10s underway).
+      FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
     }));
   });
 

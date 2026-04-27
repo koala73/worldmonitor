@@ -812,8 +812,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       const result = await module.listMilitaryFlights({}, request);
       assert.deepEqual(
         result.flights.map((flight) => flight.id),
-        ['in-bounds'],
-        'response should not include out-of-viewport flights',
+        ['IN-BOUNDS'],
+        'response should not include out-of-viewport flights (hex_code canonical form is uppercase)',
       );
 
       assert.equal(fetchUrls.length, 1);
@@ -871,6 +871,76 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         result.flights.map((flight) => flight.id),
         ['cache-in'],
         'cached quantized-cell payload must be re-filtered to request bbox',
+      );
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  // #3277 — fetchStaleFallback NEG_TTL parity with the legacy
+  // /api/military-flights handler. Without the negative cache, a sustained
+  // relay+seed outage would Redis-hammer the stale key on every request.
+  it('suppresses stale Redis read for 30s after a stale-key miss (NEG_TTL parity)', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    module._resetStaleNegativeCacheForTests();
+
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const staleGetCalls = [];
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        if (raw.includes('military%3Aflights%3Astale%3Av1')) {
+          staleGetCalls.push(raw);
+        }
+        // Both keys empty — drives cachedFetchJson to call the fetcher
+        // (which returns null because no relay) and then the handler falls
+        // through to fetchStaleFallback (which returns null because stale
+        // is also empty → arms the negative cache).
+        return jsonResponse({ result: null });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+
+      // Call 1 — live empty + stale empty. Stale key MUST be read once,
+      // and the negative cache MUST be armed for the next 30s.
+      const r1 = await module.listMilitaryFlights(ctx, request);
+      assert.deepEqual(r1.flights, [], 'no live, no stale → empty response');
+      assert.equal(staleGetCalls.length, 1, 'first call reads stale key once');
+
+      // Call 2 — within the 30s negative-cache window. Live cache may be
+      // re-checked but the stale key MUST NOT be re-read.
+      staleGetCalls.length = 0;
+      const r2 = await module.listMilitaryFlights(ctx, request);
+      assert.deepEqual(r2.flights, [], 'still empty during negative-cache window');
+      assert.equal(
+        staleGetCalls.length,
+        0,
+        'second call within NEG_TTL window must not re-read stale key',
+      );
+
+      // Reset the negative cache (simulates wall-clock advance past 30s) →
+      // stale read should resume.
+      module._resetStaleNegativeCacheForTests();
+      const r3 = await module.listMilitaryFlights(ctx, request);
+      assert.deepEqual(r3.flights, []);
+      assert.equal(
+        staleGetCalls.length,
+        1,
+        'after negative-cache reset, stale key is re-read',
       );
     } finally {
       cleanup();

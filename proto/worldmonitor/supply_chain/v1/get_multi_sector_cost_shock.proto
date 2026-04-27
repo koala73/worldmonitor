@@ -1,0 +1,58 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
+
+message MultiSectorCostShock {
+  // HS2 chapter code (e.g. "27" mineral fuels, "85" electronics).
+  string hs2 = 1;
+  // Friendly chapter label (e.g. "Energy", "Electronics").
+  string hs2_label = 2;
+  // Total annual import value (USD) for this sector.
+  double import_value_annual = 3;
+  // Bypass-corridor freight uplift fraction (0.10 == +10% per ton).
+  double freight_added_pct_per_ton = 4;
+  // War-risk insurance premium (basis points) sourced from the chokepoint tier.
+  int32 war_risk_premium_bps = 5;
+  // Bypass-corridor transit penalty (informational).
+  int32 added_transit_days = 6;
+  double total_cost_shock_per_day = 7;
+  double total_cost_shock_30_days = 8;
+  double total_cost_shock_90_days = 9;
+  // Cost for the requested closure_days window.
+  double total_cost_shock = 10;
+  // Echoes the clamped closure duration used for total_cost_shock (1-365).
+  int32 closure_days = 11;
+}
+
+message GetMultiSectorCostShockRequest {
+  string iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "iso2"}
+  ];
+  string chokepoint_id = 2 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "chokepointId"}
+  ];
+  // Closure-window duration in days. Server clamps to [1, 365]. Defaults to 30.
+  int32 closure_days = 3 [(sebuf.http.query) = {name: "closureDays"}];
+}
+
+message GetMultiSectorCostShockResponse {
+  string iso2 = 1;
+  string chokepoint_id = 2;
+  // Server-clamped closure-window duration in days (1-365).
+  int32 closure_days = 3;
+  WarRiskTier war_risk_tier = 4;
+  // Per-sector shock entries (10 seeded HS2 codes), sorted by total_cost_shock_per_day desc.
+  repeated MultiSectorCostShock sectors = 5;
+  // Sum of total_cost_shock across all sectors.
+  double total_added_cost = 6;
+  string fetched_at = 7;
+  // Populated when no seeded import data is available for the country.
+  string unavailable_reason = 8;
+}

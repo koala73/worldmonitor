@@ -6,6 +6,7 @@ import {
   writeFreshnessMetadata,
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -19,24 +20,40 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
   || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v9:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v9';
+// Bumped v13 → v14 in lockstep with server/worldmonitor/resilience/v1/
+// _shared.ts for plan 2026-04-25-004 Phase 2 (Ship 2) — adds the new
+// `financialSystemExposure` dim to the headline score; v13 entries lack
+// the new dim's contribution so caching them post-deploy would surface
+// stale partial-shape payloads.
+// Earlier: v12 → v13 for plan 2026-04-25-004 Phase 1 (tradeSanctions →
+// tradePolicy rename + dropped OFAC component + reweighted formula).
+// Earlier: v11 → v12 for PR 3A §net-imports denominator (plan
+// 2026-04-24-002). Seeder and server MUST agree on the prefix or the
+// seeder writes scores the handler will never read.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v16:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v16';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
-const INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
+const INTERVAL_KEY_PREFIX = 'resilience:intervals:v2:';
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DRAWS = 100;
 
+// Plan 2026-04-26-002 review fix: 6-domain weights (recovery added) in
+// lockstep with server/worldmonitor/resilience/v1/_dimension-scorers.ts
+// `RESILIENCE_DOMAIN_WEIGHTS`. Bumped INTERVAL_KEY_PREFIX v1 → v2 in
+// lockstep so old 5-domain bands don't feed scoreInterval/rankStable
+// after the v15→v16 score-prefix bump.
 const DOMAIN_WEIGHTS = {
-  economic: 0.22,
-  infrastructure: 0.20,
-  energy: 0.15,
-  'social-governance': 0.25,
-  'health-food': 0.18,
+  economic: 0.17,
+  infrastructure: 0.15,
+  energy: 0.11,
+  'social-governance': 0.19,
+  'health-food': 0.13,
+  recovery: 0.25,
 };
 
 const DOMAIN_ORDER = [
@@ -45,6 +62,7 @@ const DOMAIN_ORDER = [
   'energy',
   'social-governance',
   'health-food',
+  'recovery',
 ];
 
 export function computeIntervals(domainScores, domainWeights, draws = DRAWS) {
@@ -144,9 +162,20 @@ async function seedResilienceScores() {
   const { url, token } = getRedisCredentials();
 
   const index = await redisGetJson(url, token, RESILIENCE_STATIC_INDEX_KEY);
-  const countryCodes = (index?.countries ?? [])
+  // Plan 2026-04-26-002 §U2 (PR 1): defense-in-depth — filter to the
+  // rankable universe (193 UN members + 3 SARs) here too, in case the
+  // static index was seeded by an older version of seed-resilience-static
+  // that hadn't yet applied the same filter. Both seeders consume the
+  // same `isInRankableUniverse` helper to ensure their universes match;
+  // this defensive filter prevents transient mismatch during deploys.
+  const allCountries = (index?.countries ?? [])
     .map((c) => String(c || '').trim().toUpperCase())
     .filter((c) => /^[A-Z]{2}$/.test(c));
+  const countryCodes = allCountries.filter(isInRankableUniverse);
+  const droppedCount = allCountries.length - countryCodes.length;
+  if (droppedCount > 0) {
+    console.log(`[resilience-scores] Filtered ${droppedCount} non-rankable territories from static index (transitional — seed-resilience-static will catch up on next cron tick)`);
+  }
 
   if (countryCodes.length === 0) {
     console.warn('[resilience-scores] Static index is empty — has seed-resilience-static run this year?');
@@ -335,7 +364,7 @@ async function main() {
   if (!result.skipped && (result.recordCount ?? 0) > 0 && !result.rankingPresent) {
     // Observability only — seeder never writes seed-meta. Health will flag the
     // stale meta on its own if this persists across multiple cron ticks.
-    console.warn('[resilience-scores] resilience:ranking:v9 absent after rebuild attempt; handler-side coverage gate likely tripped. Next cron will retry.');
+    console.warn(`[resilience-scores] ${RESILIENCE_RANKING_CACHE_KEY} absent after rebuild attempt; handler-side coverage gate likely tripped. Next cron will retry.`);
   }
 }
 

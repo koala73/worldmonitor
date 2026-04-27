@@ -16,4 +16,25 @@ await runBundle('energy-sources', [
   // service exists for it, so health has been EMPTY (seedAgeMin: null) since the seeder
   // was added.
   { label: 'SPR-Policies', script: 'seed-spr-policies.mjs', seedMetaKey: 'energy:spr-policies', canonicalKey: 'energy:spr-policies:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
+  // Pipeline registries (gas + oil) — two separate scripts because runSeed()
+  // hard-exits its terminal paths (process.exit in _seed-utils at ~9 sites),
+  // so two runSeed() calls in one process would leave the second key
+  // unwritten. Shared helpers live in scripts/_pipeline-registry.mjs; curated
+  // data in scripts/data/pipelines-{gas,oil}.json.
+  { label: 'Pipelines-Gas', script: 'seed-pipelines-gas.mjs', seedMetaKey: 'energy:pipelines-gas', canonicalKey: 'energy:pipelines:gas:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
+  { label: 'Pipelines-Oil', script: 'seed-pipelines-oil.mjs', seedMetaKey: 'energy:pipelines-oil', canonicalKey: 'energy:pipelines:oil:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
+  // Storage facilities registry (UGS + SPR + LNG + crude hubs). Curated JSON
+  // at scripts/data/storage-facilities.json; shared helpers in
+  // scripts/_storage-facility-registry.mjs. Weekly cadence — registry is
+  // near-static; badge derivation happens at read-time in the RPC handler.
+  { label: 'Storage-Facilities', script: 'seed-storage-facilities.mjs', seedMetaKey: 'energy:storage-facilities', canonicalKey: 'energy:storage-facilities:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
+  // Fuel-shortage registry (v1 curated seed — classifier extends post-launch).
+  // Daily cadence because shortages move faster than registry assets.
+  { label: 'Fuel-Shortages', script: 'seed-fuel-shortages.mjs', seedMetaKey: 'energy:fuel-shortages', canonicalKey: 'energy:fuel-shortages:v1', intervalMs: DAY, timeoutMs: 60_000 },
+  // Energy disruption event log — state-machine history of pipeline/storage
+  // outages (sabotage, sanction, maintenance, etc.). Feeds the timeline in
+  // PipelineStatusPanel and StorageFacilityMapPanel drawers. Weekly cadence
+  // because curated events are mostly historical; classifier extends daily
+  // post-launch.
+  { label: 'Energy-Disruptions', script: 'seed-energy-disruptions.mjs', seedMetaKey: 'energy:disruptions', canonicalKey: 'energy:disruptions:v1', intervalMs: 7 * DAY, timeoutMs: 60_000 },
 ]);

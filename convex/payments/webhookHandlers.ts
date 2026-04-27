@@ -1,7 +1,40 @@
-import { httpAction } from "../_generated/server";
+import { httpAction, internalMutation } from "../_generated/server";
+import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../lib/env";
 import { verifyWebhookPayload } from "@dodopayments/core";
+
+/**
+ * Surfaces a Dodo webhook signature failure to Convex auto-Sentry by
+ * throwing a structured error. Called via `ctx.scheduler.runAfter(0,...)`
+ * from the signature-failure catch path so:
+ *   - the HTTP response (401) is sent immediately, unaffected
+ *   - the scheduled throw runs after the response and is captured by
+ *     Convex's automatic Sentry integration
+ *   - no SDK install is required in the Convex backend
+ *
+ * Why `internalMutation` and not `internalAction`: Convex auto-retries
+ * failed actions per its scheduler retry policy, which would produce N
+ * duplicate Sentry events per signature failure during outages.
+ * Mutations are NOT auto-retried — exactly one Sentry event per failed
+ * signature check. Don't "simplify" this to an action.
+ *
+ * Without this, a botched secret rotation could 401 every Dodo webhook
+ * silently for hours — same observability gap shape as the canary OCC
+ * bug (WORLDMONITOR-PA), just on a different surface.
+ */
+export const reportDodoSignatureFailure = internalMutation({
+  args: {
+    webhookId: v.optional(v.string()),
+    webhookTimestamp: v.optional(v.string()),
+    errorMessage: v.string(),
+  },
+  handler: async (_ctx, { webhookId, webhookTimestamp, errorMessage }) => {
+    throw new Error(
+      `[webhook] Dodo signature verification failed (webhookId=${webhookId ?? "<missing>"}, ts=${webhookTimestamp ?? "<missing>"}): ${errorMessage}`,
+    );
+  },
+});
 
 /**
  * Custom webhook HTTP action for Dodo Payments.
@@ -43,7 +76,37 @@ export const webhookHandler = httpAction(async (ctx, request) => {
       body,
     });
   } catch (error) {
+    // sentry-coverage-ok: the scheduled mutation below throws a
+    // structured error that Convex auto-Sentry captures. Required because
+    // we MUST 401 (not 500) to Dodo here — re-throwing would trigger a
+    // retry-storm. See scripts/check-sentry-coverage.mjs for the marker.
     console.error("Webhook signature verification failed:", error);
+    // Surface to Sentry via a scheduled mutation throw — runs AFTER the
+    // 401 response so Dodo's contract is preserved. Convex auto-Sentry
+    // catches the throw and reports the signature failure as an issue.
+    //
+    // Wrapped in its own try/catch: a scheduler infrastructure hiccup
+    // here MUST NOT block the 401 path. Without this guard, a thrown
+    // `runAfter` would surface as an uncaught 500 to Dodo, triggering
+    // exactly the retry-storm this whole pattern exists to prevent.
+    try {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.webhookHandlers.reportDodoSignatureFailure,
+        {
+          webhookId: webhookId ?? undefined,
+          webhookTimestamp: webhookTimestamp ?? undefined,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+      );
+    } catch (scheduleErr) {
+      // Best-effort — log and continue. The 401 below is the
+      // contract-critical path; Sentry capture is the bonus.
+      console.error(
+        "[webhook] reportDodoSignatureFailure schedule failed:",
+        scheduleErr,
+      );
+    }
     return new Response("Invalid webhook signature", { status: 401 });
   }
 

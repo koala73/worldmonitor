@@ -7,6 +7,7 @@ import type {
 
 import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
+import { isInRankableUniverse } from './_rankable-universe';
 import {
   GREY_OUT_COVERAGE_THRESHOLD,
   RESILIENCE_INTERVAL_KEY_PREFIX,
@@ -15,7 +16,9 @@ import {
   buildRankingItem,
   getCachedResilienceScores,
   listScorableCountries,
+  rankingCacheTagMatches,
   sortRankingItems,
+  stampRankingCacheTag,
   warmMissingResilienceScores,
   type ScoreInterval,
 } from './_shared';
@@ -88,8 +91,42 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     return true;
   })();
   if (!forceRefresh) {
-    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as GetResilienceRankingResponse | null;
-    if (cached != null && (cached.items.length > 0 || (cached.greyedOut?.length ?? 0) > 0)) return cached;
+    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as (GetResilienceRankingResponse & { _formula?: string }) | null;
+    // Stale-formula gate: the ranking cache key is bumped at PR deploy,
+    // but the flag flip happens later, so the v10 namespace starts out
+    // filled with 6-domain rankings. Without this check, a flip would
+    // serve the legacy ranking aggregate for up to the 12h ranking TTL
+    // even as per-country reads produced pillar-combined scores. Drop
+    // stale-formula hits so the recompute-and-publish path below runs.
+    const tagMatches = cached != null && rankingCacheTagMatches(cached);
+    if (tagMatches && (cached!.items.length > 0 || (cached!.greyedOut?.length ?? 0) > 0)) {
+      // Plan 2026-04-26-002 §U2 (PR 1, review fixup): defense-in-depth
+      // universe filter at the cached-response read too. Without this,
+      // the cache hit path returns a stale 222-country payload (pre-PR-1
+      // ranking) until either the 12h TTL expires or someone runs
+      // ?refresh=1. The filter is idempotent — a fresh post-PR-1 ranking
+      // is already universe-filtered, so this is a no-op then; a stale
+      // pre-PR-1 cached payload gets filtered at handler-time. Same
+      // recipe as `_shared.ts:listScorableCountries`. The filter
+      // preserves the rest of the cache hit (rankCounts, percentile
+      // anchors, etc.) so we don't pay the recompute cost just for
+      // universe membership.
+      const filteredItems = cached!.items.filter((item) => isInRankableUniverse(item.countryCode));
+      const filteredGreyedOut = (cached!.greyedOut ?? []).filter((item) => isInRankableUniverse(item.countryCode));
+      const droppedCount = (cached!.items.length - filteredItems.length) + ((cached!.greyedOut?.length ?? 0) - filteredGreyedOut.length);
+      if (droppedCount > 0) {
+        console.log(`[resilience-ranking] Filtered ${droppedCount} non-rankable territories from cached ranking response (transitional — next recompute will publish a clean payload)`);
+      }
+      // Strip the cache-only tag before returning to callers so the
+      // wire shape matches the generated proto response type.
+      const { _formula: _drop, ...publicResponse } = cached!;
+      void _drop;
+      return {
+        ...(publicResponse as GetResilienceRankingResponse),
+        items: filteredItems,
+        greyedOut: filteredGreyedOut,
+      };
+    }
   }
 
   const countryCodes = await listScorableCountries();
@@ -132,8 +169,12 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     // self-heal here ensures we at least log it, and the seeder also verifies
     // BOTH keys post-refresh. If either SET didn't return OK we log a warning
     // that ops can grep for, rather than silently succeeding.
+    // Tag the persisted ranking so the stale-formula gate above can
+    // detect a cross-formula cache hit after a flag flip. The tag is
+    // stripped on read before the response crosses back to callers.
+    const persistedRanking = stampRankingCacheTag(response);
     const pipelineResult = await runRedisPipeline([
-      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(response), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
+      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(persistedRanking), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
       ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({
         fetchedAt: Date.now(),
         count: response.items.length + response.greyedOut.length,

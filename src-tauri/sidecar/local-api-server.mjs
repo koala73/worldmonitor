@@ -1212,10 +1212,14 @@ async function dispatch(requestUrl, req, routes, context) {
   }
   // Registration — call Convex directly when CONVEX_URL is available (self-hosted),
   // otherwise proxy to cloud (desktop sidecar never has CONVEX_URL).
+  // Keeps the legacy /api/register-interest local path so older desktop builds
+  // continue to work; cloud fallback rewrites to the new sebuf RPC path.
   if (requestUrl.pathname === '/api/register-interest' && req.method === 'POST') {
     const convexUrl = process.env.CONVEX_URL;
     if (!convexUrl) {
-      const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'no CONVEX_URL');
+      const cloudUrl = new URL(requestUrl);
+      cloudUrl.pathname = '/api/leads/v1/register-interest';
+      const cloudResponse = await tryCloudFallback(cloudUrl, req, context, 'no CONVEX_URL');
       if (cloudResponse) return cloudResponse;
       return json({ error: 'Registration service unavailable' }, 503);
     }

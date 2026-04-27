@@ -11,7 +11,7 @@ Files here are internal / archival / pending-audit. They are **not** the source 
 | Architecture overview | `/docs/architecture.mdx` |
 | API reference (RPC) | `/docs/api/*.openapi.yaml` + https://docs.worldmonitor.app |
 | Non-RPC API endpoints | `/docs/api-{platform,brief,commerce,notifications,shipping-v2,proxies,oauth}.mdx` |
-| MCP server | `/docs/mcp.mdx` |
+| MCP server | `/docs/mcp-server.mdx` |
 | External data sources | `/docs/data-sources.mdx` |
 | Release / desktop packaging | `/docs/release-packaging.mdx`, `/docs/desktop-app.mdx` |
 | Country instability index | `/docs/country-instability-index.mdx` |

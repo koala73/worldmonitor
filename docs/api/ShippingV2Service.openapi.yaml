@@ -1,0 +1,340 @@
+openapi: 3.1.0
+info:
+    title: ShippingV2Service API
+    version: 1.0.0
+paths:
+    /api/v2/shipping/route-intelligence:
+        get:
+            tags:
+                - ShippingV2Service
+            summary: RouteIntelligence
+            description: |-
+                RouteIntelligence scores a country-pair trade route for chokepoint exposure
+                 and current disruption risk. Partner-facing; wire shape is byte-compatible
+                 with the pre-migration JSON response documented at docs/api-shipping-v2.mdx.
+            operationId: RouteIntelligence
+            parameters:
+                - name: fromIso2
+                  in: query
+                  description: Origin country, ISO-3166-1 alpha-2 uppercase.
+                  required: false
+                  schema:
+                    type: string
+                - name: toIso2
+                  in: query
+                  description: Destination country, ISO-3166-1 alpha-2 uppercase.
+                  required: false
+                  schema:
+                    type: string
+                - name: cargoType
+                  in: query
+                  description: |-
+                    Cargo type — one of: container (default), tanker, bulk, roro.
+                     Empty string defers to the server default. Unknown values are coerced to
+                     "container" to preserve legacy behavior.
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: |-
+                    2-digit HS commodity code (default "27" — mineral fuels). Non-digit
+                     characters are stripped server-side to match legacy behavior.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RouteIntelligenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/v2/shipping/webhooks:
+        get:
+            tags:
+                - ShippingV2Service
+            summary: ListWebhooks
+            description: |-
+                ListWebhooks returns the caller's registered webhooks filtered by the
+                 SHA-256 owner tag of the calling API key. The `secret` is intentionally
+                 omitted from the response; use rotate-secret to obtain a new one.
+            operationId: ListWebhooks
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListWebhooksResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+        post:
+            tags:
+                - ShippingV2Service
+            summary: RegisterWebhook
+            description: |-
+                RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
+                 Returns the subscriberId and the raw HMAC secret — the secret is never
+                 returned again except via rotate-secret.
+            operationId: RegisterWebhook
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RegisterWebhookRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RegisterWebhookResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        RouteIntelligenceRequest:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: Origin country, ISO-3166-1 alpha-2 uppercase.
+                toIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: Destination country, ISO-3166-1 alpha-2 uppercase.
+                cargoType:
+                    type: string
+                    description: |-
+                        Cargo type — one of: container (default), tanker, bulk, roro.
+                         Empty string defers to the server default. Unknown values are coerced to
+                         "container" to preserve legacy behavior.
+                hs2:
+                    type: string
+                    description: |-
+                        2-digit HS commodity code (default "27" — mineral fuels). Non-digit
+                         characters are stripped server-side to match legacy behavior.
+            required:
+                - fromIso2
+                - toIso2
+            description: |-
+                RouteIntelligenceRequest scopes a route-intelligence query by origin and
+                 destination country. Query-parameter names are preserved verbatim from the
+                 legacy partner contract (fromIso2/toIso2/cargoType/hs2 — camelCase).
+        RouteIntelligenceResponse:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                toIso2:
+                    type: string
+                cargoType:
+                    type: string
+                hs2:
+                    type: string
+                primaryRouteId:
+                    type: string
+                chokepointExposures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChokepointExposure'
+                bypassOptions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BypassOption'
+                warRiskTier:
+                    type: string
+                    description: War-risk tier enum string, e.g., "WAR_RISK_TIER_NORMAL" or "WAR_RISK_TIER_ELEVATED".
+                disruptionScore:
+                    type: integer
+                    format: int32
+                    description: Disruption score of the primary chokepoint, 0-100.
+                fetchedAt:
+                    type: string
+                    description: ISO-8601 timestamp of when the response was assembled.
+            description: |-
+                RouteIntelligenceResponse wire shape preserved byte-for-byte from the
+                 pre-migration JSON at docs/api-shipping-v2.mdx. `fetched_at` is intentionally
+                 a string (ISO-8601) rather than int64 epoch ms because partners depend on
+                 the ISO-8601 shape.
+        ChokepointExposure:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                chokepointName:
+                    type: string
+                exposurePct:
+                    type: integer
+                    format: int32
+            description: Single chokepoint exposure for a route.
+        BypassOption:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                type:
+                    type: string
+                    description: Type of bypass (e.g., "maritime_detour", "land_corridor").
+                addedTransitDays:
+                    type: integer
+                    format: int32
+                addedCostMultiplier:
+                    type: number
+                    format: double
+                activationThreshold:
+                    type: string
+                    description: Enum-like string, e.g., "DISRUPTION_SCORE_60".
+            description: Single bypass-corridor option around a disrupted chokepoint.
+        RegisterWebhookRequest:
+            type: object
+            properties:
+                callbackUrl:
+                    type: string
+                    maxLength: 2048
+                    minLength: 8
+                    description: |-
+                        HTTPS callback URL. Must not resolve to a private/loopback address at
+                         registration time (SSRF guard). The delivery worker re-validates the
+                         resolved IP before each send to mitigate DNS rebinding.
+                chokepointIds:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Zero or more chokepoint IDs to subscribe to. Empty list subscribes to
+                             the entire CHOKEPOINT_REGISTRY. Unknown IDs fail with 400.
+                alertThreshold:
+                    type: integer
+                    maximum: 100
+                    minimum: 0
+                    format: int32
+                    description: |-
+                        Disruption-score threshold for delivery, 0-100. Default 50.
+                         proto3 `optional` so the handler can distinguish "partner explicitly sent
+                         0 (deliver every alert)" from "partner omitted the field (apply default
+                         50)". Without `optional`, both serialise to the proto3 scalar default of
+                         0 and the handler can't tell them apart — flagged in #3242 review.
+            required:
+                - callbackUrl
+            description: |-
+                RegisterWebhookRequest creates a new chokepoint-disruption webhook
+                 subscription. Wire shape is byte-compatible with the pre-migration
+                 legacy POST body.
+        RegisterWebhookResponse:
+            type: object
+            properties:
+                subscriberId:
+                    type: string
+                    description: '`wh_` prefix + 24 lowercase hex chars (12 random bytes).'
+                secret:
+                    type: string
+                    description: Raw 64-char lowercase hex secret (32 random bytes). No `whsec_` prefix.
+            description: |-
+                RegisterWebhookResponse wire shape preserved exactly — partners persist the
+                 `secret` because the server never returns it again except via rotate-secret.
+        ListWebhooksRequest:
+            type: object
+            description: |-
+                ListWebhooksRequest has no fields — the owner is derived from the caller's
+                 API-key fingerprint (SHA-256 of X-WorldMonitor-Key).
+        ListWebhooksResponse:
+            type: object
+            properties:
+                webhooks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WebhookSummary'
+            description: |-
+                ListWebhooksResponse wire shape preserved exactly: the `webhooks` field
+                 name and the omission of `secret` are part of the partner contract.
+        WebhookSummary:
+            type: object
+            properties:
+                subscriberId:
+                    type: string
+                callbackUrl:
+                    type: string
+                chokepointIds:
+                    type: array
+                    items:
+                        type: string
+                alertThreshold:
+                    type: integer
+                    format: int32
+                createdAt:
+                    type: string
+                    description: ISO-8601 timestamp of registration.
+                active:
+                    type: boolean
+            description: |-
+                Single webhook record in the list response. `secret` is intentionally
+                 omitted; use rotate-secret to obtain a new one.

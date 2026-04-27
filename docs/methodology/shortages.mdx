@@ -1,0 +1,98 @@
+---
+title: "Fuel Shortage Alert Methodology"
+description: "How World Monitor classifies and publishes fuel shortage alerts (jet, petrol, diesel, heating oil) using an automated evidence-threshold pipeline."
+---
+
+## What we track
+
+Four product categories, two severity tiers, global coverage:
+
+| Product   | `watch` tier | `confirmed` tier |
+|-----------|--------------|------------------|
+| Jet fuel  | ✓ | ✓ |
+| Petrol    | ✓ | ✓ |
+| Diesel    | ✓ | ✓ |
+| Heating oil | ✓ | ✓ (winter only) |
+
+Price spikes alone are not shortage signals. We key on physical supply constraints: flight cancellations, station closures, formal rationing, import cuts.
+
+## Fully automated — no human review queue
+
+WorldMonitor runs every classifier fully automated. Shortage tiers are no exception. Quality comes from **tiered evidence thresholds + an LLM second-pass sanity check + auto-decay of stale rows**, not from a human reviewer.
+
+### Watch tier (automated)
+
+One credible source:
+
+- A regulator announcement (EPRA, NMDPRA, OGRA, CAA UK, DGCA), **or**
+- An airline / airport operational bulletin, **or**
+- A national wire story with ≥ 1 corroborating observation
+
+### Confirmed tier (automated, stricter bar)
+
+The `watch → confirmed` promotion requires:
+
+- **Two distinct outlets + one regulator**, or
+- **Three distinct outlets**, or
+- **One regulator + a direct operational-impact signal** (flight cancellation in an airline feed, formal rationing announcement, station-closure list)
+
+AND — the LLM second-pass must agree with the promotion. If the LLM disagrees, the row stays at `watch` until the threshold is exceeded with additional sources.
+
+### Auto-decay
+
+- `confirmed` without new corroborating signal in 7 days → auto-demotes to `watch`
+- `watch` without new signal in 14 days → auto-removed
+
+When the post-launch classifier ships, stale shortages will never persist silently — every demotion will write an entry to the planned public revision log. See [`/corrections`](/corrections) for the designed audit-surface shape and current status. Today the demotion thresholds above are the contract; the structured audit trail lands with the classifier.
+
+## Evidence transparency
+
+Every public shortage row exposes its `evidenceSources[]` inline — you can read the sources the classifier used. This is what makes WorldMonitor's shortage registry defensible without an editorial queue.
+
+For any `confirmed` row, the panel surfaces:
+
+- Outlet / regulator names
+- Source dates
+- Classifier version + confidence
+
+Agents (MCP clients) receive the same structured evidence via the `ListFuelShortages` RPC — every `FuelShortageEntry` in the response includes the full `evidence.evidenceSources[]` array, matching what the UI drawer renders.
+
+## Root-cause attribution
+
+Every shortage row carries a cause chain, not just a severity:
+
+- `chokepoint` — physical supply constraint traced to a chokepoint status change
+- `pipeline_disruption` — specific pipeline in the registry is offline
+- `sanction` — new sanctions authority list triggered an import cut
+- `upstream_refinery` — refinery turnaround or outage
+- `logistics` — port / rail / truck bottleneck
+- `policy` — deliberate government restriction
+
+## Break-glass overrides (planned)
+
+An `energy_asset_overrides` persistence layer is the designed break-glass
+surface for the rare case where a reader flags a demonstrably wrong
+classification. Writes would be admin-only and off the critical path —
+the default flow stays fully automated, and every override would emit
+an `override`-trigger entry to the revision log.
+
+**Status (v1 launch):** the override persistence layer is not yet
+implemented. Reader-flagged corrections are handled manually today via
+[GitHub issues](https://github.com/koala73/worldmonitor/issues); they
+flow through the automated override path once that layer ships
+alongside the classifier. See [`/corrections`](/corrections) for the
+planned shape of override entries.
+
+## Known limits
+
+- Non-English regulator feeds surface with some lag; we're adding them incrementally.
+- "Watch" tier in a politically-noisy country can churn — that's intentional; readers can filter to `confirmed` only if they want the stricter view.
+- Heating-oil shortages are seasonal and under-reported in wire coverage; winter months have higher signal.
+
+## Corrections
+
+See [`/corrections`](/corrections) for the planned revision-log shape
+(every tier change will ship with its trigger — `classifier` / `source`
+/ `decay` / `override` — and the sources used). The classifier that
+writes entries ships post-launch; corrections are handled manually
+today via [GitHub issues](https://github.com/koala73/worldmonitor/issues).

@@ -125,3 +125,105 @@ test('non-zero exit without timeout reports exit code', async () => {
     cleanup();
   }
 });
+
+test('injects BUNDLE_RUN_STARTED_AT_MS env into child; value is within run bounds', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-env.mjs',
+    `console.log('BUNDLE_RUN_STARTED_AT_MS=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  const before = Date.now();
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'ENV', script: '_bundle-fixture-env.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const after = Date.now();
+    assert.equal(code, 0);
+    const match = stdout.match(/BUNDLE_RUN_STARTED_AT_MS=(\d+)/);
+    assert.ok(match, `expected env var in child stdout; got:\n${stdout}`);
+    const injected = Number(match[1]);
+    assert.ok(Number.isInteger(injected), 'injected value must be an integer');
+    // Parent captured t0 at bundle start (before this test's `before` call) and
+    // child ran before `after`. So: before - tolerance <= injected <= after.
+    assert.ok(injected >= before - 5000 && injected <= after,
+      `injected=${injected} out of bounds [${before - 5000}, ${after}]`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('sibling sections share the same BUNDLE_RUN_STARTED_AT_MS (one-shot per bundle)', async () => {
+  const cleanupA = writeFixture(
+    '_bundle-fixture-env-a.mjs',
+    `console.log('TS_A=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  const cleanupB = writeFixture(
+    '_bundle-fixture-env-b.mjs',
+    `await new Promise((r) => setTimeout(r, 200));\nconsole.log('TS_B=' + process.env.BUNDLE_RUN_STARTED_AT_MS);\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'A', script: '_bundle-fixture-env-a.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'B', script: '_bundle-fixture-env-b.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 0);
+    const tsA = Number(stdout.match(/TS_A=(\d+)/)?.[1]);
+    const tsB = Number(stdout.match(/TS_B=(\d+)/)?.[1]);
+    assert.ok(tsA && tsB, `both timestamps present; stdout:\n${stdout}`);
+    // Both children read the same bundle-level t0, so the injected value is
+    // identical across siblings (NOT spawn time). This is the critical
+    // property Phase 2's bundle-freshness guard relies on.
+    assert.equal(tsA, tsB, 'siblings must share one bundle-level timestamp');
+  } finally {
+    cleanupA();
+    cleanupB();
+  }
+});
+
+test('dependsOn: throws when a dep appears later in the sections array', async () => {
+  // Consumer (depends on Producer) is at index 0 — violates the contract.
+  const cleanupC = writeFixture('_bundle-fixture-dep-consumer.mjs', `console.log('consumer');\n`);
+  const cleanupP = writeFixture('_bundle-fixture-dep-producer.mjs', `console.log('producer');\n`);
+  try {
+    const { code, stderr } = await runBundleWith([
+      { label: 'Consumer', script: '_bundle-fixture-dep-consumer.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['Producer'] },
+      { label: 'Producer', script: '_bundle-fixture-dep-producer.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.notEqual(code, 0, 'out-of-order dependsOn must cause non-zero exit');
+    assert.match(stderr, /dependsOn 'Producer' but 'Producer' is at index 1/,
+      `expected topological violation error; stderr:\n${stderr}`);
+  } finally {
+    cleanupC();
+    cleanupP();
+  }
+});
+
+test('dependsOn: passes when deps appear earlier in the sections array', async () => {
+  const cleanupP = writeFixture('_bundle-fixture-dep-producer-ok.mjs', `console.log('producer');\n`);
+  const cleanupC = writeFixture('_bundle-fixture-dep-consumer-ok.mjs', `console.log('consumer');\n`);
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'Producer', script: '_bundle-fixture-dep-producer-ok.mjs', intervalMs: 1, timeoutMs: 5000 },
+      { label: 'Consumer', script: '_bundle-fixture-dep-consumer-ok.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['Producer'] },
+    ]);
+    assert.equal(code, 0);
+    assert.match(stdout, /\[Producer\] producer/);
+    assert.match(stdout, /\[Consumer\] consumer/);
+  } finally {
+    cleanupP();
+    cleanupC();
+  }
+});
+
+test('dependsOn: throws on unknown label reference', async () => {
+  const cleanup = writeFixture('_bundle-fixture-dep-orphan.mjs', `console.log('orphan');\n`);
+  try {
+    const { code, stderr } = await runBundleWith([
+      { label: 'Orphan', script: '_bundle-fixture-dep-orphan.mjs', intervalMs: 1, timeoutMs: 5000, dependsOn: ['DoesNotExist'] },
+    ]);
+    assert.notEqual(code, 0);
+    assert.match(stderr, /dependsOn unknown label 'DoesNotExist'/,
+      `expected unknown-label error; stderr:\n${stderr}`);
+  } finally {
+    cleanup();
+  }
+});

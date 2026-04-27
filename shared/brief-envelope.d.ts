@@ -19,7 +19,7 @@
 // stripped at compose time. See PR #3143 for the notify-endpoint fix
 // that established this rule.
 
-export const BRIEF_ENVELOPE_VERSION: 2;
+export const BRIEF_ENVELOPE_VERSION: 3;
 
 /**
  * Versions the renderer accepts from Redis on READ. Always contains
@@ -69,6 +69,36 @@ export interface BriefDigest {
   threads: BriefThread[];
   /** Signals-to-watch. The "04 · Signals" page is omitted when empty. */
   signals: string[];
+  /**
+   * Non-personalised lead for the share-URL surface (v3+). Generated
+   * by `generateDigestProsePublic` with profile/greeting stripped.
+   * The renderer's public-mode lead block reads this when present
+   * and OMITS the pull-quote when absent — never falls back to the
+   * personalised `lead` (which would leak watched-asset/region
+   * context). Optional for v2-envelope back-compat through the
+   * 7-day TTL window.
+   */
+  publicLead?: string;
+  /**
+   * Non-personalised "signals to watch" array for the share-URL
+   * surface (v3+). The personalised `signals` array is generated
+   * with `ctx.profile` set, so its phrasing can echo a user's
+   * watched assets / regions ("Watch for OPEC headlines on your
+   * Saudi exposure"). The public-share renderer MUST substitute
+   * `publicSignals` (or omit the signals page entirely when absent)
+   * — never serve the personalised `signals` to anonymous readers.
+   */
+  publicSignals?: string[];
+  /**
+   * Non-personalised threads array for the share-URL surface (v3+).
+   * Threads are mostly content-derived but the prompt instructs the
+   * model to surface clusters that align with user interests; in
+   * personalised mode that bias can leak. The public-share renderer
+   * substitutes `publicThreads` when present, falls back to a
+   * category-derived stub otherwise — never serves the personalised
+   * `threads` to anonymous readers.
+   */
+  publicThreads?: BriefThread[];
 }
 
 export interface BriefStory {

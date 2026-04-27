@@ -15,7 +15,10 @@ message MilitaryFlight {
   ];
   // Aircraft callsign.
   string callsign = 2;
-  // ICAO 24-bit hex address.
+  // ICAO 24-bit hex address. Canonical form is UPPERCASE — seeders and
+  // handlers must uppercase before writing so hex-based lookups
+  // (src/services/military-flights.ts:getFlightByHex) match regardless of
+  // upstream source casing.
   string hex_code = 3;
   // Aircraft registration number.
   string registration = 4;

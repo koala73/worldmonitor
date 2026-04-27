@@ -14,6 +14,53 @@ message VesselSnapshot {
   repeated AisDensityZone density_zones = 2;
   // Detected AIS disruptions.
   repeated AisDisruption disruptions = 3;
+  // Monotonic sequence number from the relay. Clients use this to detect stale
+  // responses during polling.
+  int32 sequence = 4;
+  // Relay health status.
+  AisSnapshotStatus status = 5;
+  // Recent position reports for individual vessels. Only populated when the
+  // request sets include_candidates=true — empty otherwise.
+  repeated SnapshotCandidateReport candidate_reports = 6;
+  // Recent position reports for tanker vessels (AIS ship type 80-89). Only
+  // populated when the request sets include_tankers=true — empty otherwise.
+  // Reuses the SnapshotCandidateReport message shape; the field is parallel
+  // to candidate_reports (military-detection) so adding tanker-rendering
+  // doesn't change the meaning of the existing surface.
+  repeated SnapshotCandidateReport tanker_reports = 7;
+}
+
+// AisSnapshotStatus reports relay health at the time of the snapshot.
+message AisSnapshotStatus {
+  // Whether the relay WebSocket is connected to the AIS provider.
+  bool connected = 1;
+  // Number of vessels currently tracked by the relay.
+  int32 vessels = 2;
+  // Total AIS messages processed in the current session.
+  int32 messages = 3;
+}
+
+// SnapshotCandidateReport is a per-vessel position report attached to a
+// snapshot. Used to drive the client-side position callback system.
+message SnapshotCandidateReport {
+  // Maritime Mobile Service Identity.
+  string mmsi = 1;
+  // Vessel name (may be empty if unknown).
+  string name = 2;
+  // Latitude in decimal degrees.
+  double lat = 3;
+  // Longitude in decimal degrees.
+  double lon = 4;
+  // AIS ship type code (0 if unknown).
+  int32 ship_type = 5;
+  // Heading in degrees (0-359, or 511 for unavailable).
+  int32 heading = 6;
+  // Speed over ground in knots.
+  double speed = 7;
+  // Course over ground in degrees.
+  int32 course = 8;
+  // Report timestamp, as Unix epoch milliseconds.
+  int64 timestamp = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 
 // AisDensityZone represents a zone of concentrated vessel traffic.

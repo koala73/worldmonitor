@@ -28,12 +28,24 @@ import {
 
 const SENSITIVITY_RANK = { all: 0, high: 1, critical: 2 };
 
-function compareRules(a, b) {
+// Exported so the cron orchestration's two-pass winner walk
+// (sortedDue / sortedAll) can sort each pass identically to how
+// `groupEligibleRulesByUser` already orders candidates here. Kept as
+// a same-shape function so callers can reuse it without re-deriving
+// the priority key.
+export function compareRules(a, b) {
   const aFull = a.variant === 'full' ? 0 : 1;
   const bFull = b.variant === 'full' ? 0 : 1;
   if (aFull !== bFull) return aFull - bFull;
-  const aRank = SENSITIVITY_RANK[a.sensitivity ?? 'all'] ?? 0;
-  const bRank = SENSITIVITY_RANK[b.sensitivity ?? 'all'] ?? 0;
+  // Default missing sensitivity to 'high' (NOT 'all') so the rank
+  // matches what compose/buildDigest/cache/log actually treat the
+  // rule as. Otherwise a legacy undefined-sensitivity rule would be
+  // ranked as the most-permissive 'all' and tried first, but compose
+  // would then apply a 'high' filter — shipping a narrow brief while
+  // an explicit 'all' rule for the same user is never tried.
+  // See PR #3387 review (P2).
+  const aRank = SENSITIVITY_RANK[a.sensitivity ?? 'high'] ?? 0;
+  const bRank = SENSITIVITY_RANK[b.sensitivity ?? 'high'] ?? 0;
   if (aRank !== bRank) return aRank - bRank;
   return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
 }
@@ -144,7 +156,36 @@ export function userDisplayNameFromId(userId) {
 
 // ── Compose a full brief for a single rule ──────────────────────────────────
 
-const MAX_STORIES_PER_USER = 12;
+// Cap on stories shown per user per brief.
+//
+// Default 12 — kept at the historical value because the offline sweep
+// harness (scripts/sweep-topic-thresholds.mjs) showed bumping the cap
+// to 16 against 2026-04-24 production replay data DROPPED visible
+// quality at the active 0.45 threshold (visible_quality 0.916 → 0.716;
+// positions 13-16 are mostly singletons or members of "should-separate"
+// clusters at this threshold, so they dilute without helping adjacency).
+//
+// Env-tunable via DIGEST_MAX_STORIES_PER_USER so future sweep evidence
+// (different threshold, different label set, different pool composition)
+// can be acted on with a Railway env flip without a redeploy. Any
+// invalid / non-positive value falls back to the 12 default.
+//
+// "Are we getting better" signal: re-run scripts/sweep-topic-thresholds.mjs
+// with --cap N before flipping the env, and the daily
+// scripts/brief-quality-report.mjs after.
+function readMaxStoriesPerUser() {
+  const raw = process.env.DIGEST_MAX_STORIES_PER_USER;
+  if (raw == null || raw === '') return 12;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 12;
+}
+// Exported so brief-llm.mjs (buildDigestPrompt + hashDigestInput) can
+// slice to the same cap. Hard-coding `slice(0, 12)` there would mean
+// the LLM prose only references the first 12 stories even when the
+// brief envelope carries more — a quiet mismatch between what the
+// reader sees as story cards vs the AI summary above them. Reviewer
+// P1 on PR #3389.
+export const MAX_STORIES_PER_USER = readMaxStoriesPerUser();
 
 /**
  * Filter + assemble a BriefEnvelope for one alert rule from a
@@ -161,7 +202,10 @@ const MAX_STORIES_PER_USER = 12;
  * @param {{ nowMs: number }} [opts]
  */
 export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {}) {
-  const sensitivity = rule.sensitivity ?? 'all';
+  // Default to 'high' (NOT 'all') for parity with composeBriefFromDigestStories,
+  // buildDigest, the digestFor cache key, and the per-attempt log line.
+  // See PR #3387 review (P2).
+  const sensitivity = rule.sensitivity ?? 'high';
   const tz = rule.digestTimezone ?? 'UTC';
   const stories = filterTopStories({
     stories: insights.topStories,
@@ -219,14 +263,22 @@ export function stripHeadlineSuffix(title, publisher) {
 /**
  * Adapter: the digest accumulator hydrates stories from
  * story:track:v1:{hash} (title / link / severity / lang / score /
- * mentionCount) + story:sources:v1:{hash} SMEMBERS. It does NOT carry
- * a category or country-code — those fields are optional in the
- * upstream brief-filter shape and default cleanly.
+ * mentionCount / description?) + story:sources:v1:{hash} SMEMBERS. It
+ * does NOT carry a category or country-code — those fields are optional
+ * in the upstream brief-filter shape and default cleanly.
  *
  * Since envelope v2, the story's `link` field is carried through as
  * `primaryLink` so filterTopStories can emit a BriefStory.sourceUrl.
  * Stories without a valid link are still passed through here — the
  * filter drops them at the validation boundary rather than this adapter.
+ *
+ * Description plumbing (post RSS-description fix, 2026-04-24):
+ *   When the ingested story:track row carries a cleaned RSS description,
+ *   it rides here as `s.description` and becomes the brief's baseline
+ *   description. When absent (old rows inside the 48h bleed, or feeds
+ *   without a description), we fall back to the cleaned headline —
+ *   preserving today's behavior and letting Phase 3b's LLM enrichment
+ *   still operate over something, not nothing.
  *
  * @param {object} s — digest-shaped story from buildDigest()
  */
@@ -235,13 +287,14 @@ function digestStoryToUpstreamTopStory(s) {
   const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
   const rawTitle = typeof s?.title === 'string' ? s.title : '';
   const cleanTitle = stripHeadlineSuffix(rawTitle, primarySource);
+  const rawDescription = typeof s?.description === 'string' ? s.description.trim() : '';
   return {
     primaryTitle: cleanTitle,
-    // Digest track hash has no separate body; baseline description is
-    // the cleaned headline. Phase 3b's LLM enrichment substitutes a
-    // one-sentence synthesis on top of this via
-    // enrichBriefEnvelopeWithLLM.
-    description: cleanTitle,
+    // When upstream persists a real RSS description (via story:track:v1
+    // post-fix), forward it; otherwise fall back to the cleaned headline
+    // so downstream consumers (brief filter, Phase 3b LLM) always have
+    // something to ground on.
+    description: rawDescription || cleanTitle,
     primarySource,
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
@@ -249,6 +302,17 @@ function digestStoryToUpstreamTopStory(s) {
     // to 'General' / 'Global' via filterTopStories defaults.
     category: typeof s?.category === 'string' ? s.category : undefined,
     countryCode: typeof s?.countryCode === 'string' ? s.countryCode : undefined,
+    // Stable digest story hash. Carried through so:
+    //   (a) the canonical synthesis prompt can emit `rankedStoryHashes`
+    //       referencing each story by hash (not position, not title),
+    //   (b) `filterTopStories` can re-order the pool by ranking BEFORE
+    //       applying the MAX_STORIES_PER_USER cap, so the model's
+    //       editorial judgment of importance survives the cap.
+    // Falls back to titleHash when the digest path didn't materialise
+    // a primary `hash` (rare; shape varies across producer versions).
+    hash: typeof s?.hash === 'string' && s.hash.length > 0
+      ? s.hash
+      : (typeof s?.titleHash === 'string' ? s.titleHash : undefined),
   };
 }
 
@@ -260,24 +324,60 @@ function digestStoryToUpstreamTopStory(s) {
  * Returns null when no story survives the sensitivity filter — caller
  * falls back to another variant or skips the user.
  *
+ * Pure / synchronous. The cron orchestration layer pre-resolves the
+ * canonical synthesis (`exec` from `generateDigestProse`) and the
+ * non-personalised `publicLead` (`generateDigestProsePublic`) and
+ * passes them in via `opts.synthesis` — this module performs no LLM
+ * I/O.
+ *
  * @param {object} rule — enabled alertRule row
  * @param {unknown[]} digestStories — output of buildDigest(rule, windowStart)
  * @param {{ clusters: number; multiSource: number }} insightsNumbers
- * @param {{ nowMs?: number }} [opts]
+ * @param {{
+ *   nowMs?: number,
+ *   onDrop?: import('../../shared/brief-filter.js').DropMetricsFn,
+ *   synthesis?: {
+ *     lead?: string,
+ *     threads?: Array<{ tag: string, teaser: string }>,
+ *     signals?: string[],
+ *     rankedStoryHashes?: string[],
+ *     publicLead?: string,
+ *     publicSignals?: string[],
+ *     publicThreads?: Array<{ tag: string, teaser: string }>,
+ *   },
+ * }} [opts]
+ *   `onDrop` is forwarded to filterTopStories so the seeder can
+ *   aggregate per-user filter-drop counts without this module knowing
+ *   how they are reported.
+ *   `synthesis` (when provided) substitutes envelope.digest.lead /
+ *   threads / signals / publicLead with the canonical synthesis from
+ *   the orchestration layer, and re-orders the candidate pool by
+ *   `synthesis.rankedStoryHashes` before applying the cap.
  */
-export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now() } = {}) {
+export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, synthesis } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
-  const sensitivity = rule.sensitivity ?? 'all';
+  // Default to 'high' (NOT 'all') for undefined sensitivity, aligning
+  // with buildDigest at scripts/seed-digest-notifications.mjs:392 and
+  // the digestFor cache key. The live cron path pre-filters the pool
+  // to {critical, high}, so this default is a no-op for production
+  // calls — but a non-prefiltered caller with undefined sensitivity
+  // would otherwise silently widen to {medium, low} stories while the
+  // operator log labels the attempt as 'high', misleading telemetry.
+  // See PR #3387 review (P2) and Defect 2 / Solution 1 in
+  // docs/plans/2026-04-24-004-fix-brief-topic-adjacency-defects-plan.md.
+  const sensitivity = rule.sensitivity ?? 'high';
   const tz = rule.digestTimezone ?? 'UTC';
   const upstreamLike = digestStories.map(digestStoryToUpstreamTopStory);
   const stories = filterTopStories({
     stories: upstreamLike,
     sensitivity,
     maxStories: MAX_STORIES_PER_USER,
+    onDrop,
+    rankedStoryHashes: synthesis?.rankedStoryHashes,
   });
   if (stories.length === 0) return null;
   const issueDate = issueDateInTz(nowMs, tz);
-  return assembleStubbedBriefEnvelope({
+  const envelope = assembleStubbedBriefEnvelope({
     user: { name: userDisplayNameFromId(rule.userId), tz },
     stories,
     issueDate,
@@ -287,4 +387,35 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     issuedAt: nowMs,
     localHour: localHourInTz(nowMs, tz),
   });
+  // Splice canonical synthesis into the envelope's digest. Done as a
+  // shallow merge so the assembleStubbedBriefEnvelope path stays the
+  // single source for greeting/numbers/threads-default. We only
+  // override the LLM-driven fields when the orchestrator supplied
+  // them; missing fields fall back to the stub for graceful
+  // degradation when synthesis fails.
+  if (synthesis && envelope?.data?.digest) {
+    if (typeof synthesis.lead === 'string' && synthesis.lead.length > 0) {
+      envelope.data.digest.lead = synthesis.lead;
+    }
+    if (Array.isArray(synthesis.threads) && synthesis.threads.length > 0) {
+      envelope.data.digest.threads = synthesis.threads;
+    }
+    if (Array.isArray(synthesis.signals)) {
+      envelope.data.digest.signals = synthesis.signals;
+    }
+    if (typeof synthesis.publicLead === 'string' && synthesis.publicLead.length > 0) {
+      envelope.data.digest.publicLead = synthesis.publicLead;
+    }
+    // Public signals/threads are non-personalised siblings produced by
+    // generateDigestProsePublic. Captured separately from the
+    // personalised signals/threads above so the share-URL renderer
+    // never has to choose between leaking and omitting a whole page.
+    if (Array.isArray(synthesis.publicSignals) && synthesis.publicSignals.length > 0) {
+      envelope.data.digest.publicSignals = synthesis.publicSignals;
+    }
+    if (Array.isArray(synthesis.publicThreads) && synthesis.publicThreads.length > 0) {
+      envelope.data.digest.publicThreads = synthesis.publicThreads;
+    }
+  }
+  return envelope;
 }

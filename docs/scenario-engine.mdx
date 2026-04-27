@@ -45,9 +45,9 @@ The UI is state-driven, not modal — activating a scenario sets a `scenarioStat
 
 ## Tier & gating
 
-Scenario Engine is **PRO**. Free users see the trigger buttons but are blocked at activation: a `scenario-engine` gate-hit event is logged and the map is not repainted. The `/api/scenario/v1/run` endpoint itself also enforces PRO at the edge (`api/scenario/v1/run.ts`).
+Scenario Engine is **PRO**. Free users see the trigger buttons but are blocked at activation: a `scenario-engine` gate-hit event is logged and the map is not repainted. The `ScenarioService.RunScenario` handler also enforces PRO at the edge (`server/worldmonitor/scenario/v1/run-scenario.ts`).
 
-Rate limits on the API side — 10 jobs / minute / user, with a global queue cap at 100 in-flight — are documented in [Scenarios API](/api-scenarios#run-a-scenario).
+Rate limits on the API side — 10 jobs / minute / IP, with a global queue cap at 100 in-flight — are documented in [Scenarios API](/api-scenarios#run-a-scenario).
 
 ## Run it yourself
 
@@ -59,7 +59,7 @@ The workflow is inherently async — the edge function enqueues a job, a Railway
 4. When the result lands, the map repaints, and a scenario banner is prepended to the panel. The banner always shows: a ⚠ icon, the scenario name, the top 5 impacted countries with per-country impact %, and a **×** dismiss control. When the scenario's result payload includes template parameters (duration, disruption %, cost-shock multiplier), the banner additionally renders a chip row (e.g. `14d · +110% cost`) and a tagline line such as *"Simulating 14d / 100% closure / +110% cost on 1 chokepoint. Chokepoint card below shows projected score; map highlights disrupted routes."* The affected chokepoints themselves are highlighted on the map and on the chokepoint cards rather than listed by name in the banner.
 5. Click the **×** dismiss control on the banner (aria-label: "Dismiss scenario") to clear the scenario state — the map repaints to its baseline and the panel re-renders without the projected score and red-border callouts.
 
-For scripted use, see [`POST /api/scenario/v1/run`](/api-scenarios#run-a-scenario) — enqueue, then poll `/status` until the response has a terminal status (`"done"` on success, `"failed"` on error). Non-terminal states are `"pending"` (queued) and `"processing"` (worker started); both can persist for several seconds. See the [status lifecycle table](/api-scenarios#poll-job-status) for the full contract.
+For scripted use, see [`POST /api/scenario/v1/run-scenario`](/api-scenarios#run-a-scenario) — enqueue, then poll `GET /api/scenario/v1/get-scenario-status` until the response has a terminal status (`"done"` on success, `"failed"` on error). Non-terminal states are `"pending"` (queued) and `"processing"` (worker started); both can persist for several seconds. See the [status lifecycle table](/api-scenarios#poll-job-status) for the full contract.
 
 ## Data behind Scenario Engine
 

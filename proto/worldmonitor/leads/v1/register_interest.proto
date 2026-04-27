@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package worldmonitor.leads.v1;
+
+// RegisterInterestRequest carries a Pro-waitlist signup.
+message RegisterInterestRequest {
+  string email = 1;
+  string source = 2;
+  string app_version = 3;
+  string referred_by = 4;
+  // Honeypot — bots auto-fill this hidden field; real submissions leave it empty.
+  string website = 5;
+  // Cloudflare Turnstile token. Desktop sources bypass Turnstile; see handler.
+  string turnstile_token = 6;
+}
+
+// RegisterInterestResponse mirrors the Convex registerInterest:register return shape.
+message RegisterInterestResponse {
+  // "registered" for a new signup; "already_registered" for a returning email.
+  string status = 1;
+  // Stable referral code for this email.
+  string referral_code = 2;
+  // Number of signups credited to this email.
+  int32 referral_count = 3;
+  // Waitlist position at registration time. Present only when status == "registered".
+  int32 position = 4;
+  // True when the email is on the suppression list (prior bounce) and no confirmation was sent.
+  bool email_suppressed = 5;
+}

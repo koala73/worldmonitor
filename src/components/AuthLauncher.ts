@@ -1,12 +1,16 @@
-import { openSignIn } from '@/services/clerk';
+import { openSignIn, openSignUp } from '@/services/clerk';
 
 /**
- * Minimal auth launcher -- wraps Clerk.openSignIn().
+ * Minimal auth launcher -- wraps Clerk.openSignIn() / openSignUp().
  * Replaces the custom OTP modal. Clerk handles all UI.
  */
 export class AuthLauncher {
   public open(): void {
     openSignIn();
+  }
+
+  public openSignUp(): void {
+    openSignUp();
   }
 
   public close(): void {

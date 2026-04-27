@@ -363,6 +363,75 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'All-maplibre first-party tile fetch failure must still reach Sentry');
   });
 
+  it('suppresses "Failed to fetch (<host>)" when stack is extension-only (covered by generic extension rule)', () => {
+    // WORLDMONITOR-P5: AdBlock-class extensions wrap window.fetch and their
+    // replacement can fail unrelated to our backend. The generic extension rule
+    // (`!hasFirstParty && extension frame`) already drops this; the test locks
+    // that property in for the `Failed to fetch (<host>)` message shape.
+    const event = makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', [
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'Extension-only fetch failure should be suppressed');
+  });
+
+  it('does NOT suppress "Failed to fetch (<host>)" when stack has both first-party and extension frames', () => {
+    // Safety property: a first-party panels-*.js frame means our code initiated
+    // the fetch — must surface even if an extension also wrapped it, so a real
+    // api.worldmonitor.app outage isn't silenced for users who happen to run
+    // fetch-wrapping extensions.
+    const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 24, function: 'window.fetch' },
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'First-party + extension Failed-to-fetch must reach Sentry');
+  });
+
+  it('suppresses iOS Safari WKWebView "Cannot inject key into script value" regardless of first-party frame', () => {
+    // The native throw always lands in a first-party caller; the existing
+    // !hasFirstParty gate missed it. `UnknownError` type name is WebKit-only
+    // so scoping on excType is safe (WORLDMONITOR-NM).
+    const event = makeEvent('Cannot inject key into script value', 'UnknownError', [
+      { filename: '/assets/panels-Dt68xLlT.js', lineno: 20, function: 'bootstrap' },
+    ]);
+    assert.equal(beforeSend(event), null, 'iOS Safari WKWebView native bridge error should be suppressed');
+  });
+
+  it('does NOT suppress "Cannot inject key into script value" from non-UnknownError exc types', () => {
+    // Guards against a future first-party TypeError happening to share the
+    // message text — the UnknownError type is the only WebKit-native proof.
+    const event = makeEvent('Cannot inject key into script value', 'TypeError', [
+      { filename: '/assets/panels-Dt68xLlT.js', lineno: 20, function: 'bootstrap' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'Non-UnknownError must still reach Sentry');
+  });
+
+  it('suppresses Convex re-auth race on fetchToken (stack has tryToReauthenticate)', () => {
+    // Convex SDK BaseConvexClient.tryToReauthenticate reads authState.config.fetchToken
+    // during WebSocket reconnect when authState.config is still undefined. Known SDK
+    // internal, not actionable in our code (WORLDMONITOR-NJ).
+    const event = makeEvent(
+      "Cannot read properties of undefined (reading 'fetchToken')",
+      'TypeError',
+      [
+        { filename: '/assets/index-DSkSc57y.js', lineno: 2, function: 'ze.tryToReauthenticate' },
+      ],
+    );
+    assert.equal(beforeSend(event), null, 'Convex re-auth race should be suppressed');
+  });
+
+  it('does NOT suppress "reading fetchToken" undefined when no tryToReauthenticate frame is present', () => {
+    // A real first-party regression that happens to read a `.fetchToken` property
+    // must still reach Sentry — only the Convex internal path is suppressed.
+    const event = makeEvent(
+      "Cannot read properties of undefined (reading 'fetchToken')",
+      'TypeError',
+      [
+        { filename: '/assets/panels-DogeMxo_.js', lineno: 25, function: 'MyAuthBridge.load' },
+      ],
+    );
+    assert.ok(beforeSend(event) !== null, 'First-party fetchToken regression must reach Sentry');
+  });
+
   it('does NOT suppress setPointerCapture NotFoundError when no frame context is present', () => {
     // Defensive: if Sentry strips context, we err on the side of surfacing.
     const event = makeEvent(
@@ -508,4 +577,68 @@ describe('existing beforeSend filters', () => {
     ]);
     assert.ok(beforeSend(event) !== null, 'first-party onmessage regression must surface');
   });
+
+  // WORLDMONITOR-NR: deck.gl/maplibre internal null-access on Layer.isHidden
+  // during render (Safari 26.4 beta, empty stacks preceded by DeckGLMap map-error
+  // breadcrumbs). `\w{1,3}\.isHidden` is gated on !hasFirstParty so a genuine
+  // SmartPollContext.isHidden regression in runtime.ts still surfaces.
+  it('suppresses "evaluating \'Ue.isHidden\'" with empty stack (deck.gl/Safari internal)', () => {
+    const event = makeEvent("undefined is not an object (evaluating 'Ue.isHidden')", 'TypeError', []);
+    assert.equal(beforeSend(event), null, 'deck.gl isHidden null-access with empty stack should be suppressed');
+  });
+
+  it('suppresses Cannot-read-isHidden with only vendor frames', () => {
+    const event = makeEvent("Cannot read properties of undefined (reading 'isHidden')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'Layer.render' },
+    ]);
+    assert.equal(beforeSend(event), null, 'deck.gl vendor-only isHidden crash should be suppressed');
+  });
+
+  it('does NOT suppress ".isHidden" crashes with first-party frames (SmartPollContext regression)', () => {
+    // src/services/runtime.ts owns SmartPollContext.isHidden. A real regression
+    // there would carry a first-party frame — must surface.
+    const event = makeEvent("Cannot read properties of undefined (reading 'isHidden')", 'TypeError', [
+      firstPartyFrame('src/services/runtime.ts', 'SmartPoller.tick'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party SmartPollContext.isHidden regression must reach Sentry');
+  });
+
+  it('does NOT suppress ".isHidden" errors on longer-name symbols (bounded char class)', () => {
+    // Filter is scoped to `\w{1,3}` to match minified short names. A 4+ char
+    // symbol like `myLayer.isHidden` should NOT match this filter (it'd hit
+    // the broader !hasFirstParty network/runtime gate instead, which requires
+    // specific shapes — isHidden isn't on that list).
+    const event = makeEvent("undefined is not an object (evaluating 'myLayer.isHidden')", 'TypeError', []);
+    assert.ok(beforeSend(event) !== null, '4+ char symbol accessing .isHidden must still surface');
+  });
+
+  // WORLDMONITOR-NQ: Safari short-var ReferenceError ("Can't find variable: ss")
+  // from userscript/extension injection. Gated on empty stack + !hasFirstParty +
+  // 1–2 char var name so a real "foo is not defined" from our code still surfaces.
+  it("suppresses \"Can't find variable: ss\" with empty stack", () => {
+    const event = makeEvent("Can't find variable: ss", 'Error', []);
+    assert.equal(beforeSend(event), null, 'Short-var Safari ReferenceError with empty stack should be suppressed');
+  });
+
+  it("suppresses \"Can't find variable: x\" (single char)", () => {
+    const event = makeEvent("Can't find variable: x", 'Error', []);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it("does NOT suppress \"Can't find variable: ss\" when first-party frames are present", () => {
+    // A real minified first-party ReferenceError would carry frames. We never
+    // want to silently drop that.
+    const event = makeEvent("Can't find variable: ss", 'Error', [
+      firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadTab'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party short-var ReferenceError must surface');
+  });
+
+  it("does NOT suppress longer variable names (3+ chars) — shape outside char class", () => {
+    // Only `\w{1,2}` matches. `foo` is 3 chars, falls through — meaningful
+    // first-party misses (e.g. helper name typo) still surface.
+    const event = makeEvent("Can't find variable: foo", 'Error', []);
+    assert.ok(beforeSend(event) !== null, '3+ char variable names must surface');
+  });
+
 });

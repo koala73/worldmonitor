@@ -1,0 +1,412 @@
+{
+  "$comment": "Single source of truth for non-proto /api/ endpoints. All new JSON data APIs MUST use sebuf (proto → buf generate → handler). This manifest is the only escape hatch, and every entry is reviewed by @SebastienMelki (see .github/CODEOWNERS). Categories: external-protocol (MCP / OAuth — shape dictated by external spec), non-json (binary/HTML/image responses), upstream-proxy (raw pass-through of an external feed), ops-admin (health/cron/version — operator plumbing, not a product API), internal-helper (dashboard-internal bundle, not user-facing), deferred (should migrate eventually — must have a removal_issue), migration-pending (actively being migrated in an open PR — removed as its commit lands). See docs/adding-endpoints.mdx.",
+  "schema_version": 1,
+  "exceptions": [
+    {
+      "path": "api/mcp.ts",
+      "category": "external-protocol",
+      "reason": "MCP streamable-HTTP transport — JSON-RPC 2.0 envelope dictated by the Model Context Protocol spec, not something we can or should redefine as proto.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp-proxy.js",
+      "category": "external-protocol",
+      "reason": "Proxy for the MCP transport — same shape constraint as api/mcp.ts.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/authorize.js",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 authorization endpoint. Response is an HTML consent page and 302 redirect; request/response shape is dictated by RFC 6749.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/register.js",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 dynamic client registration (RFC 7591). Shape fixed by the spec.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/token.js",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 token endpoint (RFC 6749). application/x-www-form-urlencoded request body; shape fixed by the spec.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth-protected-resource.ts",
+      "category": "external-protocol",
+      "reason": "RFC 9728 OAuth Protected Resource metadata. Dynamic per-host to satisfy scanner origin-match rules — shape dictated by RFC 9728.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/discord/oauth/callback.ts",
+      "category": "external-protocol",
+      "reason": "Discord OAuth redirect target — response is an HTML popup-closer page, query-param shape fixed by Discord.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/discord/oauth/start.ts",
+      "category": "external-protocol",
+      "reason": "Discord OAuth initiator — issues 302 to Discord's authorize URL. Not a JSON API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/slack/oauth/callback.ts",
+      "category": "external-protocol",
+      "reason": "Slack OAuth redirect target — HTML response with postMessage + window.close, query-param shape fixed by Slack.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/slack/oauth/start.ts",
+      "category": "external-protocol",
+      "reason": "Slack OAuth initiator — 302 to Slack's authorize URL. Not a JSON API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/download.js",
+      "category": "non-json",
+      "reason": "Binary file download (zip/csv/xlsx). Content-Type is not application/json.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/og-story.js",
+      "category": "non-json",
+      "reason": "Open Graph preview image (PNG via @vercel/og). Binary response.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/story.js",
+      "category": "non-json",
+      "reason": "Rendered HTML story page for social embeds — response is text/html, not JSON.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/youtube/embed.js",
+      "category": "non-json",
+      "reason": "YouTube oEmbed passthrough — shape dictated by YouTube's oEmbed response, served as-is.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/youtube/live.js",
+      "category": "non-json",
+      "reason": "Streams YouTube live metadata — chunked text response, not a typed JSON payload.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/brief/carousel/[userId]/[issueDate]/[page].ts",
+      "category": "non-json",
+      "reason": "Rendered carousel page image for brief social posts. Binary image response, dynamic path segments.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/opensky.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/polymarket.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to Polymarket gamma API. Shape is Polymarket's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/gpsjam.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to gpsjam.org tile/feed. Shape is upstream's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oref-alerts.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to Pikud HaOref (IDF Home Front Command) alert feed. Shape is upstream's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/rss-proxy.js",
+      "category": "upstream-proxy",
+      "reason": "Generic RSS/Atom XML proxy for CORS-blocked feeds. Response is XML, not JSON.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/telegram-feed.js",
+      "category": "upstream-proxy",
+      "reason": "Telegram channel feed proxy — passes upstream MTProto-derived shape through.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/supply-chain/hormuz-tracker.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to Hormuz strait AIS tracker feed. Shape is upstream's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/health.js",
+      "category": "ops-admin",
+      "reason": "Liveness probe hit by uptime monitor and load balancer. Not a product API; plain-text OK response.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/seed-health.js",
+      "category": "ops-admin",
+      "reason": "Cron-triggered data-freshness check for feed seeds. Operator tool, not a user-facing API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/version.js",
+      "category": "ops-admin",
+      "reason": "Build-version probe for the desktop auto-updater. Tiny plain-JSON operator plumbing.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/cache-purge.js",
+      "category": "ops-admin",
+      "reason": "Admin-gated cache invalidation endpoint. Internal operator action, not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/seed-contract-probe.ts",
+      "category": "ops-admin",
+      "reason": "Cron probe that verifies seed contract shapes against upstreams. Operator telemetry.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/invalidate-user-api-key-cache.ts",
+      "category": "ops-admin",
+      "reason": "Admin-gated cache bust for user API key lookups. Internal operator action.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/fwdstart.js",
+      "category": "ops-admin",
+      "reason": "Tauri desktop updater bootstrap — starts the sidecar forwarding flow. Operator plumbing, not JSON.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/notify.ts",
+      "category": "ops-admin",
+      "reason": "Outbound notification dispatch (Slack/Discord/email) driven by cron. Internal, not a typed user API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/bootstrap.js",
+      "category": "internal-helper",
+      "reason": "Dashboard-internal config bundle assembled at request time. Exposing as a user-facing API would implicitly commit us to its shape; keep it deliberately unversioned and out of the API surface.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/geo.js",
+      "category": "internal-helper",
+      "reason": "Lightweight IP-to-geo lookup wrapping Vercel's request.geo. Dashboard-internal helper; not worth a service of its own.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/reverse-geocode.js",
+      "category": "internal-helper",
+      "reason": "Reverse-geocode helper used only by the map layer for label rendering. Wraps an upstream provider; shape tracks upstream, not a versioned product contract.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/internal/brief-why-matters.ts",
+      "category": "internal-helper",
+      "reason": "LLM-enrichment helper for the brief pipeline. Cron-triggered from Railway under RELAY_SHARED_SECRET bearer auth — never reached by dashboards, desktop, or partners. Request/response shape is an implementation detail of the brief renderer; modeling it as a generated service would publish internal cron plumbing as user-facing API surface. Same shape constraint as api/notify.ts (also cron-only).",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/data/city-coords.ts",
+      "category": "internal-helper",
+      "reason": "Static city-coordinates payload served from the deploy artifact. Returns a fixed reference table, not a queryable service.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/me/entitlement.ts",
+      "category": "internal-helper",
+      "reason": "Thin wrapper over the canonical server/_shared/premium-check.ts isCallerPremium helper — returns { isPro: boolean } for the /pro marketing bundle so it can swap upgrade CTAs for a dashboard link when the visitor is already a paying Pro user. Not a product data API: the authoritative gates live in panel-gating.ts (frontend), isCallerPremium (per-handler), and gateway.ts PREMIUM_RPC_PATHS (Bearer gate). This endpoint exists purely to let the separate pro-test bundle (no Convex client, no gateway client) ask the same question without reimplementing the two-signal check. Shape is unversioned by design — flip a boolean and ship.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/latest-brief.ts",
+      "category": "deferred",
+      "reason": "Returns the current user's latest brief. Auth-gated and Clerk-coupled; migrating requires modeling Brief in proto and auth context in handler. Deferred to brief/v1 service.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/brief/share-url.ts",
+      "category": "deferred",
+      "reason": "Creates a shareable public URL for a brief. Part of the brief/v1 service work.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/brief/public/[hash].ts",
+      "category": "deferred",
+      "reason": "Resolves a share hash to public-safe brief JSON. Part of the brief/v1 service work; dynamic path segment needs proto path-param modeling.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/brief/[userId]/[issueDate].ts",
+      "category": "deferred",
+      "reason": "Fetches a specific brief by user + issue date. Part of the brief/v1 service work.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/notification-channels.ts",
+      "category": "deferred",
+      "reason": "Lists / configures user notification channels. Auth-gated; migrating requires user/v1 or notifications/v1 service. Deferred until Clerk migration settles.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/user-prefs.ts",
+      "category": "deferred",
+      "reason": "Reads / writes user dashboard preferences. Auth-gated; part of user/v1 service work pending Clerk migration.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/create-checkout.ts",
+      "category": "deferred",
+      "reason": "Creates a Dodo Payments checkout session. Payments domain is still stabilizing (Clerk + Dodo integration); migrate once shape is frozen.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/customer-portal.ts",
+      "category": "deferred",
+      "reason": "Issues a Dodo customer-portal redirect URL. Paired with create-checkout.ts; migrate together.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/product-catalog.js",
+      "category": "deferred",
+      "reason": "Returns Dodo product catalog (pricing tiers). Migrate alongside the rest of the payments surface.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/referral/me.ts",
+      "category": "deferred",
+      "reason": "Returns the signed-in user's referral state. Auth-gated; part of user/v1 service.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+
+    {
+      "path": "api/scenario/v1/run.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for POST /api/scenario/v1/run-scenario. Thin gateway wrapper that rewrites the documented pre-#3207 v1 URL to the canonical sebuf RPC path. Not a new endpoint — preserves the partner-documented wire contract. Retires at the next v1→v2 break.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/scenario/v1/status.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/scenario/v1/get-scenario-status. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/scenario/v1/templates.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/scenario/v1/list-scenario-templates. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/supply-chain/v1/country-products.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/supply-chain/v1/get-country-products. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/supply-chain/v1/multi-sector-cost-shock.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/supply-chain/v1/get-multi-sector-cost-shock. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+
+    {
+      "path": "api/v2/shipping/webhooks/[subscriberId].ts",
+      "category": "migration-pending",
+      "reason": "Partner-facing path-parameter endpoint (GET status by subscriber id). Cannot migrate to sebuf yet — no path-param support in the annotation layer. Paired with the typed ShippingV2Service on the same base URL; tracked for eventual migration once sebuf path params are available.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/v2/shipping/webhooks/[subscriberId]/[action].ts",
+      "category": "migration-pending",
+      "reason": "Partner-facing path-parameter endpoints (POST rotate-secret, POST reactivate). Cannot migrate to sebuf yet — no path-param support. Paired with the typed ShippingV2Service; tracked for eventual migration once sebuf path params are available.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/chat-analyst.ts",
+      "category": "migration-pending",
+      "reason": "SSE streaming endpoint. Migrating to analyst/v1.ChatAnalyst (streaming RPC) in commit 9 of #3207. Blocked on sebuf#150 (TS-server SSE codegen).",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/widget-agent.ts",
+      "category": "migration-pending",
+      "reason": "Migrating to analyst/v1.WidgetComplete in commit 9 of #3207. Blocked on sebuf#150.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/skills/fetch-agentskills.ts",
+      "category": "migration-pending",
+      "reason": "Migrating to analyst/v1.ListAgentSkills in commit 9 of #3207. Blocked on sebuf#150.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    }
+  ]
+}

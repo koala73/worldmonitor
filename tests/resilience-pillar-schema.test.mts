@@ -1,10 +1,12 @@
-// Phase 2 T2.1 of the country-resilience reference-grade upgrade plan
+// Phase 2 T2.1 + T2.3 of the country-resilience reference-grade upgrade plan
 // (docs/internal/country-resilience-upgrade-plan.md).
 //
 // Pins the three-pillar membership shape and the buildPillarList helper
-// behaviour. The plan ships pillars empty in T2.1; PR 4 / T2.3 wires
-// the real penalized weighted-mean aggregation. These tests guard the
-// invariants the aggregator will rely on so PR 4 can land cleanly.
+// behaviour. Real coverage-weighted aggregation is live (see
+// tests/resilience-pillar-aggregation.test.mts for the arithmetic tests);
+// this file focuses on structural invariants: membership disjointness,
+// pillar ordering, weight sum, and the degenerate-input semantics
+// (empty-dimension domains ⇒ score=0 / coverage=0).
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -123,12 +125,19 @@ describe('buildPillarList', () => {
     assert.deepEqual(result, []);
   });
 
-  it('returns 3 shaped pillars with score=0 / coverage=0 when the flag is on', () => {
+  it('returns 3 pillars with score=0 / coverage=0 when every member domain has empty dimensions (degenerate input)', () => {
+    // `allDomains` uses the fixture `makeDomain` helper which sets
+    // `dimensions: []`. With no dimension coverage to weight against,
+    // buildPillarList must return score=0 / coverage=0 for each pillar
+    // (NOT because real aggregation is unimplemented — it is — but
+    // because the aggregator divides by totalCoverage=0 and the
+    // fallback path short-circuits to zero). Real-score behaviour is
+    // exercised in tests/resilience-pillar-aggregation.test.mts.
     const result = buildPillarList(allDomains, true);
     assert.equal(result.length, 3);
     for (const pillar of result) {
-      assert.equal(pillar.score, 0, `pillar ${pillar.id} score must be 0 in T2.1 (PR 4 wires real aggregation)`);
-      assert.equal(pillar.coverage, 0, `pillar ${pillar.id} coverage must be 0 in T2.1`);
+      assert.equal(pillar.score, 0, `pillar ${pillar.id} score must be 0 when member domains have no dimensions`);
+      assert.equal(pillar.coverage, 0, `pillar ${pillar.id} coverage must be 0 when member domains have no dimensions`);
       assert.equal(pillar.weight, PILLAR_WEIGHTS[pillar.id]);
     }
   });

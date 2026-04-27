@@ -1,4 +1,9 @@
 # World Monitor - protect API routes from crawlers
+
+# AI content-usage preferences (contentsignals.org draft RFC).
+# Origin-wide directive, NOT scoped under User-agent per the spec.
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+
 User-agent: *
 Allow: /
 Allow: /api/story

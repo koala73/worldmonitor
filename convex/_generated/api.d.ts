@@ -10,6 +10,11 @@
 
 import type * as alertRules from "../alertRules.js";
 import type * as apiKeys from "../apiKeys.js";
+import type * as broadcast_audienceExport from "../broadcast/audienceExport.js";
+import type * as broadcast_backfillCanaryWaveStamps from "../broadcast/backfillCanaryWaveStamps.js";
+import type * as broadcast_metrics from "../broadcast/metrics.js";
+import type * as broadcast_proLaunchEmailContent from "../broadcast/proLaunchEmailContent.js";
+import type * as broadcast_sendBroadcast from "../broadcast/sendBroadcast.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
@@ -23,6 +28,7 @@ import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_env from "../lib/env.js";
 import type * as lib_identitySigning from "../lib/identitySigning.js";
 import type * as notificationChannels from "../notificationChannels.js";
+import type * as payments_backfillCustomerNormalizedEmail from "../payments/backfillCustomerNormalizedEmail.js";
 import type * as payments_billing from "../payments/billing.js";
 import type * as payments_cacheActions from "../payments/cacheActions.js";
 import type * as payments_checkout from "../payments/checkout.js";
@@ -45,6 +51,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   alertRules: typeof alertRules;
   apiKeys: typeof apiKeys;
+  "broadcast/audienceExport": typeof broadcast_audienceExport;
+  "broadcast/backfillCanaryWaveStamps": typeof broadcast_backfillCanaryWaveStamps;
+  "broadcast/metrics": typeof broadcast_metrics;
+  "broadcast/proLaunchEmailContent": typeof broadcast_proLaunchEmailContent;
+  "broadcast/sendBroadcast": typeof broadcast_sendBroadcast;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
   contactMessages: typeof contactMessages;
@@ -58,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   "lib/env": typeof lib_env;
   "lib/identitySigning": typeof lib_identitySigning;
   notificationChannels: typeof notificationChannels;
+  "payments/backfillCustomerNormalizedEmail": typeof payments_backfillCustomerNormalizedEmail;
   "payments/billing": typeof payments_billing;
   "payments/cacheActions": typeof payments_cacheActions;
   "payments/checkout": typeof payments_checkout;

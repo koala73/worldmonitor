@@ -118,6 +118,10 @@ const STANDALONE_KEYS = {
   imfGrowth:            'economic:imf:growth:v1',
   imfLabor:             'economic:imf:labor:v1',
   imfExternal:          'economic:imf:external:v1',
+  // plan 2026-04-25-004 Phase 2: financialSystemExposure data keys.
+  wbExternalDebt:       'economic:wb-external-debt:v1',
+  bisLbs:               'economic:bis-lbs:v1',
+  fatfListing:          'economic:fatf-listing:v1',
   climateZoneNormals:    'climate:zone-normals:v1',
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
@@ -161,7 +165,7 @@ const STANDALONE_KEYS = {
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
-  resilienceRanking:        'resilience:ranking:v9',
+  resilienceRanking:        'resilience:ranking:v16',
   productCatalog:           'product-catalog:v2',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
@@ -178,8 +182,13 @@ const STANDALONE_KEYS = {
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
   chokepointFlows:          'energy:chokepoint-flows:v1',
   emberElectricity:         'energy:ember:v1:_all',
-  resilienceIntervals:      'resilience:intervals:v1:US',
+  resilienceIntervals:      'resilience:intervals:v2:US',
   sprPolicies:              'energy:spr-policies:v1',
+  pipelinesGas:             'energy:pipelines:gas:v1',
+  pipelinesOil:             'energy:pipelines:oil:v1',
+  storageFacilities:        'energy:storage-facilities:v1',
+  fuelShortages:            'energy:fuel-shortages:v1',
+  energyDisruptions:        'energy:disruptions:v1',
   energyCrisisPolicies:     'energy:crisis-policies:v1',
   regionalSnapshots:        'intelligence:regional-snapshots:summary:v1',
   regionalBriefs:           'intelligence:regional-briefs:summary:v1',
@@ -188,6 +197,16 @@ const STANDALONE_KEYS = {
   recoveryExternalDebt:     'resilience:recovery:external-debt:v1',
   recoveryImportHhi:        'resilience:recovery:import-hhi:v1',
   recoveryFuelStocks:       'resilience:recovery:fuel-stocks:v1',
+  recoveryReexportShare:    'resilience:recovery:reexport-share:v1',
+  recoverySovereignWealth:  'resilience:recovery:sovereign-wealth:v1',
+  // PR 1 v2 energy-construct seeds. STRICT SEED_META (not ON_DEMAND):
+  // plan 2026-04-24-001 removed these from ON_DEMAND_KEYS so /api/health
+  // reports CRIT (not WARN) when they are absent. This is the intended
+  // alarm on the Railway bundle-not-provisioned state. See the ON_DEMAND_KEYS
+  // comment block below for the full rationale.
+  lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
+  fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
+  powerLosses:              'resilience:power-losses:v1',
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
   goldCbReserves:           'market:gold-cb-reserves:v1',
@@ -205,7 +224,7 @@ const SEED_META = {
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   outages:          { key: 'seed-meta:infra:outages',           maxStaleMin: 30 },
-  climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 240 }, // runs as independent Railway cron (0 */2 * * *); 240 = 2x interval
+  climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 540 }, // bundled into seed-bundle-climate (cron `0 */3 * * *`, every 3h); 540 = 3× cron cadence per project convention. Prior 240 (1.33× cron) flipped to silent-EMPTY between minute 180 (TTL_DATA expiry) and 240 (alarm trigger) on every routine cron-jitter cycle — see scripts/seed-climate-anomalies.mjs CACHE_TTL comment.
   climateDisasters: { key: 'seed-meta:climate:disasters',       maxStaleMin: 720 }, // runs every 6h; 720min = 2x interval
   climateAirQuality:{ key: 'seed-meta:health:air-quality',      maxStaleMin: 180 }, // hourly cron; 180 = 3x interval — shares meta key with healthAirQuality (same seeder run)
   climateZoneNormals: { key: 'seed-meta:climate:zone-normals',  maxStaleMin: 89280 }, // monthly cron on the 1st; 62d = 2x 31-day cadence
@@ -233,17 +252,35 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy cron; primary key energy-prices has same 150min threshold
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
-  // seed-bis-extended.mjs writes per-dataset seed-meta keys ONLY when that
-  // specific dataset published fresh entries — so a single-dataset BIS outage
-  // (e.g. WS_DSR 500s) goes stale in health without falsely dragging down the
-  // healthy ones. 24h = 2× 12h cron.
-  bisDsr:                { key: 'seed-meta:economic:bis-dsr',                  maxStaleMin: 1440 },
-  bisPropertyResidential:{ key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
-  bisPropertyCommercial: { key: 'seed-meta:economic:bis-property-commercial',  maxStaleMin: 1440 },
+  // seed-bis-extended.mjs is a child-process section spawned by
+  // scripts/seed-bundle-macro.mjs. The bundle's Railway cron fires more
+  // often than the per-section `intervalMs: 12 * HOUR` gate (production
+  // logs 2026-04-26T08:00:45 show "BIS-Extended Skipped, last seeded
+  // 175min ago, interval: 720min" — gate actively load-bearing on every
+  // bundle tick). So the EFFECTIVE write cadence is governed by the 12h
+  // gate, not the bundle cron. Per-dataset seed-meta is only written when
+  // THAT dataset published fresh entries — so a single-dataset BIS outage
+  // (e.g. WS_DSR 500s) goes STALE in health without dragging down the
+  // healthy ones.
+  //
+  // The previous 1440 (= 2× the 12h gate, but only 1× the actual rolled-up
+  // cadence after typical cron drift) had ZERO grace. All three keys
+  // flipped to STALE_SEED synchronously at minute 1442 on 2026-04-27
+  // (gate-eligible run delayed by ~24h after one failed intermediate cron).
+  // 2160min = 3× the 12h gate covers cron drift + one degraded-to-24h
+  // cycle, fires within 36h on a real outage.
+  bisDsr:                { key: 'seed-meta:economic:bis-dsr',                  maxStaleMin: 2160 },
+  bisPropertyResidential:{ key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 2160 },
+  bisPropertyCommercial: { key: 'seed-meta:economic:bis-property-commercial',  maxStaleMin: 2160 },
   imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 100800 }, // monthly seed; 100800min = 70 days = 2× interval (absorbs one missed run)
   imfGrowth:        { key: 'seed-meta:economic:imf-growth',       maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro (same WEO release cadence)
   imfLabor:         { key: 'seed-meta:economic:imf-labor',        maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
   imfExternal:      { key: 'seed-meta:economic:imf-external',     maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
+  // plan 2026-04-25-004 Phase 2: financialSystemExposure component seeders.
+  // Bundle: scripts/seed-bundle-macro.mjs (Codex R1 #5, Option A).
+  wbExternalDebt:   { key: 'seed-meta:economic:wb-external-debt', maxStaleMin: 100800 }, // annual WB IDS publication; 70d threshold matches IMF cadence pattern
+  bisLbs:           { key: 'seed-meta:economic:bis-lbs',          maxStaleMin: 14400 }, // BIS LBS quarterly publication; 10d threshold = ~1× publish lag tolerance after macro bundle daily refresh
+  fatfListing:      { key: 'seed-meta:economic:fatf-listing',     maxStaleMin: 60480 }, // FATF plenary 3×/year; 42d threshold = >1 plenary cycle (catches missed-update if cron silently fails)
   shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
   chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60, minRecordCount: 13 }, // 13 canonical chokepoints; get-chokepoint-status writes covered-count → < 13 = upstream partial (portwatch/ArcGIS dropped some)
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL
@@ -292,7 +329,7 @@ const SEED_META = {
   faoFoodPriceIndex:   { key: 'seed-meta:economic:fao-ffpi',                  maxStaleMin: 86400 }, // monthly seed; 86400 = 60 days (2x interval)
   thermalEscalation:   { key: 'seed-meta:thermal:escalation',                 maxStaleMin: 360 }, // cron every 2h; 360 = 3x interval (was 240 = 2x)
   nationalDebt:        { key: 'seed-meta:economic:national-debt',              maxStaleMin: 86400 }, // monthly seed (seed-bundle-macro intervalMs: 30 * DAY); 60d = 2x interval absorbs one missed run. Prior 10080 (7d) was narrower than the cron interval so every cron past day 7 alarmed STALE_SEED.
-  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs:v1:840:all:10',        maxStaleMin: 900 },
+  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs:v1:840:all:10',        maxStaleMin: 540 }, // co-pinned to TARIFF_TTL (8h=480min) + 60min grace. Prior 900 (15h) created an 8h-15h silent window where data had expired but seed-meta was still considered fresh, masking real outages as status=EMPTY (not STALE_SEED). See scripts/seed-supply-chain-trade.mjs TARIFF_TTL.
   // publish.ts runs once daily (02:30 UTC); seed-meta TTL=52h — maxStaleMin must cover the full 24h cycle
   consumerPricesOverview:   { key: 'seed-meta:consumer-prices:overview:ae',     maxStaleMin: 1500 }, // 25h = 24h cadence + 1h grace
   consumerPricesCategories: { key: 'seed-meta:consumer-prices:categories:ae:30d',            maxStaleMin: 1500 },
@@ -357,6 +394,11 @@ const SEED_META = {
   lngVulnerability:     { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // written by jodi-gas seeder afterPublish; shares seed-meta key
   chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
   sprPolicies:          { key: 'seed-meta:energy:spr-policies',         maxStaleMin: 60 * 24 * 400 }, // 400 days; static registry, same cadence as chokepoint baselines
+  pipelinesGas:         { key: 'seed-meta:energy:pipelines-gas',        maxStaleMin: 20_160 }, // 14d — weekly cron (7d) × 2 headroom
+  pipelinesOil:         { key: 'seed-meta:energy:pipelines-oil',        maxStaleMin: 20_160 }, // 14d — same seed-pipelines.mjs publishes both keys
+  storageFacilities:    { key: 'seed-meta:energy:storage-facilities',   maxStaleMin: 20_160 }, // 14d — weekly cron (7d) × 2 headroom
+  fuelShortages:        { key: 'seed-meta:energy:fuel-shortages',       maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom (classifier-driven post-launch)
+  energyDisruptions:    { key: 'seed-meta:energy:disruptions',          maxStaleMin: 20_160 }, // 14d — weekly cron × 2 headroom
   energyCrisisPolicies: { key: 'seed-meta:energy:crisis-policies',      maxStaleMin: 60 * 24 * 400 }, // static data, ~400d TTL matches seeder
   aaiiSentiment:        { key: 'seed-meta:market:aaii-sentiment',       maxStaleMin: 20160 }, // weekly cron; 20160min = 14 days = 2x weekly cadence
   portwatchChokepointsRef: { key: 'seed-meta:portwatch:chokepoints-ref', maxStaleMin: 60 * 24 * 14 }, // seed-bundle-portwatch runs this at WEEK cadence; 14d = 2× interval
@@ -379,6 +421,15 @@ const SEED_META = {
   recoveryExternalDebt:    { key: 'seed-meta:resilience:recovery:external-debt',    maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryFuelStocks:      { key: 'seed-meta:resilience:recovery:fuel-stocks',      maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoveryReexportShare:   { key: 'seed-meta:resilience:recovery:reexport-share',   maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoverySovereignWealth: { key: 'seed-meta:resilience:recovery:sovereign-wealth', maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  // PR 1 v2 energy seeds — weekly cron (8d * 1440 = 11520min = 2x interval).
+  // STRICT SEED_META (not ON_DEMAND): plan 2026-04-24-001 made /api/health
+  // CRIT on absent/stale so operators see the Railway-bundle gap before
+  // the flag flips. See the ON_DEMAND_KEYS "do not add back" note below.
+  lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
+  fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
+  powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -401,6 +452,16 @@ const ON_DEMAND_KEYS = new Set([
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
   'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar: stub seeders not yet deployed, keys may be absent
+  // NOTE (2026-04-24, plan 2026-04-24-001): the PR 1 v2 energy seeds
+  // (`lowCarbonGeneration`, `fossilElectricityShare`, `powerLosses`)
+  // are INTENTIONALLY NOT listed in ON_DEMAND_KEYS. They stay strict
+  // SEED_META so `/api/health` returns CRIT (not WARN) when they are
+  // absent — which is the alarm a future operator needs before flipping
+  // `RESILIENCE_ENERGY_V2_ENABLED=true`. The scorer fails closed via
+  // ResilienceConfigurationError if the flag flips before the seeds
+  // populate (server/worldmonitor/resilience/v1/_dimension-scorers.ts
+  // #scoreEnergy). Do NOT add these labels back to ON_DEMAND_KEYS
+  // without revisiting that plan.
   'displacementPrev', // covered by cascade onto current-year displacement; empty most of the year
   'fxYoy', // TRANSITIONAL (PR #3071): seed-fx-yoy Railway cron deployed manually after merge —
            // gate as on-demand so a deploy-order race or first-cron-run failure doesn't
@@ -433,7 +494,7 @@ const ON_DEMAND_KEYS = new Set([
 // no earnings events this week, econ calendar quiet between seasons).
 // The key must still exist in Redis; only the record count can be 0.
 const EMPTY_DATA_OK_KEYS = new Set([
-  'notamClosures', 'faaDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
+  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write

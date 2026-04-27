@@ -141,31 +141,51 @@ const DODO_PORTAL_FALLBACK_URL = 'https://customer.dodopayments.com';
  * session URL. Falls back to the generic Dodo customer portal on error.
  * Returns the URL that was opened (useful for agent/programmatic callers).
  */
-export async function openBillingPortal(): Promise<string | null> {
+/**
+ * Pre-reserve a blank popup tab SYNCHRONOUSLY inside a click handler so
+ * the async openBillingPortal() below can navigate into it without
+ * tripping the popup blocker. Browsers only trust window.open() calls
+ * that happen inside a user-gesture stack; after any await, the gesture
+ * is spent and window.open() returns null (blocked). Callers MUST call
+ * this synchronously BEFORE awaiting anything, then pass the returned
+ * handle into openBillingPortal.
+ */
+export function prereserveBillingPortalTab(): Window | null {
+  return window.open('', '_blank', 'noopener,noreferrer');
+}
+
+export async function openBillingPortal(preopened?: Window | null): Promise<string | null> {
+  const reservedWin = preopened ?? null;
+  const navigate = (url: string): string => {
+    if (reservedWin && !reservedWin.closed) {
+      reservedWin.location.href = url;
+    } else {
+      const fresh = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!fresh) window.location.assign(url);
+    }
+    return url;
+  };
+
   try {
     const client = await getConvexClient();
     if (!client) {
-      window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
-      return DODO_PORTAL_FALLBACK_URL;
+      return navigate(DODO_PORTAL_FALLBACK_URL);
     }
 
     const api = await getConvexApi();
     if (!api) {
-      window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
-      return DODO_PORTAL_FALLBACK_URL;
+      return navigate(DODO_PORTAL_FALLBACK_URL);
     }
 
     const result = await client.action(api.payments.billing.getCustomerPortalUrl, {});
     const url = (result?.portal_url as string | undefined) ?? DODO_PORTAL_FALLBACK_URL;
-    window.open(url, '_blank');
-    return url;
+    return navigate(url);
   } catch (err) {
     console.warn('[billing] Failed to get customer portal URL, falling back:', err);
     Sentry.captureException(
       normalizeCaughtError('openBillingPortal', err),
       { tags: { component: 'dodo-billing', action: 'openBillingPortal' } },
     );
-    window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
-    return DODO_PORTAL_FALLBACK_URL;
+    return navigate(DODO_PORTAL_FALLBACK_URL);
   }
 }

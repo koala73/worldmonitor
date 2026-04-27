@@ -48,13 +48,60 @@ function installRedisFixtures() {
 }
 
 describe('resilience release gate', () => {
-  it('keeps all 19 dimension scorers non-placeholder for the required countries', async () => {
+  it('keeps all 22 dimension scorers non-placeholder for the required countries', async () => {
+    // PR 3 §3.5 retired fuelStockDays; PR 2 §3.4 retired reserveAdequacy
+    // (superseded by the liquidReserveAdequacy + sovereignFiscalBuffer
+    // split). Both scorers emit coverage=0 + imputationClass=null — the
+    // widget maps 'source-failure' to a "Source down" label, which would
+    // manufacture a false outage signal on every country for a deliberate
+    // construct retirement. Allow-list keeps the zero-coverage placeholder
+    // check enforcing on the OTHER 19 dimensions.
+    const RETIRED_DIMENSIONS = new Set(['fuelStockDays', 'reserveAdequacy']);
+    // plan 2026-04-25-004 Phase 2: financialSystemExposure ships flag-gated
+    // off by default (rollout pattern matches energy v2). With the flag
+    // off, the dim emits coverage=0 + imputationClass=null. Treated as
+    // "dark in this baseline" — same shape as a retired dim, but for a
+    // distinct reason: pending seeder rollout, not deliberate retirement.
+    // When the flag flips on with seeders populating, this allow-list
+    // entry should be removed in the same PR that flips the flag.
+    const FLAG_GATED_DARK_DIMENSIONS = new Set(['financialSystemExposure']);
+    // plan 2026-04-26-001 §U3: sovereignFiscalBuffer reframed from
+    // "score 0, coverage 1.0 substantive absence" to "score 0,
+    // coverage 0 dim-not-applicable" for countries not in the SWF
+    // manifest. Required-dimension fixture countries (US, BF, BR)
+    // include non-SWF countries (US, BF) that now legitimately emit
+    // coverage=0 for this dim. The other 19 dims still must score
+    // with positive coverage; this allow-list narrows the
+    // zero-coverage assertion to the SWF dim only.
+    const NA_FOR_SOME_COUNTRIES_DIMENSIONS = new Set(['sovereignFiscalBuffer']);
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
       const entries = Object.entries(scores);
-      assert.equal(entries.length, 19, `${countryCode} should have all resilience dimensions`);
+      assert.equal(entries.length, 22, `${countryCode} should have all 22 resilience dimensions (20 active + 2 retired kept for structural continuity)`);
       for (const [dimensionId, score] of entries) {
         assert.ok(Number.isFinite(score.score), `${countryCode} ${dimensionId} should produce a numeric score`);
+        if (RETIRED_DIMENSIONS.has(dimensionId)) {
+          assert.equal(score.coverage, 0, `${countryCode} ${dimensionId} is retired and must stay at coverage=0`);
+          assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} retired dimensions must tag null imputationClass (not source-failure)`);
+          continue;
+        }
+        if (FLAG_GATED_DARK_DIMENSIONS.has(dimensionId)) {
+          assert.equal(score.coverage, 0, `${countryCode} ${dimensionId} is flag-gated dark (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED off) and must stay at coverage=0`);
+          assert.equal(score.imputationClass, null, `${countryCode} ${dimensionId} flag-off must tag null imputationClass (not source-failure)`);
+          continue;
+        }
+        if (NA_FOR_SOME_COUNTRIES_DIMENSIONS.has(dimensionId) && score.coverage === 0) {
+          // sovereignFiscalBuffer with coverage=0 = "country not in SWF manifest"
+          // (Plan 2026-04-26-001 §U3 dim-not-applicable + review fixup).
+          // Must carry imputationClass='not-applicable' (the proto's
+          // structurally-not-applicable sentinel — distinct from null
+          // "any observed data" and from "source-failure"). Countries
+          // WITH SWFs still score with positive coverage; that's covered
+          // by the construct-invariants test.
+          assert.equal(score.imputationClass, 'not-applicable',
+            `${countryCode} ${dimensionId} dim-not-applicable must tag 'not-applicable' imputationClass (the structurally-not-applicable sentinel)`);
+          continue;
+        }
         assert.ok(score.coverage > 0, `${countryCode} ${dimensionId} should not fall back to zero-coverage placeholder scoring`);
       }
     }
@@ -150,8 +197,12 @@ describe('resilience release gate', () => {
   //     NO (elite tier)   overallScore = 86.58, baseline 86.85, stress 84.36
   //     US (strong tier)  overallScore = 72.80, baseline 73.15, stress 70.58
   //     Delta             NO - US = 13.78 points
-  //     Ceiling           neither country approaches 100; all 5 domains stay
+  //     Ceiling           neither country approaches 100; all 6 domains stay
   //                       well inside the [0, 100] clamp range
+  // (Note: the investigation was run at the 5-domain state before the
+  // recovery domain landed; the overall ordering finding held after the
+  // Phase 2 recovery-domain addition — rerun under current fixtures
+  // continues to produce no ceiling and preserves NO > US by ≥8 points.)
   //
   // The ordering elite > strong > stressed > fragile is preserved. There is
   // no hard 100 ceiling in the scorer, and nothing in _dimension-scorers.ts
@@ -234,7 +285,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
+    assert.equal(allDimensions.length, 22, 'US response should carry all 22 dimensions (20 active + 2 retired)');
     for (const dimension of allDimensions) {
       assert.equal(
         typeof dimension.imputationClass,
@@ -262,7 +313,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 19, 'US response should carry all 19 dimensions');
+    assert.equal(allDimensions.length, 22, 'US response should carry all 22 dimensions (20 active + 2 retired)');
     const validLevels = ['', 'fresh', 'aging', 'stale'];
     for (const dimension of allDimensions) {
       assert.ok(dimension.freshness != null, `dimension ${dimension.id} must carry a freshness payload`);

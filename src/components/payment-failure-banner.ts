@@ -9,7 +9,7 @@
  * to avoid debounce issues with Panel.setContent().
  */
 
-import { onSubscriptionChange, openBillingPortal } from '@/services/billing';
+import { onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import type { SubscriptionInfo } from '@/services/billing';
 
 const BANNER_ID = 'payment-failure-banner';
@@ -78,7 +78,9 @@ export function initPaymentFailureBanner(): () => void {
     const updateBtn = document.getElementById('pf-update-btn');
     if (updateBtn) {
       updateBtn.addEventListener('click', () => {
-        openBillingPortal();
+        // Pre-reserve portal tab synchronously to survive popup blocker.
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin);
       });
     }
 

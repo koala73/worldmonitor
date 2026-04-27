@@ -384,8 +384,21 @@ describe('adaptSnapshot', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('get-regional-snapshot handler: structural checks', () => {
-  it('imports getCachedJson from redis helpers', () => {
-    assert.match(handlerSrc, /import\s*\{\s*getCachedJson\s*\}\s*from\s*'\.\.\/\.\.\/\.\.\/_shared\/redis'/);
+  it('imports getCachedJson + getCachedRawString from redis helpers', () => {
+    // getCachedRawString reads the bare-string latestKey pointer (the seed
+    // writer stores snapshot_id via `SET key bareString` — JSON.parse would
+    // throw); getCachedJson reads the JSON-stringified snapshot-by-id payload.
+    // Both must be imported.
+    assert.match(handlerSrc, /import\s*\{[^}]*\bgetCachedJson\b[^}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/_shared\/redis'/);
+    assert.match(handlerSrc, /import\s*\{[^}]*\bgetCachedRawString\b[^}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/_shared\/redis'/);
+  });
+
+  it('reads latestKey via getCachedRawString (encoding contract)', () => {
+    // Guard the primary fix: if a future refactor swaps back to getCachedJson
+    // for the latestKey read, every region will silently render empty because
+    // JSON.parse throws on the bare snapshot_id string. See commit that
+    // replaced the getCachedJson+JSON.parse path with getCachedRawString.
+    assert.match(handlerSrc, /getCachedRawString\s*\(\s*latestKey\s*\)/);
   });
 
   it('uses the canonical :latest key prefix', () => {

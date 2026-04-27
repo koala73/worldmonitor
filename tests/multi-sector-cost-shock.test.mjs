@@ -232,26 +232,25 @@ describe('computeMultiSectorShocks', () => {
 });
 
 // ========================================================================
-// 2. Edge function: api/supply-chain/v1/multi-sector-cost-shock.ts
+// 2. sebuf handler: server/worldmonitor/supply-chain/v1/get-multi-sector-cost-shock.ts
 // ========================================================================
 
-describe('multi-sector-cost-shock edge function', () => {
-  const src = readSrc('api/supply-chain/v1/multi-sector-cost-shock.ts');
+describe('getMultiSectorCostShock sebuf handler', () => {
+  const src = readSrc('server/worldmonitor/supply-chain/v1/get-multi-sector-cost-shock.ts');
 
-  it('is declared as a Vercel edge function', () => {
-    assert.match(src, /export const config = \{ runtime: 'edge' \}/);
+  it('exports getMultiSectorCostShock as the sebuf handler entry point', () => {
+    assert.match(src, /export async function getMultiSectorCostShock/);
   });
 
-  it('calls isCallerPremium for PRO-gating', () => {
-    assert.match(src, /isCallerPremium/);
-    assert.match(src, /PRO subscription required/);
+  it('uses isCallerPremium for PRO-gating', () => {
+    assert.match(src, /isCallerPremium\(ctx\.request\)/);
   });
 
   it('validates iso2 with a 2-letter regex', () => {
     assert.match(src, /\/\^\[A-Z\]\{2\}\$\/\.test/);
   });
 
-  it('validates chokepointId against the registry', () => {
+  it('validates chokepointId against the chokepoint registry', () => {
     assert.match(src, /CHOKEPOINT_REGISTRY\.some/);
   });
 
@@ -259,22 +258,25 @@ describe('multi-sector-cost-shock edge function', () => {
     assert.match(src, /clampClosureDays/);
   });
 
-  it('reads country products from comtrade:bilateral-hs4 key', () => {
+  it('reads seeded country products from the raw bilateral-hs4 Redis key', () => {
     assert.match(src, /comtrade:bilateral-hs4:\$\{iso2\}:v1/);
+    assert.match(src, /getCachedJson\(productsKey, true\)/);
   });
 
   it('reads chokepoint status for war risk tier', () => {
     assert.match(src, /CHOKEPOINT_STATUS_KEY/);
   });
 
-  it('returns JSON with sectors, totalAddedCost, and closureDays', () => {
+  it('returns sectors, totalAddedCost, closureDays, and warRiskTier on the response', () => {
     assert.match(src, /sectors/);
     assert.match(src, /totalAddedCost/);
     assert.match(src, /closureDays/);
+    assert.match(src, /warRiskTier/);
   });
 
-  it('uses short private Cache-Control (slider state is user-controlled)', () => {
-    assert.match(src, /private, max-age=60/);
+  it('emits the empty sector skeleton when no seeded import data exists', () => {
+    assert.match(src, /emptySectorSkeleton/);
+    assert.match(src, /No seeded import data available for this country/);
   });
 });
 
@@ -289,35 +291,34 @@ describe('supply-chain client service: fetchMultiSectorCostShock', () => {
     assert.match(src, /export async function fetchMultiSectorCostShock/);
   });
 
-  it('exports MultiSectorShock and MultiSectorShockResponse interfaces', () => {
-    assert.match(src, /export interface MultiSectorShock/);
-    assert.match(src, /export interface MultiSectorShockResponse/);
+  it('re-exports MultiSectorShock and MultiSectorShockResponse aliases for callsites', () => {
+    assert.match(src, /export type MultiSectorShockResponse = GetMultiSectorCostShockResponse/);
+    assert.match(src, /export type MultiSectorShock = MultiSectorCostShock/);
   });
 
-  it('uses premiumFetch for PRO-gated access', () => {
-    assert.match(src, /fetchMultiSectorCostShock[\s\S]*?premiumFetch/);
+  it('calls the generated sebuf client.getMultiSectorCostShock', () => {
+    assert.match(src, /client\.getMultiSectorCostShock\(/);
   });
 
-  it('passes iso2, chokepointId, and closureDays as query params', () => {
-    assert.match(src, /iso2=\$\{encodeURIComponent\(iso2\)\}/);
-    assert.match(src, /chokepointId=\$\{encodeURIComponent\(chokepointId\)\}/);
-    assert.match(src, /closureDays=\$\{encodeURIComponent\(String\(closureDays\)\)\}/);
+  it('passes iso2, chokepointId, and closureDays through the typed RPC request', () => {
+    assert.match(src, /\{ iso2, chokepointId, closureDays \}/);
   });
 
-  it('supports AbortSignal passthrough', () => {
+  it('supports AbortSignal passthrough via call options', () => {
     assert.match(src, /signal\?: AbortSignal/);
+    assert.match(src, /signal: options\?\.signal/);
   });
 });
 
 // ========================================================================
-// 4. Premium paths: multi-sector-cost-shock is PRO-gated at the gateway.
+// 4. Premium paths: get-multi-sector-cost-shock is PRO-gated at the gateway.
 // ========================================================================
 
-describe('premium-paths: multi-sector-cost-shock registration', () => {
+describe('premium-paths: get-multi-sector-cost-shock registration', () => {
   const src = readSrc('src/shared/premium-paths.ts');
 
-  it('includes /api/supply-chain/v1/multi-sector-cost-shock', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/multi-sector-cost-shock/);
+  it('includes /api/supply-chain/v1/get-multi-sector-cost-shock', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-multi-sector-cost-shock/);
   });
 });
 

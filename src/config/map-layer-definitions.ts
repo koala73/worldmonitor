@@ -3,7 +3,7 @@ import type { MapLayers } from '@/types';
 import { isDesktopRuntime } from '@/services/runtime';
 
 export type MapRenderer = 'flat' | 'globe';
-export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity';
+export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
 
 const _desktop = isDesktopRuntime();
 
@@ -14,6 +14,14 @@ export interface LayerDefinition {
   fallbackLabel: string;
   renderers: MapRenderer[];
   premium?: 'locked' | 'enhanced';
+  /**
+   * When true, this layer only renders under DeckGL — neither the SVG/mobile
+   * fallback in Map.ts nor the WebGL GlobeMap has a code path for its data.
+   * `renderers: ['flat']` is not sufficient because `'flat'` covers both
+   * DeckGL-flat and SVG-flat. Consumers (layer picker, CMD+K dispatcher)
+   * must additionally gate on `isDeckGLActive()` for these layers.
+   */
+  deckGLOnly?: boolean;
 }
 
 const def = (
@@ -23,7 +31,12 @@ const def = (
   fallbackLabel: string,
   renderers: MapRenderer[] = ['flat', 'globe'],
   premium?: 'locked' | 'enhanced',
-): LayerDefinition => ({ key, icon, i18nSuffix, fallbackLabel, renderers, ...(premium && { premium }) });
+  deckGLOnly?: boolean,
+): LayerDefinition => ({
+  key, icon, i18nSuffix, fallbackLabel, renderers,
+  ...(premium && { premium }),
+  ...(deckGLOnly && { deckGLOnly: true }),
+});
 
 export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks', ['flat', 'globe'], _desktop ? 'locked' : undefined),
@@ -82,13 +95,22 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   webcams:                  def('webcams',                  '&#128247;', 'webcams',                  'Live Webcams'),
   // weatherRadar removed — radar tiles now auto-start when Weather Alerts layer is toggled on
   diseaseOutbreaks:         def('diseaseOutbreaks',         '&#129440;', 'diseaseOutbreaks',         'Disease Outbreaks'),
+  // DeckGL-only layers. `renderers: ['flat']` hides them from the globe
+  // picker (GlobeMap has no branch in ensureStaticDataForLayer / no entry
+  // in the layer-channel map). `deckGLOnly: true` also hides them from
+  // the SVG/mobile fallback's CMD+K dispatch (Map.ts has no SVG render
+  // path for either marker/pin type). Restore to `['flat', 'globe']`
+  // without `deckGLOnly` once both renderers gain real support.
+  storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['flat'], undefined, true),
+  fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['flat'], undefined, true),
+  liveTankers:              def('liveTankers',              '&#128674;', 'liveTankers',              'Live Tanker Positions', ['flat'], undefined, true),
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   full: [
     'iranAttacks', 'hotspots', 'conflicts',
     'bases', 'nuclear', 'irradiators', 'radiationWatch', 'spaceports',
-    'cables', 'pipelines', 'datacenters', 'military',
+    'cables', 'pipelines', 'storageFacilities', 'fuelShortages', 'datacenters', 'military',
     'ais', 'tradeRoutes', 'flights', 'protests',
     'ucdpEvents', 'displacement', 'climate', 'weather',
     'outages', 'cyberThreats', 'natural', 'fires',
@@ -117,6 +139,14 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'ais', 'economic', 'fires', 'climate',
     'resilienceScore', 'natural', 'weather', 'outages', 'sanctions', 'dayNight',
   ],
+  energy: [
+    // Core energy infrastructure — mirror of ENERGY_MAP_LAYERS in panels.ts
+    'pipelines', 'storageFacilities', 'fuelShortages', 'waterways', 'commodityPorts', 'commodityHubs',
+    'ais', 'liveTankers', 'tradeRoutes', 'minerals',
+    // Energy-adjacent context
+    'sanctions', 'fires', 'climate', 'weather', 'outages', 'natural',
+    'resilienceScore', 'dayNight',
+  ],
 };
 
 const I18N_PREFIX = 'components.deckgl.layers.';
@@ -139,6 +169,30 @@ export function sanitizeLayersForVariant(layers: MapLayers, variant: MapVariant)
     if (!allowed.has(key)) sanitized[key] = false;
   }
   return sanitized;
+}
+
+/**
+ * Checks whether a layer can actually render under the given renderer +
+ * DeckGL state. Used by both the layer picker UI and the CMD+K dispatcher
+ * to hide / silently-skip toggles that would be a no-op.
+ *
+ * Rules:
+ *   - The layer's declared `renderers` must include `currentRenderer`
+ *     (catches globe toggles for flat-only layers).
+ *   - If `deckGLOnly: true`, the SVG/mobile fallback can't render either,
+ *     so DeckGL must be active (catches flat-only layers whose data
+ *     shape is DeckGL-specific — see storageFacilities, fuelShortages).
+ */
+export function isLayerExecutable(
+  layerKey: keyof MapLayers,
+  currentRenderer: MapRenderer,
+  isDeckGLActive: boolean,
+): boolean {
+  const def = LAYER_REGISTRY[layerKey];
+  if (!def) return false;
+  if (!def.renderers.includes(currentRenderer)) return false;
+  if (def.deckGLOnly && !isDeckGLActive) return false;
+  return true;
 }
 
 export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {

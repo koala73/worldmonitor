@@ -23,14 +23,69 @@ export function normaliseThreatLevel(upstream: string): BriefThreatLevel | null;
 export type AlertSensitivity = 'all' | 'high' | 'critical';
 
 /**
+ * Optional drop-metrics callback. Called synchronously once per
+ * dropped story. `severity` is present when threatLevel parsed but
+ * failed the sensitivity gate, or when a later gate (headline/url)
+ * dropped a story that had already passed the severity check.
+ *
+ * `cap` fires once per story skipped after `maxStories` has been
+ * reached — neither severity nor field metadata is included since
+ * the loop short-circuits without parsing the remaining stories.
+ *
+ * `source_topic_cap` (U5) fires when a story is dropped because the
+ * `(source, category)` pair already has `maxPerSourceTopic` survivors
+ * earlier in the in-flight `out` array. Both `severity` and `sourceUrl`
+ * are populated.
+ *
+ * `institutional_static_page` (U7) fires when a story's `sourceUrl`
+ * matches the static-institutional-page denylist (e.g.
+ * `defense.gov/About/Section-508/`). Both `severity` and `sourceUrl`
+ * are populated.
+ */
+export type DropMetricsFn = (event: {
+  reason:
+    | 'severity'
+    | 'headline'
+    | 'url'
+    | 'shape'
+    | 'cap'
+    | 'source_topic_cap'
+    | 'institutional_static_page';
+  severity?: string;
+  sourceUrl?: string;
+}) => void;
+
+/**
  * Filters the upstream `topStories` array against a user's
  * `alertRules.sensitivity` setting and caps at `maxStories`. Stories
  * with an unknown upstream severity are dropped.
+ *
+ * When `onDrop` is provided, it is invoked synchronously for each
+ * dropped story with the drop reason and available metadata. The
+ * callback runs before the `continue` that skips the story — callers
+ * can use it to aggregate per-user drop counters without altering
+ * filter behaviour.
+ *
+ * When `rankedStoryHashes` is provided, stories are re-ordered BEFORE
+ * the cap is applied: stories whose `hash` matches a ranking entry
+ * (by short-hash prefix, ≥4 chars) come first in ranking order;
+ * stories not in the ranking come after in their original relative
+ * order. Lets the canonical synthesis brain's editorial judgment of
+ * importance survive the `maxStories` cut.
+ *
+ * `maxPerSourceTopic` (U5, default 2) caps how many stories sharing
+ * the same `(source, category)` pair can survive into a single brief.
+ * Pass `Infinity` to disable. The cap runs AFTER `applyRankedOrder`
+ * so the highest-ranked sibling of any pair survives. Stories beyond
+ * the cap are dropped with `onDrop({ reason: 'source_topic_cap' })`.
  */
 export function filterTopStories(input: {
   stories: UpstreamTopStory[];
   sensitivity: AlertSensitivity;
   maxStories?: number;
+  maxPerSourceTopic?: number;
+  onDrop?: DropMetricsFn;
+  rankedStoryHashes?: string[];
 }): BriefStory[];
 
 /**
@@ -85,4 +140,12 @@ export interface UpstreamTopStory {
   category?: unknown;
   countryCode?: unknown;
   importanceScore?: unknown;
+  /**
+   * Stable digest-story hash carried through from the cron's pool
+   * (digestStoryToUpstreamTopStory at scripts/lib/brief-compose.mjs).
+   * Used by `filterTopStories` when `rankedStoryHashes` is supplied
+   * to re-order stories before the cap. Falls back to titleHash when
+   * the upstream digest path didn't materialise a primary `hash`.
+   */
+  hash?: unknown;
 }

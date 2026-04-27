@@ -28,7 +28,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v1:US': {
+      'resilience:intervals:v2:US': {
         p05: 65.2,
         p95: 72.8,
         draws: 100,

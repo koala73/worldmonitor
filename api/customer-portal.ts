@@ -10,6 +10,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 
 const CONVEX_SITE_URL =
@@ -28,7 +30,10 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   const cors = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
@@ -79,6 +84,7 @@ export default async function handler(req: Request): Promise<Response> {
     return json(data, 200, cors);
   } catch (err) {
     console.error('[customer-portal] Relay failed:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/customer-portal', step: 'relay' }, ctx });
     return json({ error: 'Customer portal unavailable' }, 502, cors);
   }
 }

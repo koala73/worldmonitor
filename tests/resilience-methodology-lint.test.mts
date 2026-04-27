@@ -35,7 +35,8 @@ const METHODOLOGY_CANDIDATES = [
 const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   'Macro-Fiscal': 'macroFiscal',
   'Currency & External': 'currencyExternal',
-  'Trade & Sanctions': 'tradeSanctions',
+  'Trade Policy': 'tradePolicy',
+  'Financial System Exposure': 'financialSystemExposure',
   'Cyber & Digital': 'cyberDigital',
   'Logistics & Supply': 'logisticsSupply',
   'Infrastructure': 'infrastructure',
@@ -52,6 +53,8 @@ const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   'Import Concentration': 'importConcentration',
   'State Continuity': 'stateContinuity',
   'Fuel Stock Days': 'fuelStockDays',
+  'Liquid Reserve Adequacy': 'liquidReserveAdequacy',
+  'Sovereign Fiscal Buffer': 'sovereignFiscalBuffer',
 };
 
 function findMethodologyFile(): string {

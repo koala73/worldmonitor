@@ -32,6 +32,20 @@ export type IndicatorSpec = {
   tier: IndicatorTier; // Core = moves the public overall score, Enrichment = drill-down only, Experimental = internal
   coverage: number; // expected country count; the tier linter enforces Core >= 180
   license: IndicatorLicense; // source license category for the audit trail
+  // Plan 2026-04-26-002 §U5 (combined PR 3+4+5) — source-comprehensiveness flag.
+  // True when the upstream source enumerates ALL UN-member countries
+  // (or as close as the underlying universe allows): IPC, UNHCR, UCDP,
+  // FATF listings, WHO global indicators, IMF WEO, WB annual statistical
+  // series. False when the source is an event-scraping feed, English-
+  // biased, a curated subset (BIS LBS by-parent reporters list, WTO
+  // tariff-overview top-50 reporters, IEA OECD-only series), or a
+  // real-time signal whose absence does not encode "stable absence."
+  // Used by IMPUTE callers in _dimension-scorers.ts: when reaching for
+  // a stable-absence anchor (85/0.6 or 88/0.7), if the underlying source
+  // is non-comprehensive, fall back to `unmonitored` (50/0.3) instead.
+  // Conservative default: when in doubt, mark `false` (the lower-confidence
+  // impute is the safer error-mode per the plan §risk-mitigation row).
+  comprehensive: boolean;
 };
 
 export const INDICATOR_REGISTRY: IndicatorSpec[] = [
@@ -49,6 +63,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 212,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'debtGrowthRate',
@@ -63,6 +78,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'currentAccountPct',
@@ -77,6 +93,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'unemploymentPct',
@@ -91,6 +108,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 150,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'householdDebtService',
@@ -106,13 +124,54 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 40,
     license: 'non-commercial',
+    comprehensive: false,
   },
 
-  // ── currencyExternal (3 sub-metrics, plus IMF inflation fallback for non-BIS) ─
+  // ── currencyExternal ─────────────────────────────────────────────────────
+  // PR 3 §3.5 point 3 rebalanced the dimension's core scoring:
+  //   - BIS-dependent signals (fxVolatility, fxDeviation) moved to
+  //     tier='experimental'. BIS EER covers ~64 economies, which is too
+  //     narrow for a world-ranking Core signal. They remain in the registry
+  //     for drill-down / enrichment panels but scoreCurrencyExternal no
+  //     longer reads them.
+  //   - Core scoring is now: inflationStability (IMF CPI, ~185 countries)
+  //     at weight 0.6, fxReservesAdequacy (WB FI.RES.TOTL.MO, ~188 countries)
+  //     at weight 0.4. Both are global-coverage, so every country gets the
+  //     same construct regardless of BIS membership.
+  {
+    id: 'inflationStability',
+    dimension: 'currencyExternal',
+    description: 'IMF CPI inflation (lower is better). Global-coverage primary signal for currency stability. Core input to scoreCurrencyExternal under PR 3 §3.5. A future PR may upgrade this to a 5-year inflation-volatility computation once the seeder tracks the series; headline inflation is a reasonable first-cut for stability ranking.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 50, best: 0 },
+    weight: 0.6,
+    sourceKey: 'economic:imf:macro:v2',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 185,
+    license: 'open-data',
+    comprehensive: true,
+  },
+  {
+    id: 'fxReservesAdequacy',
+    dimension: 'currencyExternal',
+    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO). Global-coverage core signal for currency stability; paired with inflationStability in scoreCurrencyExternal after PR 3 §3.5 rebalancing.',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 12 },
+    weight: 0.4,
+    sourceKey: 'resilience:static:*',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'core',
+    coverage: 188,
+    license: 'open-data',
+    comprehensive: true,
+  },
   {
     id: 'fxVolatility',
     dimension: 'currencyExternal',
-    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12)). Fallback chain when BIS absent: (1) IMF inflation + WB reserves proxy, (2) IMF inflation alone, (3) reserves alone, (4) conservative imputation.',
+    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12)). Enrichment-only for the ~64 BIS-tracked economies after PR 3 §3.5 — NOT read by scoreCurrencyExternal. Available via drill-down panels only.',
     direction: 'lowerBetter',
     goalposts: { worst: 50, best: 0 },
     weight: 0.6,
@@ -120,17 +179,15 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'monthly',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    // BIS REER is curated (~60 countries). Demoted to Enrichment by the
-    // Phase 2 A4 coverage gate; the IMF inflation + WB reserves fallback
-    // chain still feeds the Core fxReservesAdequacy signal globally.
-    tier: 'enrichment',
+    tier: 'experimental',
     coverage: 60,
     license: 'non-commercial',
+    comprehensive: false,
   },
   {
     id: 'fxDeviation',
     dimension: 'currencyExternal',
-    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index). Fallback chain when BIS absent: (1) IMF inflation + WB reserves proxy, (2) IMF inflation alone, (3) reserves alone, (4) conservative imputation.',
+    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index). Enrichment-only for the ~64 BIS-tracked economies after PR 3 §3.5 — NOT read by scoreCurrencyExternal. Available via drill-down panels only.',
     direction: 'lowerBetter',
     goalposts: { worst: 35, best: 0 },
     weight: 0.25,
@@ -138,48 +195,25 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'curated',
     cadence: 'monthly',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    // BIS REER curated source, same coverage limitation as fxVolatility.
-    tier: 'enrichment',
+    tier: 'experimental',
     coverage: 60,
     license: 'non-commercial',
-  },
-  {
-    id: 'fxReservesAdequacy',
-    dimension: 'currencyExternal',
-    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO). Supplementary metric for BIS countries (weight 0.15), primary metric alongside IMF inflation for non-BIS countries (~160 countries).',
-    direction: 'higherBetter',
-    goalposts: { worst: 1, best: 12 },
-    weight: 0.15,
-    sourceKey: 'resilience:static:*',
-    scope: 'global',
-    cadence: 'annual',
-    tier: 'core',
-    coverage: 188,
-    license: 'open-data',
+    comprehensive: false,
   },
 
-  // ── tradeSanctions (4 sub-metrics) ────────────────────────────────────────
-  {
-    id: 'sanctionCount',
-    dimension: 'tradeSanctions',
-    description: 'OFAC sanctions entity count per country; piecewise normalization (0=100, 200+=near 0)',
-    direction: 'lowerBetter',
-    goalposts: { worst: 200, best: 0 },
-    weight: 0.45,
-    sourceKey: 'sanctions:country-counts:v1',
-    scope: 'global',
-    cadence: 'daily',
-    tier: 'core',
-    coverage: 200,
-    license: 'public-domain',
-  },
+  // ── tradePolicy (3 sub-metrics) ───────────────────────────────────────────
+  // Renamed from tradeSanctions in plan 2026-04-25-004 Phase 1 (Ship 1).
+  // The OFAC `sanctionCount` indicator binding (was weight 0.45) is DROPPED;
+  // domicile-of-designated-entities is a corporate-finance liability metric,
+  // not a country-resilience indicator. Remaining 3 components reweighted
+  // to total 1.0 (0.30 / 0.30 / 0.40).
   {
     id: 'tradeRestrictions',
-    dimension: 'tradeSanctions',
+    dimension: 'tradePolicy',
     description: 'WTO trade restrictions count (IN_FORCE weighted 3x); curated reporter set',
     direction: 'lowerBetter',
     goalposts: { worst: 30, best: 0 },
-    weight: 0.15,
+    weight: 0.30,
     sourceKey: 'trade:restrictions:v1:tariff-overview:50',
     scope: 'curated',
     cadence: 'weekly',
@@ -190,14 +224,15 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 50,
     license: 'open-data',
+    comprehensive: false,
   },
   {
     id: 'tradeBarriers',
-    dimension: 'tradeSanctions',
+    dimension: 'tradePolicy',
     description: 'WTO trade barrier notifications count; curated reporter set',
     direction: 'lowerBetter',
     goalposts: { worst: 40, best: 0 },
-    weight: 0.15,
+    weight: 0.30,
     sourceKey: 'trade:barriers:v1:tariff-gap:50',
     scope: 'curated',
     cadence: 'weekly',
@@ -205,20 +240,115 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 50,
     license: 'open-data',
+    comprehensive: false,
   },
   {
     id: 'appliedTariffRate',
-    dimension: 'tradeSanctions',
+    dimension: 'tradePolicy',
     description: 'World Bank applied tariff rate, weighted mean, all products (TM.TAX.MRCH.WM.AR.ZS); 0%=free trade, 20%+=heavily restricted',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
-    weight: 0.25,
+    weight: 0.40,
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
+  },
+
+  // ── financialSystemExposure (4 sub-metrics) ───────────────────────────────
+  // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability built
+  // from BIS Locational Banking Statistics + WB IDS short-term external
+  // debt + FATF AML/CFT listing status. Replaces the dropped OFAC-domicile
+  // signal (Phase 1) with audited cross-border banking + AML/CFT data
+  // that doesn't conflate transit-hub corporate domicile with host-country
+  // risk. Components 2 + 4 share the BIS LBS payload (no separate seed).
+  // Dim is 'core' (contributes to headline score) but BIS-derived
+  // indicators are 'enrichment' / 'non-commercial' per Codex R1 #8 to
+  // match the existing BIS classification convention.
+  {
+    id: 'shortTermExternalDebtPctGni',
+    dimension: 'financialSystemExposure',
+    description: 'Short-term external debt as % of GNI (WB IDS DT.DOD.DSTC.IR.ZS × DT.DOD.DECT.GN.ZS); IMF Article IV vulnerability threshold is 15% GNI',
+    direction: 'lowerBetter',
+    goalposts: { worst: 15, best: 0 },
+    weight: 0.35,
+    sourceKey: 'economic:wb-external-debt:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    // WB IDS publishes for ~125 LMICs only; HIC fall through to BIS LBS structural-exposure component.
+    // Tagged 'enrichment' (not 'core') because the lint test enforces
+    // core indicators must have coverage >= 180; LMIC-only is below
+    // that gate by definition. Component carries weight 0.35 inside the
+    // dim regardless of tier — the tier is a documentation classification.
+    tier: 'enrichment',
+    coverage: 125,
+    license: 'open-data',
+    // §U5 review fix: comprehensive=false. WB IDS coverage is the LMIC
+    // subset (~125 countries), NOT the universe. HIC absence from this
+    // source is NOT a stable-absence signal — those countries fall through
+    // to the BIS LBS structural-exposure component instead. Marking
+    // comprehensive=true would let any future IMPUTE caller treat HIC
+    // absence as the high stable-absence anchor (85+), which would
+    // misrepresent HIC financial-system exposure.
+    comprehensive: false,
+  },
+  {
+    id: 'bisLbsXborderPctGdp',
+    dimension: 'financialSystemExposure',
+    description: 'BIS LBS sum of by-parent cross-border claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (<5%) and over-exposure (>60%) score low',
+    direction: 'lowerBetter', // U-shape is "lowerBetter" in semantic sense (concentrated exposure penalized)
+    // NOTE (Greptile P2 catch, PR #3407 review): goalposts here are
+    // DOCUMENTATION-ONLY for the over-exposed branch. The actual scorer
+    // uses `normalizeBandLowerBetter` (a U-shape, not a linear lowerBetter
+    // mapping), which peaks at 25% and penalizes both extremes. A linear
+    // `{worst, best}` cannot represent a U-shape; we set goalposts to the
+    // peak (best=25) and the over-exposed worst-anchor (worst=60). Tooling
+    // / lints that read these values to compute "expected" component
+    // scores must consult `normalizeBandLowerBetter` directly, not assume
+    // these are the inputs to a generic linear normalizer.
+    goalposts: { worst: 60, best: 25 },
+    weight: 0.30,
+    sourceKey: 'economic:bis-lbs:v1',
+    scope: 'global',
+    cadence: 'quarterly',
+    tier: 'enrichment',
+    coverage: 200,
+    license: 'non-commercial', // BIS terms of use; redistributed under attribution
+    comprehensive: false,
+  },
+  {
+    id: 'fatfListingStatus',
+    dimension: 'financialSystemExposure',
+    description: 'FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 100 },
+    weight: 0.20,
+    sourceKey: 'economic:fatf-listing:v1',
+    scope: 'global',
+    cadence: 'monthly',
+    tier: 'core',
+    coverage: 200,
+    license: 'open-data',
+    comprehensive: true,
+  },
+  {
+    id: 'financialCenterRedundancy',
+    dimension: 'financialSystemExposure',
+    description: 'Count of distinct BIS LBS by-parent reporters with non-trivial (>1% GDP) cross-border claims on the country; rewards multi-counterparty financial centers, balances Component 2 over-exposure penalty',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 10 },
+    weight: 0.15,
+    sourceKey: 'economic:bis-lbs:v1', // shares BIS LBS seed with Component 2
+    scope: 'global',
+    cadence: 'quarterly',
+    tier: 'enrichment',
+    coverage: 200,
+    license: 'non-commercial',
+    comprehensive: false,
   },
 
   // ── cyberDigital (3 sub-metrics) ──────────────────────────────────────────
@@ -235,6 +365,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'internetOutages',
@@ -249,6 +380,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'gpsJamming',
@@ -263,6 +395,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── logisticsSupply (3 sub-metrics) ───────────────────────────────────────
@@ -279,6 +412,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'shippingStress',
@@ -293,6 +427,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'transitDisruption',
@@ -307,6 +442,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── infrastructure (3 sub-metrics) ────────────────────────────────────────
@@ -323,6 +459,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 217,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'roadsPavedInfra',
@@ -337,6 +474,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'infraOutages',
@@ -351,6 +489,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── energy (7 sub-metrics) ────────────────────────────────────────────────
@@ -367,6 +506,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'gasShare',
@@ -381,6 +521,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'coalShare',
@@ -395,6 +536,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'renewShare',
@@ -409,6 +551,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'gasStorageStress',
@@ -425,6 +568,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 38,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'energyPriceStress',
@@ -439,6 +583,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'electricityConsumption',
@@ -453,7 +598,72 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 217,
     license: 'open-data',
+    comprehensive: true,
   },
+
+  // ── PR 1 energy-construct v2 (tier='experimental' until RESILIENCE_ENERGY_V2_ENABLED ──
+  // flips default-on and seeders land). Indicators are registered so
+  // the per-indicator harness in scripts/compare-resilience-current-vs-
+  // proposed.mjs can begin tracking them, but the 'experimental' tier
+  // keeps them OUT of the Core coverage gate (>=180 countries required
+  // per Phase 2 A4) until seed coverage is confirmed at flag-flip.
+  {
+    id: 'importedFossilDependence',
+    dimension: 'energy',
+    description: 'Composite: fossil share of electricity (EG.ELC.FOSL.ZS) × max(net energy imports % of primary energy use, 0) / 100. Lower is better. Replaces gasShare + coalShare + dependency under the Option B (power-system security) framing.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 100, best: 0 },
+    weight: 0.35,
+    sourceKey: 'resilience:fossil-electricity-share:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    tier: 'experimental',
+    coverage: 190,
+    license: 'open-data',
+    comprehensive: true,
+  },
+  {
+    id: 'lowCarbonGenerationShare',
+    dimension: 'energy',
+    description: 'Low-carbon share of electricity generation: nuclear + renewables-ex-hydro + hydroelectric (World Bank EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS). Hydro is summed separately because WB RNEW explicitly excludes hydroelectric — omitting HYRO would collapse this indicator to ~0 for Norway (~95% hydro), Paraguay (~99%), Brazil (~65%), Canada (~60%). Absorbs the legacy renewShare and adds nuclear + hydro credit.',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 80 },
+    weight: 0.2,
+    sourceKey: 'resilience:low-carbon-generation:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 30, certainty: 0.3 },
+    tier: 'experimental',
+    coverage: 190,
+    license: 'open-data',
+    comprehensive: true,
+  },
+  {
+    id: 'powerLossesPct',
+    dimension: 'energy',
+    description: 'Electric power transmission + distribution losses (World Bank EG.ELC.LOSS.ZS). Direct grid-integrity measure. Weight is 0.20 in PR 1 — it temporarily absorbs the deferred reserveMarginPct slot (plan §3.1 open-question); when the IEA electricity-balance seeder lands, split 0.10 back out and restore reserveMarginPct at 0.10. Keep this field in lockstep with scoreEnergyV2 in _dimension-scorers.ts, because the PR 0 compare harness copies spec.weight into nominalWeight for gate-9 reporting.',
+    direction: 'lowerBetter',
+    goalposts: { worst: 25, best: 3 },
+    weight: 0.2,
+    sourceKey: 'resilience:power-losses:v1',
+    scope: 'global',
+    cadence: 'annual',
+    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+    tier: 'experimental',
+    coverage: 188,
+    license: 'open-data',
+    comprehensive: true,
+  },
+  // reserveMarginPct is DEFERRED per plan §3.1 open-question: IEA
+  // electricity-balance data is sparse outside OECD+G20 and the
+  // indicator will likely ship as tier='unmonitored' with weight 0.05
+  // if it lands at all. Registering the indicator before a seeder
+  // exists would orphan its sourceKey in the seed-meta coverage
+  // test. The v2 scorer still READS from resilience:reserve-margin:v1
+  // (key reserved in _dimension-scorers.ts) so the scorer shape
+  // stays stable for the commit that provides data. Add the registry
+  // entry in that follow-up commit.
 
   // ── governanceInstitutional (6 sub-metrics, equal weight) ─────────────────
   {
@@ -469,6 +679,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiPoliticalStability',
@@ -483,6 +694,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiGovernmentEffectiveness',
@@ -497,6 +709,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiRegulatoryQuality',
@@ -511,6 +724,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiRuleOfLaw',
@@ -525,6 +739,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'wgiControlOfCorruption',
@@ -539,6 +754,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
 
   // ── socialCohesion (3 sub-metrics) ────────────────────────────────────────
@@ -560,6 +776,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 163,
     license: 'non-commercial',
+    comprehensive: true,
   },
   {
     id: 'displacementTotal',
@@ -574,6 +791,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 200,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'unrestEvents',
@@ -588,6 +806,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── borderSecurity (2 sub-metrics) ────────────────────────────────────────
@@ -608,6 +827,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 193,
     license: 'research-only',
+    comprehensive: true,
   },
   {
     id: 'displacementHosted',
@@ -623,6 +843,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 200,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── informationCognitive (3 sub-metrics) ──────────────────────────────────
@@ -643,6 +864,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 180,
     license: 'open-attribution',
+    comprehensive: true,
   },
   {
     id: 'socialVelocity',
@@ -657,6 +879,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
   {
     id: 'newsThreatScore',
@@ -671,6 +894,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-attribution',
+    comprehensive: false,
   },
 
   // ── healthPublicService (3 sub-metrics) ───────────────────────────────────
@@ -687,6 +911,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 194,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'measlesCoverage',
@@ -701,6 +926,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 194,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'hospitalBeds',
@@ -715,6 +941,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 194,
     license: 'public-domain',
+    comprehensive: true,
   },
 
   // ── foodWater (3 sub-metrics) ─────────────────────────────────────────────
@@ -735,6 +962,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'ipcPhase',
@@ -750,6 +978,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 195,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'aquastatWaterStress',
@@ -764,6 +993,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'aquastatWaterAvailability',
@@ -778,6 +1008,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── fiscalSpace (3 sub-metrics) ──────────────────────────────────────────
@@ -794,6 +1025,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'recoveryFiscalBalance',
@@ -808,6 +1040,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
   {
     id: 'recoveryDebtToGdp',
@@ -822,15 +1055,41 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'open-data',
+    comprehensive: true,
   },
 
-  // ── reserveAdequacy (1 sub-metric) ───────────────────────────────────────
+  // ── reserveAdequacy (RETIRED in PR 2 §3.4) ───────────────────────────────
+  // Replaced by liquidReserveAdequacy + sovereignFiscalBuffer. The legacy
+  // indicator is kept in the registry at tier='experimental' so drill-
+  // down views that consult the registry by dimension still see
+  // something structural; it does not contribute to the core score.
   {
     id: 'recoveryReserveMonths',
     dimension: 'reserveAdequacy',
-    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO); recovery buffer against external shocks',
+    description: 'RETIRED in PR 2 §3.4. Legacy total-reserves-in-months-of-imports (WB FI.RES.TOTL.MO) at the 1..18 anchor. Does not contribute to the score — scoreReserveAdequacy returns coverage=0 + imputationClass=null. Superseded by recoveryLiquidReserveMonths (same source, re-anchored 1..12) + the new sovereign-wealth indicator.',
     direction: 'higherBetter',
     goalposts: { worst: 1, best: 18 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:reserve-adequacy:v1',
+    scope: 'global',
+    cadence: 'annual',
+    tier: 'experimental',
+    coverage: 188,
+    license: 'open-data',
+    comprehensive: true,
+  },
+
+  // ── liquidReserveAdequacy (1 sub-metric) ─────────────────────────────────
+  // PR 2 §3.4 replacement for the liquid-reserves half of the retired
+  // reserveAdequacy. Same source (WB FI.RES.TOTL.MO) but re-anchored
+  // 1..12 months instead of 1..18. Twelve months ≈ IMF "full reserve
+  // adequacy" ballpark for a diversified emerging-market importer.
+  {
+    id: 'recoveryLiquidReserveMonths',
+    dimension: 'liquidReserveAdequacy',
+    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO), re-anchored 1..12 per plan §3.4. Immediate-liquidity buffer against short external shocks, measured at central-bank reserves only — sovereign-wealth assets are scored separately in sovereignFiscalBuffer.',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 12 },
     weight: 1.0,
     sourceKey: 'resilience:recovery:reserve-adequacy:v1',
     scope: 'global',
@@ -838,15 +1097,62 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 188,
     license: 'open-data',
+    comprehensive: true,
+  },
+
+  // ── sovereignFiscalBuffer (1 sub-metric) ─────────────────────────────────
+  // PR 2 §3.4 — scored on the SWF haircut manifest. Payload produced by
+  // scripts/seed-sovereign-wealth.mjs (landed in #3305, wired into
+  // Railway cron in #3319). Per-country totalEffectiveMonths is the sum
+  // across a country's manifest funds of (aum / annualImports × 12) ×
+  // (access × liquidity × transparency). Scorer applies a saturating
+  // transform: score = 100 × (1 − exp(−effectiveMonths / 12)) to prevent
+  // Norway-type outliers from dominating the recovery pillar.
+  //
+  // Coverage for the registry entry is the current manifest size (8
+  // funds across NO / AE / SA / KW / QA / SG). Countries NOT in the
+  // manifest score 0 with full coverage (substantive "no SWF" signal,
+  // not imputation) — this is by design per plan §3.4 "What happens to
+  // no-SWF countries."
+  {
+    id: 'recoverySovereignWealthEffectiveMonths',
+    dimension: 'sovereignFiscalBuffer',
+    description: 'Sovereign-wealth fiscal-buffer signal per plan §3.4. Seeded from Wikipedia SWF list + per-fund article infoboxes (CC-BY-SA), haircut by the classification manifest (scripts/shared/swf-classification-manifest.yaml): effectiveMonths = rawSwfMonths × access × liquidity × transparency, summed across a country\'s manifest funds. Scorer applies a saturating transform score = 100 × (1 − exp(−effectiveMonths / 12)).',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 60 },
+    weight: 1.0,
+    sourceKey: 'resilience:recovery:sovereign-wealth:v1',
+    scope: 'global',
+    cadence: 'quarterly',
+    // tier='experimental' because the manifest ships with 8 funds (< the
+    // 180-country core-tier threshold / 137-country §3.6 gate). Non-SWF
+    // countries are scored as dim-not-applicable (score 0, coverage 0,
+    // imputationClass 'not-applicable') per plan 2026-04-26-001 §U3 —
+    // reframed from the original "substantive absence" decision in plan
+    // 2026-04-25-001 §3.4. The §3.6 coverage-and-influence gate counts
+    // upstream-data coverage, which is 8. Graduating to 'core' requires
+    // expanding the manifest past 137 entries, which is a follow-up PR
+    // after external data partners are identified.
+    tier: 'experimental',
+    coverage: 8,
+    license: 'open-data',
+    comprehensive: false,
   },
 
   // ── externalDebtCoverage (1 sub-metric) ──────────────────────────────────
   {
     id: 'recoveryDebtToReserves',
     dimension: 'externalDebtCoverage',
-    description: 'Short-term external debt to reserves ratio (World Bank DT.DOD.DSTC.CD / FI.RES.TOTL.CD); values above 1 signal reserve inadequacy for debt service',
+    description: 'Short-term external debt to reserves ratio (World Bank DT.DOD.DSTC.CD / FI.RES.TOTL.CD); Greenspan-Guidotti rule treats ratio≥1 as reserve inadequacy, ratio≥2 as acute rollover-shock exposure',
     direction: 'lowerBetter',
-    goalposts: { worst: 5, best: 0 },
+    // PR 3 §3.5 point 3: re-goalposted from (0..5) to (0..2). Old goalpost
+    // saturated at 100 across the full 9-country probe including stressed
+    // states. New anchor: ratio=1.0 (Greenspan-Guidotti reserve-adequacy
+    // threshold) maps to score 50; ratio=2.0 (double the threshold, acute
+    // distress) maps to 0. Ratios above 2.0 clamp to 0 — consistent with
+    // "beyond this point the precise value stops mattering, the country
+    // is already in a rollover-crisis regime."
+    goalposts: { worst: 2, best: 0 },
     weight: 1.0,
     sourceKey: 'resilience:recovery:external-debt:v1',
     scope: 'global',
@@ -854,6 +1160,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 185,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── importConcentration (1 sub-metric) ───────────────────────────────────
@@ -870,6 +1177,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 190,
     license: 'public-domain',
+    comprehensive: true,
   },
 
   // ── stateContinuity (3 sub-metrics, derived from existing keys) ──────────
@@ -886,6 +1194,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 214,
     license: 'public-domain',
+    comprehensive: true,
   },
   {
     id: 'recoveryConflictPressure',
@@ -900,6 +1209,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 193,
     license: 'research-only',
+    comprehensive: true,
   },
   {
     id: 'recoveryDisplacementVelocity',
@@ -914,21 +1224,63 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'core',
     coverage: 200,
     license: 'open-data',
+    comprehensive: true,
   },
 
   // ── fuelStockDays (1 sub-metric) ─────────────────────────────────────────
+  // PR 3 §3.5 point 1: RETIRED from the core score. IEA emergency-
+  // stockholding is defined in days of NET IMPORTS; the net-importer
+  // vs net-exporter framings are incomparable, so no global resilience
+  // signal can be built from this data. scoreFuelStockDays now returns
+  // coverage=0 + imputationClass=null for every country (filtered out
+  // of confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS
+  // registry in _dimension-scorers.ts). imputationClass is deliberately
+  // `null` rather than 'source-failure' — a retirement is structural,
+  // not a runtime outage, and surfacing 'source-failure' would manufacture
+  // a false "Source down" label in the widget for every country. The
+  // registry entry stays at tier='experimental' so the Core coverage
+  // gate treats it as out-of-score; the dimension itself remains
+  // registered for structural continuity (PR 4 structural-audit may
+  // remove it entirely).
   {
     id: 'recoveryFuelStockDays',
     dimension: 'fuelStockDays',
-    description: 'Days of fuel stock cover (IEA Oil Stocks / EIA Weekly Petroleum Status); strategic buffer for energy-dependent recovery',
+    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR.',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 120 },
     weight: 1.0,
     sourceKey: 'resilience:recovery:fuel-stocks:v1',
     scope: 'global',
     cadence: 'monthly',
-    tier: 'enrichment',
+    tier: 'experimental',
     coverage: 45,
     license: 'open-data',
+    comprehensive: false,
   },
 ];
+
+// Plan 2026-04-26-002 §U5 helpers — registry-driven check used by IMPUTE
+// callers in _dimension-scorers.ts. Keeping this lookup here (rather than
+// inlining .find() at every scorer) makes the comprehensiveness contract
+// auditable (one source of truth for the rule "absence on a non-
+// comprehensive source falls back to unmonitored").
+
+const INDICATOR_BY_ID: ReadonlyMap<string, IndicatorSpec> = new Map(
+  INDICATOR_REGISTRY.map((spec) => [spec.id, spec]),
+);
+
+/**
+ * Returns true when the upstream source for the given indicator id
+ * enumerates ALL UN-member countries (or as close as the underlying
+ * universe allows). Returns false for non-comprehensive sources (event
+ * feeds, curated subsets, regional registries).
+ *
+ * Conservative default for unknown ids: false — matches the plan's
+ * "when in doubt, mark `comprehensive: false`" risk-mitigation rule.
+ * Returning false for an unknown id means a stable-absence IMPUTE caller
+ * falls back to `unmonitored` (50/0.3), which is the safer error mode.
+ */
+export function isIndicatorComprehensive(indicatorId: string): boolean {
+  const spec = INDICATOR_BY_ID.get(indicatorId);
+  return spec?.comprehensive ?? false;
+}

@@ -24,6 +24,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash } from '../../_upstash-json.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../_sentry-edge.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
 import {
   BRIEF_PUBLIC_POINTER_PREFIX,
@@ -91,7 +93,10 @@ const UNAVAILABLE_PAGE = renderErrorPage(
   'The brief service is having trouble right now. Please try again shortly.',
 );
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return new Response('Origin not allowed', { status: 403 });
   }
@@ -137,6 +142,7 @@ export default async function handler(req: Request): Promise<Response> {
     pointerRaw = await readRawJsonFromUpstash(pointerKey);
   } catch (err) {
     console.error('[api/brief/public] pointer read failed:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'pointer-read' }, ctx });
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   // The pointer is JSON-encoded at write time (both
@@ -170,6 +176,7 @@ export default async function handler(req: Request): Promise<Response> {
     envelope = await readRawJsonFromUpstash(`brief:${pointer.userId}:${pointer.issueDate}`);
   } catch (err) {
     console.error('[api/brief/public] envelope read failed:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'envelope-read' }, ctx });
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   if (!envelope) {
@@ -187,6 +194,7 @@ export default async function handler(req: Request): Promise<Response> {
     );
   } catch (err) {
     console.error('[api/brief/public] malformed envelope:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'render' }, ctx });
     return htmlResponse(req, 404, NOT_FOUND_PAGE);
   }
 

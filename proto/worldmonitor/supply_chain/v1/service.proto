@@ -11,9 +11,15 @@ import "worldmonitor/supply_chain/v1/get_shipping_stress.proto";
 import "worldmonitor/supply_chain/v1/get_country_chokepoint_index.proto";
 import "worldmonitor/supply_chain/v1/get_bypass_options.proto";
 import "worldmonitor/supply_chain/v1/get_country_cost_shock.proto";
+import "worldmonitor/supply_chain/v1/get_country_products.proto";
+import "worldmonitor/supply_chain/v1/get_multi_sector_cost_shock.proto";
 import "worldmonitor/supply_chain/v1/get_sector_dependency.proto";
 import "worldmonitor/supply_chain/v1/get_route_explorer_lane.proto";
 import "worldmonitor/supply_chain/v1/get_route_impact.proto";
+import "worldmonitor/supply_chain/v1/list_pipelines.proto";
+import "worldmonitor/supply_chain/v1/list_storage_facilities.proto";
+import "worldmonitor/supply_chain/v1/list_fuel_shortages.proto";
+import "worldmonitor/supply_chain/v1/list_energy_disruptions.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -57,6 +63,17 @@ service SupplyChainService {
     option (sebuf.http.config) = {path: "/get-country-cost-shock", method: HTTP_METHOD_GET};
   }
 
+  // GetCountryProducts returns the seeded bilateral-HS4 import basket for a country. PRO-gated.
+  rpc GetCountryProducts(GetCountryProductsRequest) returns (GetCountryProductsResponse) {
+    option (sebuf.http.config) = {path: "/get-country-products", method: HTTP_METHOD_GET};
+  }
+
+  // GetMultiSectorCostShock returns per-sector cost-shock estimates for a
+  // country+chokepoint+closure-window. PRO-gated.
+  rpc GetMultiSectorCostShock(GetMultiSectorCostShockRequest) returns (GetMultiSectorCostShockResponse) {
+    option (sebuf.http.config) = {path: "/get-multi-sector-cost-shock", method: HTTP_METHOD_GET};
+  }
+
   // GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated.
   rpc GetSectorDependency(GetSectorDependencyRequest) returns (GetSectorDependencyResponse) {
     option (sebuf.http.config) = {path: "/get-sector-dependency", method: HTTP_METHOD_GET};
@@ -73,5 +90,55 @@ service SupplyChainService {
 
   rpc GetRouteImpact(GetRouteImpactRequest) returns (GetRouteImpactResponse) {
     option (sebuf.http.config) = {path: "/get-route-impact", method: HTTP_METHOD_GET};
+  }
+
+  // ListPipelines returns the curated oil & gas pipeline registry for the
+  // Energy Atlas PathLayer. Public badges are DERIVED from evidence bundles
+  // server-side and versioned (classifier_version). Free-tier; see
+  // docs/methodology/pipelines.mdx for data + classifier spec.
+  rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse) {
+    option (sebuf.http.config) = {path: "/list-pipelines", method: HTTP_METHOD_GET};
+  }
+
+  // GetPipelineDetail returns a single pipeline with full evidence bundle
+  // + auto-revision-log entries. Loaded lazily on drawer open.
+  rpc GetPipelineDetail(GetPipelineDetailRequest) returns (GetPipelineDetailResponse) {
+    option (sebuf.http.config) = {path: "/get-pipeline-detail", method: HTTP_METHOD_GET};
+  }
+
+  // ListStorageFacilities returns the curated strategic storage registry
+  // (UGS + SPR + LNG + crude tank farms) for the Energy Atlas DeckGL
+  // ScatterplotLayer. Public badges are DERIVED from evidence bundles
+  // server-side and versioned (classifier_version). Free-tier; see
+  // docs/methodology/storage.mdx.
+  rpc ListStorageFacilities(ListStorageFacilitiesRequest) returns (ListStorageFacilitiesResponse) {
+    option (sebuf.http.config) = {path: "/list-storage-facilities", method: HTTP_METHOD_GET};
+  }
+
+  // GetStorageFacilityDetail returns a single facility with full evidence
+  // bundle + revision log. Loaded lazily on drawer open.
+  rpc GetStorageFacilityDetail(GetStorageFacilityDetailRequest) returns (GetStorageFacilityDetailResponse) {
+    option (sebuf.http.config) = {path: "/get-storage-facility-detail", method: HTTP_METHOD_GET};
+  }
+
+  // ListFuelShortages returns the global fuel-shortage alert registry.
+  // Curated-only: severity ("confirmed" | "watch") is a row field authored
+  // at curation time, not a client-side derivation. Free tier.
+  rpc ListFuelShortages(ListFuelShortagesRequest) returns (ListFuelShortagesResponse) {
+    option (sebuf.http.config) = {path: "/list-fuel-shortages", method: HTTP_METHOD_GET};
+  }
+
+  // GetFuelShortageDetail returns a single shortage with full evidence
+  // bundle and citation timeline. Loaded lazily on drawer open.
+  rpc GetFuelShortageDetail(GetFuelShortageDetailRequest) returns (GetFuelShortageDetailResponse) {
+    option (sebuf.http.config) = {path: "/get-fuel-shortage-detail", method: HTTP_METHOD_GET};
+  }
+
+  // ListEnergyDisruptions returns the disruption event log for pipelines
+  // and storage facilities. Supports per-asset or per-asset-type filtering
+  // so panel drawers can fetch a scoped timeline without pulling the
+  // full registry.
+  rpc ListEnergyDisruptions(ListEnergyDisruptionsRequest) returns (ListEnergyDisruptionsResponse) {
+    option (sebuf.http.config) = {path: "/list-energy-disruptions", method: HTTP_METHOD_GET};
   }
 }

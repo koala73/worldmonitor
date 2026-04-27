@@ -263,6 +263,11 @@ describe('Bootstrap key hydration coverage', () => {
       // fetch in CountryDeepDivePanel (housing cycle tile), not through the
       // getHydratedData session cache — fetched on-click per country.
       'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+      // energyDisruptions is bootstrap-hydrated so the RPC handler has
+      // warm data, but panel drawers fetch events lazily via
+      // listEnergyDisruptions() on drawer open — no getHydratedData()
+      // call site. Classifier extends this post-launch.
+      'energyDisruptions',
     ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;

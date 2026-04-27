@@ -21,9 +21,23 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](/c
 - R2 trace storage for forecast debugging with Cloudflare API upload (#1655)
 - `@ts-nocheck` injection in Makefile generate target for CI proto-freshness parity (#1637)
 
+### Changed
+
+- **Sebuf API migration (#3207)** — scenario + supply-chain endpoints moved to the typed sebuf contract. RPC URLs now derive from method names; five renamed v1 URLs remain live as thin aliases so existing integrations keep working:
+  - `/api/scenario/v1/run` → `/api/scenario/v1/run-scenario`
+  - `/api/scenario/v1/status` → `/api/scenario/v1/get-scenario-status`
+  - `/api/scenario/v1/templates` → `/api/scenario/v1/list-scenario-templates`
+  - `/api/supply-chain/v1/country-products` → `/api/supply-chain/v1/get-country-products`
+  - `/api/supply-chain/v1/multi-sector-cost-shock` → `/api/supply-chain/v1/get-multi-sector-cost-shock`
+
+  Aliases retire at the next v1→v2 break (tracked in [#3282](https://github.com/koala73/worldmonitor/issues/3282)).
+
+- `POST /api/scenario/v1/run-scenario` now returns `200 OK` instead of the pre-migration `202 Accepted`. sebuf's HTTP annotations don't carry per-RPC status codes. Branch on response body `status === "pending"` instead of `response.status === 202`. `statusUrl` field is preserved.
+
 ### Security
 
 - **CDN cache bypass closed**: `CDN-Cache-Control` header now only emitted for trusted origins (worldmonitor.app, Vercel previews, Tauri). No-origin server-side requests always invoke the edge function so `validateApiKey` runs, preventing a cached 200 from being served to external scrapers.
+- **Shipping v2 webhook tenant isolation (#3242)**: `POST /api/v2/shipping/webhooks` and `GET /api/v2/shipping/webhooks` now enforce `validateApiKey(req, { forceKey: true })`, matching the sibling `[subscriberId]{,/[action]}` routes. Without this gate, a Clerk-authenticated pro user with no API key would collapse into a shared `'anon'` fingerprint bucket and see/overwrite webhooks owned by other `'anon'`-bucket tenants.
 
 ### Fixed
 

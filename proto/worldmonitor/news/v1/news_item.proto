@@ -36,6 +36,12 @@ message NewsItem {
   int32 corroboration_count = 10;
   // Story lifecycle metadata derived from cross-cycle persistence data.
   StoryMeta story_meta = 11;
+  // Cleaned article description from the RSS/Atom <description> /
+  // <content:encoded> / <summary> / <content> tag: HTML-stripped,
+  // entity-decoded, whitespace-normalised, clipped to 400 chars. Empty string
+  // when unavailable or indistinguishable from the headline — consumers must
+  // fall back to the headline for display/LLM grounding in that case.
+  string snippet = 12;
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.

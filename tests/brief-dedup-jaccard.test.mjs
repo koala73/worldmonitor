@@ -212,7 +212,7 @@ describe('brief-dedup orchestrator — jaccard kill switch', () => {
       story('Iran shuts Strait of Hormuz - Reuters', 85, 1, 'h2'),
       story('Myanmar coup leader elected president', 80, 1, 'h3'),
     ];
-    const out = await deduplicateStories(stories, {
+    const { reps: out } = await deduplicateStories(stories, {
       env: { DIGEST_DEDUP_MODE: 'jaccard' },
       embedBatch: stubEmbed,
     });
@@ -233,7 +233,7 @@ describe('brief-dedup orchestrator — jaccard kill switch', () => {
       jaccardCalls++;
       return deduplicateStoriesJaccard(s);
     };
-    const out = await deduplicateStories([], {
+    const { reps: out } = await deduplicateStories([], {
       env: { DIGEST_DEDUP_MODE: 'jaccard' },
       jaccard: stubJaccard,
     });

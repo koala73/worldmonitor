@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.shipping.v2;
+
+import "buf/validate/validate.proto";
+
+// RegisterWebhookRequest creates a new chokepoint-disruption webhook
+// subscription. Wire shape is byte-compatible with the pre-migration
+// legacy POST body.
+message RegisterWebhookRequest {
+  // HTTPS callback URL. Must not resolve to a private/loopback address at
+  // registration time (SSRF guard). The delivery worker re-validates the
+  // resolved IP before each send to mitigate DNS rebinding.
+  string callback_url = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 8,
+    (buf.validate.field).string.max_len = 2048
+  ];
+  // Zero or more chokepoint IDs to subscribe to. Empty list subscribes to
+  // the entire CHOKEPOINT_REGISTRY. Unknown IDs fail with 400.
+  repeated string chokepoint_ids = 2;
+  // Disruption-score threshold for delivery, 0-100. Default 50.
+  // proto3 `optional` so the handler can distinguish "partner explicitly sent
+  // 0 (deliver every alert)" from "partner omitted the field (apply default
+  // 50)". Without `optional`, both serialise to the proto3 scalar default of
+  // 0 and the handler can't tell them apart — flagged in #3242 review.
+  optional int32 alert_threshold = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 100
+  ];
+}
+
+// RegisterWebhookResponse wire shape preserved exactly — partners persist the
+// `secret` because the server never returns it again except via rotate-secret.
+message RegisterWebhookResponse {
+  // `wh_` prefix + 24 lowercase hex chars (12 random bytes).
+  string subscriber_id = 1;
+  // Raw 64-char lowercase hex secret (32 random bytes). No `whsec_` prefix.
+  string secret = 2;
+}

@@ -40,6 +40,12 @@ import type { BigMacPanel } from '@/components/BigMacPanel';
 import type { FuelPricesPanel } from '@/components/FuelPricesPanel';
 import type { FaoFoodPriceIndexPanel } from '@/components/FaoFoodPriceIndexPanel';
 import type { OilInventoriesPanel } from '@/components/OilInventoriesPanel';
+import type { PipelineStatusPanel } from '@/components/PipelineStatusPanel';
+import type { StorageFacilityMapPanel } from '@/components/StorageFacilityMapPanel';
+import type { FuelShortagePanel } from '@/components/FuelShortagePanel';
+import type { EnergyDisruptionsPanel } from '@/components/EnergyDisruptionsPanel';
+import type { EnergyRiskOverviewPanel } from '@/components/EnergyRiskOverviewPanel';
+import type { ChokepointStripPanel } from '@/components/ChokepointStripPanel';
 import type { ClimateNewsPanel } from '@/components/ClimateNewsPanel';
 import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
 import type { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
@@ -64,6 +70,7 @@ import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, ty
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
+import { registerWebMcpTools } from '@/services/webmcp';
 import { SearchManager } from '@/app/search-manager';
 import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
@@ -74,9 +81,14 @@ import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
-import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
-import { capturePendingCheckoutIntentFromUrl, resumePendingCheckout } from '@/services/checkout';
+import {
+  capturePendingCheckoutIntentFromUrl,
+  initCheckoutWatchers,
+  resumePendingCheckout,
+} from '@/services/checkout';
+import { captureReferralFromUrl } from '@/services/referral-capture';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -107,6 +119,19 @@ export class App {
   private modules: { destroy(): void }[] = [];
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
+  private unsubEntitlementPremiumLoaders: (() => void) | null = null;
+  // Resolves once Phase-4 UI modules (searchManager, countryIntel) have
+  // initialised so WebMCP bindings can await readiness before touching
+  // the nullable UI targets. Avoids the startup race where an agent
+  // discovers a tool via early registerTool and invokes it before the
+  // target panel exists.
+  private uiReady!: Promise<void>;
+  private resolveUiReady!: () => void;
+  // Returned by registerWebMcpTools when running in a registerTool-capable
+  // browser — aborting it unregisters every tool. destroy() triggers it
+  // so that test harnesses / same-document re-inits don't accumulate
+  // duplicate registrations.
+  private webMcpController: AbortController | null = null;
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
@@ -306,6 +331,41 @@ export class App {
       const panel = this.state.panels['oil-inventories'] as OilInventoriesPanel | undefined;
       if (panel) primeTask('oil-inventories', () => panel.fetchData());
     }
+    // Energy Atlas panels — each self-fetches via bootstrap cache + RPC fallback
+    // (scripts/seed-pipelines-{gas,oil}.mjs, seed-storage-facilities.mjs,
+    // seed-fuel-shortages.mjs, seed-energy-disruptions.mjs). Without these
+    // primeTask wires the panels sit at showLoading() forever because
+    // Panel's constructor calls showLoading() but nothing else triggers
+    // fetchData() on attach — App.ts's primeTask table is the sole
+    // near-viewport kickoff path.
+    if (shouldPrime('pipeline-status')) {
+      const panel = this.state.panels['pipeline-status'] as PipelineStatusPanel | undefined;
+      if (panel) primeTask('pipeline-status', () => panel.fetchData());
+    }
+    if (shouldPrime('storage-facility-map')) {
+      const panel = this.state.panels['storage-facility-map'] as StorageFacilityMapPanel | undefined;
+      if (panel) primeTask('storage-facility-map', () => panel.fetchData());
+    }
+    if (shouldPrime('fuel-shortages')) {
+      const panel = this.state.panels['fuel-shortages'] as FuelShortagePanel | undefined;
+      if (panel) primeTask('fuel-shortages', () => panel.fetchData());
+    }
+    if (shouldPrime('energy-disruptions')) {
+      const panel = this.state.panels['energy-disruptions'] as EnergyDisruptionsPanel | undefined;
+      if (panel) primeTask('energy-disruptions', () => panel.fetchData());
+    }
+    if (shouldPrime('energy-risk-overview')) {
+      const panel = this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel | undefined;
+      if (panel) primeTask('energy-risk-overview', () => panel.fetchData());
+    }
+    if (shouldPrime('chokepoint-strip')) {
+      // Without this primeTask entry the panel mounts via panel-layout.ts and
+      // ENERGY_PANELS but its constructor only calls showLoading() — fetchData()
+      // never fires, so the panel sits at "Loading..." forever. Hard-learned in
+      // PR #3386; tracked as skill panel-stuck-loading-means-missing-primetask.
+      const panel = this.state.panels['chokepoint-strip'] as ChokepointStripPanel | undefined;
+      if (panel) primeTask('chokepoint-strip', () => panel.fetchData());
+    }
     if (shouldPrime('climate-news')) {
       const panel = this.state.panels['climate-news'] as ClimateNewsPanel | undefined;
       if (panel) primeTask('climate-news', () => panel.fetchData());
@@ -374,9 +434,9 @@ export class App {
     if (shouldPrime('energy-complex')) {
       primeTask('oil', () => this.dataLoader.loadOilAnalytics());
     }
-    if (shouldPrime('trade-policy')) {
-      primeTask('tradePolicy', () => this.dataLoader.loadTradePolicy());
-    }
+    // trade-policy moved into the _wmAccess block below — see fix for
+    // anonymous 401 bug where loadTradePolicy fired 6 PRO-gated RPCs
+    // unconditionally on every page load.
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
@@ -386,6 +446,9 @@ export class App {
 
     const _wmAccess = hasPremiumAccess();
     if (_wmAccess) {
+      if (shouldPrime('trade-policy')) {
+        primeTask('tradePolicy', () => this.dataLoader.loadTradePolicy());
+      }
       if (shouldPrime('stock-analysis')) {
         primeTask('stockAnalysis', () => this.dataLoader.loadStockAnalysis());
       }
@@ -408,6 +471,10 @@ export class App {
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
     if (!el) throw new Error(`Container ${containerId} not found`);
+
+    this.uiReady = new Promise<void>((resolve) => {
+      this.resolveUiReady = resolve;
+    });
 
     const PANEL_ORDER_KEY = 'panel-order';
     const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -795,6 +862,33 @@ export class App {
 
   public async init(): Promise<void> {
     const initStart = performance.now();
+
+    // WebMCP — register synchronously before any init awaits so agent
+    // scanners (isitagentready.com, in-browser agents) find the tools on
+    // their first probe. No-op in browsers without navigator.modelContext.
+    // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so
+    // a tool invoked during the startup window waits for the target
+    // panel to exist instead of throwing. A 10s timeout keeps a genuinely
+    // broken state from hanging the caller. Store the returned controller
+    // so destroy() can unregister every tool on teardown.
+    this.webMcpController = registerWebMcpTools({
+      openCountryBriefByCode: async (code, country) => {
+        await this.waitForUiReady();
+        if (!this.state.countryBriefPage) {
+          throw new Error('Country brief panel is not initialised');
+        }
+        await this.countryIntel.openCountryBriefByCode(code, country);
+      },
+      resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
+      openSearch: async () => {
+        await this.waitForUiReady();
+        if (!this.state.searchModal) {
+          throw new Error('Search modal is not initialised');
+        }
+        this.state.searchModal.open();
+      },
+    });
+
     await initDB();
     await initI18n();
     const aiFlow = getAiFlowSettings();
@@ -856,8 +950,38 @@ export class App {
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
-    this.unsubFreeTier = subscribeAuthState((session) => {
+    // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
+    // ONCE on a false→true transition (user signs in / purchase lands mid-session).
+    // Without this, loaders gated behind hasPremiumAccess() at init time (e.g.
+    // loadTradePolicy) would sit empty until the next scheduled refresh — for
+    // trade-policy that's a 10-minute wait post-sign-in. See PR #3295 review.
+    let _prevHadPremium = hasPremiumAccess();
+    // Pro-loader fan-out runs on EITHER Clerk auth changes OR Convex
+    // entitlement changes — Pro can come from either signal (Clerk
+    // user.role === 'pro' OR Convex tier >= 1 via Dodo). User-reported
+    // on commodity.worldmonitor.app: Trade Policy panel stuck at "Loading…"
+    // for a Pro Monthly subscriber because the original listener only
+    // watched subscribeAuthState (Clerk-only); Convex Free→Pro transitions
+    // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
+    const firePremiumLoaders = (): void => {
       this.enforceFreeTierLimits();
+      const hadPremium = _prevHadPremium;
+      const nowPremium = hasPremiumAccess();
+      if (nowPremium && !hadPremium) {
+        // Entitlement just resolved → fire PRO-gated initial loads that were
+        // skipped at boot. Each loader early-returns if the panel isn't
+        // mounted and re-checks hasPremiumAccess() internally, so these
+        // calls are safe and idempotent. Without this, trade-policy would
+        // sit empty for up to REFRESH_INTERVALS.tradePolicy (~10 min) after
+        // sign-in because the scheduler's viewport gate is the only retry.
+        void this.dataLoader.loadTradePolicy();
+      }
+      _prevHadPremium = nowPremium;
+    };
+    this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
+    this.unsubFreeTier = subscribeAuthState((session) => {
+      firePremiumLoaders();
+
       const userId = session.user?.id ?? null;
       if (userId !== null && userId !== _prevUserId) {
         void cloudPrefsSignIn(userId, SITE_VARIANT);
@@ -976,6 +1100,22 @@ export class App {
     this.state.correlationEngine = correlationEngine;
     this.eventHandlers.setupUnifiedSettings();
     this.eventHandlers.setupAuthWidget();
+    // Capture any ?ref= / ?wm_referral= from the URL into localStorage
+    // and strip from the visible URL. Runs BEFORE the pending-checkout
+    // capture so a /pro?ref=X&checkoutProduct=Y landing preserves both
+    // signals. Pure read of current URL — no-op when neither param is
+    // present.
+    captureReferralFromUrl();
+    // Wire checkout-attempt lifecycle watchers (sign-out clear) before
+    // any capture/resume path runs, so a stale session from a prior
+    // user can't bleed into the current one.
+    initCheckoutWatchers();
+    // Stale attempt records are ignored by loadCheckoutAttempt() via
+    // the 24h TTL — no separate sweep needed. The attempt record's
+    // only consumer (the failure-retry banner) runs handleCheckoutReturn
+    // synchronously during panel-layout mount, which is after the
+    // captureePendingCheckoutIntentFromUrl repopulates it for any /pro
+    // handoff — so no race exists that would want to sweep pre-capture.
     const pendingCheckout = capturePendingCheckoutIntentFromUrl();
     if (pendingCheckout) {
       // Checkout intent from /pro page redirect. Resume immediately if
@@ -989,6 +1129,8 @@ export class App {
     this.searchManager.init();
     this.eventHandlers.setupMapLayerHandlers();
     this.countryIntel.init();
+    // Unblock any WebMCP tool invocations that arrived during startup.
+    this.resolveUiReady();
 
     // Phase 5: Event listeners + URL sync
     this.eventHandlers.init();
@@ -1135,12 +1277,38 @@ export class App {
     // Clean up subscriptions, map, AIS, and breaking news
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
+    this.unsubEntitlementPremiumLoaders?.();
     this.state.breakingBanner?.destroy();
     destroyBreakingNewsAlerts();
     this.cachedModeBannerEl?.remove();
     this.cachedModeBannerEl = null;
     this.state.map?.destroy();
     disconnectAisStream();
+    // Unregister every WebMCP tool so a same-document re-init (tests,
+    // HMR, SPA harness) doesn't leave the browser with stale bindings
+    // pointing at a disposed App.
+    this.webMcpController?.abort();
+    this.webMcpController = null;
+  }
+
+  // Waits for Phase-4 UI modules (searchManager + countryIntel) to finish
+  // initialising. WebMCP bindings call this before touching nullable UI
+  // state so a tool invoked during startup waits rather than throwing;
+  // the timeout guards against a genuinely broken init path hanging the
+  // agent forever.
+  private async waitForUiReady(timeoutMs = 10_000): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`UI did not initialise within ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+    try {
+      await Promise.race([this.uiReady, timeout]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
   }
 
   private handleDeepLinks(): void {
@@ -1335,9 +1503,12 @@ export class App {
       this.refreshScheduler.scheduleRefresh('temporalBaseline', () => this.dataLoader.refreshTemporalBaseline(), REFRESH_INTERVALS.temporalBaseline, () => this.shouldRefreshIntelligence());
     }
 
-    // WTO trade policy data — annual data, poll every 10 min to avoid hammering upstream
-    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity') {
-      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => this.isPanelNearViewport('trade-policy'));
+    // WTO trade policy data — annual data, poll every 10 min to avoid hammering upstream.
+    // PRO-gated: the isNearViewport check is a visibility gate, not an entitlement gate,
+    // so without hasPremiumAccess() here we'd still hit the 6 WTO RPCs every poll for
+    // free users once the panel scrolled into view.
+    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
+      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
     }
 

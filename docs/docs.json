@@ -87,6 +87,12 @@
               "ai-intelligence",
               "country-instability-index",
               "methodology/country-resilience-index",
+              "methodology/chokepoints",
+              "methodology/pipelines",
+              "methodology/storage",
+              "methodology/shortages",
+              "methodology/disruptions",
+              "corrections",
               "geographic-convergence",
               "strategic-risk",
               "algorithms"
@@ -173,7 +179,7 @@
           {
             "group": "MCP & Integrations",
             "pages": [
-              "mcp",
+              "mcp-server",
               "api-oauth",
               "api-notifications"
             ]

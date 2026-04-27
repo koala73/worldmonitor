@@ -48,8 +48,11 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // After the PR #3225 globalisation failed in prod, we restored the
     // per-country shape because ArcGIS has an ISO3 index but NO date
     // index — the per-country filter is what keeps queries fast.
-    assert.match(src, /where:\s*`ISO3='\$\{iso3\}'\s+AND\s+date\s*>/);
-    // Global where=date>X shape must NOT be present any more.
+    // H+F refactor: the WHERE clause is now built inline at the
+    // paginateWindowInto call site (not as a `where:` param in a params
+    // bag) because each window has a different date predicate.
+    assert.match(src, /`ISO3='\$\{iso3\}'\s+AND\s+date\s*>/);
+    // Global where=date>X shape (PR #3225) must NOT be present.
     assert.doesNotMatch(src, /where:\s*`date\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
   });
 
@@ -108,7 +111,50 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /async function fetchCountryAccum/);
     assert.match(src, /last30_calls:\s*0/);
     assert.match(src, /prev30_calls:\s*0/);
-    assert.match(src, /last7_calls:\s*0/);
+    // last7 aggregation removed — ArcGIS max-date lag made it always empty,
+    // so anomalySignal was always false. See fetchCountryAccum header.
+    assert.doesNotMatch(src, /last7_calls:\s*0/);
+  });
+
+  it('fetchCountryAccum splits windows (last30 + prev30) into parallel queries', () => {
+    // Heavy countries hit the 90s per-country cap under a single 60-day
+    // query. Splitting into two parallel windowed queries (max ~half the
+    // rows each) drops heavy-country time from ~90s → ~30s.
+    assert.match(src, /await Promise\.all\(\[/);
+    assert.match(src, /paginateWindowInto\(/);
+    assert.match(src, /'last30'/);
+    assert.match(src, /'prev30'/);
+  });
+
+  it('fetchMaxDate preflight uses outStatistics for cheap cache invalidation', () => {
+    assert.match(src, /async function fetchMaxDate/);
+    assert.match(src, /statisticType:\s*'max'/);
+    assert.match(src, /onStatisticField:\s*'date'/);
+  });
+
+  it('fetchAll cache path: MGET preflight + maxDate check + reuse payload', () => {
+    // H+F architecture: preflight reads prior payloads and maxDate, reuses
+    // cache when upstream hasn't advanced. Without this, we re-fetched the
+    // full 60 days every day even when ArcGIS hadn't published new rows.
+    assert.match(src, /redisMgetJson/);
+    assert.match(src, /async function redisMgetJson/);
+    assert.match(src, /prev\.asof\s*===\s*upstreamMaxDate/);
+    assert.match(src, /MAX_CACHE_AGE_MS/);
+  });
+
+  it('cached payloads store asof + cacheWrittenAt for next-run invalidation', () => {
+    assert.match(src, /asof:\s*upstreamMaxDate/);
+    assert.match(src, /cacheWrittenAt:\s*Date\.now\(\)/);
+  });
+
+  it('redisMgetJson failure degrades to cold-path (does not abort the seed)', () => {
+    // PR #3299 review P1: a transient Upstash outage at run-start used to
+    // abort the seed before any ArcGIS data was fetched — regression from
+    // the prior behaviour where Redis was only required at write-time.
+    // The MGET call is now wrapped in .catch that returns all-null so
+    // every country falls through to the expensive-fetch path.
+    assert.match(src, /redisMgetJson\(prevKeys\)\.catch\(/);
+    assert.match(src, /new Array\(prevKeys\.length\)\.fill\(null\)/);
   });
 
   it('registers SIGTERM + SIGINT + aborts shutdownController', () => {
@@ -134,12 +180,40 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /LOCK_TTL_MS\s*=\s*60\s*\*\s*60\s*\*\s*1000/);
   });
 
-  it('anomalySignal computation is present', () => {
-    assert.match(src, /anomalySignal/);
+  it('anomalySignal field is still emitted (always false after H+F refactor)', () => {
+    // The field stays in the payload shape for backward compatibility with
+    // UI consumers reading `anomalySignal`. After H+F it is hardcoded to
+    // false because the last7 aggregation that drove it was always empty
+    // (ArcGIS data lag). TODO remove field once UI stops reading it.
+    assert.match(src, /anomalySignal:\s*false/);
   });
 
   it('MAX_PORTS_PER_COUNTRY is 50', () => {
     assert.match(src, /MAX_PORTS_PER_COUNTRY\s*=\s*50/);
+  });
+
+  it('window cutoffs hardcoded to 30d + 60d anchored to upstream maxDate', () => {
+    // HISTORY_DAYS constant was removed in the H+F refactor because the
+    // actual windows are hardcoded in fetchCountryAccum. 60d is the
+    // minimum that still covers trendDelta (prev30 = days 30-60).
+    //
+    // PR #3299 review P1: windows are anchored to upstream max(date),
+    // not Date.now(), so the aggregate is STABLE day-over-day when
+    // upstream is frozen. Without this, rolling `now - 30d` shifts the
+    // window every day and the cache serves stale aggregates.
+    assert.match(src, /anchor - 30 \* 86400000/);
+    assert.match(src, /anchor - 60 \* 86400000/);
+    // And the anchor is derived from the preflight maxDate, not just Date.now:
+    assert.match(src, /function parseMaxDateToAnchor/);
+    assert.match(src, /const anchor = anchorEpochMs \?\? Date\.now\(\)/);
+  });
+
+  it('fetchCountryAccum receives anchorEpochMs at the call site', () => {
+    // The call site must thread the parsed maxDate anchor into
+    // fetchCountryAccum — otherwise the windows default to Date.now()
+    // and cache reuse serves stale data (defeats the H-path entirely).
+    assert.match(src, /parseMaxDateToAnchor\(upstreamMaxDate\)/);
+    assert.match(src, /fetchCountryAccum\(iso3,\s*\{\s*signal:\s*childSignal,\s*anchorEpochMs\s*\}\)/);
   });
 
   it('TTL is 259200 (3 days)', () => {
@@ -318,7 +392,7 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
     ({ finalisePortsForCountry } = await import('../scripts/seed-portwatch-port-activity.mjs'));
   });
 
-  it('emits tankerCalls30d / trendDelta / anomalySignal that match the old per-row formula', () => {
+  it('emits tankerCalls30d + trendDelta + import/export sums; anomalySignal always false', () => {
     const portAccumMap = new Map([
       ['42', {
         portname: 'Test Port',
@@ -327,8 +401,6 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
         last30_import: 1000,
         last30_export: 500,
         prev30_calls: 40 * 30,
-        last7_calls: 20 * 7,
-        last7_count: 7,
       }],
     ]);
     const refMap = new Map([['42', { lat: 10, lon: 20 }]]);
@@ -338,12 +410,15 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
     assert.equal(port.exportTankerDwt30d, 500);
     const expectedTrend = Math.round(((60 * 23 + 20 * 7 - 40 * 30) / (40 * 30)) * 1000) / 10;
     assert.equal(port.trendDelta, expectedTrend);
-    assert.equal(port.anomalySignal, true);
+    // anomalySignal is hardcoded false post-H+F. See finalisePortsForCountry
+    // header for rationale (last7 aggregation was always empty due to
+    // ArcGIS max-date lag, so the field was always false anyway).
+    assert.equal(port.anomalySignal, false);
   });
 
   it('trendDelta=0 when prev30_calls=0', () => {
     const portAccumMap = new Map([
-      ['1', { portname: 'P', last30_calls: 100, last30_count: 30, last30_import: 0, last30_export: 0, prev30_calls: 0, last7_calls: Math.round((100 / 30) * 7), last7_count: 7 }],
+      ['1', { portname: 'P', last30_calls: 100, last30_count: 30, last30_import: 0, last30_export: 0, prev30_calls: 0 }],
     ]);
     const [port] = finalisePortsForCountry(portAccumMap, new Map());
     assert.equal(port.trendDelta, 0);
@@ -353,7 +428,7 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
   it('sorts desc + truncates to MAX_PORTS_PER_COUNTRY=50', () => {
     const portAccumMap = new Map();
     for (let i = 0; i < 60; i++) {
-      portAccumMap.set(String(i), { portname: `P${i}`, last30_calls: 60 - i, last30_count: 1, last30_import: 0, last30_export: 0, prev30_calls: 0, last7_calls: 0, last7_count: 0 });
+      portAccumMap.set(String(i), { portname: `P${i}`, last30_calls: 60 - i, last30_count: 1, last30_import: 0, last30_export: 0, prev30_calls: 0 });
     }
     const out = finalisePortsForCountry(portAccumMap, new Map());
     assert.equal(out.length, 50);
@@ -363,7 +438,7 @@ describe('finalisePortsForCountry (runtime, semantic equivalence)', () => {
 
   it('falls back to lat/lon=0 when refMap lacks the portId', () => {
     const portAccumMap = new Map([
-      ['999', { portname: 'Orphan', last30_calls: 1, last30_count: 1, last30_import: 0, last30_export: 0, prev30_calls: 0, last7_calls: 0, last7_count: 0 }],
+      ['999', { portname: 'Orphan', last30_calls: 1, last30_count: 1, last30_import: 0, last30_export: 0, prev30_calls: 0 }],
     ]);
     const [port] = finalisePortsForCountry(portAccumMap, new Map());
     assert.equal(port.lat, 0);

@@ -28,7 +28,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | Code | Meaning | Retry? |
 |------|---------|--------|
 | `200` | OK | — |
-| `202` | Accepted — job enqueued (e.g. `scenario/v1/run`). Poll `statusUrl`. | — |
+| `202` | Accepted — job enqueued. Poll for terminal status. | — |
 | `304` | Not Modified (conditional cache hit) | — |
 | `400` | Bad request — validation error | No — fix input |
 | `401` | Missing / invalid auth | No — fix auth |
@@ -55,13 +55,13 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `Rate limit exceeded` | 429 fired; honor `Retry-After`. |
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
-| `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run`. |
+| `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
 
 ## Retry strategy
 
 **Idempotent reads** (`GET`): retry 429/5xx with exponential backoff (1s, 2s, 4s, cap 30s, 5 attempts). Most GET responses are cached at the edge, so the retry usually goes faster.
 
-**Writes**: never auto-retry 4xx. For 5xx on writes, inspect: `POST /api/brief/share-url` and `POST /api/v2/shipping/webhooks` are idempotent; `POST /api/scenario/v1/run` is **not** — it enqueues a new job on each call. Retrying a 5xx on `run` may double-charge the rate-limit counter.
+**Writes**: never auto-retry 4xx. For 5xx on writes, inspect: `POST /api/brief/share-url` and `POST /api/v2/shipping/webhooks` are idempotent; `POST /api/scenario/v1/run-scenario` is **not** — it enqueues a new job on each call. Retrying a 5xx on `run-scenario` may double-charge the rate-limit counter.
 
 **MCP**: the server returns tool errors in the JSON-RPC result with `isError: true` and a text explanation — those are not HTTP errors. Handle them at the tool-call layer.
 

@@ -414,8 +414,56 @@ describe('renderBriefMagazine — envelope validation', () => {
 });
 
 describe('BRIEF_ENVELOPE_VERSION', () => {
-  it('is the literal 2 (bump requires cross-producer coordination)', () => {
-    assert.equal(BRIEF_ENVELOPE_VERSION, 2);
+  it('is the literal 3 (bump requires cross-producer coordination)', () => {
+    // Bumped 2 → 3 (2026-04-25) when BriefDigest gained the optional
+    // `publicLead` field for the share-URL surface. v2 envelopes still
+    // in the 7-day TTL window remain readable — see
+    // SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3]. Test below covers v1
+    // back-compat; v2 back-compat is exercised by the missing-publicLead
+    // path in the BriefDigest validator (publicLead === undefined is OK).
+    assert.equal(BRIEF_ENVELOPE_VERSION, 3);
+  });
+});
+
+describe('renderBriefMagazine — v3 publicLead field (Codex Round-3 Medium #2)', () => {
+  it('accepts a v3 envelope with publicLead', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicLead = 'A non-personalised editorial lead for share-URL surface readers.';
+    // Should NOT throw — publicLead is now an allowed digest key.
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects a publicLead that is not a non-empty string', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicLead = 42;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.digest\.publicLead, when present, must be a non-empty string/,
+    );
+  });
+
+  it('accepts a v2 envelope still in TTL window without publicLead (back-compat)', () => {
+    // v2 envelopes already in Redis at v3 rollout MUST keep rendering
+    // — SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3]. publicLead is
+    // optional; absence is the v2 shape.
+    const env = envelope();
+    env.version = 2;
+    delete env.data.digest.publicLead;
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects an envelope with an unknown digest key (closed-key-set still enforced)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.synthesisLevel = 1;  // would-be ad-hoc metadata
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.digest has unexpected key "synthesisLevel"/,
+    );
   });
 });
 
@@ -698,5 +746,238 @@ describe('renderBriefMagazine — publicMode', () => {
     const a = renderBriefMagazine(env);
     const b = renderBriefMagazine(env, {});
     assert.equal(a, b);
+  });
+
+  // ── Public-share lead fail-safe (Codex Round-2 High security) ──────
+  //
+  // Personalised `digest.lead` carries profile context (watched assets,
+  // saved regions, etc.). On the public-share surface we MUST render
+  // `publicLead` (a non-personalised parallel synthesis) instead, OR
+  // omit the pull-quote entirely. NEVER fall back to the personalised
+  // lead.
+
+  it('renders publicLead in the pull-quote when v3 envelope carries it', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead with watched-asset details that must NOT leak.';
+    env.data.digest.publicLead = 'A non-personalised editorial lead suitable for share readers.';
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(
+      html.includes('non-personalised editorial lead'),
+      'pull-quote must render the publicLead text',
+    );
+    assert.ok(
+      !html.includes('watched-asset details'),
+      'personalised lead text must NEVER appear on the public surface',
+    );
+  });
+
+  it('OMITS the pull-quote when publicLead is absent (v2 envelope back-compat)', () => {
+    // v2 envelopes still in TTL window have no publicLead. Public-mode
+    // render MUST omit the blockquote rather than render the
+    // personalised lead.
+    const env = envelope();
+    env.version = 2;
+    env.data.digest.lead = 'Personal lead with watched-asset details that must NOT leak.';
+    delete env.data.digest.publicLead;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(
+      !html.includes('watched-asset details'),
+      'personalised lead text must NEVER appear on the public surface',
+    );
+    // Sanity: the rest of the page (greeting + greeting block) is
+    // still rendered — only the blockquote is omitted.
+    assert.ok(html.includes('At The Top Of The Hour'));
+  });
+
+  it('OMITS the pull-quote when publicLead is empty string (defensive)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead that must NOT leak.';
+    // Defensive: publicLead set to empty string by a buggy producer.
+    // The render path treats empty as absent, omitting the pull-quote.
+    // (assertBriefEnvelope rejects publicLead='' as a non-empty-string
+    // violation, so this only matters if a future code path bypasses
+    // validation — belt-and-braces.)
+    env.data.digest.publicLead = '';
+    // Validator rejects empty publicLead first, so render throws —
+    // proves the contract is enforced before redactForPublic runs.
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicLead, when present, must be a non-empty string/,
+    );
+  });
+
+  it('private (non-public) render still uses the personalised lead', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead for the authenticated reader.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    const html = renderBriefMagazine(env);  // private path
+    assert.ok(html.includes('Personal lead for the authenticated reader'));
+    assert.ok(!html.includes('Generic public lead'), 'publicLead is share-only');
+  });
+
+  // ── Public signals + threads fail-safe (extends Codex Round-2 High security) ──
+
+  it('substitutes publicSignals when present — personalised signals never reach the public surface', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    // Personalised signals can echo a user's watched assets ("your
+    // Saudi exposure"). Anonymous public readers must never see this.
+    env.data.digest.signals = ['Watch Saudi crude exposure on your watchlist for OPEC moves'];
+    env.data.digest.publicSignals = ['Watch OPEC for production-quota signals'];
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(html.includes('OPEC for production-quota'), 'publicSignals must render');
+    assert.ok(!html.includes('your watchlist'), 'personalised signals must NEVER appear on public');
+    assert.ok(!html.includes('Saudi crude exposure'), 'personalised signal phrase must NEVER appear on public');
+  });
+
+  it('OMITS the signals page when publicSignals is absent (fail-safe — never serves personalised signals)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.signals = ['Watch your private watchlist for OPEC moves'];
+    delete env.data.digest.publicSignals;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    // Renderer's hasSignals gate hides the signals page when the
+    // array is empty. Personalised signal phrase must NOT appear.
+    assert.ok(!html.includes('your private watchlist'), 'personalised signals must NEVER appear on public');
+    assert.ok(!html.includes('Digest / 04'), 'signals page section must be omitted');
+  });
+
+  it('substitutes publicThreads when present — personalised thread teasers never reach public', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.threads = [
+      { tag: 'Energy', teaser: 'Saudi exposure on your portfolio is at risk this week' },
+    ];
+    env.data.digest.publicThreads = [
+      { tag: 'Energy', teaser: 'OPEC production quota debate intensifies' },
+    ];
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(html.includes('OPEC production quota'), 'publicThreads must render');
+    assert.ok(!html.includes('your portfolio'), 'personalised thread teaser must NEVER appear on public');
+  });
+
+  it('falls back to category-derived threads stub when publicThreads absent', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.threads = [
+      { tag: 'Energy', teaser: 'Saudi exposure on your portfolio is at risk this week' },
+    ];
+    delete env.data.digest.publicThreads;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(!html.includes('your portfolio'), 'personalised thread must NEVER appear on public');
+    // Stub teaser pattern — generic phrasing derived from story
+    // categories. Renderer still produces a threads page.
+    assert.ok(
+      html.includes('thread on the desk today') || html.includes('threads on the desk today'),
+      'category-derived threads stub renders',
+    );
+  });
+
+  it('rejects malformed publicSignals (validator contract)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicSignals = ['ok signal', 42];  // 42 is not a string
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicSignals\[1\] must be a non-empty string/,
+    );
+  });
+
+  it('rejects malformed publicThreads (validator contract)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicThreads = [{ tag: 'Energy' }];  // missing teaser
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicThreads\[0\]\.teaser must be a non-empty string/,
+    );
+  });
+
+  it('private render ignores publicSignals + publicThreads — uses personalised', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.signals = ['Personalised signal for authenticated reader'];
+    env.data.digest.publicSignals = ['Generic public signal'];
+    env.data.digest.threads = [{ tag: 'Energy', teaser: 'Personalised teaser' }];
+    env.data.digest.publicThreads = [{ tag: 'Energy', teaser: 'Generic public teaser' }];
+    const html = renderBriefMagazine(env);
+    assert.ok(html.includes('Personalised signal'), 'private render uses personalised signals');
+    assert.ok(!html.includes('Generic public signal'), 'public siblings ignored on private path');
+    assert.ok(html.includes('Personalised teaser'), 'private render uses personalised threads');
+  });
+});
+
+// ── Regression: cover greeting follows envelope.data.digest.greeting ─────────
+// Previously the cover hardcoded "Good evening" regardless of issue time, so
+// a brief composed at 13:02 local (envelope greeting = "Good afternoon.")
+// rendered "Good evening" on the cover and "Good afternoon." on slide 2 —
+// visibly inconsistent. Fix wires digest.greeting into the cover (period
+// stripped for the mono-cased slot).
+describe('cover greeting ↔ digest.greeting parity', () => {
+  /**
+   * Extract the cover <section> so we can assert on it in isolation without
+   * matching the identical greeting that appears on slide 2.
+   */
+  function extractCover(html) {
+    const match = html.match(/<section class="page cover">[\s\S]*?<\/section>/);
+    assert.ok(match, 'cover section must be present');
+    return match[0];
+  }
+
+  it('renders "Good afternoon" on the cover when digest.greeting is "Good afternoon."', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good afternoon.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(cover.includes('>Good afternoon<'), `cover should contain "Good afternoon" without period, got: ${cover}`);
+    assert.ok(!cover.includes('Good evening'), 'cover must NOT say "Good evening" when digest.greeting is afternoon');
+  });
+
+  it('renders "Good morning" on the cover when digest.greeting is "Good morning."', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good morning.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(cover.includes('>Good morning<'));
+    assert.ok(!cover.includes('Good evening'));
+    assert.ok(!cover.includes('Good afternoon'));
+  });
+
+  it('renders "Good evening" on the cover when digest.greeting is "Good evening."', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good evening.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(cover.includes('>Good evening<'));
+  });
+
+  it('strips trailing period(s) — cover is mono-cased, no punctuation', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: 'Good afternoon...' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    // Envelope can send any trailing dot count; cover strips all of them.
+    assert.ok(cover.includes('>Good afternoon<'));
+    assert.ok(!cover.includes('Good afternoon.'));
+  });
+
+  it('HTML-escapes the greeting (defense-in-depth, even though envelope values are controlled)', () => {
+    const env = envelope({
+      digest: { ...envelope().data.digest, greeting: '<script>alert(1)</script>.' },
+    });
+    const cover = extractCover(renderBriefMagazine(env));
+    assert.ok(!cover.includes('<script>alert'));
+    assert.ok(cover.includes('&lt;script&gt;'));
   });
 });

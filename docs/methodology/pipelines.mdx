@@ -1,0 +1,170 @@
+---
+title: "Pipeline Registry Methodology"
+description: "How World Monitor curates and attributes status for the world's oil and gas pipelines shown on the Energy Atlas."
+---
+
+## Scope
+
+Release 1 launches with a curated registry of critical oil & gas pipelines, not a claim of global completeness:
+
+- ~75 critical gas pipelines (Nord Stream 1/2, TurkStream, Yamal, Brotherhood/Soyuz, Power of Siberia, Qatar–UAE Dolphin, Medgaz, Langeled, Europipe I/II, Franpipe, etc.)
+- ~75 critical oil pipelines (Druzhba N/S, CPC, ESPO, BTC, Trans-Alaska, Habshan–Fujairah, Keystone, Kirkuk–Ceyhan, Baku–Supsa, etc.)
+
+Curation bias is toward pipelines with active geopolitical exposure, not theoretical global completeness. Expansion is a post-launch decision.
+
+## Data sources
+
+- **[Global Energy Monitor](https://globalenergymonitor.org) — Oil & Gas Pipeline Tracker** (CC-BY 4.0). Primary source for geometry, capacity, operator, country list.
+- **ENTSOG Transparency Platform** (public API) — EU gas pipeline nominations and sendout.
+- **Operator technical documentation** — route schematics, capacity plates, force-majeure notices.
+- **Regulator filings** — per-jurisdiction filings where applicable.
+
+Every pipeline carries at least one primary source reference.
+
+## Evidence schema (not conclusions)
+
+We do not publish a bare `sanctions_blocked` or `political_cutoff` label. Public badges are derived server-side from an evidence bundle per pipeline:
+
+```ts
+{
+  physicalState: 'flowing' | 'reduced' | 'offline' | 'unknown',
+  physicalStateSource: 'ais-relay' | 'operator' | 'satellite' | 'press',
+  operatorStatement: { text, url, date } | null,
+  commercialState: 'under_contract' | 'expired' | 'suspended' | 'unknown',
+  sanctionRefs: [{ authority, listId, date, url }, ...],
+  lastEvidenceUpdate: ISO8601,
+  classifierVersion: 'vN',
+  classifierConfidence: 0..1
+}
+```
+
+The visible `publicBadge` (`flowing | reduced | offline | disputed`) is a deterministic function with freshness weights. When a pipeline reopens or a sanctions list changes, the evidence fields update and the badge re-derives automatically. We ship the evidence; the badge is a convenience view of it.
+
+## How public badges move
+
+The designed audit surface is a public revision log that records every transition flipping a public status, as:
+
+- `{ assetId, fieldChanged, previousValue, newValue, trigger, sourcesUsed[], classifierVersion }`
+
+No human review queue gates the transition — quality comes from the tiered evidence threshold + an LLM second-pass sanity check + auto-decay of stale evidence. The classifier's version string ships with every public badge so scientific reproducibility is possible.
+
+**Status (v1 launch):** the revision-log surface is not yet live — see [`/corrections`](/corrections) for the planned shape and current state. The classifier that writes entries ships post-launch. Today, the audit path is the evidence bundle embedded in each RPC response + the methodology on this page.
+
+## Freshness SLA
+
+- Pipeline registry fields (geometry, operator, capacity): 35 days
+- Pipeline public badge (derived state): 24 hours; auto-decay to `stale` at 48 h and excluded from "active disruptions" counts after 7 days
+
+## Known limits
+
+- Geometry is simplified (not engineering-grade routing). Do not use for field operations.
+- Flow direction is advertised but not always calibrated to metered reality; relative state (flowing / reduced / offline) is more reliable than absolute mb/d.
+- Sanction references are evidence, not legal interpretation. Every `sanctionRefs` entry cites the authority; the interpretation of whether a sanction "blocks" flow is made explicit in the evidence bundle, never implicit in a badge label.
+
+## Attribution
+
+Pipeline-registry data derived from [Global Energy Monitor](https://globalenergymonitor.org) (CC-BY 4.0), with additional operator and regulator material incorporated under fair-use for news reporting.
+
+The hand-curated subset (operator/regulator/sanctions-bearing rows with classifier confidence ≥ 0.7) ships with full evidence bundles: operator statements, sanction references, last-evidence-update timestamps, and named source authorities. The GEM-imported subset (long-tail coverage rows) ships with minimum-viable evidence — `physicalStateSource: gem`, `classifierConfidence ≤ 0.5`, no operator statement, no sanction references. Both subsets pass the same registry validator and feed the same public-badge derivation.
+
+## Operator runbook — GEM import refresh
+
+### Cadence
+
+**Refresh quarterly** (or whenever a new GEM release lands — check the GGIT/GOIT landing pages below). The refresh is operator-mediated rather than cron-driven because:
+
+- GEM downloads are gated behind a per-request form; the resulting URL is release-specific and rotates each quarter, so a hardcoded URL would silently fetch a different version than the one we attribute.
+- Each release adjusts column names occasionally; the schema-drift sentinel in `scripts/import-gem-pipelines.mjs` catches this loudly, but it requires a human review of the diff before committing.
+
+If a quarter passes without a refresh, set a calendar reminder. Suggested cadence: review every 90 days; refresh whenever a peer reference site (e.g. global-energy-flow.com) advertises a newer release than ours.
+
+### Source datasets
+
+The two files we use are GEM's pipeline-only trackers (NOT the combined "Oil & Gas Extraction Tracker" — that's upstream wells/fields and has a different schema):
+
+| Tracker | Acronym | What it contains | Landing page |
+|---|---|---|---|
+| Global Gas Infrastructure Tracker | **GGIT** | Gas pipelines + LNG terminals | [globalenergymonitor.org/projects/global-gas-infrastructure-tracker](https://globalenergymonitor.org/projects/global-gas-infrastructure-tracker/) |
+| Global Oil Infrastructure Tracker | **GOIT** | Oil + NGL pipelines | [globalenergymonitor.org/projects/global-oil-infrastructure-tracker](https://globalenergymonitor.org/projects/global-oil-infrastructure-tracker/) |
+
+The **GIS .zip download** (containing GeoJSON, GeoPackage, and shapefile) is what we want — NOT the .xlsx. The XLSX has properties but no lat/lon columns; only the GeoJSON has both column properties AND `LineString.coordinates` for endpoint extraction.
+
+#### Last-known-good URLs (rotate per release)
+
+These are the URLs we used for the 2026-04-25 import. GEM rotates them per release, so always re-request via the landing page above for the current release before re-running:
+
+```
+GGIT Gas (2025-11):  https://globalenergymonitor.org/wp-content/uploads/2025/11/GEM-GGIT-Gas-Pipelines-2025-11.zip
+GOIT Oil (2025-03):  https://globalenergymonitor.org/wp-content/uploads/2025/03/GEM-GOIT-Oil-NGL-Pipelines-2025-03.zip
+```
+
+URL pattern is stable: `globalenergymonitor.org/wp-content/uploads/YYYY/MM/GEM-{GGIT,GOIT}-{tracker-name}-YYYY-MM.zip`. If the landing-page download flow changes, this pattern is the fallback for figuring out the new URL given the release date GEM publishes.
+
+### Refresh steps
+
+1. **Request the data** via either landing page above. GEM emails you per-release URLs (one for the .xlsx, one for the GIS .zip). Registration is required even though the data itself is CC-BY 4.0.
+
+2. **Download both GIS .zips** and unzip:
+   ```bash
+   unzip -o ~/Downloads/GEM-GGIT-Gas-Pipelines-YYYY-MM.zip -d /tmp/gem-gis/gas/
+   unzip -o ~/Downloads/GEM-GOIT-Oil-NGL-Pipelines-YYYY-MM.zip -d /tmp/gem-gis/oil/
+   ```
+
+3. **Convert GeoJSON → canonical JSON** via the in-repo converter. It reads both GeoJSON files, applies the filter knobs documented in the script header, normalizes country names to ISO 3166-1 alpha-2 via `pycountry`, and emits the operator-shape envelope:
+   ```bash
+   pip3 install pycountry  # one-time
+   GEM_GAS_GEOJSON=/tmp/gem-gis/gas/GEM-GGIT-Gas-Pipelines-YYYY-MM.geojson \
+   GEM_OIL_GEOJSON=/tmp/gem-gis/oil/GEM-GOIT-Oil-NGL-Pipelines-YYYY-MM.geojson \
+   GEM_DOWNLOADED_AT=YYYY-MM-DD \
+   GEM_SOURCE_VERSION="GEM-GGIT-YYYY-MM+GOIT-YYYY-MM" \
+   python3 scripts/_gem-geojson-to-canonical.py > /tmp/gem-pipelines.json 2> /tmp/gem-drops.log
+   cat /tmp/gem-drops.log  # inspect drop counts before merging
+   ```
+
+   Filter knob defaults (in `scripts/_gem-geojson-to-canonical.py`):
+   - `MIN_LENGTH_KM_GAS = 750` (trunk-class only)
+   - `MIN_LENGTH_KM_OIL = 400` (trunk-class only)
+   - `ACCEPTED_STATUS = {operating, construction}`
+   - Capacity unit conversions: bcm/y native; MMcf/d, MMSCMD, mtpa, m3/day, bpd, Mb/d, kbd → bcm/y (gas) or bbl/d (oil)
+
+   These thresholds were tuned empirically against the 2025-11/2025-03 release to land at ~250-300 entries per registry. Adjust if a future release shifts the volume distribution.
+
+4. **Dry-run** to inspect candidate counts before touching the registry:
+   ```bash
+   GEM_PIPELINES_FILE=/tmp/gem-pipelines.json node scripts/import-gem-pipelines.mjs --print-candidates \
+     | jq '{ gas: (.gas | length), oil: (.oil | length) }'
+   ```
+
+5. **Merge** into `scripts/data/pipelines-{gas,oil}.json` (writes both atomically — validates both before either is touched on disk):
+   ```bash
+   GEM_PIPELINES_FILE=/tmp/gem-pipelines.json node scripts/import-gem-pipelines.mjs --merge
+   ```
+   Spot-check 5-10 random GEM-sourced rows in the diff before committing — known major trunks (Druzhba, Nord Stream, Keystone, TAPI, Centro Oeste) are good sanity-check anchors.
+
+6. **Commit** the data + record provenance. Per-release SHA256s go in the commit message so future audits can verify reproducibility:
+   ```bash
+   shasum -a 256 ~/Downloads/GEM-GGIT-Gas-Pipelines-YYYY-MM.xlsx \
+                  ~/Downloads/GEM-GOIT-Oil-NGL-Pipelines-YYYY-MM.xlsx
+   ```
+   If the row count crosses a threshold, also bump `MIN_PIPELINES_PER_REGISTRY` in `scripts/_pipeline-registry.mjs` so future partial re-imports fail loud rather than silently halving the registry.
+
+7. **Verify** `npm run test:data` is green before pushing.
+
+### Failure modes and what to do
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Converter exits with `GEM_GAS_GEOJSON env vars are required` | Env vars not set | Re-run with both `GEM_GAS_GEOJSON` and `GEM_OIL_GEOJSON` pointed at the unzipped `.geojson` files |
+| Many rows dropped on `country:Foo|Bar` | New country name GEM uses isn't in `pycountry` or the alias table | Add the alias to `COUNTRY_ALIASES` in `scripts/_gem-geojson-to-canonical.py` |
+| Many rows dropped on `no_capacity` with a unit we haven't seen | GEM added a capacity unit | Add the conversion factor to `gas_capacity()` or `oil_capacity()` in the converter |
+| Parser throws `schema drift — pipelines[i] missing column "X"` | GEM renamed a column between releases | The parser will name the missing column; map it back in the converter and re-run |
+| `validateRegistry` rejects the merged registry | Almost always: count below `MIN_PIPELINES_PER_REGISTRY`, or an evidence-source not in the whitelist | Inspect the merged JSON; if the row drop is real, lower the floor; if a row's evidence is malformed, fix the converter |
+| Net adds drop precipitously between releases | GEM removed a tracker subset, OR the dedup is over-matching | Run `--print-candidates` and diff against the prior quarter's output; adjust the haversine/Jaccard knobs in `scripts/_pipeline-dedup.mjs` if needed |
+
+## Corrections
+
+See [`/corrections`](/corrections) for the planned revision-log shape
+and submission policy. Spot a wrong status? Open a GitHub issue at the
+[public repository](https://github.com/koala73/worldmonitor/issues).
+Corrections are handled manually today and will flow through the
+automated `override`-trigger path once the classifier ships.

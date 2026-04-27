@@ -10,6 +10,8 @@ import { readJsonFromUpstash } from './_upstash-json.js';
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../shared/mining-sites.js';
@@ -328,7 +330,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   // -------------------------------------------------------------------------
   {
     name: 'get_world_brief',
-    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines and produces an LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
+    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -344,13 +346,17 @@ const TOOL_REGISTRY: ToolDef[] = [
         signal: AbortSignal.timeout(6_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
-      type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
+      type DigestPayload = { categories?: Record<string, { items?: { title?: string; snippet?: string }[] }> };
       const digest = await digestRes.json() as DigestPayload;
-      const headlines = Object.values(digest.categories ?? {})
+      // Pair headlines with their RSS snippets so the LLM grounds per-story
+      // on article bodies instead of hallucinating across unrelated titles.
+      const pairs = Object.values(digest.categories ?? {})
         .flatMap(cat => cat.items ?? [])
-        .map(item => item.title ?? '')
-        .filter(Boolean)
+        .map(item => ({ title: item.title ?? '', snippet: item.snippet ?? '' }))
+        .filter(p => p.title.length > 0)
         .slice(0, 10);
+      const headlines = pairs.map(p => p.title);
+      const bodies = pairs.map(p => p.snippet);
       // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
       const briefRes = await fetch(`${base}/api/news/v1/summarize-article`, {
         method: 'POST',
@@ -358,6 +364,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         body: JSON.stringify({
           provider: 'openrouter',
           headlines,
+          bodies,
           mode: 'brief',
           geoContext: String(params.geo_context ?? ''),
           variant: 'geo',
@@ -806,7 +813,10 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
   const corsHeaders = getPublicCorsHeaders('POST, OPTIONS');
 
@@ -830,6 +840,13 @@ export default async function handler(req: Request): Promise<Response> {
   if (origin && origin !== 'https://claude.ai' && origin !== 'https://claude.com') {
     return new Response('Forbidden', { status: 403, headers: corsHeaders });
   }
+  // Host-derived resource_metadata pointer: a client probing api.worldmonitor.app/mcp
+  // must see a pointer at its own origin, not the apex — otherwise the 401's
+  // WWW-Authenticate points at apex metadata whose `resource` field is apex too,
+  // and same-origin scanners (isitagentready.com, Cloudflare mcp.cloudflare.com)
+  // flag the mismatch. Matches the host-extraction in api/oauth-protected-resource.ts.
+  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
+  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
   // Auth chain (in priority order):
   //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
   //   2. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
@@ -853,7 +870,7 @@ export default async function handler(req: Request): Promise<Response> {
       // Bearer token present but unresolvable — expired or invalid UUID
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", error="invalid_token", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
       );
     }
   } else {
@@ -861,7 +878,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!candidateKey) {
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
       );
     }
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
@@ -941,6 +958,10 @@ export default async function handler(req: Request): Promise<Response> {
         }, corsHeaders);
       } catch (err: unknown) {
         console.error('[mcp] tool execution error:', err);
+        captureSilentError(err, {
+          tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
+          ctx,
+        });
         return rpcError(id, -32603, 'Internal error: data fetch failed');
       }
     }

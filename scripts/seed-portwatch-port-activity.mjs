@@ -32,7 +32,11 @@ const EP4_BASE =
 
 const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 45_000;
-const HISTORY_DAYS = 90;
+// Two aggregation windows, hardcoded in fetchCountryAccum:
+//   last30 = days  0-30 → tankerCalls30d, avg30d, import/export sums
+//   prev30 = days 30-60 → trendDelta baseline
+// Any change to these window sizes must update BOTH the WHERE clauses
+// in paginateWindowInto callers AND the cutoff* math in fetchCountryAccum.
 const MAX_PORTS_PER_COUNTRY = 50;
 
 // Per-country budget. ArcGIS's ISO3 index makes per-country fetches O(rows-in-country),
@@ -42,6 +46,16 @@ const MAX_PORTS_PER_COUNTRY = 50;
 const PER_COUNTRY_TIMEOUT_MS = 90_000;
 const CONCURRENCY = 12;
 const BATCH_LOG_EVERY = 5;
+// Cache hygiene: force a full refetch if the cached payload is older than 7 days
+// even when upstream maxDate is unchanged. Protects against window-shift drift
+// (cached aggregates were computed against a window that's now 7+ days offset
+// from today's last30/prev30 cutoffs) and serves as a belt-and-braces refresh
+// if the maxDate check ever silently short-circuits.
+const MAX_CACHE_AGE_MS = 7 * 86_400_000;
+// Concurrency for the cheap per-country maxDate preflight. These are tiny
+// outStatistics queries (returns 1 row), so we can push harder than the
+// expensive fetch concurrency without tripping ArcGIS 429s in practice.
+const PREFLIGHT_CONCURRENCY = 24;
 
 function epochToTimestamp(epochMs) {
   const d = new Date(epochMs);
@@ -131,27 +145,17 @@ async function fetchAllPortRefs({ signal } = {}) {
   return byIso3;
 }
 
-// Fetch ONE country's activity rows, streaming into per-port accumulators.
-// ArcGIS's ISO3 index makes this cheap for most countries (~3-9s typical).
-// Heavy countries (USA/CHN/etc.) can be 30-60s because 90 days × their many
-// ports = thousands of rows across multiple pages. Hence the per-country
-// timeout + single retry.
-//
-// Returns Map<portId, PortAccum> — same shape `finalisePortsForCountry`
-// consumes. Memory per country is O(unique ports for that country) ≈ <200.
-async function fetchCountryAccum(iso3, since, { signal } = {}) {
-  const now = Date.now();
-  const cutoff30 = now - 30 * 86400000;
-  const cutoff60 = now - 60 * 86400000;
-  const cutoff7 = now - 7 * 86400000;
-
-  const portAccumMap = new Map();
+// Paginate a single ArcGIS EP3 window into per-port accumulators. Called
+// twice per country — once for each aggregation window (last30, prev30) —
+// in parallel so heavy countries no longer have to serialise through both
+// windows inside a single 90s cap.
+async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signal } = {}) {
   let offset = 0;
   let body;
   do {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const params = new URLSearchParams({
-      where: `ISO3='${iso3}' AND date > ${epochToTimestamp(since)}`,
+      where,
       outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
       returnGeometry: 'false',
       orderByFields: 'portid ASC,date ASC',
@@ -166,47 +170,135 @@ async function fetchCountryAccum(iso3, since, { signal } = {}) {
       const a = f.attributes;
       if (!a || a.portid == null || a.date == null) continue;
       const portId = String(a.portid);
-      // ArcGIS date is esriFieldTypeDateOnly → "YYYY-MM-DD" string (or epoch ms).
-      const date = typeof a.date === 'number' ? a.date : Date.parse(a.date + 'T12:00:00Z');
       const calls = Number(a.portcalls_tanker ?? 0);
       const imports = Number(a.import_tanker ?? 0);
       const exports_ = Number(a.export_tanker ?? 0);
 
+      // JS is single-threaded; two concurrent paginateWindowInto calls never
+      // hit the `get`/`set` pair here in interleaved fashion because there's
+      // no `await` between them. So this is safe without a mutex.
       let acc = portAccumMap.get(portId);
       if (!acc) {
         acc = {
           portname: String(a.portname || ''),
           last30_calls: 0, last30_count: 0, last30_import: 0, last30_export: 0,
           prev30_calls: 0,
-          last7_calls: 0, last7_count: 0,
         };
         portAccumMap.set(portId, acc);
       }
-      if (date >= cutoff30) {
+      if (windowKind === 'last30') {
         acc.last30_calls += calls;
         acc.last30_count += 1;
         acc.last30_import += imports;
         acc.last30_export += exports_;
-        if (date >= cutoff7) {
-          acc.last7_calls += calls;
-          acc.last7_count += 1;
-        }
-      } else if (date >= cutoff60) {
+      } else {
+        // windowKind === 'prev30'
         acc.prev30_calls += calls;
       }
     }
     if (features.length === 0) break;
     offset += features.length;
   } while (body.exceededTransferLimit);
+}
+
+// Parse a "YYYY-MM-DD" string (from ArcGIS outStatistics max(date)) into an
+// epoch-ms anchor used as the upper bound of the last30 window. Uses the
+// END of the day (23:59:59.999 UTC) so rows dated exactly maxDate still
+// satisfy `date <= anchor`. Returns null on parse failure; callers fall
+// back to `Date.now()` when anchor is null.
+function parseMaxDateToAnchor(maxDateStr) {
+  if (!maxDateStr || typeof maxDateStr !== 'string') return null;
+  const ts = Date.parse(maxDateStr + 'T23:59:59.999Z');
+  return Number.isFinite(ts) ? ts : null;
+}
+
+// Fetch ONE country's activity rows, streaming into per-port accumulators.
+// Splits into TWO parallel windowed queries:
+//   - Q1 (last30): WHERE ISO3='X' AND date > cutoff30
+//   - Q2 (prev30): WHERE ISO3='X' AND date > cutoff60 AND date <= cutoff30
+// Each returns ~half the rows a single 60-day query would. Heavy countries
+// (USA/CHN/etc.) drop from ~90s → ~30s because max(Q1,Q2) < Q1+Q2.
+//
+// The window ANCHOR is upstream max(date), not `Date.now()`. This makes the
+// aggregate stable across cron runs whenever upstream hasn't advanced —
+// which is essential for the H-path cache (see fetchAll). Without the
+// anchor, rolling `now - 30d` windows shift every day even when upstream
+// is frozen, so `tankerCalls30d` would drift day-over-day and cache reuse
+// would serve stale aggregates. PR #3299 review P1.
+//
+// `last7` aggregation was removed: ArcGIS's Daily_Ports_Data max date lags
+// ~10 days behind real-time, so the last-7-day window was always empty and
+// anomalySignal always false. Not a feature regression — it was already dead.
+//
+// Returns Map<portId, PortAccum>. Memory per country is O(unique ports) ≈ <200.
+async function fetchCountryAccum(iso3, { signal, anchorEpochMs } = {}) {
+  const anchor = anchorEpochMs ?? Date.now();
+  const cutoff30 = anchor - 30 * 86400000;
+  const cutoff60 = anchor - 60 * 86400000;
+
+  const portAccumMap = new Map();
+
+  await Promise.all([
+    paginateWindowInto(
+      portAccumMap,
+      iso3,
+      `ISO3='${iso3}' AND date > ${epochToTimestamp(cutoff30)}`,
+      'last30',
+      { signal },
+    ),
+    paginateWindowInto(
+      portAccumMap,
+      iso3,
+      `ISO3='${iso3}' AND date > ${epochToTimestamp(cutoff60)} AND date <= ${epochToTimestamp(cutoff30)}`,
+      'prev30',
+      { signal },
+    ),
+  ]);
+
   return portAccumMap;
+}
+
+// Cheap preflight: single outStatistics query returning max(date) for one
+// country. Used to skip the expensive fetch when upstream data hasn't
+// advanced since the last cached run. ~1-2s per call at ArcGIS's current
+// steady-state. Returns ISO date string "YYYY-MM-DD" or null on any error
+// (we then fall through to the expensive path, which has its own retry).
+async function fetchMaxDate(iso3, { signal } = {}) {
+  const outStats = JSON.stringify([{
+    statisticType: 'max',
+    onStatisticField: 'date',
+    outStatisticFieldName: 'max_date',
+  }]);
+  const params = new URLSearchParams({
+    where: `ISO3='${iso3}'`,
+    outStatistics: outStats,
+    f: 'json',
+  });
+  try {
+    const body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, { signal });
+    const attrs = body.features?.[0]?.attributes;
+    if (!attrs) return null;
+    const raw = attrs.max_date;
+    if (raw == null) return null;
+    // ArcGIS may return max(date) as epoch ms OR ISO string depending on field type
+    // (esriFieldTypeDate vs esriFieldTypeDateOnly). Normalize to YYYY-MM-DD.
+    if (typeof raw === 'number') {
+      const d = new Date(raw);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    }
+    return String(raw).slice(0, 10);
+  } catch {
+    return null;
+  }
 }
 
 export function finalisePortsForCountry(portAccumMap, refMap) {
   const ports = [];
   for (const [portId, a] of portAccumMap) {
-    const avg30d = a.last30_count > 0 ? a.last30_calls / a.last30_count : 0;
-    const avg7d = a.last7_count > 0 ? a.last7_calls / a.last7_count : 0;
-    const anomalySignal = avg30d > 0 && avg7d < avg30d * 0.5;
+    // anomalySignal dropped: ArcGIS dataset max date lags 10+ days behind
+    // real-time, so the last-7-day window always returned 0 rows and
+    // anomalySignal was always false. Removed the dead aggregation in the
+    // H+F refactor rather than plumbing a now-always-false field.
     const trendDelta = a.prev30_calls > 0
       ? Math.round(((a.last30_calls - a.prev30_calls) / a.prev30_calls) * 1000) / 10
       : 0;
@@ -220,7 +312,10 @@ export function finalisePortsForCountry(portAccumMap, refMap) {
       trendDelta,
       importTankerDwt30d: a.last30_import,
       exportTankerDwt30d: a.last30_export,
-      anomalySignal,
+      // Preserve field for downstream consumers but always false now.
+      // TODO: Remove once UI stops reading it; ports.proto already tolerates
+      // the missing field in future responses.
+      anomalySignal: false,
     });
   }
   return ports
@@ -262,6 +357,25 @@ async function redisPipeline(commands) {
   return resp.json();
 }
 
+// MGET-style batch read via the Upstash REST /pipeline endpoint. Returns an
+// array aligned with `keys` where each element is either the parsed JSON
+// payload or null (for missing/unparseable/errored keys). Used to prime the
+// per-country cache lookup in one round-trip instead of 174 sequential GETs.
+async function redisMgetJson(keys) {
+  if (keys.length === 0) return [];
+  const commands = keys.map((k) => ['GET', k]);
+  const results = await redisPipeline(commands);
+  return results.map((r, idx) => {
+    if (r?.error) return null;
+    const raw = r?.result;
+    if (raw == null) return null;
+    try { return JSON.parse(raw); } catch {
+      console.warn(`  [port-activity] redisMget: skipping unparseable cached payload for ${keys[idx]}`);
+      return null;
+    }
+  });
+}
+
 // fetchAll() — pure data collection, no Redis writes.
 // Returns { countries: string[], countryData: Map<iso2, payload>, fetchedAt: string }.
 //
@@ -269,7 +383,6 @@ async function redisPipeline(commands) {
 // can report which batch / country we died on.
 export async function fetchAll(progress, { signal } = {}) {
   const { iso3ToIso2 } = createCountryResolvers();
-  const since = Date.now() - HISTORY_DAYS * 86400000;
 
   if (progress) progress.stage = 'refs';
   console.log('  [port-activity] Fetching global port reference (EP4)...');
@@ -277,25 +390,103 @@ export async function fetchAll(progress, { signal } = {}) {
   const refsByIso3 = await fetchAllPortRefs({ signal });
   console.log(`  [port-activity] Refs loaded: ${refsByIso3.size} countries with ports (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 
-  if (progress) progress.stage = 'activity';
   const eligibleIso3 = [...refsByIso3.keys()].filter(iso3 => iso3ToIso2.has(iso3));
   const skipped = refsByIso3.size - eligibleIso3.length;
-  const batches = Math.ceil(eligibleIso3.length / CONCURRENCY);
-  if (progress) progress.totalBatches = batches;
-  console.log(`  [port-activity] Activity queue: ${eligibleIso3.length} countries (skipping ${skipped} unmapped iso3, concurrency ${CONCURRENCY}, per-country cap ${PER_COUNTRY_TIMEOUT_MS / 1000}s)`);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Preflight: load every country's previous payload in one MGET pipeline.
+  // Payloads written by this script since the H+F refactor carry an `asof`
+  // (upstream max(date) at the time of the last successful fetch) and a
+  // `cacheWrittenAt` (ms epoch). We re-use them as-is when both of the
+  // following hold:
+  //   1. upstream max(date) for the country is unchanged since `asof`
+  //   2. `cacheWrittenAt` is within MAX_CACHE_AGE_MS
+  // Either check failing → fall through to the expensive paginated fetch.
+  //
+  // Cold run (no cache / legacy payloads without asof) always falls through.
+  // ─────────────────────────────────────────────────────────────────────────
+  if (progress) progress.stage = 'cache-lookup';
+  const cacheT0 = Date.now();
+  const prevKeys = eligibleIso3.map((iso3) => `${KEY_PREFIX}${iso3ToIso2.get(iso3)}`);
+  // A transient Upstash outage at run-start must NOT abort the seed before
+  // any ArcGIS data is fetched — that's a regression from the previous
+  // behaviour where Redis was only required at the final write. On MGET
+  // failure, degrade to cold-path: treat every country as a cache miss
+  // and re-fetch. The write at run-end will retry its own Redis calls
+  // and fail loudly if Redis is genuinely down then too. PR #3299 review P1.
+  const prevPayloads = await redisMgetJson(prevKeys).catch((err) => {
+    console.warn(`  [port-activity] cache MGET failed (${err?.message || err}) — treating all countries as cache miss`);
+    return new Array(prevKeys.length).fill(null);
+  });
+  console.log(`  [port-activity] Loaded ${prevPayloads.filter(Boolean).length}/${prevKeys.length} cached payloads (${((Date.now() - cacheT0) / 1000).toFixed(1)}s)`);
+
+  // Preflight: maxDate check for every eligible country in parallel.
+  // Each request is tiny (1 row outStatistics), so we push to PREFLIGHT_CONCURRENCY
+  // which is higher than the expensive-fetch CONCURRENCY.
+  if (progress) progress.stage = 'preflight';
+  const preflightT0 = Date.now();
+  const maxDates = new Array(eligibleIso3.length).fill(null);
+  for (let i = 0; i < eligibleIso3.length; i += PREFLIGHT_CONCURRENCY) {
+    if (signal?.aborted) throw signal.reason ?? new Error('aborted');
+    const slice = eligibleIso3.slice(i, i + PREFLIGHT_CONCURRENCY);
+    const settled = await Promise.allSettled(
+      slice.map((iso3) => fetchMaxDate(iso3, { signal })),
+    );
+    for (let j = 0; j < slice.length; j++) {
+      const r = settled[j];
+      maxDates[i + j] = r.status === 'fulfilled' ? r.value : null;
+    }
+  }
+  console.log(`  [port-activity] Preflight maxDate for ${eligibleIso3.length} countries (${((Date.now() - preflightT0) / 1000).toFixed(1)}s)`);
+
+  // Partition: cache hits (reusable) vs misses (need expensive fetch).
   const countryData = new Map();
+  const needsFetch = [];
+  let cacheHits = 0;
+  const now = Date.now();
+  for (let i = 0; i < eligibleIso3.length; i++) {
+    const iso3 = eligibleIso3[i];
+    const iso2 = iso3ToIso2.get(iso3);
+    const upstreamMaxDate = maxDates[i];
+    const prev = prevPayloads[i];
+    const cacheFresh = prev && typeof prev === 'object'
+      && prev.asof === upstreamMaxDate
+      && upstreamMaxDate != null
+      && typeof prev.cacheWrittenAt === 'number'
+      && (now - prev.cacheWrittenAt) < MAX_CACHE_AGE_MS;
+    if (cacheFresh) {
+      countryData.set(iso2, prev);
+      cacheHits++;
+    } else {
+      needsFetch.push({ iso3, iso2, upstreamMaxDate });
+    }
+  }
+  console.log(`  [port-activity] Cache: ${cacheHits} hits, ${needsFetch.length} misses`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Expensive path: paginated fetch for cache misses only.
+  // ─────────────────────────────────────────────────────────────────────────
+  if (progress) progress.stage = 'activity';
+  const batches = Math.ceil(needsFetch.length / CONCURRENCY);
+  if (progress) progress.totalBatches = batches;
+  console.log(`  [port-activity] Activity queue: ${needsFetch.length} countries (skipped ${cacheHits} via cache, ${skipped} unmapped, concurrency ${CONCURRENCY}, per-country cap ${PER_COUNTRY_TIMEOUT_MS / 1000}s)`);
+
   const errors = progress?.errors ?? [];
   const activityStart = Date.now();
 
-  for (let i = 0; i < eligibleIso3.length; i += CONCURRENCY) {
-    const batch = eligibleIso3.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < needsFetch.length; i += CONCURRENCY) {
+    const batch = needsFetch.slice(i, i + CONCURRENCY);
     const batchIdx = Math.floor(i / CONCURRENCY) + 1;
     if (progress) progress.batchIdx = batchIdx;
 
-    const promises = batch.map(iso3 => {
+    const promises = batch.map(({ iso3, upstreamMaxDate }) => {
+      // Anchor the rolling windows to upstream max(date) so the aggregate
+      // is stable day-over-day when upstream is frozen (required for cache
+      // reuse to be semantically correct — see PR #3299 review P1).
+      // Falls back to Date.now() when preflight returned null.
+      const anchorEpochMs = parseMaxDateToAnchor(upstreamMaxDate);
       const p = withPerCountryTimeout(
-        (childSignal) => fetchCountryAccum(iso3, since, { signal: childSignal }),
+        (childSignal) => fetchCountryAccum(iso3, { signal: childSignal, anchorEpochMs }),
         iso3,
       );
       // Eager error flush so a SIGTERM mid-batch captures rejections that
@@ -306,21 +497,29 @@ export async function fetchAll(progress, { signal } = {}) {
     const settled = await Promise.allSettled(promises);
 
     for (let j = 0; j < batch.length; j++) {
-      const iso3 = batch[j];
+      const { iso3, iso2, upstreamMaxDate } = batch[j];
       const outcome = settled[j];
       if (outcome.status === 'rejected') continue; // already recorded via .catch
       const portAccumMap = outcome.value;
       if (!portAccumMap || portAccumMap.size === 0) continue;
       const ports = finalisePortsForCountry(portAccumMap, refsByIso3.get(iso3));
       if (!ports.length) continue;
-      const iso2 = iso3ToIso2.get(iso3);
-      countryData.set(iso2, { iso2, ports, fetchedAt: new Date().toISOString() });
+      countryData.set(iso2, {
+        iso2,
+        ports,
+        fetchedAt: new Date().toISOString(),
+        // Cache fields. `asof` may be null if preflight failed; that's fine —
+        // next run will always be a miss (null !== any string) so we'll
+        // re-fetch and repopulate.
+        asof: upstreamMaxDate,
+        cacheWrittenAt: Date.now(),
+      });
     }
 
     if (progress) progress.seeded = countryData.size;
     if (batchIdx === 1 || batchIdx % BATCH_LOG_EVERY === 0 || batchIdx === batches) {
       const elapsed = ((Date.now() - activityStart) / 1000).toFixed(1);
-      console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries seeded, ${errors.length} errors (${elapsed}s)`);
+      console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries published, ${errors.length} errors (${elapsed}s)`);
     }
   }
 
@@ -390,7 +589,7 @@ async function main() {
     prevCountryKeys = Array.isArray(prevIso2List) ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`) : [];
     prevCount = Array.isArray(prevIso2List) ? prevIso2List.length : 0;
 
-    console.log(`  Fetching port activity data (${HISTORY_DAYS}d history)...`);
+    console.log(`  Fetching port activity data (60d: last30 + prev30 windows)...`);
     const { countries, countryData } = await fetchAll(progress, { signal: shutdownController.signal });
 
     console.log(`  Fetched ${countryData.size} countries`);

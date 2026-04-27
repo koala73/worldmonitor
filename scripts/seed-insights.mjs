@@ -4,6 +4,7 @@ import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-ut
 import { clusterItems, selectTopStories } from './_clustering.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { pickBriefCluster, briefSystemPrompt, briefUserPrompt } from './_insights-brief.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -26,8 +27,10 @@ function normalizeThreat(threat) {
   return { ...threat, level };
 }
 
-const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval (was 1x = key expired on any missed run)
-const MAX_HEADLINES = 10;
+const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key expires on any missed
+                         // cron tick and /api/bootstrap loses insights entirely. Bad brief content
+                         // is gated at brief-selection time (see pickBriefCluster + briefSystemPrompt
+                         // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
@@ -110,23 +113,9 @@ const LLM_PROVIDERS = [
   },
 ];
 
-async function callLLM(headlines) {
-  const headlineText = headlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
-  const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}. Provide geopolitical context appropriate for the current date.`;
-
-  const systemPrompt = `${dateContext}
-
-Summarize the single most important headline in 2 concise sentences MAX (under 60 words total).
-Rules:
-- Each numbered headline below is a SEPARATE, UNRELATED story
-- Pick the ONE most significant headline and summarize ONLY that story
-- NEVER combine or merge people, places, or facts from different headlines into one sentence
-- Lead with WHAT happened and WHERE - be specific
-- NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings
-- Start directly with the subject of the chosen headline
-- No bullet points, no meta-commentary, no elaboration beyond the core facts`;
-
-  const userPrompt = `Each headline below is a separate story. Pick the most important ONE and summarize only that story:\n${headlineText}`;
+async function callLLM(headline) {
+  const systemPrompt = briefSystemPrompt(new Date().toISOString().split('T')[0]);
+  const userPrompt = briefUserPrompt(headline);
 
   for (const provider of LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
@@ -146,7 +135,7 @@ Rules:
             { role: 'user', content: userPrompt },
           ],
           max_tokens: 300,
-          temperature: 0.3,
+          temperature: 0.1,
           ...provider.extraBody,
         }),
         signal: AbortSignal.timeout(provider.timeout),
@@ -276,24 +265,34 @@ async function fetchInsights() {
 
   if (topStories.length === 0) throw new Error('No top stories after scoring');
 
-  const headlines = topStories
-    .slice(0, MAX_HEADLINES)
-    .map(s => sanitizeTitle(s.primaryTitle));
+  // Corroboration gate: only brief a story at least two outlets have reported.
+  // See pickBriefCluster() in _insights-brief.mjs for rationale + unit tests.
+  // Note: this gates ONLY brief generation — the topStories payload itself
+  // continues to include single-source clusters, rendered as the headline list
+  // under the brief. The brief paragraph is the one surface where corroboration
+  // matters; the list is already visually marked with per-story sourceCount.
+  const briefCluster = pickBriefCluster(topStories);
+  const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
 
   let worldBrief = '';
   let briefProvider = '';
   let briefModel = '';
   let status = 'ok';
 
-  const llmResult = await callLLM(headlines);
-  if (llmResult) {
-    worldBrief = llmResult.text;
-    briefProvider = llmResult.provider;
-    briefModel = llmResult.model;
-    console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
-  } else {
+  if (!topHeadline) {
     status = 'degraded';
-    console.warn('  No LLM available — publishing degraded (stories without brief)');
+    console.warn('  No multi-source cluster available — publishing degraded (stories without brief)');
+  } else {
+    const llmResult = await callLLM(topHeadline);
+    if (llmResult) {
+      worldBrief = llmResult.text;
+      briefProvider = llmResult.provider;
+      briefModel = llmResult.model;
+      console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
+    } else {
+      status = 'degraded';
+      console.warn('  No LLM available — publishing degraded (stories without brief)');
+    }
   }
 
   const multiSourceCount = clusters.filter(c => c.sourceCount >= 2).length;

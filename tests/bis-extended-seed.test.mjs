@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   parseBisCSV,
@@ -257,4 +260,81 @@ describe('seed-bis-extended parser', () => {
     const out = selectBestSeriesByCountry(rows, { countryColumns: ['REF_AREA'], prefs: { PP_VALUATION: 'R' } });
     assert.equal(out.size, 0);
   });
+});
+
+describe('BIS-Extended health-check maxStaleMin co-pinned to section gate (load-bearing)', () => {
+  // Regression-locks the fix for the 2026-04-27 false-STALE event where all
+  // three BIS-Extended health entries (bisDsr, bisPropertyResidential,
+  // bisPropertyCommercial) flipped to STALE_SEED simultaneously at
+  // seedAgeMin=1442 vs maxStaleMin=1440 (2 minutes over).
+  //
+  // The bundle's per-section `intervalMs: 12 * HOUR` IS load-bearing —
+  // production logs 2026-04-26T08:00:45 show "BIS-Extended Skipped, last
+  // seeded 175min ago, interval: 720min", confirming the bundle cron fires
+  // more often than the 12h gate. So the EFFECTIVE write cadence for BIS
+  // sections is governed by the 12h gate, not the bundle's Railway cron
+  // schedule. (The runbook's `0 8 * * *` daily schedule appears to be
+  // incomplete or stale — production runs more frequently, possibly via
+  // multiple cron entries or watch-paths-driven re-runs.)
+  //
+  // Effective cadence = 12h ideal, degrading to 24h if a single intermediate
+  // bundle invocation fails. The 2026-04-27 incident saw 24h drift between
+  // gate-eligible runs.
+  //
+  // The previous maxStaleMin=1440 = 2× the 12h gate but only 1× the
+  // observed degraded cadence = ZERO grace. Correct value: 2160 = 3× the
+  // 12h gate, which equals 1.5× the degraded 24h cadence — covers cron
+  // drift while still firing within 36h on a real multi-cron outage.
+
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const root = resolve(__dirname, '..');
+  const healthSrc = readFileSync(resolve(root, 'api/health.js'), 'utf-8');
+  const bundleSrc = readFileSync(resolve(root, 'scripts/seed-bundle-macro.mjs'), 'utf-8');
+
+  function extractBundleSectionGateMin(label) {
+    // The per-section `intervalMs:` in seed-bundle-macro.mjs IS the
+    // authoritative cadence source when the bundle cron fires more often
+    // than this gate (verified in production logs 2026-04-26T08:00:45).
+    const re = new RegExp(`label:\\s*'${label}'[\\s\\S]*?intervalMs:\\s*(\\d+)\\s*\\*\\s*HOUR`, 'm');
+    const m = bundleSrc.match(re);
+    if (!m) throw new Error(`could not find bundle entry for ${label}`);
+    return parseInt(m[1], 10) * 60;
+  }
+
+  function extractMaxStaleMin(name) {
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
+    const m = healthSrc.match(re);
+    if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
+    return parseInt(m[1], 10);
+  }
+
+  it('BIS-Extended section gate is 12h (720min) — pinned so the relationship below stays meaningful', () => {
+    assert.equal(extractBundleSectionGateMin('BIS-Extended'), 720);
+  });
+
+  for (const name of ['bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial']) {
+    it(`${name}.maxStaleMin is 2160min (3× the 12h section gate)`, () => {
+      assert.equal(extractMaxStaleMin(name), 2160);
+    });
+
+    it(`${name}.maxStaleMin >= 2.5× section gate (no false-STALE on routine cron drift)`, () => {
+      const gateMin = extractBundleSectionGateMin('BIS-Extended');
+      const maxStale = extractMaxStaleMin(name);
+      assert.ok(
+        maxStale >= gateMin * 2.5,
+        `${name}.maxStaleMin (${maxStale}) must be >= ${gateMin * 2.5} (2.5× section gate); ` +
+        `tighter values flip to STALE_SEED on routine cron drift — see 2026-04-27 incident.`,
+      );
+    });
+
+    it(`${name}.maxStaleMin <= 4× section gate (still catches a real outage within 2 days)`, () => {
+      const gateMin = extractBundleSectionGateMin('BIS-Extended');
+      const maxStale = extractMaxStaleMin(name);
+      assert.ok(
+        maxStale <= gateMin * 4,
+        `${name}.maxStaleMin (${maxStale}) must be <= ${gateMin * 4} (4× section gate); ` +
+        `looser values mask real upstream outages from the alerting threshold.`,
+      );
+    });
+  }
 });

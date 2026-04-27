@@ -129,3 +129,69 @@ describe('middleware bot gate / carousel allowlist', () => {
     assert.equal(res.status, 403);
   });
 });
+
+// ── PUBLIC_API_PATHS allowlist (secret-authed internal endpoints) ────────────
+// The middleware's "no UA or suspiciously short" 403 guard (middleware.ts:
+// ~L183) blocks Node/undici default-UA callers. Internal endpoints that carry
+// their own Bearer-auth must be in PUBLIC_API_PATHS to bypass the gate.
+//
+// History:
+//   - /api/seed-contract-probe hit this 2026-04-15 (UptimeRobot + ops curl).
+//   - /api/internal/brief-why-matters hit this 2026-04-21 immediately after
+//     PR #3248 merge — every Railway cron call returned 403 and silently
+//     fell back to legacy Gemini. No functional breakage (3-layer fallback
+//     absorbed it) but the new feature never ran in prod.
+//
+// These tests pin the allowlist so a future middleware refactor (e.g. the
+// BOT_UA regex being narrowed, or PUBLIC_API_PATHS being reorganized) can't
+// silently drop an entry.
+
+describe('middleware PUBLIC_API_PATHS — secret-authed internal endpoints bypass UA gate', () => {
+  // UAs that would normally 403 on any other API route.
+  const EMPTY_UA = '';
+  const UNDICI_UA = 'undici';          // Too short (<10 chars) — triggers short-UA 403.
+  const CURL_UA = GENERIC_CURL_UA;     // Matches curl/ in BOT_UA regex.
+
+  const TRIGGERS = [
+    { label: 'empty UA (middleware short-UA gate)', ua: EMPTY_UA },
+    { label: 'short UA (Node undici default-ish)', ua: UNDICI_UA },
+    { label: 'curl UA (BOT_UA regex hit)', ua: CURL_UA },
+  ];
+
+  const ALLOWED_PATHS = [
+    '/api/version',
+    '/api/health',
+    '/api/seed-contract-probe',
+    '/api/internal/brief-why-matters',
+  ];
+
+  for (const path of ALLOWED_PATHS) {
+    for (const { label, ua } of TRIGGERS) {
+      it(`${path} bypasses the UA gate (${label})`, () => {
+        const res = call(path, ua);
+        assert.equal(res, undefined, `${path} must pass through the middleware (no 403); its own auth gate handles access`);
+      });
+    }
+  }
+
+  // Negative case: a sibling path that is NOT in the allowlist must still 403
+  // under EACH of the 3 triggers. This catches a future refactor that moves
+  // the PUBLIC_API_PATHS check later in the chain (e.g. behind a broadened
+  // prefix-match) and might let one of the trigger UAs slip through on a
+  // sibling path without this suite failing. Pin all three guard paths.
+  const SIBLING_PATHS = [
+    '/api/internal/brief-why-matters-v2',     // near-miss suffix
+    '/api/internal/',                          // directory only
+    '/api/internal/other',                     // different leaf
+  ];
+
+  for (const path of SIBLING_PATHS) {
+    for (const { label, ua } of TRIGGERS) {
+      it(`${path} does NOT bypass the UA gate — ${label}`, () => {
+        const res = call(path, ua);
+        assert.ok(res instanceof Response, `${path} must still hit the 403 guard under ${label}`);
+        assert.equal(res.status, 403);
+      });
+    }
+  }
+});

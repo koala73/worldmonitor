@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
 import {
@@ -13,7 +14,7 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
-import { initOverlay, ensureClerk } from './services/checkout';
+import { initOverlay, ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
@@ -55,11 +56,187 @@ function getRefCode(): string | undefined {
   return params.get('ref') || undefined;
 }
 
+/**
+ * Carry the current visit's referral code into a dashboard-target URL.
+ * Ensures `/pro?ref=X` → hero "try the dashboard" click propagates the
+ * code to the dashboard, where captureReferralFromUrl() in App.ts
+ * persists it to localStorage for a later in-dashboard upgrade. Writes
+ * with the `wm_referral=` name because the dashboard uses that going
+ * forward; the /pro page itself still accepts `ref=` for inbound
+ * compatibility with existing share links.
+ *
+ * Validates against the same charset as the dashboard's `isValidCode`
+ * (alphanumeric + `-` + `_`, ≤64 chars) so a hostile `/pro?ref=` value
+ * doesn't briefly appear in the dashboard URL on arrival before the
+ * dashboard-side validator strips it. Invalid codes return the URL
+ * unchanged so the link still works without attribution.
+ */
+const REFERRAL_CODE_REGEX = /^[a-zA-Z0-9_-]+$/;
+function isValidRefCode(code: string): boolean {
+  return code.length > 0 && code.length <= 64 && REFERRAL_CODE_REGEX.test(code);
+}
+
+function appendRefToUrl(url: string, refCode: string | undefined): string {
+  if (!refCode || !isValidRefCode(refCode)) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}wm_referral=${encodeURIComponent(refCode)}`;
+}
+
 function openSignIn(): void {
   ensureClerk().then(c => c.openSignIn()).catch((err) => {
     console.error('[auth] Failed to open sign in:', err);
     Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'open-sign-in' } });
   });
+}
+
+/**
+ * Subscribe to Clerk's current user. Returns null while loading or signed out,
+ * and the Clerk UserResource when signed in. Re-renders on any auth change
+ * (sign-in, sign-out, user switch) via clerk.addListener.
+ *
+ * Used by the Navbar to swap the SIGN IN button for Clerk's UserButton avatar
+ * once the visitor is authenticated, and by the Hero to hide its redundant
+ * SIGN IN CTA. Single source of truth for "is the /pro visitor signed in".
+ */
+function useClerkUser(): { user: UserResource | null; isLoaded: boolean } {
+  const [user, setUser] = useState<UserResource | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    ensureClerk()
+      .then((clerk) => {
+        if (!mounted) return;
+        setUser(clerk.user ?? null);
+        setIsLoaded(true);
+        unsubscribe = clerk.addListener(() => {
+          if (!mounted) return;
+          setUser(clerk.user ?? null);
+        });
+      })
+      .catch((err) => {
+        console.error('[auth] Failed to load Clerk for nav auth state:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
+        if (mounted) setIsLoaded(true); // unblock UI; show signed-out state
+      });
+
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
+  }, []);
+
+  return { user, isLoaded };
+}
+
+/**
+ * Entitlement state shared across /pro — `isPro: true` when the signed-in
+ * visitor has an active Pro entitlement, either via Clerk pro role OR a
+ * Convex Dodo subscription (tier >= 1). The provider below performs
+ * exactly one /api/me/entitlement fetch per page load and makes the
+ * result available via useProEntitlement(); Navbar and Hero (and any
+ * future caller) share a single source of truth, so the nav and hero
+ * can't disagree on transient failures.
+ *
+ * Defaults to `{ isPro: false, isChecked: false }` for consumers that
+ * render without a provider (e.g. tests) — matches the closed-by-default
+ * stance for unpaid visitors.
+ */
+type ProEntitlementState = { isPro: boolean; isChecked: boolean };
+const ProEntitlementContext = createContext<ProEntitlementState>({ isPro: false, isChecked: false });
+
+function ProEntitlementProvider({ children }: { children: ReactNode }): ReactElement {
+  const { user } = useClerkUser();
+  const signedIn = !!user;
+  const [state, setState] = useState<ProEntitlementState>({ isPro: false, isChecked: false });
+
+  useEffect(() => {
+    if (!signedIn) {
+      setState({ isPro: false, isChecked: true });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const clerk = await ensureClerk();
+        // Clerk can expose `user` before its session-token endpoint is
+        // ready; a first null return is a known transient, not a final
+        // "no token." Retry once after a 2s gap — same pattern as
+        // services/checkout.ts:getAuthToken. Without the retry, a real
+        // Pro user hitting /pro on a cold Clerk load gets a permanent
+        // isPro=false for the whole session.
+        let token = await clerk.session?.getToken().catch(() => null);
+        if (!token) {
+          await new Promise((r) => setTimeout(r, 2000));
+          token = await clerk.session?.getToken().catch(() => null);
+        }
+        if (!token) {
+          if (!cancelled) setState({ isPro: false, isChecked: true });
+          return;
+        }
+        const resp = await fetch(`${API_BASE}/me/entitlement`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (!resp.ok) {
+          if (!cancelled) setState({ isPro: false, isChecked: true });
+          return;
+        }
+        const data = await resp.json() as { isPro?: boolean };
+        if (!cancelled) setState({ isPro: data.isPro === true, isChecked: true });
+      } catch (err) {
+        console.error('[auth] Failed to check pro entitlement:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        if (!cancelled) setState({ isPro: false, isChecked: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [signedIn]);
+
+  return <ProEntitlementContext.Provider value={state}>{children}</ProEntitlementContext.Provider>;
+}
+
+function useProEntitlement(): ProEntitlementState {
+  return useContext(ProEntitlementContext);
+}
+
+/**
+ * Mounts Clerk's native UserButton (avatar + dropdown with profile + sign
+ * out) into a DOM node. Using Clerk's built-in widget avoids reimplementing
+ * a signed-in UI from scratch and inherits theming from the existing
+ * clerk.load() appearance options in services/checkout.ts.
+ */
+function ClerkUserButton(): ReactElement {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    let unmounted = false;
+
+    ensureClerk()
+      .then((clerk) => {
+        if (unmounted || !el) return;
+        clerk.mountUserButton(el, {
+          afterSignOutUrl: 'https://www.worldmonitor.app/pro',
+        });
+      })
+      .catch((err) => {
+        console.error('[auth] Failed to mount user button:', err);
+        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'mount-user-button' } });
+      });
+
+    return () => {
+      unmounted = true;
+      ensureClerk().then((clerk) => {
+        if (el) clerk.unmountUserButton(el);
+      }).catch(() => { /* mount path already failed */ });
+    };
+  }, []);
+
+  return <div ref={ref} className="flex items-center" />;
 }
 
 const SlackIcon = () => (
@@ -82,27 +259,57 @@ const Logo = () => (
 );
 
 /* ─── 0. Navbar ─── */
-const Navbar = () => (
-  <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
-    <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-      <Logo />
-      <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
-        <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
-        <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
-        <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
-        <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+const Navbar = () => {
+  const { user, isLoaded } = useClerkUser();
+  const { isPro, isChecked } = useProEntitlement();
+  // Show "Go to Dashboard" instead of "Upgrade to Pro" once we confirm
+  // the visitor is already a paying customer. Until the entitlement
+  // check completes we keep the upgrade CTA in place — a signed-in
+  // free user would see a one-frame flash otherwise, which is less
+  // annoying than showing "Go to Dashboard" for half a second to a
+  // visitor who hasn't paid.
+  const showGoToDashboard = isLoaded && !!user && isChecked && isPro;
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Logo />
+        <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
+          <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
+          <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
+          <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
+          <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* While Clerk is still loading, render nothing in the auth slot
+              to avoid a SIGN IN → UserButton flicker for returning users. */}
+          {isLoaded && (user
+            ? <ClerkUserButton />
+            : (
+              <button
+                type="button"
+                onClick={openSignIn}
+                className="border border-wm-border text-wm-text px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:border-wm-text transition-colors"
+              >
+                {t('nav.signIn')}
+              </button>
+            ))}
+          {showGoToDashboard ? (
+            <a
+              href="https://worldmonitor.app"
+              className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
+            >
+              {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
+          ) : (
+            <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+              {t('nav.upgradeToPro')}
+            </a>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-          {t('nav.signIn')}
-        </button>
-        <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
-          {t('nav.upgradeToPro')}
-        </a>
-      </div>
-    </div>
-  </nav>
-);
+    </nav>
+  );
+};
 
 /* ─── 1. Hero — Less noise, more signal ─── */
 const WiredBadge = () => (
@@ -165,49 +372,70 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => (
-  <section className="pt-28 pb-12 px-6 relative overflow-hidden">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
-    <div className="max-w-4xl mx-auto text-center relative z-10">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="mb-4">
-          <WiredBadge />
-        </div>
+const Hero = () => {
+  const { user, isLoaded } = useClerkUser();
+  const { isPro, isChecked } = useProEntitlement();
+  // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
+  // Hide it once auth state confirms; falls back to just the "Choose Plan"
+  // CTA which is the relevant action for returning users anyway.
+  const showSignIn = isLoaded && !user;
+  // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
+  // is already Pro — same reasoning as the nav swap, and also removes
+  // the #pricing anchor jump which is actively misleading for a paying
+  // customer.
+  const showGoToDashboard = isLoaded && !!user && isChecked && isPro;
+  return (
+    <section className="pt-28 pb-12 px-6 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
+      <div className="max-w-4xl mx-auto text-center relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="mb-4">
+            <WiredBadge />
+          </div>
 
-        <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
-          <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
-          <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
-        </h1>
+          <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
+            <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
+          </h1>
 
-        <SignalBars />
+          <SignalBars />
 
-        <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
-          {t('hero.valueProps')}
-        </p>
+          <p className="text-lg md:text-xl text-wm-muted max-w-xl mx-auto font-light leading-relaxed">
+            {t('hero.valueProps')}
+          </p>
 
-        <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
-          <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
-            {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
-          </a>
-          <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-            {t('hero.signIn')}
-          </button>
-        </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
+            {showGoToDashboard ? (
+              <a href="https://worldmonitor.app" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+                {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </a>
+            ) : (
+              <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+                {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </a>
+            )}
+            {showSignIn && (
+              <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
+                {t('hero.signIn')}
+              </button>
+            )}
+          </div>
 
-        <div className="flex items-center justify-center mt-4">
-          <a href="https://worldmonitor.app" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
-            {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
-          </a>
-        </div>
-      </motion.div>
-    </div>
-  </section>
-);
+          <div className="flex items-center justify-center mt-4">
+            <a href={appendRefToUrl("https://worldmonitor.app", getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+              {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
+            </a>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+};
 
 /* ─── 2. Social proof (current — WIRED badge already in hero) ─── */
 const SocialProof = () => (
@@ -370,7 +598,7 @@ const LivePreview = () => (
           </div>
           <span className="font-mono text-xs text-wm-muted ml-2">{t('livePreview.windowTitle')}</span>
           <a
-            href="https://worldmonitor.app"
+            href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
             target="_blank"
             rel="noreferrer"
             className="ml-auto text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1"
@@ -400,7 +628,7 @@ const LivePreview = () => (
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-wm-bg/80 via-transparent to-transparent" />
           <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-auto">
             <a
-              href="https://worldmonitor.app"
+              href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
@@ -995,7 +1223,7 @@ const EnterprisePage = () => (
             const turnstileWidget = form.querySelector('.cf-turnstile') as HTMLElement | null;
             const turnstileToken = turnstileWidget?.dataset.token || '';
             try {
-              const res = await fetch(`${API_BASE}/contact`, {
+              const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1013,7 +1241,7 @@ const EnterprisePage = () => (
               if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
                 if (res.status === 422 && errorEl) {
-                  errorEl.textContent = data.error || t('enterpriseShowcase.workEmailRequired');
+                  errorEl.textContent = data.message || data.error || t('enterpriseShowcase.workEmailRequired');
                   errorEl.classList.remove('hidden');
                   btn.textContent = origText;
                   btn.disabled = false;
@@ -1083,10 +1311,23 @@ const EnterprisePage = () => (
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
-  // Initialize Dodo checkout overlay with success handler
+  // Initialize Dodo checkout overlay with success handler.
+  //
+  // On overlay success, the buyer needs to be bridged from /pro to the
+  // main dashboard where their newly-minted entitlement actually
+  // unlocks panels. Two changes vs the original 3-second blind reload:
+  //
+  //   1. Explicit "Go to dashboard now →" button so engaged buyers
+  //      don't wait out the auto-redirect timer.
+  //   2. Auto-redirect is 1500ms (down from 3000ms) — fast enough to
+  //      feel responsive without clipping the confirmation reading time.
+  //   3. Redirect target carries `?wm_checkout=success` so the dashboard
+  //      side (handleCheckoutReturn in src/services/checkout-return.ts)
+  //      recognizes this as a post-purchase landing and triggers the
+  //      extended-unlock banner from PR-4, instead of rendering a
+  //      default dashboard with no context.
   useEffect(() => {
     initOverlay(() => {
-      // Show success banner
       const banner = document.createElement('div');
       Object.assign(banner.style, {
         position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
@@ -1094,12 +1335,47 @@ export default function App() {
         color: '#fff', fontWeight: '600', fontSize: '14px', textAlign: 'center',
         boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'opacity 0.4s ease, transform 0.4s ease',
         transform: 'translateY(-100%)', opacity: '0',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px',
       });
-      banner.textContent = 'Payment received! Unlocking your premium features...';
+
+      const target = 'https://worldmonitor.app/?wm_checkout=success';
+      let navigated = false;
+      const goToDashboard = () => {
+        if (navigated) return;
+        navigated = true;
+        window.location.href = target;
+      };
+
+      const message = document.createElement('span');
+      message.textContent = 'Payment received! Unlocking your premium features…';
+
+      const cta = document.createElement('button');
+      cta.type = 'button';
+      cta.textContent = 'Go to dashboard now →';
+      Object.assign(cta.style, {
+        background: '#ffffff',
+        color: '#16a34a',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '6px 12px',
+        fontSize: '12px',
+        fontWeight: '700',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      });
+      cta.addEventListener('click', goToDashboard);
+
+      banner.appendChild(message);
+      banner.appendChild(cta);
       document.body.appendChild(banner);
       requestAnimationFrame(() => { banner.style.transform = 'translateY(0)'; banner.style.opacity = '1'; });
-      setTimeout(() => { window.location.href = 'https://worldmonitor.app'; }, 3000);
+
+      setTimeout(goToDashboard, 1500);
     });
+    // Consume checkout intent from URL (set by afterSignInUrl on the
+    // checkout-initiated sign-in). No-op for any other /pro entry
+    // point; strips params before any await so a reload can't re-fire.
+    void tryResumeCheckoutFromUrl();
   }, []);
 
   useEffect(() => {
@@ -1130,26 +1406,28 @@ export default function App() {
   if (page === 'enterprise') return <EnterprisePage />;
 
   return (
-    <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-      <Navbar />
-      <main>
-        <Hero />
-        <SourceMarquee />
-        <Pillars />
-        <WhyUpgrade />
-        <TwoPathSplit />
-        <ProShowcase />
-        <DeliveryDesk />
-        <AudiencePersonas />
-        <SocialProof />
-        <LivePreview />
-        <PricingSection refCode={getRefCode()} />
-        <PricingTable />
-        <ApiSection />
-        <EnterpriseShowcase />
-        <FAQ />
-      </main>
-      <Footer />
-    </div>
+    <ProEntitlementProvider>
+      <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+        <Navbar />
+        <main>
+          <Hero />
+          <SourceMarquee />
+          <Pillars />
+          <WhyUpgrade />
+          <TwoPathSplit />
+          <ProShowcase />
+          <DeliveryDesk />
+          <AudiencePersonas />
+          <SocialProof />
+          <LivePreview />
+          <PricingSection refCode={getRefCode()} />
+          <PricingTable />
+          <ApiSection />
+          <EnterpriseShowcase />
+          <FAQ />
+        </main>
+        <Footer />
+      </div>
+    </ProEntitlementProvider>
   );
 }

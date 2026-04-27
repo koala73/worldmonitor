@@ -24,7 +24,7 @@ Panel id is `supply-chain`; canonical component is `src/components/SupplyChainPa
 
 ## Data sources
 
-Reads the cached supply-chain dataset (composite stress, carrier list, minerals, scenario templates). The Scenario Engine triggers call `POST /api/scenario/v1/run` and poll `/status` — see [Scenarios API](/api-scenarios) for the HTTP contract.
+Reads the cached supply-chain dataset (composite stress, carrier list, minerals, scenario templates). The Scenario Engine triggers call `POST /api/scenario/v1/run-scenario` and poll `GET /api/scenario/v1/get-scenario-status` — see [Scenarios API](/api-scenarios) for the HTTP contract.
 
 ## Refresh cadence
 

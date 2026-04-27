@@ -2,6 +2,8 @@ import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { subscribeAuthState } from '@/services/auth-state';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -49,6 +51,24 @@ export class RegionalIntelligenceBoard extends Panel {
    */
   private latestSequence = 0;
 
+  /**
+   * Tracks the last-seen entitlement so the auth subscription re-fires the
+   * RPC only on a false→true transition, not on every unrelated auth state
+   * update (session refresh, unrelated user prefs).
+   */
+  private lastHadPremium = false;
+  /**
+   * Handle for the `subscribeAuthState` listener, so `destroy()` can
+   * unsubscribe. Without this, recreating the panel (e.g. on framework
+   * swap or layout teardown → re-init) would leak listeners that still
+   * hold a reference to the destroyed instance's `this` — every old
+   * subscriber would call `loadCurrent()` / `renderEmpty()` on a stale
+   * DOM tree on every future auth event. Panel.destroy IS called from
+   * panel-layout teardown (panel-layout.ts:293, App.ts:1156); the
+   * previous "Panel has no destroy hook" comment was wrong.
+   */
+  private authUnsubscribe: (() => void) | null = null;
+
   constructor() {
     super({
       id: 'regional-intelligence',
@@ -80,7 +100,28 @@ export class RegionalIntelligenceBoard extends Panel {
     replaceChildren(this.content, h('div', { className: 'rib-shell' }, controls, this.body));
 
     this.renderLoading();
+    this.lastHadPremium = hasPremiumAccess();
     void this.loadCurrent();
+
+    // Re-fire loadCurrent on false→true entitlement transitions (user signs
+    // in / purchases PRO mid-session). Without this, a user whose Clerk
+    // session hasn't resolved at panel-construction time would see
+    // renderEmpty() and then stay empty forever even after sign-in, because
+    // nothing else triggers loadCurrent for the current region.
+    this.authUnsubscribe = subscribeAuthState(() => {
+      const hasPremium = hasPremiumAccess();
+      if (hasPremium && !this.lastHadPremium) {
+        this.lastHadPremium = true;
+        void this.loadCurrent();
+      } else if (!hasPremium && this.lastHadPremium) {
+        // Entitlement was revoked (sign-out, subscription ended) — blank
+        // the panel so stale data doesn't linger for a user who can no
+        // longer see it. Panel locking separately re-applies via
+        // panel-layout's auth subscription.
+        this.lastHadPremium = false;
+        this.renderEmpty();
+      }
+    });
   }
 
   /** Public API for tests and agent tools: force-load a region directly. */
@@ -90,6 +131,18 @@ export class RegionalIntelligenceBoard extends Panel {
     await this.loadCurrent();
   }
 
+  override destroy(): void {
+    this.authUnsubscribe?.();
+    this.authUnsubscribe = null;
+    // Invalidate any in-flight loadCurrent: the existing sequence guard
+    // (see `isLatestSequence` checks) drops responses whose sequence no
+    // longer matches `latestSequence`. Bumping it here ensures a pending
+    // getRegionalSnapshot that resolves after destroy doesn't try to
+    // render into a detached DOM tree.
+    this.latestSequence += 1;
+    super.destroy();
+  }
+
   private async loadCurrent(): Promise<void> {
     // Skip premium RPCs when this app instance is running inside the /pro
     // marketing page's live-preview iframe — no Clerk session carries across
@@ -97,6 +150,17 @@ export class RegionalIntelligenceBoard extends Panel {
     // already handles "no data" cases visually; short-circuiting here keeps
     // the /pro console and Sentry quiet from these expected failures.
     if (IS_EMBEDDED_PREVIEW) {
+      this.renderEmpty();
+      return;
+    }
+
+    // Skip premium RPCs for anonymous/free users. Without this the panel
+    // fires get-regional-snapshot on every page load for every visitor and
+    // gets a 401 in the browser console. The panel's `premium: 'locked'`
+    // config + apiKeyPanels entry already keeps it visually hidden until
+    // the user is PRO — this just stops the RPC from firing during the
+    // constructor's `void this.loadCurrent()` before Clerk auth resolves.
+    if (!hasPremiumAccess()) {
       this.renderEmpty();
       return;
     }

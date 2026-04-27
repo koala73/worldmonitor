@@ -332,7 +332,7 @@ describe('MarketServiceClient getStockAnalysisHistory', () => {
     });
 
     assert.match(requestedUrl, /\/api\/market\/v1\/get-stock-analysis-history\?/);
-    assert.match(requestedUrl, /symbols=AAPL%2CMSFT|symbols=AAPL,MSFT/);
+    assert.match(requestedUrl, /symbols=AAPL&symbols=MSFT/);
     assert.match(requestedUrl, /limit_per_symbol=4/);
     assert.match(requestedUrl, /include_news=true/);
   });

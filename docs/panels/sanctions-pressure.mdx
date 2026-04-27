@@ -42,4 +42,4 @@ OFAC publishes list updates on an irregular cadence (daily-to-weekly). The panel
 ## API reference
 
 - [Sanctions service](/api/SanctionsService.openapi.yaml) — sanctions pressure + entity search RPCs.
-- Related: `/api/sanctions-entity-search` endpoint (documented under [Proxies](/api-proxies)) for fuzzy SDN entity lookups.
+- Related: `GET /api/sanctions/v1/lookup-entity?q=...` — fuzzy entity lookup against OpenSanctions (live) with OFAC local index as a fallback.

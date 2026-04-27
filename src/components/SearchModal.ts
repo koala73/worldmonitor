@@ -99,6 +99,14 @@ export class SearchModal {
   private flightSearchFired = false;
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
+  /**
+   * Caller-supplied predicate that returns true iff a `layer:<key>` command
+   * can actually execute right now (current renderer supports the layer +
+   * DeckGL gate for DeckGL-only layers). Hooked from SearchManager so
+   * renderer knowledge lives in one place. Defaults to "always true" when
+   * not set (back-compat for any instantiator that doesn't wire it).
+   */
+  private layerExecutableFn: (layerKey: string) => boolean = () => true;
   private isMobile: boolean;
   /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
   private showingAllCommands = false;
@@ -141,6 +149,10 @@ export class SearchModal {
 
   public setActivePanels(panelIds: string[]): void {
     this.activePanelIds = new Set(panelIds);
+  }
+
+  public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
+    this.layerExecutableFn = fn;
   }
 
   public open(): void {
@@ -277,6 +289,14 @@ export class SearchModal {
       if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
         if (!this.activePanelIds.has(panelId)) continue;
+      }
+      // Hide layer commands whose layer can't render under the current
+      // map renderer / DeckGL mode. Without this, CMD+K surfaces toggles
+      // that silently no-op (e.g. storageFacilities in globe mode, or
+      // flat-only DeckGL layers while on the SVG/mobile fallback).
+      if (cmd.id.startsWith('layer:')) {
+        const layerKey = cmd.id.slice(6);
+        if (!this.layerExecutableFn(layerKey)) continue;
       }
       const label = resolveCommandLabel(cmd).toLowerCase();
       const allTerms = [...cmd.keywords, label];
@@ -504,6 +524,9 @@ export class SearchModal {
       if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
         if (!this.activePanelIds.has(panelId)) return false;
+      }
+      if (cmd.id.startsWith('layer:')) {
+        if (!this.layerExecutableFn(cmd.id.slice(6))) return false;
       }
       return true;
     });

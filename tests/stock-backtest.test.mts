@@ -260,7 +260,7 @@ describe('MarketServiceClient listStoredStockBacktests', () => {
     await client.listStoredStockBacktests({ symbols: ['MSFT', 'NVDA'], evalWindowDays: 7 });
 
     assert.match(requestedUrl, /\/api\/market\/v1\/list-stored-stock-backtests\?/);
-    assert.match(requestedUrl, /symbols=MSFT%2CNVDA|symbols=MSFT,NVDA/);
+    assert.match(requestedUrl, /symbols=MSFT&symbols=NVDA/);
     assert.match(requestedUrl, /eval_window_days=7/);
   });
 });

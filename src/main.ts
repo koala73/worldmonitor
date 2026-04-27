@@ -262,6 +262,10 @@ Sentry.init({
     /\[CONVEX [AQM]\(.+?\)\] Connection lost while action was in flight/, // Convex SDK transient WS disconnect
     /Response did not contain `success` or `data`/, // DuckDuckGo browser internal tracker/content-block response — never emitted by our code
     /Cannot set properties of undefined \(setting 'bodyTouched'\)/, // Quark browser (Alibaba mobile) touch-tracking script injection (WORLDMONITOR-N1)
+    /Cannot read properties of \w+ \(reading '[^']*[^\x00-\x7F][^']*'\)/, // Non-ASCII property name in message = mojibake/corrupted identifier from injected extension; our bundle emits ASCII-only identifiers (WORLDMONITOR-NS)
+    /Octal literals are not allowed in strict mode/, // Runtime SyntaxError from injected extension script; our TS bundle never emits octal literals and doesn't eval (WORLDMONITOR-NV)
+    /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
+    /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -310,6 +314,19 @@ Sentry.init({
     if (/reading '(?:type|pathType|count)'|can't access property "(?:type|pathType|count|__globeObjType)",? \w+ is (?:undefined|null)|undefined is not an object \(evaluating '\w+\.(?:pathType|count)'\)/.test(msg)) {
       if (!hasFirstParty) return null;
     }
+    // deck.gl/maplibre internal null-access on Layer.isHidden during render (Safari 26.4 beta,
+    // empty stacks, preceded by DeckGLMap map-error breadcrumbs). Our first-party `isHidden`
+    // lives on SmartPollContext in runtime.ts — any access there would produce frames, so gate
+    // on !hasFirstParty to preserve signal on a real poller regression (WORLDMONITOR-NR).
+    if (/undefined is not an object \(evaluating '\w{1,3}\.isHidden'\)|Cannot read properties of undefined \(reading 'isHidden'\)/.test(msg)) {
+      if (!hasFirstParty) return null;
+    }
+    // Short minified ReferenceError from Safari ("Can't find variable: ss"). With an empty stack
+    // and no first-party frames, this is userscript/extension injection. Our own minified bundle
+    // would keep frames via the source-mapped assets/*.js chunks; if the SDK strips them, the
+    // stack is non-empty. Bound var length to 1–2 to avoid masking a real "foo is not defined"
+    // that happens to hit the unhandledrejection path (WORLDMONITOR-NQ).
+    if (!hasFirstParty && frames.length === 0 && /^Can't find variable: \w{1,2}$/.test(msg)) return null;
     // Suppress minified Three.js/globe.gl crashes (e.g. "l is undefined" in raycast, "b is undefined" in update/initGlobe)
     if (/^\w{1,2} is (?:undefined|not an object)$/.test(msg) && frames.length > 0) {
       if (frames.some(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '') && /(raycast|update|initGlobe|traverse|render)/.test(f.function ?? ''))) return null;
@@ -317,8 +334,21 @@ Sentry.init({
     // Suppress Three.js OrbitControls touch crashes (finger lifted during pinch-zoom).
     // OrbitControls is bundled into the main chunk, so hasFirstParty is true.
     // Match by function name pattern (_handleTouch*Dolly*) or suppress when no first-party frames.
+    //
+    // Symbolicated case: function name regex hits (_handleTouchDolly*, OrbitControls).
+    // Unsymbolicated case (Sentry WORLDMONITOR-P7): single minified frame in the main
+    // bundle (e.g. `Yge`) on iOS/iPadOS Safari. iOS is the only platform where a
+    // touch-driven `t.x` crash is plausible AND the production build can lose source
+    // maps for OrbitControls' touch handlers. Gate on:
+    //   - exactly one main-bundle frame in the trace (no other first-party functions)
+    //   - device.family/os indicates iOS/iPadOS
+    // so a real `t.x` regression elsewhere on desktop still surfaces.
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
       if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
+      const osName = ((event.contexts as any)?.os?.name as string) ?? '';
+      const isTouchOs = /^(iOS|iPadOS)$/.test(osName);
+      const mainBundleFrames = nonInfraFrames.filter(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''));
+      if (isTouchOs && mainBundleFrames.length === 1 && nonInfraFrames.length === mainBundleFrames.length) return null;
     }
     // Suppress Three.js OrbitControls pointer-capture race: pointerdown handler calls
     // setPointerCapture but the browser has already released the pointer (focus change,
@@ -401,6 +431,21 @@ Sentry.init({
     // origin. Empty stacks are NOT suppressed because we cannot confirm the error didn't
     // come from our own code (OOM, stack overflow, network failures all commonly arrive
     // without frames even when our code triggered them).
+    // iOS Safari WKWebView throws `UnknownError: Cannot inject key into script value`
+    // at the native bridge when a non-structurally-cloneable value is passed to a
+    // bridge API (history.pushState, IndexedDB, etc.). The throw is native; a first-
+    // party caller is always on the stack, so the generic `!hasFirstParty` gate below
+    // misses it. Scope to excType==='UnknownError' — that type name is WebKit-only and
+    // cannot originate from our TypeScript (WORLDMONITOR-NM).
+    if (excType === 'UnknownError' && /Cannot inject key into script value/.test(msg)) return null;
+    // Convex SDK re-auth race: during a WebSocket reconnect, `BaseConvexClient.
+    // tryToReauthenticate` can read `this.authState.config.fetchToken` while
+    // authState is transitioning out of `authenticated` state. Known Convex
+    // internal; we use the SDK as-is. Gate by the exact function name so we
+    // don't mask a genuine first-party `fetchToken` regression
+    // (WORLDMONITOR-NJ).
+    if (/Cannot read properties of undefined \(reading 'fetchToken'\)/.test(msg)
+        && frames.some(f => /tryToReauthenticate/.test(f.function ?? ''))) return null;
     if (hasAnyStack && !hasFirstParty && (
       /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
       || /Maximum call stack size exceeded/.test(msg)

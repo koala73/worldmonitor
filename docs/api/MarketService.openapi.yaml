@@ -15,8 +15,12 @@ paths:
                   in: query
                   description: Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -48,8 +52,12 @@ paths:
                   in: query
                   description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -81,8 +89,12 @@ paths:
                   in: query
                   description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -147,8 +159,12 @@ paths:
                   in: query
                   description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -306,8 +322,12 @@ paths:
                 - name: symbols
                   in: query
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: limit_per_symbol
                   in: query
                   required: false
@@ -392,8 +412,12 @@ paths:
                 - name: symbols
                   in: query
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: eval_window_days
                   in: query
                   required: false

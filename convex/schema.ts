@@ -138,9 +138,22 @@ export default defineSchema({
     referralCode: v.optional(v.string()),
     referredBy: v.optional(v.string()),
     referralCount: v.optional(v.number()),
+    // Per-row stamp recording which PRO-launch broadcast wave a
+    // registrant landed in (e.g. "canary-250", "wave-2", "wave-3").
+    // Future wave-export actions filter on `proLaunchWave === undefined`
+    // to pick only un-emailed registrants. Optional so existing rows
+    // pass schema validation; the canary-250 backfill stamps the 244
+    // contacts already emailed yesterday, future waves stamp themselves
+    // at export time.
+    proLaunchWave: v.optional(v.string()),
+    proLaunchWaveAssignedAt: v.optional(v.number()),
   })
     .index("by_normalized_email", ["normalizedEmail"])
-    .index("by_referral_code", ["referralCode"]),
+    .index("by_referral_code", ["referralCode"])
+    // Index on the wave stamp so future picks can scan only-stamped
+    // / only-unstamped efficiently without a full table scan against
+    // tens of thousands of registrations.
+    .index("by_proLaunchWave", ["proLaunchWave"]),
 
   // Phase 9 / Todo #223 — Clerk-user referral codes.
   // The `registrations.referralCode` column uses a 6-char hash of
@@ -223,11 +236,19 @@ export default defineSchema({
     userId: v.string(),
     dodoCustomerId: v.optional(v.string()),
     email: v.string(),
+    // Lowercased + trimmed mirror of `email`. Required for O(1) joins from
+    // `registrations`/`emailSuppressions` (both keyed on `normalizedEmail`)
+    // when building broadcast audiences — without this, dedup is a full
+    // table scan and paid users can leak into "buy PRO!" sends.
+    // Optional so existing rows pass schema validation; backfilled via
+    // `npx convex run payments/backfillCustomerNormalizedEmail:backfill`.
+    normalizedEmail: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoCustomerId", ["dodoCustomerId"]),
+    .index("by_dodoCustomerId", ["dodoCustomerId"])
+    .index("by_normalized_email", ["normalizedEmail"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),
@@ -280,4 +301,25 @@ export default defineSchema({
     suppressedAt: v.number(),
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),
+
+  // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
+  // Used as forensic detail to drive engineer-level inspection alongside
+  // Resend's dashboard. Idempotent on `webhookEventId` — Resend retries
+  // on 5xx and we MUST treat every delivery as at-most-once.
+  //
+  // No recipient email stored, AND no rawPayload stored — Resend's
+  // `data` object includes `to: string[]` (recipient addresses), `from`,
+  // `subject`, etc. that are PII or PII-adjacent. Convex dashboard rows
+  // are observable to anyone with project access. We keep only the
+  // identifying metadata; if a specific event needs deeper inspection,
+  // look it up by `emailMessageId` in the Resend dashboard.
+  broadcastEvents: defineTable({
+    webhookEventId: v.string(),
+    broadcastId: v.string(),
+    emailMessageId: v.optional(v.string()),
+    eventType: v.string(),
+    occurredAt: v.number(),
+  })
+    .index("by_webhookEventId", ["webhookEventId"])
+    .index("by_broadcast_event", ["broadcastId", "eventType"]),
 });

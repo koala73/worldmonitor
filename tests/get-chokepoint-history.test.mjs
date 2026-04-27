@@ -76,11 +76,19 @@ describe('proto wiring', () => {
 describe('Redis timeout observability', () => {
   const redisSrc = readFileSync(resolve(root, 'server/_shared/redis.ts'), 'utf-8');
 
-  it('logs [REDIS-TIMEOUT] with key and timeoutMs on AbortError', () => {
+  it('logs [REDIS-TIMEOUT] with key and timeoutMs on timeout (TimeoutError or AbortError)', () => {
     // Grepable tag that log drains / Sentry-Vercel integration can pick up —
     // before this, large-payload timeouts silently returned null and consumers
     // cached zero-state. See docs/plans/chokepoint-rpc-payload-split.md.
-    assert.match(redisSrc, /isTimeout\s*=\s*err instanceof Error && err\.name === 'AbortError'/);
+    //
+    // AbortSignal.timeout() throws DOMException name='TimeoutError' (V8
+    // runtimes incl. Vercel Edge); manual controller.abort() throws
+    // 'AbortError'. The predicate must match both — historically only
+    // 'AbortError' was checked and every real timeout silently fell through.
+    assert.match(
+      redisSrc,
+      /isTimeout\s*=\s*err instanceof Error && \(err\.name === 'TimeoutError' \|\| err\.name === 'AbortError'\)/,
+    );
     assert.match(redisSrc, /\[REDIS-TIMEOUT\] getCachedJson key=\$\{key\} timeoutMs=\$\{REDIS_OP_TIMEOUT_MS\}/);
   });
 });
