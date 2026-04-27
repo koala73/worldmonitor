@@ -5,6 +5,7 @@
  */
 
 import { ConvexHttpClient } from 'convex/browser';
+import { api } from '../../../../convex/_generated/api';
 import type {
   ServerContext,
   RegisterInterestRequest,
@@ -247,7 +248,7 @@ export async function registerInterest(
   }
 
   const client = new ConvexHttpClient(convexUrl);
-  const result = (await client.mutation('registerInterest:register' as any, {
+  const result = (await client.mutation(api.registerInterest.register, {
     email,
     source: safeSource,
     appVersion: safeAppVersion,
