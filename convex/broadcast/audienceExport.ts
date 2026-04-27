@@ -142,6 +142,13 @@ type ExportStats = {
   // Dedup-only counters: shared between live and dry-run (don't depend on Resend).
   suppressedSkipped: number;
   paidSkipped: number;
+  // Registrations stamped with `proLaunchWave` from a prior broadcast
+  // (canary-250 backfill or any future wave-export). Skipping here is
+  // the load-bearing guarantee that the same contact is never emailed
+  // twice across the launch ramp. Without this skip, re-running this
+  // exporter against `pro-launch-main` would re-pick the canary 244 (or
+  // any later wave) and the next broadcast would dupe-email them.
+  alreadyInPriorWaveSkipped: number;
   emptyEmail: number;
   // Dry-run-only: count of registrations that passed dedup and WOULD be
   // upserted on a live run. Strictly disjoint from `upserted` so an
@@ -315,6 +322,7 @@ export const exportProLaunchAudience = internalAction({
       failed: 0,
       suppressedSkipped: 0,
       paidSkipped: 0,
+      alreadyInPriorWaveSkipped: 0,
       emptyEmail: 0,
       wouldUpsertAfterDedup: 0,
       isDone: page.isDone,
@@ -334,6 +342,14 @@ export const exportProLaunchAudience = internalAction({
       }
       if (paidSet.has(email)) {
         stats.paidSkipped++;
+        continue;
+      }
+      // Skip rows already stamped by a prior wave (canary-250 backfill
+      // or any later wave-export action). Load-bearing — without this
+      // the canary 244 land back in the next segment and get a
+      // duplicate email when the broadcast fires.
+      if (row.proLaunchWave) {
+        stats.alreadyInPriorWaveSkipped++;
         continue;
       }
 

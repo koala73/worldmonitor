@@ -11,6 +11,7 @@
 import type * as alertRules from "../alertRules.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as broadcast_audienceExport from "../broadcast/audienceExport.js";
+import type * as broadcast_backfillCanaryWaveStamps from "../broadcast/backfillCanaryWaveStamps.js";
 import type * as broadcast_metrics from "../broadcast/metrics.js";
 import type * as broadcast_proLaunchEmailContent from "../broadcast/proLaunchEmailContent.js";
 import type * as broadcast_sendBroadcast from "../broadcast/sendBroadcast.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   alertRules: typeof alertRules;
   apiKeys: typeof apiKeys;
   "broadcast/audienceExport": typeof broadcast_audienceExport;
+  "broadcast/backfillCanaryWaveStamps": typeof broadcast_backfillCanaryWaveStamps;
   "broadcast/metrics": typeof broadcast_metrics;
   "broadcast/proLaunchEmailContent": typeof broadcast_proLaunchEmailContent;
   "broadcast/sendBroadcast": typeof broadcast_sendBroadcast;
