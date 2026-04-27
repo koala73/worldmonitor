@@ -142,4 +142,34 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
       'weather publisher must spread coalesceKey into payload only when defined',
     );
   });
+
+  it('selects 3 DISTINCT families before slicing — distinct families never lost (PR #3467 review P1)', () => {
+    // Without this: if the first 3 raw alerts are 3 adjacent zones of one VTEC
+    // family, publisher dedup collapses them to 1 notification AND a 4th
+    // genuinely-distinct family at index 3+ is never considered. Net silent
+    // loss of legit events. Fix: dedupe BY family key FIRST, then take top 3.
+    assert.match(
+      aisRelaySrc,
+      /seenFamilyKeys\s*=\s*new Set\(\)/,
+      'publisher must build a Set of seen family keys before publishing',
+    );
+    assert.match(
+      aisRelaySrc,
+      /distinctFamilyAlerts/,
+      'publisher must accumulate distinct-family alerts (not raw .slice(0, 3))',
+    );
+    // The naive `for (const a of highSeverityAlerts.slice(0, 3))` ordering is the bug; assert it's gone.
+    assert.doesNotMatch(
+      aisRelaySrc,
+      /for\s*\(const\s+a\s+of\s+highSeverityAlerts\.slice\(0,\s*3\)\)/,
+      'publisher must NOT iterate highSeverityAlerts.slice(0, 3) directly — that loses distinct families',
+    );
+    // Family-key fallback uses a stable per-alert identity (NWS feature.id, then
+    // headline/event) so VTEC-less alerts still dedupe against themselves.
+    assert.match(
+      aisRelaySrc,
+      /deriveWeatherCoalesceKey\(a\.vtec\)\s*\n?\s*\?\?\s*`nws:fallback:\$\{a\.id/,
+      'family-key fallback must include a stable per-alert identity (id || headline || event)',
+    );
+  });
 });
