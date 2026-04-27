@@ -1,0 +1,89 @@
+name: Convex Deploy
+
+# Auto-deploy `convex/` changes to the Convex production deployment on every
+# merge to `main`. Required because Vercel's build step only deploys api/, src/,
+# and other Vercel-served code — the Convex backend has its own deployment
+# pipeline that must be triggered separately. Without this workflow,
+# `convex/<module>.ts` changes silently merged into main without ever running
+# in production. Surfaced concretely as PR #3460 / #3466: the structured-data
+# `ConvexError({ kind, ... })` fix sat in main for 30+ minutes while
+# `WORLDMONITOR-PD` kept growing because Convex prod was still running the old
+# string-data throws.
+#
+# Setup required (one-time): add `CONVEX_DEPLOY_KEY` to the repo's GitHub
+# Actions secrets. Generate via `npx convex deploy --once-create-deploy-key`
+# against the prod deployment, or via the Convex dashboard → Settings →
+# Deploy Keys → "Production: deploy" scope.
+
+on:
+  push:
+    branches: [main]
+  # Manual fallback so the operator can re-run a deploy without a code change
+  # (e.g. recover from a failed deploy or push a hotfix off-cycle).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize deploys so two back-to-back merges don't race against each other.
+  # `cancel-in-progress: false` is intentional — every merge that touches
+  # convex/ should reach prod, even if a later merge follows quickly.
+  group: convex-deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      convex: ${{ steps.diff.outputs.convex }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # workflow_dispatch always deploys; otherwise gate on convex/ touch.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "convex=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # On push to main, GitHub gives us before..after; diff that range
+          # for any convex/* path. Scoped to convex/ only — schema changes,
+          # function code, and codegen all live here. `convex/_generated/`
+          # is regenerated locally on `npx convex codegen`; including it in
+          # the trigger is a small cost (a no-op deploy when only generated
+          # files churn) but keeps the gate robust.
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.event.after }}"
+          # Brand-new branch (rare on main) — fall through to a deploy.
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "convex=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILES=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${AFTER}" \
+            --jq '.files[].filename' 2>/dev/null || echo "")
+          if echo "$FILES" | grep -qE '^convex/'; then
+            echo "convex=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "convex=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: changes
+    if: needs.changes.outputs.convex == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Convex deploy (prod)
+        # `--yes` skips the interactive "Are you sure?" prompt. The deploy
+        # key in CONVEX_DEPLOY_KEY pins the target deployment, so there is
+        # no ambiguity about which environment we're pushing to.
+        run: npx convex deploy --yes
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
