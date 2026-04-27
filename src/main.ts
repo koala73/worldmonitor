@@ -543,12 +543,17 @@ function shouldSuppressCspViolation(
       if (new URL(blockedURI).hostname === 'gateway.zscloud.net') return true;
     } catch { /* scheme-only values fall through */ }
   }
-  // Browser extensions or injected scripts.
-  if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(sourceFile) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blockedURI)) return true;
+  // Browser extensions or injected scripts. `ms-browser-extension://` is Edge's
+  // scheme for legacy/internal extensions (WORLDMONITOR-JM).
+  if (/^(?:chrome|moz|safari(?:-web)?|ms-browser)-extension/.test(sourceFile) || /^(?:chrome|moz|safari(?:-web)?|ms-browser)-extension/.test(blockedURI)) return true;
   // blob: — browsers report "blob" (scheme-only) or "blob:https://...".
   if (blockedURI === 'blob' || /^blob:/.test(sourceFile) || /^blob:/.test(blockedURI)) return true;
   // eval/inline/data.
   if (blockedURI === 'eval' || blockedURI === 'inline' || blockedURI === 'data' || /^data:/.test(blockedURI)) return true;
+  // about: — browsers report "about" (scheme-only) or "about:blank" / "about:srcdoc"
+  // for iframes created by extensions, ad-injectors, or Smart TV browsers (Samsung
+  // Internet on Tizen). We never set frame src to about:* ourselves (WORLDMONITOR-JQ).
+  if (blockedURI === 'about' || /^about:/.test(blockedURI)) return true;
   // Android WebView video poster injection.
   if (blockedURI === 'android-webview-video-poster') return true;
   // Own manifest.webmanifest — stale CSP cache hit.
