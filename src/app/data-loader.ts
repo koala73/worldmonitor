@@ -501,12 +501,6 @@ export class DataLoaderManager implements AppModule {
           task: runGuarded('species', () => this.loadSpeciesData()),
         });
       }
-      if (shouldLoad('renewable')) {
-        tasks.push({
-          name: 'renewable',
-          task: runGuarded('renewable', () => this.loadRenewableData()),
-        });
-      }
       tasks.push({
         name: 'happinessMap',
         task: runGuarded('happinessMap', async () => {
@@ -520,6 +514,14 @@ export class DataLoaderManager implements AppModule {
           const installations = await fetchRenewableInstallations();
           this.ctx.map?.setRenewableInstallations(installations);
         }),
+      });
+    }
+
+    // Renewable panel is shared by happy and energy variants.
+    if (shouldLoad('renewable')) {
+      tasks.push({
+        name: 'renewable',
+        task: runGuarded('renewable', () => this.loadRenewableData()),
       });
     }
 
