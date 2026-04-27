@@ -1130,13 +1130,25 @@ async function dispatch(requestUrl, req, routes, context) {
   // Every endpoint below requires a valid LOCAL_API_TOKEN.  This prevents
   // other local processes, malicious browser scripts, and rogue extensions
   // from accessing the sidecar API without the per-session token.
+  //
+  // Default-deny: if LOCAL_API_TOKEN is unset/empty we reject every request.
+  // Treating "unset" as "auth disabled" turns any standalone sidecar run
+  // (e.g. Docker mode) into an open local-HTTP proxy reachable by other
+  // local users, browser tabs on allowed origins, etc. The Tauri Rust
+  // shell always sets LOCAL_API_TOKEN at launch; production callers must
+  // do the same.
   const expectedToken = process.env.LOCAL_API_TOKEN;
-  if (expectedToken) {
-    const authHeader = req.headers.authorization || '';
-    if (authHeader !== `Bearer ${expectedToken}`) {
-      context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
-      return json({ error: 'Unauthorized' }, 401);
-    }
+  if (!expectedToken) {
+    context.logger.warn(
+      `[local-api] LOCAL_API_TOKEN not set — refusing request to ${requestUrl.pathname}. ` +
+      `Set LOCAL_API_TOKEN before starting the sidecar.`,
+    );
+    return json({ error: 'Service misconfigured: LOCAL_API_TOKEN not set' }, 503);
+  }
+  const authHeader = req.headers.authorization || '';
+  if (authHeader !== `Bearer ${expectedToken}`) {
+    context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
+    return json({ error: 'Unauthorized' }, 401);
   }
 
   if (requestUrl.pathname === '/api/local-status') {

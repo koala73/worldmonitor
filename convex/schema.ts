@@ -189,7 +189,8 @@ export default defineSchema({
     message: v.optional(v.string()),
     source: v.string(),
     receivedAt: v.number(),
-  }),
+    normalizedEmail: v.optional(v.string()),
+  }).index("by_normalized_email_received", ["normalizedEmail", "receivedAt"]),
 
   counters: defineTable({
     name: v.string(),
