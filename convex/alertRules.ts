@@ -599,9 +599,16 @@ export const _migrateRealtimeAllPage = mutation({
 });
 
 /**
- * Returns the recipient list for the courtesy email after the (realtime, all)
- * migration: every alertRules row currently in the forbidden state, joined with
- * the user's verified email channel (if any).
+ * Returns one page of recipients for the courtesy email after the (realtime, all)
+ * migration: alertRules rows in the forbidden state on this page, joined with each
+ * user's verified email channel.
+ *
+ * Paginated — driver loops `_listAffectedUserEmailsPage` until `isDone` and
+ * concatenates. This was a P1 review finding: the previous single-page form
+ * scanned only the first 500 alertRules rows (not the first 500 affected rows),
+ * so users on later pages were silently dropped while the script still wrote
+ * partial JSON. Pagination + driver-level fail-closed (write nothing unless the
+ * full loop completes) eliminates that footgun.
  *
  * MUST be run BEFORE _migrateRealtimeAllPage — once rows are flipped to
  * digestMode='daily', they're indistinguishable from organically-set digest
@@ -612,22 +619,22 @@ export const _migrateRealtimeAllPage = mutation({
  * temp function, just like adminSecret. The same "rotate-and-remove" cleanup
  * discipline applies — this function is removed in PR 2.
  */
-export const _listAffectedUserEmails = query({
-  args: { adminSecret: v.string() },
+export const _listAffectedUserEmailsPage = query({
+  args: { cursor: v.union(v.string(), v.null()), adminSecret: v.string() },
   handler: async (ctx, args) => {
     assertMigrationAdmin(args.adminSecret);
-    // Single page is sufficient — see _countRealtimeAllRules; production has ~29 rows.
-    // If the affected set ever grows past 500 we'd need to paginate this too.
-    const page = await ctx.db.query("alertRules").paginate({ numItems: 500, cursor: null });
+    const page = await ctx.db.query("alertRules").paginate({ numItems: 500, cursor: args.cursor });
     const recipients: Array<{
       userId: string;
       variant: string;
       enabled: boolean;
       email: string;
     }> = [];
+    let affectedInPage = 0;
     for (const r of page.page) {
       const isForbidden = (!r.digestMode || r.digestMode === "realtime") && r.sensitivity === "all";
       if (!isForbidden) continue;
+      affectedInPage++;
       // Look up this user's verified email channel via the by_user_channel index.
       const emailChannel = await ctx.db
         .query("notificationChannels")
@@ -649,10 +656,9 @@ export const _listAffectedUserEmails = query({
     }
     return {
       recipients,
-      affectedRowCount: page.page.filter(
-        (r) => (!r.digestMode || r.digestMode === "realtime") && r.sensitivity === "all",
-      ).length,
-      pageDone: page.isDone,
+      affectedInPage,
+      isDone: page.isDone,
+      nextCursor: page.continueCursor,
     };
   },
 });

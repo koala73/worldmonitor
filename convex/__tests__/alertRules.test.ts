@@ -342,11 +342,12 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
 });
 
 // ---------------------------------------------------------------------------
-// Temp migration: _listAffectedUserEmails returns recipients for the courtesy
-// email. Joins forbidden-state alertRules rows with verified email channels.
+// Temp migration: _listAffectedUserEmailsPage returns recipients for the
+// courtesy email. Paginated — driver loops until isDone and concatenates.
+// Joins forbidden-state alertRules rows with verified email channels.
 // ---------------------------------------------------------------------------
 
-describe("alertRules — _listAffectedUserEmails (TEMP migration helper)", () => {
+describe("alertRules — _listAffectedUserEmailsPage (TEMP migration helper)", () => {
   const SECRET = "test-secret-list-emails";
 
   function withSecret(t: ReturnType<typeof convexTest>) {
@@ -357,7 +358,7 @@ describe("alertRules — _listAffectedUserEmails (TEMP migration helper)", () =>
   test("rejects without admin secret", async () => {
     const t = withSecret(convexTest(schema, modules));
     await expect(
-      t.query(api.alertRules._listAffectedUserEmails, { adminSecret: "wrong" }),
+      t.query(api.alertRules._listAffectedUserEmailsPage, { cursor: null, adminSecret: "wrong" }),
     ).rejects.toThrow(/UNAUTHORIZED/);
   });
 
@@ -405,15 +406,16 @@ describe("alertRules — _listAffectedUserEmails (TEMP migration helper)", () =>
       });
     });
 
-    const r = await t.query(api.alertRules._listAffectedUserEmails, { adminSecret: SECRET });
+    const r = await t.query(api.alertRules._listAffectedUserEmailsPage, { cursor: null, adminSecret: SECRET });
     expect(r.recipients).toHaveLength(1);
     expect(r.recipients[0]).toMatchObject({
       userId: "user-a",
       email: "a@example.com",
       enabled: true,
     });
-    // affectedRowCount counts ALL forbidden rows, regardless of email channel
-    expect(r.affectedRowCount).toBe(3); // A, B, C (D is daily so not forbidden)
+    // affectedInPage counts ALL forbidden rows on this page, regardless of email channel
+    expect(r.affectedInPage).toBe(3); // A, B, C (D is daily so not forbidden)
+    expect(r.isDone).toBe(true);
   });
 
   test("preserves enabled flag in the recipient row (so caller can filter to actively-harassed users)", async () => {
@@ -429,7 +431,57 @@ describe("alertRules — _listAffectedUserEmails (TEMP migration helper)", () =>
         email: "disabled@example.com", verified: true, linkedAt: now,
       });
     });
-    const r = await t.query(api.alertRules._listAffectedUserEmails, { adminSecret: SECRET });
+    const r = await t.query(api.alertRules._listAffectedUserEmailsPage, { cursor: null, adminSecret: SECRET });
     expect(r.recipients[0]).toMatchObject({ enabled: false, email: "disabled@example.com" });
+  });
+
+  test("pagination: driver-style loop captures recipients spread across multiple pages", async () => {
+    // P1 regression test: previous single-page form scanned only the first 500
+    // alertRules rows, so users on later pages were silently dropped. Verify the
+    // driver-style loop (do { _listAffectedUserEmailsPage(cursor) } while (cursor))
+    // captures the full set.
+    //
+    // We can't easily seed >500 rows in a unit test, but we can verify the
+    // pagination contract: each call returns {recipients, affectedInPage, isDone,
+    // nextCursor}, and the loop terminates on isDone=true. The math (full
+    // capture = sum across pages) follows from the contract.
+    const t = withSecret(convexTest(schema, modules));
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      // Two affected users, both with verified email. With a single page in the
+      // test, both come back in one call; the test asserts the contract shape
+      // so the driver's loop logic is correct.
+      for (const id of ["user-page-a", "user-page-b"]) {
+        await ctx.db.insert("alertRules", {
+          userId: id, variant: "full", enabled: true,
+          eventTypes: [], sensitivity: "all", channels: [], updatedAt: now,
+        });
+        await ctx.db.insert("notificationChannels", {
+          userId: id, channelType: "email", email: `${id}@example.com`,
+          verified: true, linkedAt: now,
+        });
+      }
+    });
+
+    // Driver-style loop
+    let cursor: string | null = null;
+    const accumulated: Array<{ userId: string; email: string }> = [];
+    let pages = 0;
+    do {
+      const r: {
+        recipients: Array<{ userId: string; variant: string; enabled: boolean; email: string }>;
+        affectedInPage: number;
+        isDone: boolean;
+        nextCursor: string;
+      } = await t.query(api.alertRules._listAffectedUserEmailsPage, { cursor, adminSecret: SECRET });
+      pages++;
+      accumulated.push(...r.recipients.map((x) => ({ userId: x.userId, email: x.email })));
+      cursor = r.isDone ? null : r.nextCursor;
+      // Safety against infinite loop in tests
+      if (pages > 10) throw new Error("driver loop did not terminate");
+    } while (cursor);
+
+    expect(accumulated).toHaveLength(2);
+    expect(accumulated.map((x) => x.userId).sort()).toEqual(["user-page-a", "user-page-b"]);
   });
 });

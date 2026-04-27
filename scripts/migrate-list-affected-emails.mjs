@@ -6,7 +6,14 @@
  * channels and writes the result as JSON to stdout. Pipe to a file and feed it
  * into your sender of choice (Resend dashboard import, send-script, etc.).
  *
- * MUST be run BEFORE the migration — once rows are flipped to digestMode='daily',
+ * Pagination + fail-closed: the driver loops the paginated query until
+ * `isDone` and only writes JSON to stdout AFTER the full loop completes
+ * successfully. If any page errors, exit non-zero with no partial JSON output.
+ * This is the explicit fix for the P1 "warning + partial output" footgun —
+ * since the next migration step makes the original recipient set
+ * unreconstructable, partial capture would mean permanently-lost recipients.
+ *
+ * MUST be run BEFORE the migration — once rows flip to digestMode='daily',
  * the forbidden-state filter no longer distinguishes them from organic digest
  * users.
  *
@@ -36,19 +43,30 @@ if (!adminSecret) {
 
 const c = new ConvexHttpClient(convexUrl);
 
+// Accumulate across pages. Do NOT print partial output — capture the full
+// recipient set first, then atomically dump to stdout. If any page errors,
+// exit non-zero with stderr message and zero stdout output.
+let cursor = null;
+let pages = 0;
+let totalAffected = 0;
+const allRecipients = [];
+
 try {
-  const r = await c.query(api.alertRules._listAffectedUserEmails, { adminSecret });
-  if (!r.pageDone) {
-    // Defensive — production currently has ~29 rows, well under the 500-row page.
-    // If this ever fires, paginate the query (mirror _countRealtimeAllRules's loop).
-    console.error('[list-emails] WARNING: alertRules table exceeded one page; recipients may be incomplete');
-  }
-  console.error(
-    `[list-emails] affected rows: ${r.affectedRowCount}, recipients with verified email: ${r.recipients.length}`,
-  );
-  console.log(JSON.stringify(r.recipients, null, 2));
+  do {
+    const r = await c.query(api.alertRules._listAffectedUserEmailsPage, { cursor, adminSecret });
+    pages++;
+    totalAffected += r.affectedInPage;
+    allRecipients.push(...r.recipients);
+    cursor = r.isDone ? null : r.nextCursor;
+  } while (cursor);
 } catch (err) {
   // Do not echo the supplied secret on error.
-  console.error('[list-emails] error:', err instanceof Error ? err.message : String(err));
+  console.error('[list-emails] error mid-pagination — NOT writing partial JSON:', err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
+
+console.error(
+  `[list-emails] pages: ${pages}, affected rows total: ${totalAffected}, recipients with verified email: ${allRecipients.length}`,
+);
+// Only reaches here if every page succeeded.
+console.log(JSON.stringify(allRecipients, null, 2));
