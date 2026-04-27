@@ -627,16 +627,24 @@ function matchesSensitivity(ruleSensitivity, eventSeverity) {
  * shadow:score-log (currently v3) for tuning.
  */
 function shouldNotify(rule, event) {
-  // Coerce (effective realtime + 'all') → 'high' before consulting sensitivity in
-  // either branch. The mutation validators + migration make this state unreachable
-  // for new traffic; this catches in-flight rows during migration and any tooling
-  // that bypasses the validators. Both reads (legacy match below AND the importance
-  // threshold lookup) must use the SAME effective value, otherwise the threshold
-  // path silently falls through to the looser IMPORTANCE_SCORE_MIN floor.
+  // Coerce (effective realtime + non-critical) → 'critical' before consulting
+  // sensitivity in either branch. The mutation validators + migration make this
+  // state unreachable for new traffic; this catches in-flight rows during
+  // migration and any tooling that bypasses the validators.
+  //
+  // Tightened rule (2026-04-27): realtime is reserved for `critical`-tier events
+  // only. Both `(realtime, all)` and `(realtime, high)` are forbidden, so the
+  // relay collapses both to `'critical'` for in-flight forbidden rows.
+  //
+  // Both reads (legacy match below AND the importance threshold lookup) must
+  // use the SAME effective value, otherwise the threshold path silently falls
+  // through to the looser IMPORTANCE_SCORE_MIN floor.
   // See plans/forbid-realtime-all-events.md §3.
   const effectiveDigestMode = rule.digestMode ?? 'realtime';
   const effectiveSensitivity =
-    effectiveDigestMode === 'realtime' && rule.sensitivity === 'all' ? 'high' : rule.sensitivity;
+    effectiveDigestMode === 'realtime' && (rule.sensitivity === 'all' || rule.sensitivity === 'high')
+      ? 'critical'
+      : rule.sensitivity;
 
   const passesLegacy = matchesSensitivity(effectiveSensitivity, event.severity ?? 'high');
   if (!passesLegacy) return false;
