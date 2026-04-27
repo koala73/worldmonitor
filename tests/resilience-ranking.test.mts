@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
-import { buildRankingItem, sortRankingItems } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { RESILIENCE_RANKING_CACHE_KEY, buildRankingItem, sortRankingItems } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
@@ -61,7 +61,7 @@ describe('resilience ranking contracts', () => {
     // so fixtures must carry the `_formula` tag matching the current env
     // (default flag-off ⇒ 'd6'). Writing the tagged shape here mirrors
     // what the handler persists via stampRankingCacheTag.
-    redis.set('resilience:ranking:v17', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -87,7 +87,7 @@ describe('resilience ranking contracts', () => {
         { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15 },
       ],
     };
-    redis.set('resilience:ranking:v17', JSON.stringify({ ...legacyCached, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...legacyCached, _formula: 'd6' }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -109,18 +109,20 @@ describe('resilience ranking contracts', () => {
     // Regression for: `cached?.items?.length` was falsy when items=[] even though
     // greyedOut had entries, causing unnecessary rewarming on every request.
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    // Plan 002 §U3 (PR 2): greyed-out items also carry headlineEligible
-    // post-PR-2. Note: greyed-out items represent low-coverage countries
-    // that wouldn't pass the future PR-6 gate either; PR 2 still emits
-    // `true` per the no-behavior-change contract, and PR 6 will swap.
+    // Plan 002 §U7 (PR 6 + #3472 follow-up): greyed-out items represent
+    // low-coverage countries that wouldn't pass the gate. Post-PR-6, a
+    // legitimate writer stamps `headlineEligible: false` on them. The
+    // symmetric-gate handler promotes any greyedOut item flagged true
+    // back to items[], so the fixture must accurately reflect the
+    // post-PR-6 stamping (false for SS, ER) for the deepEqual to hold.
     const cachedPublic = {
       items: [],
       greyedOut: [
-        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15, headlineEligible: true },
-        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12, headlineEligible: true },
+        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15, headlineEligible: false },
+        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12, headlineEligible: false },
       ],
     };
-    redis.set('resilience:ranking:v17', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -198,7 +200,7 @@ describe('resilience ranking contracts', () => {
       greyedOut: [],
       _formula: 'pc', // mismatched — current env is flag-off ⇒ current='d6'
     };
-    redis.set('resilience:ranking:v17', JSON.stringify(stale));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -245,7 +247,7 @@ describe('resilience ranking contracts', () => {
     assert.equal(totalItems, 3, `expected 3 total items across ranked + greyedOut, got ${totalItems}`);
     assert.ok(redis.has('resilience:score:v17:YE'), 'missing country should be warmed during first call');
     assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
-    assert.ok(redis.has('resilience:ranking:v17'), 'fully scored ranking should be cached');
+    assert.ok(redis.has(RESILIENCE_RANKING_CACHE_KEY), 'fully scored ranking should be cached');
   });
 
   it('sets rankStable=true when interval data exists and width <= 8', async () => {
@@ -298,7 +300,7 @@ describe('resilience ranking contracts', () => {
 
     // 3 of 4 (NO + US pre-cached, YE warmed from fixtures, ZZ can't be warmed)
     // = 75% which meets the threshold — must cache.
-    assert.ok(redis.has('resilience:ranking:v17'), 'ranking must be cached at exactly 75% coverage');
+    assert.ok(redis.has(RESILIENCE_RANKING_CACHE_KEY), 'ranking must be cached at exactly 75% coverage');
     assert.ok(redis.has('seed-meta:resilience:ranking'), 'seed-meta must be written alongside the ranking');
   });
 
@@ -345,7 +347,7 @@ describe('resilience ranking contracts', () => {
 
     await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.ok(redis.has('resilience:ranking:v17'), 'ranking must be published despite pipeline-GET race');
+    assert.ok(redis.has(RESILIENCE_RANKING_CACHE_KEY), 'ranking must be published despite pipeline-GET race');
     assert.ok(redis.has('seed-meta:resilience:ranking'), 'seed-meta must be written despite pipeline-GET race');
   });
 
@@ -394,7 +396,7 @@ describe('resilience ranking contracts', () => {
 
     await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.equal(redis.has('resilience:ranking:v17'), false,
+    assert.equal(redis.has(RESILIENCE_RANKING_CACHE_KEY), false,
       'ranking must NOT be published when score SETs returned OK but did not durably persist');
     assert.equal(redis.has('seed-meta:resilience:ranking'), false,
       'seed-meta must NOT be written when parity check fails — that would be a lying meta');
@@ -469,7 +471,7 @@ describe('resilience ranking contracts', () => {
     // Post-fix (sample from warmedCountryCodes only): YE + ZZ are
     // sampled, neither exists in Redis, parity check fails, meta
     // refused.
-    assert.equal(redis.has('resilience:ranking:v17'), false,
+    assert.equal(redis.has(RESILIENCE_RANKING_CACHE_KEY), false,
       'ranking must NOT be published when warmed-tail keys returned OK but did not persist (mixed-failure mode)');
     assert.equal(redis.has('seed-meta:resilience:ranking'), false,
       'seed-meta must NOT lie when only the warmed tail failed — sampling must focus on warmed entries, not cachedScores broadly');
@@ -561,7 +563,7 @@ describe('resilience ranking contracts', () => {
       // fallback test isn't about gate filtering — keep the field
       // present so the test exercises the auth path cleanly.
       const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5, headlineEligible: true }], greyedOut: [], _formula: 'd6' };
-      redis.set('resilience:ranking:v17', JSON.stringify(stale));
+      redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
 
       // No X-WorldMonitor-Key → refresh must be ignored, stale cache returned.
       const unauth = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1');
@@ -615,7 +617,7 @@ describe('resilience ranking contracts', () => {
       // rejected by the formula gate and the refresh path would not
       // get tested as intended.
       const stale = { items: [{ countryCode: 'ZZ', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [], _formula: 'd6' };
-      redis.set('resilience:ranking:v17', JSON.stringify(stale));
+      redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
 
       const request = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
         headers: { 'X-WorldMonitor-Key': 'seed-secret' },
@@ -705,7 +707,7 @@ describe('resilience ranking contracts', () => {
 
     await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.ok(!redis.has('resilience:ranking:v17'), 'ranking must NOT be published when score writes failed');
+    assert.ok(!redis.has(RESILIENCE_RANKING_CACHE_KEY), 'ranking must NOT be published when score writes failed');
     assert.ok(!redis.has('seed-meta:resilience:ranking'), 'seed-meta must NOT be written when score writes failed');
   });
 
