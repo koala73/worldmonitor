@@ -340,3 +340,96 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
     expect(rows[0]?.digestHour).toBe(14);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Temp migration: _listAffectedUserEmails returns recipients for the courtesy
+// email. Joins forbidden-state alertRules rows with verified email channels.
+// ---------------------------------------------------------------------------
+
+describe("alertRules — _listAffectedUserEmails (TEMP migration helper)", () => {
+  const SECRET = "test-secret-list-emails";
+
+  function withSecret(t: ReturnType<typeof convexTest>) {
+    process.env.MIGRATION_ADMIN_SECRET = SECRET;
+    return t;
+  }
+
+  test("rejects without admin secret", async () => {
+    const t = withSecret(convexTest(schema, modules));
+    await expect(
+      t.query(api.alertRules._listAffectedUserEmails, { adminSecret: "wrong" }),
+    ).rejects.toThrow(/UNAUTHORIZED/);
+  });
+
+  test("returns recipients with verified email; skips users without an email channel", async () => {
+    const t = withSecret(convexTest(schema, modules));
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      // User A: forbidden state + verified email → should appear
+      await ctx.db.insert("alertRules", {
+        userId: "user-a", variant: "full", enabled: true,
+        eventTypes: [], sensitivity: "all", channels: [], updatedAt: now,
+        // digestMode absent → effective realtime
+      });
+      await ctx.db.insert("notificationChannels", {
+        userId: "user-a", channelType: "email", email: "a@example.com",
+        verified: true, linkedAt: now,
+      });
+      // User B: forbidden state but UNverified email → should be skipped
+      await ctx.db.insert("alertRules", {
+        userId: "user-b", variant: "full", enabled: true,
+        eventTypes: [], sensitivity: "all", channels: [], updatedAt: now,
+      });
+      await ctx.db.insert("notificationChannels", {
+        userId: "user-b", channelType: "email", email: "b@example.com",
+        verified: false, linkedAt: now,
+      });
+      // User C: forbidden state but NO email channel (only telegram) → should be skipped
+      await ctx.db.insert("alertRules", {
+        userId: "user-c", variant: "full", enabled: false,
+        eventTypes: [], sensitivity: "all", channels: [], updatedAt: now,
+      });
+      await ctx.db.insert("notificationChannels", {
+        userId: "user-c", channelType: "telegram", chatId: "12345",
+        verified: true, linkedAt: now,
+      });
+      // User D: NOT in forbidden state (digestMode='daily') → should be skipped
+      await ctx.db.insert("alertRules", {
+        userId: "user-d", variant: "full", enabled: true,
+        eventTypes: [], sensitivity: "all", channels: [],
+        digestMode: "daily", digestHour: 8, digestTimezone: "UTC", updatedAt: now,
+      });
+      await ctx.db.insert("notificationChannels", {
+        userId: "user-d", channelType: "email", email: "d@example.com",
+        verified: true, linkedAt: now,
+      });
+    });
+
+    const r = await t.query(api.alertRules._listAffectedUserEmails, { adminSecret: SECRET });
+    expect(r.recipients).toHaveLength(1);
+    expect(r.recipients[0]).toMatchObject({
+      userId: "user-a",
+      email: "a@example.com",
+      enabled: true,
+    });
+    // affectedRowCount counts ALL forbidden rows, regardless of email channel
+    expect(r.affectedRowCount).toBe(3); // A, B, C (D is daily so not forbidden)
+  });
+
+  test("preserves enabled flag in the recipient row (so caller can filter to actively-harassed users)", async () => {
+    const t = withSecret(convexTest(schema, modules));
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("alertRules", {
+        userId: "user-disabled-forbidden", variant: "full", enabled: false,
+        eventTypes: [], sensitivity: "all", channels: [], updatedAt: now,
+      });
+      await ctx.db.insert("notificationChannels", {
+        userId: "user-disabled-forbidden", channelType: "email",
+        email: "disabled@example.com", verified: true, linkedAt: now,
+      });
+    });
+    const r = await t.query(api.alertRules._listAffectedUserEmails, { adminSecret: SECRET });
+    expect(r.recipients[0]).toMatchObject({ enabled: false, email: "disabled@example.com" });
+  });
+});
