@@ -16,6 +16,10 @@ const REDIS_CACHE_KEY = 'military:flights:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — reduce upstream API pressure
 const REDIS_STALE_KEY = 'military:flights:stale:v1';
 
+/** Negative TTL: suppress re-fetch of stale key for 30 s after a failed live fetch. */
+const NEG_TTL_MS = 30_000;
+let lastStaleAttempt = 0; // Unix-ms timestamp of most recent stale-read attempt
+
 /** Snap a coordinate to a grid step so nearby bbox values share cache entries. */
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
 const BBOX_GRID_STEP = 1; // 1-degree grid (~111 km at equator)
@@ -289,10 +293,20 @@ export async function listMilitaryFlights(
       // The seed cron (scripts/seed-military-flights.mjs) writes both keys
       // every run; stale has a 24h TTL versus 10min live, so it's the right
       // fallback when OpenSky / the relay hiccups.
+      //
+      // Negative-cache guard: after a failed live fetch, do not immediately re-read
+      // the stale key — that just wastes a Redis call if the upstream is still
+      // down.  Wait NEG_TTL_MS before attempting a stale fallback.
+      const now = Date.now();
+      if (now - lastStaleAttempt < NEG_TTL_MS) {
+        markNoCacheResponse(ctx.request);
+        return { flights: [], clusters: [], pagination: undefined };
+      }
       const staleFlights = await fetchStaleFallback();
       if (staleFlights && staleFlights.length > 0) {
         return { flights: filterFlightsToBounds(staleFlights, requestBounds), clusters: [], pagination: undefined };
       }
+      lastStaleAttempt = now; // only negative-cache when stale came back empty
       markNoCacheResponse(ctx.request);
       return { flights: [], clusters: [], pagination: undefined };
     }
