@@ -1,4 +1,4 @@
-import { getCachedJson } from '../../../_shared/redis';
+import { getCachedJson, getCachedJsonBatch } from '../../../_shared/redis';
 import { sanitizeForPrompt, sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
 import { CHROME_UA } from '../../../_shared/constants';
 import { tokenizeForMatch, findMatchingKeywords } from '../../../../src/utils/keyword-match';
@@ -13,9 +13,9 @@ import {
   ENERGY_SPINE_KEY_PREFIX,
 } from '../../../_shared/cache-keys';
 
-// TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
-// When multi-language digests are available, fan out to news:digest:v1:full:<lang>
-// and merge results before scoring.
+// Multi-language digest search: fans out to digest keys for all core languages
+// and merges results before keyword scoring. See list-feed-digest.ts for the
+// digest build pipeline that populates news:digest:v1:{variant}:{lang} keys.
 
 const GDELT_TOPICS: Record<string, string> = {
   geo: 'geopolitical conflict crisis diplomacy',
@@ -663,7 +663,11 @@ async function buildLiveHeadlines(domainFocus: string, keywords: string[]): Prom
 
 // ── Digest keyword search ─────────────────────────────────────────────────────
 
-const DIGEST_KEY_EN = 'news:digest:v1:full:en';
+// Core languages for multi-language digest search. Covers the major world
+// languages that have active RSS feeds in the project. Each language has a
+// corresponding digest key written by list-feed-digest.ts on every cycle.
+const DIGEST_LANGUAGES = ['en', 'fr', 'de', 'es', 'ar', 'ru', 'zh', 'ja', 'ko', 'pt'] as const;
+const DIGEST_KEY_PREFIX = 'news:digest:v1:full:';
 const MAX_RELEVANT_ARTICLES = 8;
 
 interface DigestItem {
@@ -707,21 +711,43 @@ function scoreArticle(title: string, keywords: string[]): number {
   return (hasAdjacentPair ? 3 : 1) * hits;
 }
 
+/**
+ * Search news digests across all core languages for articles matching the
+ * user's keywords. Uses getCachedJsonBatch for a single Redis pipeline
+ * round-trip instead of N parallel calls. Articles are deduplicated by
+ * normalized title prefix before scoring so the same wire story republished
+ * verbatim across feeds does not consume multiple result slots.
+ */
 async function searchDigestByKeywords(keywords: string[]): Promise<string> {
   if (keywords.length === 0) return '';
 
-  let digest: unknown;
-  try {
-    digest = await getCachedJson(DIGEST_KEY_EN, true);
-  } catch {
-    return '';
+  const digestKeys = DIGEST_LANGUAGES.map(lang => `${DIGEST_KEY_PREFIX}${lang}`);
+
+  const batchResults = await getCachedJsonBatch(digestKeys);
+  if (batchResults.size === 0) return '';
+
+  // Merge items from all language digests, deduplicating by title prefix.
+  const seen = new Set<string>();
+  const allItems: DigestItem[] = [];
+  for (const digest of batchResults.values()) {
+    const items = flattenDigest(digest);
+    for (const item of items) {
+      const title = safeStr(item.title);
+      if (!title) continue;
+      // Deduplicate by lowercase title prefix — catches the same wire story
+      // republished verbatim across multiple feeds within the same language
+      // or across languages (e.g. an English AP headline in EN and FR feeds).
+      // Note: genuine translations (different titles) are NOT deduplicated.
+      const dedupeKey = title.toLowerCase().slice(0, 80);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      allItems.push(item);
+    }
   }
-  if (!digest) return '';
 
-  const items = flattenDigest(digest);
-  if (items.length === 0) return '';
+  if (allItems.length === 0) return '';
 
-  const scored = items
+  const scored = allItems
     .map((item) => {
       const title = safeStr(item.title);
       if (!title) return null;
