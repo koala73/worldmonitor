@@ -15,24 +15,9 @@ The grouped pages in the left sidebar render the full OpenAPI spec — request p
 
 ## Machine-readable discovery
 
-Point any agent, codegen tool, or MCP client at `https://worldmonitor.app/` and it can discover everything below from a single root. The root response advertises all of the following via an [RFC 8288](https://datatracker.ietf.org/doc/html/rfc8288) `Link:` header.
+Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
 
-| Endpoint | What it returns |
-|---|---|
-| [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | RFC 9727 linkset pointing at the OpenAPI spec, MCP server card, status endpoint, OAuth metadata, and agent-skills index |
-| [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | Single bundled OpenAPI 3.1 spec covering **every** REST service (Conflict, Resilience, Market, Economic, Maritime, …) |
-| [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP server descriptor — transport, endpoint URL, OAuth resource, scopes |
-| [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | RFC 8414 OAuth 2.1 authorization-server metadata (PKCE) |
-| [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | RFC 9728 protected-resource metadata for `https://worldmonitor.app/mcp` |
-| [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | Index of pre-packaged agent skills (e.g. `fetch-country-brief`, `fetch-resilience-score`) |
-| [`/llms.txt`](https://worldmonitor.app/llms.txt) / [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | Markdown briefing aimed at LLM agents — overview, capabilities, layer/panel reference |
-
-A typical agent flow:
-
-1. `GET https://worldmonitor.app/` → read the `Link:` header for `rel=api-catalog` and `rel=mcp-server-card`.
-2. `GET https://worldmonitor.app/.well-known/api-catalog` → resolve the bundled OpenAPI URL.
-3. `GET https://www.worldmonitor.app/openapi.yaml` → codegen REST clients for every service in one pass.
-4. To use MCP instead, point the client at `https://worldmonitor.app/mcp` (it'll fetch the server card and OAuth metadata on its own).
+The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 30+ services in one pass.
 
 ## Service catalog
 

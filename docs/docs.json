@@ -179,6 +179,7 @@
           {
             "group": "MCP & Integrations",
             "pages": [
+              "agent-discovery",
               "mcp-server",
               "api-oauth",
               "api-notifications"
