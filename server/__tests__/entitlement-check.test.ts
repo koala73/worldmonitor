@@ -61,8 +61,13 @@ function makeEntitlements(tier: number, planKey = "free") {
 // ---------------------------------------------------------------------------
 
 describe("gateway entitlement check", () => {
-  test("getRequiredTier returns tier for gated endpoint", () => {
-    expect(getRequiredTier("/api/market/v1/analyze-stock")).toBe(1);
+  test.each([
+    "/api/market/v1/analyze-stock",
+    "/api/market/v1/get-stock-analysis-history",
+    "/api/market/v1/backtest-stock",
+    "/api/market/v1/list-stored-stock-backtests",
+  ])("getRequiredTier returns 1 for %s (regression-lock against tier-2 revert)", (path) => {
+    expect(getRequiredTier(path)).toBe(1);
   });
 
   test("getRequiredTier returns null for ungated endpoint", () => {
