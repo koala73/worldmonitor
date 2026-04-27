@@ -87,6 +87,7 @@ Internal probe that validates each seed producer's envelope shape matches its co
 ## User preferences
 
 ### `GET /api/user-prefs`
+
 ### `POST /api/user-prefs`
 
 Per-user dashboard preferences (layout, toggles, filters). Clerk bearer required. Backed by Convex.
@@ -153,3 +154,10 @@ Public enterprise contact form. Turnstile-verified, rate-limited per IP. Part of
 ### `POST /api/leads/v1/register-interest`
 
 Captures email for Pro-waitlist signup. Writes to Convex and sends a confirmation email. Part of `LeadsService`.
+
+Browser callers must pass Turnstile. Desktop callers using `source: "desktop-settings"` bypass Turnstile only when the request is authenticated with the shared desktop secret:
+
+- `X-WorldMonitor-Desktop-Timestamp`: Unix epoch milliseconds, within 5 minutes of server time.
+- `X-WorldMonitor-Desktop-Signature`: `sha256=<hex HMAC-SHA256>`.
+
+The HMAC input is `<timestamp>\n<canonical JSON>`, where canonical JSON contains `email`, `source`, `appVersion`, `referredBy`, `website`, and `turnstileToken` in that order. Configure `WM_DESKTOP_SHARED_SECRET` on both the desktop sidecar and the cloud API. During rollout, `WM_DESKTOP_AUTH_ALLOW_LEGACY=true` allows unsigned legacy desktop requests, still subject to the tighter desktop rate limit.

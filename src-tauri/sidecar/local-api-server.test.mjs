@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
+import { createHmac } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
@@ -106,6 +107,36 @@ async function setupRemoteServer() {
   return {
     hits,
     origins,
+    remoteBase: `http://127.0.0.1:${port}`,
+    async close() {
+      await new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    },
+  };
+}
+
+async function setupRegisterInterestRemote() {
+  const requests = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      requests.push({
+        path: req.url,
+        headers: req.headers,
+        body,
+        json: JSON.parse(body),
+      });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ status: 'registered', referralCode: 'abc', referralCount: 0 }));
+    });
+  });
+
+  const port = await listen(server);
+  return {
+    requests,
     remoteBase: `http://127.0.0.1:${port}`,
     async close() {
       await new Promise((resolve, reject) => {
@@ -281,6 +312,61 @@ test('preserves POST body when cloud fallback is triggered after local non-OK re
     await new Promise((resolve, reject) => {
       remote.close((error) => (error ? reject(error) : resolve()));
     });
+  }
+});
+
+test('signs desktop register-interest cloud fallback when shared secret is configured', async () => {
+  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
+  const originalConvex = process.env.CONVEX_URL;
+  process.env.WM_DESKTOP_SHARED_SECRET = 'desktop-test-secret';
+  delete process.env.CONVEX_URL;
+
+  const remote = await setupRegisterInterestRemote();
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/register-interest`, {
+      email: 'desktop@example.com',
+      appVersion: '2.8.0',
+    });
+    assert.equal(response.status, 200);
+    assert.equal(remote.requests.length, 1);
+
+    const request = remote.requests[0];
+    assert.equal(request.path, '/api/leads/v1/register-interest');
+    assert.equal(request.json.source, 'desktop-settings');
+    const timestamp = request.headers['x-worldmonitor-desktop-timestamp'];
+    const signature = request.headers['x-worldmonitor-desktop-signature'];
+    assert.match(timestamp, /^\d+$/);
+    assert.match(signature, /^sha256=[a-f0-9]{64}$/);
+
+    const canonical = JSON.stringify({
+      email: 'desktop@example.com',
+      source: 'desktop-settings',
+      appVersion: '2.8.0',
+      referredBy: '',
+      website: '',
+      turnstileToken: '',
+    });
+    const expected = `sha256=${createHmac('sha256', process.env.WM_DESKTOP_SHARED_SECRET)
+      .update(`${timestamp}\n${canonical}`)
+      .digest('hex')}`;
+    assert.equal(signature, expected);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
+    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
+    if (originalConvex === undefined) delete process.env.CONVEX_URL;
+    else process.env.CONVEX_URL = originalConvex;
   }
 });
 
