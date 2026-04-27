@@ -208,7 +208,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json(data, 200, corsHeaders, true);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
-      ctx.waitUntil(captureEdgeException(err, { handler: 'notification-channels', method: 'GET' }));
+      captureEdgeException(err, { handler: 'notification-channels', method: 'GET' }, ctx);
       return json({ error: 'Failed to fetch' }, 500, corsHeaders);
     }
   }
@@ -414,7 +414,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
-      ctx.waitUntil(captureEdgeException(err, { handler: 'notification-channels', method: 'POST' }));
+      captureEdgeException(err, { handler: 'notification-channels', method: 'POST' }, ctx);
       return json({ error: 'Operation failed' }, 500, corsHeaders);
     }
   }

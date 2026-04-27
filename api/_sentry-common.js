@@ -93,11 +93,11 @@ async function deliver(body, logPrefix) {
     // `keepalive: true` is critical for Vercel edge runtime: when a
     // handler returns a Response, the V8 isolate can be torn down
     // before unawaited promises finish. `keepalive` lets the underlying
-    // request survive isolate termination, so a `void
-    // captureSilentError(...)` at a catch site that immediately returns
-    // a Response still delivers the event. Defence-in-depth: callers
-    // are still expected to use `ctx.waitUntil(captureSilentError(...))`
-    // where they have access to the Vercel context.
+    // request survive isolate teardown so callers without access to
+    // ctx (nested helpers, local tests) still deliver events.
+    // Defence-in-depth: callers WITH ctx pass it via `opts.ctx` and
+    // `makeCaptureSilentError` registers the promise via
+    // `ctx.waitUntil` — see below.
     const res = await fetch(_envelopeUrl, {
       method: 'POST',
       keepalive: true,
@@ -126,13 +126,39 @@ async function deliver(body, logPrefix) {
 }
 
 /**
- * Build a `captureSilentError(err, ctx)` function bound to a runtime
+ * Build a `captureSilentError(err, opts)` function bound to a runtime
  * (edge or node). The caller is the runtime-specific helper file.
+ *
+ * Opts:
+ *   - `tags`  filterable Sentry tags
+ *   - `extra` non-indexed event payload
+ *   - `ctx`   the Vercel handler context (optional). When present, the
+ *             helper calls `ctx.waitUntil(...)` so the V8 isolate stays
+ *             alive long enough to dispatch the envelope fetch. When
+ *             absent (local tests, sidecar, non-Vercel invocations),
+ *             the call falls back to fire-and-forget — the
+ *             `keepalive: true` flag on the underlying fetch is the
+ *             safety net for in-flight delivery, and `.catch(() => {})`
+ *             silences the unhandled-rejection diagnostic that would
+ *             otherwise poison Node's test runner.
+ *
+ * The function returns the underlying Promise either way, so callers
+ * that need to await delivery (e.g., a deeply nested helper running
+ * inside an existing waitUntil chain) can still do so.
  */
 export function makeCaptureSilentError({ runtime, platform, logPrefix }) {
   const runtimeCfg = { runtime, platform };
-  return async function captureSilentError(err, ctx) {
-    if (!_envelopeUrl || !_key) return;
-    await deliver(buildEnvelope(err, ctx, runtimeCfg), logPrefix);
+  return function captureSilentError(err, opts) {
+    if (!_envelopeUrl || !_key) return Promise.resolve();
+    const promise = deliver(buildEnvelope(err, opts, runtimeCfg), logPrefix);
+    if (opts?.ctx && typeof opts.ctx.waitUntil === 'function') {
+      opts.ctx.waitUntil(promise);
+    } else {
+      // Defuse unhandled rejection — `deliver` already swallows errors
+      // internally, but belt-and-suspenders for environments where
+      // `process.on('unhandledRejection')` is fatal (Node test runner).
+      promise.catch(() => {});
+    }
+    return promise;
   };
 }

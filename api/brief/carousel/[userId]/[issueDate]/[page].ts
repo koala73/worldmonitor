@@ -62,7 +62,7 @@ function jsonError(
 
 export default async function handler(
   req: Request,
-  ctx: { waitUntil: (p: Promise<unknown>) => void },
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return new Response('Origin not allowed', { status: 403 });
@@ -113,7 +113,7 @@ export default async function handler(
     envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);
   } catch (err) {
     console.error('[api/brief/carousel] Upstash read failed:', (err as Error).message);
-    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'envelope-read' } }));
+    captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'envelope-read' }, ctx });
     return jsonError('service_unavailable', 503, cors);
   }
   if (!envelope) return jsonError('not_found', 404, cors);
@@ -146,11 +146,10 @@ export default async function handler(
       `[api/brief/carousel] render failed for ${userId}/${issueDate}/${page}:`,
       (err as Error).message,
     );
-    ctx.waitUntil(
-      captureSilentError(err, {
-        tags: { route: 'api/brief/carousel', step: 'render', page: String(page) },
-      }),
-    );
+    captureSilentError(err, {
+      tags: { route: 'api/brief/carousel', step: 'render', page: String(page) },
+      ctx,
+    });
     return jsonError('render_failed', 503, cors, { noStore: true });
   }
 }

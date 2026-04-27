@@ -53,7 +53,7 @@ type BriefPreview = {
 async function readBriefPreview(
   userId: string,
   issueSlot: string,
-  ctx: { waitUntil: (p: Promise<unknown>) => void },
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<BriefPreview | null> {
   const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`);
   if (raw == null) return null;
@@ -68,11 +68,10 @@ async function readBriefPreview(
     console.error(
       `[api/latest-brief] composer-bug: brief:${userId}:${issueSlot} failed envelope assertion: ${(err as Error).message}`,
     );
-    ctx.waitUntil(
-      captureSilentError(err, {
-        tags: { route: 'api/latest-brief', step: 'envelope-assertion', issueSlot },
-      }),
-    );
+    captureSilentError(err, {
+      tags: { route: 'api/latest-brief', step: 'envelope-assertion', issueSlot },
+      ctx,
+    });
     return null;
   }
   const { data } = raw;
@@ -113,7 +112,7 @@ function publicBaseUrl(req: Request): string {
 
 export default async function handler(
   req: Request,
-  ctx: { waitUntil: (p: Promise<unknown>) => void },
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
@@ -185,7 +184,7 @@ export default async function handler(
     // this into "composing", which would falsely signal empty state
     // to the dashboard panel. 503 lets the client show a retry path.
     console.error('[api/latest-brief] Upstash read failed:', (err as Error).message);
-    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' } }));
+    captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' }, ctx });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

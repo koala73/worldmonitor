@@ -98,7 +98,7 @@ export default async function handler(req, ctx) {
     });
   } catch (error) {
     console.error('FwdStart scraper error:', error);
-    ctx?.waitUntil?.(captureSilentError(error, { tags: { route: 'api/fwdstart', step: 'scrape' } }));
+    captureSilentError(error, { tags: { route: 'api/fwdstart', step: 'scrape' }, ctx });
     return jsonResponse({
       error: 'Failed to fetch FwdStart archive',
       details: error.message

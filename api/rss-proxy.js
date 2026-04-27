@@ -186,7 +186,7 @@ export default async function handler(req, ctx) {
     // Skip Sentry capture on timeout — Sentry would drown in transient
     // upstream-feed timeouts which are routine. Only surface "real" errors.
     if (!isTimeout) {
-      ctx?.waitUntil?.(captureSilentError(error, { tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl } }));
+      captureSilentError(error, { tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl }, ctx });
     }
     return jsonResponse({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',

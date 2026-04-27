@@ -95,7 +95,7 @@ const UNAVAILABLE_PAGE = renderErrorPage(
 
 export default async function handler(
   req: Request,
-  ctx: { waitUntil: (p: Promise<unknown>) => void },
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return new Response('Origin not allowed', { status: 403 });
@@ -142,7 +142,7 @@ export default async function handler(
     pointerRaw = await readRawJsonFromUpstash(pointerKey);
   } catch (err) {
     console.error('[api/brief/public] pointer read failed:', (err as Error).message);
-    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/brief/public', step: 'pointer-read' } }));
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'pointer-read' }, ctx });
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   // The pointer is JSON-encoded at write time (both
@@ -176,7 +176,7 @@ export default async function handler(
     envelope = await readRawJsonFromUpstash(`brief:${pointer.userId}:${pointer.issueDate}`);
   } catch (err) {
     console.error('[api/brief/public] envelope read failed:', (err as Error).message);
-    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/brief/public', step: 'envelope-read' } }));
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'envelope-read' }, ctx });
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   if (!envelope) {
@@ -194,7 +194,7 @@ export default async function handler(
     );
   } catch (err) {
     console.error('[api/brief/public] malformed envelope:', (err as Error).message);
-    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/brief/public', step: 'render' } }));
+    captureSilentError(err, { tags: { route: 'api/brief/public', step: 'render' }, ctx });
     return htmlResponse(req, 404, NOT_FOUND_PAGE);
   }
 
