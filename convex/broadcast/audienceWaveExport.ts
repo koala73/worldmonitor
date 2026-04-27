@@ -26,13 +26,28 @@
  *        - `proLaunchWave` is undefined (not in any prior wave)
  *      Random-sample N via reservoir sampling (Algorithm R) — fair
  *      sample without knowing total upfront, single pass, O(N) memory.
- *   3. Stamp each picked row with `proLaunchWave = waveLabel` via the
- *      shared `_stampWaveByNormalizedEmail` mutation.
- *   4. Create a fresh Resend segment named `pro-launch-${waveLabel}`.
- *   5. Push picked contacts to the segment via the shared
- *      `upsertContactToSegment` two-step helper.
- *   6. Return `{ segmentId, assigned, ... }` so the operator can fire
+ *   3. Create a fresh Resend segment named `pro-launch-${waveLabel}`.
+ *      MUST happen before any stamping so we never commit a contact
+ *      to "do not pick again" until we know they have a destination.
+ *   4. For each picked contact: push to the new segment first, THEN
+ *      stamp `proLaunchWave = waveLabel` only on a successful push.
+ *      Failed pushes leave the contact unstamped and available for
+ *      the next wave's pick — no stranded contacts.
+ *   5. Return `{ segmentId, assigned, ... }` so the operator can fire
  *      `createProLaunchBroadcast` against the new segmentId.
+ *
+ * Atomicity: there is no transactional guarantee across Resend +
+ * Convex, so the action orders writes to maximise safety:
+ *   - createSegment fails → no rows stamped, no contacts orphaned
+ *   - upsertContactToSegment fails for a row → that row not stamped,
+ *     stays in the pool for next wave
+ *   - upsertContactToSegment succeeds, then stamp throws → contact in
+ *     the Resend segment but unstamped. Tracked as `stampFailed` in
+ *     the return stats. Risk: re-picked into a later wave → duplicate
+ *     email. Stamp failure is rare (Convex mutation-level) and the
+ *     operator can manually stamp via the Data Explorer if it
+ *     happens. We do NOT roll back the Resend push because a DELETE
+ *     here is a worse risk than the duplicate-email exposure.
  *
  * Usage (run from CLI; not callable by clients):
  *
@@ -232,8 +247,15 @@ type WaveExportStats = {
   // Already in the new segment (impossible on first run, possible only
   // if the same registrant is re-attached during a partial retry).
   alreadyExists: number;
-  // Push-side failures.
+  // Push-side failures (Resend rejected the contact). Not stamped, so
+  // available for retry in the next wave.
   failed: number;
+  // Push succeeded but the Convex stamp throw — pushed contact is in
+  // the Resend segment but `proLaunchWave` wasn't set. Rare (Convex
+  // mutation-level). The contact may receive a duplicate email if
+  // re-picked into a later wave; operator can manually stamp via the
+  // Data Explorer if the count is non-zero.
+  stampFailed: number;
   // True if pool < count: requested 500 but only 320 unstamped were
   // available. Operator should treat this as "the waitlist is drained
   // for this ramp tier" and adjust the next wave's size accordingly.
@@ -330,20 +352,30 @@ export const assignAndExportWave = internalAction({
       );
     }
 
-    // Step 3: stamp each picked row.
-    const assignedAt = Date.now();
-    for (const email of picked) {
-      await ctx.runMutation(
-        internal.broadcast.audienceWaveExport._stampWaveByNormalizedEmail,
-        { normalizedEmail: email, waveLabel, assignedAt },
-      );
-    }
-
-    // Step 4: create the Resend segment.
+    // Step 3: create the Resend segment FIRST so we never stamp a
+    // contact until we know it has a destination to land in. If
+    // segment creation fails, the picked rows are still unstamped and
+    // remain available for the next wave's pick — no data loss, no
+    // stranded contacts.
     const segmentName = `pro-launch-${waveLabel}`;
     const segmentId = await createSegment(apiKey, segmentName);
 
-    // Step 5: push picked contacts.
+    // Step 4: push picked contacts to the segment, then stamp ONLY on
+    // successful push outcomes (created / linkedExisting /
+    // alreadyInSegment). This ordering is load-bearing — see the
+    // file docstring's "Atomicity" section.
+    //
+    //   - push succeeds  → stamp Convex → contact won't be re-picked
+    //   - push fails     → don't stamp → contact stays available for
+    //                      retry in the next wave
+    //
+    // Edge case: stamp throws AFTER successful push. The contact is
+    // in the Resend segment but unstamped, so a future wave could
+    // re-pick them and they'd land in TWO segments and receive a
+    // duplicate email. Stamp failure is rare (Convex mutation-level)
+    // and we log + count, but we don't try to roll back the Resend
+    // push — that would require a DELETE call we trust less than the
+    // duplicate-email risk.
     const stats: WaveExportStats = {
       waveLabel,
       segmentId,
@@ -353,8 +385,10 @@ export const assignAndExportWave = internalAction({
       linkedExisting: 0,
       alreadyExists: 0,
       failed: 0,
+      stampFailed: 0,
       underfilled: picked.length < count,
     };
+    const assignedAt = Date.now();
 
     for (const email of picked) {
       const outcome = await upsertContactToSegment(apiKey, email, segmentId);
@@ -377,7 +411,31 @@ export const assignAndExportWave = internalAction({
           console.error(
             `[assignAndExportWave] Resend push failed for ${maskEmail(email)}: ${outcome.reason}`,
           );
-          break;
+          // DO NOT stamp on failure — contact stays unstamped and
+          // available for the next wave to re-pick.
+          continue;
+      }
+
+      // Push succeeded — stamp Convex so this contact won't be
+      // re-picked into a future wave. Wrapped in try/catch so a stamp
+      // failure on one row doesn't abort the rest of the loop; the
+      // duplicate-email risk for the rare un-stamped-but-pushed case
+      // is documented above and far preferable to halting the wave.
+      try {
+        await ctx.runMutation(
+          internal.broadcast.audienceWaveExport._stampWaveByNormalizedEmail,
+          { normalizedEmail: email, waveLabel, assignedAt },
+        );
+      } catch (err) {
+        // sentry-coverage-ok: stamp failures are counted into
+        // `stats.stampFailed` and surfaced in the action's return
+        // value — operator's visible surface for the rare
+        // pushed-but-not-stamped condition. Convex auto-Sentry
+        // captures the underlying mutation throw separately.
+        stats.stampFailed++;
+        console.error(
+          `[assignAndExportWave] stamp failed for ${maskEmail(email)} (already in Resend segment ${segmentName}): ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
