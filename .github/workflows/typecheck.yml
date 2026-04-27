@@ -43,3 +43,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run typecheck:api
+      # Mirror the pre-push convex typecheck so direct pushes to main
+      # and `--no-verify` bypasses can't land stale convex/_generated
+      # types. See .husky/pre-push for the rationale.
+      - run: npx tsc --noEmit -p convex/tsconfig.json
