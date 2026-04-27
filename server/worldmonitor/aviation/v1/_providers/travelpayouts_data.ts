@@ -231,7 +231,7 @@ export async function searchPricesTravelpayouts(opts: {
         if (nonstopOnly) params.set('direct', 'true');
         if (market_) params.set('market', market_);
 
-        const cacheKey = `tp:v3:${origin}:${destination}:${departureDate}:${returnDate}:${cabin}:${currency_}:v1`;
+        const cacheKey = `tp:v3:${origin}:${destination}:${departureDate}:${returnDate}:${cabin}:${currency_}:${market_}:${nonstopOnly}:${Math.min(maxResults, 30)}:v2`;
         const data = await cachedFetchJson<TpV3Ticket[]>(cacheKey, 3600, () =>
             fetchTp<TpV3Ticket[]>(`${BASE_V3}/prices_for_dates?${params}`, token)
                 .then(d => d ?? [])
@@ -272,7 +272,7 @@ export async function searchPricesTravelpayouts(opts: {
             show_to_affiliates: 'true',
         });
 
-        const cacheKey = `tp:latest:${origin}:${destination}:${cabin}:${currency_}:v1`;
+        const cacheKey = `tp:latest:${origin}:${destination}:${cabin}:${currency_}:${returnDate ? 'roundtrip' : 'oneway'}:${Math.min(maxResults, 30)}:v2`;
         const data = await cachedFetchJson<TpLatestTicket[]>(cacheKey, 3600, () =>
             fetchTp<TpLatestTicket[]>(`${BASE_V2}/latest?${params}`, token)
                 .then(d => d ?? [])
