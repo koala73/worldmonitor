@@ -54,6 +54,13 @@ npm run typecheck || exit 1
 echo "Running API type check..."
 npm run typecheck:api || exit 1
 
+echo "Running Convex type check..."
+# Catches stale convex/_generated/api.d.ts (forgotten `npx convex codegen`
+# after adding a module) and any drift between convex/schema.ts and the
+# code that reads it. Pre-push is the right gate — these errors surface
+# only at convex deploy time otherwise, deep into a release window.
+npx tsc --noEmit -p convex/tsconfig.json || exit 1
+
 echo "Running CJS syntax check..."
 for f in scripts/*.cjs; do
   [ -f "$f" ] && node -c "$f" || exit 1
