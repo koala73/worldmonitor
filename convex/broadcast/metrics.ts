@@ -124,8 +124,11 @@ const PAGE_SIZE = 4096;
  * (broadcastId, eventType). Each call is its own function execution, so
  * the 16,384-doc per-query read budget resets between pages.
  *
- * Not exported by name to callers — the public surface is
- * `getBroadcastStats` below, which loops over this until `isDone`.
+ * Exported only so Convex's code-gen includes it in the `internal` API
+ * map (consumed by `getBroadcastStats` below via
+ * `internal.broadcast.metrics._countBroadcastEventsPage`). Callers
+ * outside this module should use `getBroadcastStats` instead — the `_`
+ * prefix signals that this is an implementation detail.
  */
 export const _countBroadcastEventsPage = internalQuery({
   args: {
@@ -163,6 +166,14 @@ export const _countBroadcastEventsPage = internalQuery({
  * This is an action (not a query) because Convex queries can't paginate
  * across executions — they're a single read transaction. The action
  * pattern lets us stitch arbitrary numbers of pages together.
+ *
+ * Consistency: each page read is its own query snapshot, so events
+ * inserted between page reads for the same eventType could appear in
+ * more than one page or be missed entirely. Counts are eventually
+ * consistent during a live send (when webhooks are still arriving), and
+ * exact once the send settles. For canary kill-gate use this is
+ * harmless — thresholds converge as soon as inflow stops, well before
+ * any operator decision based on them.
  */
 export const getBroadcastStats = internalAction({
   args: { broadcastId: v.string() },

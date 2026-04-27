@@ -140,7 +140,7 @@ export const createProLaunchBroadcast = internalAction({
  *
  * Resend's send endpoint is fire-and-forget — it returns immediately
  * after queueing. Track delivery via the `broadcastEvents` table
- * (populated by webhook events) or the `getBroadcastStats` query.
+ * (populated by webhook events) or the `getBroadcastStats` action.
  */
 export const sendProLaunchBroadcast = internalAction({
   args: {
