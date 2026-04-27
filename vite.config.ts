@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { visualizer } from 'rollup-plugin-visualizer';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
@@ -660,6 +661,7 @@ export default defineConfig(({ mode }) => {
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
+      ...(process.env.ANALYZE === '1' ? [visualizer({ open: false, filename: 'dist/bundle-analysis.html', gzipSize: true, brotliSize: true, template: 'treemap' }) as Plugin] : []),
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: false,
@@ -850,6 +852,12 @@ export default defineConfig(({ mode }) => {
                 || id.includes('/h3-js/')
               ) {
                 return 'deck-stack';
+              }
+              if (id.includes('/globe.gl/') || id.includes('/globe-kapsule/') || id.includes('/three-globe/') || id.includes('/three-slippy-map-globe/') || id.includes('/three-conic-polygon-geometry/') || id.includes('/three-geojson-geometry/') || id.includes('/three-render-objects/') || id.includes('/kapsule/')) {
+                return 'globe-stack';
+              }
+              if (id.includes('/three/') || id.includes('/three-examples/')) {
+                return 'three';
               }
               if (id.includes('/d3/')) {
                 return 'd3';
