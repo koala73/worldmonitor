@@ -258,7 +258,7 @@ function normalizeCountryCode(countryCode: string): string {
   return /^[A-Z]{2}$/.test(normalized) ? normalized : '';
 }
 
-function scoreCacheKey(countryCode: string): string {
+export function scoreCacheKey(countryCode: string): string {
   return `${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`;
 }
 
