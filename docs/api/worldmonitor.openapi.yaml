@@ -18289,6 +18289,18 @@ components:
                          "1.0" is the legacy opt-out shape (pillars empty) retained for one
                          release cycle. Controlled at response build time by the
                          RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
+                headlineEligible:
+                    type: boolean
+                    description: |-
+                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+                         ranking inclusion. PR 2 introduces the field populated `true` for
+                         every country (no behavior change). PR 6 / §U7 swaps the population
+                         logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
+                         AND !lowConfidence; the headline ranking endpoint then filters by
+                         `headlineEligible: true`. Raw API endpoints keep returning the full
+                         set unfiltered. Widget consumes the field starting in PR 6 to show
+                         a "Low confidence — outside headline ranking" badge for
+                         `headlineEligible: false` countries on country detail pages.
         worldmonitor_resilience_v1_ResilienceDomain:
             type: object
             properties:
@@ -18427,6 +18439,13 @@ components:
                     format: double
                 rankStable:
                     type: boolean
+                headlineEligible:
+                    type: boolean
+                    description: |-
+                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+                         ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
+                         to coverage-and-population logic and the headline endpoint then
+                         filters by this field.
         worldmonitor_sanctions_v1_ListSanctionsPressureRequest:
             type: object
             properties:

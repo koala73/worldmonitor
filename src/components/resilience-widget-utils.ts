@@ -141,6 +141,12 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
   // dragging pillar logic into a fixture.
   pillars: [],
   schemaVersion: '1.0',
+  // Plan 2026-04-26-002 §U3 (PR 2): locked preview ships
+  // headlineEligible=true to match the PR-2 default. The widget does
+  // not yet render anything different for false (PR 6 / §U7 wires the
+  // "Low confidence — outside headline ranking" badge); for now the
+  // field is informational only.
+  headlineEligible: true,
 };
 
 export type ResilienceVisualLevel = 'very_high' | 'high' | 'moderate' | 'low' | 'very_low' | 'unknown';

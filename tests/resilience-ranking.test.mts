@@ -47,10 +47,13 @@ describe('resilience ranking contracts', () => {
 
   it('returns the cached ranking payload unchanged when the ranking cache already exists', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
+    // Plan 002 §U3 (PR 2): post-PR-2 cache writes carry headlineEligible.
+    // Pre-PR-2 cached payloads (without the field) are exercised by the
+    // dedicated backfill test in resilience-headline-eligible-field.test.mts.
     const cachedPublic = {
       items: [
-        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95 },
-        { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false, overallCoverage: 0.88 },
+        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true },
+        { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false, overallCoverage: 0.88, headlineEligible: true },
       ],
       greyedOut: [],
     };
@@ -68,15 +71,44 @@ describe('resilience ranking contracts', () => {
     assert.equal(redis.has('resilience:score:v16:YE'), false, 'cache hit must not trigger score warmup');
   });
 
+  it('backfills headlineEligible on cached items written before PR 2 (review fix)', async () => {
+    // Plan 002 §U3 review fix: existing v16 ranking cache entries
+    // (committed by #3452 before PR 2 added the field) lack the
+    // headlineEligible boolean. The handler must backfill on read so
+    // wire responses always carry the field. Pre-PR-2 cache fixture
+    // here deliberately omits the field on every item.
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const legacyCached = {
+      items: [
+        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95 },
+      ],
+      greyedOut: [
+        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15 },
+      ],
+    };
+    redis.set('resilience:ranking:v16', JSON.stringify({ ...legacyCached, _formula: 'd6' }));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.equal(response.items[0]?.headlineEligible, true,
+      'cache-read backfill must default missing headlineEligible to true on items[]');
+    assert.equal(response.greyedOut[0]?.headlineEligible, true,
+      'cache-read backfill must default missing headlineEligible to true on greyedOut[]');
+  });
+
   it('returns all-greyed-out cached payload without rewarming (items=[], greyedOut non-empty)', async () => {
     // Regression for: `cached?.items?.length` was falsy when items=[] even though
     // greyedOut had entries, causing unnecessary rewarming on every request.
     const { redis } = installRedis(RESILIENCE_FIXTURES);
+    // Plan 002 §U3 (PR 2): greyed-out items also carry headlineEligible
+    // post-PR-2. Note: greyed-out items represent low-coverage countries
+    // that wouldn't pass the future PR-6 gate either; PR 2 still emits
+    // `true` per the no-behavior-change contract, and PR 6 will swap.
     const cachedPublic = {
       items: [],
       greyedOut: [
-        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15 },
-        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12 },
+        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15, headlineEligible: true },
+        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12, headlineEligible: true },
       ],
     };
     redis.set('resilience:ranking:v16', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
