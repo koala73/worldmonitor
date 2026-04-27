@@ -115,7 +115,7 @@ export class CascadePanel extends Panel {
     return `
       <div class="cascade-selector">
         <div class="panel-tabs" role="radiogroup" aria-label="Infrastructure type filter">${filterButtons}</div>
-        <select class="cascade-select" ${nodes.length === 0 ? 'disabled' : ''}>
+        <select class="cascade-select" aria-label="${t('components.cascade.selectPrompt', { type: selectedType })}" ${nodes.length === 0 ? 'disabled' : ''}>
           <option value="">${t('components.cascade.selectPrompt', { type: selectedType })}</option>
           ${nodeOptions}
         </select>

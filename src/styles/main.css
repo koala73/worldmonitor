@@ -781,7 +781,7 @@ canvas,
 .github-stars {
   font-size: 11px;
   margin-left: 4px;
-  opacity: 0.7;
+  /* Removed opacity: 0.7 — dim inherited text color failed WCAG AA contrast (#3112) */
 }
 
 /* Medium-width desktop: keep header utility actions reachable when OS scaling
@@ -1976,7 +1976,8 @@ body.panel-resize-active iframe {
 }
 
 .live-channel-btn.offline {
-  opacity: 0.5;
+  /* Removed opacity: 0.5 — dropped contrast below WCAG AA threshold (#3112).
+     Dashed border already signals offline state without opacity. */
   border-style: dashed;
 }
 
@@ -4397,6 +4398,8 @@ body.playback-mode .status-dot {
 
 .time-btn {
   padding: 3px 6px;
+  min-height: 44px;
+  min-width: 44px;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-dim);
@@ -4482,6 +4485,7 @@ body.playback-mode .status-dot {
 }
 
 .layer-help-btn {
+  position: relative;
   width: 20px;
   height: 20px;
   padding: 0;
@@ -4497,6 +4501,13 @@ body.playback-mode .status-dot {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Extend touch target to 48×48 px without changing visual size (#3112) */
+.layer-help-btn::before {
+  content: '';
+  position: absolute;
+  inset: -14px;
 }
 
 .layer-help-btn:hover {

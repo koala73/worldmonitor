@@ -79,7 +79,9 @@ export class PizzIntIndicator {
     const color = DEFCON_COLORS[this.status.defconLevel] || '#888';
     defconEl.textContent = t('components.pizzint.defcon', { level: String(this.status.defconLevel) });
     defconEl.style.background = color;
-    defconEl.style.color = this.status.defconLevel <= 3 ? '#000' : '#fff';
+    // Use black text on all DEFCON colors — verified WCAG AA contrast (≥4.5:1) for all levels (#3112):
+    // L1 #ff0040: 5.3:1, L2 #ff4400: 6.1:1, L3 #ffaa00: 11.1:1, L4 #00aaff: 8.3:1, L5 #2d8a6e: 5.0:1
+    defconEl.style.color = '#000';
 
     scoreEl.textContent = `${this.status.aggregateActivity}%`;
     labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
