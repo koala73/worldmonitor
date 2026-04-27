@@ -274,7 +274,7 @@ const RESILIENCE_TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const RESILIENCE_BIS_DSR_KEY = 'economic:bis:dsr:v1';
 const RESILIENCE_NATIONAL_DEBT_KEY = 'economic:national-debt:v1';
 const RESILIENCE_IMF_MACRO_KEY = 'economic:imf:macro:v2';
-const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
+export const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
 // RETIRED in plan 2026-04-25-004 Phase 1: the `RESILIENCE_SANCTIONS_KEY`
 // constant ('sanctions:country-counts:v1') is no longer read by any scorer
 // in this module — scoreTradePolicy dropped the OFAC component. The seed
@@ -812,6 +812,36 @@ function readPopulationMillions(imfLaborRaw: unknown, countryCode: string): numb
   if (raw == null) return 0.5;
   const millions = raw >= 10_000 ? raw / 1_000_000 : raw;
   return Math.max(millions, 0.5);
+}
+
+/**
+ * Plan 2026-04-26-002 §U7 (PR 6) — population reader for the headline-
+ * eligible gate. Differs from `readPopulationMillions` in two ways:
+ *
+ *   1. Returns `null` when no IMF labor entry exists for the country
+ *      (instead of the §U6 0.5M default). The gate's "population >= 200k"
+ *      branch needs to distinguish "country with known small population"
+ *      from "country with unknown population"; defaulting to 0.5M (above
+ *      the 200k threshold) would incorrectly admit every unknown-pop
+ *      country to the headline ranking.
+ *
+ *   2. Does NOT apply the §U6 0.5M tiny-state floor. The §U6 floor is
+ *      a per-capita-math safety device (prevent /0 and amplification);
+ *      the headline gate needs the REAL population to decide eligibility.
+ *      Tuvalu's actual headcount of ~10k is below 200k → not eligible
+ *      via the population branch (it can still pass via the coverage>=0.85
+ *      branch if data quality is high enough).
+ *
+ * Defensive raw-persons detection mirrors `readPopulationMillions`
+ * (>= 10_000 is impossible as "millions" → divide by 1e6).
+ */
+export function readCountryPopulationMillionsForGate(
+  imfLaborRaw: unknown,
+  countryCode: string,
+): number | null {
+  const raw = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions);
+  if (raw == null) return null;
+  return raw >= 10_000 ? raw / 1_000_000 : raw;
 }
 
 // getCountryBisExchangeRates() removed in PR 3 §3.5: only scoreCurrencyExternal

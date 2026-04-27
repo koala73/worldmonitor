@@ -3,6 +3,7 @@ import type {
   ServerContext,
   GetResilienceRankingRequest,
   GetResilienceRankingResponse,
+  ResilienceRankingItem,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
@@ -171,9 +172,20 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
 
   const intervals = await fetchIntervals([...cachedScores.keys()]);
   const allItems = countryCodes.map((countryCode) => buildRankingItem(countryCode, cachedScores.get(countryCode), intervals.get(countryCode)));
+  // Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate. The
+  // headline ranking endpoint returns ONLY items with
+  // `headlineEligible: true`; ineligible items move to `greyedOut`
+  // alongside the existing low-coverage greyout. This is the load-
+  // bearing change from PR 2's "headlineEligible: true everywhere"
+  // contract: real eligibility logic now decides the front-of-house
+  // ranking. Raw API endpoints (get-resilience-score per-country)
+  // continue to return the full set with `headlineEligible: false`
+  // surfaced; only the *ranking* endpoint applies the filter.
+  const passesHeadlineGate = (item: ResilienceRankingItem): boolean =>
+    item.overallCoverage >= GREY_OUT_COVERAGE_THRESHOLD && item.headlineEligible === true;
   const response: GetResilienceRankingResponse = {
-    items: sortRankingItems(allItems.filter((item) => item.overallCoverage >= GREY_OUT_COVERAGE_THRESHOLD)),
-    greyedOut: allItems.filter((item) => item.overallCoverage < GREY_OUT_COVERAGE_THRESHOLD),
+    items: sortRankingItems(allItems.filter(passesHeadlineGate)),
+    greyedOut: allItems.filter((item) => !passesHeadlineGate(item)),
   };
 
   // Cache the ranking when we have substantive coverage — don't hold out for 100%.
