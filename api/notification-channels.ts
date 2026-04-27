@@ -14,7 +14,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
-import { captureEdgeException } from './_sentry-edge.js';
+import { captureEdgeException, captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -97,6 +97,11 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     console.log(`[notification-channels] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
   } catch (err) {
     console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
+    // publishWelcome runs inside the handler's ctx.waitUntil chain; await
+    // keeps that chain pending until Sentry delivery completes.
+    await captureSilentError(err, {
+      tags: { route: 'api/notification-channels', step: 'publish-welcome' },
+    });
   }
 }
 
@@ -111,6 +116,9 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
     });
   } catch (err) {
     console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+    await captureSilentError(err, {
+      tags: { route: 'api/notification-channels', step: 'publish-flush-held', severity: 'warn' },
+    });
   }
 }
 
@@ -200,7 +208,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json(data, 200, corsHeaders, true);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
-      void captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
+      captureEdgeException(err, { handler: 'notification-channels', method: 'GET' }, ctx);
       return json({ error: 'Failed to fetch' }, 500, corsHeaders);
     }
   }
@@ -406,7 +414,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
-      void captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
+      captureEdgeException(err, { handler: 'notification-channels', method: 'POST' }, ctx);
       return json({ error: 'Operation failed' }, 500, corsHeaders);
     }
   }
