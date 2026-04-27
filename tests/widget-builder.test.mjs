@@ -80,6 +80,13 @@ describe('widget-agent relay — security', () => {
     assert.ok(authCheckIdx < sseHeaderIdx, 'Auth check must come before SSE headers');
   });
 
+  it('widget-key auth 403 includes invalid_widget_key error code', () => {
+    assert.ok(
+      relay.includes("errorCode: 'invalid_widget_key'") || relay.includes('errorCode: "invalid_widget_key"'),
+      'Widget-key 403 responses must identify the invalid widget key cause',
+    );
+  });
+
   it('body size limit is enforced (160KB for PRO, covers basic too)', () => {
     assert.ok(
       relay.includes('163840'),
@@ -939,6 +946,7 @@ describe('PRO widget — relay auth and configuration', () => {
     assert.ok(keyCompareIdx !== -1, 'PRO key comparison must be present');
     const region = relay.slice(keyCompareIdx, keyCompareIdx + 200);
     assert.ok(region.includes('403'), 'Wrong PRO key must return 403');
+    assert.ok(region.includes('invalid_pro_key'), 'Wrong PRO key must return an invalid_pro_key error code');
   });
 
   it('invalid tier value rejected with 400', () => {
@@ -1197,6 +1205,36 @@ describe('PRO widget — modal and layout integration', () => {
     assert.ok(
       modal.includes('proKeyConfigured') || modal.includes('preflightProUnavailable'),
       'Modal must handle proKeyConfigured=false from health endpoint',
+    );
+  });
+
+  it('modal treats preflight 403 as a widget key failure even in PRO mode', () => {
+    const resolverIdx = modal.indexOf('function resolveWidgetAgentFailureMessage');
+    assert.ok(resolverIdx !== -1, 'Modal must define resolveWidgetAgentFailureMessage');
+    const resolverRegion = modal.slice(resolverIdx, resolverIdx + 500);
+    assert.ok(
+      resolverRegion.includes("status === 403") && resolverRegion.includes("preflightInvalidKey"),
+      'Preflight 403 must map to the widget key guidance',
+    );
+  });
+
+  it('modal maps invalid_pro_key failures to PRO key guidance', () => {
+    const resolverIdx = modal.indexOf('function resolveWidgetAgentFailureMessage');
+    assert.ok(resolverIdx !== -1, 'Modal must define resolveWidgetAgentFailureMessage');
+    const resolverRegion = modal.slice(resolverIdx, resolverIdx + 500);
+    assert.ok(
+      resolverRegion.includes("invalid_pro_key") && resolverRegion.includes('preflightInvalidProKey'),
+      'Modal must surface PRO key guidance when the relay reports invalid_pro_key',
+    );
+  });
+
+  it('modal parses JSON request errors before falling back to generic serverError', () => {
+    const submitErrorIdx = modal.indexOf('if (!res.ok || !res.body)');
+    assert.ok(submitErrorIdx !== -1, 'Modal must check non-OK widget-agent responses');
+    const submitErrorRegion = modal.slice(submitErrorIdx, submitErrorIdx + 250);
+    assert.ok(
+      submitErrorRegion.includes('parseWidgetAgentJson') && submitErrorRegion.includes('resolveRequestErrorMessage'),
+      'Modal must inspect JSON error payloads before falling back to generic server errors',
     );
   });
 
