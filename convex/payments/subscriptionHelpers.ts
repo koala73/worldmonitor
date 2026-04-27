@@ -29,6 +29,10 @@ interface DodoSubscriptionData {
   next_billing_date?: string | number | Date;
   cancelled_at?: string | number | Date;
   metadata?: Record<string, string>;
+  recurring_pre_tax_amount?: number;
+  currency?: string;
+  tax_inclusive?: boolean;
+  discount_id?: string | null;
 }
 
 interface DodoPaymentData {
@@ -377,7 +381,10 @@ export async function handleSubscriptionActive(
         userEmail: email,
         planKey,
         userId,
-        subscriptionId: data.subscription_id,
+        recurringPreTaxAmount: data.recurring_pre_tax_amount,
+        currency: data.currency,
+        taxInclusive: data.tax_inclusive,
+        discountId: data.discount_id ?? undefined,
       },
     );
   }
