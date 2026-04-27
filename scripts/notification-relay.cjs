@@ -53,8 +53,15 @@ function sha256Hex(str) {
   return createHash('sha256').update(str).digest('hex');
 }
 
-async function checkDedup(userId, eventType, title) {
-  const hash = sha256Hex(`${eventType}:${title}`);
+async function checkDedup(userId, eventType, title, coalesceKey) {
+  // Slot B: when the publisher provides a coalesceKey (e.g. NWS VTEC family
+  // string), key the per-user dedup on it instead of the title hash. This
+  // collapses adjacent-zone NWS alerts (same storm system, different counties)
+  // into one notification per user — the title-based dedup misses these
+  // because each zone produces a slightly different title.
+  // See plans/forbid-realtime-all-events.md "Out of scope: Slot B".
+  const keyMaterial = coalesceKey ? `coalesce:${coalesceKey}` : `${eventType}:${title}`;
+  const hash = sha256Hex(keyMaterial);
   const key = `wm:notif:dedup:${userId}:${hash}`;
   const result = await upstashRest('SET', key, '1', 'NX', 'EX', '1800');
   return result === 'OK'; // true = new, false = duplicate
@@ -916,15 +923,20 @@ async function processEvent(event) {
       continue;
     }
 
+    // event.payload.coalesceKey (Slot B) — when set, dedup keys on the family
+    // identifier (e.g. NWS VTEC string) instead of the title; collapses adjacent
+    // NWS zone alerts to one notification per user.
+    const coalesceKey = typeof event.payload?.coalesceKey === 'string' ? event.payload.coalesceKey : undefined;
+
     if (quietAction === 'hold') {
-      const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '');
+      const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
       if (!isNew) { console.log(`[relay] Dedup hit (held) for ${rule.userId}`); continue; }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
       continue;
     }
 
-    const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '');
+    const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
     if (!isNew) { console.log(`[relay] Dedup hit for ${rule.userId}`); continue; }
 
     let channels = [];

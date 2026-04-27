@@ -428,12 +428,46 @@ function notifySimpleHash(str) {
   return Math.abs(h).toString(36);
 }
 
+/**
+ * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
+ *
+ * NWS VTEC format (https://www.weather.gov/vtec/):
+ *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
+ *    │  │   │   │  │  │
+ *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
+ *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
+ *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
+ *    │  │   └──────────── forecast office (4-letter ICAO)
+ *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
+ *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
+ *
+ * The (office, phenomenon, significance, eventID) tuple identifies one logical
+ * event across adjacent zones — exactly what we want to coalesce. We drop the
+ * action so NEW + CON + CAN bulletins for the same event also collapse.
+ *
+ * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
+ * VTEC string is missing or malformed.
+ */
+function deriveWeatherCoalesceKey(vtec) {
+  if (typeof vtec !== 'string') return undefined;
+  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
+  if (!m) return undefined;
+  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
-    // (e.g. finance and world users both receive an alert for the same headline)
+    // (e.g. finance and world users both receive an alert for the same headline).
+    // Slot B: when payload.coalesceKey is set (e.g. NWS VTEC family), key on it
+    // instead of the title hash so adjacent-zone alerts for the same logical
+    // event collapse at the publisher (queue stays clean) instead of N times
+    // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(`${eventType}:${payload.title ?? ''}`)}`;
+    const dedupMaterial = payload?.coalesceKey
+      ? `coalesce:${payload.coalesceKey}`
+      : `${eventType}:${payload.title ?? ''}`;
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
     const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
     if (!isNew) {
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
@@ -4202,11 +4236,17 @@ async function seedWeatherAlerts() {
         const centroid = coords.length > 0
           ? [coords.reduce((s, c) => s + c[0], 0) / coords.length, coords.reduce((s, c) => s + c[1], 0) / coords.length]
           : undefined;
+        // Slot B: NWS VTEC string. NWS wraps VTEC in an array under
+        // properties.parameters.VTEC; pick the first entry (most alerts have one;
+        // multi-VTEC alerts use the primary). Used to derive a coalesce family key
+        // so adjacent-zone alerts for the same logical event collapse at the
+        // publisher and at the per-user dedup.
+        const vtec = Array.isArray(p?.parameters?.VTEC) ? p.parameters.VTEC[0] : undefined;
         return {
           id: f.id || '', event: p.event || '', severity: p.severity || 'Unknown',
           headline: p.headline || '', description: (p.description || '').slice(0, 500),
           areaDesc: p.areaDesc || '', onset: p.onset || '', expires: p.expires || '',
-          coordinates: coords, centroid,
+          coordinates: coords, centroid, vtec,
         };
       });
     if (alerts.length === 0) {
@@ -4221,10 +4261,40 @@ async function seedWeatherAlerts() {
     const ok2 = await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: alerts.length }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
-    for (const a of highSeverityAlerts.slice(0, 3)) {
+    // Pick up to 3 DISTINCT event families before publishing. The naive
+    // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
+    // alerts are adjacent-zone duplicates for one VTEC family (one storm
+    // crossing 3 counties), the publisher-side dedup collapses them to 1
+    // notification and a 4th genuinely-distinct family (tornado / flood /
+    // different storm) sitting at index 3+ would NEVER be considered.
+    // Dedupe by coalesceKey FIRST, then take the top 3 distinct families.
+    // Slot B regression fix from PR #3467 review.
+    const seenFamilyKeys = new Set();
+    const distinctFamilyAlerts = [];
+    for (const a of highSeverityAlerts) {
+      // Family key: prefer VTEC-derived coalesce key; fall back to a stable
+      // identity from the alert (NWS feature.id, then headline/event) so
+      // VTEC-less alerts still deduplicate against themselves.
+      const familyKey = deriveWeatherCoalesceKey(a.vtec)
+        ?? `nws:fallback:${a.id || a.headline || a.event || ''}`;
+      if (seenFamilyKeys.has(familyKey)) continue;
+      seenFamilyKeys.add(familyKey);
+      distinctFamilyAlerts.push(a);
+      if (distinctFamilyAlerts.length >= 3) break;
+    }
+    for (const a of distinctFamilyAlerts) {
+      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
+      // so adjacent-zone bulletins for the same logical event collapse to one
+      // notification per user. Falls back to title-based dedup when VTEC is
+      // absent (rare advisory types or missing parameters).
+      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
       publishNotificationEvent({
         eventType: 'weather_alert',
-        payload: { title: a.headline || a.event || 'Weather alert', source: 'NWS' },
+        payload: {
+          title: a.headline || a.event || 'Weather alert',
+          source: 'NWS',
+          ...(coalesceKey ? { coalesceKey } : {}),
+        },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,
       }).catch(e => console.warn('[Notify] Weather publish error:', e?.message));
