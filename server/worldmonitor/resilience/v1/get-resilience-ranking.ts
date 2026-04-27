@@ -135,6 +135,13 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
 
   const cachedScores = await getCachedResilienceScores(countryCodes);
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
+  // Track the country codes whose scores were JUST warmed by this invocation.
+  // The persistence parity check below samples from THIS set specifically —
+  // pre-warmed entries from `getCachedResilienceScores` already proved they
+  // exist (we just read them), so verifying them is uninformative; the keys
+  // whose durability is in question are the ones we just SET via the
+  // batched pipeline inside `warmMissingResilienceScores`.
+  const warmedCountryCodes: string[] = [];
   if (missing.length > 0) {
     try {
       // Merge warm results into cachedScores directly rather than re-reading
@@ -144,7 +151,10 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       // publish. The warmer already holds every score in memory — trust it.
       // See `feedback_upstash_write_reread_race_in_handler.md`.
       const warmed = await warmMissingResilienceScores(missing.slice(0, SYNC_WARM_LIMIT));
-      for (const [countryCode, score] of warmed) cachedScores.set(countryCode, score);
+      for (const [countryCode, score] of warmed) {
+        cachedScores.set(countryCode, score);
+        warmedCountryCodes.push(countryCode);
+      }
     } catch (err) {
       console.warn('[resilience] ranking warmup failed:', err);
     }
@@ -174,20 +184,33 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     // meta would lie about success, downstream health flips between OK and
     // EMPTY, and operators chase phantom TTL/cron issues.
     //
-    // Sample 20 random keys (cheap: one extra round-trip ~50-200ms on Edge);
-    // refuse to write meta if fewer than half exist. The handler returns the
-    // computed response anyway, so callers still see correct data; only the
-    // cache + meta publish is skipped, letting the next cron retry naturally.
-    const sampleKeys = [...cachedScores.keys()].slice(0, 20).map(scoreCacheKey);
-    if (sampleKeys.length > 0) {
+    // Critical: sample from `warmedCountryCodes` (entries SET by THIS
+    // invocation), NOT from all of cachedScores. Pre-warmed entries came
+    // from `getCachedResilienceScores` — we just READ them, so they are
+    // tautologically present. The keys whose durability is uncertain are
+    // the ones we just WROTE. A naïve `slice(0, 20)` over cachedScores
+    // creates a blind spot: if the first 20 are pre-warmed and the
+    // durability failure only affects the warmed tail, the check passes
+    // and meta still lies (reviewer catch on PR #3458).
+    //
+    // Within the warmed set, shuffle before slicing so the same N entries
+    // aren't checked every invocation — partial-failure modes that
+    // consistently affect the same subset (e.g. last batch of 30 fails
+    // due to queue saturation) are more likely to be sampled.
+    //
+    // Cost: one extra ~50-200ms round-trip on Edge. Skip entirely when
+    // there were no warmed writes (cache hit on every country).
+    if (warmedCountryCodes.length > 0) {
+      const shuffled = [...warmedCountryCodes].sort(() => Math.random() - 0.5);
+      const sampleKeys = shuffled.slice(0, 20).map(scoreCacheKey);
       const verifyResults = await runRedisPipeline(sampleKeys.map((k) => ['EXISTS', k]));
       const actualPersisted = verifyResults.filter((r) => r?.result === 1).length;
       if (actualPersisted < sampleKeys.length * 0.5) {
         console.warn(
           `[resilience] persistence parity fail: ${actualPersisted}/${sampleKeys.length} ` +
-          `sampled score keys exist in Redis (cachedScores.size=${cachedScores.size}, ` +
-          `coverage=${(coverageRatio * 100).toFixed(0)}%) — refusing meta write to avoid ` +
-          `lying about ranking publish.`,
+          `sampled WARMED score keys exist in Redis (warmed=${warmedCountryCodes.length}, ` +
+          `cachedScores.size=${cachedScores.size}, coverage=${(coverageRatio * 100).toFixed(0)}%) — ` +
+          `refusing meta write to avoid lying about ranking publish.`,
         );
         return response;
       }

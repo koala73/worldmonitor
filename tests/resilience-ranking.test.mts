@@ -359,6 +359,81 @@ describe('resilience ranking contracts', () => {
       'seed-meta must NOT be written when parity check fails — that would be a lying meta');
   });
 
+  it('parity check: catches mixed persisted-tail failure (pre-warmed keys exist; new warmed-tail SETs return OK but do not persist)', async () => {
+    // Reviewer regression on PR #3458: a naïve `slice(0, 20)` over
+    // cachedScores would sample the FIRST 20 entries deterministically.
+    // If those first 20 are pre-warmed (already-persisted) score keys
+    // and the durability failure only affects the newly warmed tail,
+    // the parity check would pass and meta would still be written
+    // claiming scored=N — exactly the lying-meta state we're trying to
+    // prevent. The fix samples from `warmedCountryCodes` (entries SET
+    // by THIS invocation) rather than all of cachedScores; pre-warmed
+    // entries came from getCachedResilienceScores so they are
+    // tautologically present and verifying them is uninformative.
+    //
+    // Setup: 4 countries in the static index. Pre-cache 2 of them
+    // (NO + US) so they are tautologically present. The other 2
+    // (YE + ZZ) get warmed via the SET pipeline, but our mock returns
+    // OK without actually persisting them.
+    const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US', 'YE', 'ZZ'],
+      recordCount: 4,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    // Pre-cache NO + US WITH formula tag so getCachedResilienceScores admits them.
+    redis.set('resilience:score:v16:NO', JSON.stringify({
+      countryCode: 'NO', overallScore: 82, level: 'high',
+      domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
+      lowConfidence: false, imputationShare: 0.05, _formula: 'd6',
+    }));
+    redis.set('resilience:score:v16:US', JSON.stringify({
+      countryCode: 'US', overallScore: 61, level: 'medium',
+      domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
+      lowConfidence: false, imputationShare: 0.1, _formula: 'd6',
+    }));
+
+    // Hijack /pipeline so SETs to score:v16:* return OK but don't persist —
+    // simulating Upstash optimistic-OK on the warmed tail. Other commands
+    // (the bulk GET pre-cache check, EXISTS for parity, ranking + meta SETs)
+    // pass through to the real fake redis.
+    const optimisticOkOnWarmedTail = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const allScoreSets = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith('resilience:score:v16:'),
+        );
+        if (allScoreSets) {
+          // Return OK without mutating redis — the warmed-tail keys
+          // (YE, ZZ) "say" they landed but actually don't.
+          return new Response(
+            JSON.stringify(commands.map(() => ({ result: 'OK' }))),
+            { status: 200 },
+          );
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = optimisticOkOnWarmedTail;
+
+    await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    // Pre-fix (slice(0, 20) over cachedScores): NO + US would be sampled,
+    // both EXIST, parity check passes, meta gets written claiming
+    // scored=4 even though YE + ZZ are missing → lying meta.
+    //
+    // Post-fix (sample from warmedCountryCodes only): YE + ZZ are
+    // sampled, neither exists in Redis, parity check fails, meta
+    // refused.
+    assert.equal(redis.has('resilience:ranking:v16'), false,
+      'ranking must NOT be published when warmed-tail keys returned OK but did not persist (mixed-failure mode)');
+    assert.equal(redis.has('seed-meta:resilience:ranking'), false,
+      'seed-meta must NOT lie when only the warmed tail failed — sampling must focus on warmed entries, not cachedScores broadly');
+  });
+
   it('pipeline SETs apply env prefix so preview warms do not leak into production namespace', async () => {
     // Reviewer regression: passing `raw=true` to runRedisPipeline bypasses the
     // env-based key prefix (preview: / dev:) that isolates preview deploys
