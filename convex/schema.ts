@@ -213,6 +213,16 @@ export default defineSchema({
     lastRunStatus: v.optional(v.string()),
     lastRunAt: v.optional(v.number()),
     lastRunError: v.optional(v.string()),
+    // Lease for the in-flight cron run. Set atomically by `_claimTierForRun`
+    // BEFORE the runner makes any external side effects (assignAndExportWave,
+    // createProLaunchBroadcast, sendProLaunchBroadcast). Cleared by
+    // `_recordWaveSent` (success), `_recordRunOutcome` (failure), or
+    // `recoverFromPartialFailure` (operator). Two overlapping cron runs both
+    // attempting `_claimTierForRun` will see a lease already held and exit
+    // before any duplicate emails go out. Stale leases (older than
+    // STALE_LEASE_MS) can be overridden — the runner crashed mid-flight.
+    pendingRunId: v.optional(v.string()),
+    pendingRunStartedAt: v.optional(v.number()),
   }).index("by_key", ["key"]),
 
   // Phase 9 / Todo #223 — Clerk-user referral codes.

@@ -75,6 +75,16 @@ const UNDERFILL_RATIO = 0.5;
 
 const RAMP_KEY = "current";
 
+// Stale lease cutoff: if `pendingRunStartedAt` is older than this, assume the
+// previous runner crashed mid-flight and allow override. The lease itself is
+// cleared by every terminal outcome path (`_recordWaveSent`,
+// `_recordRunOutcome`, `recoverFromPartialFailure`), so we only hit this on a
+// genuine crash (e.g. Convex action timeout that kills the process between
+// claim and outcome record). 30 minutes is generous — the longest legitimate
+// runs (large rampCurve count) finish in seconds; 30min covers any retry
+// pattern Convex's runtime would use.
+const STALE_LEASE_MS = 30 * 60 * 1000;
+
 /**
  * Doc type derived from the schema. Convex generates this from
  * `convex/schema.ts:broadcastRampConfig` so it stays in sync with
@@ -205,20 +215,23 @@ export const clearKillGate = internalMutation({
 });
 
 /**
- * Clear a `partial-failure` block recorded by `runDailyRamp`. The runner
- * refuses to advance while `lastRunStatus === "partial-failure"` (so a
- * half-pushed export can't slip into a tier advance), and `clearKillGate`
- * does NOT clear this state — the kill-gate latch and the partial-failure
- * block are independent recovery paths with different operator
- * investigation requirements (kill-gate = email-reputation issue,
- * partial-failure = mechanical export/send failure). Without this
- * mutation, a partial-failure would block the cron forever short of
- * `abortRamp` or hand-patching the DB.
+ * Clear a `partial-failure` block recorded by `runDailyRamp`.
  *
- * Operator should investigate per the recorded `lastRunError` (e.g.
- * Resend logs for `failed > 0`, Convex logs for `stampFailed > 0`,
- * dashboard for `createProLaunchBroadcast` / `sendProLaunchBroadcast`
- * throws) BEFORE clearing.
+ * Naive clear is RISKY when the export already succeeded. Concrete failure
+ * shape: `assignAndExportWave` stamped contacts with `waveLabel` AND created
+ * the Resend segment, then `createProLaunchBroadcast` or `sendProLaunchBroadcast`
+ * threw. A bare clear lets the next cron retry with the SAME `waveLabel` →
+ * `assignAndExportWave` rejects because contacts are already stamped. The cron
+ * then thrashes on the same partial-failure indefinitely.
+ *
+ * Use `recoverFromPartialFailure` (below) instead — it requires the operator
+ * to declare what actually happened (manual send completed vs. discard-and-rotate)
+ * so the next cron lands cleanly.
+ *
+ * Kept as a "soft clear" for failures that DON'T involve a successful export
+ * (e.g. `assignAndExportWave` itself threw before any contact was stamped).
+ * Operator investigates and confirms zero stamps via the audience tables before
+ * calling this; mismatch is the operator's responsibility.
  */
 export const clearPartialFailure = internalMutation({
   args: { reason: v.string() },
@@ -231,8 +244,114 @@ export const clearPartialFailure = internalMutation({
     await ctx.db.patch(row._id, {
       lastRunStatus: `partial-failure-cleared: ${reason.slice(0, 200)}`,
       lastRunError: undefined,
+      pendingRunId: undefined,
+      pendingRunStartedAt: undefined,
     });
     return { ok: true };
+  },
+});
+
+/**
+ * Structured recovery for `lastRunStatus === "partial-failure"` that ALSO
+ * occurred AFTER `assignAndExportWave` succeeded. Two recovery modes:
+ *
+ *   manual-finished:
+ *     The operator manually completed the wave (e.g. `createProLaunchBroadcast`
+ *     ran fine in the Resend dashboard, send was triggered there or via
+ *     `npx convex run broadcast/sendBroadcast:sendProLaunchBroadcast`). Pass
+ *     the resulting broadcastId/segmentId/sentAt/assigned. Tier advances as
+ *     if the cron had succeeded; next kill-gate check uses the new
+ *     `lastWaveBroadcastId`.
+ *
+ *   discard-and-rotate:
+ *     The wave is written off (e.g. send is genuinely lost, can't or won't
+ *     retry manually). Bumps `waveLabelOffset` by 1 so the next cron uses a
+ *     FRESH `waveLabel` — the prior label's stamps remain in the audience
+ *     table and exclude those contacts from future picks (lost to this
+ *     campaign; operator can manually email them later if desired). Tier is
+ *     NOT advanced (no successful send to record).
+ *
+ * Both modes clear the lease and the partial-failure status.
+ */
+export const recoverFromPartialFailure = internalMutation({
+  args: {
+    recovery: v.union(
+      v.literal("manual-finished"),
+      v.literal("discard-and-rotate"),
+    ),
+    reason: v.string(),
+    // Required for recovery==='manual-finished' — fields that mirror the
+    // arguments _recordWaveSent would have used. Validated below.
+    broadcastId: v.optional(v.string()),
+    segmentId: v.optional(v.string()),
+    sentAt: v.optional(v.number()),
+    assigned: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const row = await loadConfig(ctx);
+    if (!row) throw new Error("[recoverFromPartialFailure] no ramp configured");
+    if (row.lastRunStatus !== "partial-failure") {
+      return {
+        ok: true as const,
+        noop: true as const,
+        currentStatus: row.lastRunStatus,
+      };
+    }
+
+    if (args.recovery === "manual-finished") {
+      if (
+        !args.broadcastId ||
+        !args.segmentId ||
+        args.sentAt === undefined ||
+        args.assigned === undefined
+      ) {
+        throw new Error(
+          "[recoverFromPartialFailure:manual-finished] broadcastId, segmentId, sentAt, assigned are all required",
+        );
+      }
+      const nextTier = row.currentTier + 1;
+      if (nextTier >= row.rampCurve.length) {
+        throw new Error(
+          `[recoverFromPartialFailure:manual-finished] currentTier=${row.currentTier} would advance past rampCurve.length=${row.rampCurve.length}. Curve is complete; nothing to recover.`,
+        );
+      }
+      const waveLabel = `${row.waveLabelPrefix}-${nextTier + row.waveLabelOffset}`;
+      await ctx.db.patch(row._id, {
+        currentTier: nextTier,
+        lastWaveLabel: waveLabel,
+        lastWaveBroadcastId: args.broadcastId,
+        lastWaveSegmentId: args.segmentId,
+        lastWaveAssigned: args.assigned,
+        lastWaveSentAt: args.sentAt,
+        lastRunStatus: `succeeded-via-manual-recovery: ${args.reason.slice(0, 200)}`,
+        lastRunAt: Date.now(),
+        lastRunError: undefined,
+        pendingRunId: undefined,
+        pendingRunStartedAt: undefined,
+      });
+      return {
+        ok: true as const,
+        recovery: "manual-finished" as const,
+        advancedToTier: nextTier,
+        waveLabel,
+      };
+    }
+
+    // discard-and-rotate
+    await ctx.db.patch(row._id, {
+      waveLabelOffset: row.waveLabelOffset + 1,
+      lastRunStatus: `partial-failure-discarded-rotated: ${args.reason.slice(0, 200)}`,
+      lastRunAt: Date.now(),
+      lastRunError: undefined,
+      pendingRunId: undefined,
+      pendingRunStartedAt: undefined,
+    });
+    return {
+      ok: true as const,
+      recovery: "discard-and-rotate" as const,
+      newWaveLabelOffset: row.waveLabelOffset + 1,
+      nextWaveLabel: `${row.waveLabelPrefix}-${row.currentTier + 1 + row.waveLabelOffset + 1}`,
+    };
   },
 });
 
@@ -274,6 +393,13 @@ export const getRampStatus = internalQuery({
       lastRunStatus: row.lastRunStatus,
       lastRunAt: row.lastRunAt,
       lastRunError: row.lastRunError,
+      pendingRunId: row.pendingRunId,
+      pendingRunStartedAt: row.pendingRunStartedAt,
+      // Operator-facing flag: is the lease currently held + fresh?
+      leaseHeld:
+        row.pendingRunId !== undefined &&
+        row.pendingRunStartedAt !== undefined &&
+        Date.now() - row.pendingRunStartedAt < STALE_LEASE_MS,
     };
   },
 });
@@ -290,14 +416,78 @@ async function loadConfig(
 }
 
 /**
- * Internal mutation that the action calls to atomically advance the
- * tier + record a successful wave-send. We use a mutation here (not a
- * patch from the action) so the read-modify-write is transactional —
- * two concurrent cron runs (which shouldn't happen, but just in case)
- * can't both advance the same tier.
+ * Atomically claim the lease before external side effects.
+ *
+ * Two concurrent cron runs (or a cron + a manually-triggered run, or a Convex
+ * runtime retry firing the action again) would both read the same `currentTier`,
+ * both proceed through `assignAndExportWave` + `createProLaunchBroadcast` +
+ * `sendProLaunchBroadcast` (DUPLICATE EMAILS), and only collide at
+ * `_recordWaveSent`. The tier check there is post-hoc; the emails have already
+ * gone out. This claim is the pre-side-effect lock.
+ *
+ * Returns `{ ok: true }` on success or `{ ok: false, reason }` for the runner
+ * to log and exit cleanly without side effects.
+ *
+ * Idempotency / staleness: a lease older than `STALE_LEASE_MS` is treated as
+ * abandoned (previous runner crashed) and overridable; a fresh lease blocks
+ * further claims. The new lease records `pendingRunId` and
+ * `pendingRunStartedAt` so the matching `_recordWaveSent` /
+ * `_recordRunOutcome` calls can validate they hold the lease they think they do.
+ */
+export const _claimTierForRun = internalMutation({
+  args: {
+    runId: v.string(),
+    expectedCurrentTier: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const row = await loadConfig(ctx);
+    if (!row) {
+      return { ok: false as const, reason: "no-config" as const };
+    }
+    if (row.currentTier !== args.expectedCurrentTier) {
+      return {
+        ok: false as const,
+        reason: "tier-moved" as const,
+        actualTier: row.currentTier,
+      };
+    }
+    const now = Date.now();
+    if (
+      row.pendingRunId &&
+      row.pendingRunStartedAt &&
+      now - row.pendingRunStartedAt < STALE_LEASE_MS
+    ) {
+      return {
+        ok: false as const,
+        reason: "lease-held" as const,
+        heldBy: row.pendingRunId,
+        ageMs: now - row.pendingRunStartedAt,
+      };
+    }
+    if (row.pendingRunId && row.pendingRunStartedAt) {
+      console.warn(
+        `[_claimTierForRun] overriding stale lease ${row.pendingRunId} ` +
+          `(age ${Math.round((now - row.pendingRunStartedAt) / 1000)}s > ${STALE_LEASE_MS / 1000}s) ` +
+          `— previous runner likely crashed mid-flight without releasing.`,
+      );
+    }
+    await ctx.db.patch(row._id, {
+      pendingRunId: args.runId,
+      pendingRunStartedAt: now,
+    });
+    return { ok: true as const };
+  },
+});
+
+/**
+ * Internal mutation that the action calls to atomically advance the tier +
+ * record a successful wave-send. Validates that the lease still belongs to
+ * this runId — protects against the (extremely unlikely) case where the
+ * lease was overridden as stale by another run while we were still working.
  */
 export const _recordWaveSent = internalMutation({
   args: {
+    runId: v.string(),
     expectedCurrentTier: v.number(),
     newTier: v.number(),
     waveLabel: v.string(),
@@ -314,6 +504,18 @@ export const _recordWaveSent = internalMutation({
         `[_recordWaveSent] tier moved underneath us: expected ${args.expectedCurrentTier}, found ${row.currentTier}. Refusing to overwrite.`,
       );
     }
+    if (row.pendingRunId !== args.runId) {
+      // The lease changed under us. Either:
+      //   (a) our lease was overridden as stale by another run while we were
+      //       still in flight, OR
+      //   (b) the lease was cleared by an operator action (recoverFromPartialFailure).
+      // Either way, we must NOT advance the tier — another run may be in flight
+      // and would conflict, or the operator has taken control. Fall through to
+      // an error so Convex auto-Sentry captures and ops can investigate.
+      throw new Error(
+        `[_recordWaveSent] lease lost: expected runId=${args.runId}, found ${row.pendingRunId ?? "<cleared>"}. Refusing to advance tier — investigate what cleared the lease.`,
+      );
+    }
     await ctx.db.patch(row._id, {
       currentTier: args.newTier,
       lastWaveLabel: args.waveLabel,
@@ -324,18 +526,25 @@ export const _recordWaveSent = internalMutation({
       lastRunStatus: "succeeded",
       lastRunAt: Date.now(),
       lastRunError: undefined,
+      pendingRunId: undefined,
+      pendingRunStartedAt: undefined,
     });
     return { ok: true };
   },
 });
 
 /**
- * Mutation that records a non-success outcome of a cron run without
- * advancing the tier. Used for kill-gate trips, drained pool, partial
- * failures, and "wait for prior wave to settle" deferrals.
+ * Mutation that records a non-success outcome of a cron run without advancing
+ * the tier. Used for kill-gate trips, drained pool, partial failures, and
+ * "wait for prior wave to settle" deferrals.
+ *
+ * Always clears the lease (if held by this runId). The lease must not outlive
+ * the run, otherwise the next cron run sees `lease-held` and skips, and
+ * eventually expires via STALE_LEASE_MS — bigger lockout window than necessary.
  */
 export const _recordRunOutcome = internalMutation({
   args: {
+    runId: v.optional(v.string()), // optional for backwards-compat with pre-claim deferrals
     status: v.string(),
     error: v.optional(v.string()),
     killGate: v.optional(v.boolean()),
@@ -356,6 +565,12 @@ export const _recordRunOutcome = internalMutation({
     }
     if (args.deactivate) {
       patch.active = false;
+    }
+    // Clear the lease if it's ours. Avoids stomping a lease that some other
+    // run claimed after we lost ours (e.g. our lease was overridden as stale).
+    if (args.runId && row.pendingRunId === args.runId) {
+      patch.pendingRunId = undefined;
+      patch.pendingRunStartedAt = undefined;
     }
     await ctx.db.patch(row._id, patch);
   },
@@ -496,7 +711,34 @@ export const runDailyRamp = internalAction({
     }
     const waveLabel = `${row.waveLabelPrefix}-${nextTier + row.waveLabelOffset}`;
 
-    // ──── Step 3: pick + stamp + create segment + push ────
+    // ──── Step 3a: ATOMICALLY CLAIM THE LEASE before any external side effect ────
+    // Two concurrent runs (cron + manual trigger, Convex retry, misconfigured
+    // schedule) both pass kill-gate / tier-bounds checks above before anything
+    // mutates state. Without this claim, both would proceed through
+    // assignAndExportWave + createProLaunchBroadcast + sendProLaunchBroadcast,
+    // duplicate-emailing every recipient, and only collide at _recordWaveSent.
+    // Claim the lease BEFORE any external side effect so the loser exits clean.
+    const runId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `run-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const claim: { ok: boolean; reason?: string; actualTier?: number; heldBy?: string; ageMs?: number } =
+      await ctx.runMutation(internal.broadcast.rampRunner._claimTierForRun, {
+        runId,
+        expectedCurrentTier: row.currentTier,
+      });
+    if (!claim.ok) {
+      console.log(
+        `[runDailyRamp] claim rejected (${claim.reason}${
+          claim.heldBy ? `, heldBy=${claim.heldBy}, ageMs=${claim.ageMs}` : ""
+        }${claim.actualTier !== undefined ? `, actualTier=${claim.actualTier}` : ""}) — skip`,
+      );
+      // Don't record an outcome here — the other holder will record theirs;
+      // recording ours would stomp their lease/status. Just exit.
+      return { status: `claim-rejected-${claim.reason}` };
+    }
+
+    // ──── Step 3b: pick + stamp + create segment + push ────
     let exportResult: WaveExportStats;
     try {
       exportResult = await ctx.runAction(
@@ -507,7 +749,7 @@ export const runDailyRamp = internalAction({
       const msg = err instanceof Error ? err.message : String(err);
       await ctx.runMutation(
         internal.broadcast.rampRunner._recordRunOutcome,
-        { status: "partial-failure", error: msg },
+        { runId, status: "partial-failure", error: msg },
       );
       throw err; // bubble so Convex auto-Sentry captures
     }
@@ -522,11 +764,11 @@ export const runDailyRamp = internalAction({
     // Operator clears via the same `lastRunStatus === partial-failure`
     // gate that handles other partial-failure paths.
     if (exportResult.failed > 0 || exportResult.stampFailed > 0) {
-      const reason = `assignAndExportWave partial: failed=${exportResult.failed}, stampFailed=${exportResult.stampFailed} (segment=${exportResult.segmentId}, assigned=${exportResult.assigned}, requested=${count}). Investigate Resend logs + Convex stamp errors before resuming; stampFailed contacts are in the segment but unstamped (duplicate-email risk).`;
+      const reason = `assignAndExportWave partial: failed=${exportResult.failed}, stampFailed=${exportResult.stampFailed} (segment=${exportResult.segmentId}, assigned=${exportResult.assigned}, requested=${count}, waveLabel=${waveLabel}). Investigate Resend logs + Convex stamp errors before resuming; stampFailed contacts are in the segment but unstamped (duplicate-email risk).`;
       console.error(`[runDailyRamp] ${reason}`);
       await ctx.runMutation(
         internal.broadcast.rampRunner._recordRunOutcome,
-        { status: "partial-failure", error: reason },
+        { runId, status: "partial-failure", error: reason },
       );
       return { status: "partial-failure", detail: reason };
     }
@@ -539,7 +781,7 @@ export const runDailyRamp = internalAction({
       console.log(`[runDailyRamp] ${reason} — deactivating`);
       await ctx.runMutation(
         internal.broadcast.rampRunner._recordRunOutcome,
-        { status: "pool-drained", deactivate: true, error: reason },
+        { runId, status: "pool-drained", deactivate: true, error: reason },
       );
       return { status: "pool-drained", detail: reason };
     }
@@ -559,8 +801,9 @@ export const runDailyRamp = internalAction({
       await ctx.runMutation(
         internal.broadcast.rampRunner._recordRunOutcome,
         {
+          runId,
           status: "partial-failure",
-          error: `createProLaunchBroadcast: ${msg} (segmentId=${exportResult.segmentId}, ${exportResult.assigned} contacts stamped + in segment)`,
+          error: `createProLaunchBroadcast: ${msg} (waveLabel=${waveLabel}, segmentId=${exportResult.segmentId}, ${exportResult.assigned} contacts stamped + in segment). Recovery: see recoverFromPartialFailure(${JSON.stringify({ recovery: "manual-finished" })}) or recoverFromPartialFailure(${JSON.stringify({ recovery: "discard-and-rotate" })}).`,
         },
       );
       throw err;
@@ -576,8 +819,9 @@ export const runDailyRamp = internalAction({
       await ctx.runMutation(
         internal.broadcast.rampRunner._recordRunOutcome,
         {
+          runId,
           status: "partial-failure",
-          error: `sendProLaunchBroadcast: ${msg} (broadcastId=${broadcastId} — preview in Resend dashboard and fire manually if appropriate)`,
+          error: `sendProLaunchBroadcast: ${msg} (waveLabel=${waveLabel}, segmentId=${exportResult.segmentId}, broadcastId=${broadcastId}, assigned=${exportResult.assigned}). Recovery: preview in Resend dashboard; if it sent fine, recoverFromPartialFailure({recovery:'manual-finished', broadcastId, ...}). If it didn't, send manually then call manual-finished, OR call recoverFromPartialFailure({recovery:'discard-and-rotate'}) to bump waveLabelOffset and let next cron retry with a fresh label.`,
         },
       );
       throw err;
@@ -585,6 +829,7 @@ export const runDailyRamp = internalAction({
 
     // ──── Step 5: record success ────
     await ctx.runMutation(internal.broadcast.rampRunner._recordWaveSent, {
+      runId,
       expectedCurrentTier: row.currentTier,
       newTier: nextTier,
       waveLabel,
