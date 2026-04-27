@@ -16,6 +16,8 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
+// @ts-expect-error — JS module, no declaration file
+import { extractConvexErrorKind, readConvexErrorNumber } from './_convex-error.js';
 import { ConvexHttpClient } from 'convex/browser';
 import { validateBearerToken } from '../server/auth-session';
 
@@ -120,14 +122,13 @@ export default async function handler(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     const kind = extractConvexErrorKind(err, msg);
-    const errData = (err as { data?: unknown })?.data;
     if (kind === 'CONFLICT') {
-      // Echo `actualSyncVersion` from the structured ConvexError so the
-      // client can refresh its local sync state in one round-trip instead
-      // of re-fetching getPreferences.
-      const actualSyncVersion = (errData && typeof errData === 'object' && 'actualSyncVersion' in errData)
-        ? (errData as Record<string, unknown>).actualSyncVersion
-        : undefined;
+      // Echo `actualSyncVersion` from the structured ConvexError when present
+      // and numeric so the client can refresh its local sync state without a
+      // follow-up GET. Type-guarded at the boundary — the response contract
+      // is `actualSyncVersion?: number`, so we drop non-numeric values rather
+      // than forwarding them as `unknown`.
+      const actualSyncVersion = readConvexErrorNumber(err, 'actualSyncVersion');
       return jsonResponse(
         actualSyncVersion !== undefined ? { error: 'CONFLICT', actualSyncVersion } : { error: 'CONFLICT' },
         409,
@@ -163,32 +164,6 @@ export default async function handler(
   }
 }
 
-/**
- * Extract the named-error `kind` from a Convex client throw, preferring the
- * structured `err.data.kind` (set when the server throws
- * `ConvexError({ kind, ... })`) and falling back to substring-matching the
- * legacy string-data error message (`ConvexError("CONFLICT")`).
- *
- * Rationale: Convex's HTTP client wire format only forwards `errorData` to
- * the client when the server-side `ConvexError` carries object-typed data.
- * String-data ConvexErrors arrive as `Error("[Request ID: X] Server Error")`
- * with `errorData` undefined — so a `msg.includes('CONFLICT')` check NEVER
- * matches and the throw gets misclassified as a 500. The structured-data
- * path is the load-bearing one; the legacy string-match is a safety net for
- * the deploy-ordering window where Vercel may run a build that pre-dates
- * the Convex server-side update.
- */
-function extractConvexErrorKind(err: unknown, msg: string): string | null {
-  const data = (err as { data?: unknown })?.data;
-  if (data && typeof data === 'object' && 'kind' in data) {
-    const kind = (data as Record<string, unknown>).kind;
-    if (typeof kind === 'string') return kind;
-  }
-  if (msg.includes('CONFLICT')) return 'CONFLICT';
-  if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
-  if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
-  return null;
-}
 
 /**
  * Build a captureSilentError context that carries enough provenance to triage
