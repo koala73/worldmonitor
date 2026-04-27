@@ -446,6 +446,19 @@ Sentry.init({
     // (WORLDMONITOR-NJ).
     if (/Cannot read properties of undefined \(reading 'fetchToken'\)/.test(msg)
         && frames.some(f => /tryToReauthenticate/.test(f.function ?? ''))) return null;
+    // Stale-chunk-after-deploy: modulepreload / dynamic import failures arrive with no
+    // stack trace because the browser fires them as synthetic TypeErrors at fetch time,
+    // not at any first-party call site. The chunk-reload guard auto-reloads the page,
+    // so the user is unaffected — but the Sentry event is still captured. Drop these
+    // even when frames.length === 0 (WORLDMONITOR-Q / WORLDMONITOR-15). The phrases
+    // are runtime-emitted only — our shipped code cannot synthesize them. Browser
+    // variants: Chrome/Edge `Failed to fetch dynamically imported module: <url>`,
+    // Safari `Importing a module script failed.`, Firefox `error loading dynamically
+    // imported module`.
+    if (
+      !hasFirstParty
+      && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed/i.test(msg)
+    ) return null;
     if (hasAnyStack && !hasFirstParty && (
       /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
       || /Maximum call stack size exceeded/.test(msg)
@@ -459,7 +472,6 @@ Sentry.init({
       || /^(?:TypeError: )?Failed to fetch$/.test(msg)
       || /^TypeError: NetworkError/.test(msg)
       || /Could not connect to the server/.test(msg)
-      || /(?:Failed to fetch|Importing a module script failed|error loading) dynamically imported module/i.test(msg)
       || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))
       || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
       || /Invalid or unexpected token/.test(msg)
@@ -488,6 +500,7 @@ function shouldSuppressCspViolation(
   blockedURI: string,
   sourceFile: string,
   cspConnectSrcAllowsHttps: boolean,
+  firstPartyConvexHost: string | null,
 ): boolean {
   // Skip non-enforced violations (report-only from dual-CSP interaction).
   if (disposition && disposition !== 'enforce') return true;
@@ -497,6 +510,38 @@ function shouldSuppressCspViolation(
     try {
       if (new URL(blockedURI).protocol === 'https:') return true;
     } catch { /* scheme-only values like "blob" fall through */ }
+  }
+  // First-party Convex backend: corporate proxies / privacy extensions that mutate the
+  // page CSP (stripping bare `https:` from connect-src) cause our Convex sync calls to
+  // be CSP-blocked even though our policy allows them. Suppress unconditionally for OUR
+  // configured Convex deployment hostname (`VITE_CONVEX_URL`) so we don't drown Sentry
+  // in 1M+ events/month from those users (WORLDMONITOR-HN). Convex is multi-tenant —
+  // do NOT suppress all `*.convex.cloud`, that would silently swallow blocks to foreign/
+  // attacker-controlled Convex projects. Match by exact hostname only. Real first-party
+  // CSP regressions on this host are caught by the staging deploy + uptime check.
+  if (directive === 'connect-src' && firstPartyConvexHost) {
+    try {
+      if (new URL(blockedURI).hostname === firstPartyConvexHost) return true;
+    } catch { /* scheme-only values fall through */ }
+  }
+  // YouTube IFrame API loader: explicitly allowed by our script-src
+  // (`https://www.youtube.com`), so a block here means a third party (extension,
+  // corporate proxy, in-app webview) mutated the policy. Not actionable — embedded
+  // video remains broken in that user's environment regardless of our code
+  // (WORLDMONITOR-HP).
+  if (
+    (directive === 'script-src-elem' || directive === 'script-src')
+    && /^https:\/\/www\.youtube\.com\/iframe_api(?:\?|$)/.test(blockedURI)
+  ) return true;
+  // Zscaler enterprise content-filter proxy: `gateway.zscloud.net` is injected into
+  // corporate users' frames by Zscaler's web filter agent. We never load it ourselves;
+  // it's inserted into the host page outside our control (WORLDMONITOR-HT). Match by
+  // parsed hostname so a `gateway.zscloud.net.evil.com` lookalike doesn't bypass the
+  // surrounding signal filters.
+  if (directive === 'frame-src') {
+    try {
+      if (new URL(blockedURI).hostname === 'gateway.zscloud.net') return true;
+    } catch { /* scheme-only values fall through */ }
   }
   // Browser extensions or injected scripts.
   if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(sourceFile) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blockedURI)) return true;
@@ -539,6 +584,16 @@ const _cspAllowsHttps = (() => {
   if (!metaEl) return false;
   return metaAllows;
 })();
+// Resolve our configured Convex deployment hostname once. Convex is multi-tenant —
+// the CSP filter must scope its first-party suppression to OUR specific hostname,
+// not all *.convex.cloud, otherwise blocks to foreign/attacker tenants get silently
+// dropped too. Returns null when the env var is missing (dev/test); the filter
+// then leaves connect-src violations to fall through to the next rule.
+const _firstPartyConvexHost = ((): string | null => {
+  const url = import.meta.env.VITE_CONVEX_URL;
+  if (typeof url !== 'string' || url.length === 0) return null;
+  try { return new URL(url).hostname; } catch { return null; }
+})();
 // @ts-ignore — expose for tests
 window.__shouldSuppressCspViolation = shouldSuppressCspViolation;
 
@@ -552,6 +607,7 @@ window.addEventListener('securitypolicyviolation', (e) => {
     blocked,
     e.sourceFile ?? '',
     _cspAllowsHttps,
+    _firstPartyConvexHost,
   )) return;
   Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
     level: 'warning',

@@ -154,6 +154,67 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     });
   });
 
+  describe('first-party infrastructure (mutated user CSP)', () => {
+    // Corporate proxies / privacy extensions strip bare `https:` from connect-src in
+    // the user's effective policy, blocking our first-party Convex backend even though
+    // our policy allows it. Suppress unconditionally for our exact configured Convex
+    // host so we don't drown Sentry in events from those users (WORLDMONITOR-HN).
+    // Convex is multi-tenant — must NOT broaden to all *.convex.cloud (would silently
+    // suppress blocks to foreign / attacker-controlled tenants).
+    const FIRST_PARTY_CONVEX = 'tacit-curlew-777.convex.cloud';
+
+    it('suppresses connect-src to OUR configured convex host', () => {
+      assert.ok(suppress('enforce', 'connect-src', 'https://tacit-curlew-777.convex.cloud/api/1.34.0/sync', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to a DIFFERENT *.convex.cloud tenant (multi-tenant safety)', () => {
+      // Multi-tenant Convex: any other adjective-noun-N.convex.cloud is a foreign
+      // project. A real user-side block to one of these is signal, not noise.
+      assert.ok(!suppress('enforce', 'connect-src', 'https://abc-def-123.convex.cloud/api/x', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to a similarly-named *.convex.cloud tenant', () => {
+      // e.g. attacker-controlled `tacit-curlew-778.convex.cloud` — exact-hostname
+      // match prevents a typo/lookalike from being whitelisted.
+      assert.ok(!suppress('enforce', 'connect-src', 'https://tacit-curlew-778.convex.cloud/api/1.34.0/sync', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to suffix-spoof lookalike `convex.cloud.evil.com`', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'https://convex.cloud.evil.com/api', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to OUR convex host when firstPartyConvexHost is null (env unconfigured)', () => {
+      // Dev/test environments without VITE_CONVEX_URL set should leave the filter
+      // open — falls through to other rules (extension, blob, etc.) instead of
+      // accidentally whitelisting on a stale closure.
+      assert.ok(!suppress('enforce', 'connect-src', 'https://tacit-curlew-777.convex.cloud/api/1.34.0/sync', '', false, null));
+    });
+
+    it('suppresses script-src-elem for YouTube IFrame API loader', () => {
+      assert.ok(suppress('enforce', 'script-src-elem', 'https://www.youtube.com/iframe_api', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses script-src-elem for YouTube IFrame API with cache-buster', () => {
+      assert.ok(suppress('enforce', 'script-src-elem', 'https://www.youtube.com/iframe_api?ver=1', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses script-src for YouTube IFrame API loader (browser-variant directive)', () => {
+      assert.ok(suppress('enforce', 'script-src', 'https://www.youtube.com/iframe_api', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress other youtube.com paths under script-src-elem', () => {
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://www.youtube.com/embed/abc', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses frame-src for Zscaler corporate proxy injection', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'https://gateway.zscloud.net/auth/sso', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to Zscaler (only frame-src is the injection)', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'https://gateway.zscloud.net/api', '', false, FIRST_PARTY_CONVEX));
+    });
+  });
+
   describe('real violations pass through', () => {
     it('reports third-party script-src violation', () => {
       assert.ok(!suppress('enforce', 'script-src', 'https://evil.com/crypto-miner.js', '', true));

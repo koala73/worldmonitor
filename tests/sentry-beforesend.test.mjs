@@ -133,12 +133,14 @@ describe('first-party file detection', () => {
 // ─── P1: empty-stack behavior for network/timeout errors ─────────────────
 
 describe('empty-stack network/timeout errors are NOT suppressed', () => {
+  // Note: dynamic-module-import failures are intentionally suppressed even with empty
+  // stacks — that exact phrase is emitted only by the runtime on stale-chunk-after-
+  // deploy, which the chunk-reload guard already auto-recovers. See the dedicated
+  // suite below for that case (WORLDMONITOR-Q / WORLDMONITOR-15).
   const networkErrors = [
     'TypeError: Failed to fetch',
     'TypeError: NetworkError when attempting to fetch resource.',
     'Could not connect to the server',
-    'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/panels-abc.js',
-    'Importing a module script failed.',
     'Operation timed out',
     'signal timed out',
     'Invalid or unexpected token',
@@ -193,6 +195,42 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
     it(`lets through SyntaxError (split: value="${value}") with first-party stack`, () => {
       const event = makeEvent(value, type, [firstPartyFrame()]);
       assert.ok(beforeSend(event) !== null);
+    });
+  }
+});
+
+// ─── Stale-chunk-after-deploy: dynamic-module-import failures ────────────
+//
+// Modulepreload / dynamic-import failures arrive with no stack trace because the
+// browser fires them as synthetic TypeErrors at fetch time, not at any first-party
+// call site. The chunk-reload guard auto-reloads the page, so the user is unaffected
+// — but the Sentry event is still captured. We suppress these even with empty stacks
+// because the exact phrase is only emitted by the runtime, never by our shipped code
+// (WORLDMONITOR-Q / WORLDMONITOR-15).
+
+describe('dynamic-module-import failures (stale chunk after deploy)', () => {
+  const dynamicImportErrors = [
+    'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/panels-abc.js',
+    'Failed to fetch dynamically imported module: https://www.worldmonitor.app/assets/index-DSkSc57y.js',
+    'Importing a module script failed.',
+    'TypeError: Importing a module script failed.',
+    'error loading dynamically imported module',
+  ];
+
+  for (const msg of dynamicImportErrors) {
+    it(`suppresses "${msg.slice(0, 60)}..." with empty stack`, () => {
+      const event = makeEvent(msg, 'TypeError', []);
+      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard handles it)`);
+    });
+
+    it(`suppresses "${msg.slice(0, 60)}..." with confirmed third-party stack`, () => {
+      const event = makeEvent(msg, 'TypeError', [extensionFrame()]);
+      assert.equal(beforeSend(event), null);
+    });
+
+    it(`lets through "${msg.slice(0, 60)}..." with first-party stack`, () => {
+      const event = makeEvent(msg, 'TypeError', [firstPartyFrame()]);
+      assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
 });

@@ -50,7 +50,14 @@ function parseStack(stack) {
 
 /**
  * @param {unknown} err
- * @param {{ tags?: Record<string, string|number|boolean>, extra?: Record<string, unknown> }} [ctx]
+ * @param {{
+ *   tags?: Record<string, string|number|boolean>,
+ *   extra?: Record<string, unknown>,
+ *   fingerprint?: string[],
+ * }} [ctx] When `fingerprint` is a non-empty array it overrides Sentry's
+ *   default message-based grouping. Use to consolidate one logical issue
+ *   whose error message contains a high-cardinality token (request id,
+ *   trace id) that would otherwise fragment grouping into N issues.
  * @param {{ runtime: 'edge' | 'node', platform: 'javascript' | 'node' }} runtimeCfg
  */
 function buildEnvelope(err, ctx, runtimeCfg) {
@@ -78,6 +85,12 @@ function buildEnvelope(err, ctx, runtimeCfg) {
     },
     tags: { surface: 'api', runtime: runtimeCfg.runtime, ...(ctx?.tags ?? {}) },
     extra: ctx?.extra,
+    // Caller-supplied fingerprint overrides Sentry's default grouping.
+    // Use when the error message contains a high-cardinality token (request id,
+    // ephemeral hash) that would otherwise split one logical issue into many.
+    ...(Array.isArray(ctx?.fingerprint) && ctx.fingerprint.length > 0
+      ? { fingerprint: ctx.fingerprint }
+      : {}),
   };
 
   // Envelope format: header line, item header line, item payload line.
