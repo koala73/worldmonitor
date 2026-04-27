@@ -61,6 +61,21 @@ describe('notifications-settings.ts — sensitivity dropdown placement', () => {
       'sensitivity helper text must match the server error wording',
     );
   });
+
+  it('helper text is conditionally hidden in digest mode (Greptile P2)', () => {
+    // The hint is only relevant when isRealtime — digest users would otherwise
+    // see "Real-time delivery requires..." copy that doesn't apply to them.
+    assert.match(
+      src,
+      /id="usSensitivityHint"\s+style="[^"]*\$\{isRealtime\s*\?\s*''\s*:\s*'display:none'\}/,
+      'usSensitivityHint must conditionally hide via display:none when !isRealtime',
+    );
+    assert.match(
+      src,
+      /hintEl\.style\.display\s*=\s*isRt\s*\?\s*''\s*:\s*'none'/,
+      'mode-change handler must toggle usSensitivityHint display on dimension change',
+    );
+  });
 });
 
 describe('notifications-settings.ts — mode-change behavior', () => {

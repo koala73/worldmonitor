@@ -191,6 +191,44 @@ describe("alertRules — insert-only default for sensitivity", () => {
     );
     expect(rows[0]?.sensitivity).toBe("high");
   });
+
+  test("setQuietHoursForUser does NOT throw on pre-migration forbidden row (Greptile P1)", async () => {
+    // Before fix: assertCompatibleDeliveryMode was called on every quiet-hours
+    // save, so pre-migration (realtime, all) rows would fail with INCOMPATIBLE_DELIVERY
+    // → generic 500 (no passthrough on set-quiet-hours HTTP action). Quiet-hours
+    // updates on a forbidden row must succeed because they don't touch the pair.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("alertRules", {
+        userId: USER.subject,
+        variant: VARIANT,
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "all",
+        channels: [],
+        // digestMode absent → effective 'realtime' (forbidden pair)
+        updatedAt: Date.now(),
+      });
+    });
+    await t.mutation(internal.alertRules.setQuietHoursForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      quietHoursEnabled: true,
+      quietHoursStart: 22,
+      quietHoursEnd: 7,
+      quietHoursTimezone: "UTC",
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", VARIANT))
+        .collect(),
+    );
+    expect(rows[0]?.quietHoursEnabled).toBe(true);
+    expect(rows[0]?.quietHoursStart).toBe(22);
+    // Sensitivity preserved — no silent migration via this path.
+    expect(rows[0]?.sensitivity).toBe("all");
+  });
 });
 
 // ---------------------------------------------------------------------------

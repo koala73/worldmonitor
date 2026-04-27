@@ -281,10 +281,15 @@ export const setQuietHours = mutation({
       }
     }
 
-    // Default-insert path can create a fresh row — make sure the pair we'd insert
-    // is compatible (sensitivity defaults to 'high' via resolveEffectivePair).
+    // resolveEffectivePair supplies sensitivity:'high' on fresh insert (compatible
+    // by construction). We DO NOT call assertCompatibleDeliveryMode here — quiet-hours
+    // mutations don't touch the (digestMode, sensitivity) pair, so blocking unrelated
+    // quiet-hours updates on pre-migration forbidden rows would surface as confusing
+    // generic 500s ('set-quiet-hours' HTTP action has no INCOMPATIBLE_DELIVERY
+    // passthrough). The relay coerce-at-read protects delivery for in-flight forbidden
+    // rows; the migration drains them.
+    // See plans/forbid-realtime-all-events.md + PR #3461 Greptile P1.
     const pair = resolveEffectivePair({ existing: existing ?? undefined });
-    assertCompatibleDeliveryMode(pair);
 
     const now = Date.now();
     const patch = {
@@ -380,9 +385,11 @@ export const setQuietHoursForUser = internalMutation({
       }
     }
 
-    // Default-insert path can create a fresh row — make sure the pair we'd insert is compatible.
+    // No assertCompatibleDeliveryMode here — quiet-hours mutations don't touch
+    // the (digestMode, sensitivity) pair. See setQuietHours above for the full
+    // rationale. resolveEffectivePair still supplies sensitivity:'high' on fresh
+    // insert (compatible by construction).
     const pair = resolveEffectivePair({ existing: existing ?? undefined });
-    assertCompatibleDeliveryMode(pair);
 
     const now = Date.now();
     const patch = {

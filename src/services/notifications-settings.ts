@@ -310,7 +310,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             <option value="high"${sensitivity === 'high' || (sensitivity === 'all' && isRealtime) ? ' selected' : ''}>High &amp; critical</option>
             <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
           </select>
-          <div class="ai-flow-toggle-desc" id="usSensitivityHint" style="margin-top:4px">Real-time delivery requires High or Critical. To receive all events, switch to a digest cadence.</div>
+          <div class="ai-flow-toggle-desc" id="usSensitivityHint" style="margin-top:4px;${isRealtime ? '' : 'display:none'}">Real-time delivery requires High or Critical. To receive all events, switch to a digest cadence.</div>
           <div id="usRealtimeSection" style="${isRealtime ? '' : 'display:none'}">
             <div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
@@ -501,6 +501,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             allOption.disabled = isRt;
             allOption.textContent = isRt ? 'All events (digest only)' : 'All events';
           }
+          // The sensitivity hint only applies in realtime mode (where 'all' is
+          // disabled); hide it in digest mode. Greptile P2 on PR #3461.
+          const hintEl = container.querySelector<HTMLElement>('#usSensitivityHint');
+          if (hintEl) hintEl.style.display = isRt ? '' : 'none';
           let snappedSensitivity: 'all' | 'high' | 'critical' | undefined;
           if (isRt && sensitivityEl?.value === 'all') {
             sensitivityEl.value = 'high';
