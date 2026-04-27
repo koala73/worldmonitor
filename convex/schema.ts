@@ -138,9 +138,22 @@ export default defineSchema({
     referralCode: v.optional(v.string()),
     referredBy: v.optional(v.string()),
     referralCount: v.optional(v.number()),
+    // Per-row stamp recording which PRO-launch broadcast wave a
+    // registrant landed in (e.g. "canary-250", "wave-2", "wave-3").
+    // Future wave-export actions filter on `proLaunchWave === undefined`
+    // to pick only un-emailed registrants. Optional so existing rows
+    // pass schema validation; the canary-250 backfill stamps the 244
+    // contacts already emailed yesterday, future waves stamp themselves
+    // at export time.
+    proLaunchWave: v.optional(v.string()),
+    proLaunchWaveAssignedAt: v.optional(v.number()),
   })
     .index("by_normalized_email", ["normalizedEmail"])
-    .index("by_referral_code", ["referralCode"]),
+    .index("by_referral_code", ["referralCode"])
+    // Index on the wave stamp so future picks can scan only-stamped
+    // / only-unstamped efficiently without a full table scan against
+    // tens of thousands of registrations.
+    .index("by_proLaunchWave", ["proLaunchWave"]),
 
   // Phase 9 / Todo #223 — Clerk-user referral codes.
   // The `registrations.referralCode` column uses a 6-char hash of
