@@ -16,6 +16,7 @@ import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
+import { recomputeEntitlementFromAllSubs } from "./subscriptionHelpers";
 
 // UUID v4 regex matching values produced by crypto.randomUUID() in user-identity.ts.
 // Hoisted to module scope to avoid re-allocation on every claimSubscription call.
@@ -470,6 +471,76 @@ export const grantComplimentaryEntitlement = internalMutation({
       planKey: args.planKey,
       validUntil,
       compUntil,
+    };
+  },
+});
+
+/**
+ * Deletes a subscription row from Convex by Dodo subscription_id.
+ *
+ * Ops tool. Use when a Dodo subscription was cancelled/refunded admin-side
+ * but you don't want its eventual `subscription.expired` webhook to clobber
+ * the user's entitlement (e.g. user upgraded by buying a separate higher-tier
+ * sub on the same userId — see the multi-active-sub guard in
+ * subscriptionHelpers.ts; this mutation is the explicit-cleanup counterpart
+ * for cases where you want zero-risk by removing the row entirely).
+ *
+ * Recomputes the entitlement from the user's remaining active subs after
+ * deletion. If none remain, downgrades to free.
+ *
+ * The audit trail (paymentEvents, webhookEvents) is preserved.
+ *
+ * Typical usage (CLI):
+ *   npx convex run 'payments/billing:deleteSubscriptionByDodoId' \
+ *     '{"dodoSubscriptionId":"sub_XXX","reason":"refunded by admin, user has higher-tier active sub"}'
+ */
+export const deleteSubscriptionByDodoId = internalMutation({
+  args: {
+    dodoSubscriptionId: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", args.dodoSubscriptionId),
+      )
+      .unique();
+    if (!sub) {
+      throw new Error(
+        `[billing] deleteSubscriptionByDodoId: no subscription found with dodoSubscriptionId="${args.dodoSubscriptionId}"`,
+      );
+    }
+
+    const userId = sub.userId;
+    await ctx.db.delete(sub._id);
+    console.log(
+      `[billing] deleteSubscriptionByDodoId userId=${userId} dodoSubscriptionId=${args.dodoSubscriptionId} planKey=${sub.planKey} reason="${args.reason}"`,
+    );
+
+    // Re-derive the entitlement from the user's REMAINING subscriptions
+    // through the same shared helper that subscription event handlers use.
+    // This guarantees identical precedence (tier > PLAN_PRECEDENCE >
+    // currentPeriodEnd) and identical comp-floor handling, so admin cleanup
+    // can never produce an entitlement state that an organic webhook flow
+    // wouldn't have produced.
+    const now = Date.now();
+    await recomputeEntitlementFromAllSubs(ctx, userId, now);
+
+    const entitlementAfter = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+
+    return {
+      deleted: { _id: sub._id, dodoSubscriptionId: args.dodoSubscriptionId, planKey: sub.planKey },
+      entitlementAfter: entitlementAfter
+        ? {
+            planKey: entitlementAfter.planKey,
+            validUntil: entitlementAfter.validUntil,
+            ...(entitlementAfter.compUntil !== undefined ? { compUntil: entitlementAfter.compUntil } : {}),
+          }
+        : null,
     };
   },
 });

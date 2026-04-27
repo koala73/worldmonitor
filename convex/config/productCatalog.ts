@@ -239,6 +239,33 @@ export const LEGACY_PRODUCT_ALIASES: Record<string, string> = {
 // Derived helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Plan-level precedence for entitlement recompute.
+ *
+ * Higher value = stronger plan. Used by the entitlement-recompute helper in
+ * `subscriptionHelpers.ts` as the deterministic tie-breaker when a user has
+ * multiple covering subscriptions of the same `tier` (e.g. `api_starter` and
+ * `api_business` are both tier 2; monthly and annual variants of the same
+ * tier-group share `tier`). The order is:
+ *
+ *   1. higher `features.tier` wins (always)
+ *   2. higher `PLAN_PRECEDENCE` wins (capability tie-breaker within a tier)
+ *   3. later `currentPeriodEnd` wins (duration tie-breaker within the same plan)
+ *
+ * KEEP IN SYNC with PRODUCT_CATALOG. Any new planKey added to the catalog
+ * must also appear here, or the recompute helper falls back to 0 and the
+ * tie-break degenerates to currentPeriodEnd.
+ */
+export const PLAN_PRECEDENCE: Record<string, number> = {
+  free: 0,
+  pro_monthly: 10,
+  pro_annual: 11, // longer commitment outranks monthly at same tier
+  api_starter: 20,
+  api_starter_annual: 21,
+  api_business: 30, // higher capability than api_starter at same tier 2
+  enterprise: 40,
+};
+
 export function getEntitlementFeatures(planKey: string): PlanFeatures {
   const entry = PRODUCT_CATALOG[planKey];
   if (!entry) {
