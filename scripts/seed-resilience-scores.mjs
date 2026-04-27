@@ -38,16 +38,22 @@ export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v16';
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
-const INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
+const INTERVAL_KEY_PREFIX = 'resilience:intervals:v2:';
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DRAWS = 100;
 
+// Plan 2026-04-26-002 review fix: 6-domain weights (recovery added) in
+// lockstep with server/worldmonitor/resilience/v1/_dimension-scorers.ts
+// `RESILIENCE_DOMAIN_WEIGHTS`. Bumped INTERVAL_KEY_PREFIX v1 → v2 in
+// lockstep so old 5-domain bands don't feed scoreInterval/rankStable
+// after the v15→v16 score-prefix bump.
 const DOMAIN_WEIGHTS = {
-  economic: 0.22,
-  infrastructure: 0.20,
-  energy: 0.15,
-  'social-governance': 0.25,
-  'health-food': 0.18,
+  economic: 0.17,
+  infrastructure: 0.15,
+  energy: 0.11,
+  'social-governance': 0.19,
+  'health-food': 0.13,
+  recovery: 0.25,
 };
 
 const DOMAIN_ORDER = [
@@ -56,6 +62,7 @@ const DOMAIN_ORDER = [
   'energy',
   'social-governance',
   'health-food',
+  'recovery',
 ];
 
 export function computeIntervals(domainScores, domainWeights, draws = DRAWS) {

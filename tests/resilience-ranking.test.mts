@@ -220,8 +220,8 @@ describe('resilience ranking contracts', () => {
       domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
       lowConfidence: false, imputationShare: 0.1,
     }));
-    redis.set('resilience:intervals:v1:NO', JSON.stringify({ p05: 78, p95: 84 }));
-    redis.set('resilience:intervals:v1:US', JSON.stringify({ p05: 50, p95: 72 }));
+    redis.set('resilience:intervals:v2:NO', JSON.stringify({ p05: 78, p95: 84 }));
+    redis.set('resilience:intervals:v2:US', JSON.stringify({ p05: 50, p95: 72 }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 

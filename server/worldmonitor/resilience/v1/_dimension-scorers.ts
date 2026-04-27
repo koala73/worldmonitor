@@ -796,14 +796,21 @@ function getImfLaborEntry(raw: unknown, countryCode: string): ImfLaborEntry | nu
  * `populationMillions` (e.g. US ≈ 342_594_000 instead of 342.6). The
  * seeder is fixed in the same PR, but cached payloads from prior cron
  * runs may still carry raw persons until the next refresh. Any value
- * > 10_000 is impossible as "millions" (no country has 10B+ people),
- * so treat it as raw persons and divide by 1e6. Once the cache cycles,
- * this branch becomes a no-op.
+ * >= 10_000 is impossible as "millions" (China = ~1430 millions = the
+ * realistic ceiling), so treat it as raw persons and divide by 1e6.
+ * The threshold is INCLUSIVE: live cache currently has TV's value at
+ * exactly 10_000 (Tuvalu's actual headcount), and a `> 10_000` check
+ * would let it through as "10000M" instead of converting to 0.01M.
+ * The IMF labor bundle is 30-day gated; without inclusive comparison
+ * a microstate is mis-handled until the next bundle refresh.
+ *
+ * Once the cache cycles to post-fix values (everything in the 0.01-1500
+ * range), this branch becomes a no-op.
  */
 function readPopulationMillions(imfLaborRaw: unknown, countryCode: string): number {
   const raw = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions);
   if (raw == null) return 0.5;
-  const millions = raw > 10_000 ? raw / 1_000_000 : raw;
+  const millions = raw >= 10_000 ? raw / 1_000_000 : raw;
   return Math.max(millions, 0.5);
 }
 

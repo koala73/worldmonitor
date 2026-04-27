@@ -205,7 +205,15 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v11:';
 // plan 2026-04-26-002 §U4+U5+U6 (combined PR 3+4+5).
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v16';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
-export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v1:';
+// Plan 2026-04-26-002 §U4+U5+U6 (combined PR 3+4+5) — intervals bump
+// v1 → v2. The pre-PR interval seeders used the OLD 5-domain weights
+// (no recovery, economic at 0.22 vs canonical 0.17, etc.) so any v1
+// interval cached pre-bump represents a different formula than the
+// score it was computed against. After the v15→v16 score bump the
+// scoreInterval/rankStable readout would mix new scores with old-
+// formula bands, producing internally-inconsistent stability gates.
+// Bump forces a clean recompute aligned with the 6-domain weights.
+export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v2:';
 const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 const RANK_STABLE_MAX_INTERVAL_WIDTH = 8;
 

@@ -164,6 +164,34 @@ describe('per-capita normalization invariants (Plan 2026-04-26-002 §U6)', () =>
       `0.5M floor not applied: 0.01M-pop XA scored ${microResult.score}, 0.5M-pop XB scored ${halfMillionResult.score}. Both should clamp to the same per-capita denominator.`);
   });
 
+  it('TV boundary: live raw-persons value of exactly 10_000 falls through the defensive normalizer', async () => {
+    // Plan §U6 review fix: live Redis currently has TV.populationMillions
+    // = 10_000 (raw persons for Tuvalu's 10k headcount). The defensive
+    // normalizer's threshold MUST be inclusive (`>= 10_000`, not `>`)
+    // or this exact value would be treated as 10_000M and bypass §U6
+    // for Tuvalu until the next IMF labor bundle (30-day gated).
+    const tvRaw = makeReader({
+      'resilience:static:TV': { gpi: { score: 1.3 } },
+      'displacement:summary:v1:2026': { countries: { TV: { totalDisplaced: 100 } } },
+      'unrest:events:v1': { events: [{ country: 'TV', type: 'protest', fatalities: 0 }] },
+      'economic:imf:labor:v1': { countries: { TV: { populationMillions: 10_000 } } }, // raw persons
+    });
+    const tvFixed = makeReader({
+      'resilience:static:TV': { gpi: { score: 1.3 } },
+      'displacement:summary:v1:2026': { countries: { TV: { totalDisplaced: 100 } } },
+      'unrest:events:v1': { events: [{ country: 'TV', type: 'protest', fatalities: 0 }] },
+      'economic:imf:labor:v1': { countries: { TV: { populationMillions: 0.01 } } }, // post-fix millions
+    });
+    const rawResult = await scoreSocialCohesion('TV', tvRaw);
+    const fixedResult = await scoreSocialCohesion('TV', tvFixed);
+    // Both must produce the SAME socialCohesion score: the defensive
+    // branch divides 10_000 by 1e6 → 0.01 → max(0.01, 0.5) = 0.5;
+    // the post-fix branch reads 0.01 directly → max(0.01, 0.5) = 0.5.
+    // Identical denominators → identical per-capita math → identical scores.
+    assert.equal(rawResult.score, fixedResult.score,
+      `TV-boundary regression: raw-persons defensive path scored ${rawResult.score}, post-fix scored ${fixedResult.score}. The defensive normalizer must use \`>= 10_000\` to handle the live cache value.`);
+  });
+
   it('country missing from IMF labor seed defaults to 0.5M pop (tiny-state proxy)', async () => {
     // Plan §U6 design choice: when IMF labor doesn't carry a country
     // (typically tiny states or non-IMF members), fall back to the
