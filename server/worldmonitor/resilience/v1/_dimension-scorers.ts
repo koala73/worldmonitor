@@ -786,6 +786,28 @@ function getImfLaborEntry(raw: unknown, countryCode: string): ImfLaborEntry | nu
   return (countries[countryCode] as ImfLaborEntry | undefined) ?? null;
 }
 
+/**
+ * Plan 2026-04-26-002 §U6 — robust population-in-millions reader for the
+ * per-capita normalization in scoreSocialCohesion + scoreBorderSecurity.
+ *
+ * Always returns a number ≥ 0.5 (the plan's tiny-state floor).
+ *
+ * Defensive raw-persons detection: the historical IMF labor seed stored
+ * the LP indicator's raw-persons value in a field misleadingly named
+ * `populationMillions` (e.g. US ≈ 342_594_000 instead of 342.6). The
+ * seeder is fixed in the same PR, but cached payloads from prior cron
+ * runs may still carry raw persons until the next refresh. Any value
+ * > 10_000 is impossible as "millions" (no country has 10B+ people),
+ * so treat it as raw persons and divide by 1e6. Once the cache cycles,
+ * this branch becomes a no-op.
+ */
+function readPopulationMillions(imfLaborRaw: unknown, countryCode: string): number {
+  const raw = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions);
+  if (raw == null) return 0.5;
+  const millions = raw > 10_000 ? raw / 1_000_000 : raw;
+  return Math.max(millions, 0.5);
+}
+
 // getCountryBisExchangeRates() removed in PR 3 §3.5: only scoreCurrencyExternal
 // called it, and that scorer no longer reads BIS EER. Drill-down panels
 // that want BIS series read it via their own dedicated handler.
@@ -1667,8 +1689,7 @@ export async function scoreSocialCohesion(
   // 0..10 events/M; Iceland ≈ 0 events/M, Yemen ≈ 6 events/M, Lebanon
   // outliers ≈ 10 events/M (calibrated empirically against the live
   // unrest:events:v1 distribution).
-  const populationMillions = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions) ?? 0.5;
-  const popDenominator = Math.max(populationMillions, 0.5);
+  const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
   const unrestMetric = (unrest.unrestCount + Math.sqrt(unrest.fatalities)) / popDenominator;
 
   // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
@@ -1803,9 +1824,13 @@ export async function scoreBorderSecurity(
   // it stays as-is. Goalposts re-anchored 0..15 events/M (slightly higher
   // ceiling than socialCohesion because UCDP eventCount * 2 multiplier
   // already lifts the metric magnitude).
-  const populationMillions = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions) ?? 0.5;
-  const popDenominator = Math.max(populationMillions, 0.5);
-  const conflictMetric = (ucdp.eventCount * 2) / popDenominator + ucdp.typeWeight + Math.sqrt(ucdp.deaths) / popDenominator;
+  const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
+  // Plan §U6 review fix: typeWeight is event-count-scaled (incremented
+  // per-event in summarizeUcdp:907), not a per-event severity tag, so it
+  // must scale per-capita too. Pre-fix the unnormalized typeWeight could
+  // dominate the per-capita metric for high-event countries (US/IN type
+  // peaceful but high-volume), defeating §U6's intended scaling.
+  const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + Math.sqrt(ucdp.deaths)) / popDenominator;
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
   return weightedBlend([

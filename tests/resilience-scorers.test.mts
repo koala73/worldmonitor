@@ -141,18 +141,19 @@ describe('resilience scorer contracts', () => {
     // dim from the blend; the headline overall is unaffected by the
     // flag-off baseline beyond the small tradePolicy-reweight shift.
     // Plan 2026-04-26-002 §U6 (combined PR 3+4+5): social-governance
-    // 61.75 → 65.25. Per-capita normalization of unrest event counts +
-    // UCDP eventCount lifts the US (333M pop) socialCohesion and
-    // borderSecurity dim scores — fixture event counts of ~5-10 events
-    // become 0.015-0.03 events/M, well inside the 0..10 / 0..15 lowerBetter
-    // anchors → higher scores. The plan's per-capita design TARGETS this
-    // re-anchoring (intent: don't rank micro-states with raw zero counts
-    // above large states with low-rate counts).
+    // 61.75 → 66.25. Per-capita normalization of unrest event counts +
+    // UCDP eventCount + typeWeight + deaths lifts the US (333M pop)
+    // socialCohesion and borderSecurity dim scores — fixture event counts
+    // of ~5-10 events become 0.015-0.03 events/M, well inside the 0..10
+    // / 0..15 lowerBetter anchors → higher scores. typeWeight is now also
+    // per-capita normalized (review fix: it's an event-count-scaled term,
+    // not dimensionless), accounting for the additional +1.0pt vs the
+    // initial commit's 65.25 expectation.
     assert.deepEqual(domainAverages, {
       economic: 53.25,
       infrastructure: 79,
       energy: 80,
-      'social-governance': 65.25,
+      'social-governance': 66.25,
       'health-food': 60.5,
       recovery: 48.75,
     });
@@ -230,8 +231,11 @@ describe('resilience scorer contracts', () => {
     // per-capita normalization. Net positive shift in the stress mean,
     // raising the stress factor proportionally.
     //   1 - 69.08/100 = 0.3092, clamped to 0.5.
-    assert.equal(stressScore, 69.08);
-    assert.equal(stressFactor, 0.3092);
+    // typeWeight per-capita review fix: stress score lifts further on
+    // borderSecurity (typeWeight is now divided by population denominator).
+    //   1 - 69.63/100 = 0.3037, clamped to 0.5.
+    assert.equal(stressScore, 69.63);
+    assert.equal(stressFactor, 0.3037);
 
     const overallScore = round(
       RESILIENCE_DOMAIN_ORDER.map((domainId) => {
@@ -281,13 +285,14 @@ describe('resilience scorer contracts', () => {
     // flag flips on in production with seeders populated, the dim will
     // contribute its own signal; the expected value here will move
     // accordingly in a future PR.
-    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.45.
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
     // Same delta as the local-helper-based test above; both apply the
-    // imputation half-weight factor + per-capita normalization, which
-    // shift the US overall by ~+0.67 (imputed dims contribute less,
-    // population-normalized event-counts boost socialCohesion +
-    // borderSecurity for high-pop countries).
-    assert.equal(overallScore, 65.45);
+    // imputation half-weight factor + per-capita normalization (with
+    // the typeWeight-per-capita review fix), which shift the US overall
+    // by ~+0.86 (imputed dims contribute less, population-normalized
+    // event-counts boost socialCohesion + borderSecurity for high-pop
+    // countries).
+    assert.equal(overallScore, 65.64);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -388,13 +393,12 @@ describe('resilience scorer contracts', () => {
     // off by default, so it contributes coverage=0 and drops from the
     // coverage-weighted mean. When the flag flips on with seeders
     // populated, the expected here will shift accordingly.
-    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.45.
+    // Plan 2026-04-26-002 §U4+§U6 (combined PR 3+4+5): 64.78 → 65.64.
     // U4 coverage penalty halves the weight of fully-imputed dims (US has
-    // a couple of WTO/BIS imputes); U6 per-capita normalization bumps
-    // social-cohesion + border-security for the US (333M pop) since
-    // event-counts/M are tiny. Net positive shift for a high-population
-    // comprehensive-source country, as designed.
-    assert.equal(expected, 65.45, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 → 65.45');
+    // a couple of WTO/BIS imputes); U6 per-capita normalization (incl.
+    // typeWeight per the review fix) bumps social-cohesion + border-
+    // security for the US (333M pop) since event-counts/M are tiny.
+    assert.equal(expected, 65.64, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 → 65.64');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

@@ -287,7 +287,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 125,
     license: 'open-data',
-    comprehensive: true,
+    // §U5 review fix: comprehensive=false. WB IDS coverage is the LMIC
+    // subset (~125 countries), NOT the universe. HIC absence from this
+    // source is NOT a stable-absence signal — those countries fall through
+    // to the BIS LBS structural-exposure component instead. Marking
+    // comprehensive=true would let any future IMPUTE caller treat HIC
+    // absence as the high stable-absence anchor (85+), which would
+    // misrepresent HIC financial-system exposure.
+    comprehensive: false,
   },
   {
     id: 'bisLbsXborderPctGdp',

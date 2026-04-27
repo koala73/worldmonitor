@@ -75,6 +75,7 @@ describe('source-comprehensiveness flag (Plan 2026-04-26-002 §U5)', () => {
       'gasStorageStress',           // GIE AGSI+ EU+ subset
       'recoverySovereignWealthEffectiveMonths', // Wikipedia 8-fund manifest
       'recoveryFuelStockDays',      // RETIRED + IEA OECD-only
+      'shortTermExternalDebtPctGni', // WB IDS LMIC-only (~125 countries); HIC absence is NOT a stable-absence signal
     ];
     for (const id of mustBeNonComprehensive) {
       assert.equal(isIndicatorComprehensive(id), false,
