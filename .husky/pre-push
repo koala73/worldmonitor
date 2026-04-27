@@ -65,6 +65,9 @@ node scripts/check-unicode-safety.mjs || exit 1
 echo "Running architectural boundary check..."
 npm run lint:boundaries || exit 1
 
+echo "Running Sentry-coverage check..."
+node scripts/check-sentry-coverage.mjs || exit 1
+
 echo "Running rate-limit policy coverage check..."
 npm run lint:rate-limit-policies || exit 1
 

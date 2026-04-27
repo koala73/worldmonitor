@@ -1,7 +1,34 @@
-import { httpAction } from "../_generated/server";
+import { httpAction, internalMutation } from "../_generated/server";
+import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../lib/env";
 import { verifyWebhookPayload } from "@dodopayments/core";
+
+/**
+ * Surfaces a Dodo webhook signature failure to Convex auto-Sentry by
+ * throwing a structured error. Called via `ctx.scheduler.runAfter(0,...)`
+ * from the signature-failure catch path so:
+ *   - the HTTP response (401) is sent immediately, unaffected
+ *   - the scheduled throw runs after the response and is captured by
+ *     Convex's automatic Sentry integration
+ *   - no SDK install is required in the Convex backend
+ *
+ * Without this, a botched secret rotation could 401 every Dodo webhook
+ * silently for hours — same observability gap shape as the canary OCC
+ * bug (WORLDMONITOR-PA), just on a different surface.
+ */
+export const reportDodoSignatureFailure = internalMutation({
+  args: {
+    webhookId: v.optional(v.string()),
+    webhookTimestamp: v.optional(v.string()),
+    errorMessage: v.string(),
+  },
+  handler: async (_ctx, { webhookId, webhookTimestamp, errorMessage }) => {
+    throw new Error(
+      `[webhook] Dodo signature verification failed (webhookId=${webhookId ?? "<missing>"}, ts=${webhookTimestamp ?? "<missing>"}): ${errorMessage}`,
+    );
+  },
+});
 
 /**
  * Custom webhook HTTP action for Dodo Payments.
@@ -44,6 +71,18 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     });
   } catch (error) {
     console.error("Webhook signature verification failed:", error);
+    // Surface to Sentry via a scheduled mutation throw — runs AFTER the
+    // 401 response so Dodo's contract is preserved. Convex auto-Sentry
+    // catches the throw and reports the signature failure as an issue.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.webhookHandlers.reportDodoSignatureFailure,
+      {
+        webhookId: webhookId ?? undefined,
+        webhookTimestamp: webhookTimestamp ?? undefined,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+    );
     return new Response("Invalid webhook signature", { status: 401 });
   }
 

@@ -4,6 +4,7 @@ import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
 import RSS_ALLOWED_DOMAINS from './_rss-allowed-domains.js';
 import { jsonResponse } from './_json-response.js';
+import { captureSilentError } from './_sentry-edge.js';
 
 export const config = { runtime: 'edge' };
 
@@ -182,6 +183,11 @@ export default async function handler(req) {
   } catch (error) {
     const isTimeout = error.name === 'AbortError';
     console.error('RSS proxy error:', feedUrl, error.message);
+    // Skip Sentry capture on timeout — Sentry would drown in transient
+    // upstream-feed timeouts which are routine. Only surface "real" errors.
+    if (!isTimeout) {
+      void captureSilentError(error, { tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl } });
+    }
     return jsonResponse({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',
       details: error.message,

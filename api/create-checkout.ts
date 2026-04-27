@@ -13,6 +13,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 
 const CONVEX_SITE_URL =
@@ -116,6 +118,7 @@ export default async function handler(req: Request): Promise<Response> {
     return json(data, 200, cors);
   } catch (err) {
     console.error('[create-checkout] Relay failed:', (err as Error).message);
+    void captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' } });
     return json({ error: 'Checkout service unavailable' }, 502, cors);
   }
 }

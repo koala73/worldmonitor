@@ -23,6 +23,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../_sentry-edge.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
@@ -152,6 +154,7 @@ export default async function handler(req: Request): Promise<Response> {
     envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);
   } catch (err) {
     console.error('[api/brief] Upstash read failed:', (err as Error).message);
+    void captureSilentError(err, { tags: { route: 'api/brief', step: 'envelope-read' } });
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   if (!envelope) {
@@ -194,6 +197,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
     } catch (err) {
       console.warn('[api/brief] share URL derive failed:', (err as Error).message);
+      void captureSilentError(err, { tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' } });
     }
   }
 
@@ -212,6 +216,7 @@ export default async function handler(req: Request): Promise<Response> {
     // and log the details server-side. The renderer's assertion
     // message is safe to log (no secrets, no user content).
     console.error('[api/brief] malformed envelope for brief:*:*:', (err as Error).message);
+    void captureSilentError(err, { tags: { route: 'api/brief', step: 'malformed-envelope' } });
     // Distinct log tag so ops can grep composer-bug vs Redis-miss. User
     // still sees the neutral "expired" page.
     return htmlResponse(req, 404, EXPIRED_PAGE);

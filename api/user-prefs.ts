@@ -14,6 +14,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { ConvexHttpClient } from 'convex/browser';
 import { validateBearerToken } from '../server/auth-session';
 
@@ -61,6 +63,7 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonResponse(prefs ?? null, 200, cors);
     } catch (err) {
       console.error('[user-prefs] GET error:', err);
+      void captureSilentError(err, { tags: { route: 'api/user-prefs', method: 'GET' } });
       return jsonResponse({ error: 'Failed to fetch preferences' }, 500, cors);
     }
   }
@@ -99,6 +102,7 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
     }
     console.error('[user-prefs] POST error:', err);
+    void captureSilentError(err, { tags: { route: 'api/user-prefs', method: 'POST' } });
     return jsonResponse({ error: 'Failed to save preferences' }, 500, cors);
   }
 }

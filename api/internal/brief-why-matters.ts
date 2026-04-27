@@ -46,6 +46,8 @@ import {
 import { callLlmReasoning } from '../../server/_shared/llm';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, setCachedData, redisPipeline } from '../_upstash-json.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
 import {
   buildWhyMattersUserPrompt,
   hashBriefStory,
@@ -246,6 +248,7 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
     return parseWhyMattersV2(result.content);
   } catch (err) {
     console.warn(`[brief-why-matters] analyst path failed: ${err instanceof Error ? err.message : String(err)}`);
+    void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'analyst-path', severity: 'warn' } });
     return null;
   }
 }
@@ -274,6 +277,7 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
     return parseWhyMatters(result.content);
   } catch (err) {
     console.warn(`[brief-why-matters] gemini path failed: ${err instanceof Error ? err.message : String(err)}`);
+    void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'gemini-path', severity: 'warn' } });
     return null;
   }
 }
@@ -394,6 +398,7 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
     }
   } catch (err) {
     console.warn(`[brief-why-matters] cache read degraded: ${err instanceof Error ? err.message : String(err)}`);
+    void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-read', severity: 'warn' } });
   }
 
   if (cached) {
@@ -451,6 +456,7 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
       await setCachedData(cacheKey, envelope, WHY_MATTERS_TTL_SEC);
     } catch (err) {
       console.warn(`[brief-why-matters] cache write degraded: ${err instanceof Error ? err.message : String(err)}`);
+      void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-write', severity: 'warn' } });
     }
   }
 

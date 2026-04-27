@@ -28,6 +28,8 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash } from './_upstash-json.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
@@ -65,6 +67,9 @@ async function readBriefPreview(
     console.error(
       `[api/latest-brief] composer-bug: brief:${userId}:${issueSlot} failed envelope assertion: ${(err as Error).message}`,
     );
+    void captureSilentError(err, {
+      tags: { route: 'api/latest-brief', step: 'envelope-assertion', issueSlot },
+    });
     return null;
   }
   const { data } = raw;
@@ -174,6 +179,7 @@ export default async function handler(req: Request): Promise<Response> {
     // this into "composing", which would falsely signal empty state
     // to the dashboard panel. 503 lets the client show a retry path.
     console.error('[api/latest-brief] Upstash read failed:', (err as Error).message);
+    void captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' } });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

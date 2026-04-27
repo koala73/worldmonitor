@@ -1,27 +1,16 @@
 /**
- * Minimal Sentry error reporter for Vercel Edge functions.
+ * Minimal Sentry error reporter for Vercel Node-runtime API functions.
  *
- * Sends events to Sentry's `/envelope/` endpoint via fetch — no SDK
- * dependency, no bundle bloat, works in V8 isolates without polyfills.
- * DSN is read from `VITE_SENTRY_DSN` (the same DSN the frontend uses;
- * already present in the Vercel env, already public in the browser
- * bundle so reusing it server-side adds no exposure).
+ * Mirror of `_sentry-edge.js` for the ~17% of api/ files that don't
+ * declare `runtime: 'edge'`. Same fetch-based approach (no SDK), same
+ * `captureSilentError(err, { tags?, extra? })` signature, same Sentry
+ * project (`VITE_SENTRY_DSN` — already public in the frontend bundle).
  *
- * Public surface:
- *   - `captureSilentError(err, { tags?, extra? })` — preferred. Add
- *     to any `try { ... } catch { console.error(...) }` site to make
- *     the failure searchable / alertable in Sentry.
- *   - `captureEdgeException(err, context)` — backwards-compat alias
- *     for the original (pre-sweep) shape. New code should use
- *     `captureSilentError` for the structured tags/extra split.
- *
- * Pair with `_sentry-node.js` for Node-runtime functions. Both expose
- * an identical `captureSilentError` signature so callers don't care
- * which runtime they're in.
- *
- * Endpoint: `/envelope/` (Sentry's current ingestion path) instead of
- * the deprecated `/store/`. Same DSN works for both — Sentry routes
- * by path.
+ * Two helpers exist instead of one runtime-detected helper because each
+ * api/ file declares its runtime statically; importing the matching
+ * helper makes the runtime tag in Sentry events accurate without a
+ * runtime check on every call. The only difference vs the edge variant
+ * is the `runtime: 'node'` tag.
  */
 
 let _key = '';
@@ -51,7 +40,7 @@ function buildEnvelope(err, ctx) {
     event_id: eventId,
     timestamp,
     level: 'error',
-    platform: 'javascript',
+    platform: 'node',
     environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'production',
     release: process.env.VERCEL_GIT_COMMIT_SHA,
     exception: {
@@ -63,22 +52,18 @@ function buildEnvelope(err, ctx) {
         },
       ],
     },
-    tags: { surface: 'api', runtime: 'edge', ...(ctx?.tags ?? {}) },
+    tags: { surface: 'api', runtime: 'node', ...(ctx?.tags ?? {}) },
     extra: ctx?.extra,
   };
 
-  // Envelope format: header line, item header line, item payload line.
   const header = JSON.stringify({ event_id: eventId, sent_at: timestamp });
   const itemHeader = JSON.stringify({ type: 'event' });
   const itemPayload = JSON.stringify(event);
   return `${header}\n${itemHeader}\n${itemPayload}\n`;
 }
 
-// Best-effort stack-frame parse. Sentry accepts the raw `stack` string
-// in `extra` if frames aren't parsed, but parsed frames render in the
-// dashboard with file/line/function — much more useful for triage.
 function parseStack(stack) {
-  const lines = stack.split('\n').slice(1, 30); // skip the "Error: msg" header line
+  const lines = stack.split('\n').slice(1, 30);
   const frames = [];
   for (const line of lines) {
     const m = line.match(/at\s+(?:(.+?)\s+\()?(.+?):(\d+):(\d+)\)?$/);
@@ -90,7 +75,6 @@ function parseStack(stack) {
       colno: Number(m[4]),
     });
   }
-  // Sentry expects oldest frame first
   return frames.reverse();
 }
 
@@ -113,11 +97,11 @@ async function deliver(body) {
           : res.status === 429
             ? ' — rate limited by Sentry'
             : ' — Sentry outage or transient error';
-      console.warn(`[sentry-edge] non-2xx response ${res.status}${hint}`);
+      console.warn(`[sentry-node] non-2xx response ${res.status}${hint}`);
     }
   } catch (fetchErr) {
     console.warn(
-      '[sentry-edge] failed to deliver event:',
+      '[sentry-node] failed to deliver event:',
       fetchErr instanceof Error ? fetchErr.message : fetchErr,
     );
   }
@@ -126,30 +110,13 @@ async function deliver(body) {
 /**
  * Report a caught error to Sentry without crashing the request.
  *
- * Use INSIDE try/catch blocks where the existing `console.error` is
- * keeping the response path alive. Does not re-throw, does not block
- * meaningfully — the fetch is fire-and-forget with a 2s timeout.
+ * Same shape as the edge variant. See `_sentry-edge.js` for full docs.
  *
- * @param {unknown} err  The caught error or thrown value.
+ * @param {unknown} err
  * @param {{ tags?: Record<string, string|number|boolean>, extra?: Record<string, unknown> }} [ctx]
- *   `tags` are filterable in the Sentry UI; `extra` is attached but not
- *   indexed. Avoid PII (raw user emails, full request bodies) in either.
  * @returns {Promise<void>}
  */
 export async function captureSilentError(err, ctx) {
   if (!_envelopeUrl || !_key) return;
   await deliver(buildEnvelope(err, ctx));
-}
-
-/**
- * Backwards-compat alias for the pre-sweep call shape. Existing callers
- * pass `(err, contextObject)` — we coerce contextObject into `extra` so
- * data still lands in Sentry. Prefer `captureSilentError` in new code.
- *
- * @param {unknown} err
- * @param {Record<string, unknown>} [context]
- * @returns {Promise<void>}
- */
-export async function captureEdgeException(err, context = {}) {
-  await captureSilentError(err, { extra: context });
 }

@@ -10,6 +10,8 @@ import { readJsonFromUpstash } from './_upstash-json.js';
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../shared/mining-sites.js';
@@ -953,6 +955,9 @@ export default async function handler(req: Request): Promise<Response> {
         }, corsHeaders);
       } catch (err: unknown) {
         console.error('[mcp] tool execution error:', err);
+        void captureSilentError(err, {
+          tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
+        });
         return rpcError(id, -32603, 'Internal error: data fetch failed');
       }
     }

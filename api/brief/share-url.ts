@@ -34,6 +34,8 @@ import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
 import { validateBearerToken } from '../../server/auth-session';
 import { getEntitlements } from '../../server/_shared/entitlement-check';
 import {
@@ -147,6 +149,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
     } catch (err) {
       console.error('[api/brief/share-url] latest pointer read failed:', (err as Error).message);
+      void captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'latest-pointer-read' } });
       return jsonResponse({ error: 'service_unavailable' }, 503, cors);
     }
   }
@@ -164,6 +167,7 @@ export default async function handler(req: Request): Promise<Response> {
     existing = await readRawJsonFromUpstash(`brief:${session.userId}:${issueSlot}`);
   } catch (err) {
     console.error('[api/brief/share-url] Upstash read failed:', (err as Error).message);
+    void captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'envelope-read' } });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
   if (existing == null) {

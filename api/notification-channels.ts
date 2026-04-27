@@ -14,7 +14,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
-import { captureEdgeException } from './_sentry-edge.js';
+import { captureEdgeException, captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -97,6 +97,9 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     console.log(`[notification-channels] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
   } catch (err) {
     console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
+    void captureSilentError(err, {
+      tags: { route: 'api/notification-channels', step: 'publish-welcome' },
+    });
   }
 }
 
@@ -111,6 +114,9 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
     });
   } catch (err) {
     console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+    void captureSilentError(err, {
+      tags: { route: 'api/notification-channels', step: 'publish-flush-held', severity: 'warn' },
+    });
   }
 }
 
