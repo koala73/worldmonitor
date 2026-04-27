@@ -11,7 +11,7 @@ WorldMonitor has **three** authentication modes. Which one applies depends on ho
 |------|--------|---------|------------------------------|
 | **Browser origin** | `Origin: https://www.worldmonitor.app` (browser-set) | Dashboard, desktop app | Most public endpoints — but **not** `forceKey: true` routes. |
 | **API key** | `X-WorldMonitor-Key: wm_live_...` | Server-to-server, scripts, SDKs | All endpoints, including `forceKey: true`. |
-| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP clients (Claude, Cursor, Inspector) | `/api/mcp`. The handler also accepts a direct `X-WorldMonitor-Key` in lieu of an OAuth token — see [MCP](/mcp#authentication). |
+| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP clients (Claude, Cursor, Inspector) | `/api/mcp`. The handler also accepts a direct `X-WorldMonitor-Key` in lieu of an OAuth token — see [MCP](/mcp-server#authentication). |
 | **Clerk session JWT** | `Authorization: Bearer <clerk-jwt>` | Authenticated browser users | User-specific routes: `/api/latest-brief`, `/api/user-prefs`, `/api/notification-channels`, `/api/brief/share-url`, etc. |
 
 ## `forceKey: true` — which endpoints ignore browser origin?
@@ -63,7 +63,7 @@ The edge function calls `validateApiKey(req, { forceKey?: boolean })`:
 
 ## OAuth bearer (MCP only)
 
-Full flow documented at [OAuth 2.1 Server](/api-oauth). For client setup, see [MCP](/mcp).
+Full flow documented at [OAuth 2.1 Server](/api-oauth). For client setup, see [MCP](/mcp-server).
 
 ## Clerk session (authenticated dashboard)
 

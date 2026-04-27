@@ -179,7 +179,7 @@
           {
             "group": "MCP & Integrations",
             "pages": [
-              "mcp",
+              "mcp-server",
               "api-oauth",
               "api-notifications"
             ]

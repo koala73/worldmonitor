@@ -11,6 +11,7 @@
     "lint:api-contract": "node scripts/enforce-sebuf-api-contract.mjs",
     "lint:rate-limit-policies": "tsx scripts/enforce-rate-limit-policies.mjs",
     "lint:premium-fetch": "tsx scripts/enforce-premium-fetch.mjs",
+    "lint:mintlify-slugs": "node scripts/enforce-mintlify-reserved-slugs.mjs",
     "lint:unicode": "node scripts/check-unicode-safety.mjs",
     "lint:unicode:staged": "node scripts/check-unicode-safety.mjs --staged",
     "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**' '!todos/**' '!docs/plans/**' '!docs/brainstorms/**' '!docs/ideation/**'",
