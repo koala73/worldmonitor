@@ -68,6 +68,7 @@ export class ChatAnalystPanel extends Panel {
   private domainFocus = 'all';
   private streamAbort: AbortController | null = null;
   private isStreaming = false;
+  private scrollRafId = 0;
   private messagesEl!: HTMLElement;
   private inputEl: HTMLTextAreaElement | null = null;
 
@@ -267,7 +268,9 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private scrollToBottom(): void {
-    requestAnimationFrame(() => {
+    if (this.scrollRafId) return;
+    this.scrollRafId = requestAnimationFrame(() => {
+      this.scrollRafId = 0;
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
     });
   }
@@ -450,6 +453,7 @@ export class ChatAnalystPanel extends Panel {
   override destroy(): void {
     this.streamAbort?.abort();
     this.streamAbort = null;
+    cancelAnimationFrame(this.scrollRafId);
     super.destroy();
   }
 }

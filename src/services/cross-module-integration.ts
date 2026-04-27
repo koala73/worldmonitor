@@ -771,7 +771,7 @@ function identifyTopRisks(
   }
 
   const leadSanctions = sanctions?.countries[0];
-  if (leadSanctions && (sanctions.newEntryCount > 0 || leadSanctions.entryCount >= 25)) {
+  if (leadSanctions && sanctions && (sanctions.newEntryCount > 0 || leadSanctions.entryCount >= 25)) {
     const label = sanctions.newEntryCount > 0 ? 'Sanctions burst' : 'Sanctions pressure';
     risks.push(`${label}: ${leadSanctions.countryName} (${leadSanctions.entryCount}, +${leadSanctions.newEntryCount} new)`);
   }
