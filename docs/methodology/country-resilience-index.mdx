@@ -584,7 +584,7 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 | `resilience:score:v11:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
 | `resilience:ranking:v11` | JSON | 6 hours | `buildResilienceRanking`, only when all countries are scored | `getResilienceRanking` handler |
 | `resilience:history:v6:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
-| `resilience:intervals:v1:{countryCode}` | JSON | 6 hours | `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) |
+| `resilience:intervals:v2:{countryCode}` | JSON | 6 hours | `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) |
 | `seed-meta:resilience:static` | JSON | 2 hours | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
 | `resilience:static:{countryCode}` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | scorer for all baseline signals (WGI, WHO, FAO, GPI, RSF, and so on) |
 | `resilience:static:index:v1` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | warmup path to enumerate countries |
