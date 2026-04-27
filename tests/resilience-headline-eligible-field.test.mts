@@ -13,7 +13,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildRankingItem, ensureResilienceScoreCached } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { buildRankingItem, ensureResilienceScoreCached, RESILIENCE_SCORE_CACHE_PREFIX } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
 
 describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
   describe('buildRankingItem', () => {
@@ -82,18 +83,15 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
 
   describe('cache-read backfill (PR 2 review fix)', () => {
     it('stripCacheMeta defaults headlineEligible=true when the cached payload predates the field', async () => {
-      // Simulate a v16 cached payload written before PR 2 landed (no
-      // headlineEligible field). The stripCacheMeta read-path must
-      // backfill so the wire response satisfies the generated type.
-      // Driven through ensureResilienceScoreCached → cachedFetchJson
-      // by pre-seeding Redis with a legacy payload.
-      const { setCachedJson } = await import('../server/_shared/redis.ts');
-      const { RESILIENCE_SCORE_CACHE_PREFIX } = await import('../server/worldmonitor/resilience/v1/_shared.ts');
+      // Plan 002 §U3 review fix: the original version of this test used
+      // setCachedJson directly, which silently no-ops without UPSTASH_*
+      // env vars — it then "passed" because the build-path constructed
+      // a fresh response with headlineEligible:true, never exercising
+      // the cache-read backfill it claims to test. Use installRedis +
+      // direct redis.set to seed the fake-upstash store, matching the
+      // ranking-test pattern in resilience-ranking.test.mts:48.
+      const { redis } = installRedis({});
       const legacyKey = `${RESILIENCE_SCORE_CACHE_PREFIX}TT`;
-      // Note: this test runs against the test redis fake; in CI/dev this
-      // is an in-memory map, not real Upstash. The point is to exercise
-      // the read-path backfill — production legacy payloads have the
-      // exact same shape (fields up to schemaVersion, no headlineEligible).
       const legacyPayload = {
         countryCode: 'TT',
         overallScore: 60,
@@ -109,13 +107,30 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
         dataVersion: 'v16',
         pillars: [],
         schemaVersion: '2.0',
-        _formula: 'pc',
-        // headlineEligible deliberately omitted
+        // _formula must match the current cache formula tag so the
+        // stale-formula gate doesn't reject the legacy payload (which
+        // would force a rebuild and test the build-path instead of
+        // the backfill-path). 'd6' is the default flag-off tag.
+        _formula: 'd6',
+        // headlineEligible deliberately omitted — the post-PR-2 wire
+        // type lists it as required, but pre-PR-2 cached payloads do
+        // not carry it. Backfill on read must default to true.
       };
-      await setCachedJson(legacyKey, legacyPayload, 300);
+      redis.set(legacyKey, JSON.stringify(legacyPayload));
+
       const response = await ensureResilienceScoreCached('TT');
+
       assert.equal(response.headlineEligible, true,
         'cache-read backfill must default missing headlineEligible to true (PR-2 contract)');
+      // Verify we hit the cache path, not the build path. If the
+      // cache-read backfill is wired correctly, the response should
+      // carry the legacy payload's stable-but-arbitrary scores
+      // (overallScore=60), not what buildResilienceScore would compute
+      // for an empty fixture (typically 0 or much lower).
+      assert.equal(response.overallScore, 60,
+        'response overallScore must come from the cached payload (60), not a fresh build (would be 0 with no seed data)');
+      assert.equal(response.dataVersion, 'v16',
+        'response dataVersion must come from the cached payload, confirming the cache-read path was exercised');
     });
   });
 
