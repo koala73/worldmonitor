@@ -39,6 +39,12 @@ async function seedRampConfig(
     lastWaveSentAt: number | undefined;
     pendingRunId: string | undefined;
     pendingRunStartedAt: number | undefined;
+    pendingWaveLabel: string | undefined;
+    pendingSegmentId: string | undefined;
+    pendingAssigned: number | undefined;
+    pendingExportAt: number | undefined;
+    pendingBroadcastId: string | undefined;
+    pendingBroadcastAt: number | undefined;
     active: boolean;
     killGateTripped: boolean;
   }> = {},
@@ -59,6 +65,12 @@ async function seedRampConfig(
       lastWaveSentAt: overrides.lastWaveSentAt,
       pendingRunId: overrides.pendingRunId,
       pendingRunStartedAt: overrides.pendingRunStartedAt,
+      pendingWaveLabel: overrides.pendingWaveLabel,
+      pendingSegmentId: overrides.pendingSegmentId,
+      pendingAssigned: overrides.pendingAssigned,
+      pendingExportAt: overrides.pendingExportAt,
+      pendingBroadcastId: overrides.pendingBroadcastId,
+      pendingBroadcastAt: overrides.pendingBroadcastAt,
     });
   });
 }
@@ -124,20 +136,90 @@ describe("_claimTierForRun — lease lifecycle", () => {
     expect(result.actualTier).toBe(2);
   });
 
-  test("overrides a stale lease (older than STALE_LEASE_MS) — recovers from runner crash", async () => {
-    // STALE_LEASE_MS is 30 minutes. Seed a lease 31 minutes old; new claim wins.
+  test("rejects EVEN A STALE lease — no automatic time-based override (P1#1)", async () => {
+    // P1#1 fix: a wall-clock-based override has the same failure mode the
+    // lease exists to prevent. assignAndExportWave can legitimately exceed
+    // any cutoff for large rampCurve sizes / slow Resend, and overriding
+    // mid-flight lets a second run race and duplicate-send. Recovery from
+    // a genuinely-stuck lease is operator-only via forceReleaseLease.
     const t = convexTest(schema, modules);
     await seedRampConfig(t, {
-      pendingRunId: "run-crashed",
-      pendingRunStartedAt: Date.now() - 31 * 60 * 1000,
+      pendingRunId: "run-very-old",
+      pendingRunStartedAt: Date.now() - 6 * 60 * 60 * 1000, // 6 hours ago
     });
     const result = await t.mutation(internal.broadcast.rampRunner._claimTierForRun, {
       runId: "run-fresh",
       expectedCurrentTier: 0,
     });
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("lease-held");
+    expect(result.heldBy).toBe("run-very-old");
     const row = await loadRow(t);
-    expect(row?.pendingRunId).toBe("run-fresh");
+    // Lease is unchanged.
+    expect(row?.pendingRunId).toBe("run-very-old");
+  });
+});
+
+// ----------------------------------------------------------------------------
+// forceReleaseLease — operator-only stale-lease recovery
+// ----------------------------------------------------------------------------
+
+describe("forceReleaseLease — operator-only stale-lease recovery (P1#1)", () => {
+  test("clears the lease and sets lastRunStatus=partial-failure so recoverFromPartialFailure can pick up", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: "run-wedged",
+      pendingRunStartedAt: Date.now() - 6 * 60 * 60 * 1000,
+      // Mid-flight progress preserved so the operator can decide between
+      // manual-finished and discard-and-rotate from persisted state.
+      pendingWaveLabel: "wave-7",
+      pendingSegmentId: "seg-wedged",
+      pendingAssigned: 5000,
+      pendingBroadcastId: "bc-wedged",
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner.forceReleaseLease,
+      { reason: "cron action wedged 6h, no partial-failure recorded" },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.releasedRunId).toBe("run-wedged");
+
+    const row = await loadRow(t);
+    expect(row?.pendingRunId).toBeUndefined();
+    expect(row?.pendingRunStartedAt).toBeUndefined();
+    expect(row?.lastRunStatus).toBe("partial-failure");
+    expect(row?.lastRunError).toMatch(/forced-release/i);
+    // Pending progress markers preserved.
+    expect(row?.pendingWaveLabel).toBe("wave-7");
+    expect(row?.pendingSegmentId).toBe("seg-wedged");
+    expect(row?.pendingBroadcastId).toBe("bc-wedged");
+  });
+
+  test("noop when no lease is held", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    const result = await t.mutation(
+      internal.broadcast.rampRunner.forceReleaseLease,
+      { reason: "no-op test" },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.noop).toBe(true);
+  });
+
+  test("after force-release, a fresh claim can succeed", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: "run-stuck",
+      pendingRunStartedAt: Date.now() - 60 * 60 * 1000,
+    });
+    await t.mutation(internal.broadcast.rampRunner.forceReleaseLease, {
+      reason: "stuck",
+    });
+    const claim = await t.mutation(
+      internal.broadcast.rampRunner._claimTierForRun,
+      { runId: "run-recovered", expectedCurrentTier: 0 },
+    );
+    expect(claim.ok).toBe(true);
   });
 });
 
@@ -218,19 +300,253 @@ describe("_recordRunOutcome — lease release on failure", () => {
     expect(row?.lastRunStatus).toBe("partial-failure");
   });
 
-  test("does NOT clear the lease when runId differs (avoids stomping another run's lease)", async () => {
+  test("HARD NO-OP when runId differs — does NOT write status/error/active either (P1#2)", async () => {
+    // P1#2 fix: a lost-lease run must NOT overwrite the winner's authoritative
+    // outcome state. Previously, lease-mismatch only suppressed the lease-clear
+    // but still wrote lastRunStatus / lastRunError / killGateTripped / active —
+    // which clobbered the operator's recovery decisions.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: "run-OTHER",
+      pendingRunStartedAt: Date.now(),
+      lastRunStatus: "succeeded", // operator/winner-set
+      killGateTripped: false,
+      active: true,
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner._recordRunOutcome,
+      {
+        runId: "run-MINE",
+        status: "partial-failure",
+        error: "should not land",
+        killGate: true,
+        killGateReason: "should not land",
+        deactivate: true,
+      },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("lease-lost");
+
+    const row = await loadRow(t);
+    // Lease unchanged.
+    expect(row?.pendingRunId).toBe("run-OTHER");
+    // ALL outcome fields unchanged — no stomp.
+    expect(row?.lastRunStatus).toBe("succeeded");
+    expect(row?.lastRunError).toBeUndefined();
+    expect(row?.killGateTripped).toBe(false);
+    expect(row?.killGateReason).toBeUndefined();
+    expect(row?.active).toBe(true);
+  });
+
+  test("HARD NO-OP when lease is cleared (operator already took control)", async () => {
+    // The other lease-lost case: operator already called forceReleaseLease /
+    // recoverFromPartialFailure, clearing pendingRunId. The displaced run's
+    // catch block tries to write — must be no-op too.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: undefined,
+      lastRunStatus: "partial-failure", // operator-set
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner._recordRunOutcome,
+      {
+        runId: "run-DISPLACED",
+        status: "succeeded",
+        error: "should not land",
+      },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("lease-lost");
+    const row = await loadRow(t);
+    expect(row?.lastRunStatus).toBe("partial-failure"); // operator's status preserved
+  });
+});
+
+// ----------------------------------------------------------------------------
+// _recordPendingExport / _recordPendingBroadcast — per-step persistence (P1#4)
+// ----------------------------------------------------------------------------
+
+describe("_recordPendingExport — persists progress + lease-validates", () => {
+  test("persists waveLabel/segmentId/assigned/exportAt when lease is owned", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: "run-X",
+      pendingRunStartedAt: Date.now(),
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner._recordPendingExport,
+      {
+        runId: "run-X",
+        waveLabel: "wave-5",
+        segmentId: "seg-export",
+        assigned: 1500,
+      },
+    );
+    expect(result.ok).toBe(true);
+    const row = await loadRow(t);
+    expect(row?.pendingWaveLabel).toBe("wave-5");
+    expect(row?.pendingSegmentId).toBe("seg-export");
+    expect(row?.pendingAssigned).toBe(1500);
+    expect(row?.pendingExportAt).toBeTypeOf("number");
+  });
+
+  test("throws when lease has been force-released (P1#1+P1#4 interaction)", async () => {
+    // The runner's _recordPendingExport call protects against operator
+    // force-releasing the lease while assignAndExportWave was running.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, { pendingRunId: undefined }); // no lease
+    await expect(
+      t.mutation(internal.broadcast.rampRunner._recordPendingExport, {
+        runId: "run-DISPLACED",
+        waveLabel: "wave-5",
+        segmentId: "seg-export",
+        assigned: 1500,
+      }),
+    ).rejects.toThrow(/lease lost/i);
+  });
+
+  test("throws when lease is owned by a different run", async () => {
     const t = convexTest(schema, modules);
     await seedRampConfig(t, {
       pendingRunId: "run-OTHER",
       pendingRunStartedAt: Date.now(),
     });
-    await t.mutation(internal.broadcast.rampRunner._recordRunOutcome, {
-      runId: "run-MINE",
-      status: "partial-failure",
+    await expect(
+      t.mutation(internal.broadcast.rampRunner._recordPendingExport, {
+        runId: "run-MINE",
+        waveLabel: "wave-5",
+        segmentId: "seg-export",
+        assigned: 1500,
+      }),
+    ).rejects.toThrow(/lease lost/i);
+  });
+});
+
+describe("_recordPendingBroadcast — persists broadcastId + lease-validates", () => {
+  test("persists broadcastId/broadcastAt when lease is owned", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: "run-Y",
+      pendingRunStartedAt: Date.now(),
+      pendingWaveLabel: "wave-5",
+      pendingSegmentId: "seg-export",
+      pendingAssigned: 1500,
+      pendingExportAt: Date.now() - 1000,
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner._recordPendingBroadcast,
+      { runId: "run-Y", broadcastId: "bc-created" },
+    );
+    expect(result.ok).toBe(true);
+    const row = await loadRow(t);
+    expect(row?.pendingBroadcastId).toBe("bc-created");
+    expect(row?.pendingBroadcastAt).toBeTypeOf("number");
+    // Earlier persisted state preserved.
+    expect(row?.pendingWaveLabel).toBe("wave-5");
+  });
+
+  test("throws when lease has been force-released", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, { pendingRunId: undefined });
+    await expect(
+      t.mutation(internal.broadcast.rampRunner._recordPendingBroadcast, {
+        runId: "run-DISPLACED",
+        broadcastId: "bc-created",
+      }),
+    ).rejects.toThrow(/lease lost/i);
+  });
+});
+
+describe("_recordWaveSent — clears all pending* progress markers (P1#4)", () => {
+  test("on success, every pending* field is cleared so the next run starts fresh", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      currentTier: 1,
+      pendingRunId: "run-Z",
+      pendingRunStartedAt: Date.now(),
+      pendingWaveLabel: "wave-5",
+      pendingSegmentId: "seg-test",
+      pendingAssigned: 1500,
+      pendingExportAt: Date.now() - 5000,
+      pendingBroadcastId: "bc-test",
+      pendingBroadcastAt: Date.now() - 1000,
+    });
+    await t.mutation(internal.broadcast.rampRunner._recordWaveSent, {
+      runId: "run-Z",
+      expectedCurrentTier: 1,
+      newTier: 2,
+      waveLabel: "wave-5",
+      broadcastId: "bc-test",
+      segmentId: "seg-test",
+      assigned: 1500,
+      sentAt: Date.now(),
     });
     const row = await loadRow(t);
-    // Lease stays with run-OTHER, even though we recorded an outcome.
-    expect(row?.pendingRunId).toBe("run-OTHER");
+    expect(row?.pendingWaveLabel).toBeUndefined();
+    expect(row?.pendingSegmentId).toBeUndefined();
+    expect(row?.pendingAssigned).toBeUndefined();
+    expect(row?.pendingExportAt).toBeUndefined();
+    expect(row?.pendingBroadcastId).toBeUndefined();
+    expect(row?.pendingBroadcastAt).toBeUndefined();
+    // And the lease is also cleared.
+    expect(row?.pendingRunId).toBeUndefined();
+  });
+});
+
+// ----------------------------------------------------------------------------
+// clearPartialFailure — fail-closed unless operator confirms no export (P1#3)
+// ----------------------------------------------------------------------------
+
+describe("clearPartialFailure — confirmNoExport guard (P1#3)", () => {
+  test("REFUSES when any pending* progress marker is set — even with confirmNoExport=true", async () => {
+    // P1#3 fix: confirmNoExport is a literal-true gate, but the operator
+    // could still get it wrong. The persisted pending* markers are the
+    // authoritative signal that the export DID run. Refuse loudly.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      lastRunStatus: "partial-failure",
+      pendingSegmentId: "seg-stamped", // export ran
+    });
+    await expect(
+      t.mutation(internal.broadcast.rampRunner.clearPartialFailure, {
+        reason: "operator thinks no export happened",
+        confirmNoExport: true,
+      }),
+    ).rejects.toThrow(/refused: pending progress markers present/i);
+  });
+
+  test("clears when no pending* markers AND confirmNoExport=true (truly pre-export failure)", async () => {
+    // Genuine case: assignAndExportWave threw before any contact stamping or
+    // segment creation, so no pending* markers were persisted. Operator
+    // confirms zero stamps in audience tables, calls clearPartialFailure.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      lastRunStatus: "partial-failure",
+      pendingRunId: "run-Q",
+      pendingRunStartedAt: Date.now(),
+      // no pendingWaveLabel/SegmentId/BroadcastId
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner.clearPartialFailure,
+      {
+        reason: "assignAndExportWave threw on Resend timeout before stamping",
+        confirmNoExport: true,
+      },
+    );
+    expect(result.ok).toBe(true);
+    const row = await loadRow(t);
+    expect(row?.lastRunStatus).toMatch(/partial-failure-cleared/);
+    expect(row?.pendingRunId).toBeUndefined();
+  });
+
+  test("noop when status isn't partial-failure", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, { lastRunStatus: "succeeded" });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner.clearPartialFailure,
+      { reason: "test", confirmNoExport: true },
+    );
+    expect(result.noop).toBe(true);
   });
 });
 
@@ -272,7 +588,7 @@ describe("recoverFromPartialFailure — exported-but-not-sent recovery", () => {
     expect(row?.pendingRunId).toBeUndefined();
   });
 
-  test("manual-finished: rejects when required fields are missing", async () => {
+  test("manual-finished: rejects when required fields are missing AND no persisted fallback", async () => {
     const t = convexTest(schema, modules);
     await seedRampConfig(t, { lastRunStatus: "partial-failure" });
     await expect(
@@ -281,12 +597,122 @@ describe("recoverFromPartialFailure — exported-but-not-sent recovery", () => {
         reason: "test",
         // missing broadcastId, segmentId, sentAt, assigned
       }),
-    ).rejects.toThrow(/broadcastId, segmentId, sentAt, assigned are all required/i);
+    ).rejects.toThrow(/missing required field/i);
   });
 
-  test("discard-and-rotate: bumps waveLabelOffset so next cron uses a FRESH label", async () => {
-    // P1 #2 fix: without this, next cron retries the SAME waveLabel and
+  test("manual-finished: AUTO-FILLS from persisted pending* state when operator omits args (P1#4)", async () => {
+    // P1#4 fix: when the action dies after _recordPendingExport /
+    // _recordPendingBroadcast but before _recordWaveSent (Convex action
+    // timeout), recovery doesn't require operator to dig broadcastId/segmentId
+    // out of the Resend dashboard. Persisted state is the source of truth.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      currentTier: 1,
+      lastRunStatus: "partial-failure",
+      pendingRunId: "run-died",
+      pendingRunStartedAt: Date.now(),
+      pendingWaveLabel: "wave-5",
+      pendingSegmentId: "seg-persisted",
+      pendingAssigned: 1500,
+      pendingExportAt: Date.now() - 60000,
+      pendingBroadcastId: "bc-persisted",
+      pendingBroadcastAt: Date.now() - 30000,
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner.recoverFromPartialFailure,
+      {
+        recovery: "manual-finished",
+        reason: "Action timed out; manual send completed via Resend dashboard",
+        sentAt: 1700000000000, // operator-only
+        // broadcastId/segmentId/assigned/waveLabel — all OMITTED, fall back to persisted
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.advancedToTier).toBe(2);
+    expect(result.broadcastId).toBe("bc-persisted");
+    expect(result.segmentId).toBe("seg-persisted");
+    expect(result.assigned).toBe(1500);
+    expect(result.waveLabel).toBe("wave-5");
+    expect(result.usedPersistedFallback).toEqual({
+      broadcastId: true,
+      segmentId: true,
+      assigned: true,
+      waveLabel: true,
+    });
+
+    const row = await loadRow(t);
+    expect(row?.currentTier).toBe(2);
+    expect(row?.lastWaveBroadcastId).toBe("bc-persisted");
+    expect(row?.lastWaveSegmentId).toBe("seg-persisted");
+    expect(row?.lastWaveAssigned).toBe(1500);
+    expect(row?.lastWaveLabel).toBe("wave-5");
+    expect(row?.lastWaveSentAt).toBe(1700000000000);
+    // ALL pending* cleared.
+    expect(row?.pendingWaveLabel).toBeUndefined();
+    expect(row?.pendingSegmentId).toBeUndefined();
+    expect(row?.pendingAssigned).toBeUndefined();
+    expect(row?.pendingExportAt).toBeUndefined();
+    expect(row?.pendingBroadcastId).toBeUndefined();
+    expect(row?.pendingBroadcastAt).toBeUndefined();
+    expect(row?.pendingRunId).toBeUndefined();
+  });
+
+  test("manual-finished: operator override beats persisted fallback when both supplied", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      currentTier: 1,
+      lastRunStatus: "partial-failure",
+      pendingBroadcastId: "bc-persisted",
+      pendingSegmentId: "seg-persisted",
+      pendingAssigned: 1500,
+      pendingWaveLabel: "wave-5",
+    });
+    const result = await t.mutation(
+      internal.broadcast.rampRunner.recoverFromPartialFailure,
+      {
+        recovery: "manual-finished",
+        reason: "broadcast was re-created with a different id during manual recovery",
+        broadcastId: "bc-OVERRIDE",
+        segmentId: "seg-OVERRIDE",
+        assigned: 1234,
+        waveLabel: "wave-5-retry",
+        sentAt: 1700000000000,
+      },
+    );
+    expect(result.broadcastId).toBe("bc-OVERRIDE");
+    expect(result.segmentId).toBe("seg-OVERRIDE");
+    expect(result.assigned).toBe(1234);
+    expect(result.waveLabel).toBe("wave-5-retry");
+    expect(result.usedPersistedFallback?.broadcastId).toBe(false);
+    expect(result.usedPersistedFallback?.segmentId).toBe(false);
+    expect(result.usedPersistedFallback?.assigned).toBe(false);
+    expect(result.usedPersistedFallback?.waveLabel).toBe(false);
+  });
+
+  test("manual-finished: rejects when sentAt is omitted even with full persisted fallback", async () => {
+    // sentAt is operator-only — no progress marker captures send-completion time.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      lastRunStatus: "partial-failure",
+      pendingWaveLabel: "wave-5",
+      pendingSegmentId: "seg-persisted",
+      pendingAssigned: 1500,
+      pendingBroadcastId: "bc-persisted",
+    });
+    await expect(
+      t.mutation(internal.broadcast.rampRunner.recoverFromPartialFailure, {
+        recovery: "manual-finished",
+        reason: "test",
+        // sentAt omitted, all others fall back
+      }),
+    ).rejects.toThrow(/missing required field.*sentAt/i);
+  });
+
+  test("discard-and-rotate: bumps waveLabelOffset + clears ALL pending* state", async () => {
+    // Without offset bump, next cron retries the SAME waveLabel and
     // assignAndExportWave rejects because contacts are already stamped.
+    // P1#4: also verify pending* are cleared so they don't leak into a
+    // future recovery surface.
     const t = convexTest(schema, modules);
     await seedRampConfig(t, {
       currentTier: 1,
@@ -294,6 +720,10 @@ describe("recoverFromPartialFailure — exported-but-not-sent recovery", () => {
       lastRunStatus: "partial-failure",
       pendingRunId: "run-stuck",
       pendingRunStartedAt: Date.now(),
+      pendingWaveLabel: "wave-5",
+      pendingSegmentId: "seg-stamped",
+      pendingAssigned: 1500,
+      pendingBroadcastId: "bc-stamped",
     });
     const result = await t.mutation(
       internal.broadcast.rampRunner.recoverFromPartialFailure,
@@ -313,6 +743,11 @@ describe("recoverFromPartialFailure — exported-but-not-sent recovery", () => {
     expect(row?.currentTier).toBe(1);
     expect(row?.lastRunStatus).toMatch(/partial-failure-discarded-rotated/);
     expect(row?.pendingRunId).toBeUndefined();
+    // All pending* cleared.
+    expect(row?.pendingWaveLabel).toBeUndefined();
+    expect(row?.pendingSegmentId).toBeUndefined();
+    expect(row?.pendingAssigned).toBeUndefined();
+    expect(row?.pendingBroadcastId).toBeUndefined();
   });
 
   test("noop when status is not partial-failure", async () => {
