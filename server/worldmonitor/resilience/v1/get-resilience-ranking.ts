@@ -19,6 +19,7 @@ import {
   rankingCacheTagMatches,
   sortRankingItems,
   stampRankingCacheTag,
+  scoreCacheKey,
   warmMissingResilienceScores,
   type ScoreInterval,
 } from './_shared';
@@ -163,6 +164,35 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   // `greyedOut` with coverage 0, so the response is correct for partial states.
   const coverageRatio = cachedScores.size / countryCodes.length;
   if (coverageRatio >= RANKING_CACHE_MIN_COVERAGE) {
+    // Persistence parity check: confirm the score SETs actually landed in
+    // Redis before declaring success and writing seed-meta. Upstash REST
+    // /pipeline returns `result:'OK'` per command, but under saturated edge-
+    // runtime conditions that OK can be a transport-level acknowledgement
+    // that doesn't translate to durable persistence — observed 2026-04-27
+    // when seed-meta:resilience:ranking said scored=196 while a SCAN of
+    // resilience:score:v16:* returned just 2 keys. Without this check the
+    // meta would lie about success, downstream health flips between OK and
+    // EMPTY, and operators chase phantom TTL/cron issues.
+    //
+    // Sample 20 random keys (cheap: one extra round-trip ~50-200ms on Edge);
+    // refuse to write meta if fewer than half exist. The handler returns the
+    // computed response anyway, so callers still see correct data; only the
+    // cache + meta publish is skipped, letting the next cron retry naturally.
+    const sampleKeys = [...cachedScores.keys()].slice(0, 20).map(scoreCacheKey);
+    if (sampleKeys.length > 0) {
+      const verifyResults = await runRedisPipeline(sampleKeys.map((k) => ['EXISTS', k]));
+      const actualPersisted = verifyResults.filter((r) => r?.result === 1).length;
+      if (actualPersisted < sampleKeys.length * 0.5) {
+        console.warn(
+          `[resilience] persistence parity fail: ${actualPersisted}/${sampleKeys.length} ` +
+          `sampled score keys exist in Redis (cachedScores.size=${cachedScores.size}, ` +
+          `coverage=${(coverageRatio * 100).toFixed(0)}%) — refusing meta write to avoid ` +
+          `lying about ranking publish.`,
+        );
+        return response;
+      }
+    }
+
     // Upstash REST /pipeline is not transactional: each SET can succeed or
     // fail independently. A partial write (ranking OK, meta missed) would
     // leave health.js reading a stale meta over a fresh ranking — the seeder

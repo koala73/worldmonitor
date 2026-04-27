@@ -84,6 +84,13 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
           return { result: 'OK' };
         }
 
+        if (verb === 'EXISTS') {
+          // Real Redis EXISTS returns 1/0 for single key, count for multi-key.
+          // The handler's parity check uses single-key form per pipeline entry,
+          // so we just mirror that shape here.
+          return { result: redis.has(redisKey) ? 1 : 0 };
+        }
+
         if (verb === 'ZADD') {
           let added = 0;
           for (let index = 0; index < args.length; index += 2) {

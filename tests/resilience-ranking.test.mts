@@ -308,6 +308,57 @@ describe('resilience ranking contracts', () => {
     assert.ok(redis.has('seed-meta:resilience:ranking'), 'seed-meta must be written despite pipeline-GET race');
   });
 
+  it('parity check: refuses meta write when Upstash returns SET=OK but EXISTS shows keys did not durably persist (2026-04-27 incident)', async () => {
+    // Production observation 2026-04-27 (resilienceIntervals): seed-meta said
+    // scored=196 while a SCAN of resilience:score:v16:* showed only 2 keys.
+    // Mechanism: under saturated edge-runtime conditions, Upstash REST can
+    // return result:'OK' for SETs that don't durably persist. The handler's
+    // existing persistence guard (`persistResults[i]?.result === 'OK'`)
+    // trusts the OK response, so cachedScores.size inflates to N while only
+    // a fraction actually landed — meta lies about success.
+    //
+    // The parity check samples up to 20 score keys via EXISTS BEFORE writing
+    // meta. If <50% of sampled keys exist, refuse the meta write so health
+    // doesn't lie. Simulate this by making SETs return OK in the warm path
+    // but NOT actually mutating the underlying redis map for those keys.
+    const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+
+    // Hijack /pipeline so SETs to score:v16:* return OK but don't actually
+    // persist (simulating Upstash's optimistic-OK under load). Other commands
+    // (GET, EXISTS for the parity check, ranking + meta SETs) pass through.
+    const optimisticOk = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const allScoreSets = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith('resilience:score:v16:'),
+        );
+        if (allScoreSets) {
+          // Return OK without mutating redis — the lying-Upstash scenario.
+          return new Response(
+            JSON.stringify(commands.map(() => ({ result: 'OK' }))),
+            { status: 200 },
+          );
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = optimisticOk;
+
+    await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.equal(redis.has('resilience:ranking:v16'), false,
+      'ranking must NOT be published when score SETs returned OK but did not durably persist');
+    assert.equal(redis.has('seed-meta:resilience:ranking'), false,
+      'seed-meta must NOT be written when parity check fails — that would be a lying meta');
+  });
+
   it('pipeline SETs apply env prefix so preview warms do not leak into production namespace', async () => {
     // Reviewer regression: passing `raw=true` to runRedisPipeline bypasses the
     // env-based key prefix (preview: / dev:) that isolates preview deploys
