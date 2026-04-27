@@ -1,0 +1,63 @@
+---
+title: "API Reference"
+description: "Catalog of every WorldMonitor REST service. All endpoints follow /api/<service>/v1/<rpc-name>."
+---
+
+WorldMonitor exposes its data through a family of versioned REST services. Every endpoint follows the same shape:
+
+```
+https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
+```
+
+`<rpc-name>` is kebab-case (e.g. `list-acled-events`, `get-resilience-ranking`). Auth is the same on every service — pass `X-WorldMonitor-Key: wm_live_...` (or rely on a trusted browser origin). See [Authentication](/usage-auth) for details.
+
+The grouped pages in the left sidebar render the full OpenAPI spec — request parameters, response schemas, and try-it-out — for each service.
+
+## Service catalog
+
+**Geopolitical** — Conflicts, Military, Unrest, Intelligence, Displacement, Cyber, Sanctions
+
+**Natural events** — Natural Disasters, Seismology, Climate, Wildfires, Radiation, Thermal
+
+**Economy and markets** — Economic (FRED / IMF / BIS / country macro), Markets (quotes / indices / FX / commodities), Trade, Supply Chain, Consumer Prices, Predictions (prediction markets), Forecasts
+
+**Infrastructure and transport** — Aviation (aircraft tracking, flight search), Maritime (vessels, density zones), Infrastructure, Resilience (country resilience score and ranking)
+
+**Health and environment** — Public Health, Imagery, Webcams
+
+**Other** — News (feed digest, article summaries), Research, Positive Events, Giving
+
+Open any group in the sidebar to browse its operations.
+
+## MCP equivalents
+
+If you've been using the [MCP server](/mcp-server) and want the matching REST call, most MCP tools map 1:1 to a single REST RPC under the corresponding service:
+
+| MCP tool | Service | Example REST endpoint |
+|---|---|---|
+| `get_market_data` | Markets | `/api/market/v1/get-quotes` |
+| `get_conflict_events` | Conflicts | `/api/conflict/v1/list-acled-events` |
+| `get_aviation_status` | Aviation | `/api/aviation/v1/track-aircraft` |
+| `get_news_intelligence` | News | `/api/news/v1/list-feed-digest` |
+| `get_natural_disasters` | Natural Disasters | `/api/natural/v1/list-events` |
+| `get_military_posture` | Military | `/api/military/v1/list-military-flights` |
+| `get_cyber_threats` | Cyber | `/api/cyber/v1/...` |
+| `get_economic_data` / `get_country_macro` | Economic | `/api/economic/v1/get-fred-series`, `/api/economic/v1/get-country-macro` |
+| `get_eu_housing_cycle` / `get_eu_quarterly_gov_debt` / `get_eu_industrial_production` | Economic | `/api/economic/v1/...` |
+| `get_prediction_markets` | Predictions | `/api/prediction/v1/...` |
+| `get_sanctions_data` | Sanctions | `/api/sanctions/v1/...` |
+| `get_climate_data` | Climate | `/api/climate/v1/...` |
+| `get_infrastructure_status` | Infrastructure | `/api/infrastructure/v1/...` |
+| `get_supply_chain_data` | Supply Chain | `/api/supply-chain/v1/...` |
+| `get_positive_events` | Positive Events | `/api/positive-events/v1/...` |
+| `get_radiation_data` | Radiation | `/api/radiation/v1/...` |
+| `get_research_signals` | Research | `/api/research/v1/...` |
+| `get_forecast_predictions` | Forecasts | `/api/forecast/v1/get-forecasts` |
+| `get_maritime_activity` | Maritime | `/api/maritime/v1/get-vessel-snapshot` |
+| `search_flights` / `search_flight_prices_by_date` | Aviation | `/api/aviation/v1/search-google-flights`, `/api/aviation/v1/search-google-dates` |
+
+Composite MCP tools (`get_world_brief`, `get_country_brief`, `get_country_risk`, `get_airspace`, `analyze_situation`, `generate_forecasts`) fan out to multiple REST RPCs and merge results — there's no single REST equivalent. Hit the underlying RPCs in the relevant service spec and combine client-side.
+
+## Platform endpoints
+
+Bootstrap, health, version, and cache-purge live outside the per-service catalog — see [Platform Endpoints](/api-platform).

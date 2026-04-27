@@ -221,6 +221,12 @@
         "tab": "API Reference",
         "groups": [
           {
+            "group": "Overview",
+            "pages": [
+              "api-reference"
+            ]
+          },
+          {
             "group": "Geopolitical",
             "pages": [
               {
