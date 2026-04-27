@@ -257,6 +257,7 @@ export class SearchModal {
           <div class="search-header">
             <span class="search-icon">\u2318</span>
             <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
+            <button class="voice-search-btn" aria-label="Voice search" title="Voice search">🎤</button>
             <kbd class="search-kbd">ESC</kbd>
           </div>
           <div class="search-results"></div>

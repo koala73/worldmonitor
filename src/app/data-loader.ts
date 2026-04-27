@@ -118,6 +118,7 @@ import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
+import { getCachedAwarenessState } from '@/services/aria';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
@@ -464,6 +465,17 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoad('forecast')) {
         tasks.push({ name: 'forecasts', task: runGuarded('forecasts', () => this.loadForecasts()) });
         tasks.push({ name: 'simulation-outcome', task: runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
+      }
+      // ARIA Intelligence System
+      if (shouldLoad('aria')) {
+        tasks.push({ name: 'aria', task: runGuarded('aria', async () => {
+          try {
+            const awareness = await getCachedAwarenessState();
+            this.ctx.ariaAwareness = awareness;
+          } catch (e) {
+            if (!this.ctx.isDestroyed) console.warn('[App] ARIA awareness loading failed:', e);
+          }
+        }) });
       }
       if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {

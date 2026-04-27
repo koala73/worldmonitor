@@ -21,6 +21,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { label: 'Conflicts',  icon: '⚔️',  query: 'Top active conflicts and military developments' },
   { label: 'Forecasts',  icon: '🔮', query: 'Active forecasts and prediction market outlook' },
   { label: 'Risk',       icon: '⚠️',  query: 'Highest risk countries and instability hotspots' },
+  { label: 'Future',     icon: '🚀', query: 'Emerging technologies, AGI developments, and future threats' },
 ];
 
 const DOMAINS = [
