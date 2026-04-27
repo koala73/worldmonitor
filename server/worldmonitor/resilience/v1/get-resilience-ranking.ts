@@ -10,7 +10,6 @@ import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { isInRankableUniverse } from './_rankable-universe';
 import {
-  GREY_OUT_COVERAGE_THRESHOLD,
   RESILIENCE_INTERVAL_KEY_PREFIX,
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
@@ -119,23 +118,42 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       if (droppedCount > 0) {
         console.log(`[resilience-ranking] Filtered ${droppedCount} non-rankable territories from cached ranking response (transitional — next recompute will publish a clean payload)`);
       }
-      // Plan 2026-04-26-002 §U3 (PR 2) review fix — backfill the
-      // `headlineEligible` field on each cached item. The v16 ranking
-      // cache predates the field, so cache hits would return items
-      // missing the now-required boolean. Defaulting to `true` matches
-      // the PR-2 contract for items already in the ranking; the next
-      // recompute will publish items with the field stamped at build
-      // time. Same backfill pattern as `stripCacheMeta` in `_shared.ts`.
-      const backfillEligibility = <T extends { headlineEligible?: boolean }>(item: T): T =>
-        (item.headlineEligible === undefined ? { ...item, headlineEligible: true } : item);
+      // Plan 2026-04-26-002 §U7 (PR 6) — backfill semantic flips.
+      //
+      // At v16 (PR 2), every score build emitted `headlineEligible: true`
+      // unconditionally, so a cache entry missing the field meant
+      // "pre-field v16 entry" → backfilling to `true` matched the
+      // PR-2 contract.
+      //
+      // At v17 (PR 6), every legitimate cache writer STAMPS the field
+      // explicitly (true or false based on the gate). A v17 cache entry
+      // missing the field is anomalous — partially-migrated cache,
+      // manual seed that forgot the field, or a future writer bug.
+      // Defaulting missing → `true` would let the anomaly through as
+      // headline-eligible. Per Greptile P2 review, the conservative
+      // default at v17 is `false`: the gate is the single source of
+      // truth, and anything not stamped is not trusted to pass it.
+      // The next recompute will write a clean payload.
+      const backfillEligibilityConservative = <T extends { headlineEligible?: boolean }>(item: T): T =>
+        (item.headlineEligible === undefined ? { ...item, headlineEligible: false } : item);
+      // Plan 2026-04-26-002 §U7 (PR 6) — apply the headline-eligible
+      // gate to the cache-hit path. Otherwise stale items[] from a
+      // partially-migrated cache (or any future state where a writer
+      // forgets to filter) would surface ineligible countries in the
+      // headline ranking. The gate is the single source of truth — any
+      // path that returns items[] to callers must apply it.
+      const itemsWithEligibility = filteredItems.map(backfillEligibilityConservative);
+      const greyedWithEligibility = filteredGreyedOut.map(backfillEligibilityConservative);
+      const ineligibleFromItems = itemsWithEligibility.filter((item) => item.headlineEligible !== true);
+      const eligibleItems = itemsWithEligibility.filter((item) => item.headlineEligible === true);
       // Strip the cache-only tag before returning to callers so the
       // wire shape matches the generated proto response type.
       const { _formula: _drop, ...publicResponse } = cached!;
       void _drop;
       return {
         ...(publicResponse as GetResilienceRankingResponse),
-        items: filteredItems.map(backfillEligibility),
-        greyedOut: filteredGreyedOut.map(backfillEligibility),
+        items: eligibleItems,
+        greyedOut: [...greyedWithEligibility, ...ineligibleFromItems],
       };
     }
   }
@@ -181,8 +199,17 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   // ranking. Raw API endpoints (get-resilience-score per-country)
   // continue to return the full set with `headlineEligible: false`
   // surfaced; only the *ranking* endpoint applies the filter.
+  //
+  // `headlineEligible: true` already implies overallCoverage >= 0.65
+  // (HEADLINE_ELIGIBLE_MIN_COVERAGE in _shared.ts), which is well
+  // above GREY_OUT_COVERAGE_THRESHOLD (0.40); checking the threshold
+  // here would be dead code per Greptile P2. Reduced to the single
+  // load-bearing predicate. Items with low coverage that somehow
+  // arrive with headlineEligible:true (e.g. from a corrupted cache
+  // entry) are intentionally trusted — the gate is the source of
+  // truth for this decision, not coverage alone.
   const passesHeadlineGate = (item: ResilienceRankingItem): boolean =>
-    item.overallCoverage >= GREY_OUT_COVERAGE_THRESHOLD && item.headlineEligible === true;
+    item.headlineEligible === true;
   const response: GetResilienceRankingResponse = {
     items: sortRankingItems(allItems.filter(passesHeadlineGate)),
     greyedOut: allItems.filter((item) => !passesHeadlineGate(item)),
