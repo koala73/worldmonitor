@@ -16,6 +16,7 @@ import { describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
 import {
+  RESILIENCE_RANKING_CACHE_KEY,
   computeHeadlineEligible,
   HEADLINE_ELIGIBLE_HIGH_COVERAGE,
   HEADLINE_ELIGIBLE_MIN_COVERAGE,
@@ -128,7 +129,7 @@ describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
       ],
       greyedOut: [],
     };
-    redis.set('resilience:ranking:v17', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -141,6 +142,38 @@ describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
       `ineligible item TV must NOT appear in items[]; got items=${itemCodes.join(',')}`);
     assert.ok(greyedCodes.includes('TV'),
       `ineligible item TV must surface in greyedOut[]; got greyedOut=${greyedCodes.join(',')}`);
+  });
+
+  it('promotes greyedOut items with headlineEligible:true to items[] (symmetric gate)', async () => {
+    // Plan 002 §U7 review fix (PR #3472 follow-up): the gate must
+    // apply SYMMETRICALLY across both arrays. A cached greyedOut entry
+    // with `headlineEligible: true` should be promoted to items[] on
+    // the cache-hit read; otherwise an item that now passes the gate
+    // remains demoted until a full recompute (~6h TTL).
+    //
+    // Mutation-verified: removing `promotedFromGreyed` from the
+    // returned items[] array makes this test fail.
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const cachedPublic = {
+      items: [],
+      greyedOut: [
+        // Anomalous: cached in greyedOut but flagged eligible. Symmetric
+        // gate should promote it.
+        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true },
+        // Genuinely ineligible — stays in greyedOut.
+        { countryCode: 'TV', overallScore: 70, level: 'medium', lowConfidence: false, overallCoverage: 0.7, headlineEligible: false },
+      ],
+    };
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.ok(response.items.some((item) => item.countryCode === 'NO'),
+      'symmetric gate must promote greyedOut entries with headlineEligible:true to items[]');
+    assert.ok(!response.greyedOut.some((item) => item.countryCode === 'NO'),
+      'NO must NOT remain in greyedOut[] after symmetric gate promotion');
+    assert.ok(response.greyedOut.some((item) => item.countryCode === 'TV'),
+      'TV (genuinely ineligible) must stay in greyedOut[]');
   });
 
   it('headlineEligible:true items pass even when overallCoverage is below the legacy GREY_OUT threshold', async () => {
@@ -160,7 +193,7 @@ describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
       ],
       greyedOut: [],
     };
-    redis.set('resilience:ranking:v17', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 

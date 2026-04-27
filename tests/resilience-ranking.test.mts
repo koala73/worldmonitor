@@ -109,15 +109,17 @@ describe('resilience ranking contracts', () => {
     // Regression for: `cached?.items?.length` was falsy when items=[] even though
     // greyedOut had entries, causing unnecessary rewarming on every request.
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    // Plan 002 §U3 (PR 2): greyed-out items also carry headlineEligible
-    // post-PR-2. Note: greyed-out items represent low-coverage countries
-    // that wouldn't pass the future PR-6 gate either; PR 2 still emits
-    // `true` per the no-behavior-change contract, and PR 6 will swap.
+    // Plan 002 §U7 (PR 6 + #3472 follow-up): greyed-out items represent
+    // low-coverage countries that wouldn't pass the gate. Post-PR-6, a
+    // legitimate writer stamps `headlineEligible: false` on them. The
+    // symmetric-gate handler promotes any greyedOut item flagged true
+    // back to items[], so the fixture must accurately reflect the
+    // post-PR-6 stamping (false for SS, ER) for the deepEqual to hold.
     const cachedPublic = {
       items: [],
       greyedOut: [
-        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15, headlineEligible: true },
-        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12, headlineEligible: true },
+        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15, headlineEligible: false },
+        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12, headlineEligible: false },
       ],
     };
     redis.set('resilience:ranking:v17', JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
