@@ -15,6 +15,7 @@ import { describe, it } from 'node:test';
 
 import { buildRankingItem, ensureResilienceScoreCached, RESILIENCE_SCORE_CACHE_PREFIX } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
 describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
   describe('buildRankingItem', () => {
@@ -135,31 +136,47 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
   });
 
   describe('PR 2 contract: every code path emits the field', () => {
-    it('happy-path response includes headlineEligible (compile-time + runtime)', () => {
-      // The TypeScript compiler enforces this at compile time via the
-      // generated proto type GetResilienceScoreResponse. This runtime
-      // assertion exists to catch a future contributor who silently
-      // makes the field optional or omits it from a stub.
-      const stub = {
-        countryCode: 'US',
-        overallScore: 73,
-        baselineScore: 82,
-        stressScore: 58,
-        stressFactor: 0.21,
-        level: 'high',
-        domains: [],
-        trend: 'stable',
-        change30d: 0,
-        lowConfidence: false,
-        imputationShare: 0.1,
-        dataVersion: 'v16',
-        pillars: [],
-        schemaVersion: '2.0',
-        headlineEligible: true,
-      };
-      assert.ok('headlineEligible' in stub,
-        'every response object must carry the headlineEligible field per PR-2 §U3');
-      assert.equal(typeof stub.headlineEligible, 'boolean',
+    it('end-to-end: real buildResilienceScore writes headlineEligible into the stored cache entry', async () => {
+      // Plan 002 §U3 review fix (Greptile P2 round 2): the previous
+      // version of this test asserted `'headlineEligible' in stub` on
+      // a hand-crafted literal that unconditionally contained the field
+      // — a useless passing-stub-test.
+      //
+      // First rewrite asserted on the response of ensureResilienceScoreCached
+      // — but that path goes through stripCacheMeta, which BACKFILLS
+      // missing `headlineEligible` to `true` (PR-2 review round 1
+      // defense-in-depth). So even if buildResilienceScore stopped
+      // emitting the field, the response would still test as `true`
+      // and the test would silently pass.
+      //
+      // Correct approach: drive a real build (cache miss → build →
+      // store), then read the RAW cache entry from fake-redis directly,
+      // bypassing stripCacheMeta. If buildResilienceScore omits the
+      // field, the raw stored payload omits it and this assertion fires.
+      //
+      // Mutation-verified: removing `headlineEligible: true` from
+      // buildResilienceScore's return object makes this test fail.
+      const { redis } = installRedis(RESILIENCE_FIXTURES);
+
+      const response = await ensureResilienceScoreCached('US');
+
+      // Sanity on the response side first (catches an
+      // ensureResilienceScoreCached fallback path that bypasses the
+      // build).
+      assert.equal(response.countryCode, 'US',
+        'sanity: response must be for the requested country');
+
+      // Now the load-bearing assertion: read the RAW cache entry that
+      // ensureResilienceScoreCached just wrote, before stripCacheMeta's
+      // backfill paves over a missing field.
+      const rawCached = redis.get(`${RESILIENCE_SCORE_CACHE_PREFIX}US`);
+      assert.ok(rawCached, 'sanity: cache miss must have populated the score cache key');
+      const parsed = JSON.parse(rawCached!);
+      assert.ok('headlineEligible' in parsed,
+        'PR-2 contract: buildResilienceScore must write headlineEligible into the stored cache payload (raw value, before stripCacheMeta backfill)');
+      assert.equal(parsed.headlineEligible, true,
+        `PR-2 contract: happy-path build emits headlineEligible=true into the cache (got ${parsed.headlineEligible})`);
+      assert.equal(typeof parsed.headlineEligible, 'boolean',
         'headlineEligible must be a boolean (no null/undefined sentinel)');
     });
   });
