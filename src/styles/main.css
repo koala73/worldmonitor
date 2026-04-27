@@ -15370,6 +15370,97 @@ a.prediction-link:hover {
   margin-top: 8px;
 }
 
+.service-status-readiness {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--darken-medium);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.service-status-readiness-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.service-status-readiness-meta {
+  font-size: 9px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.service-status-readiness-warning {
+  font-size: 9px;
+  color: var(--yellow);
+  line-height: 1.4;
+}
+
+.service-status-readiness-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.service-status-readiness-item {
+  align-items: flex-start;
+}
+
+.service-status-readiness-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.service-status-readiness-hint {
+  margin-top: 3px;
+  font-size: 9px;
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
+.service-status-fallbacks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.service-status-fallbacks-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+}
+
+.service-status-fallbacks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.service-status-fallback-item {
+  padding: 6px 8px;
+  background: var(--overlay-subtle);
+  border-radius: 4px;
+}
+
+.service-status-fallback-panel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.service-status-fallback-copy {
+  font-size: 9px;
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
 /* ===== deck.gl Map Styles ===== */
 .map-container.deckgl-mode {
   position: relative;
