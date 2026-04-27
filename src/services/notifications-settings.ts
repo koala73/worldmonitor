@@ -11,6 +11,8 @@ import {
   saveAlertRules,
   setQuietHours,
   setDigestSettings,
+  setNotificationConfig,
+  IncompatibleDeliveryError,
   type NotificationChannel,
   type ChannelType,
   type QuietHoursOverride,
@@ -296,6 +298,19 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
             <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>` : ''}
           </select>
+          <!--
+            Sensitivity lives OUTSIDE usRealtimeSection so digest-mode users can
+            see and change it. The 'all' option is disabled when delivery mode is
+            realtime — the (realtime, all) pair is forbidden by the server. See
+            plans/forbid-realtime-all-events.md §2a.
+          -->
+          <div class="ai-flow-section-label" style="margin-top:8px">Sensitivity</div>
+          <select class="unified-settings-select" id="usNotifSensitivity">
+            <option value="all"${isRealtime ? ' disabled' : ''}${sensitivity === 'all' && !isRealtime ? ' selected' : ''}>All events${isRealtime ? ' (digest only)' : ''}</option>
+            <option value="high"${sensitivity === 'high' || (sensitivity === 'all' && isRealtime) ? ' selected' : ''}>High &amp; critical</option>
+            <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
+          </select>
+          <div class="ai-flow-toggle-desc" id="usSensitivityHint" style="margin-top:4px">Real-time delivery requires High or Critical. To receive all events, switch to a digest cadence.</div>
           <div id="usRealtimeSection" style="${isRealtime ? '' : 'display:none'}">
             <div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
@@ -308,12 +323,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
-            <div class="ai-flow-section-label">Sensitivity</div>
-            <select class="unified-settings-select" id="usNotifSensitivity">
-              <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
-              <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
-              <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
-            </select>
             <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
@@ -479,7 +488,56 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           if (realtimeSection) realtimeSection.style.display = isRt ? '' : 'none';
           if (digestDetails) digestDetails.style.display = isRt ? 'none' : '';
           if (twiceHint) twiceHint.style.display = target.value === 'twice_daily' ? '' : 'none';
-          saveDigestSettings();
+
+          // Cross-field invariant: (realtime, all) is forbidden. When switching TO
+          // realtime with sensitivity='all', snap to 'high' BEFORE saving so the
+          // server never sees the forbidden pair. When switching AWAY, re-enable
+          // 'all'. Save atomically via setNotificationConfig (the legacy
+          // setDigestSettings call would race against the cross-field validator).
+          // See plans/forbid-realtime-all-events.md §2c, §2d.
+          const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
+          const allOption = sensitivityEl?.querySelector<HTMLOptionElement>('option[value="all"]');
+          if (allOption) {
+            allOption.disabled = isRt;
+            allOption.textContent = isRt ? 'All events (digest only)' : 'All events';
+          }
+          let snappedSensitivity: 'all' | 'high' | 'critical' | undefined;
+          if (isRt && sensitivityEl?.value === 'all') {
+            sensitivityEl.value = 'high';
+            snappedSensitivity = 'high';
+            // Tiny inline notice — the user just lost a setting; tell them why.
+            const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
+            if (hint) {
+              const original = hint.textContent;
+              hint.textContent = "Switched to High & critical — real-time delivery doesn't support All events.";
+              setTimeout(() => { if (hint && original) hint.textContent = original; }, 4000);
+            }
+          }
+
+          const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
+          const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+          if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = setTimeout(() => {
+            void (async () => {
+              try {
+                await setNotificationConfig({
+                  variant: SITE_VARIANT,
+                  digestMode: target.value as DigestMode,
+                  digestHour: hourEl ? Number(hourEl.value) : 8,
+                  digestTimezone: tzEl?.value || detectedTz,
+                  sensitivity: snappedSensitivity, // undefined unless we just snapped
+                });
+              } catch (err) {
+                if (err instanceof IncompatibleDeliveryError) {
+                  const hint = container.querySelector<HTMLElement>('#usSensitivityHint');
+                  if (hint) hint.textContent = err.message;
+                  return;
+                }
+                throw err;
+              }
+            })();
+          }, 800);
+
           if (!isRt) {
             const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
             if (enabledEl && !enabledEl.checked) {

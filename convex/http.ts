@@ -501,7 +501,14 @@ http.route({
           variant: body.variant,
           enabled: body.enabled,
           eventTypes: body.eventTypes as string[],
-          sensitivity: (body.sensitivity ?? "all") as "all" | "high" | "critical",
+          // Pass body.sensitivity through unchanged (may be undefined).
+          // setAlertRulesForUser now accepts optional sensitivity and uses
+          // resolveEffectivePair to preserve existing.sensitivity on patch and
+          // default to 'high' only on fresh insert. A blind '?? "all"' fallback
+          // here would silently narrow existing daily+all digest users to
+          // daily+high whenever a caller omits the field.
+          // See plans/forbid-realtime-all-events.md §1c.
+          sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
           channels: body.channels as Array<"telegram" | "slack" | "email">,
           aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
         });
@@ -543,6 +550,53 @@ http.route({
           digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
           digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
         });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Atomic update of (digestMode, sensitivity) and any subset of the alert-rule /
+      // digest-schedule fields. Used by the settings UI's delivery-mode change flow
+      // to avoid the two-call race that the legacy set-alert-rules + set-digest-settings
+      // pair has against the cross-field validator.
+      // See plans/forbid-realtime-all-events.md §1d, §1f.
+      if (action === "set-notification-config") {
+        const VALID_SENSITIVITY = new Set(["all", "high", "critical"]);
+        const VALID_DIGEST_MODE = new Set(["realtime", "daily", "twice_daily", "weekly"]);
+        if (typeof body.variant !== "string" || !body.variant) {
+          return new Response(JSON.stringify({ error: "MISSING_VARIANT" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) {
+          return new Response(JSON.stringify({ error: "INVALID_SENSITIVITY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.digestMode !== undefined && !VALID_DIGEST_MODE.has(body.digestMode as string)) {
+          return new Response(JSON.stringify({ error: "INVALID_DIGEST_MODE" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        try {
+          await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
+            userId,
+            variant: body.variant,
+            enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+            eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
+            sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
+            channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "webhook" | "web_push">) : undefined,
+            aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
+            digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly" | undefined,
+            digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+            digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+          });
+        } catch (err: unknown) {
+          // Translate ConvexError(INCOMPATIBLE_DELIVERY) into 400 with the message
+          // so the API path can pass it through to the UI for inline rendering.
+          // Do NOT swallow as a generic 500 — the user needs the helper text.
+          const data = (err as { data?: unknown } | undefined)?.data;
+          if (data && typeof data === "object" && (data as { code?: string }).code === "INCOMPATIBLE_DELIVERY") {
+            const errPayload = data as { code: string; message?: string };
+            return new Response(
+              JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
+              { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 

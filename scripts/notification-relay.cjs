@@ -620,15 +620,26 @@ function matchesSensitivity(ruleSensitivity, eventSeverity) {
  * shadow:score-log (currently v3) for tuning.
  */
 function shouldNotify(rule, event) {
-  const passesLegacy = matchesSensitivity(rule.sensitivity, event.severity ?? 'high');
+  // Coerce (effective realtime + 'all') → 'high' before consulting sensitivity in
+  // either branch. The mutation validators + migration make this state unreachable
+  // for new traffic; this catches in-flight rows during migration and any tooling
+  // that bypasses the validators. Both reads (legacy match below AND the importance
+  // threshold lookup) must use the SAME effective value, otherwise the threshold
+  // path silently falls through to the looser IMPORTANCE_SCORE_MIN floor.
+  // See plans/forbid-realtime-all-events.md §3.
+  const effectiveDigestMode = rule.digestMode ?? 'realtime';
+  const effectiveSensitivity =
+    effectiveDigestMode === 'realtime' && rule.sensitivity === 'all' ? 'high' : rule.sensitivity;
+
+  const passesLegacy = matchesSensitivity(effectiveSensitivity, event.severity ?? 'high');
   if (!passesLegacy) return false;
 
   if (process.env.IMPORTANCE_SCORE_LIVE === '1' && event.payload?.importanceScore != null) {
     // Calibrated from v5 shadow-log recalibration (2026-04-20).
     // IMPORTANCE_SCORE_MIN env var controls the 'all' floor at both the
     // relay ingress gate AND per-rule sensitivity — single tuning surface.
-    const threshold = rule.sensitivity === 'critical' ? 82
-                    : rule.sensitivity === 'high' ? 69
+    const threshold = effectiveSensitivity === 'critical' ? 82
+                    : effectiveSensitivity === 'high' ? 69
                     : IMPORTANCE_SCORE_MIN;
     return event.payload.importanceScore >= threshold;
   }

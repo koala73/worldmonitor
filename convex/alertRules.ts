@@ -2,6 +2,39 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
 
+type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
+type Sensitivity = "all" | "high" | "critical";
+
+// Cross-field invariant enforcement for (digestMode, sensitivity).
+// Real-time delivery + 'all' sensitivity produces unsustainable notification volume
+// (see plans/forbid-realtime-all-events.md). Forbidden combination must be rejected
+// at every mutation site; new-row defaults pick 'high' on insert; patches preserve
+// existing.sensitivity when caller omits the field (no silent narrowing of digest users).
+function resolveEffectivePair(args: {
+  incomingDigestMode?: DigestMode;
+  incomingSensitivity?: Sensitivity;
+  existing?: { digestMode?: DigestMode | string; sensitivity?: Sensitivity | string };
+}): { digestMode: DigestMode; sensitivity: Sensitivity } {
+  const digestMode = (args.incomingDigestMode
+    ?? (args.existing?.digestMode as DigestMode | undefined)
+    ?? "realtime");
+  const sensitivity = (args.incomingSensitivity
+    ?? (args.existing?.sensitivity as Sensitivity | undefined)
+    ?? "high"); // insert-only default — patch path never includes sensitivity unless caller passed it
+  return { digestMode, sensitivity };
+}
+
+function assertCompatibleDeliveryMode(pair: { digestMode: DigestMode; sensitivity: Sensitivity }) {
+  if (pair.digestMode === "realtime" && pair.sensitivity === "all") {
+    throw new ConvexError({
+      code: "INCOMPATIBLE_DELIVERY",
+      message:
+        "Real-time delivery requires High or Critical sensitivity. " +
+        "To receive all events, choose Daily, Twice daily, or Weekly digest.",
+    });
+  }
+}
+
 export const getAlertRules = query({
   args: {},
   handler: async (ctx) => {
@@ -19,7 +52,7 @@ export const setAlertRules = mutation({
     variant: v.string(),
     enabled: v.boolean(),
     eventTypes: v.array(v.string()),
-    sensitivity: sensitivityValidator,
+    sensitivity: v.optional(sensitivityValidator),
     channels: v.array(channelTypeValidator),
     aiDigestEnabled: v.optional(v.boolean()),
   },
@@ -35,16 +68,25 @@ export const setAlertRules = mutation({
       )
       .unique();
 
+    const pair = resolveEffectivePair({
+      incomingSensitivity: args.sensitivity,
+      existing: existing ?? undefined,
+    });
+    assertCompatibleDeliveryMode(pair);
+
     const now = Date.now();
 
     if (existing) {
       const patch: Record<string, unknown> = {
         enabled: args.enabled,
         eventTypes: args.eventTypes,
-        sensitivity: args.sensitivity,
         channels: args.channels,
         updatedAt: now,
       };
+      // Only patch sensitivity when caller explicitly supplied it — never silently
+      // narrow an existing digest user with sensitivity:'all' just because this
+      // mutation got called without the field.
+      if (args.sensitivity !== undefined) patch.sensitivity = args.sensitivity;
       if (args.aiDigestEnabled !== undefined) patch.aiDigestEnabled = args.aiDigestEnabled;
       await ctx.db.patch(existing._id, patch);
     } else {
@@ -53,7 +95,7 @@ export const setAlertRules = mutation({
         variant: args.variant,
         enabled: args.enabled,
         eventTypes: args.eventTypes,
-        sensitivity: args.sensitivity,
+        sensitivity: pair.sensitivity,
         channels: args.channels,
         aiDigestEnabled: args.aiDigestEnabled ?? true,
         updatedAt: now,
@@ -92,6 +134,12 @@ export const setDigestSettings = mutation({
       )
       .unique();
 
+    const pair = resolveEffectivePair({
+      incomingDigestMode: args.digestMode,
+      existing: existing ?? undefined,
+    });
+    assertCompatibleDeliveryMode(pair);
+
     const now = Date.now();
     const patch = {
       digestMode: args.digestMode,
@@ -108,7 +156,7 @@ export const setDigestSettings = mutation({
         variant: args.variant,
         enabled: true,
         eventTypes: [],
-        sensitivity: "all",
+        sensitivity: pair.sensitivity,
         channels: [],
         ...patch,
       });
@@ -132,7 +180,7 @@ export const setAlertRulesForUser = internalMutation({
     variant: v.string(),
     enabled: v.boolean(),
     eventTypes: v.array(v.string()),
-    sensitivity: sensitivityValidator,
+    sensitivity: v.optional(sensitivityValidator),
     channels: v.array(channelTypeValidator),
     aiDigestEnabled: v.optional(v.boolean()),
   },
@@ -144,19 +192,37 @@ export const setAlertRulesForUser = internalMutation({
         q.eq("userId", userId).eq("variant", rest.variant),
       )
       .unique();
+
+    const pair = resolveEffectivePair({
+      incomingSensitivity: rest.sensitivity,
+      existing: existing ?? undefined,
+    });
+    assertCompatibleDeliveryMode(pair);
+
     const now = Date.now();
     if (existing) {
       const patch: Record<string, unknown> = {
         enabled: rest.enabled,
         eventTypes: rest.eventTypes,
-        sensitivity: rest.sensitivity,
         channels: rest.channels,
         updatedAt: now,
       };
+      // Only patch sensitivity when caller explicitly supplied it — preserves
+      // existing.sensitivity for digest users on omitted-field calls.
+      if (rest.sensitivity !== undefined) patch.sensitivity = rest.sensitivity;
       if (rest.aiDigestEnabled !== undefined) patch.aiDigestEnabled = rest.aiDigestEnabled;
       await ctx.db.patch(existing._id, patch);
     } else {
-      await ctx.db.insert("alertRules", { userId, ...rest, updatedAt: now });
+      await ctx.db.insert("alertRules", {
+        userId,
+        variant: rest.variant,
+        enabled: rest.enabled,
+        eventTypes: rest.eventTypes,
+        sensitivity: pair.sensitivity,
+        channels: rest.channels,
+        aiDigestEnabled: rest.aiDigestEnabled,
+        updatedAt: now,
+      });
     }
   },
 });
@@ -215,6 +281,11 @@ export const setQuietHours = mutation({
       }
     }
 
+    // Default-insert path can create a fresh row — make sure the pair we'd insert
+    // is compatible (sensitivity defaults to 'high' via resolveEffectivePair).
+    const pair = resolveEffectivePair({ existing: existing ?? undefined });
+    assertCompatibleDeliveryMode(pair);
+
     const now = Date.now();
     const patch = {
       quietHoursEnabled: args.quietHoursEnabled,
@@ -233,7 +304,7 @@ export const setQuietHours = mutation({
         variant: args.variant,
         enabled: true,
         eventTypes: [],
-        sensitivity: "all",
+        sensitivity: pair.sensitivity,
         channels: [],
         ...patch,
       });
@@ -267,12 +338,19 @@ export const setDigestSettingsForUser = internalMutation({
         q.eq("userId", userId).eq("variant", variant),
       )
       .unique();
+
+    const pair = resolveEffectivePair({
+      incomingDigestMode: digest.digestMode,
+      existing: existing ?? undefined,
+    });
+    assertCompatibleDeliveryMode(pair);
+
     const now = Date.now();
     if (existing) {
       await ctx.db.patch(existing._id, { ...digest, updatedAt: now });
     } else {
       await ctx.db.insert("alertRules", {
-        userId, variant, enabled: true, eventTypes: [], sensitivity: "all", channels: [],
+        userId, variant, enabled: true, eventTypes: [], sensitivity: pair.sensitivity, channels: [],
         ...digest, updatedAt: now,
       });
     }
@@ -302,6 +380,10 @@ export const setQuietHoursForUser = internalMutation({
       }
     }
 
+    // Default-insert path can create a fresh row — make sure the pair we'd insert is compatible.
+    const pair = resolveEffectivePair({ existing: existing ?? undefined });
+    assertCompatibleDeliveryMode(pair);
+
     const now = Date.now();
     const patch = {
       quietHoursEnabled: rest.quietHoursEnabled,
@@ -317,8 +399,91 @@ export const setQuietHoursForUser = internalMutation({
     } else {
       await ctx.db.insert("alertRules", {
         userId, variant: rest.variant, enabled: true,
-        eventTypes: [], sensitivity: "all", channels: [],
+        eventTypes: [], sensitivity: pair.sensitivity, channels: [],
         ...patch,
+      });
+    }
+  },
+});
+
+/**
+ * Atomic internal mutation that updates BOTH digestMode and sensitivity together
+ * (plus optional alert-rule + digest-schedule fields). Used by the settings UI's
+ * delivery-mode change flow to avoid the two-call race in setDigestSettings →
+ * setAlertRules where switching from `daily+all` to `realtime` would otherwise
+ * trip the cross-field validator on the first call.
+ *
+ * All fields optional — caller passes only what changed. Patch logic preserves
+ * existing.sensitivity when caller omits it (no silent narrowing of digest users).
+ *
+ * See plans/forbid-realtime-all-events.md §1d.
+ */
+export const setNotificationConfigForUser = internalMutation({
+  args: {
+    userId: v.string(),
+    variant: v.string(),
+    enabled: v.optional(v.boolean()),
+    eventTypes: v.optional(v.array(v.string())),
+    sensitivity: v.optional(sensitivityValidator),
+    channels: v.optional(v.array(channelTypeValidator)),
+    aiDigestEnabled: v.optional(v.boolean()),
+    digestMode: v.optional(digestModeValidator),
+    digestHour: v.optional(v.number()),
+    digestTimezone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId, variant } = args;
+
+    if (args.digestHour !== undefined && (args.digestHour < 0 || args.digestHour > 23 || !Number.isInteger(args.digestHour))) {
+      throw new ConvexError("digestHour must be an integer 0–23");
+    }
+    if (args.digestTimezone !== undefined) {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: args.digestTimezone });
+      } catch {
+        throw new ConvexError("digestTimezone must be a valid IANA timezone (e.g. America/New_York)");
+      }
+    }
+
+    const existing = await ctx.db
+      .query("alertRules")
+      .withIndex("by_user_variant", (q) => q.eq("userId", userId).eq("variant", variant))
+      .unique();
+
+    const pair = resolveEffectivePair({
+      incomingDigestMode: args.digestMode,
+      incomingSensitivity: args.sensitivity,
+      existing: existing ?? undefined,
+    });
+    assertCompatibleDeliveryMode(pair);
+
+    const now = Date.now();
+
+    if (existing) {
+      const patch: Record<string, unknown> = { updatedAt: now };
+      if (args.enabled !== undefined) patch.enabled = args.enabled;
+      if (args.eventTypes !== undefined) patch.eventTypes = args.eventTypes;
+      // Only patch sensitivity when caller explicitly supplied it.
+      if (args.sensitivity !== undefined) patch.sensitivity = args.sensitivity;
+      if (args.channels !== undefined) patch.channels = args.channels;
+      if (args.aiDigestEnabled !== undefined) patch.aiDigestEnabled = args.aiDigestEnabled;
+      if (args.digestMode !== undefined) patch.digestMode = args.digestMode;
+      if (args.digestHour !== undefined) patch.digestHour = args.digestHour;
+      if (args.digestTimezone !== undefined) patch.digestTimezone = args.digestTimezone;
+      await ctx.db.patch(existing._id, patch);
+    } else {
+      await ctx.db.insert("alertRules", {
+        userId,
+        variant,
+        enabled: args.enabled ?? true,
+        eventTypes: args.eventTypes ?? [],
+        sensitivity: pair.sensitivity,
+        channels: args.channels ?? [],
+        aiDigestEnabled: args.aiDigestEnabled,
+        digestMode: args.digestMode,
+        digestHour: args.digestHour,
+        digestTimezone: args.digestTimezone,
+        updatedAt: now,
       });
     }
   },
@@ -345,5 +510,83 @@ export const getByEnabled = query({
       .query("alertRules")
       .withIndex("by_enabled", (q) => q.eq("enabled", args.enabled))
       .collect();
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMP MIGRATION FUNCTIONS — remove after the (realtime, all) backfill completes.
+// Drives plans/forbid-realtime-all-events.md §4. Public surfaces gated by an
+// admin secret stored as Convex env var MIGRATION_ADMIN_SECRET. Driver scripts
+// in scripts/migrate-{discover,realtime-all-to-daily}-*.mjs call them via
+// ConvexHttpClient.query() / .mutation().
+// ─────────────────────────────────────────────────────────────────────────────
+
+function assertMigrationAdmin(adminSecret: string) {
+  const expected = process.env.MIGRATION_ADMIN_SECRET;
+  if (!expected || adminSecret !== expected) {
+    // Do NOT echo the supplied secret in the error.
+    throw new ConvexError("UNAUTHORIZED");
+  }
+}
+
+export const _countRealtimeAllRules = query({
+  args: { cursor: v.union(v.string(), v.null()), adminSecret: v.string() },
+  handler: async (ctx, args) => {
+    assertMigrationAdmin(args.adminSecret);
+    const page = await ctx.db.query("alertRules").paginate({ numItems: 500, cursor: args.cursor });
+    let matched = 0;
+    let enabledMatched = 0;
+    const variantCounts: Record<string, number> = {};
+    const sample: { _id: string; userId: string; variant: string }[] = [];
+    for (const r of page.page) {
+      if ((!r.digestMode || r.digestMode === "realtime") && r.sensitivity === "all") {
+        matched++;
+        if (r.enabled) enabledMatched++;
+        variantCounts[r.variant] = (variantCounts[r.variant] ?? 0) + 1;
+        if (sample.length < 5) sample.push({ _id: r._id, userId: r.userId, variant: r.variant });
+      }
+    }
+    return { matched, enabledMatched, variantCounts, sample, isDone: page.isDone, nextCursor: page.continueCursor };
+  },
+});
+
+export const _migrateRealtimeAllPage = mutation({
+  args: {
+    cursor: v.union(v.string(), v.null()),
+    pageSize: v.number(),
+    dryRun: v.boolean(),
+    defaultDigestHour: v.number(),
+    defaultDigestTimezone: v.string(),
+    adminSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertMigrationAdmin(args.adminSecret);
+    if (args.pageSize < 1 || args.pageSize > 500 || !Number.isInteger(args.pageSize)) {
+      throw new ConvexError("pageSize must be an integer 1–500");
+    }
+    if (args.defaultDigestHour < 0 || args.defaultDigestHour > 23 || !Number.isInteger(args.defaultDigestHour)) {
+      throw new ConvexError("defaultDigestHour must be an integer 0–23");
+    }
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: args.defaultDigestTimezone });
+    } catch {
+      throw new ConvexError("defaultDigestTimezone must be a valid IANA timezone");
+    }
+    const page = await ctx.db.query("alertRules").paginate({ numItems: args.pageSize, cursor: args.cursor });
+    const now = Date.now();
+    let migrated = 0;
+    for (const r of page.page) {
+      const isForbidden = (!r.digestMode || r.digestMode === "realtime") && r.sensitivity === "all";
+      if (!isForbidden) continue; // idempotent: already-migrated rows are skipped on re-run
+      if (args.dryRun) { migrated++; continue; }
+      await ctx.db.patch(r._id, {
+        digestMode: "daily",
+        digestHour: r.digestHour ?? args.defaultDigestHour,
+        digestTimezone: r.digestTimezone ?? args.defaultDigestTimezone,
+        updatedAt: now,
+      });
+      migrated++;
+    }
+    return { migrated, isDone: page.isDone, nextCursor: page.continueCursor };
   },
 });

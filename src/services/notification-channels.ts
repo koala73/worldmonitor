@@ -166,3 +166,49 @@ export async function setDigestSettings(settings: {
   });
   if (!res.ok) throw new Error(`set digest settings: ${res.status}`);
 }
+
+/**
+ * Thrown when the server rejects a (digestMode, sensitivity) pair as incompatible
+ * — currently the (realtime, all) combination. UI catches this specifically to
+ * render the helper text inline rather than surfacing a generic error.
+ * See plans/forbid-realtime-all-events.md §1f.
+ */
+export class IncompatibleDeliveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IncompatibleDeliveryError';
+  }
+}
+
+/**
+ * Atomic save of (digestMode, sensitivity) and any subset of the alert-rule /
+ * digest-schedule fields. Used by the settings UI's delivery-mode change flow
+ * — replaces the legacy two-call sequence (saveAlertRules + setDigestSettings)
+ * which races against the cross-field validator on `daily+all → realtime`.
+ */
+export async function setNotificationConfig(args: {
+  variant: string;
+  enabled?: boolean;
+  eventTypes?: string[];
+  sensitivity?: Sensitivity;
+  channels?: ChannelType[];
+  aiDigestEnabled?: boolean;
+  digestMode?: DigestMode;
+  digestHour?: number;
+  digestTimezone?: string;
+}): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-notification-config', ...args }),
+  });
+  if (res.ok) return;
+  let body: { error?: string; message?: string } = {};
+  try { body = await res.json(); } catch { /* keep default */ }
+  if (res.status === 400 && body.error === 'INCOMPATIBLE_DELIVERY') {
+    throw new IncompatibleDeliveryError(
+      body.message ?? 'Real-time delivery requires High or Critical sensitivity.',
+    );
+  }
+  throw new Error(`set notification config: ${res.status}`);
+}
