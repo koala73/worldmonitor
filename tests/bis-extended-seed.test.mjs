@@ -262,24 +262,44 @@ describe('seed-bis-extended parser', () => {
   });
 });
 
-describe('BIS-Extended health-check maxStaleMin co-pinned to 3× bundle interval', () => {
+describe('BIS-Extended health-check maxStaleMin co-pinned to actual cron cadence', () => {
   // Regression-locks the fix for the 2026-04-27 false-STALE event where all
   // three BIS-Extended health entries (bisDsr, bisPropertyResidential,
   // bisPropertyCommercial) flipped to STALE_SEED simultaneously at
-  // seedAgeMin=1442, just 2 minutes past maxStaleMin=1440. Root cause: the
-  // BIS-Extended bundle interval is 12h (720min); maxStaleMin was set to
-  // exactly 2× interval = ZERO grace for cron jitter / Railway boot delay /
-  // single missed run with retry. Following the project's 3× cron-driven
-  // convention (see portwatchPortActivity, chokepointTransits, etc.), the
-  // correct value is 3 × 720 = 2160min (36h).
+  // seedAgeMin=1442 vs maxStaleMin=1440 (2 minutes over).
+  //
+  // CRITICAL distinction: the bundle config in scripts/seed-bundle-macro.mjs
+  // declares `intervalMs: 12 * HOUR` for the BIS-Extended section, but
+  // `seed-bis-extended.mjs` is NOT a standalone Railway service — it's a
+  // child-process spawned by `seed-bundle-macro` whose cron schedule is
+  // `0 8 * * *` (daily, 08:00 UTC, per docs/railway-seed-consolidation-runbook.md).
+  // The 12h gate is therefore a no-op: the cron fires once per 24h so the
+  // 12h staleness check is always satisfied. EFFECTIVE write cadence = 24h.
+  //
+  // The previous maxStaleMin=1440 = 1× actual cadence = ZERO grace.
+  // Correct value per the 2× rule: 2 × 1440 = 2880min (48h).
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const root = resolve(__dirname, '..');
   const healthSrc = readFileSync(resolve(root, 'api/health.js'), 'utf-8');
   const bundleSrc = readFileSync(resolve(root, 'scripts/seed-bundle-macro.mjs'), 'utf-8');
+  const runbookSrc = readFileSync(resolve(root, 'docs/railway-seed-consolidation-runbook.md'), 'utf-8');
 
-  function extractBundleIntervalHours(label) {
-    // Match `{ label: 'BIS-Extended', ..., intervalMs: 12 * HOUR, ... }`
+  function extractCronCadenceMin() {
+    // Authoritative source = Railway cron schedule from the runbook.
+    // Match: `| **Cron schedule** | `0 8 * * *` (daily 08:00 UTC) |` under
+    // the `### Bundle 8: seed-bundle-macro` heading.
+    const m = runbookSrc.match(/Bundle\s+\d+:\s+seed-bundle-macro[\s\S]*?Cron schedule\*\*\s*\|\s*`([^`]+)`/);
+    if (!m) throw new Error('could not find seed-bundle-macro cron schedule in runbook');
+    const expr = m[1].trim();
+    if (expr === '0 8 * * *') return 24 * 60; // daily
+    throw new Error(`unexpected cron schedule "${expr}" — update test if cron cadence changed`);
+  }
+
+  function extractBundleSectionGateHours(label) {
+    // The per-section `intervalMs:` in seed-bundle-macro.mjs — only meaningful
+    // when smaller than the cron cadence. Pinned here so a future test can
+    // detect if the cron schedule changes and the gate becomes load-bearing.
     const re = new RegExp(`label:\\s*'${label}'[\\s\\S]*?intervalMs:\\s*(\\d+)\\s*\\*\\s*HOUR`, 'm');
     const m = bundleSrc.match(re);
     if (!m) throw new Error(`could not find bundle entry for ${label}`);
@@ -293,31 +313,39 @@ describe('BIS-Extended health-check maxStaleMin co-pinned to 3× bundle interval
     return parseInt(m[1], 10);
   }
 
-  it('BIS-Extended bundle interval is 12h — pinned so the relationship below stays meaningful', () => {
-    assert.equal(extractBundleIntervalHours('BIS-Extended'), 12);
+  it('seed-bundle-macro Railway cron is daily (24h cadence) — the actual write rate', () => {
+    assert.equal(extractCronCadenceMin(), 24 * 60);
+  });
+
+  it('BIS-Extended section gate (12h) is smaller than cron cadence (24h) — gate is a no-op, cron drives the cadence', () => {
+    const gateMin = extractBundleSectionGateHours('BIS-Extended') * 60;
+    const cronMin = extractCronCadenceMin();
+    assert.ok(gateMin <= cronMin,
+      `If the bundle's per-section gate (${gateMin}min) ever exceeds the cron cadence (${cronMin}min), ` +
+      `the gate becomes load-bearing and this test family must be re-derived from the gate, not the cron.`);
   });
 
   for (const name of ['bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial']) {
-    it(`${name}.maxStaleMin is 2160min (3× the 12h bundle interval)`, () => {
-      assert.equal(extractMaxStaleMin(name), 2160);
+    it(`${name}.maxStaleMin is 2880min (2× the 24h cron cadence)`, () => {
+      assert.equal(extractMaxStaleMin(name), 2880);
     });
 
-    it(`${name}.maxStaleMin >= 2.5× bundle interval (no false-STALE on a single missed cron + retry)`, () => {
-      const intervalMin = extractBundleIntervalHours('BIS-Extended') * 60;
+    it(`${name}.maxStaleMin >= 1.5× cron cadence (no false-STALE on a single delayed cron tick)`, () => {
+      const cronMin = extractCronCadenceMin();
       const maxStale = extractMaxStaleMin(name);
       assert.ok(
-        maxStale >= intervalMin * 2.5,
-        `${name}.maxStaleMin (${maxStale}) must be >= ${intervalMin * 2.5} (2.5× bundle interval); ` +
-        `tighter values flip to STALE_SEED on routine cron jitter — see 2026-04-27 incident.`,
+        maxStale >= cronMin * 1.5,
+        `${name}.maxStaleMin (${maxStale}) must be >= ${cronMin * 1.5} (1.5× cron cadence); ` +
+        `tighter values flip to STALE_SEED on routine cron drift — see 2026-04-27 incident.`,
       );
     });
 
-    it(`${name}.maxStaleMin <= 4× bundle interval (still catches a real outage within 2 days)`, () => {
-      const intervalMin = extractBundleIntervalHours('BIS-Extended') * 60;
+    it(`${name}.maxStaleMin <= 3× cron cadence (still catches a real outage within 3 days)`, () => {
+      const cronMin = extractCronCadenceMin();
       const maxStale = extractMaxStaleMin(name);
       assert.ok(
-        maxStale <= intervalMin * 4,
-        `${name}.maxStaleMin (${maxStale}) must be <= ${intervalMin * 4} (4× bundle interval); ` +
+        maxStale <= cronMin * 3,
+        `${name}.maxStaleMin (${maxStale}) must be <= ${cronMin * 3} (3× cron cadence); ` +
         `looser values mask real upstream outages from the alerting threshold.`,
       );
     });

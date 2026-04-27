@@ -252,19 +252,23 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy cron; primary key energy-prices has same 150min threshold
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
-  // seed-bis-extended.mjs writes per-dataset seed-meta keys ONLY when that
-  // specific dataset published fresh entries — so a single-dataset BIS outage
-  // (e.g. WS_DSR 500s) goes stale in health without falsely dragging down
-  // the healthy ones. BIS-Extended bundle interval is 12h (720min) per
-  // scripts/seed-bundle-macro.mjs. The previous 1440 (2× cron interval) had
-  // ZERO grace for cron jitter / Railway boot / one missed run with retry —
-  // all three keys flipped to STALE_SEED synchronously at minute 1442 on
-  // 2026-04-27. 2160 = 3× interval matches the project convention for
-  // cron-driven keys (portwatchPortActivity, chokepointTransits,
-  // transitSummaries all follow 3×).
-  bisDsr:                { key: 'seed-meta:economic:bis-dsr',                  maxStaleMin: 2160 },
-  bisPropertyResidential:{ key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 2160 },
-  bisPropertyCommercial: { key: 'seed-meta:economic:bis-property-commercial',  maxStaleMin: 2160 },
+  // seed-bis-extended.mjs is a child-process section spawned by
+  // scripts/seed-bundle-macro.mjs (Railway service `seed-bundle-macro`,
+  // cron `0 8 * * *` — daily 08:00 UTC). The per-section `intervalMs: 12*HOUR`
+  // inside the bundle config is a no-op gate here: the Railway cron only
+  // fires once per 24h, so the 12h staleness gate is always satisfied. The
+  // EFFECTIVE write cadence for these keys is therefore 24h (1440min), NOT
+  // 12h. Per-dataset seed-meta is only written when THAT dataset published
+  // fresh entries — so a single-dataset BIS outage (e.g. WS_DSR 500s) goes
+  // STALE in health without dragging down the healthy ones.
+  //
+  // The previous 1440 (= 1× cron cadence) had ZERO grace for cron drift.
+  // All three keys flipped to STALE_SEED synchronously at minute 1442 on
+  // 2026-04-27 (one missed/late cron). 2880 = 2× the 24h cadence covers
+  // single-cron drift while still firing within 48h on a real outage.
+  bisDsr:                { key: 'seed-meta:economic:bis-dsr',                  maxStaleMin: 2880 },
+  bisPropertyResidential:{ key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 2880 },
+  bisPropertyCommercial: { key: 'seed-meta:economic:bis-property-commercial',  maxStaleMin: 2880 },
   imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 100800 }, // monthly seed; 100800min = 70 days = 2× interval (absorbs one missed run)
   imfGrowth:        { key: 'seed-meta:economic:imf-growth',       maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro (same WEO release cadence)
   imfLabor:         { key: 'seed-meta:economic:imf-labor',        maxStaleMin: 100800 }, // monthly seed; 70d threshold matches imfMacro
