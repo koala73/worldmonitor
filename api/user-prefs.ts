@@ -66,6 +66,7 @@ export default async function handler(
       return jsonResponse(prefs ?? null, 200, cors);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const kind = extractConvexErrorKind(err, msg);
       // UNAUTHENTICATED on this path means the Clerk token PASSED our edge's
       // `validateBearerToken` but Convex still rejected it — i.e. genuine
       // auth/audience/issuer drift between our Clerk JWKS validation and
@@ -74,7 +75,7 @@ export default async function handler(
       // caught earlier (the `validateBearerToken` 401 above) and never reach
       // this catch. Capture before returning 401 so the drift surfaces under
       // a stable Sentry bucket instead of silently 401'ing every request.
-      if (msg.includes('UNAUTHENTICATED')) {
+      if (kind === 'UNAUTHENTICATED') {
         console.error('[user-prefs] GET convex auth drift:', err);
         captureSilentError(err, buildSentryContext(err, msg, {
           method: 'GET', convexFn: 'userPreferences:getPreferences',
@@ -118,13 +119,25 @@ export default async function handler(
     return jsonResponse(result, 200, cors);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('CONFLICT')) {
-      return jsonResponse({ error: 'CONFLICT' }, 409, cors);
+    const kind = extractConvexErrorKind(err, msg);
+    const errData = (err as { data?: unknown })?.data;
+    if (kind === 'CONFLICT') {
+      // Echo `actualSyncVersion` from the structured ConvexError so the
+      // client can refresh its local sync state in one round-trip instead
+      // of re-fetching getPreferences.
+      const actualSyncVersion = (errData && typeof errData === 'object' && 'actualSyncVersion' in errData)
+        ? (errData as Record<string, unknown>).actualSyncVersion
+        : undefined;
+      return jsonResponse(
+        actualSyncVersion !== undefined ? { error: 'CONFLICT', actualSyncVersion } : { error: 'CONFLICT' },
+        409,
+        cors,
+      );
     }
-    if (msg.includes('BLOB_TOO_LARGE')) {
+    if (kind === 'BLOB_TOO_LARGE') {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
     }
-    if (msg.includes('UNAUTHENTICATED')) {
+    if (kind === 'UNAUTHENTICATED') {
       // See GET branch above — UNAUTHENTICATED here means Clerk-vs-Convex
       // auth drift (token already passed validateBearerToken). Capture
       // before returning 401 so the drift is visible.
@@ -148,6 +161,33 @@ export default async function handler(
     }));
     return jsonResponse({ error: 'Failed to save preferences' }, 500, cors);
   }
+}
+
+/**
+ * Extract the named-error `kind` from a Convex client throw, preferring the
+ * structured `err.data.kind` (set when the server throws
+ * `ConvexError({ kind, ... })`) and falling back to substring-matching the
+ * legacy string-data error message (`ConvexError("CONFLICT")`).
+ *
+ * Rationale: Convex's HTTP client wire format only forwards `errorData` to
+ * the client when the server-side `ConvexError` carries object-typed data.
+ * String-data ConvexErrors arrive as `Error("[Request ID: X] Server Error")`
+ * with `errorData` undefined — so a `msg.includes('CONFLICT')` check NEVER
+ * matches and the throw gets misclassified as a 500. The structured-data
+ * path is the load-bearing one; the legacy string-match is a safety net for
+ * the deploy-ordering window where Vercel may run a build that pre-dates
+ * the Convex server-side update.
+ */
+function extractConvexErrorKind(err: unknown, msg: string): string | null {
+  const data = (err as { data?: unknown })?.data;
+  if (data && typeof data === 'object' && 'kind' in data) {
+    const kind = (data as Record<string, unknown>).kind;
+    if (typeof kind === 'string') return kind;
+  }
+  if (msg.includes('CONFLICT')) return 'CONFLICT';
+  if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
+  if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
+  return null;
 }
 
 /**
