@@ -82,7 +82,9 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     console.log(`[slack-oauth] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
   } catch (err) {
     console.error('[slack-oauth] publishWelcome LPUSH failed:', (err as Error).message);
-    void captureSilentError(err, {
+    // publishWelcome runs inside the handler's ctx.waitUntil chain; await
+    // keeps that chain pending until Sentry delivery completes.
+    await captureSilentError(err, {
       tags: { route: 'api/slack/oauth/callback', step: 'publish-welcome' },
     });
   }

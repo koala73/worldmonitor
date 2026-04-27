@@ -19,7 +19,10 @@ import { captureSilentError } from './_sentry-edge.js';
 import { ConvexHttpClient } from 'convex/browser';
 import { validateBearerToken } from '../server/auth-session';
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
   }
@@ -63,7 +66,7 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonResponse(prefs ?? null, 200, cors);
     } catch (err) {
       console.error('[user-prefs] GET error:', err);
-      void captureSilentError(err, { tags: { route: 'api/user-prefs', method: 'GET' } });
+      ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/user-prefs', method: 'GET' } }));
       return jsonResponse({ error: 'Failed to fetch preferences' }, 500, cors);
     }
   }
@@ -102,7 +105,7 @@ export default async function handler(req: Request): Promise<Response> {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
     }
     console.error('[user-prefs] POST error:', err);
-    void captureSilentError(err, { tags: { route: 'api/user-prefs', method: 'POST' } });
+    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/user-prefs', method: 'POST' } }));
     return jsonResponse({ error: 'Failed to save preferences' }, 500, cors);
   }
 }

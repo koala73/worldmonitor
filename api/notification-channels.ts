@@ -97,7 +97,9 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     console.log(`[notification-channels] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
   } catch (err) {
     console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
-    void captureSilentError(err, {
+    // publishWelcome runs inside the handler's ctx.waitUntil chain; await
+    // keeps that chain pending until Sentry delivery completes.
+    await captureSilentError(err, {
       tags: { route: 'api/notification-channels', step: 'publish-welcome' },
     });
   }
@@ -114,7 +116,7 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
     });
   } catch (err) {
     console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
-    void captureSilentError(err, {
+    await captureSilentError(err, {
       tags: { route: 'api/notification-channels', step: 'publish-flush-held', severity: 'warn' },
     });
   }
@@ -206,7 +208,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json(data, 200, corsHeaders, true);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
-      void captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
+      ctx.waitUntil(captureEdgeException(err, { handler: 'notification-channels', method: 'GET' }));
       return json({ error: 'Failed to fetch' }, 500, corsHeaders);
     }
   }
@@ -412,7 +414,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
-      void captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
+      ctx.waitUntil(captureEdgeException(err, { handler: 'notification-channels', method: 'POST' }));
       return json({ error: 'Operation failed' }, 500, corsHeaders);
     }
   }

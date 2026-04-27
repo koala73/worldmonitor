@@ -813,7 +813,10 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
   const corsHeaders = getPublicCorsHeaders('POST, OPTIONS');
 
@@ -955,9 +958,11 @@ export default async function handler(req: Request): Promise<Response> {
         }, corsHeaders);
       } catch (err: unknown) {
         console.error('[mcp] tool execution error:', err);
-        void captureSilentError(err, {
-          tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
-        });
+        ctx.waitUntil(
+          captureSilentError(err, {
+            tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
+          }),
+        );
         return rpcError(id, -32603, 'Internal error: data fetch failed');
       }
     }

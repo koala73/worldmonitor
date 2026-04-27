@@ -66,7 +66,10 @@ function publicBaseUrl(req: Request): string {
   return new URL(req.url).origin;
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
   }
@@ -149,7 +152,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
     } catch (err) {
       console.error('[api/brief/share-url] latest pointer read failed:', (err as Error).message);
-      void captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'latest-pointer-read' } });
+      ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'latest-pointer-read' } }));
       return jsonResponse({ error: 'service_unavailable' }, 503, cors);
     }
   }
@@ -167,7 +170,7 @@ export default async function handler(req: Request): Promise<Response> {
     existing = await readRawJsonFromUpstash(`brief:${session.userId}:${issueSlot}`);
   } catch (err) {
     console.error('[api/brief/share-url] Upstash read failed:', (err as Error).message);
-    void captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'envelope-read' } });
+    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'envelope-read' } }));
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
   if (existing == null) {

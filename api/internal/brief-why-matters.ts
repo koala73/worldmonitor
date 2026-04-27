@@ -248,7 +248,11 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
     return parseWhyMattersV2(result.content);
   } catch (err) {
     console.warn(`[brief-why-matters] analyst path failed: ${err instanceof Error ? err.message : String(err)}`);
-    void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'analyst-path', severity: 'warn' } });
+    // Nested helper called outside the request's `ctx.waitUntil` chain
+    // (analyst/gemini paths run via Promise.allSettled). Await keeps the
+    // helper's own promise pending until Sentry delivery completes,
+    // capped by the 2s fetch timeout in `_sentry-common.js`.
+    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'analyst-path', severity: 'warn' } });
     return null;
   }
 }
@@ -277,7 +281,7 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
     return parseWhyMatters(result.content);
   } catch (err) {
     console.warn(`[brief-why-matters] gemini path failed: ${err instanceof Error ? err.message : String(err)}`);
-    void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'gemini-path', severity: 'warn' } });
+    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'gemini-path', severity: 'warn' } });
     return null;
   }
 }
@@ -398,7 +402,7 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
     }
   } catch (err) {
     console.warn(`[brief-why-matters] cache read degraded: ${err instanceof Error ? err.message : String(err)}`);
-    void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-read', severity: 'warn' } });
+    await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-read', severity: 'warn' } });
   }
 
   if (cached) {
@@ -456,7 +460,7 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
       await setCachedData(cacheKey, envelope, WHY_MATTERS_TTL_SEC);
     } catch (err) {
       console.warn(`[brief-why-matters] cache write degraded: ${err instanceof Error ? err.message : String(err)}`);
-      void captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-write', severity: 'warn' } });
+      await captureSilentError(err, { tags: { route: 'api/internal/brief-why-matters', step: 'cache-write', severity: 'warn' } });
     }
   }
 

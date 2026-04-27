@@ -53,6 +53,7 @@ type BriefPreview = {
 async function readBriefPreview(
   userId: string,
   issueSlot: string,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<BriefPreview | null> {
   const raw = await readRawJsonFromUpstash(`brief:${userId}:${issueSlot}`);
   if (raw == null) return null;
@@ -67,9 +68,11 @@ async function readBriefPreview(
     console.error(
       `[api/latest-brief] composer-bug: brief:${userId}:${issueSlot} failed envelope assertion: ${(err as Error).message}`,
     );
-    void captureSilentError(err, {
-      tags: { route: 'api/latest-brief', step: 'envelope-assertion', issueSlot },
-    });
+    ctx.waitUntil(
+      captureSilentError(err, {
+        tags: { route: 'api/latest-brief', step: 'envelope-assertion', issueSlot },
+      }),
+    );
     return null;
   }
   const { data } = raw;
@@ -108,7 +111,10 @@ function publicBaseUrl(req: Request): string {
   return new URL(req.url).origin;
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
   }
@@ -168,7 +174,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const targetSlot = requestedSlot ?? (await readLatestPointer(session.userId));
     if (targetSlot) {
-      const hit = await readBriefPreview(session.userId, targetSlot);
+      const hit = await readBriefPreview(session.userId, targetSlot, ctx);
       if (hit) {
         issueSlot = targetSlot;
         preview = hit;
@@ -179,7 +185,7 @@ export default async function handler(req: Request): Promise<Response> {
     // this into "composing", which would falsely signal empty state
     // to the dashboard panel. 503 lets the client show a retry path.
     console.error('[api/latest-brief] Upstash read failed:', (err as Error).message);
-    void captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' } });
+    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' } }));
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

@@ -30,7 +30,10 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   const cors = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
@@ -81,7 +84,7 @@ export default async function handler(req: Request): Promise<Response> {
     return json(data, 200, cors);
   } catch (err) {
     console.error('[customer-portal] Relay failed:', (err as Error).message);
-    void captureSilentError(err, { tags: { route: 'api/customer-portal', step: 'relay' } });
+    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/customer-portal', step: 'relay' } }));
     return json({ error: 'Customer portal unavailable' }, 502, cors);
   }
 }

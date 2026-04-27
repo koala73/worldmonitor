@@ -33,7 +33,10 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   const cors = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
@@ -118,7 +121,7 @@ export default async function handler(req: Request): Promise<Response> {
     return json(data, 200, cors);
   } catch (err) {
     console.error('[create-checkout] Relay failed:', (err as Error).message);
-    void captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' } });
+    ctx.waitUntil(captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' } }));
     return json({ error: 'Checkout service unavailable' }, 502, cors);
   }
 }
