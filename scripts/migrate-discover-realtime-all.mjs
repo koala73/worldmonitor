@@ -16,7 +16,6 @@
  * The script paginates through `alertRules` 500 rows per call; each Convex query
  * call returns counts only (no full rows) to stay well inside result limits.
  */
-'use strict';
 
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../convex/_generated/api.js';

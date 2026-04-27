@@ -17,7 +17,6 @@
  * already-migrated rows are skipped on re-run. Pages 200 rows per call to keep
  * each Convex transaction inside the per-call write budget.
  */
-'use strict';
 
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../convex/_generated/api.js';

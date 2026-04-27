@@ -57,6 +57,7 @@ Every mutation that touches the `alertRules` table — AND every HTTP-action def
 | HTTP action `set-alert-rules` fallback | `convex/http.ts:504` | yes (`?? "all"` fallback when client omits sensitivity) | no | yes |
 
 Two failure modes:
+
 - Mutations that don't touch the pair directly (`setQuietHours`, `setQuietHoursForUser`) can *create* a forbidden row from scratch by default-inserting `sensitivity: "all"` when no row exists.
 - The HTTP action at `convex/http.ts:504` hardcodes a `body.sensitivity ?? "all"` fallback before calling `setAlertRulesForUser` — even if the mutation defaults are flipped, this fallback re-introduces `"all"` for any client that omits the field.
 
@@ -130,6 +131,7 @@ Flip the default to `"high"`, but **only on fresh insert** — never on patch of
 4. **`convex/http.ts:504`** — remove the `?? "all"` fallback entirely. Pass `body.sensitivity` (which may be `undefined`) straight through to `setAlertRulesForUser`. The mutation now accepts optional sensitivity (per step 1) and `resolveEffectivePair` does the right thing for both insert and patch.
 
 **Sites changed:**
+
 - `convex/alertRules.ts:22` (validator: required → optional)
 - `convex/alertRules.ts:135` (validator: required → optional)
 - `convex/alertRules.ts:111,236,275,320` (4 default-insert literals: `sensitivity: "all"` → `sensitivity: pair.sensitivity` from `resolveEffectivePair`)
@@ -304,6 +306,7 @@ The transport landscape after PR 1: legacy `set-alert-rules`/`set-digest-setting
 ### 1e. Tests (`convex/alertRules.test.ts` or equivalent)
 
 Behavior tests:
+
 - `setAlertRules({sensitivity: "all"})` against existing `{digestMode: "realtime"}` → throws `INCOMPATIBLE_DELIVERY`.
 - `setAlertRules({sensitivity: "all"})` against existing `{digestMode: "daily"}` → succeeds.
 - `setDigestSettings({digestMode: "realtime"})` against existing `{sensitivity: "all"}` → throws.
@@ -349,6 +352,7 @@ const isRealtime = !DIGEST_CRON_ENABLED || digestMode === 'realtime';
 ### 2c. Mode-change live behavior
 
 Extend the `usDigestMode` change listener at line 475:
+
 - When user switches TO realtime: if `usNotifSensitivity` is currently `all`, snap it to `high` and surface a one-line toast: *"Switched to High & critical — real-time delivery doesn't support All events."*
 - When user switches AWAY from realtime: re-enable the `all` option (no auto-flip — let the user choose).
 
@@ -361,6 +365,7 @@ The fix in §2c (snap `usNotifSensitivity` to `high` IN THE DOM before save) mak
 Solution: route the mode-change save through the new client wrapper `setNotificationConfig` (§1f) instead of `setDigestSettings`, passing BOTH the new `digestMode` and the (snapped) `sensitivity`. Atomic on the server, race-free.
 
 Update save paths in `notifications-settings.ts`:
+
 - Line 405 (alert-rules save) — keep `saveAlertRules` (single-field update is fine in isolation, server validator catches any inconsistency).
 - Line 454 (digest-mode change) — switch to `setNotificationConfig` and pass both `digestMode` and the current sensitivity (snapped to `high` if was `all`).
 - Lines 510/533 (quiet-hours saves) — keep `setQuietHours` (these don't touch the pair).
@@ -405,6 +410,7 @@ function shouldNotify(rule, event) {
 Both reads now use the same normalized value. Silent (no log spam) — pure read-time normalization.
 
 **Test** (`tests/notification-relay-effective-sensitivity.test.mjs`):
+
 - Rule `{digestMode: 'realtime', sensitivity: 'all'}`, event `{severity: 'low'}` → `shouldNotify` returns false (legacy match path coerced).
 - Same rule, `IMPORTANCE_SCORE_LIVE=1`, event `{severity: 'high', importanceScore: 50}` → returns false (threshold path also coerced; 50 < 69).
 - Same rule, event `{severity: 'high', importanceScore: 80}` → returns true.
@@ -416,6 +422,7 @@ Both reads now use the same normalized value. Silent (no log spam) — pure read
 ### 4a. Discovery query — paginated, ALL rows, not just enabled
 
 Two reasons the prior `.collect()` approach is wrong:
+
 - **Disabled rows must be covered** (Codex round 1 #5): rows with `enabled: false` can be flipped to `enabled: true` later via partial update, and §1 validators will reject that flip on a forbidden row — but only if the pre-existing row in the bad state has been migrated. Filtering on `enabled: true` misses this case.
 - **Convex `.collect()` has scale limits** (Codex round 3 #3): `.collect()` reads all matching docs into memory and is bounded by Convex's per-query result limit (16MB / soft ~16k docs). The `alertRules` table grows with the user base; even at current scale we should not pre-commit to an unscalable shape.
 
@@ -626,6 +633,7 @@ The constraint is cross-cutting (server validators, HTTP transport, UI render/sa
 PR 1 is bigger but atomic. PR 2 is a one-shot data operation with dry-run. Each PR independently revertible (PR 2 in particular is reversible by re-running with the inverse mapping, since `digestMode: 'realtime'` + `sensitivity: 'all'` is unambiguously the prior state). The relay coerce in PR 1 doubles as the safety net during PR 2's brief migration-execution window.
 
 **Why not split PR 1 further?** Two reasonable variants were considered:
+
 - *Split A: server-only PR then UI PR.* Creates the daily+all→realtime error window for any user who hits settings between deploys. Rejected.
 - *Split B: transport-additive PR then validation+UI PR.* Cleaner but the "additive transport with no enforcement" PR has no observable behavior to test against, making review harder. Rejected.
 
