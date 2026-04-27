@@ -85,12 +85,15 @@ export function deduplicateEvents(events: UnrestEvent[]): UnrestEvent[] {
         existing.sourceType !== 'UNREST_SOURCE_TYPE_ACLED'
       ) {
         event.sources = [...new Set([...event.sources, ...existing.sources])];
+        event.sourceUrls = [...new Set([...(event.sourceUrls || []), ...(existing.sourceUrls || [])])];
         unique.set(key, event);
       } else if (existing.sourceType === 'UNREST_SOURCE_TYPE_ACLED') {
         existing.sources = [...new Set([...existing.sources, ...event.sources])];
+        existing.sourceUrls = [...new Set([...(existing.sourceUrls || []), ...(event.sourceUrls || [])])];
       } else {
         // Both GDELT: combine sources, upgrade confidence if 2+ sources
         existing.sources = [...new Set([...existing.sources, ...event.sources])];
+        existing.sourceUrls = [...new Set([...(existing.sourceUrls || []), ...(event.sourceUrls || [])])];
         if (existing.sources.length >= 2) {
           existing.confidence = 'CONFIDENCE_LEVEL_HIGH';
         }

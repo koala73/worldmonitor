@@ -70,6 +70,7 @@ function toSocialUnrestEvent(e: UnrestEvent): SocialUnrestEvent {
     severity: mapSeverity(e.severity),
     fatalities: e.fatalities > 0 ? e.fatalities : undefined,
     sources: e.sources,
+    sourceUrls: e.sourceUrls?.length ? e.sourceUrls : undefined,
     sourceType: mapSourceType(e.sourceType),
     tags: e.tags.length > 0 ? e.tags : undefined,
     actors: e.actors.length > 0 ? e.actors : undefined,

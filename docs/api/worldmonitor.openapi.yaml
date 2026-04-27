@@ -21244,6 +21244,11 @@ components:
                     description: |-
                         ConfidenceLevel represents the confidence in event data accuracy.
                          Used across multiple domains.
+                sourceUrls:
+                    type: array
+                    items:
+                        type: string
+                        description: Source article URLs, when provided by the upstream feed.
             required:
                 - id
             description: |-

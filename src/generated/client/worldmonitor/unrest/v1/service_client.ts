@@ -37,6 +37,7 @@ export interface UnrestEvent {
   tags: string[];
   actors: string[];
   confidence: ConfidenceLevel;
+  sourceUrls: string[];
 }
 
 export interface GeoCoordinates {
