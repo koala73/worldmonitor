@@ -3159,17 +3159,21 @@ function matchCountryNamesInText(text) {
   return [];
 }
 
-// v4 (2026-04-26): bumped from v3 in lockstep with
+// v5 (2026-04-28): bumped from v4 in lockstep with
 // server/worldmonitor/intelligence/v1/_shared.ts and
 // server/worldmonitor/news/v1/list-feed-digest.ts to evict cache entries
-// that previously promoted static-page titles to high/critical via the
-// LLM classifier. The relay maintains its own inline helper because
-// .cjs cannot import from .ts; the prefix-audit static-analysis test
+// that landed under the pre-publisher-prefix-fix classifier (PR #3480).
+// Brand-prefixed retrospective titles ("CBS News Radio flashback: ...")
+// had been promoted to severity=critical via the `invasion` keyword;
+// the new brand-prefix branch in _classifier.ts re-rules those rows on
+// next touch.
+// The relay maintains its own inline helper because .cjs cannot import
+// from .ts; the prefix-audit static-analysis test
 // (tests/news-classify-cache-prefix-audit.test.mjs) cross-checks all
-// three sites. See U4 of the plan.
+// three sites.
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v4:${hash}`;
+  return `classify:sebuf:v5:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
