@@ -397,6 +397,13 @@ describe("alertRules — setNotificationConfigForUser atomic pair update", () =>
     // Layer-2 gate: setNotificationConfigForUser is reachable from the public
     // `/set-notification-config` HTTP action; a free-tier user hitting that
     // endpoint must be rejected at the mutation, not just by the relay.
+    //
+    // Note on identity context: unlike the public `setAlertRules` /
+    // `setDigestSettings` mutations (which derive `userId` from `ctx.auth`),
+    // `setNotificationConfigForUser` takes `userId` as an arg — the HTTP
+    // action sets it from the verified Clerk JWT. The entitlement check
+    // reads the arg-supplied userId, so a `t.withIdentity(...)` wrapper is
+    // intentionally absent from these tests.
     const t = convexTest(schema, modules);
     // Deliberately NO seedProEntitlement — the user is free.
     await expect(

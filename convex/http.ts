@@ -584,16 +584,30 @@ http.route({
             digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
           });
         } catch (err: unknown) {
-          // Translate ConvexError(INCOMPATIBLE_DELIVERY) into 400 with the message
-          // so the API path can pass it through to the UI for inline rendering.
-          // Do NOT swallow as a generic 500 — the user needs the helper text.
+          // Translate structured ConvexError codes into machine-readable HTTP
+          // responses so the UI can route to inline helper text (400) or to
+          // the upgrade flow (402). Do NOT swallow as a generic 500 — the
+          // client needs the structured `error` field to render the right
+          // surface.
           const data = (err as { data?: unknown } | undefined)?.data;
-          if (data && typeof data === "object" && (data as { code?: string }).code === "INCOMPATIBLE_DELIVERY") {
-            const errPayload = data as { code: string; message?: string };
-            return new Response(
-              JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
-              { status: 400, headers: { "Content-Type": "application/json" } },
-            );
+          if (data && typeof data === "object") {
+            const errPayload = data as { code?: string; message?: string };
+            if (errPayload.code === "INCOMPATIBLE_DELIVERY") {
+              return new Response(
+                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+              );
+            }
+            if (errPayload.code === "PRO_REQUIRED") {
+              // 402 Payment Required — the canonical HTTP status for
+              // paywall-gated content. Client reads `error: "PRO_REQUIRED"`
+              // to route to the upgrade flow rather than show a generic
+              // failure toast.
+              return new Response(
+                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
+                { status: 402, headers: { "Content-Type": "application/json" } },
+              );
+            }
           }
           throw err;
         }
