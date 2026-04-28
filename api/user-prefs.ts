@@ -85,6 +85,19 @@ export default async function handler(
         }));
         return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
       }
+      if (kind === 'SERVICE_UNAVAILABLE') {
+        // Convex platform-level 503 — transient and self-recovering. Map to
+        // 503 with `Retry-After` so the client backs off rather than treating
+        // it as a permanent 500. Still capture so we can spot regressions /
+        // sustained outages, but use the typed `convex_service_unavailable`
+        // shape so it groups distinctly from real internal 500s.
+        console.warn('[user-prefs] GET convex service unavailable:', msg);
+        captureSilentError(err, buildSentryContext(err, msg, {
+          method: 'GET', convexFn: 'userPreferences:getPreferences',
+          userId: session.userId, variant, ctx,
+        }));
+        return jsonResponse({ error: 'SERVICE_UNAVAILABLE' }, 503, { ...cors, 'Retry-After': '5' });
+      }
       console.error('[user-prefs] GET error:', err);
       captureSilentError(err, buildSentryContext(err, msg, {
         method: 'GET', convexFn: 'userPreferences:getPreferences',
@@ -152,6 +165,19 @@ export default async function handler(
       }));
       return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
     }
+    if (kind === 'SERVICE_UNAVAILABLE') {
+      // See GET branch above — Convex 503, transient. 503 + Retry-After
+      // so the client backs off rather than burning a 500-failed-write.
+      console.warn('[user-prefs] POST convex service unavailable:', msg);
+      captureSilentError(err, buildSentryContext(err, msg, {
+        method: 'POST', convexFn: 'userPreferences:setPreferences',
+        userId: session.userId, variant: body.variant, ctx,
+        schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : null,
+        expectedSyncVersion: body.expectedSyncVersion,
+        blobSize: body.data !== undefined ? JSON.stringify(body.data).length : 0,
+      }));
+      return jsonResponse({ error: 'SERVICE_UNAVAILABLE' }, 503, { ...cors, 'Retry-After': '5' });
+    }
     console.error('[user-prefs] POST error:', err);
     captureSilentError(err, buildSentryContext(err, msg, {
       method: 'POST', convexFn: 'userPreferences:setPreferences',
@@ -202,7 +228,11 @@ function buildSentryContext(
   // Order matters: UNAUTHENTICATED is more specific than the request-id
   // server-error shape and must be checked first. Auth drift is its own bucket
   // so it groups separately from genuine Convex 5xx in the Sentry dashboard.
+  // SERVICE_UNAVAILABLE (Convex platform 503) is also its own bucket — it
+  // would otherwise fall into 'unknown' and conflate transient outages with
+  // genuinely-novel failure modes that haven't been classified yet.
   const errorShape = /UNAUTHENTICATED/.test(msg) ? 'convex_auth_drift'
+    : /"code":"ServiceUnavailable"/.test(msg) ? 'convex_service_unavailable'
     : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
     : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
     : /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i.test(msg) ? 'transport_network'
