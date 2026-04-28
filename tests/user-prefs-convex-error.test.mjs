@@ -33,6 +33,39 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
   });
 
+  describe('Convex platform 503 — ServiceUnavailable JSON body', () => {
+    it('detects SERVICE_UNAVAILABLE from the {"code":"ServiceUnavailable"} JSON shape', () => {
+      // Convex's HTTP runtime returns a JSON body when the deployment is briefly
+      // unreachable; the SDK surfaces it as `Error('{"code":"ServiceUnavailable",...}')`
+      // with `.data === undefined` (it's transport-layer, not a ConvexError).
+      const err = new Error('{"code":"ServiceUnavailable","message":"Service temporarily unavailable"}');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('detects SERVICE_UNAVAILABLE even when the JSON has additional fields', () => {
+      const err = new Error('{"code":"ServiceUnavailable","message":"Try again later","retryAfterMs":5000}');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('does NOT match the loose phrase "service unavailable" without the JSON code field', () => {
+      // Defensive: the detector keys off the exact JSON-shape `"code":"ServiceUnavailable"`,
+      // not the prose. Prevents matching some unrelated upstream that happens to
+      // include the words "service unavailable" in a free-form error message.
+      const err = new Error('Network error: service unavailable, try again');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('structured-data path still wins over SERVICE_UNAVAILABLE substring (forward-compat)', () => {
+      // If a future ConvexError sets data.kind explicitly AND the message
+      // happens to contain the JSON code (very unlikely but defensive),
+      // the structured kind takes precedence.
+      const err = Object.assign(new Error('{"code":"ServiceUnavailable","message":"x"}'), {
+        data: { kind: 'CONFLICT' },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
   describe('legacy substring-match fallback (string-data ConvexError that arrived without errorData)', () => {
     it('matches CONFLICT in the message', () => {
       const err = new Error('CONFLICT');

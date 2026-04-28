@@ -37,6 +37,28 @@ let _installed = false;
 let _suppressPatch = false; // prevents applyCloudBlob from re-triggering upload
 let _cachedToken: string | null = null; // synchronous token cache for flush()
 
+// ── 503 retry tracking ───────────────────────────────────────────────────────
+//
+// _retryTimer holds the single pending 503-retry setTimeout (we cancel and
+// re-schedule rather than stacking; only one retry should ever be in flight).
+//
+// _authGeneration increments on every onSignIn entry and onSignOut so a
+// scheduled retry callback can detect "I'm stale, abort." Without this guard,
+// a delayed retry from user A could fire after sign-out (calling onSignIn
+// with the prior userId but the now-empty Clerk token), or after user B has
+// signed in (using B's token but A's userId in the retry closure) — both
+// produce a misleading sync attempt and pollute Sentry with confused errors.
+
+let _retryTimer: ReturnType<typeof setTimeout> | null = null;
+let _authGeneration = 0;
+
+function clearRetryTimer(): void {
+  if (_retryTimer !== null) {
+    clearTimeout(_retryTimer);
+    _retryTimer = null;
+  }
+}
+
 // ── Guards ────────────────────────────────────────────────────────────────────
 
 function isEnabled(): boolean {
@@ -149,11 +171,63 @@ interface CloudPrefs {
   syncVersion: number;
 }
 
+/**
+ * Typed 503 from the edge — Convex platform-level outage. Callers detect
+ * this via `instanceof ServiceUnavailableError` and back off using
+ * `retryAfterSec` instead of treating it as a permanent error.
+ */
+export class ServiceUnavailableError extends Error {
+  retryAfterSec: number;
+  constructor(retryAfterSec: number) {
+    super(`service unavailable (retry after ${retryAfterSec}s)`);
+    this.name = 'ServiceUnavailableError';
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
+// Bounds on the Retry-After value we'll honor. Lower bound prevents a
+// retry storm if the server sends 0 or a malformed value; upper bound
+// caps the delay so a misconfigured/extreme header doesn't strand sync
+// for minutes.
+const RETRY_AFTER_MIN_SEC = 1;
+const RETRY_AFTER_MAX_SEC = 60;
+const RETRY_AFTER_DEFAULT_SEC = 5;
+
+/**
+ * Parse the `Retry-After` header per RFC 7231: either delta-seconds or an
+ * HTTP-date. Returns a clamped number of seconds, with the configured
+ * default for missing/malformed values. Exported for testability.
+ */
+export function parseRetryAfterSeconds(headers: Headers): number {
+  const raw = headers.get('Retry-After');
+  if (!raw) return RETRY_AFTER_DEFAULT_SEC;
+  const trimmed = raw.trim();
+  // delta-seconds form: digits only.
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return RETRY_AFTER_DEFAULT_SEC;
+    return Math.min(Math.max(n, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
+  }
+  // HTTP-date form: parse and convert to delta-seconds from now.
+  // `Date.parse` is permissive — `Date.parse("-5")` parses as year -5 BCE,
+  // and other garbage strings can produce finite timestamps that then
+  // clamp to RETRY_AFTER_MIN_SEC, retrying in 1s instead of the safer
+  // default. Require the input to look like a real HTTP-date (must
+  // contain both a 4-digit year and a `:` time separator) so non-date
+  // garbage falls into the default-seconds branch instead.
+  if (!/\b\d{4}\b/.test(trimmed) || !trimmed.includes(':')) return RETRY_AFTER_DEFAULT_SEC;
+  const t = Date.parse(trimmed);
+  if (!Number.isFinite(t)) return RETRY_AFTER_DEFAULT_SEC;
+  const delta = Math.round((t - Date.now()) / 1000);
+  return Math.min(Math.max(delta, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
+}
+
 async function fetchCloudPrefs(token: string, variant: string): Promise<CloudPrefs | null> {
   const res = await fetch(`/api/user-prefs?variant=${encodeURIComponent(variant)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) return null;
+  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
   if (!res.ok) throw new Error(`fetch prefs: ${res.status}`);
   return (await res.json()) as CloudPrefs | null;
 }
@@ -181,6 +255,7 @@ async function postCloudPrefs(
     const actualSyncVersion = typeof body.actualSyncVersion === 'number' ? body.actualSyncVersion : undefined;
     return { conflict: true, actualSyncVersion };
   }
+  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
   if (!res.ok) throw new Error(`post prefs: ${res.status}`);
   return (await res.json()) as { syncVersion: number };
 }
@@ -189,6 +264,14 @@ async function postCloudPrefs(
 
 export async function onSignIn(userId: string, variant: string): Promise<void> {
   if (!isEnabled()) return;
+
+  // New onSignIn entry — invalidate any pending 503 retry so a stale
+  // closure can't fire mid-flight, and bump generation so any timer that
+  // was already scheduled (and not yet caught by clearRetryTimer) bails
+  // when it fires.
+  clearRetryTimer();
+  _authGeneration += 1;
+  const myGeneration = _authGeneration;
 
   _currentVariant = variant;
   setState('syncing');
@@ -238,6 +321,30 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
 
     Storage.prototype.setItem.call(localStorage, KEY_LAST_SIGNED_IN_AS, userId);
   } catch (err) {
+    if (err instanceof ServiceUnavailableError) {
+      // Convex platform 503 — transient. Set 'pending' (not 'error') and
+      // re-attempt sign-in sync after the server-suggested delay. This is
+      // the user-facing "transient outage shouldn't be permanent" fix
+      // (PR #3479): without this branch the catch would fall through to
+      // 'error' and the user's prefs would silently not sync until they
+      // reload.
+      //
+      // Generation guard: cancel any prior pending retry, then schedule a
+      // new one whose callback bails if `_authGeneration` has advanced
+      // (sign-out, user-switch, or another onSignIn invocation since this
+      // attempt began). Without the guard, a 5s delayed retry from user A
+      // could fire after sign-out (no token) or after user B signed in
+      // (wrong token in cache).
+      console.warn(`[cloud-prefs] onSignIn 503; retrying in ${err.retryAfterSec}s`);
+      setState('pending');
+      clearRetryTimer();
+      _retryTimer = setTimeout(() => {
+        _retryTimer = null;
+        if (_authGeneration !== myGeneration) return;
+        void onSignIn(userId, variant);
+      }, err.retryAfterSec * 1000);
+      return;
+    }
     console.warn('[cloud-prefs] onSignIn failed:', err);
     setState(!navigator.onLine || (err instanceof TypeError && err.message.includes('fetch')) ? 'offline' : 'error');
   }
@@ -261,6 +368,13 @@ export function onSignOut(): void {
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
   }
+  // Cancel any pending 503 retry and bump auth-generation so a timer that's
+  // already scheduled (and not yet caught by clearRetryTimer) bails when it
+  // fires — a delayed retry from the prior auth context must not call
+  // onSignIn / uploadNow against the now-empty token cache or, worse, against
+  // a different user's token after a fast user switch.
+  clearRetryTimer();
+  _authGeneration += 1;
   _cachedToken = null;
 
   // Preserve prefs; only clear sync metadata
@@ -270,6 +384,14 @@ export function onSignOut(): void {
 }
 
 async function uploadNow(variant: string): Promise<void> {
+  // Capture the auth generation at entry. If sign-out / user-switch happens
+  // while we're awaiting fetch, the generation guard on any 503 retry below
+  // will detect it and abort the scheduled retry. We do NOT increment the
+  // generation here — uploadNow runs WITHIN an existing auth context (it's
+  // called by the debounced upload path), so we want to inherit the current
+  // generation, not start a new one.
+  const myGeneration = _authGeneration;
+
   const token = await getClerkToken();
   if (!token) return;
   _cachedToken = token;
@@ -303,6 +425,26 @@ async function uploadNow(variant: string): Promise<void> {
       setState('synced');
     }
   } catch (err) {
+    if (err instanceof ServiceUnavailableError) {
+      // Convex platform 503 — transient. Re-queue the upload after the
+      // server-suggested delay so the unsaved blob isn't lost. Setting
+      // 'pending' state matches the existing schedulePrefUpload UX.
+      //
+      // Generation guard: same as the onSignIn branch — if the user signs
+      // out or switches accounts during the retry window, the timer fires
+      // but the closure's captured `myGeneration` no longer matches, so
+      // the retry aborts. Without this, the upload would re-fire against
+      // a now-empty token cache or a different user's token.
+      console.warn(`[cloud-prefs] uploadNow 503; retrying in ${err.retryAfterSec}s`);
+      setState('pending');
+      clearRetryTimer();
+      _retryTimer = setTimeout(() => {
+        _retryTimer = null;
+        if (_authGeneration !== myGeneration) return;
+        void uploadNow(variant);
+      }, err.retryAfterSec * 1000);
+      return;
+    }
     console.warn('[cloud-prefs] uploadNow failed:', err);
     setState(!navigator.onLine || (err instanceof TypeError && err.message.includes('fetch')) ? 'offline' : 'error');
   }
