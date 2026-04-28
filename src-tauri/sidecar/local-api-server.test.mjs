@@ -32,7 +32,7 @@ async function listen(server, host = '127.0.0.1', port = 0) {
   return address.port;
 }
 
-async function postJsonViaHttp(url, payload) {
+async function postJsonViaHttp(url, payload, headers = {}) {
   const target = new URL(url);
   const body = JSON.stringify(payload);
   return new Promise((resolve, reject) => {
@@ -42,6 +42,7 @@ async function postJsonViaHttp(url, payload) {
       path: `${target.pathname}${target.search}`,
       method: 'POST',
       headers: {
+        ...headers,
         'Content-Type': 'application/json',
         'Content-Length': String(Buffer.byteLength(body)),
       },
@@ -336,6 +337,10 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
       email: 'desktop@example.com',
       source: 'web-form',
       appVersion: '2.8.0',
+    }, {
+      'Content-Encoding': 'gzip',
+      'X-WorldMonitor-Desktop-Timestamp': '1',
+      'X-WorldMonitor-Desktop-Signature': 'sha256=bad',
     });
     assert.equal(response.status, 200);
     assert.equal(remote.requests.length, 1);
@@ -345,8 +350,11 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
     assert.equal(request.json.source, 'desktop-settings');
     const timestamp = request.headers['x-worldmonitor-desktop-timestamp'];
     const signature = request.headers['x-worldmonitor-desktop-signature'];
+    assert.equal(request.headers['content-encoding'], undefined);
     assert.match(timestamp, /^\d+$/);
     assert.match(signature, /^sha256=[a-f0-9]{64}$/);
+    assert.notEqual(timestamp, '1');
+    assert.notEqual(signature, 'sha256=bad');
 
     const canonical = JSON.stringify({
       email: 'desktop@example.com',

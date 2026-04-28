@@ -125,6 +125,15 @@ describe('LeadsService.registerInterest desktop auth', () => {
     );
   });
 
+  it('rejects desktop bypass when shared secret is missing', async () => {
+    delete process.env.WM_DESKTOP_SHARED_SECRET;
+
+    await assert.rejects(
+      () => registerInterest(makeCtx(), desktopReq()),
+      (err) => err instanceof ApiError && err.statusCode === 403 && /desktop authentication/i.test(err.message),
+    );
+  });
+
   it('accepts a valid desktop signature and continues past auth', async () => {
     const req = desktopReq();
     const timestamp = String(Date.now());

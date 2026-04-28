@@ -462,6 +462,12 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   headers.delete('Authorization');
   headers.delete('If-None-Match');
   headers.delete('If-Modified-Since');
+  headers.delete('Transfer-Encoding');
+  headers.delete('Content-Encoding');
+  headers.delete('Connection');
+  headers.delete('Expect');
+  headers.delete(DESKTOP_AUTH_TIMESTAMP_HEADER);
+  headers.delete(DESKTOP_AUTH_SIGNATURE_HEADER);
   headers.set('Origin', 'https://worldmonitor.app');
   headers.set('Content-Type', 'application/json');
   headers.set('Content-Length', String(Buffer.byteLength(body)));

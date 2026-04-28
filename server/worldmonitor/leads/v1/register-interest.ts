@@ -95,14 +95,14 @@ async function verifyDesktopAuth(request: Request, req: RegisterInterestRequest)
   const timestamp = request.headers.get(DESKTOP_AUTH_TIMESTAMP_HEADER);
   const signature = request.headers.get(DESKTOP_AUTH_SIGNATURE_HEADER);
 
-  if (!secret) {
-    console.warn(`[register-interest] ${DESKTOP_AUTH_SECRET_ENV} not set; accepting legacy desktop bypass`);
-    return;
-  }
-
   if (!timestamp && !signature && process.env[DESKTOP_AUTH_ALLOW_LEGACY_ENV] === 'true') {
     console.warn(`[register-interest] ${DESKTOP_AUTH_ALLOW_LEGACY_ENV}=true; accepting unsigned legacy desktop bypass`);
     return;
+  }
+
+  if (!secret) {
+    console.warn(`[register-interest] ${DESKTOP_AUTH_SECRET_ENV} not set; rejecting desktop bypass`);
+    throw new ApiError(403, 'Desktop authentication failed', '');
   }
 
   if (!timestamp || !signature) {
