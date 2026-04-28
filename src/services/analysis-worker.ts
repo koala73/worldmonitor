@@ -73,7 +73,14 @@ class AnalysisWorkerManager {
       return;
     }
 
-    this.worker.onmessage = (event: MessageEvent<WorkerResult>) => {
+    const worker = this.worker;
+    if (!worker) {
+      this.readyReject?.(new Error('Worker initialization failed'));
+      this.cleanup();
+      return;
+    }
+
+    worker.onmessage = (event: MessageEvent<WorkerResult>) => {
       const data = event.data;
 
       if (data.type === 'ready') {
@@ -116,7 +123,7 @@ class AnalysisWorkerManager {
       }
     };
 
-    this.worker.onerror = (error) => {
+    worker.onerror = (error) => {
       console.error('[AnalysisWorker] Error:', error);
 
       // If not ready yet, reject the ready promise

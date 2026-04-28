@@ -103,7 +103,15 @@ class MLWorkerManager {
         return;
       }
 
-      this.worker.onmessage = (event: MessageEvent<WorkerResult>) => {
+      const worker = this.worker;
+      if (!worker) {
+        clearTimeout(readyTimeout);
+        this.cleanup();
+        resolve(false);
+        return;
+      }
+
+      worker.onmessage = (event: MessageEvent<WorkerResult>) => {
         const data = event.data;
 
         if (data.type === 'worker-ready') {
@@ -175,7 +183,7 @@ class MLWorkerManager {
         }
       };
 
-      this.worker.onerror = (error) => {
+      worker.onerror = (error) => {
         console.error('[MLWorker] Error:', error);
 
         if (!this.isReady) {

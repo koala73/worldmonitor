@@ -184,6 +184,14 @@ interface TechEventMarker {
   daysUntil: number;
 }
 
+interface NewsLocationMarker {
+  lat: number;
+  lon: number;
+  title: string;
+  threatLevel: string;
+  timestamp?: Date;
+}
+
 // View presets with longitude, latitude, zoom
 const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; zoom: number }> = {
   global: { longitude: 0, latitude: 20, zoom: 1.5 },
@@ -3586,11 +3594,11 @@ export class DeckGLMap {
     layers.push(new ScatterplotLayer<MapTechHQCluster>({
       id: 'tech-hq-clusters-layer',
       data: this.techHQClusters,
-      getPosition: d => [d.lon, d.lat],
-      getRadius: d => 10000 + d.count * 1500,
+      getPosition: (d: MapTechHQCluster) => [d.lon, d.lat],
+      getRadius: (d: MapTechHQCluster) => 10000 + d.count * 1500,
       radiusMinPixels: 5,
       radiusMaxPixels: 18,
-      getFillColor: d => {
+      getFillColor: (d: MapTechHQCluster) => {
         if (d.primaryType === 'faang') return [0, 220, 120, 200] as [number, number, number, number];
         if (d.primaryType === 'unicorn') return [255, 100, 200, 180] as [number, number, number, number];
         return [80, 160, 255, 180] as [number, number, number, number];
@@ -3604,8 +3612,8 @@ export class DeckGLMap {
       layers.push(new TextLayer<MapTechHQCluster>({
         id: 'tech-hq-clusters-badge',
         data: multiClusters,
-        getText: d => String(d.count),
-        getPosition: d => [d.lon, d.lat],
+        getText: (d: MapTechHQCluster) => String(d.count),
+        getPosition: (d: MapTechHQCluster) => [d.lon, d.lat],
         background: true,
         getBackgroundColor: [0, 0, 0, 180],
         backgroundPadding: [4, 2, 4, 2],
@@ -3624,8 +3632,8 @@ export class DeckGLMap {
         layers.push(new TextLayer<MapTechHQCluster>({
           id: 'tech-hq-clusters-label',
           data: singles,
-          getText: d => d.items[0]?.company ?? '',
-          getPosition: d => [d.lon, d.lat],
+          getText: (d: MapTechHQCluster) => d.items[0]?.company ?? '',
+          getPosition: (d: MapTechHQCluster) => [d.lon, d.lat],
           getSize: 11,
           getColor: [220, 220, 220, 200],
           getPixelOffset: [0, 12],
@@ -3646,11 +3654,11 @@ export class DeckGLMap {
     layers.push(new ScatterplotLayer<MapTechEventCluster>({
       id: 'tech-event-clusters-layer',
       data: this.techEventClusters,
-      getPosition: d => [d.lon, d.lat],
-      getRadius: d => 10000 + d.count * 1500,
+      getPosition: (d: MapTechEventCluster) => [d.lon, d.lat],
+      getRadius: (d: MapTechEventCluster) => 10000 + d.count * 1500,
       radiusMinPixels: 5,
       radiusMaxPixels: 18,
-      getFillColor: d => {
+      getFillColor: (d: MapTechEventCluster) => {
         if (d.soonestDaysUntil <= 14) return [255, 220, 50, 200] as [number, number, number, number];
         return [80, 140, 255, 180] as [number, number, number, number];
       },
@@ -3663,8 +3671,8 @@ export class DeckGLMap {
       layers.push(new TextLayer<MapTechEventCluster>({
         id: 'tech-event-clusters-badge',
         data: multiClusters,
-        getText: d => String(d.count),
-        getPosition: d => [d.lon, d.lat],
+        getText: (d: MapTechEventCluster) => String(d.count),
+        getPosition: (d: MapTechEventCluster) => [d.lon, d.lat],
         background: true,
         getBackgroundColor: [0, 0, 0, 180],
         backgroundPadding: [4, 2, 4, 2],
@@ -3688,11 +3696,11 @@ export class DeckGLMap {
     layers.push(new ScatterplotLayer<MapDatacenterCluster>({
       id: 'datacenter-clusters-layer',
       data: this.datacenterClusters,
-      getPosition: d => [d.lon, d.lat],
-      getRadius: d => 15000 + d.count * 2000,
+      getPosition: (d: MapDatacenterCluster) => [d.lon, d.lat],
+      getRadius: (d: MapDatacenterCluster) => 15000 + d.count * 2000,
       radiusMinPixels: 6,
       radiusMaxPixels: 20,
-      getFillColor: d => {
+      getFillColor: (d: MapDatacenterCluster) => {
         if (d.majorityExisting) return [160, 80, 255, 180] as [number, number, number, number];
         return [80, 160, 255, 180] as [number, number, number, number];
       },
@@ -3705,8 +3713,8 @@ export class DeckGLMap {
       layers.push(new TextLayer<MapDatacenterCluster>({
         id: 'datacenter-clusters-badge',
         data: multiClusters,
-        getText: d => String(d.count),
-        getPosition: d => [d.lon, d.lat],
+        getText: (d: MapDatacenterCluster) => String(d.count),
+        getPosition: (d: MapDatacenterCluster) => [d.lon, d.lat],
         background: true,
         getBackgroundColor: [0, 0, 0, 180],
         backgroundPadding: [4, 2, 4, 2],
@@ -3733,12 +3741,12 @@ export class DeckGLMap {
     layers.push(new ScatterplotLayer({
       id: 'hotspots-layer',
       data: this.hotspots,
-      getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => {
+      getPosition: (d: HotspotWithBreaking) => [d.lon, d.lat],
+      getRadius: (d: HotspotWithBreaking) => {
         const score = d.escalationScore || 1;
         return 10000 + score * 5000;
       },
-      getFillColor: (d) => {
+      getFillColor: (d: HotspotWithBreaking) => {
         const score = d.escalationScore || 1;
         const a = Math.round((score >= 4 ? 200 : score >= 2 ? 200 : 180) * baseOpacity);
         if (score >= 4) return [255, 68, 68, a] as [number, number, number, number];
@@ -3749,7 +3757,7 @@ export class DeckGLMap {
       radiusMaxPixels: maxPx,
       pickable: true,
       stroked: true,
-      getLineColor: (d) =>
+      getLineColor: (d: HotspotWithBreaking) =>
         d.hasBreaking ? [255, 255, 255, 255] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
       lineWidthMinPixels: 2,
     }));
@@ -3760,8 +3768,8 @@ export class DeckGLMap {
       layers.push(new ScatterplotLayer({
         id: 'hotspots-pulse',
         data: highHotspots,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: (d) => {
+        getPosition: (d: HotspotWithBreaking) => [d.lon, d.lat],
+        getRadius: (d: HotspotWithBreaking) => {
           const score = d.escalationScore || 1;
           return 10000 + score * 5000;
         },
@@ -3770,7 +3778,7 @@ export class DeckGLMap {
         radiusMaxPixels: 30,
         stroked: true,
         filled: false,
-        getLineColor: (d) => {
+        getLineColor: (d: HotspotWithBreaking) => {
           const a = Math.round(120 * baseOpacity);
           return d.hasBreaking ? [255, 50, 50, a] as [number, number, number, number] : [255, 165, 0, a] as [number, number, number, number];
         },
@@ -3898,9 +3906,9 @@ export class DeckGLMap {
       new ScatterplotLayer({
         id: 'news-locations-layer',
         data: filteredNewsLocations,
-        getPosition: (d) => [d.lon, d.lat],
+        getPosition: (d: NewsLocationMarker) => [d.lon, d.lat],
         getRadius: 18000,
-        getFillColor: (d) => {
+        getFillColor: (d: NewsLocationMarker) => {
           const rgb = THREAT_RGB[d.threatLevel] || [59, 130, 246];
           const a = Math.round((THREAT_ALPHA[d.threatLevel] || 120) * alphaScale);
           return [...rgb, a] as [number, number, number, number];
@@ -3922,7 +3930,7 @@ export class DeckGLMap {
       layers.push(new ScatterplotLayer({
         id: 'news-pulse-layer',
         data: recentNews,
-        getPosition: (d) => [d.lon, d.lat],
+        getPosition: (d: NewsLocationMarker) => [d.lon, d.lat],
         getRadius: 18000,
         radiusScale: pulse,
         radiusMinPixels: 6,
@@ -3930,7 +3938,7 @@ export class DeckGLMap {
         pickable: false,
         stroked: true,
         filled: false,
-        getLineColor: (d) => {
+        getLineColor: (d: NewsLocationMarker) => {
           const rgb = THREAT_RGB[d.threatLevel] || [59, 130, 246];
           const firstSeen = this.newsLocationFirstSeen.get(d.title) || now;
           const age = now - firstSeen;
@@ -4567,7 +4575,9 @@ export class DeckGLMap {
       if (cluster.items.length === 0 && cluster._clusterId != null && this.protestSC) {
         try {
           const leaves = this.protestSC.getLeaves(cluster._clusterId, DeckGLMap.MAX_CLUSTER_LEAVES);
-          cluster.items = leaves.map(l => this.protestSuperclusterSource[l.properties.index]).filter((x): x is SocialUnrestEvent => !!x);
+          cluster.items = leaves
+            .map((l) => this.protestSuperclusterSource[(l.properties as { index: number }).index])
+            .filter((x: SocialUnrestEvent | undefined): x is SocialUnrestEvent => !!x);
           cluster.sampled = cluster.items.length < cluster.count;
         } catch (e) {
           console.warn('[DeckGLMap] stale protest cluster', cluster._clusterId, e);
@@ -4600,7 +4610,9 @@ export class DeckGLMap {
       if (cluster.items.length === 0 && cluster._clusterId != null && this.techHQSC) {
         try {
           const leaves = this.techHQSC.getLeaves(cluster._clusterId, DeckGLMap.MAX_CLUSTER_LEAVES);
-          cluster.items = leaves.map(l => TECH_HQS[l.properties.index]).filter(Boolean) as typeof TECH_HQS;
+          cluster.items = leaves
+            .map((l) => TECH_HQS[(l.properties as { index: number }).index])
+            .filter((x: (typeof TECH_HQS)[number] | undefined): x is (typeof TECH_HQS)[number] => !!x) as typeof TECH_HQS;
           cluster.sampled = cluster.items.length < cluster.count;
         } catch (e) {
           console.warn('[DeckGLMap] stale techHQ cluster', cluster._clusterId, e);
@@ -4633,7 +4645,9 @@ export class DeckGLMap {
       if (cluster.items.length === 0 && cluster._clusterId != null && this.techEventSC) {
         try {
           const leaves = this.techEventSC.getLeaves(cluster._clusterId, DeckGLMap.MAX_CLUSTER_LEAVES);
-          cluster.items = leaves.map(l => this.techEvents[l.properties.index]).filter((x): x is TechEventMarker => !!x);
+          cluster.items = leaves
+            .map((l) => this.techEvents[(l.properties as { index: number }).index])
+            .filter((x: TechEventMarker | undefined): x is TechEventMarker => !!x);
           cluster.sampled = cluster.items.length < cluster.count;
         } catch (e) {
           console.warn('[DeckGLMap] stale techEvent cluster', cluster._clusterId, e);
@@ -4664,7 +4678,9 @@ export class DeckGLMap {
       if (cluster.items.length === 0 && cluster._clusterId != null && this.datacenterSC) {
         try {
           const leaves = this.datacenterSC.getLeaves(cluster._clusterId, DeckGLMap.MAX_CLUSTER_LEAVES);
-          cluster.items = leaves.map(l => this.datacenterSCSource[l.properties.index]).filter((x): x is AIDataCenter => !!x);
+          cluster.items = leaves
+            .map((l) => this.datacenterSCSource[(l.properties as { index: number }).index])
+            .filter((x: AIDataCenter | undefined): x is AIDataCenter => !!x);
           cluster.sampled = cluster.items.length < cluster.count;
         } catch (e) {
           console.warn('[DeckGLMap] stale datacenter cluster', cluster._clusterId, e);
@@ -5581,9 +5597,9 @@ export class DeckGLMap {
     return new ScatterplotLayer<UcdpGeoEvent>({
       id: 'ucdp-events-layer',
       data: events,
-      getPosition: (d) => [d.longitude, d.latitude],
-      getRadius: (d) => Math.max(4000, Math.sqrt(d.deaths_best || 1) * 3000),
-      getFillColor: (d) => {
+      getPosition: (d: UcdpGeoEvent) => [d.longitude, d.latitude],
+      getRadius: (d: UcdpGeoEvent) => Math.max(4000, Math.sqrt(d.deaths_best || 1) * 3000),
+      getFillColor: (d: UcdpGeoEvent) => {
         switch (d.type_of_violence) {
           case 'state-based': return COLORS.ucdpStateBased;
           case 'non-state': return COLORS.ucdpNonState;
@@ -5604,11 +5620,11 @@ export class DeckGLMap {
     return new ArcLayer<DisplacementFlow>({
       id: 'displacement-arcs-layer',
       data: top50,
-      getSourcePosition: (d) => [d.originLon!, d.originLat!],
-      getTargetPosition: (d) => [d.asylumLon!, d.asylumLat!],
+      getSourcePosition: (d: DisplacementFlow) => [d.originLon!, d.originLat!],
+      getTargetPosition: (d: DisplacementFlow) => [d.asylumLon!, d.asylumLat!],
       getSourceColor: getCurrentTheme() === 'light' ? [50, 80, 180, 220] : [100, 150, 255, 180],
       getTargetColor: getCurrentTheme() === 'light' ? [20, 150, 100, 220] : [100, 255, 200, 180],
-      getWidth: (d) => Math.max(1, (d.refugees / maxCount) * 8),
+      getWidth: (d: DisplacementFlow) => Math.max(1, (d.refugees / maxCount) * 8),
       widthMinPixels: 1,
       widthMaxPixels: 8,
       pickable: false,
@@ -5619,8 +5635,8 @@ export class DeckGLMap {
     return new HeatmapLayer<ClimateAnomaly>({
       id: 'climate-heatmap-layer',
       data: this.climateAnomalies,
-      getPosition: (d) => [d.lon, d.lat],
-      getWeight: (d) => Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1,
+      getPosition: (d: ClimateAnomaly) => [d.lon, d.lat],
+      getWeight: (d: ClimateAnomaly) => Math.abs(d.tempDelta) + Math.abs(d.precipDelta) * 0.1,
       radiusPixels: 40,
       intensity: 0.6,
       threshold: 0.15,
@@ -5680,11 +5696,11 @@ export class DeckGLMap {
     return new ArcLayer<TradeRouteSegment>({
       id: 'trade-routes-layer',
       data: this.tradeRouteSegments,
-      getSourcePosition: (d) => d.sourcePosition,
-      getTargetPosition: (d) => d.targetPosition,
+      getSourcePosition: (d: TradeRouteSegment) => d.sourcePosition,
+      getTargetPosition: (d: TradeRouteSegment) => d.targetPosition,
       getSourceColor: getColor,
       getTargetColor: getColor,
-      getWidth: (d) => {
+      getWidth: (d: TradeRouteSegment) => {
         if (hlActive && hlIds.has(d.routeId)) return 6;
         return d.category === 'energy' ? 3 : 2;
       },
@@ -6641,14 +6657,14 @@ export class DeckGLMap {
     this.state.layers[layer] = !this.state.layers[layer];
     if (layer === 'military' && !this.state.layers[layer]) this.clearFlightTrails();
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
-    if (toggle) toggle.checked = this.state.layers[layer];
+    if (toggle) toggle.checked = this.state.layers[layer] ?? false;
     if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
     else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
     if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
     if (layer === 'flights') this.manageAircraftTimer(this.state.layers.flights);
     this.render();
     this.updateLegend();
-    this.onLayerChange?.(layer, this.state.layers[layer], 'programmatic');
+    this.onLayerChange?.(layer, this.state.layers[layer] ?? false, 'programmatic');
     this.enforceLayerLimit();
   }
 
@@ -6928,7 +6944,7 @@ export class DeckGLMap {
       map.setFilter('country-hover-border', noMatch);
     };
 
-    map.on('mousemove', (e) => {
+    map.on('mousemove', (e: maplibregl.MapMouseEvent) => {
       if (!this.onCountryClick) return;
       try {
         if (!map.getLayer('country-interactive')) return;
