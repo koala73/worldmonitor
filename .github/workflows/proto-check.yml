@@ -15,6 +15,9 @@ permissions:
 jobs:
   proto-freshness:
     runs-on: ubuntu-latest
+    concurrency:
+      group: proto-freshness-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     steps:
       - name: Checkout internal PR branch
         if: github.event.pull_request.head.repo.full_name == github.repository
