@@ -125,6 +125,62 @@ describe('hasHistoricalMarker — predicate matrix', () => {
         false,
       );
     });
+
+    // After widening flashback/throwback to allow brand-prefix forms, we
+    // explicitly reject sentence-form occurrences where the marker is
+    // used as a comparison word, not as an editorial-slot title.
+    // hasHistoricalMarker is reused at list-feed-digest.ts:547 (L3b LLM-
+    // cache guard), where it force-demotes ANY cached LLM hit to info —
+    // a false positive there silently suppresses real critical news.
+    // The brand-prefix branch requires Title-Case prefix words AND a
+    // colon after the marker, which gates these out.
+    it('"Markets see flashback to 2008 crisis as bonds tumble" — sentence-form, no editorial slot', () => {
+      assert.equal(
+        hasHistoricalMarker(
+          'Markets see flashback to 2008 crisis as bonds tumble',
+          NOW,
+        ),
+        false,
+      );
+    });
+
+    it('"Stocks suffer flashback to March 2020 crash" — sentence-form, no colon', () => {
+      assert.equal(
+        hasHistoricalMarker('Stocks suffer flashback to March 2020 crash', NOW),
+        false,
+      );
+    });
+
+    it('"Tesla stock throwback after split" — sentence-form, no Title-Case prefix structure', () => {
+      assert.equal(
+        hasHistoricalMarker('Tesla stock throwback after split', NOW),
+        false,
+      );
+    });
+
+    it('"AI flashback to 2023 boom: Nvidia earnings beat" — colon present but not after marker slot', () => {
+      // Colon is after "boom", not adjacent to the flashback slot, and
+      // the optional qualifier slot only allows ONE word — so "flashback
+      // to 2023 boom" overruns the qualifier slot and the brand-prefix
+      // branch fails.
+      assert.equal(
+        hasHistoricalMarker(
+          'AI flashback to 2023 boom: Nvidia earnings beat',
+          NOW,
+        ),
+        false,
+      );
+    });
+
+    it('lowercase-leading sentence with flashback + colon — Title-Case prefix gate fires', () => {
+      // "markets see flashback: bonds tumble" (lowercase first word) is
+      // sentence-form, not editorial slot. Brand-prefix branch requires
+      // [A-Z]-leading words, so this is rejected.
+      assert.equal(
+        hasHistoricalMarker('markets see flashback: bonds tumble', NOW),
+        false,
+      );
+    });
   });
 
   describe('historical phrases (true)', () => {
