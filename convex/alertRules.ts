@@ -6,10 +6,21 @@ type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
 
 // Cross-field invariant enforcement for (digestMode, sensitivity).
-// Real-time delivery + 'all' sensitivity produces unsustainable notification volume
-// (see plans/forbid-realtime-all-events.md). Forbidden combination must be rejected
-// at every mutation site; new-row defaults pick 'high' on insert; patches preserve
-// existing.sensitivity when caller omits the field (no silent narrowing of digest users).
+//
+// Tightened rule (2026-04-27): real-time delivery is now reserved for
+// `critical`-tier events only. `(realtime, all)` and `(realtime, high)` are
+// both forbidden. Anything below `critical` lives in a digest cadence
+// (daily / twice_daily / weekly).
+//
+// Why tighter: even on `(realtime, high)`, `high`-severity events fire
+// frequently enough on busy days to overload an inbox (severe weather,
+// market moves, geopolitics). Real-time is for "interrupt me NOW" content
+// only — i.e. genuinely critical. High events still reach the user, just
+// batched in a digest.
+//
+// New-row defaults pick `'critical'` on realtime insert; patches preserve
+// existing.sensitivity when caller omits the field (no silent narrowing of
+// digest users).
 function resolveEffectivePair(args: {
   incomingDigestMode?: DigestMode;
   incomingSensitivity?: Sensitivity;
@@ -20,17 +31,17 @@ function resolveEffectivePair(args: {
     ?? "realtime");
   const sensitivity = (args.incomingSensitivity
     ?? (args.existing?.sensitivity as Sensitivity | undefined)
-    ?? "high"); // insert-only default — patch path never includes sensitivity unless caller passed it
+    ?? "critical"); // insert-only default — patch path never includes sensitivity unless caller passed it
   return { digestMode, sensitivity };
 }
 
 function assertCompatibleDeliveryMode(pair: { digestMode: DigestMode; sensitivity: Sensitivity }) {
-  if (pair.digestMode === "realtime" && pair.sensitivity === "all") {
+  if (pair.digestMode === "realtime" && (pair.sensitivity === "all" || pair.sensitivity === "high")) {
     throw new ConvexError({
       code: "INCOMPATIBLE_DELIVERY",
       message:
-        "Real-time delivery requires High or Critical sensitivity. " +
-        "To receive all events, choose Daily, Twice daily, or Weekly digest.",
+        "Real-time delivery is for Critical events only. " +
+        "To receive High or All events, choose a digest cadence (Daily, Twice daily, or Weekly).",
     });
   }
 }
@@ -281,8 +292,8 @@ export const setQuietHours = mutation({
       }
     }
 
-    // resolveEffectivePair supplies sensitivity:'high' on fresh insert (compatible
-    // by construction). We DO NOT call assertCompatibleDeliveryMode here — quiet-hours
+    // resolveEffectivePair supplies sensitivity:'critical' on fresh insert (compatible
+    // by construction under the tightened rule). We DO NOT call assertCompatibleDeliveryMode here — quiet-hours
     // mutations don't touch the (digestMode, sensitivity) pair, so blocking unrelated
     // quiet-hours updates on pre-migration forbidden rows would surface as confusing
     // generic 500s ('set-quiet-hours' HTTP action has no INCOMPATIBLE_DELIVERY
@@ -387,8 +398,8 @@ export const setQuietHoursForUser = internalMutation({
 
     // No assertCompatibleDeliveryMode here — quiet-hours mutations don't touch
     // the (digestMode, sensitivity) pair. See setQuietHours above for the full
-    // rationale. resolveEffectivePair still supplies sensitivity:'high' on fresh
-    // insert (compatible by construction).
+    // rationale. resolveEffectivePair still supplies sensitivity:'critical' on fresh
+    // insert (compatible by construction under the tightened rule).
     const pair = resolveEffectivePair({ existing: existing ?? undefined });
 
     const now = Date.now();

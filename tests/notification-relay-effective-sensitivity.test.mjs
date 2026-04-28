@@ -1,8 +1,12 @@
 /**
  * Regression test: scripts/notification-relay.cjs's shouldNotify must coerce
- * (effective realtime + sensitivity:'all') → 'high' BEFORE consulting sensitivity
+ * (effective realtime + non-critical) → 'critical' BEFORE consulting sensitivity
  * in either branch. Both reads (the legacy matchesSensitivity call AND the
  * importance-score threshold lookup) must use the SAME effective value.
+ *
+ * Tightened rule (2026-04-27): under the new policy, realtime is reserved for
+ * `critical`-tier events only. Both `(realtime, all)` and `(realtime, high)`
+ * are forbidden, so the relay collapses both to `'critical'`.
  *
  * Why source-grep: notification-relay.cjs is a runtime script with no exports;
  * shouldNotify is only callable in-process via the queue loop. This test
@@ -36,8 +40,8 @@ describe('notification-relay shouldNotify effective-sensitivity coercion', () =>
     );
     assert.match(
       relaySrc,
-      /effectiveSensitivity\s*=\s*[\s\S]*?effectiveDigestMode\s*===\s*['"]realtime['"][\s\S]*?rule\.sensitivity\s*===\s*['"]all['"][\s\S]*?\?\s*['"]high['"]\s*:\s*rule\.sensitivity/,
-      'effectiveSensitivity must coerce (realtime+all) → high; otherwise pass rule.sensitivity through',
+      /effectiveSensitivity\s*=\s*[\s\S]*?effectiveDigestMode\s*===\s*['"]realtime['"][\s\S]*?\(rule\.sensitivity\s*===\s*['"]all['"][\s\S]*?rule\.sensitivity\s*===\s*['"]high['"]\)[\s\S]*?\?\s*['"]critical['"]\s*:\s*rule\.sensitivity/,
+      'effectiveSensitivity must coerce (realtime+non-critical) → critical (both \'all\' and \'high\' collapse); otherwise pass rule.sensitivity through',
     );
   });
 
