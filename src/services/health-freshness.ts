@@ -13,7 +13,7 @@ interface HealthResponse {
   checks?: Record<string, HealthCheck>;
 }
 
-const HEALTH_CHECK_SOURCE_MAP: Record<string, DataSourceId[]> = {
+export const HEALTH_CHECK_SOURCE_MAP: Record<string, DataSourceId[]> = {
   unrestEvents: ['acled', 'gdelt_doc'],
   gdeltIntel: ['gdelt'],
   newsInsights: ['rss'],
