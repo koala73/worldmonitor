@@ -443,15 +443,17 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         });
         if (!resp.ok) {
           // 400 from convex/http means user-facing validation failure (e.g.
-          // INCOMPATIBLE_DELIVERY). Pass body through so client renders the
-          // real reason instead of a generic toast.
-          if (resp.status === 400) {
+          // INCOMPATIBLE_DELIVERY). 402 means paywall (PRO_REQUIRED). Both
+          // must pass through with body intact so the client renders the
+          // real reason — inline helper text for 400, upgrade-flow modal
+          // for 402 — instead of a generic toast.
+          if (resp.status === 400 || resp.status === 402) {
             const text = await resp.text().catch(() => '');
             let payload: unknown = { error: 'Validation failed' };
             if (text) {
               try { payload = JSON.parse(text); } catch { /* keep default */ }
             }
-            return json(payload, 400, corsHeaders);
+            return json(payload, resp.status, corsHeaders);
           }
           console.error('[notification-channels] POST set-notification-config relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
