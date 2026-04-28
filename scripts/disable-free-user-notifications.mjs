@@ -20,23 +20,37 @@
  *
  * Mechanism:
  *   Calls `internal.alertRules.setAlertRulesForUser` (the UNGATED operator
- *   path — see PR #3483 contract test) with `enabled: false`. Preserves
- *   sensitivity / channels / eventTypes so the row's structural shape is
- *   untouched; only the on/off toggle flips. If the user later upgrades
- *   to PRO and wants notifications back, they can re-enable from the UI.
+ *   path — see PR #3483 contract test) with `enabled: false`. CRITICAL:
+ *   `setAlertRulesForUser` PATCHES `eventTypes` and `channels` (does NOT
+ *   preserve), so we MUST pass through the row's existing values via
+ *   `row.eventTypes` and `row.channels`. Omitting them or sending `[]`
+ *   would wipe the user's saved subscriptions/channels — if they later
+ *   upgrade to PRO they'd reconfigure from scratch (Greptile P1 round 1).
+ *
+ * Fail-closed on entitlement-lookup errors:
+ *   If ANY `npx convex run entitlements:getEntitlementsByUserId` call
+ *   returns a non-zero exit, OR fails to produce a parseable tier/planKey,
+ *   the script ABORTS without cleaning up anything. Silent failure
+ *   (treating unknown tier as 0 or -1) would let an environment regression
+ *   masquerade as "no free users found" — better to refuse to touch any
+ *   data when the audit predicate is unreliable (Greptile P1 round 1).
+ *
+ * Multi-variant correctness:
+ *   The entitlement lookup is per-userId (deduped). The cleanup target
+ *   list is built from ALL rows whose userId resolves to tier=0 — so a
+ *   free user with multiple variants gets ALL of them disabled in one
+ *   pass, not just the first variant the dedupe loop saw.
  *
  * Usage:
  *   1. Source prod env (CONVEX_URL + CONVEX_DEPLOY_KEY required).
  *   2. Discovery (default): `node scripts/disable-free-user-notifications.mjs`
  *      Prints population breakdown + per-row free-tier list. No mutations.
  *   3. Apply: `node scripts/disable-free-user-notifications.mjs --apply`
- *      Flips `enabled: false` for each free-tier row. Per-row failures
- *      logged + counted; exit 1 if any failed.
+ *      Flips `enabled: false` for each free-tier row, preserving every
+ *      other field. Per-row failures logged + counted; exit 1 if any failed.
  *
- * Idempotent: re-running after apply finds 0 free-tier rows (because
- * `enabled: false` rows are excluded from the discovery `getByEnabled`
- * filter). To audit the population from scratch, query directly via the
- * Convex dashboard.
+ * Idempotent: re-running after apply finds 0 free-tier rows in the enabled
+ * set (because `enabled: false` rows are excluded from `getByEnabled`).
  */
 
 import { spawnSync } from "node:child_process";
@@ -76,47 +90,66 @@ try {
 
 console.log(`[disable-free-notif] enabled alertRules rows: ${allEnabled.length}`);
 
-// Per-userId entitlement lookup. cf. skill
-// `paywalled-feature-needs-three-layer-entitlement-gate` — population audit
-// recipe.
-const seenUsers = new Set();
-const rows = [];
-for (const r of allEnabled) {
-  if (seenUsers.has(r.userId)) continue;
-  seenUsers.add(r.userId);
+// Build a tierByUserId map. ONE lookup per unique userId (entitlement is
+// per-user, not per-variant). Fail-closed on ANY lookup failure: partial-
+// knowledge cleanup is worse than no cleanup at all.
+const tierByUserId = new Map();
+const planByUserId = new Map();
+const uniqueUserIds = [...new Set(allEnabled.map((r) => r.userId))];
+
+for (const userId of uniqueUserIds) {
   const result = spawnSync(
     "npx",
-    ["convex", "run", "entitlements:getEntitlementsByUserId", `{"userId":"${r.userId}"}`],
+    ["convex", "run", "entitlements:getEntitlementsByUserId", `{"userId":"${userId}"}`],
     { env: process.env, encoding: "utf-8", timeout: 30_000 },
   );
+  if (result.status !== 0) {
+    console.error(
+      `[disable-free-notif] FATAL: entitlement lookup for ${userId} exited ${result.status}. ` +
+        `Refusing to proceed with partial knowledge — fix the lookup path and re-run.`,
+    );
+    if (result.stderr) console.error(`  stderr: ${result.stderr.trim().split("\n").slice(-3).join(" | ")}`);
+    if (result.stdout) console.error(`  stdout: ${result.stdout.trim().split("\n").slice(-3).join(" | ")}`);
+    process.exit(4);
+  }
   const out = result.stdout || "";
   const tierMatch = out.match(/"tier":\s*(\d+)/);
   const planMatch = out.match(/"planKey":\s*"([^"]+)"/);
-  rows.push({
-    userId: r.userId,
-    variant: r.variant,
-    digestMode: r.digestMode ?? "<undefined>",
-    sensitivity: r.sensitivity ?? "<undefined>",
-    tier: tierMatch ? parseInt(tierMatch[1]) : -1,
-    planKey: planMatch ? planMatch[1] : "?",
-  });
+  if (!tierMatch || !planMatch) {
+    console.error(
+      `[disable-free-notif] FATAL: entitlement lookup for ${userId} returned unparseable output ` +
+        `(tier or planKey not found). Output format may have changed; refusing to proceed.`,
+    );
+    console.error(`  output (last 5 lines): ${out.trim().split("\n").slice(-5).join(" | ")}`);
+    process.exit(4);
+  }
+  tierByUserId.set(userId, parseInt(tierMatch[1], 10));
+  planByUserId.set(userId, planMatch[1]);
 }
 
+// Tier breakdown (per unique user, since entitlement is per-user).
 const breakdown = {};
-for (const r of rows) {
-  breakdown[r.tier] = (breakdown[r.tier] ?? 0) + 1;
+for (const tier of tierByUserId.values()) {
+  breakdown[tier] = (breakdown[tier] ?? 0) + 1;
 }
-console.log(`[disable-free-notif] tier breakdown:`, breakdown);
+console.log(`[disable-free-notif] tier breakdown (per unique user):`, breakdown);
 
-const free = rows.filter((r) => r.tier === 0);
-console.log(`\n[disable-free-notif] FREE-tier rows to disable: ${free.length}`);
-for (const r of free) {
+// Build the cleanup target list from ALL rows whose userId resolves to
+// tier=0. Iterating allEnabled (NOT a deduped userId set) ensures
+// multi-variant free users get ALL their variants cleaned up.
+const freeRows = allEnabled.filter((r) => tierByUserId.get(r.userId) === 0);
+console.log(
+  `\n[disable-free-notif] FREE-tier rows to disable (across all variants): ${freeRows.length}`,
+);
+for (const r of freeRows) {
   console.log(
-    `  ${r.userId}  variant=${r.variant}  ${r.digestMode}/${r.sensitivity}  planKey=${r.planKey}`,
+    `  ${r.userId}  variant=${r.variant}  ${r.digestMode ?? "<undefined>"}/${r.sensitivity ?? "<undefined>"}  ` +
+      `eventTypes=[${(r.eventTypes ?? []).length}]  channels=[${(r.channels ?? []).length}]  ` +
+      `planKey=${planByUserId.get(r.userId)}`,
   );
 }
 
-if (free.length === 0) {
+if (freeRows.length === 0) {
   console.log(
     "\n[disable-free-notif] no free-tier rows in the enabled set — nothing to do.",
   );
@@ -125,7 +158,8 @@ if (free.length === 0) {
 
 if (!APPLY) {
   console.log(
-    "\n[disable-free-notif] dry-run complete. Re-run with --apply to flip enabled=false for each row.",
+    "\n[disable-free-notif] dry-run complete. Re-run with --apply to flip enabled=false " +
+      "(eventTypes + channels preserved per row).",
   );
   process.exit(0);
 }
@@ -135,18 +169,17 @@ let disabled = 0;
 let failed = 0;
 const failures = [];
 
-for (const row of free) {
-  // setAlertRulesForUser is the INTENTIONALLY-ungated operator path (see
-  // PR #3483 contract test). Patches enabled to false; preserves all other
-  // fields by passing them through.
+for (const row of freeRows) {
+  // Pass through row.eventTypes + row.channels — setAlertRulesForUser
+  // PATCHES these fields, so omitting them (or sending []) would wipe the
+  // user's saved subscriptions/channels (Greptile P1 round 1). Sensitivity
+  // intentionally omitted (preserved by the patch-vs-insert semantics).
   const args = JSON.stringify({
     userId: row.userId,
     variant: row.variant,
     enabled: false,
-    eventTypes: [],
-    channels: [],
-    // sensitivity intentionally omitted — preserves existing value via the
-    // patch-vs-insert semantics in setAlertRulesForUser.
+    eventTypes: row.eventTypes ?? [],
+    channels: row.channels ?? [],
   });
   const result = spawnSync(
     "npx",
