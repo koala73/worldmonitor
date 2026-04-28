@@ -351,6 +351,7 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
     const timestamp = request.headers['x-worldmonitor-desktop-timestamp'];
     const signature = request.headers['x-worldmonitor-desktop-signature'];
     assert.equal(request.headers['content-encoding'], undefined);
+    assert.match(request.headers['user-agent'], /Chrome\/131\.0\.0\.0/);
     assert.match(timestamp, /^\d+$/);
     assert.match(signature, /^sha256=[a-f0-9]{64}$/);
     assert.notEqual(timestamp, '1');

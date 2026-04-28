@@ -74,10 +74,10 @@ async function hmacSha256Hex(secret: string, message: string): Promise<string> {
 }
 
 function timingSafeStringEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const maxLength = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < maxLength; i += 1) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   }
   return diff === 0;
 }
@@ -95,12 +95,14 @@ async function verifyDesktopAuth(request: Request, req: RegisterInterestRequest)
   const timestamp = request.headers.get(DESKTOP_AUTH_TIMESTAMP_HEADER);
   const signature = request.headers.get(DESKTOP_AUTH_SIGNATURE_HEADER);
 
-  if (!timestamp && !signature && process.env[DESKTOP_AUTH_ALLOW_LEGACY_ENV] === 'true') {
-    console.warn(`[register-interest] ${DESKTOP_AUTH_ALLOW_LEGACY_ENV}=true; accepting unsigned legacy desktop bypass`);
-    return;
-  }
-
   if (!secret) {
+    if (!timestamp && !signature && process.env[DESKTOP_AUTH_ALLOW_LEGACY_ENV] === 'true') {
+      console.warn(
+        `[register-interest] ${DESKTOP_AUTH_ALLOW_LEGACY_ENV}=true and ${DESKTOP_AUTH_SECRET_ENV} is unset; accepting unsigned legacy desktop bypass`,
+      );
+      return;
+    }
+
     console.warn(`[register-interest] ${DESKTOP_AUTH_SECRET_ENV} not set; rejecting desktop bypass`);
     throw new ApiError(403, 'Desktop authentication failed', '');
   }

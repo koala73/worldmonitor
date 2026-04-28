@@ -64,6 +64,15 @@ describe('LeadsService.registerInterest desktop auth', () => {
     );
   });
 
+  it('rejects unsigned legacy desktop requests when shared secret is configured', async () => {
+    process.env.WM_DESKTOP_AUTH_ALLOW_LEGACY = 'true';
+
+    await assert.rejects(
+      () => registerInterest(makeCtx(), desktopReq()),
+      (err) => err instanceof ApiError && err.statusCode === 403 && /desktop authentication/i.test(err.message),
+    );
+  });
+
   it('rejects stale desktop signatures', async () => {
     const req = desktopReq();
     const timestamp = String(Date.now() - desktopAuthWindowMs - 1_000);
@@ -115,8 +124,9 @@ describe('LeadsService.registerInterest desktop auth', () => {
     assert.equal(signatureWithNonStrings, signatureWithEmptyStrings);
   });
 
-  it('allows unsigned legacy desktop requests only when rollout fallback is enabled', async () => {
+  it('allows unsigned legacy desktop requests only when rollout fallback is enabled and shared secret is unset', async () => {
     process.env.WM_DESKTOP_AUTH_ALLOW_LEGACY = 'true';
+    delete process.env.WM_DESKTOP_SHARED_SECRET;
     delete process.env.CONVEX_URL;
 
     await assert.rejects(
