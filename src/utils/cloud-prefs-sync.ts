@@ -149,11 +149,63 @@ interface CloudPrefs {
   syncVersion: number;
 }
 
+/**
+ * Typed 503 from the edge — Convex platform-level outage. Callers detect
+ * this via `instanceof ServiceUnavailableError` and back off using
+ * `retryAfterSec` instead of treating it as a permanent error.
+ */
+export class ServiceUnavailableError extends Error {
+  retryAfterSec: number;
+  constructor(retryAfterSec: number) {
+    super(`service unavailable (retry after ${retryAfterSec}s)`);
+    this.name = 'ServiceUnavailableError';
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
+// Bounds on the Retry-After value we'll honor. Lower bound prevents a
+// retry storm if the server sends 0 or a malformed value; upper bound
+// caps the delay so a misconfigured/extreme header doesn't strand sync
+// for minutes.
+const RETRY_AFTER_MIN_SEC = 1;
+const RETRY_AFTER_MAX_SEC = 60;
+const RETRY_AFTER_DEFAULT_SEC = 5;
+
+/**
+ * Parse the `Retry-After` header per RFC 7231: either delta-seconds or an
+ * HTTP-date. Returns a clamped number of seconds, with the configured
+ * default for missing/malformed values. Exported for testability.
+ */
+export function parseRetryAfterSeconds(headers: Headers): number {
+  const raw = headers.get('Retry-After');
+  if (!raw) return RETRY_AFTER_DEFAULT_SEC;
+  const trimmed = raw.trim();
+  // delta-seconds form: digits only.
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return RETRY_AFTER_DEFAULT_SEC;
+    return Math.min(Math.max(n, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
+  }
+  // HTTP-date form: parse and convert to delta-seconds from now.
+  // `Date.parse` is permissive — `Date.parse("-5")` parses as year -5 BCE,
+  // and other garbage strings can produce finite timestamps that then
+  // clamp to RETRY_AFTER_MIN_SEC, retrying in 1s instead of the safer
+  // default. Require the input to look like a real HTTP-date (must
+  // contain both a 4-digit year and a `:` time separator) so non-date
+  // garbage falls into the default-seconds branch instead.
+  if (!/\b\d{4}\b/.test(trimmed) || !trimmed.includes(':')) return RETRY_AFTER_DEFAULT_SEC;
+  const t = Date.parse(trimmed);
+  if (!Number.isFinite(t)) return RETRY_AFTER_DEFAULT_SEC;
+  const delta = Math.round((t - Date.now()) / 1000);
+  return Math.min(Math.max(delta, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
+}
+
 async function fetchCloudPrefs(token: string, variant: string): Promise<CloudPrefs | null> {
   const res = await fetch(`/api/user-prefs?variant=${encodeURIComponent(variant)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) return null;
+  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
   if (!res.ok) throw new Error(`fetch prefs: ${res.status}`);
   return (await res.json()) as CloudPrefs | null;
 }
@@ -181,6 +233,7 @@ async function postCloudPrefs(
     const actualSyncVersion = typeof body.actualSyncVersion === 'number' ? body.actualSyncVersion : undefined;
     return { conflict: true, actualSyncVersion };
   }
+  if (res.status === 503) throw new ServiceUnavailableError(parseRetryAfterSeconds(res.headers));
   if (!res.ok) throw new Error(`post prefs: ${res.status}`);
   return (await res.json()) as { syncVersion: number };
 }
@@ -238,6 +291,19 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
 
     Storage.prototype.setItem.call(localStorage, KEY_LAST_SIGNED_IN_AS, userId);
   } catch (err) {
+    if (err instanceof ServiceUnavailableError) {
+      // Convex platform 503 — transient. Set 'pending' (not 'error') and
+      // re-attempt sign-in sync after the server-suggested delay. This is
+      // the user-facing "transient outage shouldn't be permanent" fix
+      // (PR #3479): without this branch the catch would fall through to
+      // 'error' and the user's prefs would silently not sync until they
+      // reload. Single retry on the typed error is enough — if Convex
+      // is still 503 after the delay, we set 'error' on the next failure.
+      console.warn(`[cloud-prefs] onSignIn 503; retrying in ${err.retryAfterSec}s`);
+      setState('pending');
+      setTimeout(() => { void onSignIn(userId, variant); }, err.retryAfterSec * 1000);
+      return;
+    }
     console.warn('[cloud-prefs] onSignIn failed:', err);
     setState(!navigator.onLine || (err instanceof TypeError && err.message.includes('fetch')) ? 'offline' : 'error');
   }
@@ -303,6 +369,15 @@ async function uploadNow(variant: string): Promise<void> {
       setState('synced');
     }
   } catch (err) {
+    if (err instanceof ServiceUnavailableError) {
+      // Convex platform 503 — transient. Re-queue the upload after the
+      // server-suggested delay so the unsaved blob isn't lost. Setting
+      // 'pending' state matches the existing schedulePrefUpload UX.
+      console.warn(`[cloud-prefs] uploadNow 503; retrying in ${err.retryAfterSec}s`);
+      setState('pending');
+      setTimeout(() => { void uploadNow(variant); }, err.retryAfterSec * 1000);
+      return;
+    }
     console.warn('[cloud-prefs] uploadNow failed:', err);
     setState(!navigator.onLine || (err instanceof TypeError && err.message.includes('fetch')) ? 'offline' : 'error');
   }
