@@ -1000,6 +1000,29 @@ export const runDailyRamp = internalAction({
       throw err; // bubble so Convex auto-Sentry captures
     }
 
+    // P1#4 (round 2): persist post-export progress IMMEDIATELY after
+    // assignAndExportWave returns, BEFORE inspecting failure counters /
+    // underfill. The export ran — there's a real `segmentId`, contacts may
+    // be stamped, contacts may be in the Resend segment — independent of
+    // whether `failed > 0`, `stampFailed > 0`, or `assigned < threshold`.
+    // If we deferred persistence past those branches, an operator running
+    // `clearPartialFailure({confirmNoExport: true})` would see no
+    // `pendingWaveLabel/SegmentId/BroadcastId` and the fail-closed guard
+    // would let the clear through — masking stamped contacts and the
+    // segment that's already in Resend. Persisting first means every
+    // partial-failure path post-export carries the markers, and
+    // clearPartialFailure refuses loudly. Lease-validating: throws if the
+    // lease was force-released mid-flight, bubbling to Convex auto-Sentry.
+    await ctx.runMutation(
+      internal.broadcast.rampRunner._recordPendingExport,
+      {
+        runId,
+        waveLabel,
+        segmentId: exportResult.segmentId,
+        assigned: exportResult.assigned,
+      },
+    );
+
     // Treat any non-zero export failure counter as a partial-failure
     // and refuse to send. Without this, a wave that requested 500 and
     // got 250 push failures + 250 successes would still proceed to
@@ -1031,23 +1054,6 @@ export const runDailyRamp = internalAction({
       );
       return { status: "pool-drained", detail: reason };
     }
-
-    // P1#4: persist post-export progress BEFORE the next external step. If
-    // the action dies after this point but before _recordWaveSent (Convex
-    // action timeout, OOM, network), recoverFromPartialFailure can read the
-    // (segmentId, assigned, waveLabel) from persisted state — operator
-    // doesn't have to reconstruct from Resend dashboard correlation.
-    // Lease-validating: throws if the lease was force-released mid-flight,
-    // bubbling to Convex auto-Sentry.
-    await ctx.runMutation(
-      internal.broadcast.rampRunner._recordPendingExport,
-      {
-        runId,
-        waveLabel,
-        segmentId: exportResult.segmentId,
-        assigned: exportResult.assigned,
-      },
-    );
 
     // ──── Step 4: create + send the broadcast ────
     let broadcastId: string;

@@ -20,12 +20,21 @@
  *      manually-completed broadcastId) or discard-and-rotate (bump
  *      waveLabelOffset so next cron uses a fresh label).
  */
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const runnerSrc = readFileSync(
+  resolve(__dirname, "..", "broadcast", "rampRunner.ts"),
+  "utf-8",
+);
 
 async function seedRampConfig(
   t: ReturnType<typeof convexTest>,
@@ -496,6 +505,43 @@ describe("_recordWaveSent — clears all pending* progress markers (P1#4)", () =
 // ----------------------------------------------------------------------------
 // clearPartialFailure — fail-closed unless operator confirms no export (P1#3)
 // ----------------------------------------------------------------------------
+
+describe("runDailyRamp — call order: _recordPendingExport BEFORE failure branches (PR #3476 review round 3)", () => {
+  test("_recordPendingExport is called immediately after assignAndExportWave returns, BEFORE checking failed/stampFailed/underfilled", () => {
+    // Source-grep regression test. Catches the foot-gun caught in PR #3476
+    // review round 3: if `_recordPendingExport` ran AFTER the
+    // (failed > 0 || stampFailed > 0) branch or the underfilled branch,
+    // those partial-failure paths would leave the row WITHOUT
+    // pendingWaveLabel/SegmentId/Assigned set — and clearPartialFailure
+    // ({confirmNoExport: true}) would then not throw, masking stamped
+    // contacts and the already-created Resend segment.
+    //
+    // Invariant: in runDailyRamp, the _recordPendingExport call must appear
+    // BEFORE any source line containing `exportResult.failed`, `exportResult.stampFailed`,
+    // or `exportResult.underfilled`.
+    const recordPendingIdx = runnerSrc.indexOf("_recordPendingExport,");
+    const failedCheckIdx = runnerSrc.indexOf("exportResult.failed > 0");
+    const stampFailedCheckIdx = runnerSrc.indexOf("exportResult.stampFailed > 0");
+    const underfilledCheckIdx = runnerSrc.indexOf("exportResult.underfilled");
+
+    expect(recordPendingIdx).toBeGreaterThan(-1);
+    expect(failedCheckIdx).toBeGreaterThan(-1);
+    expect(stampFailedCheckIdx).toBeGreaterThan(-1);
+    expect(underfilledCheckIdx).toBeGreaterThan(-1);
+
+    // The first occurrence of `_recordPendingExport,` (the runner call site,
+    // not the export declaration) inside runDailyRamp must precede every
+    // failure-counter check.
+    const runnerCallSiteIdx = runnerSrc.indexOf(
+      "_recordPendingExport,",
+      runnerSrc.indexOf("runDailyRamp"),
+    );
+    expect(runnerCallSiteIdx).toBeGreaterThan(-1);
+    expect(runnerCallSiteIdx).toBeLessThan(failedCheckIdx);
+    expect(runnerCallSiteIdx).toBeLessThan(stampFailedCheckIdx);
+    expect(runnerCallSiteIdx).toBeLessThan(underfilledCheckIdx);
+  });
+});
 
 describe("clearPartialFailure — confirmNoExport guard (P1#3)", () => {
   test("REFUSES when any pending* progress marker is set — even with confirmNoExport=true", async () => {
