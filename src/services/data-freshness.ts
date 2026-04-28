@@ -306,7 +306,7 @@ class DataFreshnessTracker {
   }
 
   private healthStatusIsError(status: string): boolean {
-    return status === 'SEED_ERROR' || status === 'REDIS_PARTIAL';
+    return status === 'SEED_ERROR' || status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL';
   }
 
   private healthStatusHasNoData(status: string): boolean {

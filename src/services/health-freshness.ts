@@ -56,6 +56,7 @@ export interface RefreshHealthFreshnessOptions {
 function statusRank(status: string): number {
   switch (status) {
     case 'SEED_ERROR':
+    case 'REDIS_DOWN':
     case 'REDIS_PARTIAL':
       return 5;
     case 'EMPTY':
@@ -68,13 +69,18 @@ function statusRank(status: string): number {
       return 2;
     case 'OK_CASCADE':
       return 1;
+    case 'OK':
+      return 0;
     default:
       return 0;
   }
 }
 
 function stalenessRatio(update: SeedHealthUpdate): number {
-  if (!update.seedAgeMin || !update.maxStaleMin) return 0;
+  if (update.seedAgeMin == null || update.maxStaleMin == null) return 0;
+  if (update.maxStaleMin === 0) {
+    return update.seedAgeMin === 0 ? 0 : Number.POSITIVE_INFINITY;
+  }
   return update.seedAgeMin / update.maxStaleMin;
 }
 

@@ -167,8 +167,9 @@ export class StrategicRiskPanel extends Panel {
     this.lastHealthFreshnessRefreshAt = now;
     try {
       await refreshDataFreshnessFromHealth({ signal: this.signal });
-    } catch {
+    } catch (error) {
       // Health is additive; local session freshness remains useful if it fails.
+      console.debug('[StrategicRiskPanel] Health freshness fetch failed (non-fatal)', error);
     }
   }
 

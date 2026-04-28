@@ -116,4 +116,36 @@ describe('health freshness ingestion', () => {
     assert.equal(climate?.healthStatus, 'STALE_SEED');
     assert.equal(climate?.itemCount, 4);
   });
+
+  it('treats redis outages as higher severity than ok checks', async () => {
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        checks: {
+          bisPolicy: {
+            status: 'OK',
+            records: 12,
+            seedAgeMin: 0,
+            maxStaleMin: 360,
+          },
+          bisDsr: {
+            status: 'REDIS_DOWN',
+            records: 0,
+            seedAgeMin: 5,
+            maxStaleMin: 360,
+          },
+        },
+      }),
+    });
+
+    assert.equal(applied, 1);
+
+    const bis = dataFreshness.getSource('bis');
+    assert.equal(bis?.status, 'error');
+    assert.equal(bis?.healthStatus, 'REDIS_DOWN');
+    assert.equal(bis?.lastError, 'REDIS_DOWN');
+  });
 });
