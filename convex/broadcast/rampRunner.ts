@@ -1046,13 +1046,30 @@ export const runDailyRamp = internalAction({
       exportResult.underfilled &&
       exportResult.assigned < count * UNDERFILL_RATIO
     ) {
-      const reason = `pool drained — requested ${count}, got ${exportResult.assigned}`;
-      console.log(`[runDailyRamp] ${reason} — deactivating`);
+      // P1 round 4: contacts ARE stamped (excluded from future picks) AND in
+      // the Resend segment, but no broadcast was created/sent. Routing
+      // through "pool-drained" + deactivate-and-clear-lease would strand
+      // them — they'd never receive the email AND `recoverFromPartialFailure`
+      // couldn't run because status would be "pool-drained" instead of
+      // "partial-failure". Route through the recoverable partial-failure
+      // path: persisted pending* markers + lastRunStatus="partial-failure"
+      // make recoverFromPartialFailure({recovery:"manual-finished"}) able to
+      // pick up exactly where the runner stopped, OR
+      // recoverFromPartialFailure({recovery:"discard-and-rotate"}) to
+      // explicitly abandon (operator's call, not the runner's). Ramp is
+      // still deactivated — pool drained means the curve is done.
+      const reason = `pool drained — requested ${count}, got ${exportResult.assigned} stamped + in segment ${exportResult.segmentId} (waveLabel=${waveLabel}). Contacts ARE stamped and excluded from future picks; they will be lost unless this wave is sent. Recovery: pending* state persisted; recoverFromPartialFailure({recovery:"manual-finished", sentAt:<epoch>}) after manually completing the broadcast in Resend, OR recoverFromPartialFailure({recovery:"discard-and-rotate"}) to abandon. Ramp deactivated; resumeRamp if appropriate after recovery.`;
+      console.log(`[runDailyRamp] ${reason}`);
       await ctx.runMutation(
         internal.broadcast.rampRunner._recordRunOutcome,
-        { runId, status: "pool-drained", deactivate: true, error: reason },
+        {
+          runId,
+          status: "partial-failure",
+          deactivate: true,
+          error: reason,
+        },
       );
-      return { status: "pool-drained", detail: reason };
+      return { status: "pool-drained-partial-failure", detail: reason };
     }
 
     // ──── Step 4: create + send the broadcast ────

@@ -506,6 +506,40 @@ describe("_recordWaveSent — clears all pending* progress markers (P1#4)", () =
 // clearPartialFailure — fail-closed unless operator confirms no export (P1#3)
 // ----------------------------------------------------------------------------
 
+describe("runDailyRamp — underfilled branch routes through recoverable partial-failure (PR #3476 review round 4)", () => {
+  test("underfilled branch records lastRunStatus=partial-failure (NOT pool-drained), deactivates ramp", () => {
+    // Round 4 fix: contacts ARE stamped + in Resend segment by the time
+    // assignAndExportWave returns underfilled. The previous code recorded
+    // status="pool-drained" + deactivate + cleared lease — stranding the
+    // exported audience (no broadcast created/sent, contacts excluded from
+    // future picks). recoverFromPartialFailure couldn't run because status
+    // was "pool-drained" not "partial-failure". Route through
+    // partial-failure with persisted pending* markers so manual recovery
+    // is reachable.
+    //
+    // Source-grep contract: the underfilled branch must call _recordRunOutcome
+    // with status: "partial-failure" (not "pool-drained"), AND the error
+    // message must mention recoverFromPartialFailure for operator guidance.
+    const underfilledIdx = runnerSrc.indexOf("exportResult.underfilled");
+    expect(underfilledIdx).toBeGreaterThan(-1);
+    // Slice the source from the underfilled check forward through the next
+    // branch boundary (next `if (` or end-of-function); contract assertions
+    // below match against this slice.
+    const sliceEnd = runnerSrc.indexOf("// ──── Step 4", underfilledIdx);
+    expect(sliceEnd).toBeGreaterThan(underfilledIdx);
+    const underfilledBlock = runnerSrc.slice(underfilledIdx, sliceEnd);
+
+    // Status must be partial-failure (so recovery is reachable).
+    expect(underfilledBlock).toMatch(/status:\s*"partial-failure"/);
+    // Must NOT route through pool-drained status (that strands the audience).
+    expect(underfilledBlock).not.toMatch(/status:\s*"pool-drained"/);
+    // Must deactivate (curve is done).
+    expect(underfilledBlock).toMatch(/deactivate:\s*true/);
+    // Operator guidance must reference recoverFromPartialFailure.
+    expect(underfilledBlock).toMatch(/recoverFromPartialFailure/);
+  });
+});
+
 describe("runDailyRamp — call order: _recordPendingExport BEFORE failure branches (PR #3476 review round 3)", () => {
   test("_recordPendingExport is called immediately after assignAndExportWave returns, BEFORE checking failed/stampFailed/underfilled", () => {
     // Source-grep regression test. Catches the foot-gun caught in PR #3476
