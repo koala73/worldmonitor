@@ -9,6 +9,7 @@ const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v1/gkg_geojson';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
+const MAX_SOURCE_URLS = 5;
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -64,7 +65,7 @@ function uniqueSourceUrls(values) {
 }
 
 function extractAcledSourceUrls(event) {
-  return uniqueSourceUrls([
+  return mergeSourceUrls([
     event.source_url,
     event.sourceUrl,
     event.url,
@@ -73,7 +74,7 @@ function extractAcledSourceUrls(event) {
 }
 
 function extractGdeltSourceUrls(properties = {}) {
-  return uniqueSourceUrls([
+  return mergeSourceUrls([
     properties.url,
     properties.source_url,
     properties.sourceUrl,
@@ -85,7 +86,7 @@ function extractGdeltSourceUrls(properties = {}) {
 }
 
 function mergeSourceUrls(...groups) {
-  return uniqueSourceUrls(groups.flatMap((group) => Array.isArray(group) ? group : []));
+  return uniqueSourceUrls(groups.flatMap((group) => Array.isArray(group) ? group : [])).slice(0, MAX_SOURCE_URLS);
 }
 
 // ---------- Deduplication (from _shared.ts) ----------
@@ -294,7 +295,7 @@ export async function fetchGdeltEvents(opts = {}) {
       if (feature.properties?.urltone < existing.worstTone) {
         existing.worstTone = feature.properties.urltone;
       }
-      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, extractGdeltSourceUrls(feature.properties)).slice(0, 5);
+      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, extractGdeltSourceUrls(feature.properties));
     } else {
       locationMap.set(key, {
         name,
@@ -302,7 +303,7 @@ export async function fetchGdeltEvents(opts = {}) {
         lon,
         count: 1,
         worstTone: feature.properties?.urltone ?? 0,
-        sourceUrls: extractGdeltSourceUrls(feature.properties),
+        sourceUrls: mergeSourceUrls(extractGdeltSourceUrls(feature.properties)),
       });
     }
   }

@@ -26,6 +26,7 @@ import { sparkline } from '@/utils/sparkline';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { renderPopupSourceLinks } from './map-popup-source-links';
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
 // Based on IEA/UNCTAD estimated trade composition. Updated periodically.
@@ -1461,14 +1462,7 @@ export class MapPopup {
     const actorsSection = event.actors?.length
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.actors')}</span><span class="stat-value">${event.actors.map(a => escapeHtml(a)).join(', ')}</span></div>`
       : '';
-    const sourceLinks = event.sourceUrls?.length
-      ? `<div class="popup-source-links">${event.sourceUrls.slice(0, 3).map((url, index) => {
-        const safeUrl = sanitizeUrl(url);
-        if (!safeUrl) return '';
-        const domain = extractDomain(url) || `${t('popups.source')} ${index + 1}`;
-        return `<a class="popup-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(domain)} →</a>`;
-      }).join('')}</div>`
-      : '';
+    const sourceLinks = renderPopupSourceLinks(event.sourceUrls, { label: t('popups.source') });
     const tagsSection = event.tags?.length
       ? `<div class="popup-tags">${event.tags.map(t => `<span class="popup-tag">${escapeHtml(t)}</span>`).join('')}</div>`
       : '';
