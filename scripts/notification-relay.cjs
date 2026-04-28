@@ -91,6 +91,27 @@ async function deactivateChannel(userId, channelType) {
 
 const ENTITLEMENT_CACHE_TTL = 900; // 15 min
 
+/**
+ * Layer-3 PRO gate. Returns true iff the user has tier>=1 entitlement.
+ *
+ * Fail-CLOSED policy (changed from fail-open in PR #348X following the
+ * 2026-04-28 audit that found 7 of 28 enabled alertRules belonged to free-
+ * tier users — the relay's PRO filter has been silently masking a write-side
+ * gap, but the previous fail-open policy meant any entitlement-endpoint
+ * outage would briefly let those free users receive notifications).
+ *
+ * Three-layer model context:
+ *   - Layer 1 (UI paywall): visual, necessary, insufficient.
+ *   - Layer 2 (server-side mutation gate): primary defense (PR #3483).
+ *   - Layer 3 (THIS function): defense-in-depth at delivery time.
+ *
+ * Cache survives short outages (15-min Upstash TTL). The fail-CLOSED branch
+ * fires only when BOTH cache miss AND remote fetch error — a narrow window.
+ *
+ * Tradeoff: an entitlement-endpoint outage that exceeds cache TTL drops
+ * notifications for legitimate PRO users until recovered. Pair with
+ * monitoring on `[relay][entitlement-fail-closed]` log lines below.
+ */
 async function isUserPro(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
@@ -104,12 +125,20 @@ async function isUserPro(userId) {
       body: JSON.stringify({ userId }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return true; // fail-open: don't block delivery on entitlement service failure
+    if (!res.ok) {
+      // fail-CLOSED: drop delivery rather than risk exposing a paywalled
+      // feature to a free-tier user during an entitlement-endpoint outage.
+      // Logged with a stable prefix so an alert can fire on volume.
+      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; dropping delivery`);
+      return false;
+    }
     const { tier } = await res.json();
     await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
     return (tier ?? 0) >= 1;
-  } catch {
-    return true; // fail-open
+  } catch (err) {
+    // Same fail-CLOSED policy on transport error / timeout.
+    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; dropping delivery`);
+    return false;
   }
 }
 
