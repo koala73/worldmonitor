@@ -81,12 +81,13 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
-  it('active dimension count claimed in prose matches (ORDER − RETIRED)', () => {
-    // The doc says "19 dimensions" — i.e. ACTIVE dimensions, excluding
-    // structurally-retired ones (fuelStockDays, reserveAdequacy) that
-    // remain in RESILIENCE_DIMENSION_ORDER for schema continuity but
-    // pin at coverage=0 / imputationClass=null. The right denominator
-    // for the doc's headline claim is (total − retired).
+  it('active dimension count claimed in prose matches (ORDER − RETIRED) AND no stale counts persist', () => {
+    // The doc says "20 active dimensions" — i.e. ACTIVE dimensions,
+    // excluding structurally-retired ones (fuelStockDays,
+    // reserveAdequacy) that remain in RESILIENCE_DIMENSION_ORDER for
+    // schema continuity but pin at coverage=0 / imputationClass=null.
+    // The right denominator for the doc's headline claim is
+    // (total − retired).
     const activeCount = RESILIENCE_DIMENSION_ORDER.length - RESILIENCE_RETIRED_DIMENSIONS.size;
     // Allow "20 dimensions" or "20 active dimensions" — both mean the same thing.
     const re = new RegExp(`${activeCount}\\s+(?:active\\s+)?dimensions?`);
@@ -94,6 +95,32 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       re.test(docText),
       `methodology doc must mention "${activeCount} dimensions" or "${activeCount} active dimensions" (RESILIENCE_DIMENSION_ORDER ${RESILIENCE_DIMENSION_ORDER.length} minus RESILIENCE_RETIRED_DIMENSIONS ${RESILIENCE_RETIRED_DIMENSIONS.size}). ` +
       'If you added/removed/retired a dimension, update the prose.',
+    );
+
+    // Tighten: stale CURRENT-total claims in older changelog narrative
+    // contradict the live count and confuse readers. The previous
+    // version of this test allowed any mention of "20 dimensions" to
+    // pass even if a contradictory "19 dimensions" still appeared in
+    // older prose. Now reject any mention in the plausible-current-
+    // total band [15, 25] that doesn't equal activeCount or totalCount.
+    // Numbers outside that band (5, 6, 13) are legitimate sub-pillar /
+    // historical-version mentions and stay untouched.
+    const totalCount = RESILIENCE_DIMENSION_ORDER.length;
+    const PLAUSIBLE_CURRENT_TOTAL_MIN = 15;
+    const PLAUSIBLE_CURRENT_TOTAL_MAX = 25;
+    const dimensionMentions = [...docText.matchAll(/(\d+)\s+(?:active\s+)?dimensions?/g)];
+    const stale = dimensionMentions
+      .map((m) => Number(m[1]))
+      .filter((n) =>
+        n !== activeCount &&
+        n !== totalCount &&
+        n >= PLAUSIBLE_CURRENT_TOTAL_MIN &&
+        n <= PLAUSIBLE_CURRENT_TOTAL_MAX,
+      );
+    assert.deepEqual(stale, [],
+      `methodology doc contains plausible-current-total dimension counts that contradict the live count: ${stale.join(', ')}. ` +
+      `Current active count is ${activeCount} (or total ${totalCount} if including retired). ` +
+      'Update stale claims, or move to historical-state phrasing if they describe a past version.',
     );
   });
 

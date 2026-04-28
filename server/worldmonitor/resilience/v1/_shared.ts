@@ -161,7 +161,14 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // for every country (the PR 2 default), which would let ineligible
 // countries through the headline ranking filter for the full 6h TTL
 // post-deploy. Bump forces a clean recompute aligned with the new gate.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v17:';
+// v17→v18 bump for plan 2026-04-26-002 §U8.1 (net-imports denominator
+// extended from sovereignFiscalBuffer to liquidReserveAdequacy). The
+// `_formula` tag is binary 'd6'|'pc' and does NOT detect intra-'d6'
+// scorer-formula changes — without this bump, cached v17 AE/PA scores
+// (gross-imports-denominated) would continue to serve for the full 6h
+// TTL post-deploy, defeating the construct fix this PR delivers. Same
+// pattern as the v11→v12 bump that PR 3A used for the SWF-side fix.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -207,7 +214,16 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v17:';
 // shift on history (history doesn't carry the field), but rotating
 // in lockstep keeps the bump pattern consistent and the audit trail
 // clean.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v12:';
+// v12→v13 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v17→v18
+// for plan 2026-04-26-002 §U8.1 (liquidReserveAdequacy net-imports).
+// Pre-bump history points for AE and PA were written against the
+// gross-imports-denominated reserves-in-months value; mixing them
+// inside the rolling 30-day window with post-fix net-imports points
+// would manufacture a false "improving" trend on day one of deploy
+// (history's moving average mixes v12 scores from day -29 with v13
+// scores from day 0). Same skill (cache-prefix-bump-propagation-scope)
+// that motivated the v6→v7 bump for the SWF-side fix in PR 3A.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
 // v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
 // for PR 3A §net-imports denominator. As with the score prefix, the
 // version bump is a belt — the suspenders are the `_formula` tag on
@@ -226,7 +242,12 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v12:';
 // would serve as the front-of-house ranking for the full 6h TTL even
 // after the gate logic flips. Bump forces a clean recompute against
 // the v17 score entries, which now carry the real headlineEligible.
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v17';
+// v17→v18 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for plan
+// 2026-04-26-002 §U8.1. Without it, the v17 ranking payload (with
+// pre-fix AE liquidReserveAdequacy) would continue to serve for the
+// full 12h ranking TTL post-deploy. v18 forces a clean recompute
+// against post-fix v18 score entries.
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v18';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 // Plan 2026-04-26-002 §U4+U5+U6 (combined PR 3+4+5) — intervals bump
 // v1 → v2. The pre-PR interval seeders used the OLD 5-domain weights

@@ -10,12 +10,15 @@ import {
 } from '../scripts/seed-resilience-scores.mjs';
 
 describe('exported constants', () => {
-  it('RESILIENCE_RANKING_CACHE_KEY matches server-side key (v17)', () => {
-    assert.equal(RESILIENCE_RANKING_CACHE_KEY, 'resilience:ranking:v17');
+  it('RESILIENCE_RANKING_CACHE_KEY matches the canonical resilience:ranking shape', () => {
+    // Plan 002 §U8 review: don't pin the exact version literal —
+    // that creates a parallel source of truth that drifts on every
+    // cache-prefix bump. Assert structural shape only.
+    assert.match(RESILIENCE_RANKING_CACHE_KEY, /^resilience:ranking:v\d+$/);
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX matches server-side prefix (v17)', () => {
-    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v17:');
+  it('RESILIENCE_SCORE_CACHE_PREFIX matches the canonical resilience:score: shape', () => {
+    assert.match(RESILIENCE_SCORE_CACHE_PREFIX, /^resilience:score:v\d+:$/);
   });
 
   it('RESILIENCE_RANKING_CACHE_TTL_SECONDS is 12 hours (2x cron interval)', () => {

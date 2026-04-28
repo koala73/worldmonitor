@@ -157,8 +157,11 @@ describe('pillar constants', () => {
     assert.equal(PENALTY_ALPHA, 0.50);
   });
 
-  it('RESILIENCE_SCORE_CACHE_PREFIX is v17', () => {
-    assert.equal(RESILIENCE_SCORE_CACHE_PREFIX, 'resilience:score:v17:');
+  it('RESILIENCE_SCORE_CACHE_PREFIX matches the canonical resilience:score: shape', () => {
+    // Don't pin the exact version literal — that creates a parallel
+    // source of truth that drifts every prefix bump (caught in plan
+    // 002 §U8 review). Assert only the structural shape.
+    assert.match(RESILIENCE_SCORE_CACHE_PREFIX, /^resilience:score:v\d+:$/);
   });
 
   it('PILLAR_ORDER has 3 entries', () => {
