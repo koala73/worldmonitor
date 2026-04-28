@@ -37,6 +37,28 @@ let _installed = false;
 let _suppressPatch = false; // prevents applyCloudBlob from re-triggering upload
 let _cachedToken: string | null = null; // synchronous token cache for flush()
 
+// ── 503 retry tracking ───────────────────────────────────────────────────────
+//
+// _retryTimer holds the single pending 503-retry setTimeout (we cancel and
+// re-schedule rather than stacking; only one retry should ever be in flight).
+//
+// _authGeneration increments on every onSignIn entry and onSignOut so a
+// scheduled retry callback can detect "I'm stale, abort." Without this guard,
+// a delayed retry from user A could fire after sign-out (calling onSignIn
+// with the prior userId but the now-empty Clerk token), or after user B has
+// signed in (using B's token but A's userId in the retry closure) — both
+// produce a misleading sync attempt and pollute Sentry with confused errors.
+
+let _retryTimer: ReturnType<typeof setTimeout> | null = null;
+let _authGeneration = 0;
+
+function clearRetryTimer(): void {
+  if (_retryTimer !== null) {
+    clearTimeout(_retryTimer);
+    _retryTimer = null;
+  }
+}
+
 // ── Guards ────────────────────────────────────────────────────────────────────
 
 function isEnabled(): boolean {
@@ -243,6 +265,14 @@ async function postCloudPrefs(
 export async function onSignIn(userId: string, variant: string): Promise<void> {
   if (!isEnabled()) return;
 
+  // New onSignIn entry — invalidate any pending 503 retry so a stale
+  // closure can't fire mid-flight, and bump generation so any timer that
+  // was already scheduled (and not yet caught by clearRetryTimer) bails
+  // when it fires.
+  clearRetryTimer();
+  _authGeneration += 1;
+  const myGeneration = _authGeneration;
+
   _currentVariant = variant;
   setState('syncing');
 
@@ -297,11 +327,22 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
       // the user-facing "transient outage shouldn't be permanent" fix
       // (PR #3479): without this branch the catch would fall through to
       // 'error' and the user's prefs would silently not sync until they
-      // reload. Single retry on the typed error is enough — if Convex
-      // is still 503 after the delay, we set 'error' on the next failure.
+      // reload.
+      //
+      // Generation guard: cancel any prior pending retry, then schedule a
+      // new one whose callback bails if `_authGeneration` has advanced
+      // (sign-out, user-switch, or another onSignIn invocation since this
+      // attempt began). Without the guard, a 5s delayed retry from user A
+      // could fire after sign-out (no token) or after user B signed in
+      // (wrong token in cache).
       console.warn(`[cloud-prefs] onSignIn 503; retrying in ${err.retryAfterSec}s`);
       setState('pending');
-      setTimeout(() => { void onSignIn(userId, variant); }, err.retryAfterSec * 1000);
+      clearRetryTimer();
+      _retryTimer = setTimeout(() => {
+        _retryTimer = null;
+        if (_authGeneration !== myGeneration) return;
+        void onSignIn(userId, variant);
+      }, err.retryAfterSec * 1000);
       return;
     }
     console.warn('[cloud-prefs] onSignIn failed:', err);
@@ -327,6 +368,13 @@ export function onSignOut(): void {
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
   }
+  // Cancel any pending 503 retry and bump auth-generation so a timer that's
+  // already scheduled (and not yet caught by clearRetryTimer) bails when it
+  // fires — a delayed retry from the prior auth context must not call
+  // onSignIn / uploadNow against the now-empty token cache or, worse, against
+  // a different user's token after a fast user switch.
+  clearRetryTimer();
+  _authGeneration += 1;
   _cachedToken = null;
 
   // Preserve prefs; only clear sync metadata
@@ -336,6 +384,14 @@ export function onSignOut(): void {
 }
 
 async function uploadNow(variant: string): Promise<void> {
+  // Capture the auth generation at entry. If sign-out / user-switch happens
+  // while we're awaiting fetch, the generation guard on any 503 retry below
+  // will detect it and abort the scheduled retry. We do NOT increment the
+  // generation here — uploadNow runs WITHIN an existing auth context (it's
+  // called by the debounced upload path), so we want to inherit the current
+  // generation, not start a new one.
+  const myGeneration = _authGeneration;
+
   const token = await getClerkToken();
   if (!token) return;
   _cachedToken = token;
@@ -373,9 +429,20 @@ async function uploadNow(variant: string): Promise<void> {
       // Convex platform 503 — transient. Re-queue the upload after the
       // server-suggested delay so the unsaved blob isn't lost. Setting
       // 'pending' state matches the existing schedulePrefUpload UX.
+      //
+      // Generation guard: same as the onSignIn branch — if the user signs
+      // out or switches accounts during the retry window, the timer fires
+      // but the closure's captured `myGeneration` no longer matches, so
+      // the retry aborts. Without this, the upload would re-fire against
+      // a now-empty token cache or a different user's token.
       console.warn(`[cloud-prefs] uploadNow 503; retrying in ${err.retryAfterSec}s`);
       setState('pending');
-      setTimeout(() => { void uploadNow(variant); }, err.retryAfterSec * 1000);
+      clearRetryTimer();
+      _retryTimer = setTimeout(() => {
+        _retryTimer = null;
+        if (_authGeneration !== myGeneration) return;
+        void uploadNow(variant);
+      }, err.retryAfterSec * 1000);
       return;
     }
     console.warn('[cloud-prefs] uploadNow failed:', err);
