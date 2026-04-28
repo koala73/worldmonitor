@@ -24,14 +24,17 @@
  *   3. Apply:
  *      `node scripts/migrate-realtime-high-to-daily.mjs --apply`
  *      For each affected row, calls
- *      `npx convex run alertRules:setDigestSettingsForUser '{...}'`
- *      with `digestMode: "daily", sensitivity: "high"`. Tracks success /
- *      failure, exits non-zero if any failed.
+ *      `npx convex run alertRules:setNotificationConfigForUser '{...}'`
+ *      (the atomic pair-update from PR #3461 — accepts both digestMode and
+ *      sensitivity in a single mutation; setDigestSettingsForUser would NOT
+ *      work because its validator has no `sensitivity` arg) with
+ *      `digestMode: "daily", sensitivity: "high"`. Tracks success / failure,
+ *      exits non-zero if any failed.
  *
  * Safety:
  *   - Idempotent: a row already at `(daily, high)` won't appear in the
  *     filter and will be skipped.
- *   - The mutation it calls (`setDigestSettingsForUser`) is internal +
+ *   - The mutation it calls (`setNotificationConfigForUser`) is internal +
  *     deploy-key-gated, so this script can only run with prod deploy
  *     credentials. There is no path to call it without auth.
  *   - Per-row failures are logged and counted but don't abort the loop —
