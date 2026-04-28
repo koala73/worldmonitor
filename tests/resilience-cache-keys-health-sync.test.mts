@@ -174,24 +174,41 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     }
   });
 
-  describe('resilienceIntervals maxStaleMin co-pinned to actual ~2h writer cadence', () => {
-    // Regression-locks the fix for the 2026-04-27 false-OK incident where
-    // resilienceIntervals had maxStaleMin=20160 (14d) — 168× the actual ~2h
-    // writer cadence. With the v15→v16 cache prefix bump in PR #3452 plus
-    // Upstash optimistic-OK-but-not-persisted (see PR #3458), production
-    // data was missing in Redis for 11h+ but health stayed STALE-free
-    // because seedAgeMin (671) was still far under 20160.
+  describe('resilienceIntervals maxStaleMin co-pinned to actual 6h writer cadence', () => {
+    // Regression-locks two prior fixes:
     //
-    // CADENCE BASELINE — the authoritative source is the bundle script's
-    // own comment, NOT the runbook (which is stale). Per
-    // scripts/seed-bundle-resilience.mjs:5-12, the Resilience-Scores
-    // section runs at intervalMs=2h with hourly Railway fires + 96min
-    // skip-window → effective ~2h cadence. 360 = 3× the real 2h cadence,
-    // matching the project's 3× convention used by portwatchPortActivity,
-    // chokepointTransits, transitSummaries, and the bisDsr triplet.
+    // 1. The 2026-04-27 false-OK incident where resilienceIntervals had
+    //    maxStaleMin=20160 (14d) — 168× the writer cadence. Combined
+    //    with the v15→v16 cache prefix bump in PR #3452 and Upstash
+    //    optimistic-OK-but-not-persisted (see PR #3458), production
+    //    data was missing in Redis for 11h+ but health stayed
+    //    STALE-free because seedAgeMin (671) was far under 20160.
     //
-    // First-pass fix shipped at 1080 (18h) trusting the runbook's
-    // `0 */6 * * *`; reviewer caught the bundle script overrides that.
+    // 2. The 2026-04-28 false-positive incident where maxStaleMin=360
+    //    (= 1× the real cadence) flipped resilienceIntervals to
+    //    STALE_SEED on routine cron jitter (seedAgeMin=367 vs
+    //    maxStale=360) despite the bundle running cleanly on schedule.
+    //    Root cause: prior fix took the in-bundle 2h section gate as
+    //    the cadence baseline, but the actual Railway cron is
+    //    `0 */6 * * *` (every 6h on the hour, UTC) — the 2h in-bundle
+    //    gate never gets to fire because Railway only invokes the
+    //    bundle every 6h.
+    //
+    // CADENCE BASELINE — empirically verified 2026-04-28 from Railway
+    // logs (6h2min between two clean bundle runs, no skips/errors).
+    // The in-bundle `intervalMs=2h` claim in
+    // scripts/seed-bundle-resilience.mjs is what the section's
+    // skip-gate uses, but the OUTER Railway cron schedule
+    // (`0 */6 * * *`) determines how often the bundle fires at all.
+    // Real cadence = 6h. 720 = 12h staleness = 2 missed cron ticks
+    // (project convention: 2× cadence; matches resilienceRanking
+    // immediately above, written by the SAME cron section).
+    //
+    // Prior values (audit trail):
+    //   20160 (14d, 168× cadence) — silent during real outage.
+    //   1080  (18h, 3× cadence)   — over-permissive, would mask 12h outage.
+    //   360   (1×,  1× cadence)   — false-positive on routine jitter.
+    //   720   (12h, 2× cadence)   — current; matches resilienceRanking.
     const healthSrc = readFileSync(join(repoRoot, 'api/health.js'), 'utf-8');
     const bundleSrc = readFileSync(join(repoRoot, 'scripts/seed-bundle-resilience.mjs'), 'utf-8');
 
@@ -209,31 +226,52 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
       return parseInt(m[1]!, 10);
     }
 
-    it('Resilience-Scores section gate is 2h (load-bearing — combined with hourly Railway fires gives ~2h effective cadence)', () => {
+    it('Resilience-Scores in-bundle section gate is 2h (intervalMs in seed-bundle-resilience.mjs)', () => {
+      // The in-bundle gate value is still 2h in scripts/seed-bundle-
+      // resilience.mjs source — kept intact because that's what the
+      // section's interval-skip logic uses. Whether the bundle's
+      // OUTER cron fires often enough to make that gate matter is a
+      // separate question: empirically the Railway cron is `0 */6 * *
+      // *`, so the bundle fires every 6h regardless of the in-bundle
+      // 2h gate (the gate never has the chance to skip — the cron
+      // doesn't fire mid-window). If the bundle ever moves to a
+      // sub-6h Railway schedule, this assertion stays correct; only
+      // the resilienceIntervals.maxStaleMin contract below would need
+      // tightening.
       assert.equal(extractSectionGateHours('Resilience-Scores'), 2);
     });
 
-    it('resilienceIntervals.maxStaleMin is 360min (3× the real ~2h writer cadence)', () => {
-      assert.equal(extractMaxStaleMin('resilienceIntervals'), 360);
+    it('resilienceIntervals.maxStaleMin is 720min (2 missed cron ticks at real 6h cadence; matches resilienceRanking)', () => {
+      // Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC),
+      // verified 2026-04-28 via Railway logs (6h2min between two clean
+      // bundle runs, no skips/errors). Both resilienceIntervals AND
+      // resilienceRanking are written by the SAME Resilience-Scores
+      // section, so they share the same maxStaleMin pattern: 720min =
+      // 12h staleness = 2 missed cron ticks. Prior 360 (1× cadence)
+      // false-positive'd on routine jitter (2026-04-28 incident:
+      // seedAgeMin=367 vs maxStale=360); see api/health.js:381 comment
+      // for the prior-values trail.
+      assert.equal(extractMaxStaleMin('resilienceIntervals'), 720);
     });
 
-    it('resilienceIntervals.maxStaleMin >= 180 (no false-STALE on a single missed 2h tick + retry)', () => {
+    it('resilienceIntervals.maxStaleMin >= 540 (no false-STALE on routine jitter at 6h cadence)', () => {
       const maxStale = extractMaxStaleMin('resilienceIntervals');
       assert.ok(
-        maxStale >= 180,
-        `resilienceIntervals.maxStaleMin (${maxStale}) must be >= 180 (1.5× ~2h cadence); ` +
-        `tighter values flip to STALE_SEED on routine cron jitter.`,
+        maxStale >= 540,
+        `resilienceIntervals.maxStaleMin (${maxStale}) must be >= 540 (1.5× the real 6h cadence); ` +
+        `tighter values flip to STALE_SEED on routine cron jitter — see the 2026-04-28 incident ` +
+        `where 360 (= 1× cadence) false-positive'd at seedAgeMin=367 vs maxStale=360.`,
       );
     });
 
-    it('resilienceIntervals.maxStaleMin <= 480 (still catches a real outage within 8h)', () => {
+    it('resilienceIntervals.maxStaleMin <= 1080 (still catches a real outage within ~3 missed cron ticks)', () => {
       const maxStale = extractMaxStaleMin('resilienceIntervals');
       assert.ok(
-        maxStale <= 480,
-        `resilienceIntervals.maxStaleMin (${maxStale}) must be <= 480 (4× ~2h cadence); ` +
+        maxStale <= 1080,
+        `resilienceIntervals.maxStaleMin (${maxStale}) must be <= 1080 (3× the real 6h cadence); ` +
         `looser values mask real upstream outages from the alerting threshold — ` +
-        `the 2026-04-27 incident's 14d (20160) setting hid an 11h outage; ` +
-        `the first-pass 1080 (18h) was 9× the real cadence and still over-permissive.`,
+        `the 2026-04-27 incident's 14d (20160) setting hid an 11h outage. The standard ` +
+        `project convention is 2× cadence (720 here, matching resilienceRanking).`,
       );
     });
   });
