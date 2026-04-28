@@ -5,6 +5,7 @@
  */
 
 import { ConvexHttpClient } from 'convex/browser';
+import { api } from '../../../../convex/_generated/api';
 import type {
   ServerContext,
   SubmitContactRequest,
@@ -154,7 +155,7 @@ export async function submitContact(
   }
 
   const client = new ConvexHttpClient(convexUrl);
-  await client.mutation('contactMessages:submit' as any, {
+  await client.mutation(api.contactMessages.submit, {
     name: safeName,
     email: email.trim(),
     organization: safeOrg,
