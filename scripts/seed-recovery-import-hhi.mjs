@@ -120,49 +120,78 @@ export function buildPeriodParam(nowYear = new Date().getFullYear()) {
   return years.join(',');
 }
 
+// Verbose mode: gated by IMPORT_HHI_VERBOSE=1 in env. Logs per-country
+// HTTP status / row count / picked year. Diagnostic-only — keeps prod
+// runs quiet but lets the next tick after a flaky-country investigation
+// (2026-04-28 AE incident) capture exactly what shape Comtrade returns.
+const IMPORT_HHI_VERBOSE = process.env.IMPORT_HHI_VERBOSE === '1';
+
 export async function fetchImportsForReporter(reporterCode, apiKey) {
   const url = new URL(COMTRADE_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('flowCode', 'M');
   url.searchParams.set('cmdCode', 'TOTAL');
   url.searchParams.set('period', buildPeriodParam());
-  url.searchParams.set('subscription-key', apiKey);
+  // Mirror seed-recovery-reexport-share.mjs (PR #3385): explicit
+  // maxRecords cap so Comtrade doesn't apply its silent default
+  // truncation. cmdCode=TOTAL with the 4y window typically returns
+  // ~200 partners × 4 years = ~800 rows for an active reporter, so the
+  // 250000 cap is generous belt-and-suspenders headroom.
+  url.searchParams.set('maxRecords', '250000');
 
   async function once() {
     return fetch(url.toString(), {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      // Header auth (Ocp-Apim-Subscription-Key) instead of URL
+      // searchParam — mirrors the audit-safe pattern reexport-share
+      // shipped in PR #3385 and keeps the key out of any logged URL.
+      // The reexport-share seeder uses this method successfully for AE
+      // (verified 2026-04-28 — AE present in resilience:recovery:
+      // reexport-share:v1 with reexportShareOfImports=0.355 for 2023).
+      headers: {
+        'Ocp-Apim-Subscription-Key': apiKey,
+        'User-Agent': CHROME_UA,
+        Accept: 'application/json',
+      },
       signal: AbortSignal.timeout(45_000),
     });
   }
 
-  // Single classification loop: 429 wait (15s — bundle budget is tight), then
-  // up to two transient-5xx retries (5s, 10s). Collapsed from branched retries
-  // so a post-429 5xx still consumes the bounded 5xx retries.
-  let rateLimitedOnce = false;
-  let transientRetries = 0;
-  const MAX_TRANSIENT_RETRIES = 2;
-
-  let resp;
-  while (true) {
+  // Retry pattern mirrors seed-recovery-reexport-share.mjs (PR #3385):
+  // 3 attempts total with exponential-ish backoff. Pre-fix this seeder
+  // retried 429 once (15s wait) which left AE persistently absent from
+  // the canonical key (verified 2026-04-28: 5/6 GCC reporters present,
+  // AE alone missing). Comtrade rate-limits per-key per-hour and the
+  // bundle runs reexport-share + import-hhi back-to-back on shared
+  // keys, so by the time import-hhi reaches AE alphabetically the
+  // bucket is sometimes drained — needs more retry budget than a
+  // single 15s wait.
+  const MAX_ATTEMPTS = 3;
+  let resp = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     resp = await once();
-
-    if (resp.status === 429 && !rateLimitedOnce) {
-      await _retrySleep(15_000);
-      rateLimitedOnce = true;
-      continue;
+    const isRateLimit = resp.status === 429;
+    const isTransient = isTransientComtrade(resp.status);
+    if (!isRateLimit && !isTransient) break;
+    if (attempt === MAX_ATTEMPTS) break;
+    // 429 → 2s, 4s; transient 5xx → 5s, 10s. Backoff scales with
+    // attempt so later retries wait longer regardless of error type.
+    const backoffMs = isRateLimit ? 2000 * attempt : 5000 * attempt;
+    if (IMPORT_HHI_VERBOSE) {
+      console.warn(`  [verbose] reporter=${reporterCode} attempt=${attempt}/${MAX_ATTEMPTS} status=${resp.status} backoff=${backoffMs}ms`);
     }
-
-    if (isTransientComtrade(resp.status) && transientRetries < MAX_TRANSIENT_RETRIES) {
-      await _retrySleep(transientRetries === 0 ? 5_000 : 10_000);
-      transientRetries++;
-      continue;
-    }
-
-    break;
+    await _retrySleep(backoffMs);
   }
 
-  if (!resp.ok) return { records: [], year: null, status: resp.status };
+  if (!resp.ok) {
+    if (IMPORT_HHI_VERBOSE) {
+      console.warn(`  [verbose] reporter=${reporterCode} FINAL status=${resp.status} — no records returned`);
+    }
+    return { records: [], year: null, status: resp.status };
+  }
   const { rows, year } = parseRecords(await resp.json());
+  if (IMPORT_HHI_VERBOSE) {
+    console.log(`  [verbose] reporter=${reporterCode} status=${resp.status} parsedRows=${rows.length} year=${year ?? 'null'}`);
+  }
   return { records: rows, year, status: resp.status };
 }
 

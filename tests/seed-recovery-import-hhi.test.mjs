@@ -207,3 +207,159 @@ describe('seed-recovery-import-hhi — period window + pick-latest', () => {
     });
   });
 });
+
+// U1 (plan 2026-04-28-003 §U1) — fetchImportsForReporter retry hardening.
+// 2026-04-28 incident: AE was the only GCC reporter missing from
+// `resilience:recovery:import-hhi:v1` (5/6 GCC present: SA/KW/QA/BH/OM)
+// despite a live probe confirming 231 usable partners in 2023. Root cause:
+// the prior single-15s-429-retry budget couldn't survive Comtrade rate-
+// limit pressure on a key shared with the sibling reexport-share seeder.
+// This block pins the retry semantics and the auth shape so a future
+// regression that drops attempts back to 1, removes header auth, or
+// removes maxRecords trips the test.
+describe('seed-recovery-import-hhi — fetch retry hardening (U1, plan v19)', () => {
+  // Lightweight global-fetch mock. Each test installs its own response
+  // sequence then restores the original. Mirrors the pattern used in
+  // tests/resilience-ranking.test.mts for fetch interception.
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = [];
+  function installFetchSequence(responses) {
+    fetchCalls = [];
+    let i = 0;
+    globalThis.fetch = async (url, init) => {
+      fetchCalls.push({ url: typeof url === 'string' ? url : url.toString(), init });
+      const r = responses[Math.min(i, responses.length - 1)];
+      i += 1;
+      return r;
+    };
+  }
+  function restoreAll(mod) {
+    // Reviewer P2 (PR #3487 round 2): the prior `restoreFetch` form
+    // didn't reset the module's sleep override, so any test added
+    // AFTER this describe block would silently inherit the no-op
+    // sleep stub. Reset both globals to keep the module-level state
+    // hygienic across test files.
+    globalThis.fetch = originalFetch;
+    if (mod && typeof mod.__setSleepForTests === 'function') {
+      mod.__setSleepForTests(null);
+    }
+  }
+
+  function makeJsonResponse(status, body) {
+    return new Response(JSON.stringify(body ?? {}), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Async import inside each test so the mock is in place when the
+  // module-internal `_retrySleep` shortcut is honored. Using
+  // __setSleepForTests below to make the test deterministic + fast;
+  // every test must `restoreAll(mod)` in its finally block to reset
+  // the sleep stub before the next test runs.
+  async function loadFixture() {
+    const mod = await import('../scripts/seed-recovery-import-hhi.mjs');
+    mod.__setSleepForTests(async () => {});
+    return mod;
+  }
+
+  it('retries 429 up to 3 attempts before giving up (was 2 pre-fix)', async () => {
+    const mod = await loadFixture();
+    installFetchSequence([
+      makeJsonResponse(429),
+      makeJsonResponse(429),
+      makeJsonResponse(429),
+    ]);
+    try {
+      const result = await mod.fetchImportsForReporter('784', 'fake-key');
+      assert.equal(result.status, 429, 'final response is 429 after exhausting retries');
+      assert.equal(result.records.length, 0, 'no records when rate-limited out');
+      assert.equal(fetchCalls.length, 3, 'must attempt exactly 3 times');
+    } finally {
+      restoreAll(mod);
+    }
+  });
+
+  it('recovers from a transient 429 followed by 200 (the AE rate-limit recovery case)', async () => {
+    const mod = await loadFixture();
+    installFetchSequence([
+      makeJsonResponse(429),
+      makeJsonResponse(429),
+      makeJsonResponse(200, { data: [
+        { period: 2023, partnerCode: '156', primaryValue: 1000 },
+        { period: 2023, partnerCode: '842', primaryValue: 500 },
+      ]}),
+    ]);
+    try {
+      const result = await mod.fetchImportsForReporter('784', 'fake-key');
+      assert.equal(result.status, 200);
+      assert.equal(result.records.length, 2, '2023 records returned after retry');
+      assert.equal(result.year, 2023);
+      assert.equal(fetchCalls.length, 3, 'two 429s + one 200 = 3 attempts');
+    } finally {
+      restoreAll(mod);
+    }
+  });
+
+  it('uses header auth (Ocp-Apim-Subscription-Key) — key never appears in URL', async () => {
+    // Mirror reexport-share's audit-safe pattern. Pre-fix the key was a
+    // URL searchParam which would leak into any logged URL.
+    const mod = await loadFixture();
+    installFetchSequence([makeJsonResponse(200, { data: [] })]);
+    try {
+      await mod.fetchImportsForReporter('784', 'super-secret-key');
+      assert.equal(fetchCalls.length, 1);
+      const { url, init } = fetchCalls[0];
+      assert.ok(!url.includes('super-secret-key'),
+        `URL must not contain the API key (defense against accidental log leakage); got ${url}`);
+      assert.ok(!url.includes('subscription-key'),
+        'URL must not have any subscription-key searchParam');
+      assert.equal(init.headers['Ocp-Apim-Subscription-Key'], 'super-secret-key',
+        'API key must arrive in the Ocp-Apim-Subscription-Key header');
+    } finally {
+      restoreAll(mod);
+    }
+  });
+
+  it('sets explicit maxRecords=250000 to prevent silent default truncation', async () => {
+    const mod = await loadFixture();
+    installFetchSequence([makeJsonResponse(200, { data: [] })]);
+    try {
+      await mod.fetchImportsForReporter('784', 'k');
+      const url = new URL(fetchCalls[0].url);
+      assert.equal(url.searchParams.get('maxRecords'), '250000',
+        'maxRecords must be 250000 (mirrors seed-recovery-reexport-share PR #3385)');
+    } finally {
+      restoreAll(mod);
+    }
+  });
+
+  it('AE-shaped response (200+ partners in latest year) parses to a non-null HHI', async () => {
+    // Regression-pin the live probe shape captured 2026-04-28: AE
+    // returns ~231 usable partners in 2023. Synthesize a representative
+    // response and assert the seeder's parse → computeHhi pipeline
+    // produces a real, non-null HHI value end-to-end. If a future
+    // refactor breaks the integration (e.g. parse changes silently
+    // drop usable rows), this test trips.
+    const partners = Array.from({ length: 231 }, (_, i) => ({
+      period: 2023,
+      partnerCode: String(100 + i), // synthetic non-zero partner codes
+      primaryValue: 1_000_000 + i * 1000, // varied values
+    }));
+    const mod = await loadFixture();
+    installFetchSequence([makeJsonResponse(200, { data: partners })]);
+    try {
+      const result = await mod.fetchImportsForReporter('784', 'k');
+      assert.equal(result.status, 200);
+      assert.equal(result.records.length, 231, 'all 231 usable partners must parse through');
+      assert.equal(result.year, 2023);
+      const hhi = mod.computeHhi(result.records);
+      assert.ok(hhi !== null, 'computeHhi must NOT return null — AE data is rich');
+      assert.ok(hhi.hhi > 0 && hhi.hhi < 0.05,
+        `231 partners with varied values → HHI in low range; got ${hhi.hhi}`);
+      assert.equal(hhi.partnerCount, 231);
+    } finally {
+      restoreAll(mod);
+    }
+  });
+});
