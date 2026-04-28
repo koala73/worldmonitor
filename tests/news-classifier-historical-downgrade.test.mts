@@ -61,6 +61,28 @@ describe('hasHistoricalMarker — predicate matrix', () => {
       assert.equal(hasHistoricalMarker('Flashback: 1986 Iran-Contra disclosure', NOW), true);
     });
 
+    // Brief 2026-04-28-0801 surfaced this as CRITICAL in slot #3 even after
+    // PR #3429 shipped — the original `^flashback` anchor required position 0,
+    // but publishers prefix with their brand ("CBS News Radio flashback").
+    // Word-boundary match closes the gap.
+    it('publisher brand prefix + "flashback" / "throwback" still matches', () => {
+      assert.equal(
+        hasHistoricalMarker(
+          'CBS News Radio flashback: D-Day, Invasion of Normandy in 1944',
+          NOW,
+        ),
+        true,
+      );
+      assert.equal(
+        hasHistoricalMarker('BBC Throwback Thursday: the fall of Saigon', NOW),
+        true,
+      );
+      assert.equal(
+        hasHistoricalMarker('NPR Flashback Friday: Watergate hearings', NOW),
+        true,
+      );
+    });
+
     it('case-insensitive', () => {
       assert.equal(
         hasHistoricalMarker('SCIENCE HISTORY: Chernobyl meltdown', NOW),
@@ -100,6 +122,62 @@ describe('hasHistoricalMarker — predicate matrix', () => {
     it('"Today in tech: Apple unveils new iPhone" — bare "Today in" current event', () => {
       assert.equal(
         hasHistoricalMarker('Today in tech: Apple unveils new iPhone', NOW),
+        false,
+      );
+    });
+
+    // After widening flashback/throwback to allow brand-prefix forms, we
+    // explicitly reject sentence-form occurrences where the marker is
+    // used as a comparison word, not as an editorial-slot title.
+    // hasHistoricalMarker is reused at list-feed-digest.ts:547 (L3b LLM-
+    // cache guard), where it force-demotes ANY cached LLM hit to info —
+    // a false positive there silently suppresses real critical news.
+    // The brand-prefix branch requires Title-Case prefix words AND a
+    // colon after the marker, which gates these out.
+    it('"Markets see flashback to 2008 crisis as bonds tumble" — sentence-form, no editorial slot', () => {
+      assert.equal(
+        hasHistoricalMarker(
+          'Markets see flashback to 2008 crisis as bonds tumble',
+          NOW,
+        ),
+        false,
+      );
+    });
+
+    it('"Stocks suffer flashback to March 2020 crash" — sentence-form, no colon', () => {
+      assert.equal(
+        hasHistoricalMarker('Stocks suffer flashback to March 2020 crash', NOW),
+        false,
+      );
+    });
+
+    it('"Tesla stock throwback after split" — sentence-form, no Title-Case prefix structure', () => {
+      assert.equal(
+        hasHistoricalMarker('Tesla stock throwback after split', NOW),
+        false,
+      );
+    });
+
+    it('"AI flashback to 2023 boom: Nvidia earnings beat" — colon present but not after marker slot', () => {
+      // Colon is after "boom", not adjacent to the flashback slot, and
+      // the optional qualifier slot only allows ONE word — so "flashback
+      // to 2023 boom" overruns the qualifier slot and the brand-prefix
+      // branch fails.
+      assert.equal(
+        hasHistoricalMarker(
+          'AI flashback to 2023 boom: Nvidia earnings beat',
+          NOW,
+        ),
+        false,
+      );
+    });
+
+    it('lowercase-leading sentence with flashback + colon — Title-Case prefix gate fires', () => {
+      // "markets see flashback: bonds tumble" (lowercase first word) is
+      // sentence-form, not editorial slot. Brand-prefix branch requires
+      // [A-Z]-leading words, so this is rejected.
+      assert.equal(
+        hasHistoricalMarker('markets see flashback: bonds tumble', NOW),
         false,
       );
     });
@@ -259,6 +337,20 @@ describe('classifyByKeyword — historical downgrade integration', () => {
 
     it('"genocide" + "anniversary"', () => {
       const r = classifyByKeyword('40th anniversary of the Rwandan genocide');
+      assert.equal(r.level, 'info');
+      assert.equal(r.source, 'keyword-historical-downgrade');
+    });
+
+    // The exact title that surfaced as CRITICAL slot #3 in brief
+    // 2026-04-28-0801, two days after PR #3429's downgrade shipped.
+    // Keyword path matches `invasion` (CRITICAL); the publisher brand
+    // prefix "CBS News Radio" before "flashback" used to defeat the
+    // anchored `^flashback`. Now the word-boundary form catches it and
+    // the title returns 'keyword-historical-downgrade'.
+    it('"invasion" + publisher-brand "flashback" prefix (CBS D-Day, brief 2026-04-28-0801)', () => {
+      const r = classifyByKeyword(
+        'CBS News Radio flashback: D-Day, Invasion of Normandy in 1944',
+      );
       assert.equal(r.level, 'info');
       assert.equal(r.source, 'keyword-historical-downgrade');
     });

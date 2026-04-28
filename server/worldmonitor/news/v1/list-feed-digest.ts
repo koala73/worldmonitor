@@ -508,7 +508,7 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   if (candidates.length === 0) return;
 
   // Use the canonical buildClassifyCacheKey from intelligence/v1/_shared
-  // so the cache prefix (currently classify:sebuf:v4:) lives in exactly
+  // so the cache prefix (currently classify:sebuf:v5:) lives in exactly
   // one place — bumping it again only requires touching _shared.ts and
   // the relay's independent .cjs helper. See U4 of the plan.
   const keyMap = new Map<string, ParsedItem[]>();
