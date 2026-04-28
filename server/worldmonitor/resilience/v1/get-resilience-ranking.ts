@@ -137,23 +137,37 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       const backfillEligibilityConservative = <T extends { headlineEligible?: boolean }>(item: T): T =>
         (item.headlineEligible === undefined ? { ...item, headlineEligible: false } : item);
       // Plan 2026-04-26-002 §U7 (PR 6) — apply the headline-eligible
-      // gate to the cache-hit path. Otherwise stale items[] from a
-      // partially-migrated cache (or any future state where a writer
-      // forgets to filter) would surface ineligible countries in the
-      // headline ranking. The gate is the single source of truth — any
-      // path that returns items[] to callers must apply it.
+      // gate SYMMETRICALLY across both arrays: any item with
+      // `headlineEligible === true` ends up in items[] regardless of
+      // which cached array it was in; anything else ends up in
+      // greyedOut[]. Asymmetric gating (only filtering items → greyedOut)
+      // would leave a cached greyedOut entry permanently demoted even
+      // if it now passes the gate, until a full recompute. Symmetric
+      // gating makes the predicate the single source of truth across
+      // every code path that returns items[] / greyedOut[] to callers.
+      // Per Greptile P2 review of PR #3472.
       const itemsWithEligibility = filteredItems.map(backfillEligibilityConservative);
       const greyedWithEligibility = filteredGreyedOut.map(backfillEligibilityConservative);
-      const ineligibleFromItems = itemsWithEligibility.filter((item) => item.headlineEligible !== true);
       const eligibleItems = itemsWithEligibility.filter((item) => item.headlineEligible === true);
+      const ineligibleFromItems = itemsWithEligibility.filter((item) => item.headlineEligible !== true);
+      const promotedFromGreyed = greyedWithEligibility.filter((item) => item.headlineEligible === true);
+      const stillGreyed = greyedWithEligibility.filter((item) => item.headlineEligible !== true);
       // Strip the cache-only tag before returning to callers so the
       // wire shape matches the generated proto response type.
       const { _formula: _drop, ...publicResponse } = cached!;
       void _drop;
+      // Re-sort items[] after the symmetric promotion. A high-scoring
+      // item promoted from greyedOut[] would otherwise be appended at
+      // the end of items[] instead of landing in its correct rank
+      // position. The recompute path always sorts before publishing
+      // (line ~225 below), so the cache-hit path must too — otherwise
+      // a cache-hit response visibly differs from a fresh recompute
+      // for the same data, breaking the front-of-house ranking sort.
+      // Per Greptile P2 review of PR #3472 follow-up.
       return {
         ...(publicResponse as GetResilienceRankingResponse),
-        items: eligibleItems,
-        greyedOut: [...greyedWithEligibility, ...ineligibleFromItems],
+        items: sortRankingItems([...eligibleItems, ...promotedFromGreyed]),
+        greyedOut: [...stillGreyed, ...ineligibleFromItems],
       };
     }
   }
