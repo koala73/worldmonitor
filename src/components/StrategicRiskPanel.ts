@@ -84,9 +84,7 @@ export class StrategicRiskPanel extends Panel {
   private lastRiskFingerprint = '';
 
   public async refresh(): Promise<boolean> {
-    void this.refreshHealthFreshness().catch((error) => {
-      console.debug('[StrategicRiskPanel] Health freshness fetch failed (non-fatal)', error);
-    });
+    void this.refreshHealthFreshness();
     this.freshnessSummary = dataFreshness.getSummary();
     this.convergenceAlerts = detectConvergence();
 
@@ -169,9 +167,9 @@ export class StrategicRiskPanel extends Panel {
   private async refreshHealthFreshness(): Promise<void> {
     const now = Date.now();
     if (now - this.lastHealthFreshnessRefreshAt < 60_000) return;
-    this.lastHealthFreshnessRefreshAt = now;
     try {
       await refreshDataFreshnessFromHealth({ signal: this.signal });
+      this.lastHealthFreshnessRefreshAt = Date.now();
     } catch (error) {
       // Health is additive; local session freshness remains useful if it fails.
       console.debug('[StrategicRiskPanel] Health freshness fetch failed (non-fatal)', error);

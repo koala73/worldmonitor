@@ -148,4 +148,54 @@ describe('health freshness ingestion', () => {
     assert.equal(bis?.healthStatus, 'REDIS_DOWN');
     assert.equal(bis?.lastError, 'REDIS_DOWN');
   });
+
+  it('marks mapped sources unhealthy when /api/health reports top-level redis outage without checks', async () => {
+    const mappedSources = new Set(Object.values(HEALTH_CHECK_SOURCE_MAP).flat());
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        status: 'REDIS_DOWN',
+        checkedAt: new Date(checkedAtMs).toISOString(),
+      }),
+    });
+
+    assert.equal(applied, mappedSources.size);
+    assert.ok(applied > 10);
+
+    for (const sourceId of ['gdelt', 'weather', 'bis'] as const) {
+      const source = dataFreshness.getSource(sourceId);
+      assert.equal(source?.status, 'error');
+      assert.equal(source?.healthStatus, 'REDIS_DOWN');
+      assert.equal(source?.lastError, 'REDIS_DOWN');
+      assert.equal(source?.itemCount, 0);
+    }
+  });
+
+  it('does not classify partial coverage as fresh even when recently seeded', async () => {
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        checks: {
+          gdeltIntel: {
+            status: 'COVERAGE_PARTIAL',
+            records: 12,
+            seedAgeMin: 1,
+            maxStaleMin: 420,
+          },
+        },
+      }),
+    });
+
+    assert.equal(applied, 1);
+
+    const gdelt = dataFreshness.getSource('gdelt');
+    assert.equal(gdelt?.status, 'stale');
+    assert.equal(gdelt?.healthStatus, 'COVERAGE_PARTIAL');
+    assert.equal(gdelt?.lastError, null);
+  });
 });

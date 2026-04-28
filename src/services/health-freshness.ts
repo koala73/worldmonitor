@@ -9,6 +9,7 @@ interface HealthCheck {
 }
 
 interface HealthResponse {
+  status?: string;
   checkedAt?: string;
   checks?: Record<string, HealthCheck>;
 }
@@ -84,6 +85,14 @@ function stalenessRatio(update: SeedHealthUpdate): number {
   return update.seedAgeMin / update.maxStaleMin;
 }
 
+function isRedisOutageStatus(status: string | undefined): status is 'REDIS_DOWN' | 'REDIS_PARTIAL' {
+  return status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL';
+}
+
+function getMappedSourceIds(): DataSourceId[] {
+  return [...new Set(Object.values(HEALTH_CHECK_SOURCE_MAP).flat())];
+}
+
 export async function refreshDataFreshnessFromHealth(options: RefreshHealthFreshnessOptions = {}): Promise<number> {
   const fetchFn = options.fetchFn ?? ((...args) => globalThis.fetch(...args));
   const endpoint = options.endpoint ?? '/api/health';
@@ -98,9 +107,23 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
 
   const payload = await resp.json() as HealthResponse;
   const checkedAtMs = payload.checkedAt ? Date.parse(payload.checkedAt) : Date.now();
+  const checkedAt = Number.isFinite(checkedAtMs) ? checkedAtMs : Date.now();
   const updatesBySource = new Map<DataSourceId, SeedHealthUpdate>();
+  const checks = payload.checks ?? {};
 
-  for (const [checkName, check] of Object.entries(payload.checks ?? {})) {
+  if (Object.keys(checks).length === 0 && isRedisOutageStatus(payload.status)) {
+    const status = payload.status;
+    const updates = getMappedSourceIds().map((sourceId) => ({
+      sourceId,
+      status,
+      records: 0,
+      checkedAtMs: checkedAt,
+    }));
+    dataFreshness.recordSeedHealth(updates);
+    return updates.length;
+  }
+
+  for (const [checkName, check] of Object.entries(checks)) {
     const sourceIds = HEALTH_CHECK_SOURCE_MAP[checkName];
     if (!sourceIds?.length || !check.status) continue;
     for (const sourceId of sourceIds) {
@@ -110,7 +133,7 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
         records: check.records,
         seedAgeMin: check.seedAgeMin,
         maxStaleMin: check.maxStaleMin,
-        checkedAtMs: Number.isFinite(checkedAtMs) ? checkedAtMs : Date.now(),
+        checkedAtMs: checkedAt,
       };
       const existing = updatesBySource.get(sourceId);
       if (
