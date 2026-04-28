@@ -87,6 +87,32 @@ describe('LeadsService.registerInterest desktop auth', () => {
     );
   });
 
+  it('canonicalizes only string fields for desktop signatures', async () => {
+    const timestamp = String(Date.now());
+    const signatureWithNonStrings = await createDesktopAuthSignature(
+      process.env.WM_DESKTOP_SHARED_SECRET,
+      timestamp,
+      desktopReq({
+        appVersion: 280,
+        referredBy: ['abc'],
+        website: { bot: true },
+        turnstileToken: false,
+      }),
+    );
+    const signatureWithEmptyStrings = await createDesktopAuthSignature(
+      process.env.WM_DESKTOP_SHARED_SECRET,
+      timestamp,
+      desktopReq({
+        appVersion: '',
+        referredBy: '',
+        website: '',
+        turnstileToken: '',
+      }),
+    );
+
+    assert.equal(signatureWithNonStrings, signatureWithEmptyStrings);
+  });
+
   it('allows unsigned legacy desktop requests only when rollout fallback is enabled', async () => {
     process.env.WM_DESKTOP_AUTH_ALLOW_LEGACY = 'true';
     delete process.env.CONVEX_URL;

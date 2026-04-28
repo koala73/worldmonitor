@@ -44,12 +44,12 @@ interface ConvexRegisterResult {
 
 function canonicalizeDesktopAuthPayload(req: RegisterInterestRequest): string {
   return JSON.stringify({
-    email: req.email || '',
-    source: req.source || '',
-    appVersion: req.appVersion || '',
-    referredBy: req.referredBy || '',
-    website: req.website || '',
-    turnstileToken: req.turnstileToken || '',
+    email: typeof req.email === 'string' ? req.email : '',
+    source: typeof req.source === 'string' ? req.source : '',
+    appVersion: typeof req.appVersion === 'string' ? req.appVersion : '',
+    referredBy: typeof req.referredBy === 'string' ? req.referredBy : '',
+    website: typeof req.website === 'string' ? req.website : '',
+    turnstileToken: typeof req.turnstileToken === 'string' ? req.turnstileToken : '',
   });
 }
 

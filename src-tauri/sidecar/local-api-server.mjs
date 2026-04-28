@@ -455,9 +455,7 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
 
   const normalizedPayload = {
     ...payload,
-    source: typeof payload.source === 'string' && payload.source.length > 0
-      ? payload.source
-      : 'desktop-settings',
+    source: 'desktop-settings',
   };
   const body = JSON.stringify(normalizedPayload);
   const headers = toHeaders(req.headers, { stripOrigin: true });
@@ -704,14 +702,16 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
-          const body = Buffer.concat(chunks).toString();
-          resolve({
-            ok: res.statusCode >= 200 && res.statusCode < 300,
-            status: res.statusCode,
-            headers: { get: (k) => res.headers[k.toLowerCase()] || null },
-            text: () => Promise.resolve(body),
-            json: () => Promise.resolve(JSON.parse(body)),
-          });
+          const body = Buffer.concat(chunks);
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (value) headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+          }
+          try {
+            resolve(buildSafeResponse(res.statusCode, res.statusMessage, headers, body));
+          } catch (error) {
+            reject(error);
+          }
         });
       });
       req.on('error', reject);

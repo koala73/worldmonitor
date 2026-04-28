@@ -334,6 +334,7 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
   try {
     const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/register-interest`, {
       email: 'desktop@example.com',
+      source: 'web-form',
       appVersion: '2.8.0',
     });
     assert.equal(response.status, 200);
