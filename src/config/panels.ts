@@ -1325,10 +1325,12 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   happyNews: {
     labelKey: 'header.panelCatHappyNews',
     panelKeys: ['positive-feed', 'progress', 'counters', 'spotlight', 'breakthroughs', 'digest'],
+    variants: ['happy'],
   },
   happyPlanet: {
     labelKey: 'header.panelCatHappyPlanet',
     panelKeys: ['species', 'renewable', 'giving'],
+    variants: ['happy'],
   },
 };
 

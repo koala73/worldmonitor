@@ -1570,6 +1570,48 @@ export class App {
     );
 
     this.refreshScheduler.scheduleRefresh(
+      'pipeline-status',
+      () => (this.state.panels['pipeline-status'] as PipelineStatusPanel).fetchData(),
+      REFRESH_INTERVALS.pipelineStatus,
+      () => this.isPanelNearViewport('pipeline-status')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'storage-facility-map',
+      () => (this.state.panels['storage-facility-map'] as StorageFacilityMapPanel).fetchData(),
+      REFRESH_INTERVALS.storageFacilityMap,
+      () => this.isPanelNearViewport('storage-facility-map')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'fuel-shortages',
+      () => (this.state.panels['fuel-shortages'] as FuelShortagePanel).fetchData(),
+      REFRESH_INTERVALS.fuelShortages,
+      () => this.isPanelNearViewport('fuel-shortages')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'energy-disruptions',
+      () => (this.state.panels['energy-disruptions'] as EnergyDisruptionsPanel).fetchData(),
+      REFRESH_INTERVALS.energyDisruptions,
+      () => this.isPanelNearViewport('energy-disruptions')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'energy-risk-overview',
+      () => (this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel).fetchData(),
+      REFRESH_INTERVALS.energyRiskOverview,
+      () => this.isPanelNearViewport('energy-risk-overview')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'chokepoint-strip',
+      () => (this.state.panels['chokepoint-strip'] as ChokepointStripPanel).fetchData(),
+      REFRESH_INTERVALS.chokepointStrip,
+      () => this.isPanelNearViewport('chokepoint-strip')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
       'climate-news',
       () => (this.state.panels['climate-news'] as ClimateNewsPanel).fetchData(),
       REFRESH_INTERVALS.climateNews,

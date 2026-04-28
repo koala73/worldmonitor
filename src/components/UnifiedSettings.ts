@@ -598,6 +598,10 @@ export class UnifiedSettings {
     });
   }
 
+  private categoryMatchesVariant(catDef: { variants?: string[] }): boolean {
+    return !catDef.variants || catDef.variants.includes(SITE_VARIANT);
+  }
+
   private getAvailablePanelCategories(): Array<{ key: string; label: string }> {
     const settings = this.config.getPanelSettings();
     const categories: Array<{ key: string; label: string }> = [
@@ -605,6 +609,7 @@ export class UnifiedSettings {
     ];
 
     for (const [catKey, catDef] of Object.entries(PANEL_CATEGORY_MAP)) {
+      if (!this.categoryMatchesVariant(catDef)) continue;
       const hasEnabledPanel = catDef.panelKeys.some(pk => settings[pk]?.enabled);
       if (hasEnabledPanel) {
         categories.push({ key: catKey, label: t(catDef.labelKey) });
@@ -623,6 +628,9 @@ export class UnifiedSettings {
     if (this.activePanelCategory !== 'all') {
       const catDef = PANEL_CATEGORY_MAP[this.activePanelCategory];
       if (catDef) {
+        if (!this.categoryMatchesVariant(catDef)) {
+          return [];
+        }
         const allowed = new Set(catDef.panelKeys);
         entries = entries.filter(([key]) => allowed.has(key));
       }
