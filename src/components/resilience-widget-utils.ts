@@ -141,11 +141,12 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
   // dragging pillar logic into a fixture.
   pillars: [],
   schemaVersion: '1.0',
-  // Plan 2026-04-26-002 §U3 (PR 2): locked preview ships
-  // headlineEligible=true to match the PR-2 default. The widget does
-  // not yet render anything different for false (PR 6 / §U7 wires the
-  // "Low confidence — outside headline ranking" badge); for now the
-  // field is informational only.
+  // Plan 2026-04-26-002 §U3 (PR 2 + §U7 PR 6 + §U8 polish): the locked
+  // preview ships headlineEligible=true to match the post-#3469 v17
+  // contract. The widget renders a distinct "outside headline ranking"
+  // badge when false — see formatResilienceConfidence below. Locked
+  // preview is always eligible because the underlying fixture is a
+  // marketing artifact, not a real low-data country.
   headlineEligible: true,
 };
 
@@ -189,7 +190,19 @@ export function getResilienceDomainLabel(domainId: string): string {
 }
 
 export function formatResilienceConfidence(data: ResilienceScoreResponse): string {
+  // Plan 2026-04-26-002 §U7 (+§U8 widget polish) — distinguish the
+  // "outside headline ranking" reason from the generic sparse-data
+  // reason. headlineEligible=false means the country failed the
+  // (coverage>=0.65 AND (population>=200k OR coverage>=0.85) AND
+  // !lowConfidence) gate; surface it as a distinct cause so analysts
+  // can tell a microstate / data-thin country apart from a
+  // genuinely-volatile-data country. Order matters: we check
+  // lowConfidence FIRST because a country can be both ineligible AND
+  // low-confidence; the lowConfidence label is more specific
+  // (sparse-data) and more actionable (will fix when more data
+  // arrives) so it wins the badge.
   if (data.lowConfidence) return 'Low confidence — sparse data';
+  if (data.headlineEligible === false) return 'Outside headline ranking';
   // Exclude RETIRED dimensions (fuelStockDays, post-PR-3) AND
   // not-applicable-when-zero-coverage dimensions (sovereignFiscalBuffer
   // for non-SWF countries, plan 2026-04-26-001 §U3) from the displayed
