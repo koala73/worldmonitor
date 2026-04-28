@@ -1333,7 +1333,7 @@ export class PanelLayoutManager implements AppModule {
     }
 
     // Renewable Energy is shared by happy and energy variants.
-    if (this.shouldCreatePanel('renewable') && !this.ctx.panels['renewable']) {
+    if (this.shouldCreatePanel('renewable')) {
       this.lazyPanel('renewable', () =>
         import('@/components/RenewableEnergyPanel').then(m => {
           const p = new m.RenewableEnergyPanel();
