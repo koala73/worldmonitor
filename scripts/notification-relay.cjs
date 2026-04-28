@@ -89,8 +89,39 @@ async function deactivateChannel(userId, channelType) {
 
 // ── Entitlement check (PRO gate for delivery) ───────────────────────────────
 
-const ENTITLEMENT_CACHE_TTL = 900; // 15 min
+const ENTITLEMENT_CACHE_TTL = 900; // 15 min — success-path cache
+// Short-TTL cache for fail-closed results during entitlement-endpoint
+// outages. Without this, every event during a sustained outage would
+// re-attempt the 5-second fetch per unique user — turning a high-frequency
+// event stream into a continuous 5-sec stall per poll iteration. 60s
+// absorbs a poll burst, recovers quickly when the endpoint comes back.
+// Cache value "0" (free); the success path naturally refreshes with the
+// real tier on the next attempt past TTL.
+const ENTITLEMENT_FAILCLOSED_CACHE_TTL = 60;
 
+/**
+ * Layer-3 PRO gate. Returns true iff the user has tier>=1 entitlement.
+ *
+ * Fail-CLOSED policy (changed from fail-open in PR #3485 following the
+ * 2026-04-28 audit that found 7 of 28 enabled alertRules belonged to free-
+ * tier users — the relay's PRO filter has been silently masking a write-side
+ * gap, but the previous fail-open policy meant any entitlement-endpoint
+ * outage would briefly let those free users receive notifications).
+ *
+ * Three-layer model context:
+ *   - Layer 1 (UI paywall): visual, necessary, insufficient.
+ *   - Layer 2 (server-side mutation gate): primary defense (PR #3483).
+ *   - Layer 3 (THIS function): defense-in-depth at delivery time.
+ *
+ * Caching:
+ *   - Success path: 15-min Upstash TTL.
+ *   - Fail-closed paths (HTTP non-OK, transport error, timeout): cache "0"
+ *     with 60s TTL — see ENTITLEMENT_FAILCLOSED_CACHE_TTL note above.
+ *
+ * Tradeoff: an entitlement-endpoint outage drops notifications for
+ * legitimate PRO users for up to 60s after each cache miss. Pair with
+ * monitoring on `[relay][entitlement-fail-closed]` log lines.
+ */
 async function isUserPro(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
@@ -104,12 +135,25 @@ async function isUserPro(userId) {
       body: JSON.stringify({ userId }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return true; // fail-open: don't block delivery on entitlement service failure
+    if (!res.ok) {
+      // fail-CLOSED: drop delivery rather than risk exposing a paywalled
+      // feature to a free-tier user during an entitlement-endpoint outage.
+      // Cache "0" with short TTL so subsequent events for this user during
+      // the same outage skip the 5-sec fetch. Logged with stable prefix
+      // for alerting on volume.
+      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; dropping delivery`);
+      try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
+      return false;
+    }
     const { tier } = await res.json();
     await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
     return (tier ?? 0) >= 1;
-  } catch {
-    return true; // fail-open
+  } catch (err) {
+    // Same fail-CLOSED policy on transport error / timeout. Same short-TTL
+    // cache write so we don't re-attempt the 5-sec fetch for every event.
+    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; dropping delivery`);
+    try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
+    return false;
   }
 }
 
