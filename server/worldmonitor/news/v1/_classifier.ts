@@ -230,14 +230,22 @@ function matchKeywords(
  *   - "On this day: Iraq invasion 5 years ago"
  * Both contain a CRITICAL keyword AND an unmistakable retrospective marker.
  */
-// Highly-specific retrospective prefixes — bare "Today in" / "This day in"
+// Highly-specific retrospective markers — bare "Today in" / "This day in"
 // were intentionally REMOVED after PR #3429 review (round 2). Both have
 // legitimate current-event uses ("Today in Ukraine: Russian missile strikes
 // Kyiv") that would have falsely downgraded real critical alerts. Only
 // patterns whose retrospective intent is unambiguous remain:
-//   - "Science history:" — Live Science series tag, never current.
-//   - "Throwback" / "Flashback" — always retrospective by definition.
-const HISTORICAL_PREFIX_RE = /^(?:science history|throwback|flashback)\s*:?/i;
+//   - "Science history:" — Live Science series tag, never current. Stays
+//     anchored at the start because that's its editorial slot prefix.
+//   - "Throwback" / "Flashback" — always retrospective by definition,
+//     EVEN when a publisher brand prefixes the token (CBS News Radio
+//     Flashback, BBC Throwback Thursday, NPR Flashback Friday). The
+//     original anchored `^flashback` missed brief 2026-04-28-0801's
+//     "CBS News Radio flashback: D-Day, Invasion of Normandy in 1944",
+//     which still ranked CRITICAL via the `invasion` keyword. Word-
+//     boundary match catches the brand-prefixed forms.
+const HISTORICAL_PREFIX_RE =
+  /(?:^science history\s*:?|\b(?:throwback|flashback)\b)/i;
 
 // "On this day in YYYY" requires a YEAR after the prefix — narrows out
 // "On this day, Iran fires missile" (current event) while keeping
