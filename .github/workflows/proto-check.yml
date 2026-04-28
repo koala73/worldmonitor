@@ -49,6 +49,8 @@ jobs:
 
       - name: Commit generated artifacts for internal PRs
         if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           if git diff --quiet -- src/generated/ docs/api/ && [ -z "$(git ls-files --others --exclude-standard src/generated/ docs/api/)" ]; then
             echo "Proto-generated code is up to date."
@@ -59,7 +61,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/generated/ docs/api/
           git commit -m "chore(proto): update generated artifacts"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:"$PR_HEAD_REF"
 
       - name: Verify generated code for fork PRs
         if: github.event.pull_request.head.repo.full_name != github.repository
