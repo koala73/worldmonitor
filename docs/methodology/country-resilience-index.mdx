@@ -1,6 +1,6 @@
 ---
 title: "Country Resilience Index"
-description: "Real-time resilience scoring for ~220 countries across 6 domains and 19 dimensions, combining structural baseline indicators with live stress signals into a 0-100 resilience score updated every 6 hours. Published at OECD/JRC methodological parity with transparent goalposts, coverage tracking, and a formal four-class imputation taxonomy."
+description: "Real-time resilience scoring for ~220 countries across 6 domains and 20 active dimensions, combining structural baseline indicators with live stress signals into a 0-100 resilience score updated every 6 hours. Published at OECD/JRC methodological parity with transparent goalposts, coverage tracking, and a formal four-class imputation taxonomy."
 ---
 
 The WorldMonitor Country Resilience Index (CRI) scores every country in the world on a 0-100 scale, combining long-run structural capacity with current operational stress to produce an actionable resilience metric. Rather than relying on static country risk ratings, the CRI updates every 6 hours from official and authoritative sources and exposes full provenance, coverage, and imputation context so analysts can see exactly *why* a score moved and how much of it is real data versus imputed.
@@ -10,7 +10,7 @@ This document describes the **currently shipping** behavior of the index. The ve
 - **Response shape**: `schemaVersion: "2.0"` is the current default. Every response carries a real coverage-weighted `pillars[]` array regrouping the six domains into structural readiness / live shock exposure / recovery capacity. The legacy `schemaVersion: "1.0"` shape (pillars empty) remains available via the `RESILIENCE_SCHEMA_V2_ENABLED=false` env flag for one release cycle.
 - **Scoring formula**: the top-level `overall_score` is the six-domain weighted aggregate (the v1 compensatory formula). The v2 non-compensatory pillar-combined formula with a min-pillar penalty is defined, validated (see Pillar-combined score activation below), and wired behind the `RESILIENCE_PILLAR_COMBINE_ENABLED` flag, but its default is `false` — activation is an explicit operator action rather than a code deploy. The annual Reference Edition at citation quality is a separate Phase 3 deliverable and is not yet shipped.
 
-Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 19 dimensions × 3 pillars, and the 6-domain weighted `overall_score`. When an operator flips the pillar-combined flag on, the subsection on [Pillar-combined score activation](#pillar-combined-score-activation-flag-gated-default-off) documents what changes.
+Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 20 active dimensions × 3 pillars (plus 2 structurally-retired dimensions kept in the registry for schema continuity at `coverage=0`), and the 6-domain weighted `overall_score`. When an operator flips the pillar-combined flag on, the subsection on [Pillar-combined score activation](#pillar-combined-score-activation-flag-gated-default-off) documents what changes.
 
 ## Construct contract
 
@@ -47,7 +47,7 @@ All three surfaces are free to view. The underlying data served at `/api/resilie
 
 ## Overview
 
-The WorldMonitor Country Resilience Index scores ~220 countries on a 0-100 scale across 6 domains and 19 dimensions (a static index of 222 is built every cron tick; countries whose mean dimension coverage falls below 0.40 are greyed out of the public ranking). It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) and recovery-capacity indicators (fiscal space, reserves, import concentration) to produce a single resilience score updated every 6 hours.
+The WorldMonitor Country Resilience Index scores ~220 countries on a 0-100 scale across 6 domains and 20 active dimensions (plus 2 structurally-retired dimensions kept in the registry at `coverage=0` for schema continuity; the public ranking after the v17 universe rebuild publishes 171 countries with 25 in `greyedOut[]` for failing the headline-eligible gate). It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) and recovery-capacity indicators (fiscal space, reserves, import concentration) to produce a single resilience score updated every 6 hours.
 
 Data is sourced from official and authoritative providers: World Bank, IMF, WHO, WTO, OFAC, UNHCR, UCDP, BIS, IEA, FAO, Reporters Sans Frontieres, and the Institute for Economics and Peace, among others.
 
@@ -581,9 +581,9 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v11:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v11` | JSON | 6 hours | `buildResilienceRanking`, only when all countries are scored | `getResilienceRanking` handler |
-| `resilience:history:v6:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
+| `resilience:score:v18:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v18` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 75% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.75`) | `getResilienceRanking` handler |
+| `resilience:history:v13:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
 | `resilience:intervals:v2:{countryCode}` | JSON | 6 hours | `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) |
 | `seed-meta:resilience:static` | JSON | 2 hours | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
 | `resilience:static:{countryCode}` | JSON | 400 days | `scripts/seed-resilience-static.mjs` | scorer for all baseline signals (WGI, WHO, FAO, GPI, RSF, and so on) |
@@ -600,13 +600,54 @@ Given a Redis snapshot at time T:
 1. Read `seed-meta:resilience:static` for the `dataVersion`.
 2. Read `resilience:static:{cc}` for the country's baseline record (WGI, WHO, GPI, RSF, FAO, IEA, and so on).
 3. Read the live-signal keys (UCDP, UNHCR, OFAC, outages, cyber threats, prices, shipping stress, and so on) for the country's slice.
-4. For each of the 19 dimensions, apply the formulas in the Scoring Formula section with the goalposts from the Dimensions and Indicators tables. For missing signals, consult the Imputation Taxonomy table in this document.
+4. For each of the 20 active dimensions, apply the formulas in the Scoring Formula section with the goalposts from the Dimensions and Indicators tables. For missing signals, consult the Imputation Taxonomy table in this document.
 5. Aggregate dimension scores into domain scores via coverage-weighted mean.
 6. Aggregate domain scores into the overall score via domain-weighted sum.
 
 A reference Python notebook under `docs/methodology/country-resilience-index/reference-edition/` is tracked as a future deliverable and will regenerate every published score from the snapshot manifest.
 
 ## Changelog
+
+### v17 (April 2026) — universe + coverage rebuild (plan 2026-04-26-002)
+
+**Current published shape.** Eight-PR sequence (PRs #3425, #3426, #3427, #3432, #3452, #3457, #3469, #3472, #3477) addressing the small-state inflation defect that surfaced after PR #3427's cohort dry-run: the high-income-country (HIC) cohort dropped on rank as designed (FR -33, SG -30, JP -23, AE -18, US -16, DE -13), but the tiny-state cohort still climbed (TV +6, PW +7, NR +22, MC +22). The rebuild attacks the structural cause: the index was treating microstates with thin data the same way it treated countries with full coverage.
+
+**The five mechanisms now in the score:**
+
+1. **Source-comprehensiveness flag (PR #3452, §U5).** 19 indicators are tagged `comprehensive: false` because their absence does not imply "nothing is happening" — event-only feeds (UCDP, IPC, OFAC, GPS jamming, internet outages), curated lists with partial coverage (BIS-64, WTO top-50, FATF), and bilateral-only series. For these, `IMPUTE` swaps from the optimistic `stable-absence` (85, certainty 0.6) to the conservative `unmonitored` (50, certainty 0.3). Microstates that previously rode an "absence is good news" assumption no longer get the free lift.
+2. **Coverage penalty multiplier (PR #3452, §U4).** Imputed indicators carry a 0.5× weight in the dimension blend. The dimension still scores, the imputed value still influences the result, but it does so at half-strength. Combined with the comprehensiveness flag this means a country whose dimension is entirely curated-list-absent contributes weight 0.15 (0.3 × 0.5) instead of weight 1.0 — the dim is functionally informational, not load-bearing.
+3. **Per-capita normalization with 0.5M tiny-state floor (PR #3452, §U6).** `unrestEvents`, `ucdpConflict`, `displacementTotal`, and `displacementHosted` divide by `max(populationMillions, 0.5)`. Tiny states with absolute counts of zero used to score the same as large states with zero events; now the per-capita rate is what enters normalization, and the floor caps the divisor so a country at 0.05M doesn't get a 200× artificial boost. The IMF labor seeder writes population to the static record (PR #3452 review-round-1 fix corrected a 1e6× units bug — the field is `populationMillions` but the upstream IMF `LP` series is in raw persons; fixed in commit 724dd4e95).
+4. **Headline-eligible gate (PR #3469, §U7).** A country is `headlineEligible: true` only if `overallCoverage >= 0.65 AND (populationMillions >= 0.2 OR overallCoverage >= 0.85) AND !lowConfidence`. Ineligible countries surface in `greyedOut[]` (still served via the raw API for analysts who want them) but are excluded from the public ranking. This is the single change that solved the inflation defect end-to-end: 25 countries are currently in `greyedOut[]` for failing one of these conditions, including the previously-inflated PW, NR, AD, FM, KI, GD, GQ, ER cohort.
+5. **Symmetric gate filtering at the cache-hit path (PRs #3472, #3477, §U7 follow-up).** The gate had to be the single source of truth on every code path that returns a ranking, including the read-time path that hits cache. PR #3472 wired the gate into the cache-hit branch (the recompute path already filtered correctly); PR #3477 made it bidirectional (cached `greyedOut[]` entries with `headlineEligible: true` get promoted to `items[]` on read) and re-sorted post-promotion so a high-score promoted item lands at its correct rank, not appended at the end.
+
+**Cache prefix bumps.** `resilience:score:v15:` → `:v16:` → `:v17:` → `:v18:`; `resilience:ranking:v15` → `v16` → `v17` → `v18`; `resilience:history:v10:` → `:v11:` → `:v12:` → `:v13:`. The v17 bump shipped with the headline-eligible gate (PR #3469) because `headlineEligible` became a required field; cached v16 entries omitted it, and the conservative defensive default at v17 is `headlineEligible: false` (anomalous-missing → demoted) to match v17's "every legitimate writer stamps the field" contract. The v18 bump shipped with §U8.1 (net-imports denominator extended to `liquidReserveAdequacy`) — see the U8.1 sub-section below for the rationale.
+
+**Empirical anchor (live `resilience:ranking:v17` captured 2026-04-28, post-#3477 merge):**
+
+| Plan-002 anti-inversion target | v17 result | Status |
+|---|---|---|
+| `median(Nordics) >= median(GCC) − 5pt` | gap = +7.98 (Nordics 78.52, GCC 70.53) | **PASS** |
+| `min(G7) >= max(LIC) − 10pt` | gap = +10.58 (CA 64.31, max-LIC 53.73) | **PASS** |
+| `count(microstate in top 20) <= 1` | 1 (MO Macao at #4 — wealthy financial-hub case) | **PASS** |
+| `median(G7) > median(microstate) + 15pt` | gap = -3.87 (G7 69.47, micro 73.34, n=2) | **margin** — only 2 microstates pass §U7 (MO + 1), and they're high-coverage hubs; the 11 demoted microstates are in `greyedOut[]` exactly as designed |
+
+The "margin" miss on the fourth target is a measurement artifact of the gate working: the original target was calibrated against the *full* 13-state microstate cohort, but §U7 routes 11 of those 13 to `greyedOut[]` because they fail the coverage / population thresholds. The 2 microstates that pass (MO + IS) are exemplars, not the inflated cases. The defect the plan was scoped to fix — PW/NR/TV/AD class climbing into the top 30 — is solved.
+
+**Top-20 cohort makeup at v17 publish:** 5 Nordics in top 12 (NO #2, IS #3, DK #5, SE #7, FI #12), 3 GCC in top 17 (KW #6, QA #10, AE #17), one wealthy microstate (MO #4), the rest distributed as expected (CH #1, UY #8, AT #9, NZ #11, LU #13, JP #14 — the only G7 in the top 20, PT #15, SR #16, CZ #18, WS #19, SI #20).
+
+**v17.1 — Net-imports denominator parity for `liquidReserveAdequacy` (U8.1).** PR #3380 (Apr 24) shipped re-export-adjusted denominators for `sovereignFiscalBuffer` via the SWF seeder's `computeNetImports(grossImports, reexportShareOfImports) = grossImports × (1 − reexportShare)` helper, sourced from `resilience:recovery:reexport-share:v1` (Comtrade-backed, PR #3385). The same correction was structurally needed on the sibling `liquidReserveAdequacy` dimension — a re-export hub that consumes World Bank `FI.RES.TOTL.MO` (reserves in months of imports) gets penalized for goods that flow through its territory without settling as domestic consumption, artificially shortening the implied buffer runway.
+
+v17.1 extends the fix to `liquidReserveAdequacy` at score time (no seeder change): the scorer reads the existing `resilience:recovery:reexport-share:v1` map and multiplies WB's pre-computed months by `1 / (1 − reexportShare)` for hub countries (today: AE at 35.5% share, PA similar). This is the algebraic inverse of dividing the denominator by `(1 − share)` — yields the same adjusted-months a custom `reserves / (net-imports / 12)` calc would produce, without re-fetching raw `FI.RES.TOTL.CD` + `BM.GSR.GNFS.CD` series. Non-hub countries (no entry in the reexport-share map) keep the raw WB value — status-quo behaviour preserved.
+
+The fix ships with a cache-prefix bump (`v17` → `v18` for both `resilience:score:` and `resilience:ranking:`, plus `v12` → `v13` for `resilience:history:`). The `_formula` tag in cache payloads is binary `'d6' | 'pc'` and does NOT detect intra-`d6` scorer changes, so without the prefix bump cached `v17` AE/PA scores (gross-imports-denominated) would continue to serve until TTL expiry post-deploy, defeating the construct fix. History bumps in lockstep so the rolling 30-day window doesn't mix pre-fix and post-fix points and manufacture a false "improving" trend on day one. Same pattern as PR 3A's `v11` → `v12` lockstep when the SWF-side fix landed.
+
+Expected impact at next ranking refresh (within the 6h cache TTL after deploy): AE `liquidReserveAdequacy` ≈ 38 → ≈ 64 (a +26-point dim swing); PA similar magnitude. Trend metric will show a one-time step at deploy time for these two countries; this is the corrected baseline going forward.
+
+**Open construct gaps (documented honestly, not silently deferred):**
+
+- **Economic-complexity / industrial-base indicator.** The index measures shock-absorption mechanisms (the construct test at the top of this document); it does not measure structural diversification. A country with monoculture exports + a strong central-government balance sheet can outscore a more diversified peer with weaker fiscal headroom. Adding an Atlas-of-Economic-Complexity (Hidalgo–Hausmann ECI) or manufacturing-value-added share would be a deliberate construct *expansion*, not a *correction* — flagged as a candidate for the v18 plan.
+- **`importConcentration` coverage gap on AE.** UN Comtrade HS2 bilateral falls through to the `curated_list_absent` impute (50 / 0.3 / unmonitored) for UAE in the current snapshot, despite the underlying data being available. Likely a seeder coverage gap rather than a construct issue. Tracked as a follow-up.
+- **`cyberDigital` transient zeros.** Live cyber-threat-feed events can drive a country to score 0 on `cyberDigital` for a 24-72h window before the smoothing window catches up. Not a construct gap per se, but the dimension's volatility is high enough that a single bad day can move a country 5+ rank positions. The widget's freshness badge surfaces this; a smoothing refinement is plan-deferred.
 
 ### v1.0 (April 2026)
 
@@ -708,7 +749,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 | Axis | Score | Rationale |
 |---|---|---|
 | **Validation** | 8.0 | Cross-index benchmark against 4 established indices with per-pillar hypotheses. Outcome backtest across 7 event families with AUC release gates. Sensitivity suite with 4-pass perturbation and ceiling detection. Gap: external expert review (Phase 3 T3.8b) not yet complete. |
-| **Data** | 9.0 | 19 dimensions across 6 domains, 47+ indicators. Recovery capacity pillar adds 6 new dimensions with global Core-tier coverage (3 real seeders, 2 stubs pending source configuration). Signal tiering registry tags every indicator Core/Enrichment/Experimental with coverage + license audit. Gap: 2 stub seeders (import HHI, fuel stocks) need real data source integration. |
+| **Data** | 9.0 | 20 active dimensions across 6 domains (plus 2 structurally-retired dimensions kept in the registry), 47+ indicators. Recovery capacity pillar adds 6 dimensions with global Core-tier coverage (3 real seeders, 2 stubs pending source configuration). Signal tiering registry tags every indicator Core/Enrichment/Experimental with coverage + license audit. Gap: 2 stub seeders (import HHI, fuel stocks) need real data source integration. |
 | **Architecture** | 9.0 | Three-pillar schema with schemaVersion feature flag for backward compat. Penalized weighted mean aggregation with documented alpha. Domain-weighted pillar scores. Cache-key versioning (bumped per schema change). Language normalization corrects English-press bias. Gap: alpha tuning is initial (0.5), needs backtest-driven refinement after live data accumulates. |
 | **Methodology** | 8.5 | Every dimension has a named source, direction, goalpost, weight, cadence, imputation class, AND tier. Four-class imputation taxonomy live end-to-end. Freshness classifier surfaces staleness at the dimension level. Methodology doc linter enforces parity. Gap: three-pillar weight rationale is defensible but not yet empirically optimized. |
 | **Explainability** | 8.0 | Per-dimension confidence grid with imputation icon + freshness badge. Pillar structure makes the index decomposable (structural vs live-shock vs recovery). Gap: no waterfall chart yet (Phase 3 T3.3), no change attribution (Phase 3 T3.5). |

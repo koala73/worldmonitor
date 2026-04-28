@@ -305,6 +305,16 @@ const RESILIENCE_RECOVERY_FISCAL_SPACE_KEY = 'resilience:recovery:fiscal-space:v
 const RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
 const RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY = 'resilience:recovery:external-debt:v1';
 const RESILIENCE_RECOVERY_IMPORT_HHI_KEY = 'resilience:recovery:import-hhi:v1';
+// Re-export-share map (Comtrade-backed, written by
+// scripts/seed-recovery-reexport-share.mjs from PR #3385). Per-country
+// shape: { reexportShareOfImports: number ∈ [0,1), year, ... }. Today
+// covers AE + PA — the two designated re-export hubs. Consumed by
+// scoreSovereignFiscalBuffer's seeder (net-imports denominator, PR
+// #3380) AND by scoreLiquidReserveAdequacy here at score time so both
+// reserve-buffer dimensions use the same hub-corrected denominator.
+// Countries absent from the map score against the raw WB
+// FI.RES.TOTL.MO value (status-quo behaviour for non-hubs).
+const RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY = 'resilience:recovery:reexport-share:v1';
 // PR 2 §3.4 — new SWF seed populated by scripts/seed-sovereign-wealth.mjs
 // (landed in #3305, wired into the resilience-recovery Railway bundle in
 // #3319). Per-country shape: { funds: [...], totalEffectiveMonths,
@@ -2058,6 +2068,31 @@ export async function scoreReserveAdequacy(
 // months." A country at 12+ months clamps at 100; a country at 1 month
 // clamps at 0. Twelve months = ballpark IMF "full reserve adequacy"
 // benchmark for a diversified emerging-market importer.
+// Re-export adjustment for the reserves-in-months denominator. Mirrors
+// the `computeNetImports` correction that PR #3380 + #3385 wired into
+// `scoreSovereignFiscalBuffer` via the SWF seeder. Reserves-in-months
+// (WB FI.RES.TOTL.MO) is computed at WB source against gross imports;
+// for re-export hubs (AE ≈35% re-export share, PA similar) the gross
+// figure double-counts goods that flow through the territory without
+// settling as domestic consumption, artificially shortening the
+// implied buffer runway. Multiplying months by 1/(1-share) is the
+// algebraic inverse of dividing the denominator by (1-share) — yields
+// the same adjusted-months a custom reserves/(net-imports/12) calc
+// would produce, without re-fetching raw FI.RES.TOTL.CD + raw
+// BM.GSR.GNFS.CD series. Returns null for non-hub countries and for
+// any malformed share value (defensive: clamp to [0, 1)).
+async function readReexportShareForCountry(
+  countryCode: string,
+  reader: ResilienceSeedReader,
+): Promise<number | null> {
+  const raw = await reader(RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY);
+  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null } | undefined> } | null | undefined;
+  const share = payload?.countries?.[countryCode]?.reexportShareOfImports;
+  if (typeof share !== 'number' || !Number.isFinite(share)) return null;
+  if (share < 0 || share >= 1) return null;
+  return share;
+}
+
 export async function scoreLiquidReserveAdequacy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
@@ -2074,8 +2109,12 @@ export async function scoreLiquidReserveAdequacy(
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
   }
+  const reexportShare = await readReexportShareForCountry(countryCode, reader);
+  const adjustedMonths = reexportShare !== null
+    ? entry.reserveMonths / (1 - reexportShare)
+    : entry.reserveMonths;
   return weightedBlend([
-    { score: normalizeHigherBetter(Math.min(entry.reserveMonths, 12), 1, 12), weight: 1.0 },
+    { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0 },
   ]);
 }
 
