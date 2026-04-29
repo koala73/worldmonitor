@@ -459,6 +459,17 @@ Sentry.init({
       !hasFirstParty
       && /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed/i.test(msg)
     ) return null;
+    // Zero-frame async-rejection patterns: AbortSignal.timeout() rejections
+    // and DOMException(NotSupportedError) bubble up via
+    // onunhandledrejection without any first-party frames captured (the
+    // browser fires them from internal infra at the timer boundary). Both
+    // phrases are runtime-emitted only — our shipped code cannot synthesize
+    // the literal "signal timed out" or DOMException name. Same `!hasFirstParty`
+    // safety as the dynamic-import block (WORLDMONITOR-66 / WORLDMONITOR-62).
+    if (
+      !hasFirstParty
+      && (/signal timed out/.test(msg) || /NotSupportedError/.test(msg))
+    ) return null;
     if (hasAnyStack && !hasFirstParty && (
       /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
       || /Maximum call stack size exceeded/.test(msg)
@@ -466,7 +477,6 @@ Sentry.init({
       || /^\w{1,2} is not a (?:function|constructor)/.test(msg)
       || /Cannot add property \w+, object is not extensible/.test(msg)
       || /^TypeError: Internal error$/.test(msg)
-      || /NotSupportedError/.test(msg)
       || /^Key not found$/.test(msg)
       || /^Element not found$/.test(msg)
       || /^(?:TypeError: )?Failed to fetch$/.test(msg)
@@ -476,7 +486,6 @@ Sentry.init({
       || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
       || /Invalid or unexpected token/.test(msg)
       || /^Operation timed out/.test(msg)
-      || /signal timed out/.test(msg)
       || /Cannot inject key into script value/.test(msg)
       || /Connection lost while action was in flight/.test(msg)
       || /WEBGLRenderPipeline.*Link error/.test(msg)
