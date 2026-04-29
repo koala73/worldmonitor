@@ -142,7 +142,6 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
     'TypeError: NetworkError when attempting to fetch resource.',
     'Could not connect to the server',
     'Operation timed out',
-    'signal timed out',
     'Invalid or unexpected token',
   ];
 
@@ -230,6 +229,38 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
 
     it(`lets through "${msg.slice(0, 60)}..." with first-party stack`, () => {
       const event = makeEvent(msg, 'TypeError', [firstPartyFrame()]);
+      assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
+    });
+  }
+});
+
+// ─── Zero-frame async-rejection patterns: AbortSignal timeouts + DOMException(NotSupportedError) ───
+//
+// AbortSignal.timeout() rejections and DOMException(NotSupportedError) bubble
+// up via onunhandledrejection without first-party frames captured (browser
+// fires them from internal infra at the timer boundary). Both phrases are
+// runtime-emitted only — our shipped code cannot synthesize them
+// (WORLDMONITOR-66 / WORLDMONITOR-62).
+
+describe('zero-frame async-rejection patterns (timeout / DOMException)', () => {
+  const zeroFrameErrors = [
+    ['signal timed out', 'TimeoutError'],
+    ['NotSupportedError: The operation is not supported.', 'Error'],
+  ];
+
+  for (const [msg, type] of zeroFrameErrors) {
+    it(`suppresses "${msg.slice(0, 60)}..." with empty stack`, () => {
+      const event = makeEvent(msg, type, []);
+      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed`);
+    });
+
+    it(`suppresses "${msg.slice(0, 60)}..." with confirmed third-party stack`, () => {
+      const event = makeEvent(msg, type, [extensionFrame()]);
+      assert.equal(beforeSend(event), null);
+    });
+
+    it(`lets through "${msg.slice(0, 60)}..." with first-party stack`, () => {
+      const event = makeEvent(msg, type, [firstPartyFrame()]);
       assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
