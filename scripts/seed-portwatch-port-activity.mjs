@@ -94,6 +94,13 @@ async function fetchWithTimeout(url, { signal } = {}) {
 // also for the global WHERE after the PR #3225 rollout. A single retry with
 // a short back-off clears it in practice. No retry loop — one attempt
 // bounded. Does not retry any other error class.
+//
+// IMPORTANT: a 100%-batch-rejected version of this error is NOT a flake —
+// it's an upstream schema-rename (e.g. `date` → `date_` on 2026-04-29 via
+// IMF's reserved-keyword sweep, see fetchAll's first-batch circuit-breaker).
+// The single-retry assumption only holds for sporadic 3-of-N rejections;
+// the circuit-breaker handles the global-regression case to avoid burning
+// 30s of doomed work per cron tick.
 async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
   try {
     return await fetchWithTimeout(url, { signal });
@@ -156,9 +163,12 @@ async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signa
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const params = new URLSearchParams({
       where,
-      outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
+      // IMF PortWatch renamed `date` → `date_` on 2026-04-29 (reserved-keyword
+      // sweep, see ARCGIS_DATE_FIELD comment below). Field alias is still
+      // "date" but the queryable name is `date_` — alias ≠ name in ArcGIS.
+      outFields: 'portid,portname,ISO3,date_,portcalls_tanker,import_tanker,export_tanker',
       returnGeometry: 'false',
-      orderByFields: 'portid ASC,date ASC',
+      orderByFields: 'portid ASC,date_ ASC',
       resultRecordCount: String(PAGE_SIZE),
       resultOffset: String(offset),
       outSR: '4326',
@@ -168,7 +178,7 @@ async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signa
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
-      if (!a || a.portid == null || a.date == null) continue;
+      if (!a || a.portid == null || a.date_ == null) continue;
       const portId = String(a.portid);
       const calls = Number(a.portcalls_tanker ?? 0);
       const imports = Number(a.import_tanker ?? 0);
@@ -214,8 +224,8 @@ function parseMaxDateToAnchor(maxDateStr) {
 
 // Fetch ONE country's activity rows, streaming into per-port accumulators.
 // Splits into TWO parallel windowed queries:
-//   - Q1 (last30): WHERE ISO3='X' AND date > cutoff30
-//   - Q2 (prev30): WHERE ISO3='X' AND date > cutoff60 AND date <= cutoff30
+//   - Q1 (last30): WHERE ISO3='X' AND date_ > cutoff30
+//   - Q2 (prev30): WHERE ISO3='X' AND date_ > cutoff60 AND date_ <= cutoff30
 // Each returns ~half the rows a single 60-day query would. Heavy countries
 // (USA/CHN/etc.) drop from ~90s → ~30s because max(Q1,Q2) < Q1+Q2.
 //
@@ -238,18 +248,21 @@ async function fetchCountryAccum(iso3, { signal, anchorEpochMs } = {}) {
 
   const portAccumMap = new Map();
 
+  // ARCGIS_DATE_FIELD: queryable column is `date_`, not `date` — see comment
+  // on outFields above. The `timestamp 'YYYY-MM-DD HH:MM:SS'` literal still
+  // works on the new esriFieldTypeDateOnly column (verified 2026-04-29).
   await Promise.all([
     paginateWindowInto(
       portAccumMap,
       iso3,
-      `ISO3='${iso3}' AND date > ${epochToTimestamp(cutoff30)}`,
+      `ISO3='${iso3}' AND date_ > ${epochToTimestamp(cutoff30)}`,
       'last30',
       { signal },
     ),
     paginateWindowInto(
       portAccumMap,
       iso3,
-      `ISO3='${iso3}' AND date > ${epochToTimestamp(cutoff60)} AND date <= ${epochToTimestamp(cutoff30)}`,
+      `ISO3='${iso3}' AND date_ > ${epochToTimestamp(cutoff60)} AND date_ <= ${epochToTimestamp(cutoff30)}`,
       'prev30',
       { signal },
     ),
@@ -266,7 +279,10 @@ async function fetchCountryAccum(iso3, { signal, anchorEpochMs } = {}) {
 async function fetchMaxDate(iso3, { signal } = {}) {
   const outStats = JSON.stringify([{
     statisticType: 'max',
-    onStatisticField: 'date',
+    // See ARCGIS_DATE_FIELD comment in fetchCountryAccum: queryable name is
+    // `date_`, not `date`. outStatisticFieldName is the response key —
+    // unchanged on purpose so callers keep reading `attrs.max_date`.
+    onStatisticField: 'date_',
     outStatisticFieldName: 'max_date',
   }]);
   const params = new URLSearchParams({
@@ -520,6 +536,25 @@ export async function fetchAll(progress, { signal } = {}) {
     if (batchIdx === 1 || batchIdx % BATCH_LOG_EVERY === 0 || batchIdx === batches) {
       const elapsed = ((Date.now() - activityStart) / 1000).toFixed(1);
       console.log(`  [port-activity]   batch ${batchIdx}/${batches}: ${countryData.size} countries published, ${errors.length} errors (${elapsed}s)`);
+    }
+
+    // Circuit-breaker: if batch 1 is ≥80% rejected with the SAME class of
+    // error, treat it as an upstream global regression (schema rename, policy
+    // change, dataset moved) — not a flake that more retries will clear.
+    // Skip the remaining batches and let the catch-path extendExistingTtl
+    // preserve prior payloads. Cuts failure cost ~30s → ~2s and keeps Sentry
+    // signal-to-noise sane during incidents like the 2026-04-29 IMF
+    // PortWatch `date` → `date_` rename.
+    if (batchIdx === 1 && batches > 1 && batch.length >= 5) {
+      const sameClassRate = errors.filter(e => /Invalid query parameters/i.test(e)).length / batch.length;
+      if (sameClassRate >= 0.8) {
+        console.error(
+          `  [port-activity] CIRCUIT-BREAKER: ${(sameClassRate * 100).toFixed(0)}% of batch 1 rejected with "Invalid query parameters" — ` +
+          `assuming upstream schema/policy regression. Skipping remaining ${batches - 1} batches; ` +
+          `catch-path will extend TTLs on prior payloads. First error: ${errors[0]}`,
+        );
+        break;
+      }
     }
   }
 

@@ -51,9 +51,11 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // H+F refactor: the WHERE clause is now built inline at the
     // paginateWindowInto call site (not as a `where:` param in a params
     // bag) because each window has a different date predicate.
-    assert.match(src, /`ISO3='\$\{iso3\}'\s+AND\s+date\s*>/);
+    // Field is `date_` post-2026-04-29 IMF reserved-keyword sweep (alias=date,
+    // queryable name=date_). See ARCGIS_DATE_FIELD comment in the seeder.
+    assert.match(src, /`ISO3='\$\{iso3\}'\s+AND\s+date_\s*>/);
     // Global where=date>X shape (PR #3225) must NOT be present.
-    assert.doesNotMatch(src, /where:\s*`date\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
+    assert.doesNotMatch(src, /where:\s*`date_?\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
   });
 
   it('EP4 refs query fetches all ports globally with where=1=1', () => {
@@ -129,7 +131,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
   it('fetchMaxDate preflight uses outStatistics for cheap cache invalidation', () => {
     assert.match(src, /async function fetchMaxDate/);
     assert.match(src, /statisticType:\s*'max'/);
-    assert.match(src, /onStatisticField:\s*'date'/);
+    assert.match(src, /onStatisticField:\s*'date_'/);
   });
 
   it('fetchAll cache path: MGET preflight + maxDate check + reuse payload', () => {
