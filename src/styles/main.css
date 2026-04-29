@@ -7739,6 +7739,19 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
+.popup-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.popup-source-links .popup-link,
+.cluster-source-link {
+  margin-top: 0;
+  font-size: 10px;
+}
+
 /* Hotspot subtitles on map */
 .hotspot-subtext {
   position: absolute;

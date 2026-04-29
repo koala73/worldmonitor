@@ -148,6 +148,8 @@ test('fetchGdeltEvents with one transient proxy failure → recovers and aggrega
       properties: { name: 'Cairo, Egypt', urltone: -3 },
       geometry: { type: 'Point', coordinates: [31.2, 30.0] },
     }));
+    features[0].properties.url = 'https://example.com/cairo-protest';
+    features[1].properties.source_url = 'https://news.example.org/cairo-protest';
     return jsonBuffer({ features });
   };
   const events = await fetchGdeltEvents({
@@ -160,4 +162,8 @@ test('fetchGdeltEvents with one transient proxy failure → recovers and aggrega
   assert.equal(calls, 2, 'should retry exactly once after the 522');
   assert.equal(events.length, 1, 'five mentions at one location → one aggregated event');
   assert.equal(events[0].country, 'Egypt');
+  assert.deepEqual(events[0].sourceUrls, [
+    'https://example.com/cairo-protest',
+    'https://news.example.org/cairo-protest',
+  ]);
 });
