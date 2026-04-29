@@ -239,7 +239,12 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // called BEFORE any country-level fetch (preflight or batches) so
     // every per-country call within the run sees the same resolved name.
     // This is the single source of truth that survives an IMF schema flap.
-    assert.match(src, /export async function resolveArcgisDateField/);
+    // Resolver is exported as a sync function that returns the cached
+    // in-flight promise (Greptile P2 fix on PR #3496) — the actual
+    // schema-fetch lives in `_doResolveArcgisDateField`. Both must be
+    // present, but only the former is the public entry point.
+    assert.match(src, /export function resolveArcgisDateField/);
+    assert.match(src, /async function _doResolveArcgisDateField/);
     // Called inside fetchAll before refs/preflight/activity stages.
     assert.match(
       src,
@@ -527,7 +532,11 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
     originalFetch = globalThis.fetch;
   });
 
-  function mockFetchOnce(body) {
+  // Sets globalThis.fetch to a stub returning `body`. Stays installed
+  // until restoreFetch() — name reflects that (Greptile P2 on PR #3496:
+  // the original `mockFetchOnce` name implied auto-reset semantics it
+  // didn't enforce, masking accidental cache hits in future edits).
+  function mockFetch(body) {
     globalThis.fetch = async () => ({
       ok: true,
       status: 200,
@@ -541,7 +550,7 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
 
   it('returns "date" when schema reports name=date alias=date (post-revert state)', async () => {
     _resetArcgisDateFieldCache();
-    mockFetchOnce({
+    mockFetch({
       fields: [
         { name: 'date', alias: 'date', type: 'esriFieldTypeDateOnly' },
         { name: 'portid', alias: 'portid', type: 'esriFieldTypeString' },
@@ -555,7 +564,7 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
 
   it('returns "date_" when schema reports name=date_ alias=date (post-rename state)', async () => {
     _resetArcgisDateFieldCache();
-    mockFetchOnce({
+    mockFetch({
       fields: [
         { name: 'date_', alias: 'date', type: 'esriFieldTypeDateOnly' },
         { name: 'portid', alias: 'portid', type: 'esriFieldTypeString' },
@@ -602,7 +611,7 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
 
   it('falls back to "date" when schema response has no date field', async () => {
     _resetArcgisDateFieldCache();
-    mockFetchOnce({
+    mockFetch({
       fields: [
         { name: 'portid', alias: 'portid', type: 'esriFieldTypeString' },
         { name: 'ISO3', alias: 'ISO3', type: 'esriFieldTypeString' },
@@ -611,6 +620,46 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
     try {
       const df = await resolveArcgisDateField();
       assert.equal(df, 'date');
+    } finally { restoreFetch(); }
+  });
+
+  it('concurrent first-callers share one schema round-trip (promise-cache)', async () => {
+    // Greptile P2 on PR #3496: cache the in-flight promise, not the
+    // resolved value, so `Promise.all([resolve(), resolve(), resolve()])`
+    // dispatches a single fetch. Without this, three null-checks fire
+    // before any fetch settles → three round-trips.
+    _resetArcgisDateFieldCache();
+    let calls = 0;
+    let resolveFetch;
+    globalThis.fetch = () => {
+      calls++;
+      // Hold the fetch open so all three callers race against the same
+      // unresolved promise — the bug-class this guards against.
+      return new Promise((r) => {
+        resolveFetch = () => r({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fields: [{ name: 'date', alias: 'date', type: 'esriFieldTypeDateOnly' }],
+          }),
+        });
+      });
+    };
+    try {
+      const racing = Promise.all([
+        resolveArcgisDateField(),
+        resolveArcgisDateField(),
+        resolveArcgisDateField(),
+      ]);
+      // Microtask flush so the three calls have all entered the resolver
+      // and registered their continuations on the cached promise.
+      await Promise.resolve();
+      resolveFetch();
+      const [a, b, c] = await racing;
+      assert.equal(a, 'date');
+      assert.equal(b, 'date');
+      assert.equal(c, 'date');
+      assert.equal(calls, 1, 'three concurrent first-callers must share ONE schema fetch');
     } finally { restoreFetch(); }
   });
 });

@@ -173,12 +173,25 @@ async function fetchAllPortRefs({ signal } = {}) {
 //
 // Strategy: introspect the layer schema once per process, find the field
 // whose alias is "date" (alias is the stable signal), use its `name` for
-// the rest of the run. Module-level memoisation so repeated calls within
-// a run are cheap. Falls back to ARCGIS_DATE_FIELD_FALLBACK on error so
-// transient schema-endpoint failures don't kill the whole seed run.
-let _arcgisDateFieldCached = null;
-export async function resolveArcgisDateField({ signal } = {}) {
-  if (_arcgisDateFieldCached != null) return _arcgisDateFieldCached;
+// the rest of the run. Falls back to ARCGIS_DATE_FIELD_FALLBACK on error
+// so transient schema-endpoint failures don't kill the whole seed run.
+//
+// Memoisation: cache the in-flight PROMISE, not the resolved value, so
+// concurrent first-callers share one schema round-trip. The
+// fetchAll-driven flow awaits the resolver before any parallel work, so
+// in practice only one call ever races — but the defensive fall-throughs
+// in paginateWindowInto / fetchMaxDate / fetchCountryAccum can be invoked
+// from outside fetchAll (tests, future callers), so the once-inflight
+// pattern is the load-bearing safety. Greptile P2 on PR #3496.
+let _arcgisDateFieldPromise = null;
+export function resolveArcgisDateField({ signal } = {}) {
+  if (!_arcgisDateFieldPromise) {
+    _arcgisDateFieldPromise = _doResolveArcgisDateField({ signal });
+  }
+  return _arcgisDateFieldPromise;
+}
+
+async function _doResolveArcgisDateField({ signal } = {}) {
   try {
     const body = await fetchWithTimeout(EP3_SCHEMA, { signal });
     const fields = Array.isArray(body?.fields) ? body.fields : [];
@@ -195,11 +208,9 @@ export async function resolveArcgisDateField({ signal } = {}) {
     } else if (resolved !== ARCGIS_DATE_FIELD_FALLBACK) {
       console.log(`  [port-activity] resolved ArcGIS date field name: "${resolved}" (alias=date)`);
     }
-    _arcgisDateFieldCached = resolved;
     return resolved;
   } catch (err) {
     console.warn(`  [port-activity] schema introspection failed (${err?.message || err}) — using fallback "${ARCGIS_DATE_FIELD_FALLBACK}"`);
-    _arcgisDateFieldCached = ARCGIS_DATE_FIELD_FALLBACK;
     return ARCGIS_DATE_FIELD_FALLBACK;
   }
 }
@@ -207,7 +218,7 @@ export async function resolveArcgisDateField({ signal } = {}) {
 // Test-only helper: clears the module-level cache so unit tests can
 // re-exercise the resolver with different mocked schemas.
 export function _resetArcgisDateFieldCache() {
-  _arcgisDateFieldCached = null;
+  _arcgisDateFieldPromise = null;
 }
 
 // Paginate a single ArcGIS EP3 window into per-port accumulators. Called
