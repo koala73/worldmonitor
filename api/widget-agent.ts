@@ -88,11 +88,33 @@ export default async function handler(req: Request): Promise<Response> {
         return json({ error: 'Invalid or expired session' }, 401, corsHeaders);
       }
       let allowed = session.role === 'pro';
+      let entitlementChecked = false;
+      let entitlementTier: number | null = null;
       if (!allowed && session.userId) {
         const ent = await getEntitlements(session.userId);
+        entitlementChecked = true;
+        entitlementTier = ent ? ent.features.tier : null;
         allowed = !!ent && ent.features.tier >= 1;
       }
       if (!allowed) {
+        // Structured log so on-call can distinguish two distinct 403 causes
+        // sharing one user-facing message:
+        //   reason=not_entitled      — Convex returned a row, tier < 1 (real free user)
+        //   reason=service_unavailable — entitlement lookup returned null
+        //                                (Convex unreachable / Redis trouble / cache miss + Convex down).
+        //                                The latter blocks paying users during outages —
+        //                                grep these in Vercel logs to trigger an incident
+        //                                instead of waiting for refund tickets.
+        const reason = entitlementChecked && entitlementTier === null
+          ? 'service_unavailable'
+          : 'not_entitled';
+        console.warn('[widget-agent] 403 pro-required', JSON.stringify({
+          reason,
+          userId: session.userId ?? null,
+          clerkRole: session.role ?? null,
+          entitlementChecked,
+          entitlementTier,
+        }));
         return json({ error: 'Pro subscription required' }, 403, corsHeaders);
       }
       isPro = true;

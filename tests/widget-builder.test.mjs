@@ -1416,21 +1416,25 @@ describe('WidgetChatModal — preflight 403 message branches on auth mode', () =
     );
   });
 
-  it('resolvePreflightMessage takes usedTesterKey and uses preflightProSubscriptionRequired for Clerk path', () => {
+  it('resolvePreflightMessage takes usedTesterKey and branches Clerk path on isPro', () => {
     const fnIdx = modal.indexOf('function resolvePreflightMessage');
     assert.ok(fnIdx !== -1, 'resolvePreflightMessage not found');
-    const region = modal.slice(fnIdx, fnIdx + 800);
+    const region = modal.slice(fnIdx, fnIdx + 1200);
     assert.ok(
       region.includes('usedTesterKey'),
       'resolvePreflightMessage must take usedTesterKey to branch on auth mode',
     );
     assert.ok(
       region.includes('preflightProSubscriptionRequired'),
-      'Clerk-auth 403 must surface preflightProSubscriptionRequired (not the wm-pro-key tester message)',
+      'Clerk-auth 403 (isPro=true) must surface preflightProSubscriptionRequired',
+    );
+    assert.ok(
+      region.includes('preflightProRequired'),
+      'Clerk-auth 403 (isPro=false, free user) must surface preflightProRequired (clean upgrade ask, no "just upgraded" language)',
     );
   });
 
-  it('en.json defines widgets.preflightProSubscriptionRequired', () => {
+  it('en.json defines widgets.preflightProSubscriptionRequired (just-upgraded / outage)', () => {
     assert.ok(
       typeof en.widgets?.preflightProSubscriptionRequired === 'string'
         && en.widgets.preflightProSubscriptionRequired.length > 0,
@@ -1439,6 +1443,53 @@ describe('WidgetChatModal — preflight 403 message branches on auth mode', () =
     assert.ok(
       !/wm-pro-key/i.test(en.widgets.preflightProSubscriptionRequired),
       'preflightProSubscriptionRequired must not mention wm-pro-key — Clerk users have no tester key',
+    );
+  });
+
+  it('en.json defines widgets.preflightProRequired (free-user upgrade ask, no "just upgraded" language)', () => {
+    assert.ok(
+      typeof en.widgets?.preflightProRequired === 'string'
+        && en.widgets.preflightProRequired.length > 0,
+      'en.json must define widgets.preflightProRequired',
+    );
+    assert.ok(
+      !/wm-pro-key/i.test(en.widgets.preflightProRequired),
+      'preflightProRequired must not mention wm-pro-key',
+    );
+    assert.ok(
+      !/just upgraded|refresh the page|contact support/i.test(en.widgets.preflightProRequired),
+      'preflightProRequired is for genuinely-free users — must not include "just upgraded / refresh / contact support" language',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// widget-agent edge proxy — observability for fail-closed entitlement 403s
+// ---------------------------------------------------------------------------
+//
+// When getEntitlements returns null, callers can't tell "user genuinely not
+// entitled" from "entitlement service degraded" — both shapes 403 paying users
+// during a Convex/Upstash outage. Emit a structured log at the 403 site so
+// on-call can grep Vercel logs and disambiguate incident vs not-entitled
+// without waiting for refund tickets.
+describe('widget-agent edge proxy — fail-closed observability', () => {
+  const edge = src('api/widget-agent.ts');
+
+  it('403 site emits a structured log with reason + userId + entitlementTier', () => {
+    const idx = edge.indexOf("error: 'Pro subscription required'");
+    assert.ok(idx !== -1, 'Pro-required 403 site not found');
+    // Walk backward from the 403 to find the preceding console.warn — must
+    // sit in the same allowed-check block, not in some unrelated error path.
+    const before = edge.slice(Math.max(0, idx - 1500), idx);
+    assert.ok(
+      /console\.warn\([^)]*widget-agent[^)]*pro-required/i.test(before),
+      'A console.warn naming "widget-agent" + "pro-required" must precede the 403 return',
+    );
+    assert.ok(before.includes('reason'), 'Structured log must include "reason" field (not_entitled vs service_unavailable)');
+    assert.ok(before.includes('userId'), 'Structured log must include userId for grep/correlation');
+    assert.ok(
+      before.includes('service_unavailable') && before.includes('not_entitled'),
+      'Structured log must distinguish service_unavailable (Convex/Redis down) from not_entitled (real free user)',
     );
   });
 });

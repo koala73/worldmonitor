@@ -404,10 +404,16 @@ function resolvePreflightMessage(
 ): string {
   if (status === 403) {
     // Tester-key path: tell the operator to update the wm-*-key they actually have.
-    // Clerk-auth path (normal paying users): they have no tester key — recommending
-    // "Update wm-pro-key" sends them down a dead end. Surface a Pro-required message.
     if (usedTesterKey) return isPro ? t('widgets.preflightInvalidProKey') : t('widgets.preflightInvalidKey');
-    return t('widgets.preflightProSubscriptionRequired');
+    // Clerk-auth path: split on isPro.
+    //   isPro=true  — the modal believes the user is Pro; a 403 means either
+    //                 (a) they just upgraded (entitlement still propagating)
+    //                 or (b) the entitlement service is degraded. Tell them to
+    //                 refresh / contact support.
+    //   isPro=false — a free user reached a Pro action; "contact support" is
+    //                 wrong, they need to upgrade. Surface a clean upgrade ask
+    //                 without the "just upgraded" language.
+    return isPro ? t('widgets.preflightProSubscriptionRequired') : t('widgets.preflightProRequired');
   }
   if (status === 503 && payload?.proKeyConfigured === false) return t('widgets.preflightProUnavailable');
   if (payload?.anthropicConfigured === false) return t('widgets.preflightAiUnavailable');
