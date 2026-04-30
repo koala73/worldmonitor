@@ -29,6 +29,22 @@ export const getPreferences = query({
   },
 });
 
+/**
+ * Discriminated return shape. `CONFLICT` is the CAS-guard "no-op" path —
+ * intentional behavior for two-device concurrency. Switching from `throw`
+ * to `return` here means Convex Insights stops labeling it
+ * `Uncaught ConvexError` (no throw → no log surface), but the wire shape
+ * exposed through `api/user-prefs.ts` (HTTP 409 with `actualSyncVersion`)
+ * is unchanged — clients see the same response.
+ *
+ * `BLOB_TOO_LARGE` and `UNAUTHENTICATED` remain THROWS because they are
+ * rare and we DO want them visible in Sentry as errors. CONFLICT is
+ * dozens-per-day expected behavior, not an error.
+ */
+export type SetPreferencesResult =
+  | { ok: true; syncVersion: number }
+  | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
+
 export const setPreferences = mutation({
   args: {
     variant: v.string(),
@@ -36,15 +52,13 @@ export const setPreferences = mutation({
     expectedSyncVersion: v.number(),
     schemaVersion: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<SetPreferencesResult> => {
     const identity = await ctx.auth.getUserIdentity();
-    // Throw structured `ConvexError({ kind, ... })` instead of string-data —
-    // Convex's wire format reliably propagates `errorData` for object payloads,
-    // so the edge handler can route via `err.data.kind` to the correct HTTP
-    // status. String-data ConvexErrors arrive at the edge as a generic
-    // `Error("[Request ID: X] Server Error")` with `errorData` undefined,
-    // which previously caused CONFLICT throws to be misclassified as 500
-    // and trigger an unbounded retry loop on the client (PD investigation).
+    // BLOB_TOO_LARGE and UNAUTHENTICATED throw as structured ConvexErrors —
+    // they are rare error conditions we want surfaced in Sentry. Convex's
+    // wire format propagates `errorData` for object payloads so the edge
+    // handler routes via `err.data.kind`. (PR #3466 fixed the original
+    // string-data wire-strip bug.)
     if (!identity) throw new ConvexError({ kind: "UNAUTHENTICATED" });
     const userId = identity.subject;
 
@@ -65,13 +79,14 @@ export const setPreferences = mutation({
       .unique();
 
     if (existing && existing.syncVersion !== args.expectedSyncVersion) {
-      // Include `actualSyncVersion` so the edge can echo it in the 409 body
-      // and the client can refresh its local view in one round-trip instead
-      // of re-fetching getPreferences.
-      throw new ConvexError({
-        kind: "CONFLICT",
+      // CAS-guard "no-op". Returns rather than throws — see SetPreferencesResult
+      // doc comment. Wire shape (HTTP 409 with actualSyncVersion in body) is
+      // unchanged at the edge handler.
+      return {
+        ok: false,
+        reason: "CONFLICT",
         actualSyncVersion: existing.syncVersion,
-      });
+      };
     }
 
     const nextSyncVersion = (existing?.syncVersion ?? 0) + 1;
@@ -95,6 +110,6 @@ export const setPreferences = mutation({
       });
     }
 
-    return { syncVersion: nextSyncVersion };
+    return { ok: true, syncVersion: nextSyncVersion };
   },
 });

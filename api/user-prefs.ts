@@ -125,26 +125,48 @@ export default async function handler(
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await client.mutation('userPreferences:setPreferences' as any, {
+    const result = (await client.mutation('userPreferences:setPreferences' as any, {
       variant: body.variant,
       data: body.data,
       expectedSyncVersion: body.expectedSyncVersion,
       schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : undefined,
-    });
-    return jsonResponse(result, 200, cors);
+    })) as
+      | { ok: true; syncVersion: number }
+      | { ok: false; reason: 'CONFLICT'; actualSyncVersion: number };
+    // PR 3 (post-launch-stabilization): setPreferences now returns a
+    // discriminated result for CONFLICT instead of throwing. Wire shape
+    // to the client (HTTP 409 with actualSyncVersion) is unchanged. The
+    // change silences the dozens-per-day "Uncaught ConvexError" log surface
+    // in Convex Insights, which was just the intentional CAS guard. We no
+    // longer captureSilentError on CONFLICT either — PR 1.B's Sentry
+    // attribution served its purpose during the soak window (we used
+    // it to verify the stuck-bundle storm decayed) and is no longer
+    // needed now that CONFLICT is a normal return shape.
+    if (result.ok === false) {
+      // Discriminated union narrows to the CONFLICT variant here.
+      return jsonResponse(
+        { error: 'CONFLICT', actualSyncVersion: result.actualSyncVersion },
+        409,
+        cors,
+      );
+    }
+    return jsonResponse({ syncVersion: result.syncVersion }, 200, cors);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     const kind = extractConvexErrorKind(err, msg);
+    // Defensive: during the deploy window where the edge function may run
+    // against an OLD convex deployment (CONFLICT still throws), keep the
+    // catch-side CONFLICT branch. Once both layers have soaked on the new
+    // code, this branch is unreachable and can be removed.
     if (kind === 'CONFLICT') {
-      return handleConflictResponse(err, msg, {
-        userId: session.userId,
-        variant: body.variant,
-        ctx,
-        schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : null,
-        expectedSyncVersion: body.expectedSyncVersion,
-        blobSize: body.data !== undefined ? JSON.stringify(body.data).length : 0,
+      const actualSyncVersion = readConvexErrorNumber(err, 'actualSyncVersion');
+      return jsonResponse(
+        actualSyncVersion !== undefined
+          ? { error: 'CONFLICT', actualSyncVersion }
+          : { error: 'CONFLICT' },
+        409,
         cors,
-      });
+      );
     }
     if (kind === 'BLOB_TOO_LARGE') {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
@@ -188,55 +210,6 @@ export default async function handler(
   }
 }
 
-
-/**
- * 409-CONFLICT response builder for setPreferences. Captures every
- * CONFLICT to Sentry so we can detect stuck-bundle users (constant
- * `actual_sync_version` across timestamps with no success interleaved
- * → one client looping; broadly-distributed `user_id` → real concurrency).
- * The CAS guard itself is intentional behavior, but we lose all per-user
- * attribution if we don't record it — Convex Insights surfaces a count but
- * no userId. Also: PR 1 ships a stale-bundle force-reload (build-hash
- * mismatch) to drain stuck-bundle users; this capture is how we verify
- * the storm decays.
- *
- * Echoes `actualSyncVersion` from the structured ConvexError when present
- * and numeric so the client can refresh its local sync state without a
- * follow-up GET. Type-guarded — drops non-numeric values rather than
- * forwarding them as `unknown`.
- */
-function handleConflictResponse(
-  err: unknown,
-  msg: string,
-  opts: {
-    userId: string;
-    variant: unknown;
-    ctx?: { waitUntil: (p: Promise<unknown>) => void };
-    schemaVersion: number | null;
-    expectedSyncVersion: unknown;
-    blobSize: number;
-    cors: Record<string, string>;
-  },
-): Response {
-  const actualSyncVersion = readConvexErrorNumber(err, 'actualSyncVersion');
-  captureSilentError(err, buildSentryContext(err, msg, {
-    method: 'POST',
-    convexFn: 'userPreferences:setPreferences',
-    userId: opts.userId,
-    variant: opts.variant,
-    ctx: opts.ctx,
-    schemaVersion: opts.schemaVersion,
-    expectedSyncVersion: opts.expectedSyncVersion,
-    blobSize: opts.blobSize,
-    errorShapeOverride: 'setPreferences_conflict',
-    extraTags: actualSyncVersion !== undefined ? { actual_sync_version: actualSyncVersion } : undefined,
-  }));
-  return jsonResponse(
-    actualSyncVersion !== undefined ? { error: 'CONFLICT', actualSyncVersion } : { error: 'CONFLICT' },
-    409,
-    opts.cors,
-  );
-}
 
 /**
  * Build a captureSilentError context that carries enough provenance to triage

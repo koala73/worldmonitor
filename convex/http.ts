@@ -146,7 +146,7 @@ http.route({
     }
 
     try {
-      const result = await ctx.runMutation(
+      const result = (await ctx.runMutation(
         anyApi.userPreferences!.setPreferences as any,
         {
           variant: body.variant,
@@ -154,10 +154,33 @@ http.route({
           expectedSyncVersion: body.expectedSyncVersion,
           schemaVersion: body.schemaVersion,
         },
+      )) as
+        | { ok: true; syncVersion: number }
+        | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
+      // PR 3 (post-launch-stabilization): setPreferences now returns a
+      // discriminated result for CONFLICT instead of throwing. Mirror the
+      // wire shape from api/user-prefs.ts (Vercel) so clients see the same
+      // 409 + actualSyncVersion regardless of which `/api/user-prefs` host
+      // they hit.
+      if (result.ok === false) {
+        return new Response(
+          JSON.stringify({
+            error: "CONFLICT",
+            actualSyncVersion: result.actualSyncVersion,
+          }),
+          { status: 409, headers },
+        );
+      }
+      return new Response(
+        JSON.stringify({ syncVersion: result.syncVersion }),
+        { status: 200, headers },
       );
-      return new Response(JSON.stringify(result), { status: 200, headers });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Defensive: keep CONFLICT-throw fallback for the deploy-ordering
+      // window where this http action may run against an older Convex
+      // deployment that still throws. Once both layers have soaked, this
+      // branch is unreachable and can be removed.
       if (msg.includes("CONFLICT")) {
         return new Response(JSON.stringify({ error: "CONFLICT" }), {
           status: 409,
