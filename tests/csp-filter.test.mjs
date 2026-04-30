@@ -158,6 +158,27 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('suppresses manifest.webmanifest', () => {
       assert.ok(suppress('enforce', 'default-src', 'https://www.worldmonitor.app/manifest.webmanifest', '', false));
     });
+
+    it('suppresses third-party stylesheet injection from cdn.jsdelivr.net (style-src-elem)', () => {
+      // WORLDMONITOR-J0: extension/bookmarklet injecting antd@4 CSS on
+      // finance.worldmonitor.app — 270 events / 26 users. We never load
+      // CSS from jsDelivr (only JSON atlases + chart.js JS).
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://cdn.jsdelivr.net/npm/antd@4/dist/antd.min.css', '', false));
+    });
+
+    it('suppresses cdn.jsdelivr.net for plain style-src directive too', () => {
+      // Older browsers / legacy CSP fall back to `style-src` rather than
+      // `style-src-elem`; same suppression should apply.
+      assert.ok(suppress('enforce', 'style-src', 'https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css', '', false));
+    });
+
+    it('does NOT suppress jsDelivr for legitimate directive (script-src world-atlas / chart.js)', () => {
+      // We DO load JSON + JS from jsdelivr legitimately. Only style-src*
+      // is blanket-filtered. A real script-src block here would be a
+      // vendor-CDN CSP regression we want to see.
+      assert.ok(!suppress('enforce', 'script-src', 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js', '', false));
+      assert.ok(!suppress('enforce', 'connect-src', 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', '', false));
+    });
   });
 
   describe('localhost/loopback', () => {

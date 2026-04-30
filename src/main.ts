@@ -598,6 +598,14 @@ function shouldSuppressCspViolation(
   if (/securly\.com|goguardian\.com|contentkeeper\.com/.test(blockedURI)) return true;
   // Vercel Analytics script.
   if (/_vercel\/insights\/script\.js/.test(blockedURI)) return true;
+  // Third-party stylesheet injection from public CDNs (browser extensions,
+  // bookmarklets, "inspect element" UI tools loading antd/bootstrap/etc.).
+  // We legitimately load JSON + JS from `cdn.jsdelivr.net` (world-atlas /
+  // us-atlas TopoJSON, chart.js in widget-sanitizer iframe), but never
+  // CSS — so a `style-src*` block on jsDelivr is by definition third-party
+  // injection (WORLDMONITOR-J0 — antd@4 CSS injection, 270 events / 26
+  // users on finance.worldmonitor.app).
+  if (/^style-src(-elem)?$/.test(directive) && /^https:\/\/cdn\.jsdelivr\.net\//.test(blockedURI)) return true;
   // Inline script blocks from extensions/in-app browsers.
   if (blockedURI === 'inline' && directive === 'script-src-elem') return true;
   // Null blocked URI from in-app browsers.
