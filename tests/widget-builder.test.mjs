@@ -1486,6 +1486,41 @@ describe('widget-agent relay — error classifier', () => {
       'Structured error log must include status + type + model so Railway logs are diagnosable without server-side reproduction',
     );
   });
+
+  it('toolCallCount is declared OUTSIDE the try whose catch reads it (scoping regression guard)', () => {
+    // Bug history: an earlier revision declared `let toolCallCount = 0` INSIDE the
+    // outer agent-loop try block but read it from the catch. JavaScript `let`/`const`
+    // is block-scoped, so the catch's structured log threw a ReferenceError every
+    // time, which the inner log-try then caught and emitted the useless
+    // "[widget-agent] Error (log-failed)" fallback — defeating the entire
+    // diagnostic value of this PR. Lock the declaration position.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    assert.ok(handlerStart !== -1, 'handler not found');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 12000);
+
+    const declIdx = region.indexOf('let toolCallCount');
+    assert.ok(declIdx !== -1, 'toolCallCount declaration not found');
+
+    // The outer agent-loop try is the one whose first statement imports the
+    // Anthropic SDK. Anchor on that specific shape so we ignore unrelated
+    // try/catch blocks (request-body parse, search-tool fetch, log-fallback).
+    const outerTryMatch = region.match(/try\s*\{\s*\n\s*const\s*\{\s*default:\s*Anthropic/);
+    assert.ok(outerTryMatch, 'Outer agent-loop try block not found by anchor');
+    const outerTryIdx = outerTryMatch.index;
+
+    assert.ok(
+      declIdx < outerTryIdx,
+      `toolCallCount (declared at ${declIdx}) must be declared BEFORE the outer agent-loop try (try at ${outerTryIdx}). Putting it inside the try makes it inaccessible to the catch — the structured log throws ReferenceError and falls through to the useless "Error (log-failed)" fallback.`,
+    );
+
+    // Sanity-check: the catch payload still references toolCallCount, so this
+    // test is actually guarding the load-bearing reference.
+    assert.ok(
+      /catch\s*\(\s*err[^)]*\)[\s\S]*?toolCallCount/.test(region),
+      'Catch payload must still reference toolCallCount, otherwise this test is guarding nothing',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -10413,6 +10413,14 @@ async function handleWidgetAgentRequest(req, res) {
     if (!res.writableEnded) res.end();
   }, timeoutMs);
 
+  // Hoisted out of the try block so the catch's structured-log payload can
+  // read it. `let` is block-scoped — declaring `toolCallCount` inside the
+  // try would make any reference from the catch throw a ReferenceError,
+  // which the inner log-fallback would silently swallow into "[widget-agent]
+  // Error (log-failed)" — defeating the entire diagnostic value of this
+  // log line. `completed` doesn't need hoisting (not read in catch).
+  let toolCallCount = 0;
+
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
@@ -10432,7 +10440,6 @@ async function handleWidgetAgentRequest(req, res) {
     messages.push({ role: 'user', content: String(prompt).slice(0, 2000) });
 
     let completed = false;
-    let toolCallCount = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       if (cancelled) break;
 
