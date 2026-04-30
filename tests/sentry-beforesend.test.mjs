@@ -242,10 +242,23 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
 // runtime-emitted only — our shipped code cannot synthesize them
 // (WORLDMONITOR-66 / WORLDMONITOR-62).
 
-describe('zero-frame async-rejection patterns (timeout / DOMException)', () => {
+describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DOM-walker / wrapper-injected timeout)', () => {
   const zeroFrameErrors = [
     ['signal timed out', 'TimeoutError'],
     ['NotSupportedError: The operation is not supported.', 'Error'],
+    // Firefox setInterval mechanism, no captured frames (WORLDMONITOR-KE)
+    ['out of memory', 'Error'],
+    // Apple Mail privacy proxy DOM walker (WORLDMONITOR-P2). Frames in
+    // production are [sentry-chunk, [native code]] which fully filter out
+    // of `nonInfraFrames` so empty-stack semantics apply.
+    [".toLowerCase is not a function. (In 'el.className.toLowerCase()', 'el.className.toLowerCase' is undefined)", 'TypeError'],
+    ['.trim is not a function', 'TypeError'],
+    ['.indexOf is not a function', 'TypeError'],
+    ['.findIndex is not a function', 'TypeError'],
+    // Third-party Electron wrapper polling endpoints we don't serve
+    // (WORLDMONITOR-PW: /api/setIsSelect from Electron 39.2.7).
+    ['Request timeout: /api/setIsSelect', 'Error'],
+    ['Error: Request timeout: /api/whatever', 'Error'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
@@ -270,11 +283,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException)', () => {
 
 describe('ambiguous runtime errors', () => {
   const ambiguousErrors = [
-    '.trim is not a function',
-    'e.toLowerCase is not a function',
-    '.indexOf is not a function',
     'Maximum call stack size exceeded',
-    'out of memory',
     'Cannot add property x, object is not extensible',
     'TypeError: Internal error',
     'Key not found',
