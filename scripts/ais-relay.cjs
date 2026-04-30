@@ -10585,6 +10585,11 @@ function classifyWidgetAgentError(err, model) {
   const status = err && typeof err.status === 'number' ? err.status : null;
   const type = (err && err.error && err.error.type) || (err && err.type) || null;
   const rawMsg = err && err.message ? String(err.message) : String(err || '');
+  // Scrub `sk-…` / `sk-ant-…` Claude API keys before surfacing ANY rawMsg
+  // to the client. Today the SDK does not bubble keys into thrown messages,
+  // but we apply this on every branch that interpolates rawMsg (400 +
+  // fallback) so a future SDK change can't leak the key in a single round.
+  const scrub = (s) => String(s || '').replace(/sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, '[REDACTED]');
   if (status === 401 || type === 'authentication_error') {
     // Operator hint without revealing which env var or its value.
     return 'AI backend rejected the API key. Operator: check ANTHROPIC_API_KEY on the relay.';
@@ -10598,23 +10603,32 @@ function classifyWidgetAgentError(err, model) {
   if (status === 404 || type === 'not_found_error' || /model.*not.*found|not_found_error/i.test(rawMsg)) {
     return `AI model "${model}" unavailable on this account. Operator: verify model availability.`;
   }
+  // Anthropic SDK APITimeoutError carries status 408. We catch it BEFORE the
+  // generic 400 branch so request-level timeouts surface as the friendlier
+  // "timed out" message instead of "Invalid request to AI backend".
+  if (
+    status === 408
+    || (err && (err.name === 'TimeoutError' || err.name === 'APITimeoutError'))
+  ) {
+    return 'AI backend timed out';
+  }
   if (status === 400 || type === 'invalid_request_error') {
     // Pass through the SDK's own description (it explains shape issues —
     // wrong tool definition, malformed messages, oversized prompt — that
-    // are the most useful diagnostics). Cap to 200 chars defensively.
-    return `Invalid request to AI backend: ${rawMsg.slice(0, 200)}`;
+    // are the most useful diagnostics). Cap to 200 chars defensively AND
+    // scrub keys: today Anthropic's 400 messages describe request-shape,
+    // not credentials, but this is on the data path that ends at the
+    // user's screen — keep the same scrub hardening as the fallback.
+    return `Invalid request to AI backend: ${scrub(rawMsg).slice(0, 200)}`;
   }
   if ((status !== null && status >= 500) || type === 'api_error' || type === 'overloaded_error') {
     return 'AI backend temporarily unavailable. Try again in a moment.';
   }
-  if (err && err.name === 'TimeoutError') return 'AI backend timed out';
   if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND/i.test(rawMsg)) {
     return 'Network error reaching AI backend. Try again in a moment.';
   }
-  // Last-resort fallback. Scrub anything that pattern-matches a Claude key
-  // (sk-ant-…) before surfacing — defence in depth in case the SDK ever
-  // bubbles a key into a thrown error message.
-  const safe = rawMsg.replace(/sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, '[REDACTED]').slice(0, 200);
+  // Last-resort fallback for anything we did not classify above.
+  const safe = scrub(rawMsg).slice(0, 200);
   return safe ? `Agent error: ${safe}` : 'Agent error';
 }
 

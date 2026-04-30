@@ -1428,6 +1428,50 @@ describe('widget-agent relay — error classifier', () => {
     );
   });
 
+  it('classifier scrubs API keys in the 400 branch (defence-in-depth on every rawMsg interpolation)', () => {
+    // Round-trip the function for runtime check: the 400 message must redact a Claude key.
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn(
+      { status: 400, error: { type: 'invalid_request_error' }, message: 'bad header sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA was rejected' },
+      'claude-sonnet-4-6',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(out),
+      `400 branch must scrub sk-(ant-)? tokens before surfacing rawMsg, got: ${out}`,
+    );
+    assert.ok(
+      !/sk-ant-api03-AAAAAAAAAA/.test(out),
+      '400 branch must not leak the raw API key in any form',
+    );
+  });
+
+  it('classifier handles Anthropic APITimeoutError (status 408) — does not fall through to fallback', () => {
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    // Real Anthropic Node SDK timeout shape: name='APITimeoutError', status=408
+    const apiTimeout = fn({ name: 'APITimeoutError', status: 408, message: 'Request timeout.' }, 'claude-sonnet-4-6');
+    assert.equal(apiTimeout, 'AI backend timed out', 'APITimeoutError must classify as timed-out, not fallback');
+    // AbortSignal.timeout() shape (DOMException): name='TimeoutError'
+    const abortTimeout = fn({ name: 'TimeoutError', message: 'The operation timed out.' }, 'claude-sonnet-4-6');
+    assert.equal(abortTimeout, 'AI backend timed out', 'AbortSignal TimeoutError must also classify as timed-out');
+    // Bare 408 status (some HTTP layers expose only the code) — same branch.
+    const bare408 = fn({ status: 408 }, 'claude-sonnet-4-6');
+    assert.equal(bare408, 'AI backend timed out', 'Bare status 408 must classify as timed-out');
+  });
+
+  it('400 branch does NOT pre-empt timeout: APITimeoutError-with-status-400 stays a timeout (rare but defensive)', () => {
+    // Belt-and-suspenders: the timeout check sits BEFORE the 400 branch, so
+    // an APITimeoutError tagged with status 400 (defensive against future SDK
+    // shape changes) still classifies as a timeout, not "Invalid request".
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn({ name: 'APITimeoutError', status: 400, message: 'timeout' }, 'claude-sonnet-4-6');
+    assert.equal(out, 'AI backend timed out', 'APITimeoutError must beat the 400 branch regardless of status');
+  });
+
   it('handler logs structured error context with status + type + model', () => {
     const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
     const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
