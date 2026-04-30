@@ -1296,3 +1296,87 @@ describe('PRO widget — i18n keys and CSS', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// PRO widget — edge-proxy auth (Convex entitlement fallback for paid users)
+// ---------------------------------------------------------------------------
+//
+// Dodo webhook does NOT sync Clerk publicMetadata.plan, so a paying subscriber's
+// Clerk session.role stays 'free' indefinitely. The edge proxy at
+// api/widget-agent.ts must accept EITHER Clerk role==='pro' OR Convex
+// entitlement tier>=1, mirroring server/_shared/premium-check.ts::isCallerPremium
+// and server/gateway.ts:521-526. A regression here surfaces as a misleading
+// "PRO key rejected. Update wm-pro-key…" 403 in the modal — the user has no
+// tester key, so the suggested action is a dead end.
+describe('widget-agent edge proxy — Convex entitlement fallback', () => {
+  const edge = src('api/widget-agent.ts');
+
+  it('imports getEntitlements from server/_shared/entitlement-check', () => {
+    assert.ok(
+      /import\s*\{[^}]*\bgetEntitlements\b[^}]*\}\s*from\s*['"][^'"]*entitlement-check['"]/.test(edge),
+      'api/widget-agent.ts must import getEntitlements for Dodo entitlement fallback',
+    );
+  });
+
+  it('Clerk JWT path falls back to Convex entitlement when role !== "pro"', () => {
+    const bearerIdx = edge.indexOf("authHeader?.startsWith('Bearer ')");
+    assert.ok(bearerIdx !== -1, 'Bearer-token branch not found in api/widget-agent.ts');
+    // Constrain the search to the bearer-token branch only.
+    const region = edge.slice(bearerIdx, bearerIdx + 2000);
+    assert.ok(
+      region.includes('getEntitlements(session.userId)'),
+      'Bearer-token branch must call getEntitlements(session.userId) when Clerk role !== "pro"',
+    );
+    assert.ok(
+      /features\.tier\s*>=\s*1/.test(region),
+      'Bearer-token branch must accept Convex entitlement tier >= 1',
+    );
+  });
+
+  it('does NOT 403 immediately on session.role !== "pro"', () => {
+    // The legacy shape `if (session.role !== 'pro') return 403` is the bug —
+    // it would short-circuit before the Convex fallback. Lock it out.
+    assert.ok(
+      !/if\s*\(\s*session\.role\s*!==\s*['"]pro['"]\s*\)\s*\{\s*return\s+json\([^}]*403/.test(edge),
+      'api/widget-agent.ts must NOT 403 on session.role !== "pro" without checking Convex entitlement',
+    );
+  });
+});
+
+describe('WidgetChatModal — preflight 403 message branches on auth mode', () => {
+  const modal = src('src/components/WidgetChatModal.ts');
+  const en = JSON.parse(src('src/locales/en.json'));
+
+  it('buildWidgetAuthHeaders returns usedTesterKey flag', () => {
+    assert.ok(
+      modal.includes('usedTesterKey'),
+      'buildWidgetAuthHeaders must report whether a tester key was used so the 403 message can branch',
+    );
+  });
+
+  it('resolvePreflightMessage takes usedTesterKey and uses preflightProSubscriptionRequired for Clerk path', () => {
+    const fnIdx = modal.indexOf('function resolvePreflightMessage');
+    assert.ok(fnIdx !== -1, 'resolvePreflightMessage not found');
+    const region = modal.slice(fnIdx, fnIdx + 800);
+    assert.ok(
+      region.includes('usedTesterKey'),
+      'resolvePreflightMessage must take usedTesterKey to branch on auth mode',
+    );
+    assert.ok(
+      region.includes('preflightProSubscriptionRequired'),
+      'Clerk-auth 403 must surface preflightProSubscriptionRequired (not the wm-pro-key tester message)',
+    );
+  });
+
+  it('en.json defines widgets.preflightProSubscriptionRequired', () => {
+    assert.ok(
+      typeof en.widgets?.preflightProSubscriptionRequired === 'string'
+        && en.widgets.preflightProSubscriptionRequired.length > 0,
+      'en.json must define widgets.preflightProSubscriptionRequired',
+    );
+    assert.ok(
+      !/wm-pro-key/i.test(en.widgets.preflightProSubscriptionRequired),
+      'preflightProSubscriptionRequired must not mention wm-pro-key — Clerk users have no tester key',
+    );
+  });
+});
