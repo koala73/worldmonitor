@@ -258,8 +258,8 @@ Before implementation, each source should be reviewed for:
 2. Validate INDECI / COEN feeds or report endpoints.
 3. Validate SENAMHI alert and hydrological data access.
 4. Validate IGP seismic dataset endpoint.
-5. Add a separate RSS candidate document for Peru news sources.
-6. Start with a documentation-only PR before introducing live data ingestion.
+5. See `peru-rss-feed-candidates.md` for Peru RSS feed candidates (added in this PR).
+6. Next step: validate endpoint discovery per `peru-road-transitability-layer.md` Phase 1 checklist before introducing live data ingestion.
 
 ## Proposed PR Scope
 
