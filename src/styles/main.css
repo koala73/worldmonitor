@@ -20713,6 +20713,7 @@ body.map-width-resizing {
 }
 
 .widget-chat-readiness {
+  flex-shrink: 0;
   margin: 12px 12px 0;
   padding: 10px 12px;
   border-radius: 10px;
@@ -20790,6 +20791,7 @@ body.map-width-resizing {
 }
 
 .widget-chat-examples {
+  flex-shrink: 0;
   padding: 0 12px 12px;
   display: grid;
   gap: 8px;
@@ -20957,6 +20959,7 @@ body.map-width-resizing {
 }
 
 .widget-chat-input-row {
+  flex-shrink: 0;
   display: flex;
   gap: 8px;
   padding: 12px;
