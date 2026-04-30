@@ -1354,6 +1354,58 @@ describe('widget-agent edge proxy — Convex entitlement fallback', () => {
 // turn that yes into a null-meaning-no — that would 403 paying customers on
 // every call path this file gates, including the widget-agent fallback PR
 // #3505 just added.
+// ---------------------------------------------------------------------------
+// panel-layout — Pro CTAs must re-evaluate on Convex entitlement updates
+// ---------------------------------------------------------------------------
+//
+// "Create Interactive Widget" (proBlock) and "Connect MCP" (mcpBlock) are
+// gated by applyProBlockGating(hasPremiumAccess(...)). For a paying Dodo
+// subscriber whose Clerk publicMetadata.plan is never written, hasPremiumAccess
+// only flips true once the Convex entitlement snapshot lands via
+// onEntitlementChange — NOT via subscribeAuthState. Subscribing only to
+// subscribeAuthState (the prior shape) meant the CTAs stayed display:none for
+// the entire page lifetime for paying users. Lock the dual-subscription.
+describe('panel-layout — Pro add-block gating reacts to entitlement updates', () => {
+  const layout = src('src/app/panel-layout.ts');
+
+  it('imports onEntitlementChange', () => {
+    assert.ok(
+      /import\s*\{[^}]*\bonEntitlementChange\b[^}]*\}\s*from\s*['"][^'"]*entitlements['"]/.test(layout),
+      'panel-layout must import onEntitlementChange to re-evaluate Pro CTA gating on Convex snapshots',
+    );
+  });
+
+  it('proBlock + mcpBlock gating subscribes to BOTH auth and entitlement changes', () => {
+    // Anchor on the gating function to scope the search to its surroundings.
+    const gateFnIdx = layout.indexOf('applyProBlockGating');
+    assert.ok(gateFnIdx !== -1, 'applyProBlockGating not found in panel-layout');
+    const region = layout.slice(gateFnIdx, gateFnIdx + 1500);
+    assert.ok(
+      region.includes('subscribeAuthState'),
+      'Pro CTA gating must subscribe to subscribeAuthState (legacy auth-driven path)',
+    );
+    assert.ok(
+      region.includes('onEntitlementChange'),
+      'Pro CTA gating MUST subscribe to onEntitlementChange so paying Dodo users flip from hidden->visible when the Convex entitlement snapshot lands',
+    );
+  });
+
+  it('teardown clears the entitlement subscription so a destroyed layout does not leak callbacks', () => {
+    assert.ok(
+      layout.includes('proBlockEntitlementUnsubscribe'),
+      'panel-layout must hold a proBlockEntitlementUnsubscribe handle and clear it in destroy()',
+    );
+    // Look for the destroy() block
+    const destroyIdx = layout.indexOf('destroy(): void {');
+    assert.ok(destroyIdx !== -1, 'destroy() not found');
+    const destroyRegion = layout.slice(destroyIdx, destroyIdx + 2000);
+    assert.ok(
+      destroyRegion.includes('proBlockEntitlementUnsubscribe'),
+      'destroy() must invoke proBlockEntitlementUnsubscribe to avoid leaking callbacks across layout init/destroy cycles',
+    );
+  });
+});
+
 describe('entitlement-check — cache-write failure does not collapse confirmed entitlement', () => {
   const src_ = src('server/_shared/entitlement-check.ts');
 
