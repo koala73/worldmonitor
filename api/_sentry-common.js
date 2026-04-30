@@ -54,10 +54,16 @@ function parseStack(stack) {
  *   tags?: Record<string, string|number|boolean>,
  *   extra?: Record<string, unknown>,
  *   fingerprint?: string[],
+ *   level?: 'warning' | 'info' | 'error' | 'fatal',
  * }} [ctx] When `fingerprint` is a non-empty array it overrides Sentry's
  *   default message-based grouping. Use to consolidate one logical issue
  *   whose error message contains a high-cardinality token (request id,
  *   trace id) that would otherwise fragment grouping into N issues.
+ *   `level` defaults to `'error'`; pass `'warning'` for expected-but-
+ *   trackable conditions (e.g. optimistic-concurrency CONFLICT) so the
+ *   capture stays queryable in the dashboard but doesn't count toward
+ *   error totals or page on-call. Values other than the four listed
+ *   above are ignored and the default `'error'` is used.
  * @param {{ runtime: 'edge' | 'node', platform: 'javascript' | 'node' }} runtimeCfg
  */
 function buildEnvelope(err, ctx, runtimeCfg) {
