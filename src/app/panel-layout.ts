@@ -170,6 +170,7 @@ export class PanelLayoutManager implements AppModule {
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
+  private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
@@ -303,6 +304,8 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribeAuth = null;
     this.proBlockUnsubscribe?.();
     this.proBlockUnsubscribe = null;
+    this.proBlockEntitlementUnsubscribe?.();
+    this.proBlockEntitlementUnsubscribe = null;
     if (this.boundWidgetCreatorHandler) {
       this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
       this.boundWidgetCreatorHandler = null;
@@ -1505,17 +1508,32 @@ export class PanelLayoutManager implements AppModule {
     });
     panelsGrid.appendChild(mcpBlock);
 
-    // Reactively show/hide Pro-only UI blocks based on auth state
+    // Reactively show/hide Pro-only UI blocks ("Create Interactive Widget" +
+    // "Connect MCP" CTAs) based on premium access.
+    //
+    // hasPremiumAccess() folds in isEntitled() (Convex Dodo entitlement) per
+    // panel-gating.ts:11-27 — so a paying subscriber whose Clerk publicMetadata
+    // is never written by the webhook still resolves to true once the Convex
+    // snapshot lands. BUT: the snapshot lands AFTER auth state stabilises, and
+    // Convex updates do NOT necessarily fire a fresh subscribeAuthState event.
+    // Subscribing only to subscribeAuthState meant these CTAs stayed
+    // display:none for the whole page lifetime for paying users — exactly the
+    // shape PR #3505 chased on the server side, repeated here on the client.
+    //
+    // Subscribe to BOTH auth state and entitlement changes; whichever fires
+    // last (typically entitlements) is the one that flips the CTAs visible.
+    // Mirrors the same dual-subscription wiring used by updatePanelGating
+    // for existing panels (see lines ~259 and ~282).
     const proBlocks = [proBlock, mcpBlock];
     const applyProBlockGating = (isPro: boolean) => {
       for (const block of proBlocks) {
         block.style.display = isPro ? '' : 'none';
       }
     };
-    applyProBlockGating(hasPremiumAccess(getAuthState()));
-    this.proBlockUnsubscribe = subscribeAuthState((state) => {
-      applyProBlockGating(hasPremiumAccess(state));
-    });
+    const reapply = () => applyProBlockGating(hasPremiumAccess(getAuthState()));
+    reapply();
+    this.proBlockUnsubscribe = subscribeAuthState(reapply);
+    this.proBlockEntitlementUnsubscribe = onEntitlementChange(reapply);
 
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {
