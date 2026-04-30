@@ -466,14 +466,37 @@ Sentry.init({
     // phrases are runtime-emitted only — our shipped code cannot synthesize
     // the literal "signal timed out" or DOMException name. Same `!hasFirstParty`
     // safety as the dynamic-import block (WORLDMONITOR-66 / WORLDMONITOR-62).
+    //
+    // Extensions to the same gate:
+    //   • `out of memory` — Firefox via setInterval mechanism, zero frames
+    //     (WORLDMONITOR-KE). Browser-engine signal, not synthesizable by
+    //     our code.
+    //   • `\.(toLowerCase|trim|indexOf|findIndex) is not a function` —
+    //     Apple Mail privacy proxy walks DOM with forEach and assumes
+    //     `el.className` is a string, but on SVG elements it's a
+    //     `SVGAnimatedString` (WORLDMONITOR-P2). Frame stack is
+    //     [sentry-chunk, [native code]] which gets fully filtered out of
+    //     `nonInfraFrames` → hasAnyStack=false. The literal " is not a
+    //     function" suffix anchored to those four mutator names is
+    //     unambiguously a third-party prototype-mismatch (our code never
+    //     calls those methods on objects of unknown shape).
+    //   • `Request timeout: /...` — third-party Electron wrappers
+    //     (WORLDMONITOR-PW: Electron 39.2.7 polling /api/setIsSelect, an
+    //     endpoint we don't serve). Our own `Request timeout` strings
+    //     don't include a colon-and-path suffix; the format is unique to
+    //     wrapper-injected code.
     if (
       !hasFirstParty
-      && (/signal timed out/.test(msg) || /NotSupportedError/.test(msg))
+      && (
+        /signal timed out/.test(msg)
+        || /NotSupportedError/.test(msg)
+        || /out of memory/i.test(msg)
+        || /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
+        || /^(?:Error: )?Request timeout: \//.test(msg)
+      )
     ) return null;
     if (hasAnyStack && !hasFirstParty && (
-      /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
-      || /Maximum call stack size exceeded/.test(msg)
-      || /out of memory/i.test(msg)
+      /Maximum call stack size exceeded/.test(msg)
       || /^\w{1,2} is not a (?:function|constructor)/.test(msg)
       || /Cannot add property \w+, object is not extensible/.test(msg)
       || /^TypeError: Internal error$/.test(msg)
