@@ -155,18 +155,21 @@ export default async function handler(
     const msg = err instanceof Error ? err.message : String(err);
     const kind = extractConvexErrorKind(err, msg);
     // Defensive: during the deploy window where the edge function may run
-    // against an OLD convex deployment (CONFLICT still throws), keep the
-    // catch-side CONFLICT branch. Once both layers have soaked on the new
-    // code, this branch is unreachable and can be removed.
+    // against an OLD convex deployment (CONFLICT still throws), route via
+    // handleConflictResponse so we still capture stuck-bundle attribution
+    // at level=warning for the deploy-ordering window. Once both layers
+    // have soaked on the new code, this branch is unreachable and can be
+    // removed (along with handleConflictResponse).
     if (kind === 'CONFLICT') {
-      const actualSyncVersion = readConvexErrorNumber(err, 'actualSyncVersion');
-      return jsonResponse(
-        actualSyncVersion !== undefined
-          ? { error: 'CONFLICT', actualSyncVersion }
-          : { error: 'CONFLICT' },
-        409,
+      return handleConflictResponse(err, msg, {
+        userId: session.userId,
+        variant: body.variant,
+        ctx,
+        schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : null,
+        expectedSyncVersion: body.expectedSyncVersion,
+        blobSize: body.data !== undefined ? JSON.stringify(body.data).length : 0,
         cors,
-      );
+      });
     }
     if (kind === 'BLOB_TOO_LARGE') {
       return jsonResponse({ error: 'BLOB_TOO_LARGE' }, 400, cors);
@@ -212,6 +215,69 @@ export default async function handler(
 
 
 /**
+ * 409-CONFLICT response builder for setPreferences — DEPLOY-WINDOW BRIDGE.
+ *
+ * Post PR 3 (post-launch-stabilization), CAS-guard CONFLICTs RETURN from
+ * `userPreferences:setPreferences` rather than throw, so this catch-side
+ * helper is only reached during the deploy-ordering window where the edge
+ * runs against an OLD convex deployment that still throws. Once both
+ * layers have soaked, this helper becomes unreachable dead code and can
+ * be removed.
+ *
+ * While reachable, it preserves stuck-bundle Sentry attribution: captures
+ * the user_id + actualSyncVersion at level=warning so we can spot a single
+ * stuck client looping (constant actualSyncVersion across timestamps) vs.
+ * real concurrency (broadly-distributed user_ids). At level=error it
+ * drowned real bugs; level=warning keeps it queryable but out of error
+ * totals and alerting (per WORLDMONITOR-PX 2026-04-30 triage).
+ *
+ * Echoes `actualSyncVersion` from the structured ConvexError when present
+ * and numeric so the client can refresh its local sync state without a
+ * follow-up GET. Type-guarded — drops non-numeric values rather than
+ * forwarding them as `unknown`.
+ */
+function handleConflictResponse(
+  err: unknown,
+  msg: string,
+  opts: {
+    userId: string;
+    variant: unknown;
+    ctx?: { waitUntil: (p: Promise<unknown>) => void };
+    schemaVersion: number | null;
+    expectedSyncVersion: unknown;
+    blobSize: number;
+    cors: Record<string, string>;
+  },
+): Response {
+  const actualSyncVersion = readConvexErrorNumber(err, 'actualSyncVersion');
+  // CONFLICT is an EXPECTED outcome of optimistic concurrency (multi-tab
+  // / multi-device sync, or a stuck-bundle user retrying with an old
+  // expectedSyncVersion). The capture exists to surface stuck-bundle
+  // users via user_id distribution (see WORLDMONITOR-PX 2026-04-30:
+  // 316 events / 59 users at 18 distinct actualSyncVersions). At
+  // level=error it drowned real bugs; level=warning keeps it queryable
+  // in Sentry but drops it out of error totals and alerting.
+  captureSilentError(err, buildSentryContext(err, msg, {
+    method: 'POST',
+    convexFn: 'userPreferences:setPreferences',
+    userId: opts.userId,
+    variant: opts.variant,
+    ctx: opts.ctx,
+    schemaVersion: opts.schemaVersion,
+    expectedSyncVersion: opts.expectedSyncVersion,
+    blobSize: opts.blobSize,
+    errorShapeOverride: 'setPreferences_conflict',
+    extraTags: actualSyncVersion !== undefined ? { actual_sync_version: actualSyncVersion } : undefined,
+    level: 'warning',
+  }));
+  return jsonResponse(
+    actualSyncVersion !== undefined ? { error: 'CONFLICT', actualSyncVersion } : { error: 'CONFLICT' },
+    409,
+    opts.cors,
+  );
+}
+
+/**
  * Build a captureSilentError context that carries enough provenance to triage
  * a 500 from this endpoint without re-running the request:
  *   - `convex_request_id` tag: the `[Request ID: X]` from Convex's error message,
@@ -247,12 +313,18 @@ export function buildSentryContext(
     // Additional tags (queryable in Sentry, unlike `extra`). Used e.g. to
     // pass `actual_sync_version` so on-call can group/filter by it.
     extraTags?: Record<string, string | number>;
+    // Sentry severity. Default 'error'. Pass 'warning' for expected-but-
+    // trackable conditions (CONFLICT from optimistic-concurrency) so the
+    // capture stays queryable in the dashboard but doesn't count toward
+    // error totals or page on-call.
+    level?: 'warning' | 'info' | 'error' | 'fatal';
   },
 ): {
   tags: Record<string, string | number>;
   extra: Record<string, unknown>;
   fingerprint: string[];
   ctx?: { waitUntil: (p: Promise<unknown>) => void };
+  level?: 'warning' | 'info' | 'error' | 'fatal';
 } {
   const errName = err instanceof Error ? err.name : 'unknown';
   const requestIdMatch = msg.match(/\[Request ID:\s*([a-f0-9]+)\]/i);
@@ -300,5 +372,6 @@ export function buildSentryContext(
     },
     fingerprint: ['api/user-prefs', opts.method, errorShape],
     ctx: opts.ctx,
+    ...(opts.level ? { level: opts.level } : {}),
   };
 }

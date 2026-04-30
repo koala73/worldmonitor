@@ -147,8 +147,23 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     const result = await response.json() as CachedEntitlements | null;
 
     if (result) {
-      // Populate Redis cache for subsequent requests (15-min TTL, raw key)
-      await setCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, result, ENTITLEMENT_CACHE_TTL_SECONDS, true);
+      // Populate Redis cache for subsequent requests (15-min TTL, raw key).
+      //
+      // Cache-write failures must NOT collapse "entitlement confirmed by Convex"
+      // into the null-means-no-entitlement return. Today setCachedJson swallows
+      // its own Upstash errors via an internal try/catch (server/_shared/redis.ts),
+      // but that contract is fragile — the tauri-sidecar dynamic import path at
+      // redis.ts:142-146 is OUTSIDE the inner try/catch, and any future code
+      // motion could let other errors propagate. Wrap explicitly here so the
+      // property "Convex said yes ⇒ caller sees yes" is local and load-bearing.
+      // Without this, an Upstash hiccup would 403 every paying customer on the
+      // very call paths this file gates — the same shape PR #3505 fixed for the
+      // Clerk-only-no-Convex outlier in api/widget-agent.ts.
+      try {
+        await setCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, result, ENTITLEMENT_CACHE_TTL_SECONDS, true);
+      } catch (cacheErr) {
+        console.warn('[entitlement-check] cache write failed (non-fatal):', cacheErr instanceof Error ? cacheErr.message : String(cacheErr));
+      }
       return result as CachedEntitlements;
     }
 

@@ -90,6 +90,33 @@ describe('buildSentryContext — extraTags', () => {
   });
 });
 
+describe('buildSentryContext — level downgrade for expected-but-trackable conditions', () => {
+  it('omits level field by default (envelope falls back to error)', () => {
+    const err = new Error('[Request ID: abc] Server Error');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal('level' in ctx, false);
+  });
+
+  it('passes through level: warning when caller specifies it', () => {
+    // CONFLICT capture (handleConflictResponse) uses this so the high-volume
+    // optimistic-concurrency events stay queryable without polluting error
+    // totals or alerting (WORLDMONITOR-PX 2026-04-30: 316 events / 59 users).
+    const err = new Error('[Request ID: abc] Server Error');
+    const ctx = buildSentryContext(err, err.message, {
+      ...baseOpts,
+      errorShapeOverride: 'setPreferences_conflict',
+      level: 'warning',
+    });
+    assert.equal(ctx.level, 'warning');
+  });
+
+  it('passes through level: info', () => {
+    const err = new Error('msg');
+    const ctx = buildSentryContext(err, err.message, { ...baseOpts, level: 'info' });
+    assert.equal(ctx.level, 'info');
+  });
+});
+
 describe('buildSentryContext — backwards-compat for non-CONFLICT callers', () => {
   it('UNAUTHENTICATED still classifies via message-pattern when override omitted', () => {
     const err = new Error('UNAUTHENTICATED auth drift');
