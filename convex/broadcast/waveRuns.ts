@@ -83,8 +83,10 @@ const CLEANUP_CHUNK_SIZE = 500;
  *  `failed/batch-failure-rate-exceeded` — operator must `discardWaveRun`. */
 const FAILURE_RATE_THRESHOLD = 0.05;
 
-/** Resend backoff schedule (ms) for 429/5xx. Last entry is jitter base. */
-const RESEND_BACKOFF_MS = [250, 500, 1000];
+/** Resend backoff schedule (ms) for 429/5xx. The loop runs for
+ *  attempts 0..MAX-1; the final attempt's outcome is returned without
+ *  sleeping further. So we need MAX-1 sleep slots, not MAX. */
+const RESEND_BACKOFF_MS = [250, 500];
 const RESEND_BACKOFF_MAX_RETRIES = 3;
 
 /** Pagination size for `_getRegistrationsPage`. Same value as the legacy
@@ -155,10 +157,12 @@ async function pushWithBackoff(
     if (!transient || attempt === RESEND_BACKOFF_MAX_RETRIES - 1) {
       return result;
     }
-    // The fallback chain ends at the last entry of RESEND_BACKOFF_MS, which
-    // is statically non-empty — but `noUncheckedIndexedAccess` doesn't know
-    // that. Coerce to number (last entry guaranteed defined; default 1000ms
-    // if the array were ever emptied — fail-safe).
+    // The loop returns before reaching this line on attempt === MAX-1 (see
+    // condition above), so attempt is in [0, MAX-1) here. RESEND_BACKOFF_MS
+    // is sized to MAX-1 slots — the index is always in-range — but
+    // noUncheckedIndexedAccess can't prove that. Defensive fallback to
+    // the last entry, then a hard 1000ms safety net if the array were
+    // ever shorter.
     const base =
       RESEND_BACKOFF_MS[attempt] ??
       RESEND_BACKOFF_MS[RESEND_BACKOFF_MS.length - 1] ??
@@ -704,23 +708,31 @@ export const _markPushingStarted = internalMutation({
  * AND inline-stamp the matching `registrations` row (mutations cannot
  * call other mutations via runMutation, so the stamp logic from
  * `_stampWaveByNormalizedEmail` is duplicated here).
+ *
+ * Takes `contactId` directly (not a query lookup) — at large wave sizes
+ * the previous `.filter().unique()` scan over by_runId_status would
+ * traverse all pending rows and trip Convex's 8192-document-read-per-
+ * mutation limit (~8k pending contacts breaks the mutation). The id is
+ * already in hand at the action's call site (`_getPendingBatch` returns
+ * full Docs), so a direct `ctx.db.get(contactId)` is O(1) / 1 read AND
+ * provides the same CAS guard via the post-load status check.
  */
 export const _markContactPushed = internalMutation({
   args: {
+    contactId: v.id("wavePickedContacts"),
     runId: v.string(),
     normalizedEmail: v.string(),
     waveLabel: v.string(),
   },
-  handler: async (ctx, { runId, normalizedEmail, waveLabel }) => {
-    const contact = await ctx.db
-      .query("wavePickedContacts")
-      .withIndex("by_runId_status", (q) =>
-        q.eq("runId", runId).eq("status", "pending"),
-      )
-      .filter((q) => q.eq(q.field("normalizedEmail"), normalizedEmail))
-      .unique();
-    if (!contact) {
-      // Either already-pushed or already-failed (CAS no-op) OR nonexistent.
+  handler: async (ctx, { contactId, runId, normalizedEmail, waveLabel }) => {
+    const contact = await ctx.db.get(contactId);
+    if (
+      !contact ||
+      contact.runId !== runId ||
+      contact.status !== "pending" ||
+      contact.normalizedEmail !== normalizedEmail
+    ) {
+      // CAS: no-op if already-pushed/failed, runId mismatch, or row deleted.
       return { ok: false as const, reason: "not-pending" as const };
     }
     const now = Date.now();
@@ -768,22 +780,25 @@ export const _markContactPushed = internalMutation({
  * status is 'pending'. Increments failedCount. If the new failure rate
  * exceeds FAILURE_RATE_THRESHOLD, ALSO atomically flips the whole run
  * to status='failed' with failureSubstatus='batch-failure-rate-exceeded'.
+ *
+ * Takes `contactId` directly to avoid the 8192-doc-read limit on large
+ * waves — see `_markContactPushed` for rationale.
  */
 export const _markContactFailed = internalMutation({
   args: {
+    contactId: v.id("wavePickedContacts"),
     runId: v.string(),
     normalizedEmail: v.string(),
     failedReason: v.string(),
   },
-  handler: async (ctx, { runId, normalizedEmail, failedReason }) => {
-    const contact = await ctx.db
-      .query("wavePickedContacts")
-      .withIndex("by_runId_status", (q) =>
-        q.eq("runId", runId).eq("status", "pending"),
-      )
-      .filter((q) => q.eq(q.field("normalizedEmail"), normalizedEmail))
-      .unique();
-    if (!contact) {
+  handler: async (ctx, { contactId, runId, normalizedEmail, failedReason }) => {
+    const contact = await ctx.db.get(contactId);
+    if (
+      !contact ||
+      contact.runId !== runId ||
+      contact.status !== "pending" ||
+      contact.normalizedEmail !== normalizedEmail
+    ) {
       return { ok: false as const, reason: "not-pending" as const };
     }
     const now = Date.now();
@@ -886,6 +901,7 @@ export const pushBatchAction = internalAction({
         const failResult = await ctx.runMutation(
           internal.broadcast.waveRuns._markContactFailed,
           {
+            contactId: contact._id,
             runId,
             normalizedEmail: contact.normalizedEmail,
             failedReason: result.reason,
@@ -907,6 +923,7 @@ export const pushBatchAction = internalAction({
       await ctx.runMutation(
         internal.broadcast.waveRuns._markContactPushed,
         {
+          contactId: contact._id,
           runId,
           normalizedEmail: contact.normalizedEmail,
           waveLabel: info.run.waveLabel,
@@ -1307,16 +1324,44 @@ export const markFinalizeRecovered = internalMutation({
       .unique();
     if (!run) throw new Error(`[markFinalizeRecovered] no run ${runId}`);
 
-    // Strict status guard. Substatus alone is insufficient: a duplicate
-    // finalize loser could have stamped `failureSubstatus='send-broadcast-failed'`
-    // onto a run that's actually `status='sent'` — without this check,
-    // markFinalizeRecovered would re-advance the tier a second time.
+    // Strict status + substatus guard. We need BOTH:
+    //   - status === 'broadcast-created' (the only state where the broadcast
+    //     object exists in Resend AND the tier hasn't been advanced)
+    //   - failureSubstatus === 'send-broadcast-failed' (confirms a genuine
+    //     send failure that the operator has verified-as-actually-sent in
+    //     the Resend dashboard)
+    //
+    // Status alone is insufficient: status='broadcast-created' is ALSO the
+    // mid-flight state between _markBroadcastCreated and sendProLaunchBroadcast
+    // (no substatus yet). An operator calling markFinalizeRecovered in that
+    // window would advance the tier while finalizeWaveAction still runs;
+    // the action's _finalizeWaveRun is now idempotent (won't double-advance),
+    // but Resend ALSO sees the send as legitimate — so we'd have advanced
+    // the tier on a still-in-flight wave. Better: require explicit failure
+    // signal from operator-confirmed send-broadcast-failed.
+    //
+    // resumeFinalizeWaveRun's success path PATCHES failureSubstatus back to
+    // undefined and reschedules the action, so a post-resume run also won't
+    // pass this guard — operator must wait for the next attempt to either
+    // succeed (status='sent') or fail back to send-broadcast-failed before
+    // markFinalizeRecovered is invocable again. That's the right behavior:
+    // markFinalizeRecovered is for the specific case "Resend confirmed sent
+    // but our action saw an error".
     if (run.status !== "broadcast-created") {
       throw new Error(
         `[markFinalizeRecovered] run ${runId} status=${run.status} — recovery requires status='broadcast-created'. ` +
         (run.status === "sent"
           ? `The run was already finalized; nothing to recover. Inspect lastWaveSentAt on broadcastRampConfig.`
           : `If in 'failed', use resumeFinalizeWaveRun (which patches back to broadcast-created) or discardWaveRun.`),
+      );
+    }
+    if (run.failureSubstatus !== "send-broadcast-failed") {
+      throw new Error(
+        `[markFinalizeRecovered] run ${runId} status='broadcast-created' but failureSubstatus=` +
+        `${run.failureSubstatus ?? "<none>"}. markFinalizeRecovered only applies to send-broadcast-failed. ` +
+        `If the run is mid-flight (no substatus), wait for finalizeWaveAction to finish — _finalizeWaveRun is ` +
+        `idempotent on already-sent. If you ran resumeFinalizeWaveRun and want to abort the retry instead, ` +
+        `wait for the scheduled finalizeWaveAction to either succeed or re-fail; only then is markFinalizeRecovered safe.`,
       );
     }
     if (!run.broadcastId || !run.segmentId) {
@@ -1715,6 +1760,12 @@ const TERMINAL_FAILURE_SUBSTATUSES = [
   "batch-failure-rate-exceeded",
 ] as const;
 
+/** Max failed runs to consider per cleanup cron tick. Bounded so a
+ *  long-lived deployment with many discarded waves doesn't load the
+ *  whole table into memory at once. The cron runs daily — at 100/day,
+ *  cleanup would catch up on any reasonable backlog within a week. */
+const CLEANUP_CANDIDATES_PER_TICK = 100;
+
 export const _listFailedWaveRunsForCleanup = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -1722,7 +1773,7 @@ export const _listFailedWaveRunsForCleanup = internalQuery({
     const failed = await ctx.db
       .query("waveRuns")
       .withIndex("by_status", (q) => q.eq("status", "failed"))
-      .collect();
+      .take(CLEANUP_CANDIDATES_PER_TICK);
     return failed
       .filter(
         (r) =>

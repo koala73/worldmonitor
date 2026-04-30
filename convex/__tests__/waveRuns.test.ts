@@ -104,6 +104,20 @@ async function readContacts(t: ReturnType<typeof convexTest>, runId: string) {
   );
 }
 
+/** Helper: find a contact's _id by (runId, normalizedEmail). Tests call
+ *  the mark-mutations by `contactId` after PR2 review-fix 9 (avoid the
+ *  Convex 8192-doc-read scan limit). */
+async function findContactId(
+  t: ReturnType<typeof convexTest>,
+  runId: string,
+  normalizedEmail: string,
+): Promise<string> {
+  const all = await readContacts(t, runId);
+  const match = all.find((c) => c.normalizedEmail === normalizedEmail);
+  if (!match) throw new Error(`findContactId: no contact (${runId}, ${normalizedEmail})`);
+  return match._id;
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // _claimWaveRunLease
 // ───────────────────────────────────────────────────────────────────────────
@@ -269,6 +283,7 @@ describe("push-phase CAS mutations", () => {
     const t = convexTest(schema, modules);
     const [first] = await setupPushing(t);
     const r = await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId: await findContactId(t, "run-1", first!),
       runId: "run-1", normalizedEmail: first!, waveLabel: "pro-launch-wave-4",
     });
     expect(r).toMatchObject({ ok: true, stampResult: "stamped" });
@@ -281,10 +296,13 @@ describe("push-phase CAS mutations", () => {
   test("_markContactPushed CAS: second call returns not-pending; pushedCount stays 1", async () => {
     const t = convexTest(schema, modules);
     const [first] = await setupPushing(t);
+    const contactId = await findContactId(t, "run-1", first!);
     await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId,
       runId: "run-1", normalizedEmail: first!, waveLabel: "pro-launch-wave-4",
     });
     const second = await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId,
       runId: "run-1", normalizedEmail: first!, waveLabel: "pro-launch-wave-4",
     });
     expect(second).toMatchObject({ ok: false, reason: "not-pending" });
@@ -298,6 +316,7 @@ describe("push-phase CAS mutations", () => {
     const emails = await setupPushing(t, 100);
     const first = emails[0]!;
     const r = await t.mutation(internal.broadcast.waveRuns._markContactFailed, {
+      contactId: await findContactId(t, "run-1", first),
       runId: "run-1", normalizedEmail: first, failedReason: "Resend 422",
     });
     expect(r).toMatchObject({ ok: true, runFailed: false });
@@ -315,6 +334,7 @@ describe("push-phase CAS mutations", () => {
     const t = convexTest(schema, modules);
     const [first] = await setupPushing(t, 4);
     const r = await t.mutation(internal.broadcast.waveRuns._markContactFailed, {
+      contactId: await findContactId(t, "run-1", first!),
       runId: "run-1", normalizedEmail: first!, failedReason: "Resend 500",
     });
     expect(r).toMatchObject({ ok: true, runFailed: true });
@@ -340,10 +360,13 @@ describe("push-phase CAS mutations", () => {
     });
     await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
 
+    const c0Id = await findContactId(t, "run-1", emails[0]!);
     await t.mutation(internal.broadcast.waveRuns._markContactFailed, {
+      contactId: c0Id,
       runId: "run-1", normalizedEmail: emails[0]!, failedReason: "Resend 500",
     });
     const second = await t.mutation(internal.broadcast.waveRuns._markContactFailed, {
+      contactId: c0Id,
       runId: "run-1", normalizedEmail: emails[0]!, failedReason: "Resend 500 again",
     });
     expect(second).toMatchObject({ ok: false, reason: "not-pending" });
@@ -755,9 +778,11 @@ describe("review-fix 2: unstamp on discard", () => {
     // Push two of three (third stays pending). All three were seeded with
     // matching registrations by seedRegistrations.
     await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId: await findContactId(t, "run-1", "a@t"),
       runId: "run-1", normalizedEmail: "a@t", waveLabel: "pro-launch-wave-4",
     });
     await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId: await findContactId(t, "run-1", "b@t"),
       runId: "run-1", normalizedEmail: "b@t", waveLabel: "pro-launch-wave-4",
     });
     // Verify a + b are stamped before cleanup.
@@ -799,6 +824,7 @@ describe("review-fix 2: unstamp on discard", () => {
     });
     await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
     await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId: await findContactId(t, "run-1", "a@t"),
       runId: "run-1", normalizedEmail: "a@t", waveLabel: "pro-launch-wave-4",
     });
     // Manually re-stamp the registration as if it were re-picked into wave-5.
@@ -839,6 +865,7 @@ describe("review-fix 2: unstamp on discard", () => {
     });
     await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
     await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      contactId: await findContactId(t, "run-1", "a@t"),
       runId: "run-1", normalizedEmail: "a@t", waveLabel: "pro-launch-wave-4",
     });
     // Operator discard — flips the run to failed/discarded-by-operator and
@@ -1119,6 +1146,10 @@ describe("review-fix 6: terminal-CAS on finalize failure / recovery", () => {
     await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
       runId: "run-1", broadcastId: "bro_xyz",
     });
+    // PR2 review-fix 10: substatus required for the recovery to be reachable.
+    await t.mutation(internal.broadcast.waveRuns._markFinalizeFailed, {
+      runId: "run-1", substatus: "send-broadcast-failed", error: "timeout",
+    });
     // Force-clear the lease (operator did forceReleaseLease).
     await t.run(async (ctx) => {
       const config = await ctx.db
@@ -1134,7 +1165,7 @@ describe("review-fix 6: terminal-CAS on finalize failure / recovery", () => {
     ).rejects.toThrow(/lost lease/);
   });
 
-  test("markFinalizeRecovered: succeeds on broadcast-created with held lease", async () => {
+  test("markFinalizeRecovered: succeeds on broadcast-created + send-broadcast-failed substatus + held lease", async () => {
     const t = convexTest(schema, modules);
     await seedRampConfig(t);
     await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
@@ -1147,6 +1178,12 @@ describe("review-fix 6: terminal-CAS on finalize failure / recovery", () => {
     await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
       runId: "run-1", broadcastId: "bro_xyz",
     });
+    // PR2 review-fix 10: markFinalizeRecovered now requires the substatus
+    // signal. Without it, status='broadcast-created' alone is also the
+    // mid-flight pre-send state and would race-advance the tier.
+    await t.mutation(internal.broadcast.waveRuns._markFinalizeFailed, {
+      runId: "run-1", substatus: "send-broadcast-failed", error: "network timeout",
+    });
     const sentAt = Date.now();
     const r = await t.mutation(internal.broadcast.waveRuns.markFinalizeRecovered, {
       runId: "run-1", sentAt, reason: "Resend dashboard confirmed sent",
@@ -1155,5 +1192,30 @@ describe("review-fix 6: terminal-CAS on finalize failure / recovery", () => {
     const config = await readConfig(t);
     expect(config!.currentTier).toBe(1);
     expect(config!.lastWaveSentAt).toBe(sentAt);
+  });
+
+  test("markFinalizeRecovered: REFUSES on broadcast-created without send-broadcast-failed substatus (mid-flight protection)", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    // status='broadcast-created' but no failureSubstatus — this is the
+    // active mid-flight state between create and send. Operator MUST
+    // NOT be able to short-circuit here.
+    await expect(
+      t.mutation(internal.broadcast.waveRuns.markFinalizeRecovered, {
+        runId: "run-1", sentAt: Date.now(), reason: "operator confused",
+      }),
+    ).rejects.toThrow(/failureSubstatus.*<none>|only applies to send-broadcast-failed/);
+    const config = await readConfig(t);
+    expect(config!.currentTier).toBe(0); // NOT advanced
   });
 });
