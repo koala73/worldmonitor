@@ -46,7 +46,11 @@ const DEFAULT_MIN_INTERVAL_MS = 60_000;
  */
 export function installStaleBundleCheck(options: StaleBundleCheckOptions = {}): () => void {
   const currentHash = options.currentHash ?? (typeof __BUILD_HASH__ !== 'undefined' ? __BUILD_HASH__ : 'dev');
-  const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
+  // Arrow-function wrapper instead of fetch.bind(globalThis) (banned per
+  // AGENTS.md §Critical Conventions). Same effect — preserves the global
+  // `this` for fetch — without the brittle .bind() form.
+  const fetchImpl: typeof globalThis.fetch =
+    options.fetch ?? ((...args) => globalThis.fetch(...args));
   const eventTarget = options.eventTarget ?? window;
   const reload = options.reload ?? (() => window.location.reload());
   const now = options.now ?? Date.now;

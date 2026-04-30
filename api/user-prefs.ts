@@ -190,18 +190,6 @@ export default async function handler(
 
 
 /**
- * Build a captureSilentError context that carries enough provenance to triage
- * a 500 from this endpoint without re-running the request:
- *   - `convex_request_id` tag: the `[Request ID: X]` from Convex's error message,
- *     queryable in Sentry and grep-able against Convex's dashboard logs.
- *   - `error_shape` tag: classifies what KIND of failure this is so a single
- *     Sentry filter splits "Convex internal 500" from "transport timeout" from
- *     "everything else", instead of every flavor sharing the same opaque bucket.
- *   - Stable `fingerprint`: forces Sentry to group by (route, method, error_shape)
- *     rather than by the ever-varying request-id-bearing message — without this,
- *     each request_id would create a new "issue" and drown the dashboard.
- */
-/**
  * 409-CONFLICT response builder for setPreferences. Captures every
  * CONFLICT to Sentry so we can detect stuck-bundle users (constant
  * `actual_sync_version` across timestamps with no success interleaved
@@ -250,8 +238,21 @@ function handleConflictResponse(
   );
 }
 
-// Exported for unit tests. The Vercel edge runtime ignores non-default
-// exports, so this has no production-side effect.
+/**
+ * Build a captureSilentError context that carries enough provenance to triage
+ * a 500 from this endpoint without re-running the request:
+ *   - `convex_request_id` tag: the `[Request ID: X]` from Convex's error message,
+ *     queryable in Sentry and grep-able against Convex's dashboard logs.
+ *   - `error_shape` tag: classifies what KIND of failure this is so a single
+ *     Sentry filter splits "Convex internal 500" from "transport timeout" from
+ *     "everything else", instead of every flavor sharing the same opaque bucket.
+ *   - Stable `fingerprint`: forces Sentry to group by (route, method, error_shape)
+ *     rather than by the ever-varying request-id-bearing message — without this,
+ *     each request_id would create a new "issue" and drown the dashboard.
+ *
+ * Exported for unit tests. The Vercel edge runtime ignores non-default
+ * exports, so this has no production-side effect.
+ */
 export function buildSentryContext(
   err: unknown,
   msg: string,
