@@ -651,8 +651,29 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      // Vercel sets VERCEL_GIT_COMMIT_SHA on production + preview builds.
+      // Local `vite build` falls back to 'dev' — installStaleBundleCheck
+      // detects the marker and skips the comparison so dev tabs don't
+      // reload on every focus.
+      __BUILD_HASH__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
     },
     plugins: [
+      // Emit dist/build-hash.txt with the deployed SHA so the running bundle
+      // can fetch /build-hash.txt at tab-focus time and force-reload itself
+      // if it's running an older bundle (see src/bootstrap/stale-bundle-check.ts).
+      // Same-origin static asset, NOT under /api/* — installWebApiRedirect
+      // doesn't touch it, so the comparison reflects the web deployment.
+      {
+        name: 'wm-emit-build-hash',
+        apply: 'build',
+        generateBundle() {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'build-hash.txt',
+            source: process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev',
+          });
+        },
+      },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
       polymarketPlugin(),
       rssProxyPlugin(),
