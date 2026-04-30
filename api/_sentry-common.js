@@ -54,10 +54,16 @@ function parseStack(stack) {
  *   tags?: Record<string, string|number|boolean>,
  *   extra?: Record<string, unknown>,
  *   fingerprint?: string[],
+ *   level?: 'warning' | 'info' | 'error' | 'fatal',
  * }} [ctx] When `fingerprint` is a non-empty array it overrides Sentry's
  *   default message-based grouping. Use to consolidate one logical issue
  *   whose error message contains a high-cardinality token (request id,
  *   trace id) that would otherwise fragment grouping into N issues.
+ *   `level` defaults to `'error'`; pass `'warning'` for expected-but-
+ *   trackable conditions (e.g. optimistic-concurrency CONFLICT) so the
+ *   capture stays queryable in the dashboard but doesn't count toward
+ *   error totals or page on-call. Values other than the four listed
+ *   above are ignored and the default `'error'` is used.
  * @param {{ runtime: 'edge' | 'node', platform: 'javascript' | 'node' }} runtimeCfg
  */
 function buildEnvelope(err, ctx, runtimeCfg) {
@@ -67,10 +73,17 @@ function buildEnvelope(err, ctx, runtimeCfg) {
   const eventId = crypto.randomUUID().replace(/-/g, '');
   const timestamp = new Date().toISOString();
 
+  // Caller may downgrade level for expected-but-still-trackable conditions
+  // (e.g. optimistic-concurrency CONFLICT from multi-tab sync — the capture
+  // exists to surface stuck-bundle users by user_id distribution, but at
+  // 'error' level it drowns real bugs in dashboards/alerting).
+  const level = ctx?.level === 'warning' || ctx?.level === 'info' || ctx?.level === 'fatal'
+    ? ctx.level
+    : 'error';
   const event = {
     event_id: eventId,
     timestamp,
-    level: 'error',
+    level,
     platform: runtimeCfg.platform,
     environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'production',
     release: process.env.VERCEL_GIT_COMMIT_SHA,

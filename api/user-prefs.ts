@@ -219,6 +219,13 @@ function handleConflictResponse(
   },
 ): Response {
   const actualSyncVersion = readConvexErrorNumber(err, 'actualSyncVersion');
+  // CONFLICT is an EXPECTED outcome of optimistic concurrency (multi-tab
+  // / multi-device sync, or a stuck-bundle user retrying with an old
+  // expectedSyncVersion). The capture exists to surface stuck-bundle
+  // users via user_id distribution (see WORLDMONITOR-PX 2026-04-30:
+  // 316 events / 59 users at 18 distinct actualSyncVersions). At
+  // level=error it drowned real bugs; level=warning keeps it queryable
+  // in Sentry but drops it out of error totals and alerting.
   captureSilentError(err, buildSentryContext(err, msg, {
     method: 'POST',
     convexFn: 'userPreferences:setPreferences',
@@ -230,6 +237,7 @@ function handleConflictResponse(
     blobSize: opts.blobSize,
     errorShapeOverride: 'setPreferences_conflict',
     extraTags: actualSyncVersion !== undefined ? { actual_sync_version: actualSyncVersion } : undefined,
+    level: 'warning',
   }));
   return jsonResponse(
     actualSyncVersion !== undefined ? { error: 'CONFLICT', actualSyncVersion } : { error: 'CONFLICT' },
@@ -274,12 +282,18 @@ export function buildSentryContext(
     // Additional tags (queryable in Sentry, unlike `extra`). Used e.g. to
     // pass `actual_sync_version` so on-call can group/filter by it.
     extraTags?: Record<string, string | number>;
+    // Sentry severity. Default 'error'. Pass 'warning' for expected-but-
+    // trackable conditions (CONFLICT from optimistic-concurrency) so the
+    // capture stays queryable in the dashboard but doesn't count toward
+    // error totals or page on-call.
+    level?: 'warning' | 'info' | 'error' | 'fatal';
   },
 ): {
   tags: Record<string, string | number>;
   extra: Record<string, unknown>;
   fingerprint: string[];
   ctx?: { waitUntil: (p: Promise<unknown>) => void };
+  level?: 'warning' | 'info' | 'error' | 'fatal';
 } {
   const errName = err instanceof Error ? err.name : 'unknown';
   const requestIdMatch = msg.match(/\[Request ID:\s*([a-f0-9]+)\]/i);
@@ -327,5 +341,6 @@ export function buildSentryContext(
     },
     fingerprint: ['api/user-prefs', opts.method, errorShape],
     ctx: opts.ctx,
+    ...(opts.level ? { level: opts.level } : {}),
   };
 }
