@@ -1355,6 +1355,175 @@ describe('widget-agent edge proxy — Convex entitlement fallback', () => {
 // every call path this file gates, including the widget-agent fallback PR
 // #3505 just added.
 // ---------------------------------------------------------------------------
+// widget-agent relay — error classifier (no more opaque "Agent error")
+// ---------------------------------------------------------------------------
+//
+// The relay used to swallow ALL agent errors as a generic "Agent error" SSE
+// message. With nothing in Railway logs to grep and nothing useful in the
+// client, real failures (auth, rate limit, model availability, payload shape)
+// were impossible to triage. Lock in the classifier so future regressions
+// can't re-collapse the error surface.
+describe('widget-agent relay — error classifier', () => {
+  const relay = src('scripts/ais-relay.cjs');
+
+  it('classifyWidgetAgentError function is defined', () => {
+    assert.ok(
+      /function\s+classifyWidgetAgentError\s*\(/.test(relay),
+      'classifyWidgetAgentError(err, model) helper must exist',
+    );
+  });
+
+  it('catch block routes through classifyWidgetAgentError instead of hardcoded "Agent error"', () => {
+    // Find the catch block in the widget-agent handler.
+    const catchIdx = relay.indexOf("classifyWidgetAgentError");
+    assert.ok(catchIdx !== -1, 'classifyWidgetAgentError must be called somewhere in the relay');
+    // The catch site must NOT still emit the literal "Agent error" string as
+    // its primary message — the classifier covers the fallback case itself.
+    // Allow the literal in the classifier's last-resort branch only.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const handlerRegion = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 5000);
+    assert.ok(
+      !/sendWidgetSSE\([^)]*'error'[^)]*'Agent error'/.test(handlerRegion),
+      'catch site must NOT hardcode "Agent error" — route through classifyWidgetAgentError so the client sees actionable diagnostics',
+    );
+  });
+
+  it('classifier maps Anthropic 401 to an operator-facing API-key hint', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*401|authentication_error/.test(region),
+      'Classifier must branch on status 401 / authentication_error',
+    );
+    assert.ok(
+      /ANTHROPIC_API_KEY|API key/i.test(region),
+      'Classifier 401 branch must hint at the env-var/credential to check',
+    );
+  });
+
+  it('classifier surfaces 400 invalid_request_error with the SDK message (capped)', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*400|invalid_request_error/.test(region),
+      'Classifier must branch on status 400 / invalid_request_error',
+    );
+    assert.ok(
+      /Invalid request to AI backend/.test(region),
+      'Classifier must include human-readable phrasing for invalid-request errors',
+    );
+  });
+
+  it('classifier scrubs Claude API keys from any fallback message', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /sk-(?:ant-)?\[A-Za-z0-9_-\]\{20,?\}/.test(region) || /sk-\(\?:ant-\)\?\[A-Za-z0-9_-\]/.test(region),
+      'Classifier fallback must redact `sk-…` / `sk-ant-…` API keys before surfacing the message',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(region),
+      'Classifier must replace scrubbed token with a [REDACTED] sentinel',
+    );
+  });
+
+  it('classifier scrubs API keys in the 400 branch (defence-in-depth on every rawMsg interpolation)', () => {
+    // Round-trip the function for runtime check: the 400 message must redact a Claude key.
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn(
+      { status: 400, error: { type: 'invalid_request_error' }, message: 'bad header sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA was rejected' },
+      'claude-sonnet-4-6',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(out),
+      `400 branch must scrub sk-(ant-)? tokens before surfacing rawMsg, got: ${out}`,
+    );
+    assert.ok(
+      !/sk-ant-api03-AAAAAAAAAA/.test(out),
+      '400 branch must not leak the raw API key in any form',
+    );
+  });
+
+  it('classifier handles Anthropic APITimeoutError (status 408) — does not fall through to fallback', () => {
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    // Real Anthropic Node SDK timeout shape: name='APITimeoutError', status=408
+    const apiTimeout = fn({ name: 'APITimeoutError', status: 408, message: 'Request timeout.' }, 'claude-sonnet-4-6');
+    assert.equal(apiTimeout, 'AI backend timed out', 'APITimeoutError must classify as timed-out, not fallback');
+    // AbortSignal.timeout() shape (DOMException): name='TimeoutError'
+    const abortTimeout = fn({ name: 'TimeoutError', message: 'The operation timed out.' }, 'claude-sonnet-4-6');
+    assert.equal(abortTimeout, 'AI backend timed out', 'AbortSignal TimeoutError must also classify as timed-out');
+    // Bare 408 status (some HTTP layers expose only the code) — same branch.
+    const bare408 = fn({ status: 408 }, 'claude-sonnet-4-6');
+    assert.equal(bare408, 'AI backend timed out', 'Bare status 408 must classify as timed-out');
+  });
+
+  it('400 branch does NOT pre-empt timeout: APITimeoutError-with-status-400 stays a timeout (rare but defensive)', () => {
+    // Belt-and-suspenders: the timeout check sits BEFORE the 400 branch, so
+    // an APITimeoutError tagged with status 400 (defensive against future SDK
+    // shape changes) still classifies as a timeout, not "Invalid request".
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn({ name: 'APITimeoutError', status: 400, message: 'timeout' }, 'claude-sonnet-4-6');
+    assert.equal(out, 'AI backend timed out', 'APITimeoutError must beat the 400 branch regardless of status');
+  });
+
+  it('handler logs structured error context with status + type + model', () => {
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 8000);
+    // Look for the structured console.error inside the catch.
+    assert.ok(
+      /console\.error\([^)]*\[widget-agent\][^)]*Error/.test(region),
+      'Catch must log a `[widget-agent] Error:` line for Railway operators to grep',
+    );
+    assert.ok(
+      /\bstatus\b/.test(region) && /\btype\b/.test(region) && /\bmodel\b/.test(region),
+      'Structured error log must include status + type + model so Railway logs are diagnosable without server-side reproduction',
+    );
+  });
+
+  it('toolCallCount is declared OUTSIDE the try whose catch reads it (scoping regression guard)', () => {
+    // Bug history: an earlier revision declared `let toolCallCount = 0` INSIDE the
+    // outer agent-loop try block but read it from the catch. JavaScript `let`/`const`
+    // is block-scoped, so the catch's structured log threw a ReferenceError every
+    // time, which the inner log-try then caught and emitted the useless
+    // "[widget-agent] Error (log-failed)" fallback — defeating the entire
+    // diagnostic value of this PR. Lock the declaration position.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    assert.ok(handlerStart !== -1, 'handler not found');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 12000);
+
+    const declIdx = region.indexOf('let toolCallCount');
+    assert.ok(declIdx !== -1, 'toolCallCount declaration not found');
+
+    // The outer agent-loop try is the one whose first statement imports the
+    // Anthropic SDK. Anchor on that specific shape so we ignore unrelated
+    // try/catch blocks (request-body parse, search-tool fetch, log-fallback).
+    const outerTryMatch = region.match(/try\s*\{\s*\n\s*const\s*\{\s*default:\s*Anthropic/);
+    assert.ok(outerTryMatch, 'Outer agent-loop try block not found by anchor');
+    const outerTryIdx = outerTryMatch.index;
+
+    assert.ok(
+      declIdx < outerTryIdx,
+      `toolCallCount (declared at ${declIdx}) must be declared BEFORE the outer agent-loop try (try at ${outerTryIdx}). Putting it inside the try makes it inaccessible to the catch — the structured log throws ReferenceError and falls through to the useless "Error (log-failed)" fallback.`,
+    );
+
+    // Sanity-check: the catch payload still references toolCallCount, so this
+    // test is actually guarding the load-bearing reference.
+    assert.ok(
+      /catch\s*\(\s*err[^)]*\)[\s\S]*?toolCallCount/.test(region),
+      'Catch payload must still reference toolCallCount, otherwise this test is guarding nothing',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // panel-layout — Pro CTAs must re-evaluate on Convex entitlement updates
 // ---------------------------------------------------------------------------
 //
