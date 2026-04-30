@@ -67,10 +67,17 @@ function buildEnvelope(err, ctx, runtimeCfg) {
   const eventId = crypto.randomUUID().replace(/-/g, '');
   const timestamp = new Date().toISOString();
 
+  // Caller may downgrade level for expected-but-still-trackable conditions
+  // (e.g. optimistic-concurrency CONFLICT from multi-tab sync — the capture
+  // exists to surface stuck-bundle users by user_id distribution, but at
+  // 'error' level it drowns real bugs in dashboards/alerting).
+  const level = ctx?.level === 'warning' || ctx?.level === 'info' || ctx?.level === 'fatal'
+    ? ctx.level
+    : 'error';
   const event = {
     event_id: eventId,
     timestamp,
-    level: 'error',
+    level,
     platform: runtimeCfg.platform,
     environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'production',
     release: process.env.VERCEL_GIT_COMMIT_SHA,
