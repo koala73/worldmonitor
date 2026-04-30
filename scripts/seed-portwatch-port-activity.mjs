@@ -27,6 +27,15 @@ const MIN_VALID_COUNTRIES = 50;
 
 const EP3_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0/query';
+// Schema introspection URL — same FeatureServer, no /query suffix. Used by
+// resolveArcgisDateField to resolve the queryable date-column name at run
+// start so the seeder survives IMF flapping the rename (`date` → `date_`
+// → `date` observed within ~9h on 2026-04-29).
+const EP3_SCHEMA = EP3_BASE.replace('/query', '?f=json');
+// Fallback when schema introspection fails. `date` is the historical default
+// (and the state observed at 12:09 UTC 2026-04-29 after IMF reverted the
+// rename); the resolver also accepts `date_` as a discovered name.
+const ARCGIS_DATE_FIELD_FALLBACK = 'date';
 const EP4_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_ports_database/FeatureServer/0/query';
 
@@ -96,11 +105,13 @@ async function fetchWithTimeout(url, { signal } = {}) {
 // bounded. Does not retry any other error class.
 //
 // IMPORTANT: a 100%-batch-rejected version of this error is NOT a flake —
-// it's an upstream schema-rename (e.g. `date` → `date_` on 2026-04-29 via
-// IMF's reserved-keyword sweep, see fetchAll's first-batch circuit-breaker).
-// The single-retry assumption only holds for sporadic 3-of-N rejections;
-// the circuit-breaker handles the global-regression case to avoid burning
-// 30s of doomed work per cron tick.
+// it's an upstream schema-rename or policy change. The 2026-04-29 IMF
+// reserved-keyword sweep flapped `date` → `date_` → `date` within ~9h,
+// which would silently break any seeder using a hardcoded literal twice
+// in the same incident. resolveArcgisDateField introspects the schema at
+// run start to survive the flap; the circuit-breaker below still covers
+// other global-regression classes (renamed table, removed field, policy
+// change) so we don't burn 30s of doomed work per cron tick.
 async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
   try {
     return await fetchWithTimeout(url, { signal });
@@ -152,23 +163,84 @@ async function fetchAllPortRefs({ signal } = {}) {
   return byIso3;
 }
 
+// Resolve the queryable date-column name on Daily_Ports_Data. ArcGIS treats
+// alias and name as separate concepts — alias stays "date" forever (it's
+// metadata, displayed in catalogs), but `name` is what WHERE / outFields /
+// orderByFields / outStatistics actually accept, and IMF has flapped the
+// `name` between `date` and `date_` (reserved-keyword sweep on 2026-04-29
+// flipped to `date_` at ~02:54 UTC, then reverted to `date` by ~12:09 UTC,
+// so a hardcoded literal breaks twice in the same incident).
+//
+// Strategy: introspect the layer schema once per process, find the field
+// whose alias is "date" (alias is the stable signal), use its `name` for
+// the rest of the run. Falls back to ARCGIS_DATE_FIELD_FALLBACK on error
+// so transient schema-endpoint failures don't kill the whole seed run.
+//
+// Memoisation: cache the in-flight PROMISE, not the resolved value, so
+// concurrent first-callers share one schema round-trip. The
+// fetchAll-driven flow awaits the resolver before any parallel work, so
+// in practice only one call ever races — but the defensive fall-throughs
+// in paginateWindowInto / fetchMaxDate / fetchCountryAccum can be invoked
+// from outside fetchAll (tests, future callers), so the once-inflight
+// pattern is the load-bearing safety. Greptile P2 on PR #3496.
+let _arcgisDateFieldPromise = null;
+export function resolveArcgisDateField({ signal } = {}) {
+  if (!_arcgisDateFieldPromise) {
+    _arcgisDateFieldPromise = _doResolveArcgisDateField({ signal });
+  }
+  return _arcgisDateFieldPromise;
+}
+
+async function _doResolveArcgisDateField({ signal } = {}) {
+  try {
+    const body = await fetchWithTimeout(EP3_SCHEMA, { signal });
+    const fields = Array.isArray(body?.fields) ? body.fields : [];
+    // Prefer alias-match (canonical: alias is what humans named it, name is
+    // what the SQL parser eats). Fall back to a name-equality match if no
+    // alias hit, in case IMF ever reverses the alias too.
+    const byAlias = fields.find((f) => f && f.alias === 'date' &&
+      (f.type === 'esriFieldTypeDateOnly' || f.type === 'esriFieldTypeDate'));
+    const byName = fields.find((f) => f && (f.name === 'date' || f.name === 'date_') &&
+      (f.type === 'esriFieldTypeDateOnly' || f.type === 'esriFieldTypeDate'));
+    const resolved = byAlias?.name || byName?.name || ARCGIS_DATE_FIELD_FALLBACK;
+    if (!byAlias && !byName) {
+      console.warn(`  [port-activity] schema introspection found no date field — using fallback "${ARCGIS_DATE_FIELD_FALLBACK}"`);
+    } else if (resolved !== ARCGIS_DATE_FIELD_FALLBACK) {
+      console.log(`  [port-activity] resolved ArcGIS date field name: "${resolved}" (alias=date)`);
+    }
+    return resolved;
+  } catch (err) {
+    console.warn(`  [port-activity] schema introspection failed (${err?.message || err}) — using fallback "${ARCGIS_DATE_FIELD_FALLBACK}"`);
+    return ARCGIS_DATE_FIELD_FALLBACK;
+  }
+}
+
+// Test-only helper: clears the module-level cache so unit tests can
+// re-exercise the resolver with different mocked schemas.
+export function _resetArcgisDateFieldCache() {
+  _arcgisDateFieldPromise = null;
+}
+
 // Paginate a single ArcGIS EP3 window into per-port accumulators. Called
 // twice per country — once for each aggregation window (last30, prev30) —
 // in parallel so heavy countries no longer have to serialise through both
 // windows inside a single 90s cap.
-async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signal } = {}) {
+async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signal, dateField } = {}) {
+  // Defensive: callers should always thread dateField through, but if a
+  // future caller forgets, fall back to the resolver (idempotent + cached).
+  const df = dateField || (await resolveArcgisDateField({ signal }));
   let offset = 0;
   let body;
   do {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const params = new URLSearchParams({
       where,
-      // IMF PortWatch renamed `date` → `date_` on 2026-04-29 (reserved-keyword
-      // sweep, see ARCGIS_DATE_FIELD comment below). Field alias is still
-      // "date" but the queryable name is `date_` — alias ≠ name in ArcGIS.
-      outFields: 'portid,portname,ISO3,date_,portcalls_tanker,import_tanker,export_tanker',
+      // ArcGIS treats alias and name as separate — alias stays "date" but
+      // the queryable name has flapped between `date` and `date_`. Resolved
+      // dynamically via resolveArcgisDateField() at run start.
+      outFields: `portid,portname,ISO3,${df},portcalls_tanker,import_tanker,export_tanker`,
       returnGeometry: 'false',
-      orderByFields: 'portid ASC,date_ ASC',
+      orderByFields: `portid ASC,${df} ASC`,
       resultRecordCount: String(PAGE_SIZE),
       resultOffset: String(offset),
       outSR: '4326',
@@ -178,7 +250,7 @@ async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signa
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
-      if (!a || a.portid == null || a.date_ == null) continue;
+      if (!a || a.portid == null || a[df] == null) continue;
       const portId = String(a.portid);
       const calls = Number(a.portcalls_tanker ?? 0);
       const imports = Number(a.import_tanker ?? 0);
@@ -241,30 +313,32 @@ function parseMaxDateToAnchor(maxDateStr) {
 // anomalySignal always false. Not a feature regression — it was already dead.
 //
 // Returns Map<portId, PortAccum>. Memory per country is O(unique ports) ≈ <200.
-async function fetchCountryAccum(iso3, { signal, anchorEpochMs } = {}) {
+async function fetchCountryAccum(iso3, { signal, anchorEpochMs, dateField } = {}) {
   const anchor = anchorEpochMs ?? Date.now();
   const cutoff30 = anchor - 30 * 86400000;
   const cutoff60 = anchor - 60 * 86400000;
+  const df = dateField || (await resolveArcgisDateField({ signal }));
 
   const portAccumMap = new Map();
 
-  // ARCGIS_DATE_FIELD: queryable column is `date_`, not `date` — see comment
-  // on outFields above. The `timestamp 'YYYY-MM-DD HH:MM:SS'` literal still
-  // works on the new esriFieldTypeDateOnly column (verified 2026-04-29).
+  // ARCGIS_DATE_FIELD: queryable column name is resolved dynamically at run
+  // start via resolveArcgisDateField. The `timestamp 'YYYY-MM-DD HH:MM:SS'`
+  // literal works on both the esriFieldTypeDateOnly and esriFieldTypeDate
+  // shapes ArcGIS may serve.
   await Promise.all([
     paginateWindowInto(
       portAccumMap,
       iso3,
-      `ISO3='${iso3}' AND date_ > ${epochToTimestamp(cutoff30)}`,
+      `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff30)}`,
       'last30',
-      { signal },
+      { signal, dateField: df },
     ),
     paginateWindowInto(
       portAccumMap,
       iso3,
-      `ISO3='${iso3}' AND date_ > ${epochToTimestamp(cutoff60)} AND date_ <= ${epochToTimestamp(cutoff30)}`,
+      `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff60)} AND ${df} <= ${epochToTimestamp(cutoff30)}`,
       'prev30',
-      { signal },
+      { signal, dateField: df },
     ),
   ]);
 
@@ -276,13 +350,15 @@ async function fetchCountryAccum(iso3, { signal, anchorEpochMs } = {}) {
 // advanced since the last cached run. ~1-2s per call at ArcGIS's current
 // steady-state. Returns ISO date string "YYYY-MM-DD" or null on any error
 // (we then fall through to the expensive path, which has its own retry).
-async function fetchMaxDate(iso3, { signal } = {}) {
+async function fetchMaxDate(iso3, { signal, dateField } = {}) {
+  const df = dateField || (await resolveArcgisDateField({ signal }));
   const outStats = JSON.stringify([{
     statisticType: 'max',
-    // See ARCGIS_DATE_FIELD comment in fetchCountryAccum: queryable name is
-    // `date_`, not `date`. outStatisticFieldName is the response key —
-    // unchanged on purpose so callers keep reading `attrs.max_date`.
-    onStatisticField: 'date_',
+    // See ARCGIS_DATE_FIELD comment in fetchCountryAccum: the queryable
+    // column name is resolved dynamically (alias=date, name flaps).
+    // outStatisticFieldName is the response key — unchanged on purpose so
+    // callers keep reading `attrs.max_date`.
+    onStatisticField: df,
     outStatisticFieldName: 'max_date',
   }]);
   const params = new URLSearchParams({
@@ -397,8 +473,21 @@ async function redisMgetJson(keys) {
 //
 // `progress` (optional) is mutated in-place so a SIGTERM handler in main()
 // can report which batch / country we died on.
+//
+// fetchAll is the orchestrator (refs → schema → preflight → cache-partition
+// → batched fetch → finalise); splitting it would move complexity into a
+// hidden seam and obscure the linear pipeline. Each stage is short and
+// well-commented; suppress the cognitive-complexity warning on the line.
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: orchestrator pipeline
 export async function fetchAll(progress, { signal } = {}) {
   const { iso3ToIso2 } = createCountryResolvers();
+
+  // Resolve the queryable date-column name once per run, before any
+  // country-level work. Threaded through to fetchMaxDate, fetchCountryAccum,
+  // and paginateWindowInto so a single name flap on the upstream side
+  // can't half-break the run.
+  if (progress) progress.stage = 'schema';
+  const dateField = await resolveArcgisDateField({ signal });
 
   if (progress) progress.stage = 'refs';
   console.log('  [port-activity] Fetching global port reference (EP4)...');
@@ -446,7 +535,7 @@ export async function fetchAll(progress, { signal } = {}) {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const slice = eligibleIso3.slice(i, i + PREFLIGHT_CONCURRENCY);
     const settled = await Promise.allSettled(
-      slice.map((iso3) => fetchMaxDate(iso3, { signal })),
+      slice.map((iso3) => fetchMaxDate(iso3, { signal, dateField })),
     );
     for (let j = 0; j < slice.length; j++) {
       const r = settled[j];
@@ -502,7 +591,7 @@ export async function fetchAll(progress, { signal } = {}) {
       // Falls back to Date.now() when preflight returned null.
       const anchorEpochMs = parseMaxDateToAnchor(upstreamMaxDate);
       const p = withPerCountryTimeout(
-        (childSignal) => fetchCountryAccum(iso3, { signal: childSignal, anchorEpochMs }),
+        (childSignal) => fetchCountryAccum(iso3, { signal: childSignal, anchorEpochMs, dateField }),
         iso3,
       );
       // Eager error flush so a SIGTERM mid-batch captures rejections that
