@@ -1355,6 +1355,96 @@ describe('widget-agent edge proxy — Convex entitlement fallback', () => {
 // every call path this file gates, including the widget-agent fallback PR
 // #3505 just added.
 // ---------------------------------------------------------------------------
+// widget-agent relay — error classifier (no more opaque "Agent error")
+// ---------------------------------------------------------------------------
+//
+// The relay used to swallow ALL agent errors as a generic "Agent error" SSE
+// message. With nothing in Railway logs to grep and nothing useful in the
+// client, real failures (auth, rate limit, model availability, payload shape)
+// were impossible to triage. Lock in the classifier so future regressions
+// can't re-collapse the error surface.
+describe('widget-agent relay — error classifier', () => {
+  const relay = src('scripts/ais-relay.cjs');
+
+  it('classifyWidgetAgentError function is defined', () => {
+    assert.ok(
+      /function\s+classifyWidgetAgentError\s*\(/.test(relay),
+      'classifyWidgetAgentError(err, model) helper must exist',
+    );
+  });
+
+  it('catch block routes through classifyWidgetAgentError instead of hardcoded "Agent error"', () => {
+    // Find the catch block in the widget-agent handler.
+    const catchIdx = relay.indexOf("classifyWidgetAgentError");
+    assert.ok(catchIdx !== -1, 'classifyWidgetAgentError must be called somewhere in the relay');
+    // The catch site must NOT still emit the literal "Agent error" string as
+    // its primary message — the classifier covers the fallback case itself.
+    // Allow the literal in the classifier's last-resort branch only.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const handlerRegion = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 5000);
+    assert.ok(
+      !/sendWidgetSSE\([^)]*'error'[^)]*'Agent error'/.test(handlerRegion),
+      'catch site must NOT hardcode "Agent error" — route through classifyWidgetAgentError so the client sees actionable diagnostics',
+    );
+  });
+
+  it('classifier maps Anthropic 401 to an operator-facing API-key hint', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*401|authentication_error/.test(region),
+      'Classifier must branch on status 401 / authentication_error',
+    );
+    assert.ok(
+      /ANTHROPIC_API_KEY|API key/i.test(region),
+      'Classifier 401 branch must hint at the env-var/credential to check',
+    );
+  });
+
+  it('classifier surfaces 400 invalid_request_error with the SDK message (capped)', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*400|invalid_request_error/.test(region),
+      'Classifier must branch on status 400 / invalid_request_error',
+    );
+    assert.ok(
+      /Invalid request to AI backend/.test(region),
+      'Classifier must include human-readable phrasing for invalid-request errors',
+    );
+  });
+
+  it('classifier scrubs Claude API keys from any fallback message', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /sk-(?:ant-)?\[A-Za-z0-9_-\]\{20,?\}/.test(region) || /sk-\(\?:ant-\)\?\[A-Za-z0-9_-\]/.test(region),
+      'Classifier fallback must redact `sk-…` / `sk-ant-…` API keys before surfacing the message',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(region),
+      'Classifier must replace scrubbed token with a [REDACTED] sentinel',
+    );
+  });
+
+  it('handler logs structured error context with status + type + model', () => {
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 8000);
+    // Look for the structured console.error inside the catch.
+    assert.ok(
+      /console\.error\([^)]*\[widget-agent\][^)]*Error/.test(region),
+      'Catch must log a `[widget-agent] Error:` line for Railway operators to grep',
+    );
+    assert.ok(
+      /\bstatus\b/.test(region) && /\btype\b/.test(region) && /\bmodel\b/.test(region),
+      'Structured error log must include status + type + model so Railway logs are diagnosable without server-side reproduction',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // panel-layout — Pro CTAs must re-evaluate on Convex entitlement updates
 // ---------------------------------------------------------------------------
 //
