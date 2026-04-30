@@ -1343,6 +1343,68 @@ describe('widget-agent edge proxy — Convex entitlement fallback', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// entitlement-check — cache-write failure must NOT collapse to "no entitlement"
+// ---------------------------------------------------------------------------
+//
+// getEntitlements() returns null on three different failure modes — Convex
+// said no, Convex unreachable, and (the trap this test guards) cache-write
+// failed AFTER Convex confirmed the entitlement. Once Convex returns a valid
+// entitlement, an Upstash hiccup or any error inside setCachedJson must NOT
+// turn that yes into a null-meaning-no — that would 403 paying customers on
+// every call path this file gates, including the widget-agent fallback PR
+// #3505 just added.
+describe('entitlement-check — cache-write failure does not collapse confirmed entitlement', () => {
+  const src_ = src('server/_shared/entitlement-check.ts');
+
+  it('setCachedJson call is wrapped in its own try/catch', () => {
+    // Find the success-path block: `if (result) { … setCachedJson(…) … return result }`
+    const successIdx = src_.indexOf('if (result) {');
+    assert.ok(successIdx !== -1, 'success-path "if (result)" branch not found');
+    const region = src_.slice(successIdx, successIdx + 1500);
+
+    const setIdx = region.indexOf('setCachedJson(');
+    assert.ok(setIdx !== -1, 'setCachedJson call missing from success path');
+
+    // Walk backward from setCachedJson to find the nearest enclosing `try {`
+    // BEFORE the outer catch. The outer try is at the top of the function,
+    // far away — we want a LOCAL try/catch around the cache write so the
+    // safety property is explicit at the call site.
+    const beforeSet = region.slice(0, setIdx);
+    const lastTry = beforeSet.lastIndexOf('try {');
+    const lastCatch = beforeSet.lastIndexOf('catch');
+    assert.ok(
+      lastTry !== -1 && lastTry > lastCatch,
+      'setCachedJson must be inside a LOCAL try/catch within the success branch — relying on setCachedJson to swallow its own errors is fragile',
+    );
+
+    // The success-path return must come AFTER the try/catch, not inside the catch.
+    const returnIdx = region.indexOf('return result', setIdx);
+    assert.ok(
+      returnIdx !== -1,
+      '`return result` must follow the cache-write try/catch so a swallowed cache error still returns the confirmed entitlement',
+    );
+  });
+
+  it('cache-write catch logs but does not return null or throw', () => {
+    const successIdx = src_.indexOf('if (result) {');
+    const region = src_.slice(successIdx, successIdx + 1500);
+    // The catch block for cache write must NOT contain `return null` — that
+    // would re-introduce the bug. It also must not rethrow.
+    const cacheCatchMatch = region.match(/catch\s*\(\s*cacheErr[^)]*\)\s*\{([^}]*)\}/);
+    assert.ok(cacheCatchMatch, 'cache-write catch block must be named distinctly (e.g. cacheErr) so future readers see the intent');
+    const cacheCatchBody = cacheCatchMatch[1];
+    assert.ok(
+      !/return\s+null/.test(cacheCatchBody),
+      'cache-write catch must NOT return null — a confirmed entitlement must survive cache-write failure',
+    );
+    assert.ok(
+      !/throw\b/.test(cacheCatchBody),
+      'cache-write catch must NOT rethrow — that would bubble to the outer catch and collapse to null',
+    );
+  });
+});
+
 describe('WidgetChatModal — preflight 403 message branches on auth mode', () => {
   const modal = src('src/components/WidgetChatModal.ts');
   const en = JSON.parse(src('src/locales/en.json'));
