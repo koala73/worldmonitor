@@ -91,6 +91,18 @@ const RESEND_BACKOFF_MAX_RETRIES = 3;
  *  `assignAndExportWave` for consistency. */
 const REGISTRATIONS_PAGE_SIZE = 1000;
 
+/** Minimum picked count for a wave to be useful. Tied to
+ *  `MIN_DELIVERED_FOR_KILLGATE = 100` (rampRunner.ts) — if fewer than this
+ *  many contacts are picked, the wave's delivered count will never reach
+ *  the threshold needed for the kill-gate stats to be trusted, and the
+ *  next runDailyRamp tick gets stuck on `awaiting-prior-stats` forever.
+ *
+ *  Below this threshold, pickWaveAction treats the run as terminal —
+ *  marks `failed/pool-too-small`, deactivates the ramp, and clears the
+ *  lease. The waitlist is effectively drained; operator must extend the
+ *  curve OR restart the ramp manually if more contacts are wanted. */
+const MIN_USABLE_POOL_SIZE = 100;
+
 // ───────────────────────────────────────────────────────────────────────────
 // Helpers (pure)
 // ───────────────────────────────────────────────────────────────────────────
@@ -389,6 +401,7 @@ export const _markPickFailed = internalMutation({
     runId: v.string(),
     substatus: v.union(
       v.literal("empty-pool"),
+      v.literal("pool-too-small"),
       v.literal("segment-create-failed"),
       v.literal("persist-failed"),
     ),
@@ -408,7 +421,15 @@ export const _markPickFailed = internalMutation({
       updatedAt: now,
     });
 
-    if (substatus === "empty-pool") {
+    // Terminal-completion substatuses: clear the lease AND deactivate the
+    // ramp. Both 'empty-pool' (zero picked) and 'pool-too-small' (picked
+    // below MIN_USABLE_POOL_SIZE) mean the waitlist is drained — without
+    // deactivating, the next cron tick would re-fire pickWaveAction and
+    // hit the same condition repeatedly. For 'pool-too-small' specifically,
+    // the alternative — let the wave proceed with say 50 contacts — would
+    // strand the next cron tick on `awaiting-prior-stats` forever because
+    // delivered count never reaches MIN_DELIVERED_FOR_KILLGATE=100.
+    if (substatus === "empty-pool" || substatus === "pool-too-small") {
       const config = await ctx.db
         .query("broadcastRampConfig")
         .withIndex("by_key", (q) => q.eq("key", "current"))
@@ -418,7 +439,11 @@ export const _markPickFailed = internalMutation({
           pendingRunId: undefined,
           pendingRunStartedAt: undefined,
           pendingWaveLabel: undefined,
-          lastRunStatus: "no-op-empty-pool",
+          active: false,
+          lastRunStatus:
+            substatus === "empty-pool"
+              ? "ramp-complete-empty-pool"
+              : "ramp-complete-pool-too-small",
           lastRunAt: now,
         });
       }
@@ -500,7 +525,7 @@ export const pickWaveAction = internalAction({
 
       const picked = reservoir.values();
 
-      // Empty-pool guard. Clears the lease via _markPickFailed.
+      // Empty-pool guard. Clears the lease + deactivates the ramp.
       if (picked.length === 0) {
         await ctx.runMutation(internal.broadcast.waveRuns._markPickFailed, {
           runId: args.runId,
@@ -508,6 +533,26 @@ export const pickWaveAction = internalAction({
           error: "no unstamped registrations",
         });
         return { ok: false, reason: "empty-pool" };
+      }
+
+      // Pool-too-small guard. picked.length < MIN_USABLE_POOL_SIZE means
+      // the wave's delivered count will never reach the kill-gate threshold,
+      // so the next cron tick would get stuck on `awaiting-prior-stats`
+      // forever. Treat as terminal completion: deactivate the ramp + clear
+      // the lease, surface for operator triage. Operator can re-activate
+      // and extend `rampCurve` if more sends are wanted, OR run a final
+      // wave manually via direct `pickWaveAction` call (which bypasses this
+      // guard since the operator is taking deliberate action).
+      if (picked.length < MIN_USABLE_POOL_SIZE) {
+        await ctx.runMutation(internal.broadcast.waveRuns._markPickFailed, {
+          runId: args.runId,
+          substatus: "pool-too-small",
+          error:
+            `picked ${picked.length} contacts (< MIN_USABLE_POOL_SIZE=${MIN_USABLE_POOL_SIZE}); ` +
+            `ramp deactivated to avoid stranding the next cron tick on awaiting-prior-stats. ` +
+            `Operator: extend rampCurve + resumeRamp if more sends desired, or run a final wave manually.`,
+        });
+        return { ok: false, reason: "pool-too-small" };
       }
 
       // Step 3: create the Resend segment.
@@ -900,6 +945,20 @@ export const pushBatchAction = internalAction({
 // Finalize phase
 // ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * Lease + status CAS guard. Refuses unless:
+ *   - waveRuns.status === 'pushing' (or already 'broadcast-created' for
+ *     idempotency on retry — a duplicate finalizeWaveAction sees the same
+ *     broadcastId and is a no-op)
+ *   - broadcastRampConfig.pendingRunId === runId (still hold the lease)
+ *
+ * Without these guards, two concurrent finalizeWaveAction invocations
+ * (e.g. operator-triggered resumeFinalizeWaveRun while the original is
+ * mid-flight on a slow Resend response) could both call
+ * createProLaunchBroadcast, both call _markBroadcastCreated, and overwrite
+ * each other's broadcastId — leading to one of the two created Resend
+ * broadcasts being orphaned + duplicate sends downstream.
+ */
 export const _markBroadcastCreated = internalMutation({
   args: {
     runId: v.string(),
@@ -911,6 +970,33 @@ export const _markBroadcastCreated = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
     if (!run) throw new Error(`[_markBroadcastCreated] no run ${runId}`);
+
+    // Idempotent: if already broadcast-created with the SAME broadcastId,
+    // treat as no-op success. Different broadcastId = a duplicate Resend
+    // broadcast was created — surface as failure so the caller can decide
+    // (typically: log, don't proceed to send the new duplicate).
+    if (run.status === "broadcast-created") {
+      if (run.broadcastId === broadcastId) {
+        return { ok: true as const, alreadyMarked: true as const };
+      }
+      return {
+        ok: false as const,
+        reason: "duplicate-broadcast-detected" as const,
+        existing: run.broadcastId,
+      };
+    }
+    if (run.status !== "pushing") {
+      return { ok: false as const, reason: `wrong-status-${run.status}` as const };
+    }
+
+    const config = await ctx.db
+      .query("broadcastRampConfig")
+      .withIndex("by_key", (q) => q.eq("key", "current"))
+      .unique();
+    if (!config || config.pendingRunId !== runId) {
+      return { ok: false as const, reason: "lost-lease" as const };
+    }
+
     const now = Date.now();
     await ctx.db.patch(run._id, {
       status: "broadcast-created",
@@ -918,7 +1004,7 @@ export const _markBroadcastCreated = internalMutation({
       lastBatchAt: now, // re-arm in-flight guard for the send phase
       updatedAt: now,
     });
-    return { ok: true as const };
+    return { ok: true as const, alreadyMarked: false as const };
   },
 });
 
@@ -962,6 +1048,15 @@ export const _markFinalizeFailed = internalMutation({
  * `lastWave*` fields, clears the lease, AND marks `waveRuns.status='sent'`
  * — all in one transaction. The only path that reconciles the run with
  * the long-term ramp state.
+ *
+ * Lease + status CAS:
+ *   - waveRuns.status MUST be 'broadcast-created' (or 'sent' for idempotency
+ *     on a duplicate finalize — returns no-op success without re-advancing
+ *     the tier)
+ *   - broadcastRampConfig.pendingRunId MUST === runId
+ *
+ * Without these, two concurrent finalizes could both advance currentTier
+ * (skipping a wave's worth of progress) AND both clear the lease.
  */
 export const _finalizeWaveRun = internalMutation({
   args: {
@@ -974,6 +1069,20 @@ export const _finalizeWaveRun = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
     if (!run) throw new Error(`[_finalizeWaveRun] no run ${runId}`);
+
+    // Status check FIRST — broadcastId presence is downstream of being in
+    // broadcast-created status. Checking presence before status would mask
+    // a wrong-status caller behind a misleading "missing broadcastId" error.
+    if (run.status === "sent") {
+      // Idempotent: a duplicate finalize on an already-sent run is a no-op,
+      // not an error. Don't re-advance the tier.
+      return { ok: true as const, alreadySent: true as const, advancedToTier: undefined };
+    }
+    if (run.status !== "broadcast-created") {
+      throw new Error(
+        `[_finalizeWaveRun] run ${runId} is ${run.status}, expected broadcast-created`,
+      );
+    }
     if (!run.broadcastId || !run.segmentId) {
       throw new Error(
         `[_finalizeWaveRun] run ${runId} missing broadcastId/segmentId`,
@@ -985,6 +1094,12 @@ export const _finalizeWaveRun = internalMutation({
       .withIndex("by_key", (q) => q.eq("key", "current"))
       .unique();
     if (!config) throw new Error("[_finalizeWaveRun] no broadcastRampConfig");
+    if (config.pendingRunId !== runId) {
+      throw new Error(
+        `[_finalizeWaveRun] lost lease: expected ${runId}, found ${config.pendingRunId ?? "<cleared>"}. ` +
+        `Refusing to advance tier — operator force-released the lease, or another run took over.`,
+      );
+    }
 
     const now = Date.now();
     const nextTier = config.currentTier + 1;
@@ -1056,10 +1171,23 @@ export const finalizeWaveAction = internalAction({
         );
         throw err;
       }
-      await ctx.runMutation(
+      // CAS-check the broadcast-created transition. A concurrent finalize
+      // (e.g. operator-triggered resume mid-flight) could have already
+      // created its own broadcast and patched the run. If we lost the race,
+      // we just created an orphan broadcast in Resend — log loudly so the
+      // operator knows to clean it up, then exit without sending.
+      const markResult = await ctx.runMutation(
         internal.broadcast.waveRuns._markBroadcastCreated,
         { runId, broadcastId: createResult.broadcastId },
       );
+      if (!markResult.ok) {
+        console.error(
+          `[finalizeWaveAction] CAS lost on _markBroadcastCreated runId=${runId} reason=${markResult.reason} ` +
+          `our-broadcastId=${createResult.broadcastId}. The Resend broadcast we created is orphaned — ` +
+          `operator should delete it via Resend dashboard if not the same as the winning runner's broadcastId.`,
+        );
+        return { ok: false, reason: `markBroadcastCreated-${markResult.reason}` };
+      }
     } else if (info.run.status !== "broadcast-created") {
       return { ok: false, reason: `wrong-status-${info.run.status}` };
     }
@@ -1071,6 +1199,22 @@ export const finalizeWaveAction = internalAction({
     );
     if (!after?.run.broadcastId) {
       throw new Error(`[finalizeWaveAction] runId=${runId} missing broadcastId post-create`);
+    }
+    // Final lease+status revalidation before send — narrows the duplicate-
+    // send window. (Doesn't eliminate it: send IS external I/O; two actions
+    // racing past this point still both call sendProLaunchBroadcast. Resend's
+    // /broadcasts/:id/send rejects already-sent broadcasts with 422, which
+    // is our last line of defence — if both actions raced past here, the
+    // loser sees a Resend 422 and goes to send-broadcast-failed; the
+    // _finalizeWaveRun's idempotency on already-sent then handles cleanup.)
+    if (after.run.status === "sent") {
+      // Another finalize already won. Idempotent no-op.
+      console.log(`[finalizeWaveAction] runId=${runId} already sent by another invocation — exiting clean`);
+      return { ok: true, reason: "already-sent" };
+    }
+    if (!after.configHoldsLease) {
+      console.warn(`[finalizeWaveAction] runId=${runId} lost lease before send — exiting`);
+      return { ok: false, reason: "lost-lease-pre-send" };
     }
     try {
       await ctx.runAction(
@@ -1089,11 +1233,16 @@ export const finalizeWaveAction = internalAction({
       throw err;
     }
 
-    // Success — atomic finalize.
-    await ctx.runMutation(internal.broadcast.waveRuns._finalizeWaveRun, {
+    // Success — atomic finalize. _finalizeWaveRun's CAS returns
+    // {alreadySent: true} as a no-op if a concurrent finalize already
+    // committed; that's fine.
+    const fin = await ctx.runMutation(internal.broadcast.waveRuns._finalizeWaveRun, {
       runId,
       sentAt: Date.now(),
     });
+    if ("alreadySent" in fin && fin.alreadySent) {
+      return { ok: true, reason: "already-sent" };
+    }
     return { ok: true };
   },
 });
@@ -1210,6 +1359,15 @@ export const discardWaveRun = internalMutation({
       pendingBroadcastId: undefined,
       pendingBroadcastAt: undefined,
     });
+    // Schedule cleanup IMMEDIATELY (not via the daily cron) so any contacts
+    // that were `status='pushed'` during the discarded run are unstamped
+    // before the next runDailyRamp tick — otherwise they'd be excluded
+    // from future picks despite never having received the email.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.broadcast.waveRuns.cleanupDiscardedWavePickedContactsAction,
+      { runId },
+    );
     return {
       ok: true as const,
       newWaveLabelOffset: config.waveLabelOffset + 1,
@@ -1338,30 +1496,85 @@ export const resumeFinalizeWaveRun = internalMutation({
 // Cleanup
 // ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * Cleanup mutation. Two responsibilities, in order:
+ *
+ *   1. UNSTAMP — for each `wavePickedContacts` row with `status='pushed'`,
+ *      look up the matching `registrations` row and clear `proLaunchWave`
+ *      iff it still equals THIS run's `waveLabel` (defensive — don't
+ *      clobber a contact's stamp from a later wave). Without this, a
+ *      contact pushed during a discarded run is permanently excluded from
+ *      future picks despite never having received the email.
+ *   2. DELETE — remove the `wavePickedContacts` row.
+ *
+ * Chunked at 500 rows. Caller (the cleanup action) loops until `hasMore`
+ * is false. Idempotent: if called twice, the second call sees no rows
+ * and returns `{deleted: 0, hasMore: false}`.
+ */
 export const _cleanupDiscardedWavePickedContacts = internalMutation({
   args: { runId: v.string() },
   handler: async (ctx, { runId }) => {
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+    const waveLabel = run?.waveLabel;
+
     const rows = await ctx.db
       .query("wavePickedContacts")
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .take(CLEANUP_CHUNK_SIZE);
+    let unstamped = 0;
     for (const row of rows) {
+      if (row.status === "pushed" && waveLabel) {
+        const reg = await ctx.db
+          .query("registrations")
+          .withIndex("by_normalized_email", (q) =>
+            q.eq("normalizedEmail", row.normalizedEmail),
+          )
+          .first();
+        // Only clear if the stamp still matches THIS run's wave — a contact
+        // re-picked into a later wave would have proLaunchWave set to that
+        // newer wave's label; leave it alone.
+        if (reg && reg.proLaunchWave === waveLabel) {
+          await ctx.db.patch(reg._id, {
+            proLaunchWave: undefined,
+            proLaunchWaveAssignedAt: undefined,
+          });
+          unstamped++;
+        }
+      }
       await ctx.db.delete(row._id);
     }
-    return { deleted: rows.length, hasMore: rows.length === CLEANUP_CHUNK_SIZE };
+    return {
+      deleted: rows.length,
+      unstamped,
+      hasMore: rows.length === CLEANUP_CHUNK_SIZE,
+    };
   },
 });
 
 /**
- * Cron-scheduled action that finds discarded/failed `waveRuns` rows older
- * than 24h and chunked-deletes their `wavePickedContacts`. Self-schedules
- * the next chunk if any rows remain.
+ * Cleanup orchestrator. Two invocation modes:
+ *   - With `runId` arg: targeted cleanup, scheduled IMMEDIATELY by
+ *     `discardWaveRun` so unstamping happens before the next runDailyRamp
+ *     tick (otherwise `status='pushed'` contacts stay stamped until the
+ *     daily cron runs).
+ *   - Without `runId`: daily-cron scan of all `failed` waveRuns rows >24h
+ *     old (cleans up runs the operator didn't explicitly discard).
+ *
+ * Both modes self-schedule the next 500-row chunk until each run is fully
+ * drained, then move to the next candidate.
  */
 export const cleanupDiscardedWavePickedContactsAction = internalAction({
   args: {
     runId: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ deleted: number; hasMore: boolean }> => {
+  handler: async (ctx, args): Promise<{
+    deleted: number;
+    unstamped: number;
+    hasMore: boolean;
+  }> => {
     if (args.runId) {
       const result = await ctx.runMutation(
         internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
@@ -1373,6 +1586,11 @@ export const cleanupDiscardedWavePickedContactsAction = internalAction({
           internal.broadcast.waveRuns.cleanupDiscardedWavePickedContactsAction,
           { runId: args.runId },
         );
+      } else if (result.unstamped > 0) {
+        console.log(
+          `[cleanupDiscardedWavePickedContactsAction] runId=${args.runId} ` +
+          `unstamped ${result.unstamped} registrations (re-eligible for future picks)`,
+        );
       }
       return result;
     }
@@ -1383,12 +1601,14 @@ export const cleanupDiscardedWavePickedContactsAction = internalAction({
       {},
     );
     let totalDeleted = 0;
+    let totalUnstamped = 0;
     for (const runId of candidates) {
       const result = await ctx.runMutation(
         internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
         { runId },
       );
       totalDeleted += result.deleted;
+      totalUnstamped += result.unstamped;
       if (result.hasMore) {
         await ctx.scheduler.runAfter(
           0,
@@ -1397,7 +1617,7 @@ export const cleanupDiscardedWavePickedContactsAction = internalAction({
         );
       }
     }
-    return { deleted: totalDeleted, hasMore: false };
+    return { deleted: totalDeleted, unstamped: totalUnstamped, hasMore: false };
   },
 });
 

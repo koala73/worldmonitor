@@ -219,7 +219,11 @@ describe("pick-phase mutations", () => {
     expect(run!.failureSubstatus).toBe("empty-pool");
     const config = await readConfig(t);
     expect(config!.pendingRunId).toBeUndefined();
-    expect(config!.lastRunStatus).toBe("no-op-empty-pool");
+    // PR2 review-fix 3: empty-pool now also DEACTIVATES the ramp (not just
+    // clears the lease) and uses a `ramp-complete-*` status to signal
+    // terminal completion to the operator.
+    expect(config!.active).toBe(false);
+    expect(config!.lastRunStatus).toBe("ramp-complete-empty-pool");
   });
 
   test("_markPickFailed segment-create-failed KEEPS the lease (operator must discard)", async () => {
@@ -598,5 +602,325 @@ describe("_listInFlightWaveRuns + cleanup", () => {
     expect(r.hasMore).toBe(false);
     const remaining = await readContacts(t, "run-1");
     expect(remaining).toHaveLength(0);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR2 review-fix 1: _markBroadcastCreated + _finalizeWaveRun lease+status CAS
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("review-fix 1: lease+status CAS", () => {
+  async function setupPushing(t: ReturnType<typeof convexTest>) {
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+  }
+
+  test("_markBroadcastCreated: idempotent on re-call with same broadcastId", async () => {
+    const t = convexTest(schema, modules);
+    await setupPushing(t);
+    const r1 = await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    expect(r1).toMatchObject({ ok: true, alreadyMarked: false });
+    const r2 = await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    expect(r2).toMatchObject({ ok: true, alreadyMarked: true });
+  });
+
+  test("_markBroadcastCreated: refuses different broadcastId on already-marked run (duplicate detection)", async () => {
+    const t = convexTest(schema, modules);
+    await setupPushing(t);
+    await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    const r = await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_OTHER",
+    });
+    expect(r).toMatchObject({
+      ok: false,
+      reason: "duplicate-broadcast-detected",
+      existing: "bro_xyz",
+    });
+  });
+
+  test("_markBroadcastCreated: refuses on lost lease", async () => {
+    const t = convexTest(schema, modules);
+    await setupPushing(t);
+    // Force-clear the lease (simulates operator forceReleaseLease).
+    await t.run(async (ctx) => {
+      const config = await ctx.db
+        .query("broadcastRampConfig")
+        .withIndex("by_key", (q) => q.eq("key", "current"))
+        .unique();
+      await ctx.db.patch(config!._id, { pendingRunId: undefined });
+    });
+    const r = await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    expect(r).toMatchObject({ ok: false, reason: "lost-lease" });
+  });
+
+  test("_markBroadcastCreated: refuses on wrong status (e.g. picking)", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    // Status is still 'picking' — not allowed.
+    const r = await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    expect(r).toMatchObject({ ok: false, reason: "wrong-status-picking" });
+  });
+
+  test("_finalizeWaveRun: idempotent on already-sent run (no-op, no double-advance)", async () => {
+    const t = convexTest(schema, modules);
+    await setupPushing(t);
+    await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    const sentAt = Date.now();
+    const r1 = await t.mutation(internal.broadcast.waveRuns._finalizeWaveRun, {
+      runId: "run-1", sentAt,
+    });
+    expect(r1).toMatchObject({ ok: true, advancedToTier: 1 });
+    // Second call should NOT advance the tier again.
+    const r2 = await t.mutation(internal.broadcast.waveRuns._finalizeWaveRun, {
+      runId: "run-1", sentAt: sentAt + 1000,
+    });
+    expect(r2).toMatchObject({ ok: true, alreadySent: true });
+    const config = await readConfig(t);
+    expect(config!.currentTier).toBe(1); // NOT 2
+  });
+
+  test("_finalizeWaveRun: throws on lost lease (refuses to advance after operator force-release)", async () => {
+    const t = convexTest(schema, modules);
+    await setupPushing(t);
+    await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    await t.run(async (ctx) => {
+      const config = await ctx.db
+        .query("broadcastRampConfig")
+        .withIndex("by_key", (q) => q.eq("key", "current"))
+        .unique();
+      await ctx.db.patch(config!._id, { pendingRunId: undefined });
+    });
+    await expect(
+      t.mutation(internal.broadcast.waveRuns._finalizeWaveRun, {
+        runId: "run-1", sentAt: Date.now(),
+      }),
+    ).rejects.toThrow(/lost lease/);
+  });
+
+  test("_finalizeWaveRun: throws on wrong status (e.g. pushing instead of broadcast-created)", async () => {
+    const t = convexTest(schema, modules);
+    await setupPushing(t);
+    // Skip _markBroadcastCreated — try to finalize from 'pushing' directly.
+    await expect(
+      t.mutation(internal.broadcast.waveRuns._finalizeWaveRun, {
+        runId: "run-1", sentAt: Date.now(),
+      }),
+    ).rejects.toThrow(/expected broadcast-created/);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR2 review-fix 2: discardWaveRun unstamps registrations
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("review-fix 2: unstamp on discard", () => {
+  test("_cleanupDiscardedWavePickedContacts unstamps registrations matching the run's waveLabel", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 3, batchSize: 50,
+    });
+    const emails = ["a@t", "b@t", "c@t"];
+    await seedRegistrations(t, emails);
+    await t.mutation(internal.broadcast.waveRuns._persistPickedBatch, {
+      runId: "run-1", contacts: emails,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 3, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    // Push two of three (third stays pending). All three were seeded with
+    // matching registrations by seedRegistrations.
+    await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      runId: "run-1", normalizedEmail: "a@t", waveLabel: "pro-launch-wave-4",
+    });
+    await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      runId: "run-1", normalizedEmail: "b@t", waveLabel: "pro-launch-wave-4",
+    });
+    // Verify a + b are stamped before cleanup.
+    const stampedBefore = await t.run(async (ctx) =>
+      ctx.db.query("registrations").collect(),
+    );
+    expect(stampedBefore.filter((r) => r.proLaunchWave === "pro-launch-wave-4")).toHaveLength(2);
+
+    // Cleanup should unstamp the 2 pushed contacts and delete all 3 wavePickedContacts rows.
+    const r = await t.mutation(
+      internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
+      { runId: "run-1" },
+    );
+    expect(r).toMatchObject({ deleted: 3, unstamped: 2, hasMore: false });
+
+    const stampedAfter = await t.run(async (ctx) =>
+      ctx.db.query("registrations").collect(),
+    );
+    expect(stampedAfter.filter((r) => r.proLaunchWave === "pro-launch-wave-4")).toHaveLength(0);
+    const remainingContacts = await readContacts(t, "run-1");
+    expect(remainingContacts).toHaveLength(0);
+  });
+
+  test("_cleanupDiscardedWavePickedContacts does NOT unstamp a contact re-picked into a later wave", async () => {
+    // Defensive: if the operator discards run-1, then a later run-2 picks
+    // and stamps the same email with a different waveLabel, the cleanup of
+    // run-1 must NOT clear run-2's stamp.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await seedRegistrations(t, ["a@t"]);
+    await t.mutation(internal.broadcast.waveRuns._persistPickedBatch, {
+      runId: "run-1", contacts: ["a@t"],
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      runId: "run-1", normalizedEmail: "a@t", waveLabel: "pro-launch-wave-4",
+    });
+    // Manually re-stamp the registration as if it were re-picked into wave-5.
+    await t.run(async (ctx) => {
+      const reg = await ctx.db
+        .query("registrations")
+        .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", "a@t"))
+        .first();
+      await ctx.db.patch(reg!._id, { proLaunchWave: "pro-launch-wave-5" });
+    });
+    // Cleanup run-1 — must leave the wave-5 stamp alone.
+    const r = await t.mutation(
+      internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
+      { runId: "run-1" },
+    );
+    expect(r.unstamped).toBe(0);
+    const reg = await t.run(async (ctx) =>
+      ctx.db
+        .query("registrations")
+        .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", "a@t"))
+        .first(),
+    );
+    expect(reg!.proLaunchWave).toBe("pro-launch-wave-5");
+  });
+
+  test("discardWaveRun + cleanup unstamps the registration (action runs after discard)", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await seedRegistrations(t, ["a@t"]);
+    await t.mutation(internal.broadcast.waveRuns._persistPickedBatch, {
+      runId: "run-1", contacts: ["a@t"],
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    await t.mutation(internal.broadcast.waveRuns._markContactPushed, {
+      runId: "run-1", normalizedEmail: "a@t", waveLabel: "pro-launch-wave-4",
+    });
+    // Operator discard — flips the run to failed/discarded-by-operator and
+    // schedules cleanup (we exercise the cleanup mutation directly here
+    // since convex-test's action-dispatch path emits a benign "Write outside
+    // of transaction" rejection on schedule.runAfter; the BEHAVIOR we want
+    // to verify is that cleanup unstamps).
+    await t.mutation(internal.broadcast.waveRuns.discardWaveRun, {
+      runId: "run-1", reason: "operator decision",
+    });
+    // Run the cleanup mutation directly (same one the eager scheduler call
+    // would invoke). Verifies the unstamp behavior on a discarded run.
+    const r = await t.mutation(
+      internal.broadcast.waveRuns._cleanupDiscardedWavePickedContacts,
+      { runId: "run-1" },
+    );
+    expect(r.unstamped).toBe(1);
+    const reg = await t.run(async (ctx) =>
+      ctx.db
+        .query("registrations")
+        .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", "a@t"))
+        .first(),
+    );
+    expect(reg!.proLaunchWave).toBeUndefined();
+    // Drain the action that discardWaveRun also scheduled (it's a no-op
+    // by this point since cleanup is already done; just suppress the
+    // convex-test scheduler artifact).
+    await t.finishInProgressScheduledFunctions().catch(() => {});
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR2 review-fix 3: pool-too-small terminates ramp
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("review-fix 3: pool-too-small terminates ramp", () => {
+  test("_markPickFailed pool-too-small clears lease + DEACTIVATES the ramp", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1500, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1",
+      substatus: "pool-too-small",
+      error: "picked 50 contacts < threshold",
+    });
+    const config = await readConfig(t);
+    expect(config!.active).toBe(false);
+    expect(config!.pendingRunId).toBeUndefined();
+    expect(config!.lastRunStatus).toBe("ramp-complete-pool-too-small");
+    const run = await readWaveRun(t, "run-1");
+    expect(run!.status).toBe("failed");
+    expect(run!.failureSubstatus).toBe("pool-too-small");
+  });
+
+  test("_markPickFailed empty-pool also DEACTIVATES the ramp (terminal completion)", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1500, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1", substatus: "empty-pool", error: "no contacts",
+    });
+    const config = await readConfig(t);
+    expect(config!.active).toBe(false);
+    expect(config!.lastRunStatus).toBe("ramp-complete-empty-pool");
+  });
+
+  test("_markPickFailed segment-create-failed does NOT deactivate (operator must triage)", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1500, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickFailed, {
+      runId: "run-1", substatus: "segment-create-failed", error: "Resend 500",
+    });
+    const config = await readConfig(t);
+    // Ramp stays active — operator inspects + discards. Lease stays held.
+    expect(config!.active).toBe(true);
+    expect(config!.pendingRunId).toBe("run-1");
   });
 });
