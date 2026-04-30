@@ -184,14 +184,11 @@ http.route({
     const provided =
       request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
 
-    // Drop only when a secret header IS provided but doesn't match (spoofing).
-    // If the header is absent, Telegram's secret_token registration may have
-    // silently failed — the pairing token (43-char, single-use, 15-min TTL)
-    // provides sufficient defence against token guessing.
-    if (provided && secret && !(await timingSafeEqualStrings(provided, secret))) {
+    // Reject when a secret is configured but the header is absent or wrong.
+    // This prevents forged requests with arbitrary chatId values (IDOR).
+    if (secret && !(provided && await timingSafeEqualStrings(provided, secret))) {
       return new Response("OK", { status: 200 });
     }
-    if (!provided) console.warn("[telegram-webhook] secret header absent — relying on pairing token auth");
 
     let update: {
       message?: {
