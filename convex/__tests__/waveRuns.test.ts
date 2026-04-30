@@ -924,3 +924,236 @@ describe("review-fix 3: pool-too-small terminates ramp", () => {
     expect(config!.pendingRunId).toBe("run-1");
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR2 review-fix 5: cleanup excludes recoverable finalize failures
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("review-fix 5: cleanup excludes recoverable failures", () => {
+  async function setupOldFailedRun(
+    t: ReturnType<typeof convexTest>,
+    substatus: string,
+  ) {
+    // Seed a failed run with updatedAt 25h ago so it passes the age cutoff.
+    const oldTime = Date.now() - 25 * 60 * 60 * 1000;
+    await seedRampConfig(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("waveRuns", {
+        runId: `run-${substatus}`,
+        waveLabel: `pro-launch-wave-${substatus}`,
+        status: "failed",
+        failureSubstatus: substatus,
+        requestedCount: 100,
+        totalCount: 100,
+        underfilled: false,
+        pushedCount: 50,
+        failedCount: 0,
+        batchSize: 50,
+        createdAt: oldTime,
+        updatedAt: oldTime,
+      });
+    });
+  }
+
+  test("auto-cleanup INCLUDES discarded-by-operator runs", async () => {
+    const t = convexTest(schema, modules);
+    await setupOldFailedRun(t, "discarded-by-operator");
+    const candidates = await t.query(
+      internal.broadcast.waveRuns._listFailedWaveRunsForCleanup,
+      {},
+    );
+    expect(candidates).toContain("run-discarded-by-operator");
+  });
+
+  test("auto-cleanup INCLUDES batch-failure-rate-exceeded (24h safety net)", async () => {
+    const t = convexTest(schema, modules);
+    await setupOldFailedRun(t, "batch-failure-rate-exceeded");
+    const candidates = await t.query(
+      internal.broadcast.waveRuns._listFailedWaveRunsForCleanup,
+      {},
+    );
+    expect(candidates).toContain("run-batch-failure-rate-exceeded");
+  });
+
+  test("auto-cleanup EXCLUDES recoverable create-broadcast-failed", async () => {
+    const t = convexTest(schema, modules);
+    await setupOldFailedRun(t, "create-broadcast-failed");
+    const candidates = await t.query(
+      internal.broadcast.waveRuns._listFailedWaveRunsForCleanup,
+      {},
+    );
+    // Operator may yet run resumeFinalizeWaveRun; cleanup would unstamp
+    // pushed contacts and a subsequent successful send would re-stamp them
+    // — risking duplicate outreach. Skip these in auto-cleanup.
+    expect(candidates).not.toContain("run-create-broadcast-failed");
+  });
+
+  test("auto-cleanup EXCLUDES recoverable send-broadcast-failed", async () => {
+    const t = convexTest(schema, modules);
+    await setupOldFailedRun(t, "send-broadcast-failed");
+    const candidates = await t.query(
+      internal.broadcast.waveRuns._listFailedWaveRunsForCleanup,
+      {},
+    );
+    expect(candidates).not.toContain("run-send-broadcast-failed");
+  });
+
+  test("auto-cleanup EXCLUDES failed runs with no substatus (defensive)", async () => {
+    const t = convexTest(schema, modules);
+    const oldTime = Date.now() - 25 * 60 * 60 * 1000;
+    await seedRampConfig(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("waveRuns", {
+        runId: "run-no-substatus",
+        waveLabel: "pro-launch-wave-x",
+        status: "failed", // status='failed' but no failureSubstatus set
+        requestedCount: 100, totalCount: 100, underfilled: false,
+        pushedCount: 0, failedCount: 0, batchSize: 50,
+        createdAt: oldTime, updatedAt: oldTime,
+      });
+    });
+    const candidates = await t.query(
+      internal.broadcast.waveRuns._listFailedWaveRunsForCleanup,
+      {},
+    );
+    expect(candidates).not.toContain("run-no-substatus");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR2 review-fix 6: _markFinalizeFailed terminal CAS + markFinalizeRecovered strict
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("review-fix 6: terminal-CAS on finalize failure / recovery", () => {
+  async function setupSent(t: ReturnType<typeof convexTest>) {
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    await t.mutation(internal.broadcast.waveRuns._finalizeWaveRun, {
+      runId: "run-1", sentAt: Date.now(),
+    });
+  }
+
+  test("_markFinalizeFailed: refuses to overwrite status='sent' (duplicate-finalize loser)", async () => {
+    const t = convexTest(schema, modules);
+    await setupSent(t);
+    // Loser of a finalize race calls _markFinalizeFailed after Resend
+    // returns 422 already-sent.
+    const r = await t.mutation(internal.broadcast.waveRuns._markFinalizeFailed, {
+      runId: "run-1",
+      substatus: "send-broadcast-failed",
+      error: "Resend 422 already sent",
+    });
+    expect(r).toMatchObject({ ok: false, reason: "already-sent" });
+    // Run state unchanged — sent stays sent.
+    const run = await readWaveRun(t, "run-1");
+    expect(run!.status).toBe("sent");
+    expect(run!.failureSubstatus).toBeUndefined();
+  });
+
+  test("_markFinalizeFailed: refuses to overwrite a different existing substatus", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    // First failure — create-broadcast-failed.
+    await t.mutation(internal.broadcast.waveRuns._markFinalizeFailed, {
+      runId: "run-1", substatus: "create-broadcast-failed", error: "Resend 500",
+    });
+    // Second mutation tries to relabel — refuses.
+    const r = await t.mutation(internal.broadcast.waveRuns._markFinalizeFailed, {
+      runId: "run-1", substatus: "send-broadcast-failed", error: "different reason",
+    });
+    expect(r).toMatchObject({
+      ok: false,
+      reason: "already-failed-different-substatus",
+      existing: "create-broadcast-failed",
+    });
+  });
+
+  test("markFinalizeRecovered: throws on status='sent' (no double-advance)", async () => {
+    const t = convexTest(schema, modules);
+    await setupSent(t);
+    // Even if a stale failureSubstatus was somehow set, status='sent' must block recovery.
+    await t.run(async (ctx) => {
+      const run = await ctx.db
+        .query("waveRuns")
+        .withIndex("by_runId", (q) => q.eq("runId", "run-1"))
+        .unique();
+      // Force a malformed state (won't happen in practice now that
+      // _markFinalizeFailed CAS-rejects, but tests defense in depth).
+      await ctx.db.patch(run!._id, { failureSubstatus: "send-broadcast-failed" });
+    });
+    await expect(
+      t.mutation(internal.broadcast.waveRuns.markFinalizeRecovered, {
+        runId: "run-1", sentAt: Date.now(), reason: "stale state recovery",
+      }),
+    ).rejects.toThrow(/already finalized|requires status/);
+    const config = await readConfig(t);
+    expect(config!.currentTier).toBe(1); // NOT advanced again
+  });
+
+  test("markFinalizeRecovered: throws on lost lease (refuses to advance from stale runId)", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    // Force-clear the lease (operator did forceReleaseLease).
+    await t.run(async (ctx) => {
+      const config = await ctx.db
+        .query("broadcastRampConfig")
+        .withIndex("by_key", (q) => q.eq("key", "current"))
+        .unique();
+      await ctx.db.patch(config!._id, { pendingRunId: undefined });
+    });
+    await expect(
+      t.mutation(internal.broadcast.waveRuns.markFinalizeRecovered, {
+        runId: "run-1", sentAt: Date.now(), reason: "operator verified",
+      }),
+    ).rejects.toThrow(/lost lease/);
+  });
+
+  test("markFinalizeRecovered: succeeds on broadcast-created with held lease", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.waveRuns._claimWaveRunLease, {
+      waveLabel: "pro-launch-wave-4", runId: "run-1", requestedCount: 1, batchSize: 50,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPickComplete, {
+      runId: "run-1", segmentId: "seg_abc", totalCount: 1, underfilled: false,
+    });
+    await t.mutation(internal.broadcast.waveRuns._markPushingStarted, { runId: "run-1" });
+    await t.mutation(internal.broadcast.waveRuns._markBroadcastCreated, {
+      runId: "run-1", broadcastId: "bro_xyz",
+    });
+    const sentAt = Date.now();
+    const r = await t.mutation(internal.broadcast.waveRuns.markFinalizeRecovered, {
+      runId: "run-1", sentAt, reason: "Resend dashboard confirmed sent",
+    });
+    expect(r).toMatchObject({ ok: true, advancedToTier: 1 });
+    const config = await readConfig(t);
+    expect(config!.currentTier).toBe(1);
+    expect(config!.lastWaveSentAt).toBe(sentAt);
+  });
+});

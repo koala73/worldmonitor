@@ -1045,6 +1045,34 @@ export const runDailyRamp = internalAction({
       return { status: "wave-in-flight", detail: top.runId };
     }
 
+    // Belt-and-suspenders lease check. `_listInFlightWaveRuns` only returns
+    // runs in active states (picking/segment-created/pushing/broadcast-created)
+    // — it does NOT include `failed` runs. But `failed` runs may STILL hold
+    // the lease (e.g. `persist-failed`, `segment-create-failed`,
+    // `batch-failure-rate-exceeded` all preserve the lease until the
+    // operator explicitly discards). Without this check, we'd schedule a
+    // new pickWaveAction whose `_claimWaveRunLease` then refuses with
+    // `lease-held` — operator sees `wave-scheduled` but the ramp is
+    // actually blocked waiting for them. Surface the failed-with-lease
+    // case explicitly so the operator knows to act.
+    if (row.pendingRunId) {
+      // Look up the run to surface its substatus for operator triage.
+      const heldRun = await ctx.runQuery(
+        internal.broadcast.waveRuns.getWaveRunStatus,
+        { runId: row.pendingRunId },
+      );
+      const detail =
+        heldRun !== null
+          ? `${row.pendingRunId} status=${heldRun.status}` +
+            (heldRun.failureSubstatus ? ` substatus=${heldRun.failureSubstatus}` : "")
+          : row.pendingRunId;
+      console.error(
+        `[runDailyRamp] LEASE HELD by ${detail} — likely a failed run pending operator action ` +
+        `(resumeFinalizeWaveRun / discardWaveRun depending on substatus). Skipping today's tick.`,
+      );
+      return { status: "lease-held-by-failed-run", detail };
+    }
+
     // ──── Step 4: schedule pickWaveAction (fire-and-forget via scheduler) ────
     // Use ctx.scheduler.runAfter(0, ...) — NOT ctx.runAction(...) — so the
     // entire pick→push→finalize pipeline runs in fresh execution contexts,

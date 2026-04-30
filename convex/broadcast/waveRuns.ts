@@ -1008,6 +1008,14 @@ export const _markBroadcastCreated = internalMutation({
   },
 });
 
+/**
+ * CAS-guarded failure recorder. Refuses to overwrite a terminal-success row
+ * (`status='sent'`) — without this guard, a duplicate finalize action whose
+ * Resend send returns "already sent" 422 would overwrite the WINNING
+ * finalize's clean state with `failureSubstatus='send-broadcast-failed'`,
+ * and a subsequent operator `markFinalizeRecovered` would re-advance the
+ * tier a second time.
+ */
 export const _markFinalizeFailed = internalMutation({
   args: {
     runId: v.string(),
@@ -1023,6 +1031,29 @@ export const _markFinalizeFailed = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
     if (!run) throw new Error(`[_markFinalizeFailed] no run ${runId}`);
+
+    // Terminal-status CAS. If a concurrent finalize already committed
+    // status='sent', this is a duplicate-finalize loser whose Resend
+    // 422-already-sent error landed it here. Treat as no-op success — the
+    // winner's state is correct; we should not overwrite it.
+    if (run.status === "sent") {
+      return { ok: false as const, reason: "already-sent" as const };
+    }
+    // Defensive: if already in a failed-with-different-substatus state,
+    // refuse to overwrite. Operator's existing recovery routing depends
+    // on the original substatus.
+    if (
+      run.status === "failed" &&
+      run.failureSubstatus !== undefined &&
+      run.failureSubstatus !== substatus
+    ) {
+      return {
+        ok: false as const,
+        reason: "already-failed-different-substatus" as const,
+        existing: run.failureSubstatus,
+      };
+    }
+
     const now = Date.now();
     // For send-broadcast-failed we keep status='broadcast-created' so the
     // discriminator is the substatus, not the status — clearer for operator
@@ -1222,7 +1253,7 @@ export const finalizeWaveAction = internalAction({
         { broadcastId: after.run.broadcastId },
       );
     } catch (err) {
-      await ctx.runMutation(
+      const failResult = await ctx.runMutation(
         internal.broadcast.waveRuns._markFinalizeFailed,
         {
           runId,
@@ -1230,6 +1261,16 @@ export const finalizeWaveAction = internalAction({
           error: err instanceof Error ? err.message : String(err),
         },
       );
+      // CAS detected the run is already 'sent' — this is a duplicate finalize
+      // whose Resend call returned 422 already-sent (the winner finalized
+      // ahead of us). Don't propagate the throw; the run state is correct.
+      if (!failResult.ok && failResult.reason === "already-sent") {
+        console.log(
+          `[finalizeWaveAction] runId=${runId} send returned error but run already sent ` +
+          `by another invocation — treating as duplicate-finalize loser (clean exit)`,
+        );
+        return { ok: true, reason: "already-sent-duplicate-loser" };
+      }
       throw err;
     }
 
@@ -1265,9 +1306,17 @@ export const markFinalizeRecovered = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
     if (!run) throw new Error(`[markFinalizeRecovered] no run ${runId}`);
-    if (run.failureSubstatus !== "send-broadcast-failed" && run.status !== "broadcast-created") {
+
+    // Strict status guard. Substatus alone is insufficient: a duplicate
+    // finalize loser could have stamped `failureSubstatus='send-broadcast-failed'`
+    // onto a run that's actually `status='sent'` — without this check,
+    // markFinalizeRecovered would re-advance the tier a second time.
+    if (run.status !== "broadcast-created") {
       throw new Error(
-        `[markFinalizeRecovered] run ${runId} not in send-failure state (status=${run.status}, substatus=${run.failureSubstatus ?? "<none>"})`,
+        `[markFinalizeRecovered] run ${runId} status=${run.status} — recovery requires status='broadcast-created'. ` +
+        (run.status === "sent"
+          ? `The run was already finalized; nothing to recover. Inspect lastWaveSentAt on broadcastRampConfig.`
+          : `If in 'failed', use resumeFinalizeWaveRun (which patches back to broadcast-created) or discardWaveRun.`),
       );
     }
     if (!run.broadcastId || !run.segmentId) {
@@ -1278,6 +1327,16 @@ export const markFinalizeRecovered = internalMutation({
       .withIndex("by_key", (q) => q.eq("key", "current"))
       .unique();
     if (!config) throw new Error("[markFinalizeRecovered] no broadcastRampConfig");
+    // Lease must still be held by THIS runId — otherwise another run has
+    // taken over OR an operator force-released and we'd be advancing the
+    // tier from a stale runId.
+    if (config.pendingRunId !== runId) {
+      throw new Error(
+        `[markFinalizeRecovered] runId=${runId} lost lease (held by ${config.pendingRunId ?? "<cleared>"}). ` +
+        `Investigate: another run may have advanced the tier OR forceReleaseLease was used. ` +
+        `Refusing to advance the tier from a stale runId.`,
+      );
+    }
 
     const now = Date.now();
     const nextTier = config.currentTier + 1;
@@ -1621,6 +1680,41 @@ export const cleanupDiscardedWavePickedContactsAction = internalAction({
   },
 });
 
+/**
+ * Auto-cleanup candidates: failed runs >24h old whose substatus indicates
+ * **terminal abandonment** — meaning the operator either explicitly discarded
+ * them or no recovery path is meaningful. RECOVERABLE finalize failures
+ * (`create-broadcast-failed`, `send-broadcast-failed`) are excluded because
+ * the segment may still be valid in Resend AND the operator may yet run
+ * `resumeFinalizeWaveRun` / `markFinalizeRecovered`. If we cleaned those up,
+ * the unstamping step would re-eligibilize already-pushed recipients and a
+ * subsequent successful send would create duplicate outreach.
+ *
+ * Terminal substatuses (auto-cleanable):
+ *   - `discarded-by-operator`           — operator chose abandonment
+ *   - `empty-pool` / `pool-too-small`   — no contacts pushed; nothing to recover
+ *   - `segment-create-failed`           — no contacts pushed; segment doesn't exist
+ *   - `persist-failed`                  — partial pushes possible; operator should
+ *                                          discard explicitly. Auto-cleanup AFTER
+ *                                          24h is a safety net for forgotten cases
+ *   - `batch-failure-rate-exceeded`     — push-rate threshold tripped; operator
+ *                                          should discard. Same 24h safety net rationale
+ *
+ * Recoverable (NEVER auto-cleaned):
+ *   - `create-broadcast-failed`         — `resumeFinalizeWaveRun` retries create
+ *   - `send-broadcast-failed`           — `resumeFinalizeWaveRun({confirmedNotSent})`
+ *                                          retries send, OR `markFinalizeRecovered`
+ *                                          finalizes if Resend shows already-sent
+ */
+const TERMINAL_FAILURE_SUBSTATUSES = [
+  "discarded-by-operator",
+  "empty-pool",
+  "pool-too-small",
+  "segment-create-failed",
+  "persist-failed",
+  "batch-failure-rate-exceeded",
+] as const;
+
 export const _listFailedWaveRunsForCleanup = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -1629,7 +1723,16 @@ export const _listFailedWaveRunsForCleanup = internalQuery({
       .query("waveRuns")
       .withIndex("by_status", (q) => q.eq("status", "failed"))
       .collect();
-    return failed.filter((r) => r.updatedAt < cutoff).map((r) => r.runId);
+    return failed
+      .filter(
+        (r) =>
+          r.updatedAt < cutoff &&
+          r.failureSubstatus !== undefined &&
+          (TERMINAL_FAILURE_SUBSTATUSES as readonly string[]).includes(
+            r.failureSubstatus,
+          ),
+      )
+      .map((r) => r.runId);
   },
 });
 

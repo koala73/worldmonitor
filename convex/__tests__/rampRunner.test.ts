@@ -830,3 +830,64 @@ describe("end-to-end: lease prevents duplicate-send race", () => {
     expect(row?.pendingRunId).toBeUndefined();
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR2 review-fix 7: runDailyRamp checks pendingRunId before scheduling
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("runDailyRamp — pendingRunId guard (PR2 review-fix 7)", () => {
+  test("refuses to schedule pickWaveAction when broadcastRampConfig.pendingRunId is held by a failed run", async () => {
+    // Scenario: a wave hit `persist-failed` (or `segment-create-failed` /
+    // `batch-failure-rate-exceeded`) — status='failed' but lease HELD.
+    // _listInFlightWaveRuns excludes failed runs, so without this guard
+    // runDailyRamp would schedule a new pickWaveAction whose
+    // _claimWaveRunLease would refuse with `lease-held` — operator sees
+    // wave-scheduled but ramp is actually blocked.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: "stuck-run-1",
+      pendingRunStartedAt: Date.now() - 5 * 60_000,
+      pendingWaveLabel: "pro-launch-wave-4",
+    });
+    // Insert a corresponding waveRuns row in failed/persist-failed.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("waveRuns", {
+        runId: "stuck-run-1",
+        waveLabel: "pro-launch-wave-4",
+        status: "failed",
+        failureSubstatus: "persist-failed",
+        requestedCount: 100, totalCount: 0, underfilled: false,
+        pushedCount: 0, failedCount: 0, batchSize: 50,
+        createdAt: Date.now() - 5 * 60_000,
+        updatedAt: Date.now() - 5 * 60_000,
+      });
+    });
+
+    const result = await t.action(
+      internal.broadcast.rampRunner.runDailyRamp,
+      {},
+    );
+    // Must surface the lease-held condition, NOT report wave-scheduled.
+    expect(result).toMatchObject({
+      status: "lease-held-by-failed-run",
+    });
+    expect(result.detail).toContain("stuck-run-1");
+    expect(result.detail).toContain("persist-failed");
+
+    // Drain any incidentally scheduled functions to silence convex-test's
+    // scheduler-dispatch artifact.
+    await t.finishInProgressScheduledFunctions().catch(() => {});
+  });
+
+  test("schedules pickWaveAction normally when no lease is held", async () => {
+    // Sanity: the pendingRunId guard should be a no-op on a clean ramp.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    const result = await t.action(
+      internal.broadcast.rampRunner.runDailyRamp,
+      {},
+    );
+    expect(result.status).toBe("wave-scheduled");
+    await t.finishInProgressScheduledFunctions().catch(() => {});
+  });
+});
