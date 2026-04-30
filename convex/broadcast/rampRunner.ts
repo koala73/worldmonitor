@@ -76,7 +76,6 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import type { WaveExportStats } from "./audienceWaveExport";
 
 const DEFAULT_BOUNCE_KILL_THRESHOLD = 0.04;
 const DEFAULT_COMPLAINT_KILL_THRESHOLD = 0.0008;
@@ -93,10 +92,11 @@ const MIN_DELIVERED_FOR_KILLGATE = 100;
 // the cron runs more than once a day.
 const MIN_HOURS_BETWEEN_WAVES = 18;
 
-// If `assignAndExportWave` returns `assigned < count * UNDERFILL_RATIO`,
-// treat the pool as drained and stop the ramp. 0.5 catches the case
-// where the curve outpaces the actual remaining audience.
-const UNDERFILL_RATIO = 0.5;
+// PR 2 (post-launch-stabilization, 2026-04-30) moved underfill handling
+// into pickWaveAction (waveRuns.ts) — the pool-drained branch in
+// runDailyRamp is gone, and `WaveExportStats` / `UNDERFILL_RATIO` are no
+// longer referenced from this file. Kept the constants and types in
+// `audienceWaveExport.ts` for the legacy direct-CLI invocation path.
 
 const RAMP_KEY = "current";
 
@@ -505,6 +505,53 @@ export const getRampStatus = internalQuery({
       pendingExportAt: row.pendingExportAt,
       pendingBroadcastId: row.pendingBroadcastId,
       pendingBroadcastAt: row.pendingBroadcastAt,
+      // PR 2 (post-launch-stabilization): in-flight wave-loading state
+      // machine surface. Empty array when no run is active.
+      activeWaveRuns: await (async () => {
+        const runs: Array<{
+          runId: string;
+          waveLabel: string;
+          status: string;
+          totalCount: number;
+          pushedCount: number;
+          failedCount: number;
+          batchSize: number;
+          underfilled: boolean;
+          segmentId?: string;
+          broadcastId?: string;
+          failureSubstatus?: string;
+          lastActivityAt: number;
+          ageMin: number;
+        }> = [];
+        const activeStatuses: Array<
+          "picking" | "segment-created" | "pushing" | "broadcast-created"
+        > = ["picking", "segment-created", "pushing", "broadcast-created"];
+        for (const status of activeStatuses) {
+          const found = await ctx.db
+            .query("waveRuns")
+            .withIndex("by_status", (q) => q.eq("status", status))
+            .collect();
+          for (const r of found) {
+            const lastActivityAt = r.lastBatchAt ?? r.updatedAt ?? r.createdAt;
+            runs.push({
+              runId: r.runId,
+              waveLabel: r.waveLabel,
+              status: r.status,
+              totalCount: r.totalCount,
+              pushedCount: r.pushedCount,
+              failedCount: r.failedCount,
+              batchSize: r.batchSize,
+              underfilled: r.underfilled,
+              segmentId: r.segmentId,
+              broadcastId: r.broadcastId,
+              failureSubstatus: r.failureSubstatus,
+              lastActivityAt,
+              ageMin: (Date.now() - lastActivityAt) / 60_000,
+            });
+          }
+        }
+        return runs;
+      })(),
     };
   },
 });
@@ -957,188 +1004,94 @@ export const runDailyRamp = internalAction({
     }
     const waveLabel = `${row.waveLabelPrefix}-${nextTier + row.waveLabelOffset}`;
 
-    // ──── Step 3a: ATOMICALLY CLAIM THE LEASE before any external side effect ────
-    // Two concurrent runs (cron + manual trigger, Convex retry, misconfigured
-    // schedule) both pass kill-gate / tier-bounds checks above before anything
-    // mutates state. Without this claim, both would proceed through
-    // assignAndExportWave + createProLaunchBroadcast + sendProLaunchBroadcast,
-    // duplicate-emailing every recipient, and only collide at _recordWaveSent.
-    // Claim the lease BEFORE any external side effect so the loser exits clean.
+    // ──── Step 3: in-flight guard via the new wave-loading state machine ────
+    // PR 2 (post-launch-stabilization plan, 2026-04-29) replaces the
+    // monolithic assignAndExportWave + createProLaunchBroadcast + sendProLaunchBroadcast
+    // chain with a self-driving multi-step pipeline that fits within the
+    // Convex 10-min action runtime budget at any wave size. The state lives
+    // on `waveRuns` + `wavePickedContacts`. See `convex/broadcast/waveRuns.ts`.
+    //
+    // The legacy `_claimTierForRun` + `_recordPendingExport` + `_recordPendingBroadcast`
+    // + `_recordWaveSent` + `_recordRunOutcome` mutations remain in this
+    // module so the operator-recovery commands (`recoverFromPartialFailure`,
+    // `clearPartialFailure`, `forceReleaseLease`) keep working on any
+    // legacy partial-failure rows. New runs go through the state machine.
+    //
+    // In-flight guard: refuse to start a new wave while any waveRuns row is
+    // active. The new state machine maintains its own `pendingRunId` lease
+    // on `broadcastRampConfig` via `_claimWaveRunLease` — this guard is
+    // belt-and-suspenders against a force-cleared lease leaving an orphaned
+    // active waveRuns row.
+    const inFlight = await ctx.runQuery(
+      internal.broadcast.waveRuns._listInFlightWaveRuns,
+      {},
+    );
+    if (inFlight.length > 0) {
+      const top = inFlight[0];
+      // top is guaranteed non-null by the length check (silences
+      // noUncheckedIndexedAccess and protects future code changes that
+      // might break the bounds check).
+      if (!top) throw new Error("[runDailyRamp] inFlight bounds-check invariant violated");
+      const ageMin = (Date.now() - top.lastActivityAt) / 60_000;
+      if (ageMin >= 15) {
+        console.error(
+          `[runDailyRamp] STALLED waveRun runId=${top.runId} status=${top.status} (last activity ${ageMin.toFixed(1)}min ago) — operator must resume (resumeStalledWaveRun / resumeFinalizeWaveRun) or discard (discardWaveRun) before next tick.`,
+        );
+        return { status: "stalled-wave-run", detail: top.runId };
+      }
+      console.log(
+        `[runDailyRamp] wave already in flight (runId=${top.runId} status=${top.status}, last activity ${ageMin.toFixed(1)}min ago) — skip`,
+      );
+      return { status: "wave-in-flight", detail: top.runId };
+    }
+
+    // Belt-and-suspenders lease check. `_listInFlightWaveRuns` only returns
+    // runs in active states (picking/segment-created/pushing/broadcast-created)
+    // — it does NOT include `failed` runs. But `failed` runs may STILL hold
+    // the lease (e.g. `persist-failed`, `segment-create-failed`,
+    // `batch-failure-rate-exceeded` all preserve the lease until the
+    // operator explicitly discards). Without this check, we'd schedule a
+    // new pickWaveAction whose `_claimWaveRunLease` then refuses with
+    // `lease-held` — operator sees `wave-scheduled` but the ramp is
+    // actually blocked waiting for them. Surface the failed-with-lease
+    // case explicitly so the operator knows to act.
+    if (row.pendingRunId) {
+      // Look up the run to surface its substatus for operator triage.
+      const heldRun = await ctx.runQuery(
+        internal.broadcast.waveRuns.getWaveRunStatus,
+        { runId: row.pendingRunId },
+      );
+      const detail =
+        heldRun !== null
+          ? `${row.pendingRunId} status=${heldRun.status}` +
+            (heldRun.failureSubstatus ? ` substatus=${heldRun.failureSubstatus}` : "")
+          : row.pendingRunId;
+      console.error(
+        `[runDailyRamp] LEASE HELD by ${detail} — likely a failed run pending operator action ` +
+        `(resumeFinalizeWaveRun / discardWaveRun depending on substatus). Skipping today's tick.`,
+      );
+      return { status: "lease-held-by-failed-run", detail };
+    }
+
+    // ──── Step 4: schedule pickWaveAction (fire-and-forget via scheduler) ────
+    // Use ctx.scheduler.runAfter(0, ...) — NOT ctx.runAction(...) — so the
+    // entire pick→push→finalize pipeline runs in fresh execution contexts,
+    // each with its own 10-min budget. ctx.runAction would await the whole
+    // chain inside this single runDailyRamp invocation and re-introduce
+    // the budget problem the rebuild exists to solve.
     const runId =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `run-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const claim: { ok: boolean; reason?: string; actualTier?: number; heldBy?: string; ageMs?: number } =
-      await ctx.runMutation(internal.broadcast.rampRunner._claimTierForRun, {
-        runId,
-        expectedCurrentTier: row.currentTier,
-      });
-    if (!claim.ok) {
-      console.log(
-        `[runDailyRamp] claim rejected (${claim.reason}${
-          claim.heldBy ? `, heldBy=${claim.heldBy}, ageMs=${claim.ageMs}` : ""
-        }${claim.actualTier !== undefined ? `, actualTier=${claim.actualTier}` : ""}) — skip`,
-      );
-      // Don't record an outcome here — the other holder will record theirs;
-      // recording ours would stomp their lease/status. Just exit.
-      return { status: `claim-rejected-${claim.reason}` };
-    }
-
-    // ──── Step 3b: pick + stamp + create segment + push ────
-    let exportResult: WaveExportStats;
-    try {
-      exportResult = await ctx.runAction(
-        internal.broadcast.audienceWaveExport.assignAndExportWave,
-        { waveLabel, count },
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await ctx.runMutation(
-        internal.broadcast.rampRunner._recordRunOutcome,
-        { runId, status: "partial-failure", error: msg },
-      );
-      throw err; // bubble so Convex auto-Sentry captures
-    }
-
-    // P1#4 (round 2): persist post-export progress IMMEDIATELY after
-    // assignAndExportWave returns, BEFORE inspecting failure counters /
-    // underfill. The export ran — there's a real `segmentId`, contacts may
-    // be stamped, contacts may be in the Resend segment — independent of
-    // whether `failed > 0`, `stampFailed > 0`, or `assigned < threshold`.
-    // If we deferred persistence past those branches, an operator running
-    // `clearPartialFailure({confirmNoExport: true})` would see no
-    // `pendingWaveLabel/SegmentId/BroadcastId` and the fail-closed guard
-    // would let the clear through — masking stamped contacts and the
-    // segment that's already in Resend. Persisting first means every
-    // partial-failure path post-export carries the markers, and
-    // clearPartialFailure refuses loudly. Lease-validating: throws if the
-    // lease was force-released mid-flight, bubbling to Convex auto-Sentry.
-    await ctx.runMutation(
-      internal.broadcast.rampRunner._recordPendingExport,
-      {
-        runId,
-        waveLabel,
-        segmentId: exportResult.segmentId,
-        assigned: exportResult.assigned,
-      },
+    await ctx.scheduler.runAfter(
+      0,
+      internal.broadcast.waveRuns.pickWaveAction,
+      { waveLabel, runId, requestedCount: count },
     );
-
-    // Treat any non-zero export failure counter as a partial-failure
-    // and refuse to send. Without this, a wave that requested 500 and
-    // got 250 push failures + 250 successes would still proceed to
-    // create + send the broadcast — the cron would record the wave as
-    // a clean tier advance even though half the audience was dropped
-    // and `stampFailed > 0` would silently leak duplicate-email risk
-    // into the next pick (pushed but unstamped → re-eligible).
-    // Operator clears via the same `lastRunStatus === partial-failure`
-    // gate that handles other partial-failure paths.
-    if (exportResult.failed > 0 || exportResult.stampFailed > 0) {
-      const reason = `assignAndExportWave partial: failed=${exportResult.failed}, stampFailed=${exportResult.stampFailed} (segment=${exportResult.segmentId}, assigned=${exportResult.assigned}, requested=${count}, waveLabel=${waveLabel}). Investigate Resend logs + Convex stamp errors before resuming; stampFailed contacts are in the segment but unstamped (duplicate-email risk).`;
-      console.error(`[runDailyRamp] ${reason}`);
-      await ctx.runMutation(
-        internal.broadcast.rampRunner._recordRunOutcome,
-        { runId, status: "partial-failure", error: reason },
-      );
-      return { status: "partial-failure", detail: reason };
-    }
-
-    if (
-      exportResult.underfilled &&
-      exportResult.assigned < count * UNDERFILL_RATIO
-    ) {
-      // P1 round 4: contacts ARE stamped (excluded from future picks) AND in
-      // the Resend segment, but no broadcast was created/sent. Routing
-      // through "pool-drained" + deactivate-and-clear-lease would strand
-      // them — they'd never receive the email AND `recoverFromPartialFailure`
-      // couldn't run because status would be "pool-drained" instead of
-      // "partial-failure". Route through the recoverable partial-failure
-      // path: persisted pending* markers + lastRunStatus="partial-failure"
-      // make recoverFromPartialFailure({recovery:"manual-finished"}) able to
-      // pick up exactly where the runner stopped, OR
-      // recoverFromPartialFailure({recovery:"discard-and-rotate"}) to
-      // explicitly abandon (operator's call, not the runner's). Ramp is
-      // still deactivated — pool drained means the curve is done.
-      const reason = `pool drained — requested ${count}, got ${exportResult.assigned} stamped + in segment ${exportResult.segmentId} (waveLabel=${waveLabel}). Contacts ARE stamped and excluded from future picks; they will be lost unless this wave is sent. Recovery: pending* state persisted; recoverFromPartialFailure({recovery:"manual-finished", sentAt:<epoch>}) after manually completing the broadcast in Resend, OR recoverFromPartialFailure({recovery:"discard-and-rotate"}) to abandon. Ramp deactivated; resumeRamp if appropriate after recovery.`;
-      console.log(`[runDailyRamp] ${reason}`);
-      await ctx.runMutation(
-        internal.broadcast.rampRunner._recordRunOutcome,
-        {
-          runId,
-          status: "partial-failure",
-          deactivate: true,
-          error: reason,
-        },
-      );
-      return { status: "pool-drained-partial-failure", detail: reason };
-    }
-
-    // ──── Step 4: create + send the broadcast ────
-    let broadcastId: string;
-    try {
-      const created: { broadcastId: string } = await ctx.runAction(
-        internal.broadcast.sendBroadcast.createProLaunchBroadcast,
-        { segmentId: exportResult.segmentId, nameSuffix: waveLabel },
-      );
-      broadcastId = created.broadcastId;
-    } catch (err) {
-      // sentry-coverage-ok: status recorded into config; Convex
-      // auto-Sentry catches the throw via the re-raise below.
-      const msg = err instanceof Error ? err.message : String(err);
-      await ctx.runMutation(
-        internal.broadcast.rampRunner._recordRunOutcome,
-        {
-          runId,
-          status: "partial-failure",
-          error: `createProLaunchBroadcast: ${msg} (waveLabel=${waveLabel}, segmentId=${exportResult.segmentId}, ${exportResult.assigned} contacts stamped + in segment). Recovery: pending* state persisted; call recoverFromPartialFailure({recovery:"manual-finished", sentAt:<epoch>}) after manually completing send, or recoverFromPartialFailure({recovery:"discard-and-rotate"}) to bump waveLabelOffset.`,
-        },
-      );
-      throw err;
-    }
-
-    // P1#4: persist post-broadcast-create progress before the send. Lease-
-    // validating: throws if the lease was force-released mid-flight.
-    await ctx.runMutation(
-      internal.broadcast.rampRunner._recordPendingBroadcast,
-      { runId, broadcastId },
-    );
-
-    try {
-      await ctx.runAction(
-        internal.broadcast.sendBroadcast.sendProLaunchBroadcast,
-        { broadcastId },
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await ctx.runMutation(
-        internal.broadcast.rampRunner._recordRunOutcome,
-        {
-          runId,
-          status: "partial-failure",
-          error: `sendProLaunchBroadcast: ${msg} (waveLabel=${waveLabel}, segmentId=${exportResult.segmentId}, broadcastId=${broadcastId}, assigned=${exportResult.assigned}). Recovery: pending* state persisted; preview in Resend dashboard, then recoverFromPartialFailure({recovery:"manual-finished", sentAt:<epoch>}) (broadcastId/segmentId/assigned/waveLabel auto-fill from persisted state). If unrecoverable, recoverFromPartialFailure({recovery:"discard-and-rotate"}) bumps waveLabelOffset.`,
-        },
-      );
-      throw err;
-    }
-
-    // ──── Step 5: record success ────
-    await ctx.runMutation(internal.broadcast.rampRunner._recordWaveSent, {
-      runId,
-      expectedCurrentTier: row.currentTier,
-      newTier: nextTier,
-      waveLabel,
-      broadcastId,
-      segmentId: exportResult.segmentId,
-      assigned: exportResult.assigned,
-      sentAt: Date.now(),
-    });
-
     console.log(
-      `[runDailyRamp] sent ${waveLabel} (tier ${nextTier}, count ${exportResult.assigned}, broadcast ${broadcastId})`,
+      `[runDailyRamp] scheduled pickWaveAction runId=${runId} waveLabel=${waveLabel} requestedCount=${count}`,
     );
-    return {
-      status: "sent",
-      detail: `${waveLabel} → ${exportResult.assigned} contacts`,
-    };
+    return { status: "wave-scheduled", detail: runId };
   },
 });
 

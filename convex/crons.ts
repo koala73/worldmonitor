@@ -22,4 +22,17 @@ crons.daily(
   internal.broadcast.rampRunner.runDailyRamp,
 );
 
+// Daily prune of `wavePickedContacts` rows belonging to discarded/failed
+// wave runs older than 24h. Each invocation deletes one chunk (500 rows)
+// and self-schedules until a run's rows are drained, then moves on. Avoids
+// hitting Convex's per-mutation write limit on bulk deletion of up to 25k
+// rows in one shot. See `convex/broadcast/waveRuns.ts`
+// (`cleanupDiscardedWavePickedContactsAction`).
+crons.daily(
+  "wave-runs-cleanup",
+  { hourUTC: 4, minuteUTC: 0 },
+  internal.broadcast.waveRuns.cleanupDiscardedWavePickedContactsAction,
+  {},
+);
+
 export default crons;

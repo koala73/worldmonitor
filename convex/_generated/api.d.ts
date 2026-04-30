@@ -18,6 +18,7 @@ import type * as broadcast_metrics from "../broadcast/metrics.js";
 import type * as broadcast_proLaunchEmailContent from "../broadcast/proLaunchEmailContent.js";
 import type * as broadcast_rampRunner from "../broadcast/rampRunner.js";
 import type * as broadcast_sendBroadcast from "../broadcast/sendBroadcast.js";
+import type * as broadcast_waveRuns from "../broadcast/waveRuns.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   "broadcast/proLaunchEmailContent": typeof broadcast_proLaunchEmailContent;
   "broadcast/rampRunner": typeof broadcast_rampRunner;
   "broadcast/sendBroadcast": typeof broadcast_sendBroadcast;
+  "broadcast/waveRuns": typeof broadcast_waveRuns;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
   contactMessages: typeof contactMessages;

@@ -506,76 +506,16 @@ describe("_recordWaveSent — clears all pending* progress markers (P1#4)", () =
 // clearPartialFailure — fail-closed unless operator confirms no export (P1#3)
 // ----------------------------------------------------------------------------
 
-describe("runDailyRamp — underfilled branch routes through recoverable partial-failure (PR #3476 review round 4)", () => {
-  test("underfilled branch records lastRunStatus=partial-failure (NOT pool-drained), deactivates ramp", () => {
-    // Round 4 fix: contacts ARE stamped + in Resend segment by the time
-    // assignAndExportWave returns underfilled. The previous code recorded
-    // status="pool-drained" + deactivate + cleared lease — stranding the
-    // exported audience (no broadcast created/sent, contacts excluded from
-    // future picks). recoverFromPartialFailure couldn't run because status
-    // was "pool-drained" not "partial-failure". Route through
-    // partial-failure with persisted pending* markers so manual recovery
-    // is reachable.
-    //
-    // Source-grep contract: the underfilled branch must call _recordRunOutcome
-    // with status: "partial-failure" (not "pool-drained"), AND the error
-    // message must mention recoverFromPartialFailure for operator guidance.
-    const underfilledIdx = runnerSrc.indexOf("exportResult.underfilled");
-    expect(underfilledIdx).toBeGreaterThan(-1);
-    // Slice the source from the underfilled check forward through the next
-    // branch boundary (next `if (` or end-of-function); contract assertions
-    // below match against this slice.
-    const sliceEnd = runnerSrc.indexOf("// ──── Step 4", underfilledIdx);
-    expect(sliceEnd).toBeGreaterThan(underfilledIdx);
-    const underfilledBlock = runnerSrc.slice(underfilledIdx, sliceEnd);
-
-    // Status must be partial-failure (so recovery is reachable).
-    expect(underfilledBlock).toMatch(/status:\s*"partial-failure"/);
-    // Must NOT route through pool-drained status (that strands the audience).
-    expect(underfilledBlock).not.toMatch(/status:\s*"pool-drained"/);
-    // Must deactivate (curve is done).
-    expect(underfilledBlock).toMatch(/deactivate:\s*true/);
-    // Operator guidance must reference recoverFromPartialFailure.
-    expect(underfilledBlock).toMatch(/recoverFromPartialFailure/);
-  });
-});
-
-describe("runDailyRamp — call order: _recordPendingExport BEFORE failure branches (PR #3476 review round 3)", () => {
-  test("_recordPendingExport is called immediately after assignAndExportWave returns, BEFORE checking failed/stampFailed/underfilled", () => {
-    // Source-grep regression test. Catches the foot-gun caught in PR #3476
-    // review round 3: if `_recordPendingExport` ran AFTER the
-    // (failed > 0 || stampFailed > 0) branch or the underfilled branch,
-    // those partial-failure paths would leave the row WITHOUT
-    // pendingWaveLabel/SegmentId/Assigned set — and clearPartialFailure
-    // ({confirmNoExport: true}) would then not throw, masking stamped
-    // contacts and the already-created Resend segment.
-    //
-    // Invariant: in runDailyRamp, the _recordPendingExport call must appear
-    // BEFORE any source line containing `exportResult.failed`, `exportResult.stampFailed`,
-    // or `exportResult.underfilled`.
-    const recordPendingIdx = runnerSrc.indexOf("_recordPendingExport,");
-    const failedCheckIdx = runnerSrc.indexOf("exportResult.failed > 0");
-    const stampFailedCheckIdx = runnerSrc.indexOf("exportResult.stampFailed > 0");
-    const underfilledCheckIdx = runnerSrc.indexOf("exportResult.underfilled");
-
-    expect(recordPendingIdx).toBeGreaterThan(-1);
-    expect(failedCheckIdx).toBeGreaterThan(-1);
-    expect(stampFailedCheckIdx).toBeGreaterThan(-1);
-    expect(underfilledCheckIdx).toBeGreaterThan(-1);
-
-    // The first occurrence of `_recordPendingExport,` (the runner call site,
-    // not the export declaration) inside runDailyRamp must precede every
-    // failure-counter check.
-    const runnerCallSiteIdx = runnerSrc.indexOf(
-      "_recordPendingExport,",
-      runnerSrc.indexOf("runDailyRamp"),
-    );
-    expect(runnerCallSiteIdx).toBeGreaterThan(-1);
-    expect(runnerCallSiteIdx).toBeLessThan(failedCheckIdx);
-    expect(runnerCallSiteIdx).toBeLessThan(stampFailedCheckIdx);
-    expect(runnerCallSiteIdx).toBeLessThan(underfilledCheckIdx);
-  });
-});
+// PR 2 (post-launch-stabilization, 2026-04-30) replaced the monolithic
+// `runDailyRamp` body with a state-machine-based scheduler call. The two
+// source-grep tests that lived here previously (PR #3476 review rounds 3
+// and 4) protected against regressions in the now-removed
+// `_recordPendingExport` call ordering and `pool-drained vs partial-failure`
+// routing. Both branches are gone — `pickWaveAction` (in waveRuns.ts) now
+// owns underfill / persist-failure handling, and the legacy
+// `_recordPendingExport` mutation remains in this module only for
+// `recoverFromPartialFailure` to use against any legacy partial-failure
+// rows. New behaviour is tested in `convex/__tests__/waveRuns.test.ts`.
 
 describe("clearPartialFailure — confirmNoExport guard (P1#3)", () => {
   test("REFUSES when any pending* progress marker is set — even with confirmNoExport=true", async () => {
@@ -888,5 +828,66 @@ describe("end-to-end: lease prevents duplicate-send race", () => {
     const row = await loadRow(t);
     expect(row?.currentTier).toBe(1);
     expect(row?.pendingRunId).toBeUndefined();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR2 review-fix 7: runDailyRamp checks pendingRunId before scheduling
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("runDailyRamp — pendingRunId guard (PR2 review-fix 7)", () => {
+  test("refuses to schedule pickWaveAction when broadcastRampConfig.pendingRunId is held by a failed run", async () => {
+    // Scenario: a wave hit `persist-failed` (or `segment-create-failed` /
+    // `batch-failure-rate-exceeded`) — status='failed' but lease HELD.
+    // _listInFlightWaveRuns excludes failed runs, so without this guard
+    // runDailyRamp would schedule a new pickWaveAction whose
+    // _claimWaveRunLease would refuse with `lease-held` — operator sees
+    // wave-scheduled but ramp is actually blocked.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t, {
+      pendingRunId: "stuck-run-1",
+      pendingRunStartedAt: Date.now() - 5 * 60_000,
+      pendingWaveLabel: "pro-launch-wave-4",
+    });
+    // Insert a corresponding waveRuns row in failed/persist-failed.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("waveRuns", {
+        runId: "stuck-run-1",
+        waveLabel: "pro-launch-wave-4",
+        status: "failed",
+        failureSubstatus: "persist-failed",
+        requestedCount: 100, totalCount: 0, underfilled: false,
+        pushedCount: 0, failedCount: 0, batchSize: 50,
+        createdAt: Date.now() - 5 * 60_000,
+        updatedAt: Date.now() - 5 * 60_000,
+      });
+    });
+
+    const result = await t.action(
+      internal.broadcast.rampRunner.runDailyRamp,
+      {},
+    );
+    // Must surface the lease-held condition, NOT report wave-scheduled.
+    expect(result).toMatchObject({
+      status: "lease-held-by-failed-run",
+    });
+    expect(result.detail).toContain("stuck-run-1");
+    expect(result.detail).toContain("persist-failed");
+
+    // Drain any incidentally scheduled functions to silence convex-test's
+    // scheduler-dispatch artifact.
+    await t.finishInProgressScheduledFunctions().catch(() => {});
+  });
+
+  test("schedules pickWaveAction normally when no lease is held", async () => {
+    // Sanity: the pendingRunId guard should be a no-op on a clean ramp.
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    const result = await t.action(
+      internal.broadcast.rampRunner.runDailyRamp,
+      {},
+    );
+    expect(result.status).toBe("wave-scheduled");
+    await t.finishInProgressScheduledFunctions().catch(() => {});
   });
 });
