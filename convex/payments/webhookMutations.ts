@@ -7,6 +7,7 @@ import {
   handleSubscriptionCancelled,
   handleSubscriptionPlanChanged,
   handleSubscriptionExpired,
+  handleSubscriptionUpdated,
   handlePaymentOrRefundEvent,
   handleDisputeEvent,
 } from "./subscriptionHelpers";
@@ -66,6 +67,11 @@ export const processWebhookEvent = internalMutation({
     const subscriptionEvents = [
       "subscription.active", "subscription.renewed", "subscription.on_hold",
       "subscription.cancelled", "subscription.plan_changed", "subscription.expired",
+      // PR 3 (post-launch-stabilization): Dodo's docs list `subscription.updated`
+      // as a real-time-sync event for any subscription field change. Handler
+      // dispatches by the payload's `status` field to reuse our existing
+      // lifecycle logic AND respect the paid-through-cancellation policy.
+      "subscription.updated",
     ] as const;
 
     if (subscriptionEvents.includes(args.eventType as typeof subscriptionEvents[number]) && !(data as Record<string, unknown>).subscription_id) {
@@ -93,6 +99,9 @@ export const processWebhookEvent = internalMutation({
       case "subscription.expired":
         await handleSubscriptionExpired(ctx, data, args.timestamp);
         break;
+      case "subscription.updated":
+        await handleSubscriptionUpdated(ctx, data, args.timestamp);
+        break;
       case "payment.succeeded":
       case "payment.failed":
       case "refund.succeeded":
@@ -106,7 +115,15 @@ export const processWebhookEvent = internalMutation({
         await handleDisputeEvent(ctx, data, args.eventType, args.timestamp);
         break;
       default:
-        console.warn(`[webhook] Unhandled event type: ${args.eventType}`);
+        // Loud signal for `subscription.*` additions (so a future Dodo event
+        // type doesn't silently no-op). Other unhandled events remain a warn.
+        if (typeof args.eventType === "string" && args.eventType.startsWith("subscription.")) {
+          console.error(
+            `[webhook] Unhandled subscription.* event type: ${args.eventType} — needs a dedicated handler in subscriptionHelpers.ts`,
+          );
+        } else {
+          console.warn(`[webhook] Unhandled event type: ${args.eventType}`);
+        }
     }
 
     // 3. Record the event AFTER successful processing.

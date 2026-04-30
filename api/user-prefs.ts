@@ -125,16 +125,41 @@ export default async function handler(
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await client.mutation('userPreferences:setPreferences' as any, {
+    const result = (await client.mutation('userPreferences:setPreferences' as any, {
       variant: body.variant,
       data: body.data,
       expectedSyncVersion: body.expectedSyncVersion,
       schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : undefined,
-    });
-    return jsonResponse(result, 200, cors);
+    })) as
+      | { ok: true; syncVersion: number }
+      | { ok: false; reason: 'CONFLICT'; actualSyncVersion: number };
+    // PR 3 (post-launch-stabilization): setPreferences now returns a
+    // discriminated result for CONFLICT instead of throwing. Wire shape
+    // to the client (HTTP 409 with actualSyncVersion) is unchanged. The
+    // change silences the dozens-per-day "Uncaught ConvexError" log surface
+    // in Convex Insights, which was just the intentional CAS guard. We no
+    // longer captureSilentError on CONFLICT either — PR 1.B's Sentry
+    // attribution served its purpose during the soak window (we used
+    // it to verify the stuck-bundle storm decayed) and is no longer
+    // needed now that CONFLICT is a normal return shape.
+    if (result.ok === false) {
+      // Discriminated union narrows to the CONFLICT variant here.
+      return jsonResponse(
+        { error: 'CONFLICT', actualSyncVersion: result.actualSyncVersion },
+        409,
+        cors,
+      );
+    }
+    return jsonResponse({ syncVersion: result.syncVersion }, 200, cors);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     const kind = extractConvexErrorKind(err, msg);
+    // Defensive: during the deploy window where the edge function may run
+    // against an OLD convex deployment (CONFLICT still throws), route via
+    // handleConflictResponse so we still capture stuck-bundle attribution
+    // at level=warning for the deploy-ordering window. Once both layers
+    // have soaked on the new code, this branch is unreachable and can be
+    // removed (along with handleConflictResponse).
     if (kind === 'CONFLICT') {
       return handleConflictResponse(err, msg, {
         userId: session.userId,
@@ -190,15 +215,21 @@ export default async function handler(
 
 
 /**
- * 409-CONFLICT response builder for setPreferences. Captures every
- * CONFLICT to Sentry so we can detect stuck-bundle users (constant
- * `actual_sync_version` across timestamps with no success interleaved
- * → one client looping; broadly-distributed `user_id` → real concurrency).
- * The CAS guard itself is intentional behavior, but we lose all per-user
- * attribution if we don't record it — Convex Insights surfaces a count but
- * no userId. Also: PR 1 ships a stale-bundle force-reload (build-hash
- * mismatch) to drain stuck-bundle users; this capture is how we verify
- * the storm decays.
+ * 409-CONFLICT response builder for setPreferences — DEPLOY-WINDOW BRIDGE.
+ *
+ * Post PR 3 (post-launch-stabilization), CAS-guard CONFLICTs RETURN from
+ * `userPreferences:setPreferences` rather than throw, so this catch-side
+ * helper is only reached during the deploy-ordering window where the edge
+ * runs against an OLD convex deployment that still throws. Once both
+ * layers have soaked, this helper becomes unreachable dead code and can
+ * be removed.
+ *
+ * While reachable, it preserves stuck-bundle Sentry attribution: captures
+ * the user_id + actualSyncVersion at level=warning so we can spot a single
+ * stuck client looping (constant actualSyncVersion across timestamps) vs.
+ * real concurrency (broadly-distributed user_ids). At level=error it
+ * drowned real bugs; level=warning keeps it queryable but out of error
+ * totals and alerting (per WORLDMONITOR-PX 2026-04-30 triage).
  *
  * Echoes `actualSyncVersion` from the structured ConvexError when present
  * and numeric so the client can refresh its local sync state without a

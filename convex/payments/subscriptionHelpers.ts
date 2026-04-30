@@ -25,6 +25,7 @@ interface DodoCustomer {
 interface DodoSubscriptionData {
   subscription_id: string;
   product_id: string;
+  status?: string;
   customer?: DodoCustomer;
   previous_billing_date?: string | number | Date;
   next_billing_date?: string | number | Date;
@@ -720,6 +721,64 @@ export async function handleSubscriptionExpired(
   // sub still covers the user we keep them on its tier, else free-downgrade.
   // The recompute helper also honours the comp-floor for goodwill credits.
   await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+}
+
+/**
+ * Handles `subscription.updated` -- Dodo's catch-all "any field changed"
+ * event (per their webhook docs, this fires for real-time sync without
+ * polling). We dispatch by the payload's `status` field to reuse the
+ * dedicated lifecycle handlers AND inherit their policy invariants:
+ *
+ *   - paid-through cancellation: `handleSubscriptionCancelled` preserves
+ *     entitlement until `currentPeriodEnd`, NOT immediate revocation. A
+ *     `subscription.updated` carrying `status='cancelled'` mid-period
+ *     therefore does NOT downgrade until the period ends — same behavior
+ *     as a dedicated `subscription.cancelled` event.
+ *   - out-of-order protection: each lifecycle handler enforces
+ *     `isNewerEvent(existing.updatedAt, eventTimestamp)`, so a delayed
+ *     `subscription.updated` for an old state is rejected.
+ *
+ * Unknown statuses fall to a defensive recompute path: patch the row's
+ * rawPayload + updatedAt so we don't lose the event, recompute the
+ * entitlement, and console.error so ops can decide if a new dedicated
+ * handler is needed.
+ */
+export async function handleSubscriptionUpdated(
+  ctx: MutationCtx,
+  data: DodoSubscriptionData,
+  eventTimestamp: number,
+): Promise<void> {
+  const status = (data.status ?? "").toString();
+  switch (status) {
+    case "active":
+      return handleSubscriptionActive(ctx, data, eventTimestamp);
+    case "on_hold":
+      return handleSubscriptionOnHold(ctx, data, eventTimestamp);
+    case "cancelled":
+      return handleSubscriptionCancelled(ctx, data, eventTimestamp);
+    case "expired":
+      return handleSubscriptionExpired(ctx, data, eventTimestamp);
+    default: {
+      console.error(
+        `[handleSubscriptionUpdated] unhandled status="${status}" sub=${data.subscription_id}; ` +
+        `recomputing entitlement defensively. Add a dedicated dispatch case if this status starts ` +
+        `appearing regularly.`,
+      );
+      const existing = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", data.subscription_id),
+        )
+        .unique();
+      if (existing && isNewerEvent(existing.updatedAt, eventTimestamp)) {
+        await ctx.db.patch(existing._id, {
+          rawPayload: data,
+          updatedAt: eventTimestamp,
+        });
+        await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+      }
+    }
+  }
 }
 
 /**
