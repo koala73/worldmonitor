@@ -1215,23 +1215,37 @@ export class App {
    * Safe to call multiple times (idempotent) — e.g. on auth state changes.
    */
   private enforceFreeTierLimits(): void {
-    if (isProUser()) {
-      // Pro users have no source cap — but their localStorage may still
-      // hold v1-bug entries from a prior free-tier session OR from the
-      // pre-fix alphabetical-slice enforcement. Detect categories where
-      // 100% of sources are disabled (the bug fingerprint — a real user
-      // would hide the whole panel, not toggle every source individually)
-      // and re-enable them. Targeted enough that explicit single-source
-      // disabling is preserved.
-      const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-      const recoverable = findFullyDisabledCategories(FEEDS, disabledSources);
+    // ── One-time v1 cap-bug recovery ──────────────────────────────────
+    // Pre-2026-05-01 the source cap was enforced by Array.sort().slice(),
+    // which silently auto-disabled every source past alphabetical position
+    // FREE_MAX_SOURCES — catastrophically erasing late-alphabet categories
+    // (Layoffs, Semiconductors, IPO, Funding, Product Hunt, …). Storage
+    // didn't track auto-disabled vs user-disabled, so a heuristic that runs
+    // on every load would silently undo a user who legitimately disabled
+    // every source in a category — and re-undo it on every refresh forever.
+    //
+    // Migration approach: run findFullyDisabledCategories ONCE, gated by
+    // disabledFeedsSchema version. After the migration completes, bump
+    // schema → 1 so subsequent loads skip recovery entirely. Users who
+    // explicitly toggle off every source in a category post-migration
+    // keep that preference permanently. Trade-off: a user who BEFORE the
+    // migration legitimately disabled every source in a category will lose
+    // those preferences once. That's acceptable since v1 victims have been
+    // suffering silent breakage and the explicit-full-category-disable
+    // pattern is rare (users typically hide the whole panel instead).
+    const schemaVersion = loadFromStorage<number>(STORAGE_KEYS.disabledFeedsSchema, 0);
+    if (schemaVersion < 1) {
+      const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      const recoverable = findFullyDisabledCategories(FEEDS, disabled);
       if (recoverable.length > 0) {
-        for (const name of recoverable) disabledSources.delete(name);
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
-        console.log(`[App] Pro user: recovered ${recoverable.length} source(s) from fully-disabled categories (likely v1 cap-bug victims)`);
+        for (const name of recoverable) disabled.delete(name);
+        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabled));
+        console.log(`[App] One-time v1-cap-bug migration: re-enabled ${recoverable.length} source(s) from fully-disabled categories. This will not run again.`);
       }
-      return;
+      saveToStorage(STORAGE_KEYS.disabledFeedsSchema, 1);
     }
+
+    if (isProUser()) return;
 
     // --- Panel limit ---
     const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
@@ -1262,16 +1276,9 @@ export class App {
     // IPO & SPAC, Funding & VC, Product Hunt, …) and producing the "All sources
     // disabled" red panel state on the homepage with no user explanation.
     // Replaced with round-robin per-category distribution from `selectSourcesUnderCap`.
+    // (v1-bug recovery for stuck localStorage state is handled once at the top
+    // of this function via the schema-version migration.)
     const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-    // Free-user recovery: same v1-bug fingerprint as the Pro path above.
-    // Re-enable any 100%-disabled category before applying the new round-robin
-    // distribution, otherwise the round-robin sees those categories as having
-    // no eligible sources and silently skips them.
-    const recoverable = findFullyDisabledCategories(FEEDS, disabledSources);
-    if (recoverable.length > 0) {
-      for (const name of recoverable) disabledSources.delete(name);
-      console.log(`[App] Free tier: recovered ${recoverable.length} source(s) from fully-disabled categories before round-robin (likely v1 cap-bug victims)`);
-    }
     const totalEligible = (() => {
       const s = new Set<string>();
       Object.values(FEEDS).forEach((feeds) => feeds?.forEach((f) => s.add(f.name)));
