@@ -6,33 +6,36 @@ import { parseRealtimeAlerts, parseHistoricalData } from '../scripts/seed-vpd-tr
 // Fixture mirroring the post-2026-04 bundle shape verified against the live
 // 7.5MB index_bundle.js on 2026-05-01: two `eval("var res = [...]")` blocks
 // with JSON-quoted properties inside JS-escaped string literals.
-function buildNewBundleFixture() {
-  const realtime = [
+function buildBundleFixture({ realtime, historical, blockOrder = ['historical', 'realtime'] } = {}) {
+  realtime ??= [
     { Alert_ID: '8731706', lat: '56.85', lng: '24.92', diseases: 'Measles', place_name: 'Riga', country: 'Latvia', date: '2026-04-15', cases: '12', link: 'https://example.com/a', Type: 'outbreak', summary: 'Cluster' },
     { Alert_ID: '8731707', lat: '40.4', lng: '-3.7', diseases: 'Pertussis', place_name: 'Madrid', country: 'Spain', date: '2026-04-12', cases: '1,234', link: 'https://example.com/b', Type: 'outbreak', summary: 'Surge' },
     { Alert_ID: '8731708', lat: '', lng: '', diseases: 'Diphtheria', place_name: 'Unknown', country: 'Nowhere', date: '2026-04-10', cases: '', link: '', Type: 'note', summary: 'Drop me' },
   ];
-  const historical = [
+  historical ??= [
     { country: 'Afghanistan', iso: 'AF', disease: 'Diphtheria', year: '2024', cases: '207' },
     { country: 'Albania', iso: 'AL', disease: 'Diphtheria', year: '2024', cases: '0' },
     { country: 'Australia', iso: 'AU', disease: 'Measles', year: '2024', cases: '9' },
   ];
-  // Build the bundle text the same way the upstream bundler does:
-  // `eval("<JS-string-literal-of-source>")` where the inner source is
-  // `var res = <JSON.stringify(array)>`.
   const realtimeInner = `var res = ${JSON.stringify(realtime)}`;
   const historicalInner = `var res = ${JSON.stringify(historical)}`;
-  // JS-escape the inner source for embedding in a string literal
-  const realtimeEscaped = JSON.stringify(realtimeInner).slice(1, -1); // strip outer quotes
+  const realtimeEscaped = JSON.stringify(realtimeInner).slice(1, -1);
   const historicalEscaped = JSON.stringify(historicalInner).slice(1, -1);
+  const blocks = {
+    realtime: `eval("${realtimeEscaped}")`,
+    historical: `eval("${historicalEscaped}")`,
+  };
   return [
     '/* unrelated leading bundler boilerplate */',
-    `eval("${historicalEscaped}")`, // historical comes first in the live bundle (offset 5720 vs 2712352)
+    blocks[blockOrder[0]],
     '/* lots of intermediate webpack chunks */',
-    `eval("${realtimeEscaped}")`,
+    blocks[blockOrder[1]],
     '/* trailing webpack runtime */',
   ].join('\n');
 }
+
+// Backwards-compat name so the existing test sites still call it
+const buildNewBundleFixture = () => buildBundleFixture();
 
 describe('seed-vpd-tracker: parseRealtimeAlerts (post-2026-04 bundle format)', () => {
   it('extracts alerts from the new eval("var res = [...]") shape', () => {
@@ -55,19 +58,23 @@ describe('seed-vpd-tracker: parseRealtimeAlerts (post-2026-04 bundle format)', (
     assert.equal(madrid.cases, 1234, 'comma-separated "1,234" must parse to 1234');
   });
 
-  it('throws a clear error when the realtime marker is missing (upstream format drift)', () => {
-    const bundle = '/* bundle with no Alert_ID anchor */';
+  it('throws a clear error when no eval block matches realtime schema (upstream format drift)', () => {
+    const bundle = '/* bundle with no eval var-res blocks */';
     assert.throws(
       () => parseRealtimeAlerts(bundle),
-      /eval-block anchor for marker 'Alert_ID' not found/,
+      /no eval block matches realtime schema \(Alert_ID, lat, lng, diseases\)/,
     );
   });
 
-  it('throws a clear error when the array is unterminated (truncated bundle)', () => {
-    const truncated = 'eval("var res = [{\\"Alert_ID\\":\\"8731706\\"';
+  it('throws clear error when realtime schema fields cannot be found in any block', () => {
+    // Bundle has an eval block but its records don't match the schema.
+    const phantom = [{ key: 'foo' }, { key: 'bar' }];
+    const inner = `var res = ${JSON.stringify(phantom)}`;
+    const escaped = JSON.stringify(inner).slice(1, -1);
+    const bundle = `eval("${escaped}")`;
     assert.throws(
-      () => parseRealtimeAlerts(truncated),
-      /array did not close for 'Alert_ID'/,
+      () => parseRealtimeAlerts(bundle),
+      /no eval block matches realtime schema/,
     );
   });
 });
@@ -95,13 +102,82 @@ describe('seed-vpd-tracker: parseHistoricalData (post-2026-04 bundle format)', (
     assert.equal(aus.cases, 9);
   });
 
-  it('throws a clear error when the historical marker is missing', () => {
-    // Bundle has the Alert_ID block but no country block.
-    const bundle = `eval("var res = ${JSON.stringify(`var res = ${JSON.stringify([{ Alert_ID: '1', lat: '0', lng: '0', diseases: '', place_name: '', country: '', date: '', cases: '', link: '', Type: '', summary: '' }])}`).slice(1, -1)}")`;
+  it('throws a clear error when no eval block matches historical schema', () => {
+    // Bundle has an Alert_ID block, but no historical-shaped block.
+    const realtime = [{ Alert_ID: '1', lat: '0', lng: '0', diseases: 'Measles', place_name: '', country: '', date: '', cases: '', link: '', Type: '', summary: '' }];
+    const inner = `var res = ${JSON.stringify(realtime)}`;
+    const escaped = JSON.stringify(inner).slice(1, -1);
+    const bundle = `eval("${escaped}")`;
     assert.throws(
       () => parseHistoricalData(bundle),
-      /eval-block anchor for marker 'country' not found/,
+      /no eval block matches historical schema/,
     );
+  });
+});
+
+describe('seed-vpd-tracker: REGRESSION — schema-based identification (key reordering, block reordering)', () => {
+  // Reorder field keys WITHIN every record. A position-anchored parser
+  // would fail because Alert_ID is no longer the first key; the
+  // schema-based finder must succeed because the field set is unchanged.
+  it('parses realtime alerts when Alert_ID is NOT the first key in records', () => {
+    const reorderedRealtime = [
+      { lat: '56.85', lng: '24.92', diseases: 'Measles', Alert_ID: '8731706', place_name: 'Riga', country: 'Latvia', date: '2026-04-15', cases: '12', link: 'https://example.com/a', Type: 'outbreak', summary: 'Cluster' },
+      { country: 'Spain', diseases: 'Pertussis', lat: '40.4', lng: '-3.7', Alert_ID: '8731707', place_name: 'Madrid', date: '2026-04-12', cases: '50', link: 'https://example.com/b', Type: 'outbreak', summary: 'Surge' },
+    ];
+    const bundle = buildBundleFixture({ realtime: reorderedRealtime });
+    const alerts = parseRealtimeAlerts(bundle);
+    assert.equal(alerts.length, 2);
+    assert.equal(alerts[0].alertId, '8731706');
+    assert.equal(alerts[1].country, 'Spain');
+  });
+
+  it('parses historical when country is NOT the first key in records', () => {
+    const reorderedHistorical = [
+      { iso: 'AF', country: 'Afghanistan', disease: 'Diphtheria', year: '2024', cases: '207' },
+      { year: '2024', cases: '9', iso: 'AU', country: 'Australia', disease: 'Measles' },
+    ];
+    const bundle = buildBundleFixture({ historical: reorderedHistorical });
+    const records = parseHistoricalData(bundle);
+    assert.equal(records.length, 2);
+    assert.equal(records[0].country, 'Afghanistan');
+    assert.equal(records[1].country, 'Australia');
+  });
+
+  it('parses regardless of which eval block appears first in the bundle', () => {
+    // Live bundle has historical-first; this test forces realtime-first.
+    const bundle = buildBundleFixture({ blockOrder: ['realtime', 'historical'] });
+    const alerts = parseRealtimeAlerts(bundle);
+    const historical = parseHistoricalData(bundle);
+    assert.equal(alerts.length, 2);
+    assert.equal(historical.length, 3);
+  });
+
+  it('discriminates between realtime and historical even when both blocks coexist', () => {
+    // Both parsers run on the same bundle; each must find the right block,
+    // not return the other's data. Schema fingerprint guarantees this:
+    // realtime requires (Alert_ID, lat, lng, diseases); historical
+    // requires (country, iso, disease, year, cases).
+    const bundle = buildBundleFixture();
+    const alerts = parseRealtimeAlerts(bundle);
+    const historical = parseHistoricalData(bundle);
+    assert.ok(alerts[0].alertId, 'realtime parsed Alert_ID');
+    assert.ok(historical[0].iso, 'historical parsed iso');
+    // Cross-contamination check: a historical record has no `alertId`
+    assert.ok(historical[0].alertId === undefined);
+  });
+
+  it('skips a phantom eval("var res = [...]") block that does NOT match either schema', () => {
+    // Some bundlers emit OTHER eval blocks (e.g. for color palettes or
+    // layout config). The finder must walk past them.
+    const phantom = [{ key: 'foo', value: 'bar' }, { key: 'baz', value: 'qux' }];
+    const phantomInner = `var res = ${JSON.stringify(phantom)}`;
+    const phantomEscaped = JSON.stringify(phantomInner).slice(1, -1);
+    const base = buildBundleFixture();
+    const bundleWithPhantom = `eval("${phantomEscaped}")\n${base}`;
+    const alerts = parseRealtimeAlerts(bundleWithPhantom);
+    const historical = parseHistoricalData(bundleWithPhantom);
+    assert.equal(alerts.length, 2);
+    assert.equal(historical.length, 3);
   });
 });
 
@@ -118,11 +194,11 @@ describe('seed-vpd-tracker: REGRESSION — pre-2026-04 bundle shape now throws c
     ].join('\n');
     assert.throws(
       () => parseRealtimeAlerts(oldShape),
-      /eval-block anchor for marker 'Alert_ID' not found/,
+      /no eval block matches realtime schema/,
     );
     assert.throws(
       () => parseHistoricalData(oldShape),
-      /eval-block anchor for marker 'country' not found/,
+      /no eval block matches historical schema/,
     );
   });
 });

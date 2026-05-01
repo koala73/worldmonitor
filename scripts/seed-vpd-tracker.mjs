@@ -47,43 +47,22 @@ const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold s
  * @param {string} marker  first field name of the target dataset (e.g. 'Alert_ID', 'country')
  * @returns {Array<object>} parsed JSON array
  */
-function extractEvalResArray(bundle, marker) {
-  const evalNeedle = `eval("var res = [{\\"${marker}\\"`;
-  const start = bundle.indexOf(evalNeedle);
-  if (start === -1) {
-    throw new Error(`[VPD] eval-block anchor for marker '${marker}' not found in bundle (upstream format drift?)`);
-  }
-
-  // The opening `[` of the array sits right after `eval("var res = `.
-  // The eval block itself wraps the ENTIRE compiled module (millions of
-  // bytes — d3 helpers, DOM code, etc.) so we cannot anchor on its closing
-  // `]")`. Instead bracket-match within the JS-escaped form to find the
-  // closing `]` of the array specifically. Treat `\"...\"` JSON-string
-  // segments as opaque so brackets inside data values don't shift depth.
-  const arrayOpen = start + 'eval("var res = '.length;
-  if (bundle[arrayOpen] !== '[') {
-    throw new Error(`[VPD] expected '[' at start of '${marker}' array, got '${bundle[arrayOpen]}'`);
-  }
-
+/**
+ * Walk the JS-escaped form of one `eval("var res = [...]")` array starting
+ * at `arrayOpen` (the `[` byte). Returns the index of the matching closing
+ * `]`, or -1 on truncation. Treats `\"...\"` JSON-string segments as opaque
+ * so brackets inside data values don't shift depth. Handles `\"`, `\\`,
+ * `\n/\t/\b/\f/\r/\/`, and `\uXXXX` escapes.
+ */
+function findArrayCloseInEscapedForm(bundle, arrayOpen) {
   let depth = 0;
   let inJsonString = false;
-  let arrayClose = -1;
   for (let i = arrayOpen; i < bundle.length; i++) {
     const ch = bundle[i];
     if (ch === '\\') {
-      // JS-string-literal escape sequence. Inspect next char.
       const next = bundle[i + 1];
-      if (next === '"') {
-        // \"  ── toggles JSON-string boundary in the eval'd source
-        inJsonString = !inJsonString;
-        i++; // skip the "
-        continue;
-      }
-      if (next === 'u') {
-        i += 5; // \uXXXX → skip the 5 hex/digit chars after \
-        continue;
-      }
-      // \\, \n, \t, \/, \b, \f, \r — skip the next char wholesale
+      if (next === '"') { inJsonString = !inJsonString; i++; continue; }
+      if (next === 'u') { i += 5; continue; }
       i++;
       continue;
     }
@@ -91,24 +70,84 @@ function extractEvalResArray(bundle, marker) {
     if (ch === '[') depth++;
     else if (ch === ']') {
       depth--;
-      if (depth === 0) { arrayClose = i; break; }
+      if (depth === 0) return i;
     }
   }
+  return -1;
+}
 
-  if (arrayClose === -1) {
-    throw new Error(`[VPD] array did not close for '${marker}' (bracket-match exhausted bundle)`);
+/**
+ * Enumerate every `eval("var res = [...JSON-array...]")` block in the bundle.
+ * Yields `{ array }` for each one that parses cleanly; silently skips
+ * truncated or malformed candidates.
+ *
+ * Used by parseRealtimeAlerts / parseHistoricalData to identify their
+ * target dataset by SCHEMA (field-presence in any record), not by the
+ * first-key position in the first record. A harmless upstream reordering
+ * like `{"country":"X","iso":"Y"}` → `{"iso":"Y","country":"X"}` would
+ * have broken a position-anchored parser; this approach treats either
+ * order as the same dataset.
+ */
+function* iterateEvalResArrays(bundle) {
+  let pos = 0;
+  const blockNeedle = 'eval("var res = [';
+  while (true) {
+    const start = bundle.indexOf(blockNeedle, pos);
+    if (start === -1) return;
+    const arrayOpen = start + 'eval("var res = '.length; // points at `[`
+    const arrayClose = findArrayCloseInEscapedForm(bundle, arrayOpen);
+    if (arrayClose === -1) return; // truncated; nothing further is parseable
+    const escaped = bundle.slice(arrayOpen, arrayClose + 1);
+    try {
+      const arrayJson = JSON.parse(`"${escaped}"`);
+      const array = JSON.parse(arrayJson);
+      if (Array.isArray(array)) yield { array };
+    } catch {
+      // Malformed candidate (rare — would mean we mis-counted brackets).
+      // Skip and keep searching for the next eval block.
+    }
+    pos = arrayClose + 1;
   }
+}
 
-  // bundle[arrayOpen..arrayClose] is the JS-escaped JSON array literal.
-  // JSON.parse('"' + escaped + '"') unescapes the JS-string-literal
-  // wrapping; JSON.parse on the result yields the data.
-  const escapedArray = bundle.slice(arrayOpen, arrayClose + 1);
-  const arrayJson = JSON.parse(`"${escapedArray}"`);
-  return JSON.parse(arrayJson);
+/**
+ * Find the first eval-block array whose records contain ALL of the named
+ * fields. Schema-based identification — independent of key order within
+ * objects, eval-block order in the bundle, and minor bundler shuffles.
+ *
+ * We sample multiple records (not just the first) because some upstream
+ * systems emit sparse records where a field may be omitted on a single
+ * row but present on others; a single-record check would false-negative.
+ */
+function findArrayBySchema(bundle, requiredFields) {
+  const needed = new Set(requiredFields);
+  for (const { array } of iterateEvalResArrays(bundle)) {
+    if (array.length === 0) continue;
+    // Sample up to 5 records to tolerate sparse fields on any single row.
+    const sampleSize = Math.min(5, array.length);
+    const seen = new Set();
+    for (let i = 0; i < sampleSize; i++) {
+      const r = array[i];
+      if (!r || typeof r !== 'object') continue;
+      for (const k of Object.keys(r)) seen.add(k);
+    }
+    let allPresent = true;
+    for (const f of needed) {
+      if (!seen.has(f)) { allPresent = false; break; }
+    }
+    if (allPresent) return array;
+  }
+  return null;
 }
 
 export function parseRealtimeAlerts(bundle) {
-  const rows = extractEvalResArray(bundle, 'Alert_ID');
+  // Realtime alerts are identified by the (Alert_ID, lat, lng, diseases)
+  // schema. Any reordering of these fields within a record (or across
+  // records) is fine; only a real schema change (renamed field) breaks us.
+  const rows = findArrayBySchema(bundle, ['Alert_ID', 'lat', 'lng', 'diseases']);
+  if (!rows) {
+    throw new Error('[VPD] no eval block matches realtime schema (Alert_ID, lat, lng, diseases) — upstream format drift?');
+  }
   return rows
     .filter((r) => r.lat && r.lng)
     .map((r) => ({
@@ -126,7 +165,13 @@ export function parseRealtimeAlerts(bundle) {
 }
 
 export function parseHistoricalData(bundle) {
-  const rows = extractEvalResArray(bundle, 'country');
+  // Historical WHO counts identified by (country, iso, disease, year, cases).
+  // 'cases' alone would also match realtime alerts so we use the full
+  // schema fingerprint — the iso/disease/year combo is unique to historical.
+  const rows = findArrayBySchema(bundle, ['country', 'iso', 'disease', 'year', 'cases']);
+  if (!rows) {
+    throw new Error('[VPD] no eval block matches historical schema (country, iso, disease, year, cases) — upstream format drift?');
+  }
   return rows.map((r) => ({
     country: r.country,
     iso: r.iso,
