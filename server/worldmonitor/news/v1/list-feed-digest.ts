@@ -8,7 +8,7 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -186,6 +186,32 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
   };
 }
 
+/**
+ * Sniff a response body to decide whether it looks like RSS/Atom.
+ *
+ * Some upstreams (Cloudflare-protected sites, captcha gateways, login walls)
+ * return HTTP 200 with an HTML interstitial body when the requesting IP is
+ * challenged — Vercel egress IPs are common targets. Without sniffing, the
+ * caller forwards the HTML to parseRssXml, which finds zero `<item>` tags
+ * and returns an empty ParseResult. That empty result then sits in Redis
+ * cache for the full feed TTL (1h), pinning the panel to "No news available"
+ * for an hour even after upstream recovers. Sniffing rejects these bodies
+ * up front so the relay-fallback path fires and the cache stays clean.
+ *
+ * Heuristic:
+ *   - Reject `<!DOCTYPE html>` / `<html ...>` (HTML wall pages)
+ *   - Accept `<rss ...>`, `<feed ...>` (RSS 2.0 / Atom 1.0)
+ *   - Reject everything else as ambiguous (defensive — an RSS feed without
+ *     either signature in the first 2KB is implausible)
+ *
+ * Exported for direct unit testing.
+ */
+export function looksLikeRssXml(text: string): boolean {
+  const head = text.slice(0, 2048).toLowerCase();
+  if (/<!doctype\s+html|<html[\s>]/.test(head)) return false;
+  return /<rss[\s>]|<feed[\s>]/.test(head);
+}
+
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
@@ -202,7 +228,12 @@ async function fetchRssText(
       signal: controller.signal,
     });
     if (!resp.ok) return null;
-    return await resp.text();
+    const text = await resp.text();
+    // Defensive: upstream may return HTTP 200 with an HTML interstitial
+    // (Cloudflare bot challenge, captcha page). Reject up front so the
+    // caller's relay fallback fires instead of caching an empty parse.
+    if (!looksLikeRssXml(text)) return null;
+    return text;
   } finally {
     cleanup();
   }
@@ -220,6 +251,15 @@ interface ParseResult {
   droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
 }
 
+// Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
+// match the existing aggressive-caching behaviour. A zero-from-zero result
+// (no `<item>` tags found at all) caches for only 5 minutes — without this
+// split, a single upstream-CF-challenge or transient outage would pin the
+// panel to "No news available" for the full hour. 5min keeps load on
+// upstream bounded while still recovering quickly when upstream heals.
+const CACHE_TTL_HEALTHY_S = 3600;
+const CACHE_TTL_EMPTY_S = 300;
+
 async function fetchAndParseRss(
   feed: ServerFeed,
   variant: string,
@@ -231,33 +271,58 @@ async function fetchAndParseRss(
   const cacheKey = `rss:feed:v2:${variant}:${feed.url}`;
 
   try {
-    const cached = await cachedFetchJson<ParseResult>(cacheKey, 3600, async () => {
-      // Try direct fetch first
-      let text = await fetchRssText(feed.url, signal).catch(() => null);
+    // Read cache first, but treat a cached zero-from-zero result as a stale
+    // poisoning marker (likely a non-RSS body slipped through the body-sniff
+    // before this fix shipped, OR upstream had a transient failure that
+    // legitimately produced no items). Re-fetch instead of returning the
+    // empty cache — the live fetch may now succeed.
+    const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
+    if (cached && cached.parsedTotal > 0) return cached;
 
-      // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
-      if (!text) {
-        const relayBase = getRelayBaseUrl();
-        if (relayBase) {
-          const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-          const { controller, cleanup } = createTimeoutLinkedController(signal);
-          try {
-            const resp = await fetch(relayUrl, {
-              headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
-              signal: controller.signal,
-            });
-            if (resp.ok) text = await resp.text();
-          } catch { /* relay also failed */ } finally {
-            cleanup();
+    // Try direct fetch first
+    let text = await fetchRssText(feed.url, signal).catch(() => null);
+
+    // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
+    if (!text) {
+      const relayBase = getRelayBaseUrl();
+      if (relayBase) {
+        const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
+        const { controller, cleanup } = createTimeoutLinkedController(signal);
+        try {
+          const resp = await fetch(relayUrl, {
+            headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
+            signal: controller.signal,
+          });
+          if (resp.ok) {
+            const relayText = await resp.text();
+            // Relay can also return CF-challenge HTML if the relay's IP is
+            // challenged — apply the same sniff to keep the cache clean.
+            if (looksLikeRssXml(relayText)) text = relayText;
           }
+        } catch { /* relay also failed */ } finally {
+          cleanup();
         }
       }
+    }
 
-      if (!text) return null;
-      return parseRssXml(text, feed, variant);
-    });
+    if (!text) {
+      // Both direct and relay failed. Cache empty short so we retry sooner
+      // than the healthy-result TTL.
+      const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0 };
+      await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      return empty;
+    }
 
-    return cached ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
+    // parseRssXml returns null on hard parse failure (malformed XML even
+    // after surviving the body-shape sniff). Treat that the same as a
+    // network failure: cache empty short so we retry sooner.
+    const parsed = parseRssXml(text, feed, variant);
+    const result: ParseResult = parsed ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
+    // Long cache only for healthy parses; short cache for zero-from-zero so
+    // transient upstream issues don't sticky-fail for an hour.
+    const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
+    await setCachedJson(cacheKey, result, ttl);
+    return result;
   } catch {
     return { items: [], parsedTotal: 0, droppedUndated: 0 };
   }
