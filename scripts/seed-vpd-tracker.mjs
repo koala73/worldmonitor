@@ -49,29 +49,91 @@ const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold s
  */
 /**
  * Walk the JS-escaped form of one `eval("var res = [...]")` array starting
- * at `arrayOpen` (the `[` byte). Returns the index of the matching closing
- * `]`, or -1 on truncation. Treats `\"...\"` JSON-string segments as opaque
- * so brackets inside data values don't shift depth. Handles `\"`, `\\`,
- * `\n/\t/\b/\f/\r/\/`, and `\uXXXX` escapes.
+ * at `arrayOpen` (the `[` byte) and find the matching closing `]`. Returns
+ * the index of that `]` in the bundle, or -1 on truncation.
+ *
+ * The scanner operates at TWO levels of escaping simultaneously:
+ *
+ *   Level 1 (bundle text → eval'd source):
+ *     The bundle wraps the eval'd JSON in a JS string literal. Each `\X`
+ *     in the bundle (where X is `"`, `\`, `n`, `t`, `r`, `b`, `f`, `/`,
+ *     `'`, or `uXXXX`) decodes to ONE character in the eval'd source.
+ *
+ *   Level 2 (eval'd source → JSON):
+ *     The eval'd source is JSON. Inside a JSON string, an eval'd `\"` is
+ *     the JSON escape for a literal `"` and must NOT toggle the string
+ *     boundary. Outside a JSON string, an eval'd `[`/`]` shifts depth.
+ *
+ * Earlier versions conflated the two levels: a bundle sequence like
+ * `\\\"` (representing eval'd `\"` — JSON-escaped quote inside a string
+ * value) was incorrectly read as `\\` + `\"`, where the trailing `\"`
+ * toggled inJsonString mid-value. Free-text fields like `summary` can
+ * contain `"quoted phrases"` with brackets, e.g. `Officials confirm
+ * "[regional] outbreak" contained` — that would produce `\\\"...]\\\"...`
+ * sequences that misaligned bracket counting.
+ *
+ * The corrected algorithm: decode each bundle byte to its eval'd
+ * character first, then run a JSON-aware state machine over the
+ * decoded stream.
  */
 function findArrayCloseInEscapedForm(bundle, arrayOpen) {
+  // Map of single-char JS-string escape sequences. `\u` is handled
+  // separately because it consumes 4 additional hex digits.
+  const SINGLE_ESCAPE = { '"': '"', '\\': '\\', '/': '/', 'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', 'f': '\f', "'": "'" };
+
   let depth = 0;
   let inJsonString = false;
-  for (let i = arrayOpen; i < bundle.length; i++) {
-    const ch = bundle[i];
-    if (ch === '\\') {
+  let inJsonEscape = false; // inside JSON string AND just saw a `\` in eval'd source
+  let i = arrayOpen;
+
+  while (i < bundle.length) {
+    // ---- Level 1: decode one eval'd char from bundle ----
+    let evaledCh;
+    let advance;
+    if (bundle[i] === '\\') {
       const next = bundle[i + 1];
-      if (next === '"') { inJsonString = !inJsonString; i++; continue; }
-      if (next === 'u') { i += 5; continue; }
-      i++;
-      continue;
+      if (next === undefined) return -1; // truncated trailing backslash
+      if (next === 'u') {
+        const hex = bundle.slice(i + 2, i + 6);
+        if (hex.length < 4) return -1;
+        evaledCh = String.fromCharCode(parseInt(hex, 16));
+        advance = 6;
+      } else {
+        evaledCh = SINGLE_ESCAPE[next] ?? next;
+        advance = 2;
+      }
+    } else {
+      evaledCh = bundle[i];
+      advance = 1;
     }
-    if (inJsonString) continue;
-    if (ch === '[') depth++;
-    else if (ch === ']') {
-      depth--;
-      if (depth === 0) return i;
+
+    // ---- Level 2: JSON state machine over eval'd char ----
+    if (inJsonString) {
+      if (inJsonEscape) {
+        // Previous eval'd char was `\` (JSON escape). This char is the
+        // escape target; consume without changing string/bracket state.
+        // (JSON's \uXXXX has 4 hex digits — those are not brackets and
+        // not quotes, so we don't need to special-case them here for
+        // correctness; depth/inJsonString are correctly preserved.)
+        inJsonEscape = false;
+      } else if (evaledCh === '\\') {
+        inJsonEscape = true;
+      } else if (evaledCh === '"') {
+        inJsonString = false;
+      }
+      // else: ordinary char inside JSON string — skip
+    } else {
+      if (evaledCh === '"') {
+        inJsonString = true;
+      } else if (evaledCh === '[') {
+        depth++;
+      } else if (evaledCh === ']') {
+        depth--;
+        if (depth === 0) return i + advance - 1; // last byte of the closing `]`
+      }
     }
+
+    i += advance;
   }
   return -1;
 }

@@ -181,6 +181,98 @@ describe('seed-vpd-tracker: REGRESSION — schema-based identification (key reor
   });
 });
 
+describe('seed-vpd-tracker: REGRESSION — JSON-escaped quotes inside string values', () => {
+  // P1 review finding: when a JSON value contains a literal `"`, it's
+  // JSON-encoded as `\"`. Wrapped in a JS string literal that becomes
+  // `\\\"` (4 bundle bytes). Earlier scanner versions interpreted the
+  // sequence as `\\` (backslash escape) + `\"` (string-boundary toggle),
+  // incorrectly toggling inJsonString mid-value. If brackets appear inside
+  // the embedded-quoted span, depth counting goes wrong and arrayClose
+  // lands at the wrong position.
+  //
+  // The live bundle has 22 alerts whose `summary` field contains embedded
+  // quotes (e.g. `"alternative wellness" seminar`), so this is not
+  // theoretical — it was a latent production bug that worked by accident
+  // (compensating bugs cancelled when the quoted span contained no
+  // brackets).
+
+  it('parses an alert whose summary contains embedded quotes', () => {
+    const realtime = [
+      {
+        Alert_ID: '1', lat: '56.85', lng: '24.92', diseases: 'Measles',
+        place_name: 'Riga', country: 'Latvia', date: '2026-04-15',
+        cases: '12', link: 'https://example.com/a', Type: 'outbreak',
+        summary: 'Officials confirm "alternative wellness" seminar exposure',
+      },
+    ];
+    const bundle = buildBundleFixture({ realtime });
+    const alerts = parseRealtimeAlerts(bundle);
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].summary, 'Officials confirm "alternative wellness" seminar exposure');
+  });
+
+  it('parses correctly when an embedded-quote span ALSO contains brackets', () => {
+    // Most adversarial case: a value contains `"[regional] outbreak"`.
+    // Pre-fix scanner would have flipped inJsonString and then counted
+    // the `[` and `]` as bracket-depth changes, mis-locating arrayClose.
+    const realtime = [
+      {
+        Alert_ID: '1', lat: '56.85', lng: '24.92', diseases: 'Measles',
+        place_name: 'Riga', country: 'Latvia', date: '2026-04-15',
+        cases: '12', link: 'https://example.com/a', Type: 'outbreak',
+        summary: 'Officials confirm "[regional] outbreak" contained',
+      },
+      {
+        Alert_ID: '2', lat: '40.4', lng: '-3.7', diseases: 'Pertussis',
+        place_name: 'Madrid', country: 'Spain', date: '2026-04-12',
+        cases: '50', link: 'https://example.com/b', Type: 'outbreak',
+        summary: 'Followup record',
+      },
+    ];
+    const bundle = buildBundleFixture({ realtime });
+    const alerts = parseRealtimeAlerts(bundle);
+    assert.equal(alerts.length, 2, 'second record must be parsed (would be lost if depth counting misaligned)');
+    assert.equal(alerts[0].summary, 'Officials confirm "[regional] outbreak" contained');
+    assert.equal(alerts[1].alertId, '2');
+  });
+
+  it('parses correctly when a value contains backslash-bracket-bracket sequences', () => {
+    // Defensive: a value with literal backslashes adjacent to brackets.
+    // JSON encodes the backslash as `\\` and the value gets JS-string-
+    // wrapped, so subtle escape-sequence-misalignment edges show up here.
+    const realtime = [
+      {
+        Alert_ID: '1', lat: '1', lng: '1', diseases: 'Measles',
+        place_name: '', country: '', date: '',
+        cases: '0', link: '', Type: '',
+        summary: 'Path: C:\\\\foo\\\\bar [warn]',
+      },
+      {
+        Alert_ID: '2', lat: '2', lng: '2', diseases: 'Pertussis',
+        place_name: '', country: '', date: '',
+        cases: '0', link: '', Type: '',
+        summary: 'Second record',
+      },
+    ];
+    const bundle = buildBundleFixture({ realtime });
+    const alerts = parseRealtimeAlerts(bundle);
+    assert.equal(alerts.length, 2);
+    assert.ok(alerts[1].alertId === '2');
+  });
+
+  it('parses historical when a value contains embedded quotes', () => {
+    const historical = [
+      { country: 'United States of "America"', iso: 'US', disease: 'Measles', year: '2024', cases: '10' },
+      { country: 'Canada', iso: 'CA', disease: 'Measles', year: '2024', cases: '5' },
+    ];
+    const bundle = buildBundleFixture({ historical });
+    const records = parseHistoricalData(bundle);
+    assert.equal(records.length, 2);
+    assert.equal(records[0].country, 'United States of "America"');
+    assert.equal(records[1].cases, 5);
+  });
+});
+
 describe('seed-vpd-tracker: REGRESSION — pre-2026-04 bundle shape now throws clearly', () => {
   // The OLD format: `var a=[{Alert_ID:"...",...}]; a.columns=["Alert_ID",...]`
   // and `[{country:"Afghanistan",...}]`. The pre-fix parser anchored on these.
