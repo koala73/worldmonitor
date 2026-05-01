@@ -948,4 +948,43 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       restoreEnv();
     }
   });
+
+  // Test for issue #3530: getHashFieldsBatch drops empty-string values
+  it('getHashFieldsBatch preserves empty-string hash values', async () => {
+    const { restoreEnv, cleanup } = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://test.upstash.io',
+      UPSTASH_REDIS_REST_TOKEN: 'test-token',
+    });
+    const originalFetch = globalThis.fetch;
+    const restore = () => { cleanup(); globalThis.fetch = originalFetch; restoreEnv(); };
+
+    // Mock Upstash pipeline response with empty string value
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/pipeline')) {
+        // Return: field1="value1", field2="", field3="value3"
+        // The empty string is a valid value that should be preserved
+        return jsonResponse({
+          result: [["value1", "", "value3"]]
+        });
+      }
+      throw new Error(`Unexpected fetch: ${raw}`);
+    };
+
+    try {
+      const module = await importRedisFresh();
+      const result = await module.getHashFieldsBatch(
+        'test:key',
+        ['field1', 'field2', 'field3'],
+        300
+      );
+
+      // All three values should be present, including the empty string
+      assert.equal(result.get('field1'), 'value1', 'field1 has value1');
+      assert.equal(result.get('field2'), '', 'field2 has empty string');
+      assert.equal(result.get('field3'), 'value3', 'field3 has value3');
+    } finally {
+      restore();
+    }
+  });
 });
