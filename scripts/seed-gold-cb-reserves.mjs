@@ -45,7 +45,18 @@ const ISO3_NAMES = {
   PER: 'Peru', ARG: 'Argentina', COL: 'Colombia', CHL: 'Chile',
   EGY: 'Egypt', MYS: 'Malaysia', AUS: 'Australia', CAN: 'Canada',
   NOR: 'Norway', UKR: 'Ukraine', ECB: 'European Central Bank',
+  EZB: 'European Central Bank', // IMF SDMX returns the German abbreviation
 };
+
+// SDMX 3.0 emits monthly periods as `YYYY-MMM` ("2026-M03") rather than ISO
+// `YYYY-MM`. The downstream date math (`monthOffset`, `latestMonth`) assumes
+// ISO, so we normalize at ingest. `parseInt("M03", 10)` returns NaN — without
+// this, every 12-month delta computation silently produces garbage and
+// topBuyers12m / topSellers12m end up empty.
+export function normalizePeriod(period) {
+  if (typeof period !== 'string') return period;
+  return period.replace(/-M(\d{2})$/, '-$1');
+}
 
 // Non-sovereign aggregates we don't want in the top-holders list
 const AGGREGATE_CODES = new Set([
@@ -91,7 +102,7 @@ async function fetchIrfclMonthlySeries(indicator) {
 
     const byMonth = {};
     for (const [obsKey, obsVal] of Object.entries(seriesData.observations || {})) {
-      const period = timeValues[parseInt(obsKey, 10)]; // e.g. "2026-01"
+      const period = normalizePeriod(timeValues[parseInt(obsKey, 10)]); // SDMX YYYY-MMM → ISO YYYY-MM
       if (!period) continue;
       const v = obsVal?.[0];
       if (v != null && Number.isFinite(parseFloat(v))) byMonth[period] = parseFloat(v);
@@ -142,7 +153,6 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
   })();
   if (!asOfMonth) return null;
 
-  const priorMonth = monthOffset(asOfMonth, -12);
   // IRFCL `_FTO` suffix = Fine Troy Ounces (convertible to tonnes). `_USD`
   // values are price-contaminated, so we flag non-ounces and skip deltas.
   // Backward-compat: legacy `_OZT`/`OUNCE` substrings (from pre-merge PR) also
@@ -151,16 +161,18 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
 
   const toTonnes = (v) => valueIsOunces ? v / TROY_OZ_PER_TONNE : null;
 
-  // Find latest month within a country's byMonth map at or before asOfMonth.
-  // IRFCL reporting lags vary per country — use the most recent available
-  // value within the last 3 months to compute pctOfReserves so we don't drop
-  // countries that report one month late.
+  // Find latest month within a country's byMonth map at or before cutoff.
+  // IRFCL reporting lags vary per country — accept values from cutoff,
+  // cutoff-1, or cutoff-2 (a 2-month tolerance window) so a single fast-
+  // reporting CB advancing asOfMonth doesn't drop every country still on
+  // the prior month. Returns the resolved {month, value} so callers can
+  // derive priorMonth relative to whichever month actually resolved.
   const latestAtOrBefore = (byMonth, cutoff) => {
     if (!byMonth) return null;
-    for (let back = 0; back < 3; back++) {
+    for (let back = 0; back < 3; back++) { // back ∈ {0, 1, 2}
       const m = monthOffset(cutoff, -back);
       const v = byMonth[m];
-      if (v != null && Number.isFinite(v) && v > 0) return v;
+      if (v != null && Number.isFinite(v) && v > 0) return { month: m, value: v };
     }
     return null;
   };
@@ -168,9 +180,12 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
   const holders = [];
   for (const [iso3, rec] of Object.entries(raw)) {
     if (AGGREGATE_CODES.has(iso3)) continue;
-    const current = rec.byMonth[asOfMonth];
-    const prior = rec.byMonth[priorMonth];
-    if (current == null || !Number.isFinite(current) || current <= 0) continue;
+    const cur = latestAtOrBefore(rec.byMonth, asOfMonth);
+    if (!cur) continue;
+    const current = cur.value;
+    // Prior is 12 months before whichever month resolved for this country —
+    // keeps the delta exact for lagging reporters.
+    const prior = rec.byMonth[monthOffset(cur.month, -12)];
 
     let tonnes;
     let deltaTonnes12m = 0;
@@ -190,8 +205,10 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
     // USD). Requires the two parallel indicator series — falls back to 0 when
     // either side is missing for this country (small reporters often publish
     // only the core ounces series).
-    const goldUsd = latestAtOrBefore(goldUsdByCountry[iso3]?.byMonth, asOfMonth);
-    const totalUsd = latestAtOrBefore(totalReservesUsdByCountry[iso3]?.byMonth, asOfMonth);
+    const goldUsdRes = latestAtOrBefore(goldUsdByCountry[iso3]?.byMonth, asOfMonth);
+    const totalUsdRes = latestAtOrBefore(totalReservesUsdByCountry[iso3]?.byMonth, asOfMonth);
+    const goldUsd = goldUsdRes?.value;
+    const totalUsd = totalUsdRes?.value;
     const pctOfReserves = (goldUsd != null && totalUsd != null && totalUsd > 0)
       ? +((goldUsd / totalUsd) * 100).toFixed(2)
       : 0;
