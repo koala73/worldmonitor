@@ -493,6 +493,15 @@ Sentry.init({
         || /out of memory/i.test(msg)
         || /\.(?:toLowerCase|trim|indexOf|findIndex) is not a function/.test(msg)
         || /^(?:Error: )?Request timeout: \//.test(msg)
+        // `^Failed to fetch$` (no host suffix) with zero captured frames =
+        // background fetch from a service worker / browser extension /
+        // in-app webview / stale pre-deploy bundle. A first-party fetch
+        // failing in our shipped code surfaces with at least one
+        // source-mapped .ts frame on the rejection (the awaiting site).
+        // The hostname-suffixed variant `Failed to fetch (<host>)` is
+        // handled above by `isMaplibreAjaxFailure` which does its own
+        // first-party-host allowlist (WORLDMONITOR-KM).
+        || /^(?:TypeError: )?Failed to fetch$/.test(msg)
       )
     ) return null;
     if (hasAnyStack && !hasFirstParty && (
@@ -502,7 +511,6 @@ Sentry.init({
       || /^TypeError: Internal error$/.test(msg)
       || /^Key not found$/.test(msg)
       || /^Element not found$/.test(msg)
-      || /^(?:TypeError: )?Failed to fetch$/.test(msg)
       || /^TypeError: NetworkError/.test(msg)
       || /Could not connect to the server/.test(msg)
       || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))

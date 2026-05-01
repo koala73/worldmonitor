@@ -138,7 +138,6 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
   // deploy, which the chunk-reload guard already auto-recovers. See the dedicated
   // suite below for that case (WORLDMONITOR-Q / WORLDMONITOR-15).
   const networkErrors = [
-    'TypeError: Failed to fetch',
     'TypeError: NetworkError when attempting to fetch resource.',
     'Could not connect to the server',
     'Operation timed out',
@@ -259,6 +258,15 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // (WORLDMONITOR-PW: /api/setIsSelect from Electron 39.2.7).
     ['Request timeout: /api/setIsSelect', 'Error'],
     ['Error: Request timeout: /api/whatever', 'Error'],
+    // Bare `Failed to fetch` with zero frames = service worker /
+    // extension / in-app webview / stale pre-deploy bundle. First-party
+    // fetch failures surface with a source-mapped frame on the awaiting
+    // site (WORLDMONITOR-KM 10ev/8u). The host-suffixed variant
+    // `Failed to fetch (<host>)` has its own first-party allowlist
+    // earlier in beforeSend (isMaplibreAjaxFailure), so doesn't go
+    // through this gate.
+    ['Failed to fetch', 'TypeError'],
+    ['TypeError: Failed to fetch', 'TypeError'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
