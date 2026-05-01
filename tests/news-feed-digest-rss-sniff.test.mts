@@ -29,6 +29,28 @@ describe('looksLikeRssXml: reject non-RSS bodies before they poison the cache', 
     assert.equal(looksLikeRssXml(body), true);
   });
 
+  it('REGRESSION: accepts RSS 1.0 / RDF feeds (Nature News, Asahi, Slashdot)', () => {
+    // Real Nature News body shape — this feed is in the registry at
+    // server/worldmonitor/news/v1/_feeds.ts:418 (`feeds.nature.com/nature/rss/current`).
+    // Pre-fix-fix the sniff rejected this entire feed as non-RSS, even
+    // though parseRssXml handles its <item> blocks correctly.
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:prism="http://prismstandard.org/namespaces/basic/2.0/" xmlns:dc="http://purl.org/dc/elements/1.1/"
+         xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns="http://purl.org/rss/1.0/" xmlns:admin="http://webns.net/mvcb/">
+    <channel rdf:about="http://feeds.nature.com/nature/rss/current">
+        <title>Nature</title>
+        <item><title>foo</title></item>
+    </channel>
+</rdf:RDF>`;
+    assert.equal(looksLikeRssXml(body), true);
+  });
+
+  it('accepts RDF feeds even when the namespace prefix is uppercase (defensive)', () => {
+    // Some feeds emit `<RDF:RDF>` — case-insensitive sniff handles both.
+    const body = `<RDF:RDF xmlns:RDF="..."><channel><item/></channel></RDF:RDF>`;
+    assert.equal(looksLikeRssXml(body), true);
+  });
+
   it('REGRESSION: rejects a Cloudflare interstitial that comes back as HTTP 200', () => {
     // Real shape from the production CF challenge — the exact body the user
     // hit on tech.worldmonitor.app's cloud + IPO panels. Pre-sniff this

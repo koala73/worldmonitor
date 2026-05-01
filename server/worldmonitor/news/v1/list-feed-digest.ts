@@ -187,7 +187,7 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
 }
 
 /**
- * Sniff a response body to decide whether it looks like RSS/Atom.
+ * Sniff a response body to decide whether it looks like RSS/Atom/RDF.
  *
  * Some upstreams (Cloudflare-protected sites, captcha gateways, login walls)
  * return HTTP 200 with an HTML interstitial body when the requesting IP is
@@ -200,16 +200,20 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
  *
  * Heuristic:
  *   - Reject `<!DOCTYPE html>` / `<html ...>` (HTML wall pages)
- *   - Accept `<rss ...>`, `<feed ...>` (RSS 2.0 / Atom 1.0)
- *   - Reject everything else as ambiguous (defensive — an RSS feed without
- *     either signature in the first 2KB is implausible)
+ *   - Accept `<rss ...>` (RSS 2.0)
+ *   - Accept `<feed ...>` (Atom 1.0)
+ *   - Accept `<rdf:RDF ...>` (RSS 1.0 / Dublin Core RDF — Nature News,
+ *     Asahi Shimbun, Slashdot, and other long-running feeds still emit
+ *     this dialect; parseRssXml handles their `<item>` blocks fine)
+ *   - Reject everything else as ambiguous (defensive — a feed without
+ *     any of these signatures in the first 2KB is implausible)
  *
  * Exported for direct unit testing.
  */
 export function looksLikeRssXml(text: string): boolean {
   const head = text.slice(0, 2048).toLowerCase();
   if (/<!doctype\s+html|<html[\s>]/.test(head)) return false;
-  return /<rss[\s>]|<feed[\s>]/.test(head);
+  return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
 }
 
 async function fetchRssText(
