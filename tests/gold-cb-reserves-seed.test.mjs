@@ -84,7 +84,7 @@ describe('seed-gold-cb-reserves: buildReservesPayload (ounces indicator)', () =>
     assert.equal(payload, null);
   });
 
-  it('still drops countries with no value within the 3-month lookback window', () => {
+  it('still drops countries with no value within the 2-month lookback window', () => {
     const partial = {
       USA: { name: 'United States', byMonth: { '2025-01': 261_500_000, '2026-04': 261_500_000 } },
       DEU: { name: 'Germany', byMonth: { '2025-01': 108_000_000 } }, // last data 2025-01, asOfMonth 2026-04 → out of window
@@ -214,10 +214,10 @@ describe('seed-gold-cb-reserves: pctOfReserves computation', () => {
     const totalUsd = { USA: { byMonth: { '2026-02': 800_000_000_000 } } };
     const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
     assert.equal(payload.asOfMonth, '2026-03');
-    assert.equal(payload.topHolders[0].pctOfReserves, 50, '2026-02 total is within the 3-month lookback window');
+    assert.equal(payload.topHolders[0].pctOfReserves, 50, '2026-02 total is within the 2-month lookback window');
   });
 
-  it('rejects a denominator older than 3 months (stale data shouldn\'t contaminate current pct)', () => {
+  it('rejects a denominator older than the 2-month window (stale data shouldn\'t contaminate current pct)', () => {
     const raw = {
       USA: { name: 'United States', byMonth: { '2026-06': 261_500_000 } },
     };
@@ -225,6 +225,6 @@ describe('seed-gold-cb-reserves: pctOfReserves computation', () => {
     // Total reserves last reported 2026-01 — 5 months before; outside the window.
     const totalUsd = { USA: { byMonth: { '2026-01': 800_000_000_000 } } };
     const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
-    assert.equal(payload.topHolders[0].pctOfReserves, 0, 'stale denominator (>3mo) is dropped');
+    assert.equal(payload.topHolders[0].pctOfReserves, 0, 'stale denominator (outside 2-month window) is dropped');
   });
 });

@@ -162,14 +162,14 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
   const toTonnes = (v) => valueIsOunces ? v / TROY_OZ_PER_TONNE : null;
 
   // Find latest month within a country's byMonth map at or before cutoff.
-  // IRFCL reporting lags vary per country — accept values up to 3 months
-  // before the global cutoff so a single fast-reporting CB advancing
-  // asOfMonth doesn't drop every country still on the prior month.
-  // Returns the resolved {month, value} so callers can derive priorMonth
-  // relative to whichever month actually resolved.
+  // IRFCL reporting lags vary per country — accept values from cutoff,
+  // cutoff-1, or cutoff-2 (a 2-month tolerance window) so a single fast-
+  // reporting CB advancing asOfMonth doesn't drop every country still on
+  // the prior month. Returns the resolved {month, value} so callers can
+  // derive priorMonth relative to whichever month actually resolved.
   const latestAtOrBefore = (byMonth, cutoff) => {
     if (!byMonth) return null;
-    for (let back = 0; back < 3; back++) {
+    for (let back = 0; back < 3; back++) { // back ∈ {0, 1, 2}
       const m = monthOffset(cutoff, -back);
       const v = byMonth[m];
       if (v != null && Number.isFinite(v) && v > 0) return { month: m, value: v };
