@@ -22,31 +22,96 @@ const BUNDLE_URL = 'https://thinkglobalhealth.github.io/disease_tracker/index_bu
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
 
 /**
- * Parse realtime outbreak alerts from the embedded object array.
+ * Extract a JSON array from an `eval("var res = [...]")` block in the bundle.
  *
- * Bundle format (webpack CommonJS):
- *   var a=[{Alert_ID:"8731706",lat:"56.85",lng:"24.92",diseases:"Measles",...},
- *          ...
- *          {Alert_ID:"8707570",...}];
- *   a.columns=["Alert_ID","lat","lng","diseases","place_name","country","date","cases","link","Type","summary"]
+ * Bundle format (post-2026-04 webpack rebuild — verified against the live
+ * 7.5MB index_bundle.js on 2026-05-01):
  *
- * The .columns metadata property marks the end of the array.
+ *   eval("var res = [{\"Alert_ID\":\"8731706\",\"lat\":\"56.85\",...}, ...]")
+ *   eval("var res = [{\"country\":\"Afghanistan\",\"iso\":\"AF\",...}, ...]")
+ *
+ * The bundle has exactly TWO such blocks: one whose first object key is
+ * `Alert_ID` (realtime alerts), one whose first key is `country` (historical
+ * WHO annual counts). The wrapping is a JS string literal — properties are
+ * JSON-quoted with backslash-escaped quotes.
+ *
+ * Pre-2026-04 the bundle used `var a=[{Alert_ID:"...",...}]` (unquoted keys,
+ * named array, separate `.columns` metadata) and the parser anchored on
+ * `.columns=["Alert_ID"`, `var a=[`, and `[{country:"`. All three anchors
+ * are dead in the current bundle. This rewrite anchors on the FIELD NAMES
+ * (`Alert_ID`, `country`) which are domain-stable — they only change if
+ * Think Global Health renames the data schema itself, not when their
+ * bundler is upgraded.
+ *
+ * @param {string} bundle  raw JS bundle text
+ * @param {string} marker  first field name of the target dataset (e.g. 'Alert_ID', 'country')
+ * @returns {Array<object>} parsed JSON array
  */
-function parseRealtimeAlerts(bundle) {
-  const colIdx = bundle.indexOf('.columns=["Alert_ID"');
-  if (colIdx === -1) throw new Error('[VPD] Realtime data columns marker not found in bundle');
+function extractEvalResArray(bundle, marker) {
+  const evalNeedle = `eval("var res = [{\\"${marker}\\"`;
+  const start = bundle.indexOf(evalNeedle);
+  if (start === -1) {
+    throw new Error(`[VPD] eval-block anchor for marker '${marker}' not found in bundle (upstream format drift?)`);
+  }
 
-  const arrayEnd = bundle.lastIndexOf('}]', colIdx);
-  const arrayStart = bundle.lastIndexOf('var a=[', arrayEnd);
-  if (arrayStart === -1) throw new Error('[VPD] Realtime data array start not found');
+  // The opening `[` of the array sits right after `eval("var res = `.
+  // The eval block itself wraps the ENTIRE compiled module (millions of
+  // bytes — d3 helpers, DOM code, etc.) so we cannot anchor on its closing
+  // `]")`. Instead bracket-match within the JS-escaped form to find the
+  // closing `]` of the array specifically. Treat `\"...\"` JSON-string
+  // segments as opaque so brackets inside data values don't shift depth.
+  const arrayOpen = start + 'eval("var res = '.length;
+  if (bundle[arrayOpen] !== '[') {
+    throw new Error(`[VPD] expected '[' at start of '${marker}' array, got '${bundle[arrayOpen]}'`);
+  }
 
-  const rawArray = bundle.slice(arrayStart + 6, arrayEnd + 2); // skip 'var a='
-  // eslint-disable-next-line no-new-func
-  const rows = Function('"use strict"; return ' + rawArray)();
+  let depth = 0;
+  let inJsonString = false;
+  let arrayClose = -1;
+  for (let i = arrayOpen; i < bundle.length; i++) {
+    const ch = bundle[i];
+    if (ch === '\\') {
+      // JS-string-literal escape sequence. Inspect next char.
+      const next = bundle[i + 1];
+      if (next === '"') {
+        // \"  ── toggles JSON-string boundary in the eval'd source
+        inJsonString = !inJsonString;
+        i++; // skip the "
+        continue;
+      }
+      if (next === 'u') {
+        i += 5; // \uXXXX → skip the 5 hex/digit chars after \
+        continue;
+      }
+      // \\, \n, \t, \/, \b, \f, \r — skip the next char wholesale
+      i++;
+      continue;
+    }
+    if (inJsonString) continue;
+    if (ch === '[') depth++;
+    else if (ch === ']') {
+      depth--;
+      if (depth === 0) { arrayClose = i; break; }
+    }
+  }
 
+  if (arrayClose === -1) {
+    throw new Error(`[VPD] array did not close for '${marker}' (bracket-match exhausted bundle)`);
+  }
+
+  // bundle[arrayOpen..arrayClose] is the JS-escaped JSON array literal.
+  // JSON.parse('"' + escaped + '"') unescapes the JS-string-literal
+  // wrapping; JSON.parse on the result yields the data.
+  const escapedArray = bundle.slice(arrayOpen, arrayClose + 1);
+  const arrayJson = JSON.parse(`"${escapedArray}"`);
+  return JSON.parse(arrayJson);
+}
+
+export function parseRealtimeAlerts(bundle) {
+  const rows = extractEvalResArray(bundle, 'Alert_ID');
   return rows
-    .filter(r => r.lat && r.lng)
-    .map(r => ({
+    .filter((r) => r.lat && r.lng)
+    .map((r) => ({
       alertId: r.Alert_ID,
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lng),
@@ -60,26 +125,9 @@ function parseRealtimeAlerts(bundle) {
     }));
 }
 
-/**
- * Parse historical WHO annual case counts from the embedded JS object array.
- *
- * Bundle format (second dataset, follows immediately after realtime module):
- *   [{"country":"Afghanistan","iso":"AF","disease":"Diphtheria","year":"2024","cases":"207"}, ...]
- */
-function parseHistoricalData(bundle) {
-  const colIdx = bundle.indexOf('.columns=["Alert_ID"');
-  if (colIdx === -1) throw new Error('[VPD] Bundle anchor not found for historical data search');
-
-  const arrayStart = bundle.indexOf('[{country:"', colIdx);
-  if (arrayStart === -1) throw new Error('[VPD] Historical data array not found');
-  const arrayEnd = bundle.indexOf('];', arrayStart);
-  if (arrayEnd === -1) throw new Error('[VPD] Historical data end marker not found');
-
-  const rawArray = bundle.slice(arrayStart, arrayEnd + 1);
-  // eslint-disable-next-line no-new-func
-  const rows = Function('"use strict"; return ' + rawArray)();
-
-  return rows.map(r => ({
+export function parseHistoricalData(bundle) {
+  const rows = extractEvalResArray(bundle, 'country');
+  return rows.map((r) => ({
     country: r.country,
     iso: r.iso,
     disease: r.disease,
@@ -113,23 +161,29 @@ export function declareRecords(data) {
   return Array.isArray(data?.alerts) ? data.alerts.length : 0;
 }
 
-runSeed('health', 'vpd-tracker', CANONICAL_KEY, fetchVpdTracker, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'tgh-bundle-v1',
-  extraKeys: [
-    {
-      key: HISTORICAL_KEY,
-      ttl: CACHE_TTL,
-      transform: data => ({ records: data.historical, fetchedAt: data.fetchedAt }),
-    },
-  ],
+// Standalone-only entrypoint guard. Without this, importing the file from
+// tests (e.g. to test parseRealtimeAlerts / parseHistoricalData) kicks off
+// the full runSeed pipeline at module-load time — Redis lock acquisition,
+// external bundle fetch, Redis writes — which hangs the test runner.
+if (process.argv[1]?.endsWith('seed-vpd-tracker.mjs')) {
+  runSeed('health', 'vpd-tracker', CANONICAL_KEY, fetchVpdTracker, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'tgh-bundle-v2',
+    extraKeys: [
+      {
+        key: HISTORICAL_KEY,
+        ttl: CACHE_TTL,
+        transform: data => ({ records: data.historical, fetchedAt: data.fetchedAt }),
+      },
+    ],
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 2880,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
-  console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
