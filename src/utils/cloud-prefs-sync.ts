@@ -15,6 +15,8 @@
 import { CLOUD_SYNC_KEYS, type CloudSyncKey } from './sync-keys';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
+import { FEEDS } from '@/config/feeds';
+import { migrateDisabledFeedsV2 } from './cloud-prefs-migrations';
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
 
@@ -24,9 +26,29 @@ const KEY_LAST_SYNC_AT = 'wm-last-sync-at';
 const KEY_SYNC_STATE = 'wm-cloud-sync-state';
 const KEY_LAST_SIGNED_IN_AS = 'wm-last-signed-in-as';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 1;
+const CURRENT_PREFS_SCHEMA_VERSION = 2;
 const MIGRATIONS: Record<number, (data: Record<string, unknown>) => Record<string, unknown>> = {
-  // Future: MIGRATIONS[2] = (data) => { ...transform... }
+  // Schema 2 (2026-05-01): one-shot recovery for the v1 free-tier source-cap
+  // bug. The pre-PR-3521 alphabetical-slice cap auto-disabled every source
+  // past position 80 alphabetically, leaving entire late-alphabet categories
+  // (Layoffs, Semiconductors, IPO, Funding, Product Hunt, …) with 100% of
+  // their feeds in `disabledFeeds`. PR #3521 added a per-origin localStorage
+  // migration to recover this, but cloud-prefs sync re-poisoned origins
+  // every load by overwriting localStorage with the still-bad cloud blob —
+  // the recovery had to live at the cloud-data layer to be permanent.
+  //
+  // This migration runs ONCE per cloud row (gated by schemaVersion < 2),
+  // detects categories where 100% of sources are in `disabledFeeds`, and
+  // re-enables them. After the migration completes, schemaVersion bumps to
+  // 2 and subsequent sync pulls skip recovery — so a user who explicitly
+  // disables every source in a category POST-migration keeps that
+  // preference forever. The 100%-disabled-category heuristic is targeted
+  // enough that explicit single-source disabling is preserved.
+  //
+  // The recovery uses the variant-aware FEEDS in scope at migration time;
+  // the cloud blob is variant-scoped (per /api/user-prefs?variant=...) so
+  // there's no cross-variant pollution risk.
+  2: (data) => migrateDisabledFeedsV2(data, FEEDS),
 };
 
 type SyncState = 'synced' | 'pending' | 'syncing' | 'conflict' | 'offline' | 'signed-out' | 'error';
@@ -288,8 +310,15 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
       const prevBlobJson = isFirstEverSync ? JSON.stringify(buildCloudBlob()) : null;
 
       const migrated = applyMigrations(cloud.data, cloud.schemaVersion ?? 1);
+      const migrationChanged = (cloud.schemaVersion ?? 1) < CURRENT_PREFS_SCHEMA_VERSION;
       applyCloudBlob(migrated);
       setSyncVersion(cloud.syncVersion);
+      // If applyMigrations advanced the schema, force an upload so the cloud
+      // row's schemaVersion catches up. Without this, the cloud blob stays at
+      // the old schemaVersion and the migration re-runs on every load until
+      // any user pref change happens to fire schedulePrefUpload organically.
+      // Idempotent migrations make that harmless but wasteful and noisy.
+      if (migrationChanged) schedulePrefUpload(variant);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
 
       if (isFirstEverSync && prevBlobJson && Object.keys(cloud.data).length > 0) {
