@@ -76,6 +76,7 @@ Sentry.init({
     /NS_ERROR_ABORT/,
     /NS_ERROR_OUT_OF_MEMORY/,
     /NS_ERROR_UNEXPECTED/, // Firefox XPCOM: Worker init failure on privacy-hardened Firefox/Ubuntu — WORLDMONITOR-N6/N7/N8/N9
+    /NS_ERROR_FILE_NO_DEVICE_SPACE/, // Firefox XPCOM: disk-full on IndexedDB/cache/SW write — WORLDMONITOR-Q0
     /DataCloneError.*could not be cloned/,
     /cannot decode message/,
     /WKWebView was deallocated/,
