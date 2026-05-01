@@ -513,6 +513,45 @@ export async function imfFetchJson(url, proxyAuth) {
 // ---------------------------------------------------------------------------
 const IMF_SDMX_BASE = 'https://api.imf.org/external/sdmx/3.0';
 
+/**
+ * Normalize an SDMX 3.0 monthly period from `YYYY-MMM` (the on-the-wire
+ * shape, e.g. `2026-M03`) to ISO `YYYY-MM` so downstream date math —
+ * `period.split('-')`, `parseInt(month, 10)`, key comparisons — works
+ * without special-casing. The M-prefix silently corrupts these
+ * computations: `parseInt("M03", 10)` returns NaN, so 12-month delta
+ * lookups against `byMonth[priorMonth]` always miss.
+ *
+ * Other SDMX 3.0 frequencies pass through unchanged:
+ *   - Annual:    `YYYY`               (e.g. `2024`) — used by WEO/FM
+ *   - Quarterly: `YYYY-Q1..Q4`        (e.g. `2024-Q3`) — sortable as-is
+ *   - Daily:     `YYYY-MM-DD`         (e.g. `2024-03-15`) — used by ECB
+ *   - Monthly:   `YYYY-MMM` → YYYY-MM (e.g. `2026-M03` → `2026-03`)
+ *
+ * Future monthly/quarterly SDMX consumers MUST call this at ingest
+ * (right after reading `timeValues[parseInt(obsKey, 10)]`) so callers
+ * downstream can keep using simple string comparisons and ISO splits.
+ *
+ * @param {string|null|undefined} period
+ * @returns {string|null|undefined} Normalized period (or input unchanged for falsy/non-string)
+ */
+export function normalizeSdmxPeriod(period) {
+  if (typeof period !== 'string') return period;
+  return period.replace(/-M(\d{2})$/, '-$1');
+}
+
+/**
+ * IMF WEO/FM annual indicator fetcher. Hardcoded to annual frequency by URL
+ * construction (`*.${indicator}.A`) — period values come back as bare year
+ * strings (`"2024"`), so no SDMX-period normalization is required here.
+ *
+ * NOTE for future extensions: if you need IMF monthly or quarterly data
+ * (e.g. IRFCL, IFS, BOP), do NOT bolt frequency onto this helper — the
+ * dimension layout differs (e.g. IRFCL is 4-dim COUNTRY.INDICATOR.SECTOR.FREQUENCY,
+ * not WEO's 2-dim COUNTRY.INDICATOR). Roll a custom fetch and call
+ * `normalizeSdmxPeriod()` on every period before storing it as a key.
+ * See `scripts/seed-gold-cb-reserves.mjs::fetchIrfclMonthlySeries` for the
+ * canonical monthly pattern.
+ */
 export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years } = {}) {
   const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
   const agency = agencyMap[database] || 'IMF.RES';
