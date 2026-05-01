@@ -1,45 +1,19 @@
-import { Protocol } from 'pmtiles';
-import maplibregl from 'maplibre-gl';
-import { layers, namedFlavor } from '@protomaps/basemaps';
-import type { StyleSpecification } from 'maplibre-gl';
+// Map provider/theme preferences. Pure config: NO maplibre/pmtiles/protomaps
+// runtime deps live here so the preferences UI (UnifiedSettings → preferences-content)
+// can render without dragging maplibre+deck.gl into the entry bundle.
+// maplibre-using helpers live in `./basemap-styles.ts` and are loaded
+// lazily alongside MapContainer/DeckGLMap when the map panel mounts.
 
 const R2_PROXY = import.meta.env.VITE_PMTILES_URL ?? '';
 const R2_PUBLIC = import.meta.env.VITE_PMTILES_URL_PUBLIC ?? '';
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
-const R2_BASE = isTauri && R2_PUBLIC ? R2_PUBLIC : R2_PROXY;
+export const R2_BASE = isTauri && R2_PUBLIC ? R2_PUBLIC : R2_PROXY;
 
 const hasTilesUrl = !!R2_BASE;
-
-let registered = false;
-
-export function registerPMTilesProtocol(): void {
-  if (registered) return;
-  registered = true;
-  const protocol = new Protocol();
-  maplibregl.addProtocol('pmtiles', protocol.tile);
-}
 
 export type PMTilesTheme = 'black' | 'dark' | 'grayscale' | 'light' | 'white';
 export type OpenFreeMapTheme = 'dark' | 'positron';
 export type CartoTheme = 'dark-matter' | 'voyager' | 'positron';
-
-export function buildPMTilesStyle(flavor: PMTilesTheme): StyleSpecification | null {
-  if (!hasTilesUrl) return null;
-  const spriteName = ['light', 'white'].includes(flavor) ? 'light' : 'dark';
-  return {
-    version: 8,
-    glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-    sprite: `https://protomaps.github.io/basemaps-assets/sprites/v4/${spriteName}`,
-    sources: {
-      basemap: {
-        type: 'vector',
-        url: `pmtiles://${R2_BASE}`,
-        attribution: '<a href="https://protomaps.com">Protomaps</a> | <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
-      },
-    },
-    layers: layers('basemap', namedFlavor(flavor), { lang: 'en' }) as StyleSpecification['layers'],
-  };
-}
 
 export const FALLBACK_DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark';
 export const FALLBACK_LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/positron';
@@ -123,36 +97,7 @@ export function isLightMapTheme(mapTheme: string): boolean {
   return ['light', 'white', 'positron', 'voyager'].includes(mapTheme);
 }
 
-const CARTO_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-const CARTO_VOYAGER = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
-const CARTO_POSITRON = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
-
-const CARTO_STYLES: Record<string, string> = {
-  'dark-matter': CARTO_DARK,
-  'voyager': CARTO_VOYAGER,
-  'positron': CARTO_POSITRON,
-};
-
-function asPMTilesTheme(mapTheme: string): PMTilesTheme {
+export function asPMTilesTheme(mapTheme: string): PMTilesTheme {
   const valid = PMTILES_THEMES.some(o => o.value === mapTheme);
   return (valid ? mapTheme : 'black') as PMTilesTheme;
-}
-
-export function getStyleForProvider(provider: MapProvider, mapTheme: string): StyleSpecification | string {
-  const lightFallback = isLightMapTheme(mapTheme);
-  switch (provider) {
-    case 'pmtiles': {
-      const style = buildPMTilesStyle(asPMTilesTheme(mapTheme));
-      if (style) return style;
-      return lightFallback ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
-    }
-    case 'openfreemap':
-      return mapTheme === 'positron' ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
-    case 'carto':
-      return CARTO_STYLES[mapTheme] ?? CARTO_DARK;
-    default: {
-      const pmtiles = buildPMTilesStyle(asPMTilesTheme(mapTheme));
-      return pmtiles ?? (lightFallback ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE);
-    }
-  }
 }
