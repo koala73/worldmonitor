@@ -4,12 +4,25 @@ import { afterEach, describe, it, before, after, mock } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway } from '../server/gateway.ts';
+import { issueSessionToken } from '../api/_session.js';
 
 const originalKeys = process.env.WORLDMONITOR_VALID_KEYS;
+const originalSessionSecret = process.env.WM_SESSION_SECRET;
+
+// Public routes now require a wms_ session token (issue #3541) — header-only
+// origin trust is gone. Mint one for tests that previously relied on
+// "trusted browser origin = anonymous public read."
+process.env.WM_SESSION_SECRET = originalSessionSecret
+  ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
+let SESSION_TOKEN: string;
+before(async () => { SESSION_TOKEN = (await issueSessionToken()).token; });
 
 afterEach(() => {
   if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
   else process.env.WORLDMONITOR_VALID_KEYS = originalKeys;
+  // Keep the session secret stable across tests so SESSION_TOKEN stays valid.
+  process.env.WM_SESSION_SECRET = originalSessionSecret
+    ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
 });
 
 describe('premium gateway API key enforcement', () => {
@@ -86,9 +99,10 @@ describe('premium gateway API key enforcement', () => {
     }));
     assert.equal(unknownNoKey.status, 403);
 
-    // Public endpoint — always accessible from trusted origin (no credentials needed)
+    // Public endpoint — anonymous browsers authenticate via the wms_ session token
+    // (issue #3541; previously this was a trusted-origin bypass).
     const publicAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
-      headers: { Origin: 'https://worldmonitor.app' },
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
     }));
     assert.equal(publicAllowed.status, 200);
   });
@@ -216,11 +230,18 @@ describe('premium gateway bearer token auth', () => {
     assert.equal(res.status, 401);
   });
 
-  it('public routes are unaffected by absence of auth header', async () => {
+  it('public routes accept the anonymous browser session token', async () => {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+    }));
+    assert.equal(res.status, 200);
+  });
+
+  it('public routes WITHOUT a session token are rejected (#3541 — header-only trust is gone)', async () => {
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 401);
   });
 
   it('rejects free bearer token on resilience premium endpoints → 403', async () => {

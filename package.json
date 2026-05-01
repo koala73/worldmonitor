@@ -49,7 +49,7 @@
     "test:data": "tsx --test tests/*.test.mjs tests/*.test.mts",
     "dryrun:resilience": "node --import tsx/esm scripts/dry-run-resilience-rebalance.mjs",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
-    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs api/_cors.test.mjs api/youtube/embed.test.mjs api/cyber-threats.test.mjs api/usni-fleet.test.mjs scripts/ais-relay-rss.test.cjs api/loaders-xml-wms-regression.test.mjs",
+    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs api/_cors.test.mjs api/_session.test.mjs api/_api-key.test.mjs api/wm-session.test.mjs api/youtube/embed.test.mjs api/cyber-threats.test.mjs api/usni-fleet.test.mjs scripts/ais-relay-rss.test.cjs api/loaders-xml-wms-regression.test.mjs",
     "test:e2e:visual:full": "cross-env VITE_VARIANT=full playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual:tech": "cross-env VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual": "npm run test:e2e:visual:full && npm run test:e2e:visual:tech",

@@ -20,6 +20,13 @@ import { afterEach, before, after, describe, it } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway, type GatewayCtx } from '../server/gateway.ts';
+import { issueSessionToken } from '../api/_session.js';
+
+// Anonymous browser access requires a wms_ session token (issue #3541).
+process.env.WM_SESSION_SECRET = process.env.WM_SESSION_SECRET
+  ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
+let SESSION_TOKEN: string;
+before(async () => { SESSION_TOKEN = (await issueSessionToken()).token; });
 
 interface CapturedEvent {
   event_type: string;
@@ -145,7 +152,7 @@ describe('gateway telemetry payload — domain extraction', () => {
     const recorder = makeRecordingCtx();
     const res = await handler(
       new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
-        headers: { Origin: 'https://worldmonitor.app' },
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       }),
       recorder.ctx,
     );
@@ -357,7 +364,7 @@ describe('gateway telemetry payload — ctx-optional safety', () => {
 
     const res = await handler(
       new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
-        headers: { Origin: 'https://worldmonitor.app' },
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       }),
     );
     assert.equal(res.status, 200);

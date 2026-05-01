@@ -426,9 +426,17 @@ export function createDomainGateway(
 
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
-    let keyCheck = validateApiKey(request, {
+    let keyCheck = (await validateApiKey(request, {
       forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
-    }) as { valid: boolean; required: boolean; error?: string };
+    })) as { valid: boolean; required: boolean; error?: string };
+
+    // Clerk session is itself proof of authentication (validated at line 410).
+    // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
+    // Clerk-authenticated user who hasn't also minted a wms_ session token.
+    // Override: tier-gated routes with a resolved sessionUserId pass this layer.
+    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
+      keyCheck = { valid: true, required: false };
+    }
 
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
     // check fails, try async Convex-backed validation for user-issued keys.
