@@ -30,6 +30,36 @@ export interface SourceCapResult {
 }
 
 /**
+ * Detect categories where 100% of sources are in the disabled set — the
+ * fingerprint of the pre-2026-05-01 free-tier alphabetical-slice cap bug.
+ * Returns the source names that should be re-enabled.
+ *
+ * Used to recover Pro users (and free users on a fresh deploy) whose
+ * localStorage `disabledFeeds` state was poisoned by the v1 enforcement.
+ * The 100%-disabled-category heuristic is targeted enough that explicit
+ * user disabling of single sources is preserved — only fully-starved
+ * categories (which a real user would just hide as a panel, not toggle
+ * source-by-source) get recovered.
+ *
+ * @param feedsByCategory  category-keyed map of feed lists
+ * @param disabled         current disabled-source set (mixed user + auto)
+ * @returns                source names from any fully-disabled category
+ */
+export function findFullyDisabledCategories(
+  feedsByCategory: FeedsByCategory,
+  disabled: ReadonlySet<string>,
+): string[] {
+  const recoverable: string[] = [];
+  for (const feeds of Object.values(feedsByCategory)) {
+    if (!feeds || feeds.length === 0) continue;
+    if (feeds.every((f) => disabled.has(f.name))) {
+      for (const f of feeds) recoverable.push(f.name);
+    }
+  }
+  return recoverable;
+}
+
+/**
  * Distribute the source cap fairly across feed categories.
  *
  * @param feedsByCategory  category-keyed map of feed lists (typically `FEEDS`)

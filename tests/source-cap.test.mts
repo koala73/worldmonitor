@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { selectSourcesUnderCap } from '../src/services/source-cap';
+import { selectSourcesUnderCap, findFullyDisabledCategories } from '../src/services/source-cap';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
 
@@ -137,5 +137,63 @@ describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
     assert.ok(r.autoDisabled.has('a2'));
     assert.ok(!r.autoDisabled.has('a3'));
     assert.ok(!r.keep.has('a3'));
+  });
+});
+
+describe('findFullyDisabledCategories: recover v1 cap-bug victims', () => {
+  it('returns empty when no category is 100% disabled', () => {
+    const feeds = { a: F('a1', 'a2'), b: F('b1', 'b2') };
+    const disabled = new Set(['a1']); // partial — keep a2 and all of b
+    assert.deepEqual(findFullyDisabledCategories(feeds, disabled), []);
+  });
+
+  it('returns sources from a 100%-disabled category', () => {
+    const feeds = { a: F('a1', 'a2', 'a3'), b: F('b1') };
+    const disabled = new Set(['a1', 'a2', 'a3']); // category a is fully disabled
+    const r = findFullyDisabledCategories(feeds, disabled);
+    assert.deepEqual(r.sort(), ['a1', 'a2', 'a3']);
+  });
+
+  it('returns sources from MULTIPLE fully-disabled categories', () => {
+    const feeds = {
+      layoffs: F('Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News'),
+      ipo: F('IPO News', 'Renaissance IPO', 'Tech IPO News'),
+      politics: F('Reuters', 'AP'), // healthy
+    };
+    const disabled = new Set([
+      'Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News',
+      'IPO News', 'Renaissance IPO', 'Tech IPO News',
+    ]);
+    const r = findFullyDisabledCategories(feeds, disabled);
+    assert.equal(r.length, 6);
+    assert.ok(r.includes('Layoffs.fyi'));
+    assert.ok(r.includes('IPO News'));
+    assert.ok(!r.includes('Reuters'), 'healthy categories must not be touched');
+  });
+
+  it('preserves explicit single-source disabling (the heuristic\'s key safety property)', () => {
+    // User explicitly toggled OFF one source in a multi-source category.
+    // That's a real preference we must not undo.
+    const feeds = { politics: F('Reuters', 'AP', 'CNN') };
+    const disabled = new Set(['CNN']); // user toggled CNN off
+    const r = findFullyDisabledCategories(feeds, disabled);
+    assert.deepEqual(r, [], 'partial disable must NOT be flagged as bug victim');
+  });
+
+  it('handles empty / undefined / single-source categories without false positives', () => {
+    const feeds = {
+      empty: [],
+      undef: undefined,
+      single: F('only-one'),
+    };
+    // single category with its only source disabled IS a 100% disabled category
+    const disabled = new Set(['only-one']);
+    const r = findFullyDisabledCategories(feeds, disabled);
+    assert.deepEqual(r, ['only-one']);
+  });
+
+  it('returns empty when disabled set is empty', () => {
+    const feeds = { a: F('a1', 'a2'), b: F('b1') };
+    assert.deepEqual(findFullyDisabledCategories(feeds, new Set()), []);
   });
 });

@@ -66,7 +66,7 @@ import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country
 import { initI18n, t } from '@/services/i18n';
 
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
-import { selectSourcesUnderCap } from '@/services/source-cap';
+import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
 import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, type BootstrapHydrationState } from '@/services/bootstrap';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
@@ -1215,7 +1215,23 @@ export class App {
    * Safe to call multiple times (idempotent) — e.g. on auth state changes.
    */
   private enforceFreeTierLimits(): void {
-    if (isProUser()) return;
+    if (isProUser()) {
+      // Pro users have no source cap — but their localStorage may still
+      // hold v1-bug entries from a prior free-tier session OR from the
+      // pre-fix alphabetical-slice enforcement. Detect categories where
+      // 100% of sources are disabled (the bug fingerprint — a real user
+      // would hide the whole panel, not toggle every source individually)
+      // and re-enable them. Targeted enough that explicit single-source
+      // disabling is preserved.
+      const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      const recoverable = findFullyDisabledCategories(FEEDS, disabledSources);
+      if (recoverable.length > 0) {
+        for (const name of recoverable) disabledSources.delete(name);
+        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
+        console.log(`[App] Pro user: recovered ${recoverable.length} source(s) from fully-disabled categories (likely v1 cap-bug victims)`);
+      }
+      return;
+    }
 
     // --- Panel limit ---
     const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
@@ -1247,6 +1263,15 @@ export class App {
     // disabled" red panel state on the homepage with no user explanation.
     // Replaced with round-robin per-category distribution from `selectSourcesUnderCap`.
     const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+    // Free-user recovery: same v1-bug fingerprint as the Pro path above.
+    // Re-enable any 100%-disabled category before applying the new round-robin
+    // distribution, otherwise the round-robin sees those categories as having
+    // no eligible sources and silently skips them.
+    const recoverable = findFullyDisabledCategories(FEEDS, disabledSources);
+    if (recoverable.length > 0) {
+      for (const name of recoverable) disabledSources.delete(name);
+      console.log(`[App] Free tier: recovered ${recoverable.length} source(s) from fully-disabled categories before round-robin (likely v1 cap-bug victims)`);
+    }
     const totalEligible = (() => {
       const s = new Set<string>();
       Object.values(FEEDS).forEach((feeds) => feeds?.forEach((f) => s.add(f.name)));
