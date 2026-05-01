@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, withRetry } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, withRetry, normalizeSdmxPeriod } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
+
+// Re-exported for the test suite. The shared normalizer lives in _seed-utils
+// so any future SDMX monthly/quarterly consumer can reuse it.
+export { normalizeSdmxPeriod as normalizePeriod };
 
 const CB_KEY = 'market:gold-cb-reserves:v1';
 const CB_TTL = 2_592_000; // 30 days — data is monthly, TTL long to survive missed runs
@@ -48,16 +52,6 @@ const ISO3_NAMES = {
   EZB: 'European Central Bank', // IMF SDMX returns the German abbreviation
 };
 
-// SDMX 3.0 emits monthly periods as `YYYY-MMM` ("2026-M03") rather than ISO
-// `YYYY-MM`. The downstream date math (`monthOffset`, `latestMonth`) assumes
-// ISO, so we normalize at ingest. `parseInt("M03", 10)` returns NaN — without
-// this, every 12-month delta computation silently produces garbage and
-// topBuyers12m / topSellers12m end up empty.
-export function normalizePeriod(period) {
-  if (typeof period !== 'string') return period;
-  return period.replace(/-M(\d{2})$/, '-$1');
-}
-
 // Non-sovereign aggregates we don't want in the top-holders list
 const AGGREGATE_CODES = new Set([
   'EU', 'WLD', 'AFE', 'AFW', 'AFR', 'EUU', 'EMU', 'OED', 'LIC', 'LMC',
@@ -102,7 +96,7 @@ async function fetchIrfclMonthlySeries(indicator) {
 
     const byMonth = {};
     for (const [obsKey, obsVal] of Object.entries(seriesData.observations || {})) {
-      const period = normalizePeriod(timeValues[parseInt(obsKey, 10)]); // SDMX YYYY-MMM → ISO YYYY-MM
+      const period = normalizeSdmxPeriod(timeValues[parseInt(obsKey, 10)]); // SDMX YYYY-MMM → ISO YYYY-MM
       if (!period) continue;
       const v = obsVal?.[0];
       if (v != null && Number.isFinite(parseFloat(v))) byMonth[period] = parseFloat(v);
