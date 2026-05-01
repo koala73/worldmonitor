@@ -1042,8 +1042,10 @@ export class App {
     const resolvedRegion = await resolveUserRegion();
     this.state.resolvedLocation = resolvedRegion;
 
-    // Phase 1: Layout (creates map + panels — they'll find hydrated data)
-    this.panelLayout.init();
+    // Phase 1: Layout (creates map + panels — they'll find hydrated data).
+    // init() is async so the dynamic MapContainer import can resolve before
+    // downstream code (e.g. mobileGeoCoords→state.map.setCenter) reads ctx.map.
+    await this.panelLayout.init();
     showProBanner(this.state.container);
     this.updateConnectivityUi();
     window.addEventListener('online', this.handleConnectivityChange);

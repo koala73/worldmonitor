@@ -13,6 +13,92 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
 
+// Single source of truth for chunk names that must NOT be hoisted into the
+// entry HTML's modulepreload list. Used by both `manualChunks` (return values
+// must literally match these strings) and `modulePreload.resolveDependencies`
+// (filter regex is built from this list). Keeping them tied prevents the
+// silent-breakage failure mode where renaming a chunk in `manualChunks`
+// re-eagerises the WebGL stack without any build-time error.
+//   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
+//   - MapContainer: the dynamic-import target itself
+const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as const;
+const LAZY_HTML_PRELOAD_RE = new RegExp(
+  `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
+);
+
+// Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
+// `panels` chunk into per-domain chunks so cache invalidation is local to
+// the cluster a panel lives in and per-variant builds can prune unused
+// clusters. Unmapped panels fall through to a generic `panels` chunk.
+const PANEL_CLUSTER: Record<string, string> = {
+  // Markets / equities / crypto positioning
+  AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
+  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
+  EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
+  GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
+  MacroSignals: 'panels-markets', Market: 'panels-markets',
+  MarketBreadth: 'panels-markets', MarketImplications: 'panels-markets',
+  Positioning: 'panels-markets', Stablecoin: 'panels-markets',
+  StockAnalysis: 'panels-markets', StockBacktest: 'panels-markets',
+  WsbTickerScanner: 'panels-markets', YieldCurve: 'panels-markets',
+  // Energy / commodities / supply infra
+  ChokepointStrip: 'panels-energy', EnergyComplex: 'panels-energy',
+  EnergyCrisis: 'panels-energy', EnergyDisruptions: 'panels-energy',
+  EnergyRiskOverview: 'panels-energy', FuelPrices: 'panels-energy',
+  FuelShortage: 'panels-energy', Hormuz: 'panels-energy',
+  OilInventories: 'panels-energy', PipelineStatus: 'panels-energy',
+  StorageFacilityMap: 'panels-energy', RenewableEnergy: 'panels-energy',
+  // Defense / military / aviation
+  AirlineIntel: 'panels-defense', DefensePatents: 'panels-defense',
+  OrefSirens: 'panels-defense', StrategicPosture: 'panels-defense',
+  StrategicRisk: 'panels-defense', ThermalEscalation: 'panels-defense',
+  UcdpEvents: 'panels-defense',
+  // News / feeds / briefs
+  BreakthroughsTicker: 'panels-news', ClimateNews: 'panels-news',
+  DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
+  GoodThingsDigest: 'panels-news', LatestBrief: 'panels-news',
+  LiveNews: 'panels-news', News: 'panels-news',
+  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news',
+  // Macro / prices / trade
+  BigMac: 'panels-economy', ConsumerPrices: 'panels-economy',
+  Economic: 'panels-economy',
+  FaoFoodPriceIndex: 'panels-economy', FSI: 'panels-economy',
+  GroceryBasket: 'panels-economy', GulfEconomies: 'panels-economy',
+  Investments: 'panels-economy', MacroTiles: 'panels-economy',
+  NationalDebt: 'panels-economy', SanctionsPressure: 'panels-economy',
+  SupplyChain: 'panels-economy', TradePolicy: 'panels-economy',
+  // Country briefs / signals / monitors / agent surfaces.
+  // CorrelationPanel base lives here, so all *Correlation consumers MUST stay
+  // in this cluster — splitting them across clusters caused TDZ on init.
+  ChatAnalyst: 'panels-intel', CII: 'panels-intel',
+  Cascade: 'panels-intel', Correlation: 'panels-intel',
+  CountryBrief: 'panels-intel', CountryDeepDive: 'panels-intel',
+  CrossSourceSignals: 'panels-intel', CustomWidget: 'panels-intel',
+  Deduction: 'panels-intel',
+  DisasterCorrelation: 'panels-intel',
+  EconomicCorrelation: 'panels-intel',
+  EscalationCorrelation: 'panels-intel',
+  MilitaryCorrelation: 'panels-intel',
+  Forecast: 'panels-intel',
+  HeroSpotlight: 'panels-intel', Insights: 'panels-intel',
+  LiveWebcams: 'panels-intel', McpData: 'panels-intel',
+  Monitor: 'panels-intel', PinnedWebcams: 'panels-intel',
+  Prediction: 'panels-intel', ProgressCharts: 'panels-intel',
+  Regulation: 'panels-intel',
+  // Disasters / climate / connectivity / society
+  ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
+  DiseaseOutbreaks: 'panels-risk',
+  Displacement: 'panels-risk', GeoHubs: 'panels-risk',
+  Giving: 'panels-risk', InternetDisruptions: 'panels-risk',
+  PopulationExposure: 'panels-risk', RadiationWatch: 'panels-risk',
+  RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
+  SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
+  SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
+  Status: 'panels-risk', TechEvents: 'panels-risk',
+  TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
+  WorldClock: 'panels-risk',
+};
+
 function brotliPrecompressPlugin(): Plugin {
   return {
     name: 'brotli-precompress',
@@ -832,6 +918,18 @@ export default defineConfig(({ mode }) => {
       // Geospatial bundles (maplibre/deck) are expected to be large even when split.
       // Raise warning threshold to reduce noisy false alarms in CI.
       chunkSizeWarningLimit: 1200,
+      // Vite 6 hoists every dynamic chunk's STATIC deps into the entry HTML's
+      // modulepreload list to avoid latency on the first dynamic import. For the
+      // map stack that defeats the whole point of dynamic-importing MapContainer:
+      // ~3MB of WebGL deps would still download at parse time. Strip them here so
+      // they only load when MapContainer's `await import(...)` actually fires
+      // (still preloaded in parallel via __vitePreload at that moment).
+      modulePreload: {
+        resolveDependencies: (_filename, deps, { hostType }) => {
+          if (hostType !== 'html') return deps;
+          return deps.filter(d => !LAZY_HTML_PRELOAD_RE.test(d));
+        },
+      },
       rollupOptions: {
         onwarn(warning, warn) {
           // onnxruntime-web ships a minified browser bundle that intentionally uses eval.
@@ -860,6 +958,10 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/onnxruntime-web/')) {
                 return 'onnxruntime';
               }
+              // NOTE: chunk names below MUST match entries in LAZY_HTML_PRELOAD_CHUNKS
+              // (top of file). The resolveDependencies filter relies on this string
+              // identity; renaming here without updating the constant silently
+              // re-eagerises the WebGL stack into the entry HTML's modulepreload list.
               if (id.includes('/maplibre-gl/') || id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
                 return 'maplibre';
               }
@@ -886,6 +988,10 @@ export default defineConfig(({ mode }) => {
               }
             }
             if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
+              // Cluster split (PANEL_CLUSTER) is staged but disabled: it exposes
+              // a systemic TDZ in panels with top-level `new XxxServiceClient(...)`
+              // singletons (~20+ panels). They each need lazy-init refactors
+              // before the cluster split can ship. See ce-doc-review followup.
               return 'panels';
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the

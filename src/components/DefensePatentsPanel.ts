@@ -23,7 +23,16 @@ const CPC_ICONS: Record<string, string> = {
   C12N: '🧬',
 };
 
-const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+// Lazy singleton: top-level `new X(...)` evaluates at module-init time, which
+// TDZ'd under cluster-chunk splits when this panel's chunk initialised before
+// the chunk owning MilitaryServiceClient. Defer construction until first call.
+let _militaryClient: MilitaryServiceClient | null = null;
+function militaryClient(): MilitaryServiceClient {
+  if (!_militaryClient) {
+    _militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+  }
+  return _militaryClient;
+}
 
 export class DefensePatentsPanel extends Panel {
   private viewMode: ViewMode = 'all';
@@ -48,7 +57,7 @@ export class DefensePatentsPanel extends Panel {
     this.render();
 
     try {
-      const data = await militaryClient.listDefensePatents({ cpcCode: '', assignee: '', limit: 100 });
+      const data = await militaryClient().listDefensePatents({ cpcCode: '', assignee: '', limit: 100 });
       if (!this.element?.isConnected) return;
       this.patents = data.patents ?? [];
       this.setCount(data.total ?? this.patents.length);
