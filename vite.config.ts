@@ -13,6 +13,19 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
 
+// Single source of truth for chunk names that must NOT be hoisted into the
+// entry HTML's modulepreload list. Used by both `manualChunks` (return values
+// must literally match these strings) and `modulePreload.resolveDependencies`
+// (filter regex is built from this list). Keeping them tied prevents the
+// silent-breakage failure mode where renaming a chunk in `manualChunks`
+// re-eagerises the WebGL stack without any build-time error.
+//   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
+//   - MapContainer: the dynamic-import target itself
+const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as const;
+const LAZY_HTML_PRELOAD_RE = new RegExp(
+  `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
+);
+
 // Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
 // `panels` chunk into per-domain chunks so cache invalidation is local to
 // the cluster a panel lives in and per-variant builds can prune unused
@@ -914,7 +927,7 @@ export default defineConfig(({ mode }) => {
       modulePreload: {
         resolveDependencies: (_filename, deps, { hostType }) => {
           if (hostType !== 'html') return deps;
-          return deps.filter(d => !/\/(maplibre|deck-stack|MapContainer)-[A-Za-z0-9_-]+\.js$/.test(d));
+          return deps.filter(d => !LAZY_HTML_PRELOAD_RE.test(d));
         },
       },
       rollupOptions: {
@@ -945,6 +958,10 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/onnxruntime-web/')) {
                 return 'onnxruntime';
               }
+              // NOTE: chunk names below MUST match entries in LAZY_HTML_PRELOAD_CHUNKS
+              // (top of file). The resolveDependencies filter relies on this string
+              // identity; renaming here without updating the constant silently
+              // re-eagerises the WebGL stack into the entry HTML's modulepreload list.
               if (id.includes('/maplibre-gl/') || id.includes('/pmtiles/') || id.includes('/@protomaps/basemaps/')) {
                 return 'maplibre';
               }
