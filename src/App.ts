@@ -1288,8 +1288,15 @@ export class App {
       return count;
     })();
     if (totalEligible > FREE_MAX_SOURCES) {
-      const { autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES);
-      for (const name of autoDisabled) disabledSources.add(name);
+      const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES);
+      // Defense in depth: feeds.ts has 35+ source names that appear in
+      // multiple category buckets. The helper guarantees keep ∩ autoDisabled
+      // = ∅, but a regression there would silently re-disable a kept source
+      // here. The keep.has() guard makes the cross-set invariant explicit
+      // at the caller too — if it ever fires it's a helper-bug signal.
+      for (const name of autoDisabled) {
+        if (!keep.has(name)) disabledSources.add(name);
+      }
       saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
       console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
     }

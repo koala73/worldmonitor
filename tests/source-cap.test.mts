@@ -140,6 +140,106 @@ describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
   });
 });
 
+describe('selectSourcesUnderCap: duplicate source names across buckets (feeds.ts reality)', () => {
+  // feeds.ts contains 35+ names appearing in multiple categories
+  // (Yahoo Finance × 4, CNBC × 3, MarketWatch × 3, Layoffs.fyi × 2, ...).
+  // These tests pin down the must-not-regress invariant: kept names
+  // never end up in autoDisabled, regardless of how many buckets contain
+  // them.
+
+  it('REGRESSION: a duplicate name kept via one bucket is not auto-disabled by another', () => {
+    // Yahoo Finance lives in BOTH 'markets' and 'finance' buckets.
+    // Cap is generous → we expect Yahoo Finance in keep, NOT in autoDisabled.
+    const feeds = {
+      markets: F('Yahoo Finance', 'CNBC'),
+      finance: F('Yahoo Finance', 'Bloomberg'),
+    };
+    const r = selectSourcesUnderCap(feeds, [], new Set(), 10);
+    assert.ok(r.keep.has('Yahoo Finance'));
+    assert.ok(
+      !r.autoDisabled.has('Yahoo Finance'),
+      'kept name must NEVER appear in autoDisabled — caller would re-disable it',
+    );
+    // Sanity: keep ∩ autoDisabled must be empty for ALL names
+    for (const k of r.keep) {
+      assert.ok(!r.autoDisabled.has(k), `${k} appeared in both keep and autoDisabled`);
+    }
+  });
+
+  it('REGRESSION: duplicate names do not waste round-robin slots when cap is tight', () => {
+    // 3 buckets, each contains 2 names where the FIRST is a shared duplicate.
+    // Pre-fix: round-robin pulled the duplicate from each bucket, "consuming"
+    // 3 slots but only adding 1 unique to keep — leaving cap=3 with only 1
+    // unique kept name and 2 unique-secondary names auto-disabled.
+    // Post-fix: the helper drops already-keep'd names before consuming a
+    // turn, so each bucket cleanly contributes its unique secondary.
+    const feeds = {
+      a: F('SHARED', 'a-only'),
+      b: F('SHARED', 'b-only'),
+      c: F('SHARED', 'c-only'),
+    };
+    const r = selectSourcesUnderCap(feeds, [], new Set(), 4);
+    assert.equal(r.keep.size, 4, 'all 4 unique names must fit under cap=4');
+    assert.ok(r.keep.has('SHARED'));
+    assert.ok(r.keep.has('a-only'));
+    assert.ok(r.keep.has('b-only'));
+    assert.ok(r.keep.has('c-only'));
+    assert.equal(r.autoDisabled.size, 0);
+  });
+
+  it('REGRESSION: duplicate at cap boundary — kept name not auto-disabled when cap=1', () => {
+    // Cap is 1. Bucket a yields 'SHARED' first. Bucket b also has 'SHARED'
+    // followed by 'b-unique'. After 'SHARED' is keep'd via bucket a, bucket
+    // b's leading 'SHARED' must be dropped (not consume a slot at cap=1)
+    // and 'SHARED' must NOT show up in autoDisabled.
+    const feeds = {
+      a: F('SHARED'),
+      b: F('SHARED', 'b-unique'),
+    };
+    const r = selectSourcesUnderCap(feeds, [], new Set(), 1);
+    assert.equal(r.keep.size, 1);
+    assert.ok(r.keep.has('SHARED'));
+    assert.ok(!r.autoDisabled.has('SHARED'), 'kept name must not be in autoDisabled');
+    // b-unique didn't fit and is correctly auto-disabled
+    assert.ok(r.autoDisabled.has('b-unique'));
+  });
+
+  it('REGRESSION: many consecutive duplicates at bucket front are all skipped', () => {
+    // Bucket b has duplicate of 'a1' AND 'a2' from bucket a at its front.
+    // The drop-while loop must drain BOTH before considering b-unique.
+    const feeds = {
+      a: F('a1', 'a2'),
+      b: F('a1', 'a2', 'b-unique'),
+    };
+    const r = selectSourcesUnderCap(feeds, [], new Set(), 3);
+    assert.equal(r.keep.size, 3);
+    assert.ok(r.keep.has('a1'));
+    assert.ok(r.keep.has('a2'));
+    assert.ok(r.keep.has('b-unique'));
+    assert.equal(r.autoDisabled.size, 0);
+  });
+
+  it('keep ∩ autoDisabled invariant holds at production-scale duplicate density', () => {
+    // Mirror the real feeds.ts pattern: 5 categories, with Yahoo Finance,
+    // CNBC, MarketWatch each appearing in multiple categories. Cap=8 is
+    // tight — forces round-robin under load.
+    const feeds = {
+      markets: F('Yahoo Finance', 'CNBC', 'AAPL News'),
+      finance: F('Yahoo Finance', 'CNBC', 'MarketWatch', 'WSJ'),
+      crypto: F('CoinDesk', 'CoinTelegraph'),
+      etfflows: F('Yahoo Finance', 'BlackRock'),
+      energy: F('OilPrice.com', 'Reuters Energy'),
+    };
+    const r = selectSourcesUnderCap(feeds, [], new Set(), 8);
+    for (const k of r.keep) {
+      assert.ok(
+        !r.autoDisabled.has(k),
+        `name ${k} appears in BOTH keep and autoDisabled`,
+      );
+    }
+  });
+});
+
 describe('findFullyDisabledCategories: recover v1 cap-bug victims', () => {
   it('returns empty when no category is 100% disabled', () => {
     const feeds = { a: F('a1', 'a2'), b: F('b1', 'b2') };

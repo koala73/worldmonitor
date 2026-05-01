@@ -99,11 +99,29 @@ export function selectSourcesUnderCap(
 
   // Round-robin: take one source from each non-empty bucket per pass until
   // the cap is reached or all buckets are exhausted.
+  //
+  // Source-name dedup: feeds.ts has 35+ names that appear in multiple
+  // categories (Yahoo Finance × 4, CNBC × 3, MarketWatch × 3, Layoffs.fyi
+  // × 2, ...). Without dedup, a duplicate occupied two bucket turns to add
+  // ONE unique name to `keep` (Set rejects the second add silently). Worse,
+  // if the cap was hit between the two turns, the duplicate name remained
+  // in the second bucket's `remaining` queue and ended up in `autoDisabled`
+  // — the SAME name in both keep AND autoDisabled, with autoDisabled
+  // winning at the App.ts caller (which adds autoDisabled back into the
+  // global disabled set). Two-part fix: skip already-keep'd names BEFORE
+  // consuming a bucket turn (so duplicates don't waste round-robin slots),
+  // and filter `keep` out of `autoDisabled` at the end (defense in depth).
   let madeProgress = true;
   while (keep.size < cap && madeProgress) {
     madeProgress = false;
     for (const bucket of buckets) {
       if (keep.size >= cap) break;
+      // Drop already-keep'd names from the front of this bucket's queue.
+      // Multiple consecutive duplicates can be in the queue; drain them all
+      // before either consuming the slot or moving on.
+      while (bucket.remaining.length > 0 && keep.has(bucket.remaining[0]!)) {
+        bucket.remaining.shift();
+      }
       if (bucket.remaining.length === 0) continue;
       keep.add(bucket.remaining.shift()!);
       madeProgress = true;
@@ -111,10 +129,14 @@ export function selectSourcesUnderCap(
   }
 
   // Anything still in a bucket's `remaining` queue didn't make the cut.
-  // These are auto-disabled by the cap (NOT user-disabled).
+  // EXCLUDE anything already in `keep` — a duplicate name kept via one
+  // bucket can still appear unconsumed in another bucket's tail; it must
+  // not be reported as auto-disabled.
   const autoDisabled = new Set<string>();
   for (const bucket of buckets) {
-    for (const name of bucket.remaining) autoDisabled.add(name);
+    for (const name of bucket.remaining) {
+      if (!keep.has(name)) autoDisabled.add(name);
+    }
   }
 
   return { keep, autoDisabled };
