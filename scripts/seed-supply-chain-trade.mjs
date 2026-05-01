@@ -30,6 +30,15 @@ const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, 'shared', 'un-to-iso2
 // Populated by fetchWtoReporters() before any data fetches
 let ALL_REPORTERS = [];
 
+// Test-only seam — lets regression tests for fetchTariffTrends /
+// fetchTradeRestrictions exercise the real batch loop without first
+// running fetchWtoReporters (which would also hit the network). Production
+// code never calls this; the leading underscore + ForTesting suffix make
+// the intent explicit.
+export function _setAllReportersForTesting(reporters) {
+  ALL_REPORTERS = Array.isArray(reporters) ? reporters : [];
+}
+
 async function fetchWtoReporters() {
   const apiKey = process.env.WTO_API_KEY;
   if (!apiKey) { console.warn('[WTO] WTO_API_KEY not set'); return; }
@@ -548,7 +557,7 @@ async function fetchTradeRestrictions() {
 
 // ─── Tariff Trends (WTO) — pre-seed major reporters ───
 
-async function fetchTariffTrends() {
+export async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
   const usEffectiveTariffRate = await fetchEffectiveTariffRateFromFred();

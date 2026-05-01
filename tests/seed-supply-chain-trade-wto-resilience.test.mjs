@@ -1,19 +1,29 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { wtoFetch } from '../scripts/seed-supply-chain-trade.mjs';
+import {
+  wtoFetch,
+  fetchTariffTrends,
+  _setAllReportersForTesting,
+} from '../scripts/seed-supply-chain-trade.mjs';
 
 const ORIG_FETCH = globalThis.fetch;
-const ORIG_API_KEY = process.env.WTO_API_KEY;
+const ORIG_WTO_KEY = process.env.WTO_API_KEY;
+const ORIG_FRED_KEY = process.env.FRED_API_KEY;
 
 beforeEach(() => {
   process.env.WTO_API_KEY = 'test-key';
+  // Hermetic: keep fetchEffectiveTariffRateFromFred from making real FRED
+  // calls. fredFetchJson uses curl-via-proxy which bypasses globalThis.fetch
+  // stubs. Unsetting the key short-circuits to `return null` at line 309.
+  delete process.env.FRED_API_KEY;
 });
 
 afterEach(() => {
   globalThis.fetch = ORIG_FETCH;
-  if (ORIG_API_KEY === undefined) delete process.env.WTO_API_KEY;
-  else process.env.WTO_API_KEY = ORIG_API_KEY;
+  if (ORIG_WTO_KEY === undefined) delete process.env.WTO_API_KEY;
+  else process.env.WTO_API_KEY = ORIG_WTO_KEY;
+  if (ORIG_FRED_KEY !== undefined) process.env.FRED_API_KEY = ORIG_FRED_KEY;
 });
 
 describe('wtoFetch: resilience contract — returns null on every failure mode', () => {
@@ -80,35 +90,67 @@ describe('wtoFetch: resilience contract — returns null on every failure mode',
   });
 });
 
-describe('wtoFetch: per-batch isolation simulating fetchTariffTrends loop', () => {
-  // Reproduces the 2026-05-01 06:08 incident: one of N sequential batches
-  // times out. Pre-fix, this propagated up and rejected the whole
-  // fetchTariffTrends, making `Promise.allSettled` see status='rejected'
-  // and skip ALL writeExtraKeyWithMeta calls. Post-fix, the bad batch
-  // becomes a null result and the loop's `if (!data) continue` handles it.
-  it('one batch timing out does not prevent other batches from yielding data', async () => {
-    let callCount = 0;
-    globalThis.fetch = async () => {
-      callCount++;
-      if (callCount === 3) {
-        const err = new Error('aborted');
-        err.name = 'TimeoutError';
-        throw err;
+describe('fetchTariffTrends: per-batch isolation under timeout', () => {
+  // Direct regression test for the 2026-05-01 06:08 UTC incident.
+  // Calls the real `fetchTariffTrends` (not a copy of its loop) so a future
+  // refactor that drops the `if (!data) continue` guard, removes the
+  // wtoFetch null contract, or reverts the wtoFetch try/catch will fail
+  // here regardless of which line went wrong.
+  //
+  // Setup:
+  //   - 60 reporters → BATCH_SIZE=30 → 2 sequential batches.
+  //   - Stub fetch:
+  //       - FRED URLs (fetchEffectiveTariffRateFromFred): respond 404 so
+  //         it returns null without blocking; tariffs proceeds either way.
+  //       - WTO /data batch 1: throw TimeoutError (the 06:08 condition).
+  //       - WTO /data batch 2: return one valid datapoint for reporter 840.
+  //   - Pre-fix expected behavior: fetchTariffTrends rejects, batch 2's
+  //     reporter 840 never makes it to `trends`.
+  //   - Post-fix expected behavior: batch 1's null is skipped, batch 2's
+  //     data lands in `trends` keyed by `trade:tariffs:v1:840:all:10`.
+  it('one batch timing out yields the surviving batches\' data instead of rejecting', async () => {
+    // Two batches × BATCH_SIZE=30 reporters; reporter 840 is in batch 2 so
+    // the timed-out first batch must not prevent the USA write.
+    const batch1 = Array.from({ length: 30 }, (_, i) => String(100 + i));
+    const batch2 = ['840', '124', '156', ...Array.from({ length: 27 }, (_, i) => String(200 + i))];
+    _setAllReportersForTesting([...batch1, ...batch2]);
+
+    let wtoDataCallCount = 0;
+    globalThis.fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input.url;
+
+      // FRED is short-circuited by the missing FRED_API_KEY (see beforeEach),
+      // so the only fetch traffic that reaches here is WTO /data.
+      if (url.includes('api.wto.org/timeseries/v1/data')) {
+        wtoDataCallCount++;
+        if (wtoDataCallCount === 1) {
+          const err = new Error('The operation was aborted due to timeout');
+          err.name = 'TimeoutError';
+          throw err;
+        }
+        return new Response(JSON.stringify({
+          Dataset: [{
+            ReportingEconomyCode: '840',
+            ReportingEconomy: 'United States',
+            Year: 2025,
+            Value: 3.4,
+          }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      return new Response(JSON.stringify({
-        Dataset: [{ ReportingEconomyCode: '840', Year: 2025, Value: 3.4 }],
-      }), { status: 200 });
+
+      throw new Error(`Unexpected fetch URL in test: ${url}`);
     };
 
-    // Simulate the loop pattern fetchTariffTrends uses
-    const results = [];
-    for (let i = 0; i < 5; i++) {
-      const data = await wtoFetch('/data', { i: 'TP_A_0010', r: '840,124,156' });
-      if (!data) continue;
-      results.push(data);
-    }
+    // Must not reject. Pre-fix this would throw.
+    const trends = await fetchTariffTrends();
 
-    assert.equal(callCount, 5, 'all 5 batches must be attempted');
-    assert.equal(results.length, 4, '4 batches must yield data; the timed-out one is silently skipped');
+    assert.equal(wtoDataCallCount, 2, 'both batches must be attempted (timeout in batch 1 must not skip batch 2)');
+    assert.equal(typeof trends, 'object', 'must return the trends object, not reject');
+    assert.ok(trends['trade:tariffs:v1:840:all:10'], 'USA reporter from batch 2 must be present in trends');
+    assert.equal(
+      trends['trade:tariffs:v1:840:all:10'].datapoints[0].tariffRate,
+      3.4,
+      'datapoint from the surviving batch must be intact',
+    );
   });
 });
