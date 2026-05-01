@@ -66,6 +66,7 @@ import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country
 import { initI18n, t } from '@/services/i18n';
 
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
+import { selectSourcesUnderCap } from '@/services/source-cap';
 import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, type BootstrapHydrationState } from '@/services/bootstrap';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
@@ -1239,22 +1240,26 @@ export class App {
     if (cwDisabled || needsTrim) saveToStorage(STORAGE_KEYS.panels, panelSettings);
 
     // --- Source limit ---
+    // Free-tier 80-source cap. Pre-2026-05-01 this used `Array.sort().slice()`
+    // which silently auto-disabled every source past alphabetical position 80,
+    // catastrophically erasing late-alphabet categories (Layoffs, Semiconductors,
+    // IPO & SPAC, Funding & VC, Product Hunt, …) and producing the "All sources
+    // disabled" red panel state on the homepage with no user explanation.
+    // Replaced with round-robin per-category distribution from `selectSourcesUnderCap`.
     const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-    const allSourceNames = (() => {
+    const totalEligible = (() => {
       const s = new Set<string>();
-      Object.values(FEEDS).forEach(feeds => feeds?.forEach(f => s.add(f.name)));
-      INTEL_SOURCES.forEach(f => s.add(f.name));
-      return Array.from(s).sort((a, b) => a.localeCompare(b));
+      Object.values(FEEDS).forEach((feeds) => feeds?.forEach((f) => s.add(f.name)));
+      INTEL_SOURCES.forEach((f) => s.add(f.name));
+      let count = 0;
+      for (const name of s) if (!disabledSources.has(name)) count++;
+      return count;
     })();
-    const currentlyEnabled = allSourceNames.filter(n => !disabledSources.has(n));
-    const enabledCount = currentlyEnabled.length;
-    if (enabledCount > FREE_MAX_SOURCES) {
-      const toDisable = enabledCount - FREE_MAX_SOURCES;
-      for (const name of currentlyEnabled.slice(FREE_MAX_SOURCES)) {
-        disabledSources.add(name);
-      }
+    if (totalEligible > FREE_MAX_SOURCES) {
+      const { autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES);
+      for (const name of autoDisabled) disabledSources.add(name);
       saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
-      console.log(`[App] Free tier: disabled ${toDisable} source(s) to enforce ${FREE_MAX_SOURCES}-source limit`);
+      console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
     }
   }
 
