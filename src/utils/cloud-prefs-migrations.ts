@@ -11,6 +11,37 @@
 import { findFullyDisabledCategories, type FeedsByCategory } from '@/services/source-cap';
 
 /**
+ * Apply all migrations from `fromVersion + 1` up through `toVersion`
+ * inclusive. Pure function — no I/O. Caller controls migrations map and
+ * feeds context. Extracted for direct testing without pulling in the
+ * cloud-prefs-sync runtime (which has a Vite-env transitive import).
+ */
+export function applyMigrationChain(
+  data: Record<string, unknown>,
+  fromVersion: number,
+  toVersion: number,
+  migrations: Record<number, (data: Record<string, unknown>) => Record<string, unknown>>,
+): Record<string, unknown> {
+  let result = data;
+  for (let v = fromVersion + 1; v <= toVersion; v++) {
+    result = migrations[v]?.(result) ?? result;
+  }
+  return result;
+}
+
+/**
+ * Schema-2 migrations map. Used both inline by cloud-prefs-sync.ts (against
+ * the variant-aware FEEDS) and by tests (against fixture FEEDS).
+ */
+export function buildMigrations(
+  feedsByCategory: FeedsByCategory,
+): Record<number, (data: Record<string, unknown>) => Record<string, unknown>> {
+  return {
+    2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
+  };
+}
+
+/**
  * Schema-2 migration body, kept separate for direct unit testing.
  *
  * Schema 2 (2026-05-01): one-shot recovery for the v1 free-tier source-cap

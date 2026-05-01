@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrateDisabledFeedsV2 } from '../src/utils/cloud-prefs-migrations';
+import { migrateDisabledFeedsV2, applyMigrationChain, buildMigrations } from '../src/utils/cloud-prefs-migrations';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
 
@@ -107,6 +107,27 @@ describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', 
     assert.equal(blob['worldmonitor-disabled-feeds'], inputJson, 'input blob must not be mutated');
   });
 
+  it('REGRESSION (PR #3524 review): the same migration applied to LOCAL blob produces clean data', () => {
+    // The reviewer-flagged scenario: a user with poisoned local data and
+    // local syncVersion == cloud syncVersion would skip Branch A's inbound
+    // migration and post the local blob back at schemaVersion=2, cementing
+    // the poisoning. The fix runs the same migration on the local blob
+    // before any post. This test pins the SAME function (used at both
+    // sites) clears the same poisoning regardless of which side (cloud
+    // or local) it originated from.
+    const poisonedLocalBlob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([
+        'Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News', // 100% of layoffs
+        'BBC World',                                          // explicit single-source pref
+      ]),
+      'worldmonitor-panels': '{"some":"panel-state"}',
+    };
+    const result = migrateDisabledFeedsV2(poisonedLocalBlob, FEEDS);
+    const cleaned = JSON.parse(result['worldmonitor-disabled-feeds'] as string);
+    assert.deepEqual(cleaned, ['BBC World'], 'layoffs sources recovered, BBC World preserved as explicit pref');
+    assert.equal(result['worldmonitor-panels'], '{"some":"panel-state"}', 'unrelated blob keys preserved');
+  });
+
   it('handles non-string entries in the disabledFeeds array defensively', () => {
     // Malformed cloud data — an entry that's not a string. Skip it instead
     // of throwing; recover whatever else is recoverable.
@@ -123,5 +144,62 @@ describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', 
     // Product Hunt is recovered; the malformed entries pass through untouched.
     // (We don't try to clean them — that's not this migration's job.)
     assert.equal(newDisabled.includes('Product Hunt'), false);
+  });
+});
+
+describe('applyMigrationChain', () => {
+  // The chain runs migrations[v] for v = fromVersion+1 .. toVersion inclusive.
+  // It's the mechanism that drives the inbound (Branch A) AND outbound
+  // (Branch B + uploadNow) post-fix paths.
+
+  it('runs no migrations when fromVersion >= toVersion', () => {
+    let calls = 0;
+    const migrations = { 2: (data: Record<string, unknown>) => { calls++; return data; } };
+    const data = { foo: 'bar' };
+    const result = applyMigrationChain(data, 2, 2, migrations);
+    assert.equal(calls, 0, 'no migrations should run when already at target');
+    assert.equal(result, data);
+  });
+
+  it('runs migrations in order from fromVersion+1 to toVersion inclusive', () => {
+    const calledFor: number[] = [];
+    const migrations = {
+      2: (data: Record<string, unknown>) => { calledFor.push(2); return { ...data, m2: true }; },
+      3: (data: Record<string, unknown>) => { calledFor.push(3); return { ...data, m3: true }; },
+    };
+    const result = applyMigrationChain({}, 1, 3, migrations);
+    assert.deepEqual(calledFor, [2, 3]);
+    assert.equal((result as { m2?: boolean }).m2, true);
+    assert.equal((result as { m3?: boolean }).m3, true);
+  });
+
+  it('skips missing migrations in the chain (sparse map)', () => {
+    // No migrations[2] defined — chain should pass through to migrations[3].
+    const migrations = {
+      3: (data: Record<string, unknown>) => ({ ...data, m3: true }),
+    };
+    const result = applyMigrationChain({ initial: true }, 1, 3, migrations);
+    assert.equal((result as { initial?: boolean }).initial, true);
+    assert.equal((result as { m3?: boolean }).m3, true);
+  });
+
+  it('integrates with buildMigrations for the schema-2 production case', () => {
+    // End-to-end: simulate a user at schema=1 going to schema=2 via the
+    // production migrations map.
+    const productionLikeFeeds = {
+      layoffs: F('Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News'),
+      politics: F('BBC World', 'Reuters World'),
+    };
+    const migrations = buildMigrations(productionLikeFeeds);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([
+        'Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News', // 100% layoffs
+        'BBC World',                                           // 50% politics
+      ]),
+    };
+    const result = applyMigrationChain(blob, 1, 2, migrations);
+    const cleaned = JSON.parse(result['worldmonitor-disabled-feeds'] as string);
+    // Layoffs sources recovered; BBC World preserved (partial-disable safety)
+    assert.deepEqual(cleaned, ['BBC World']);
   });
 });
