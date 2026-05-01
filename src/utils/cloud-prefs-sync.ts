@@ -15,6 +15,8 @@
 import { CLOUD_SYNC_KEYS, type CloudSyncKey } from './sync-keys';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
+import { FEEDS } from '@/config/feeds';
+import { applyMigrationChain, buildMigrations } from './cloud-prefs-migrations';
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
 
@@ -23,11 +25,38 @@ const KEY_SYNC_VERSION = 'wm-cloud-sync-version';
 const KEY_LAST_SYNC_AT = 'wm-last-sync-at';
 const KEY_SYNC_STATE = 'wm-cloud-sync-state';
 const KEY_LAST_SIGNED_IN_AS = 'wm-last-signed-in-as';
+// Tracks the schema version of the LOCAL blob (i.e. what's in localStorage
+// right now). Distinct from the cloud row's schemaVersion. Required because
+// uploads can post local data without first fetching cloud (uploadNow,
+// post-conflict retry, onSignIn else-branch when local is at-or-ahead of
+// cloud). Without local tracking, those post sites would stamp the new
+// schemaVersion onto unmigrated local data — cementing the poisoning at
+// the new schema version. Defaults to 1 when missing (assumes oldest).
+const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 1;
-const MIGRATIONS: Record<number, (data: Record<string, unknown>) => Record<string, unknown>> = {
-  // Future: MIGRATIONS[2] = (data) => { ...transform... }
-};
+const CURRENT_PREFS_SCHEMA_VERSION = 2;
+
+// Migrations live in cloud-prefs-migrations.ts to keep them testable —
+// cloud-prefs-sync.ts has a transitive `import.meta.env.DEV` dep via
+// `@/services/clerk` → `proxy.ts` that breaks outside a Vite build. The
+// migrations module is dependency-light and importable from node:test.
+//
+// Schema 2 (2026-05-01): one-shot recovery for the v1 free-tier source-cap
+// bug. The pre-PR-3521 alphabetical-slice cap auto-disabled every source
+// past position 80 alphabetically, leaving entire late-alphabet categories
+// (Layoffs, Semiconductors, IPO, Funding, Product Hunt, …) with 100% of
+// their feeds in `disabledFeeds`. PR #3521 added a per-origin localStorage
+// migration to recover this, but cloud-prefs sync re-poisoned origins
+// every load by overwriting localStorage with the still-bad cloud blob —
+// the recovery had to live at the cloud-data layer to be permanent.
+//
+// This migration runs ONCE per cloud row (gated by schemaVersion < 2),
+// detects categories where 100% of sources are in `disabledFeeds`, and
+// re-enables them. After the migration completes, schemaVersion bumps to
+// 2 and subsequent sync pulls skip recovery — so a user who explicitly
+// disables every source in a category POST-migration keeps that
+// preference forever.
+const MIGRATIONS = buildMigrations(FEEDS);
 
 type SyncState = 'synced' | 'pending' | 'syncing' | 'conflict' | 'offline' | 'signed-out' | 'error';
 
@@ -115,11 +144,40 @@ function applyMigrations(
   data: Record<string, unknown>,
   fromVersion: number,
 ): Record<string, unknown> {
-  let result = data;
-  for (let v = fromVersion + 1; v <= CURRENT_PREFS_SCHEMA_VERSION; v++) {
-    result = MIGRATIONS[v]?.(result) ?? result;
-  }
-  return result;
+  return applyMigrationChain(data, fromVersion, CURRENT_PREFS_SCHEMA_VERSION, MIGRATIONS);
+}
+
+function getLocalSchemaVersion(): number {
+  const raw = localStorage.getItem(KEY_LOCAL_SCHEMA_VERSION);
+  if (raw === null) return 1; // No marker yet → assume oldest, run migrations
+  const v = parseInt(raw, 10);
+  return Number.isFinite(v) && v > 0 ? v : 1;
+}
+
+function setLocalSchemaVersion(v: number): void {
+  Storage.prototype.setItem.call(localStorage, KEY_LOCAL_SCHEMA_VERSION, String(v));
+}
+
+/**
+ * Ensure the local blob is migrated to CURRENT_PREFS_SCHEMA_VERSION before
+ * upload. Idempotent — when local schema is already current, returns the
+ * existing blob unchanged. Otherwise runs pending migrations, writes the
+ * cleaned data back to localStorage, and bumps the local schema marker.
+ *
+ * Must be called before EVERY post path: onSignIn else-branch (when local
+ * is at-or-ahead of cloud), uploadNow normal path, uploadNow conflict
+ * retry. Otherwise the post would stamp CURRENT_PREFS_SCHEMA_VERSION onto
+ * unmigrated local data, "upgrading" the cloud row to the new schema with
+ * stale poisoning — the failure mode flagged in PR #3524 review.
+ */
+function migrateLocalBlobIfNeeded(): Record<string, string> {
+  const localSchema = getLocalSchemaVersion();
+  const blob = buildCloudBlob();
+  if (localSchema >= CURRENT_PREFS_SCHEMA_VERSION) return blob;
+  const migrated = applyMigrations(blob, localSchema) as Record<string, string>;
+  if (migrated !== blob) applyCloudBlob(migrated);
+  setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
+  return migrated;
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -288,8 +346,19 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
       const prevBlobJson = isFirstEverSync ? JSON.stringify(buildCloudBlob()) : null;
 
       const migrated = applyMigrations(cloud.data, cloud.schemaVersion ?? 1);
+      const migrationChanged = (cloud.schemaVersion ?? 1) < CURRENT_PREFS_SCHEMA_VERSION;
       applyCloudBlob(migrated);
       setSyncVersion(cloud.syncVersion);
+      // After applyCloudBlob, local data IS at CURRENT schema (applyMigrations
+      // ran every step from cloud.schemaVersion to CURRENT). Mark it so the
+      // post paths don't redundantly re-run migrations on already-clean data.
+      setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
+      // If applyMigrations advanced the schema, force an upload so the cloud
+      // row's schemaVersion catches up. Without this, the cloud blob stays at
+      // the old schemaVersion and the migration re-runs on every load until
+      // any user pref change happens to fire schedulePrefUpload organically.
+      // Idempotent migrations make that harmless but wasteful and noisy.
+      if (migrationChanged) schedulePrefUpload(variant);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
 
       if (isFirstEverSync && prevBlobJson && Object.keys(cloud.data).length > 0) {
@@ -298,7 +367,13 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
 
       setState('synced');
     } else {
-      const blob = buildCloudBlob();
+      // Local is at-or-ahead of cloud → post local. Migrate first so we
+      // never stamp CURRENT_PREFS_SCHEMA_VERSION onto unmigrated local data
+      // (the failure mode flagged in PR #3524 review: a user already synced
+      // to a poisoned cloud row would skip Branch A's inbound migration on
+      // subsequent sign-ins and post the bad blob back at schema 2,
+      // cementing the poisoning at the new schema).
+      const blob = migrateLocalBlobIfNeeded();
       const result = await postCloudPrefs(token, variant, blob, getSyncVersion());
 
       if ('conflict' in result) {
@@ -308,6 +383,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
           const migrated = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
           applyCloudBlob(migrated);
           setSyncVersion(fresh.syncVersion);
+          setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
           setState('synced');
         } else {
           setState('error');
@@ -399,7 +475,7 @@ async function uploadNow(variant: string): Promise<void> {
   setState('syncing');
 
   try {
-    const result = await postCloudPrefs(token, variant, buildCloudBlob(), getSyncVersion());
+    const result = await postCloudPrefs(token, variant, migrateLocalBlobIfNeeded(), getSyncVersion());
 
     if ('conflict' in result) {
       setState('conflict');
@@ -408,6 +484,8 @@ async function uploadNow(variant: string): Promise<void> {
         const migrated = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
         applyCloudBlob(migrated);
         setSyncVersion(fresh.syncVersion);
+        // applyCloudBlob just put migrated data into local at CURRENT schema.
+        setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
         const retryResult = await postCloudPrefs(token, variant, buildCloudBlob(), fresh.syncVersion);
         if (!('conflict' in retryResult)) {
           setSyncVersion(retryResult.syncVersion);
@@ -529,7 +607,10 @@ export function install(variant: string): void {
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
 
-    const blob = buildCloudBlob();
+    // Same defensive migration as the synchronous post paths — never stamp
+    // CURRENT_PREFS_SCHEMA_VERSION onto unmigrated local data, even on
+    // best-effort unload flush.
+    const blob = migrateLocalBlobIfNeeded();
     const payload = JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion(), schemaVersion: CURRENT_PREFS_SCHEMA_VERSION });
     fetch('/api/user-prefs', {
       method: 'POST',
