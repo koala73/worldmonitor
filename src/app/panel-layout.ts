@@ -849,6 +849,17 @@ export class PanelLayoutManager implements AppModule {
     // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl
     // out of the entry chunk. Loads in parallel with paint, so the map mounts
     // a beat after the panel grid renders instead of blocking it.
+    //
+    // Residual-risk watchpoint (canary): this await also serializes the
+    // ~700 lines of panel construction below behind the map chunk fetch.
+    // Failure mode is covered by the chunk-reload guard at src/main.ts:690-758
+    // (catches `Failed to fetch dynamically imported module` and reloads).
+    // The slow-fetch mode (chunk fetches that succeed but are very slow) is
+    // worth watching in production canaries — if it shows up, restructure to
+    // kick off the import early and run non-map panel construction before the
+    // await (the only direct ctx.map dereferences in this function are
+    // initEscalationGetters / getTimeRange right after construction, plus
+    // onTimeRangeChanged later — every other ctx.map use is `?.`-guarded).
     const { MapContainer } = await import('@/components/MapContainer');
     this.ctx.map = new MapContainer(mapContainer, {
       zoom: this.ctx.isMobile ? 2.5 : 1.0,
