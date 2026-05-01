@@ -30,6 +30,15 @@ const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, 'shared', 'un-to-iso2
 // Populated by fetchWtoReporters() before any data fetches
 let ALL_REPORTERS = [];
 
+// Test-only seam — lets regression tests for fetchTariffTrends /
+// fetchTradeRestrictions exercise the real batch loop without first
+// running fetchWtoReporters (which would also hit the network). Production
+// code never calls this; the leading underscore + ForTesting suffix make
+// the intent explicit.
+export function _setAllReportersForTesting(reporters) {
+  ALL_REPORTERS = Array.isArray(reporters) ? reporters : [];
+}
+
 async function fetchWtoReporters() {
   const apiKey = process.env.WTO_API_KEY;
   if (!apiKey) { console.warn('[WTO] WTO_API_KEY not set'); return; }
@@ -250,18 +259,44 @@ function accumulateHistory(newIndices, previousPayload) {
 
 // ─── WTO helpers ───
 
-async function wtoFetch(path, params) {
+// Returns parsed JSON on success, null on any failure (HTTP error, timeout,
+// network abort, JSON parse). The null contract lets every batch-loop caller
+// — `fetchTariffTrends`, `fetchTradeRestrictions`, `fetchTradeBarriers` —
+// degrade gracefully on a single bad batch via their existing `if (!data)`
+// guards. Pre-2026-05-01 this only caught HTTP errors and let timeouts
+// throw, so one slow batch (e.g. WTO p99 latency spike) sank an entire
+// 10-batch loop and silently expired the downstream canonical keys (8h TTL)
+// while the seeder kept "succeeding" via shipping/customs alone.
+//
+// Timeout is 60s per batch — WTO p99 latency for a 30-reporter `TP_A_0010`
+// query observed at 21s under normal load, with occasional spikes >15s.
+// Total budget across 10 batches × 60s + 1s sleeps = ~10m worst case,
+// well inside the 6h cron interval.
+export async function wtoFetch(path, params) {
   const apiKey = process.env.WTO_API_KEY;
   if (!apiKey) { console.warn('[WTO] WTO_API_KEY not set'); return null; }
   const url = new URL(`https://api.wto.org/timeseries/v1${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const resp = await fetch(url.toString(), {
-    headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (resp.status === 204) return { Dataset: [] };
-  if (!resp.ok) { console.warn(`[WTO] HTTP ${resp.status} for ${path}`); return null; }
-  return resp.json();
+  const indicator = params?.i || 'unknown';
+  const reporterCount = typeof params?.r === 'string' ? params.r.split(',').length : '?';
+  try {
+    const resp = await fetch(url.toString(), {
+      headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (resp.status === 204) return { Dataset: [] };
+    if (!resp.ok) {
+      console.warn(`[WTO] HTTP ${resp.status} for ${path} i=${indicator} reporters=${reporterCount}`);
+      return null;
+    }
+    return await resp.json();
+  } catch (err) {
+    const cause = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+      ? 'timeout'
+      : (err?.cause?.code || err?.code || err?.message || 'unknown');
+    console.warn(`[WTO] FAIL ${path} i=${indicator} reporters=${reporterCount} cause=${cause}`);
+    return null;
+  }
 }
 
 // US effective tariff rate from FRED: customs duties / goods imports × 100
@@ -522,7 +557,7 @@ async function fetchTradeRestrictions() {
 
 // ─── Tariff Trends (WTO) — pre-seed major reporters ───
 
-async function fetchTariffTrends() {
+export async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
   const usEffectiveTariffRate = await fetchEffectiveTariffRateFromFred();
@@ -687,15 +722,20 @@ export function declareRecords(data) {
   return Array.isArray(data?.indices) ? data.indices.length : 0;
 }
 
-runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: SHIPPING_TTL,
-  sourceVersion: 'fred-wto-sse-bdi-budgetlab',
+// Standalone entrypoint guard. Without this, importing this file from tests
+// kicks off the whole seeder (Redis lock acquisition, external API calls,
+// Redis writes) at module-load time, which hangs the test runner.
+if (process.argv[1]?.endsWith('seed-supply-chain-trade.mjs')) {
+  runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: SHIPPING_TTL,
+    sourceVersion: 'fred-wto-sse-bdi-budgetlab',
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 420,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 420,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
