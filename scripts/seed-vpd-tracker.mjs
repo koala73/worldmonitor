@@ -22,31 +22,197 @@ const BUNDLE_URL = 'https://thinkglobalhealth.github.io/disease_tracker/index_bu
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
 
 /**
- * Parse realtime outbreak alerts from the embedded object array.
+ * Extract a JSON array from an `eval("var res = [...]")` block in the bundle.
  *
- * Bundle format (webpack CommonJS):
- *   var a=[{Alert_ID:"8731706",lat:"56.85",lng:"24.92",diseases:"Measles",...},
- *          ...
- *          {Alert_ID:"8707570",...}];
- *   a.columns=["Alert_ID","lat","lng","diseases","place_name","country","date","cases","link","Type","summary"]
+ * Bundle format (post-2026-04 webpack rebuild — verified against the live
+ * 7.5MB index_bundle.js on 2026-05-01):
  *
- * The .columns metadata property marks the end of the array.
+ *   eval("var res = [{\"Alert_ID\":\"8731706\",\"lat\":\"56.85\",...}, ...]")
+ *   eval("var res = [{\"country\":\"Afghanistan\",\"iso\":\"AF\",...}, ...]")
+ *
+ * The bundle has exactly TWO such blocks: one whose first object key is
+ * `Alert_ID` (realtime alerts), one whose first key is `country` (historical
+ * WHO annual counts). The wrapping is a JS string literal — properties are
+ * JSON-quoted with backslash-escaped quotes.
+ *
+ * Pre-2026-04 the bundle used `var a=[{Alert_ID:"...",...}]` (unquoted keys,
+ * named array, separate `.columns` metadata) and the parser anchored on
+ * `.columns=["Alert_ID"`, `var a=[`, and `[{country:"`. All three anchors
+ * are dead in the current bundle. This rewrite anchors on the FIELD NAMES
+ * (`Alert_ID`, `country`) which are domain-stable — they only change if
+ * Think Global Health renames the data schema itself, not when their
+ * bundler is upgraded.
+ *
+ * @param {string} bundle  raw JS bundle text
+ * @param {string} marker  first field name of the target dataset (e.g. 'Alert_ID', 'country')
+ * @returns {Array<object>} parsed JSON array
  */
-function parseRealtimeAlerts(bundle) {
-  const colIdx = bundle.indexOf('.columns=["Alert_ID"');
-  if (colIdx === -1) throw new Error('[VPD] Realtime data columns marker not found in bundle');
+/**
+ * Walk the JS-escaped form of one `eval("var res = [...]")` array starting
+ * at `arrayOpen` (the `[` byte) and find the matching closing `]`. Returns
+ * the index of that `]` in the bundle, or -1 on truncation.
+ *
+ * The scanner operates at TWO levels of escaping simultaneously:
+ *
+ *   Level 1 (bundle text → eval'd source):
+ *     The bundle wraps the eval'd JSON in a JS string literal. Each `\X`
+ *     in the bundle (where X is `"`, `\`, `n`, `t`, `r`, `b`, `f`, `/`,
+ *     `'`, or `uXXXX`) decodes to ONE character in the eval'd source.
+ *
+ *   Level 2 (eval'd source → JSON):
+ *     The eval'd source is JSON. Inside a JSON string, an eval'd `\"` is
+ *     the JSON escape for a literal `"` and must NOT toggle the string
+ *     boundary. Outside a JSON string, an eval'd `[`/`]` shifts depth.
+ *
+ * Earlier versions conflated the two levels: a bundle sequence like
+ * `\\\"` (representing eval'd `\"` — JSON-escaped quote inside a string
+ * value) was incorrectly read as `\\` + `\"`, where the trailing `\"`
+ * toggled inJsonString mid-value. Free-text fields like `summary` can
+ * contain `"quoted phrases"` with brackets, e.g. `Officials confirm
+ * "[regional] outbreak" contained` — that would produce `\\\"...]\\\"...`
+ * sequences that misaligned bracket counting.
+ *
+ * The corrected algorithm: decode each bundle byte to its eval'd
+ * character first, then run a JSON-aware state machine over the
+ * decoded stream.
+ */
+function findArrayCloseInEscapedForm(bundle, arrayOpen) {
+  // Map of single-char JS-string escape sequences. `\u` is handled
+  // separately because it consumes 4 additional hex digits.
+  const SINGLE_ESCAPE = { '"': '"', '\\': '\\', '/': '/', 'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', 'f': '\f', "'": "'" };
 
-  const arrayEnd = bundle.lastIndexOf('}]', colIdx);
-  const arrayStart = bundle.lastIndexOf('var a=[', arrayEnd);
-  if (arrayStart === -1) throw new Error('[VPD] Realtime data array start not found');
+  let depth = 0;
+  let inJsonString = false;
+  let inJsonEscape = false; // inside JSON string AND just saw a `\` in eval'd source
+  let i = arrayOpen;
 
-  const rawArray = bundle.slice(arrayStart + 6, arrayEnd + 2); // skip 'var a='
-  // eslint-disable-next-line no-new-func
-  const rows = Function('"use strict"; return ' + rawArray)();
+  while (i < bundle.length) {
+    // ---- Level 1: decode one eval'd char from bundle ----
+    let evaledCh;
+    let advance;
+    if (bundle[i] === '\\') {
+      const next = bundle[i + 1];
+      if (next === undefined) return -1; // truncated trailing backslash
+      if (next === 'u') {
+        const hex = bundle.slice(i + 2, i + 6);
+        if (hex.length < 4) return -1;
+        evaledCh = String.fromCharCode(parseInt(hex, 16));
+        advance = 6;
+      } else {
+        evaledCh = SINGLE_ESCAPE[next] ?? next;
+        advance = 2;
+      }
+    } else {
+      evaledCh = bundle[i];
+      advance = 1;
+    }
 
+    // ---- Level 2: JSON state machine over eval'd char ----
+    if (inJsonString) {
+      if (inJsonEscape) {
+        // Previous eval'd char was `\` (JSON escape). This char is the
+        // escape target; consume without changing string/bracket state.
+        // (JSON's \uXXXX has 4 hex digits — those are not brackets and
+        // not quotes, so we don't need to special-case them here for
+        // correctness; depth/inJsonString are correctly preserved.)
+        inJsonEscape = false;
+      } else if (evaledCh === '\\') {
+        inJsonEscape = true;
+      } else if (evaledCh === '"') {
+        inJsonString = false;
+      }
+      // else: ordinary char inside JSON string — skip
+    } else {
+      if (evaledCh === '"') {
+        inJsonString = true;
+      } else if (evaledCh === '[') {
+        depth++;
+      } else if (evaledCh === ']') {
+        depth--;
+        if (depth === 0) return i + advance - 1; // last byte of the closing `]`
+      }
+    }
+
+    i += advance;
+  }
+  return -1;
+}
+
+/**
+ * Enumerate every `eval("var res = [...JSON-array...]")` block in the bundle.
+ * Yields `{ array }` for each one that parses cleanly; silently skips
+ * truncated or malformed candidates.
+ *
+ * Used by parseRealtimeAlerts / parseHistoricalData to identify their
+ * target dataset by SCHEMA (field-presence in any record), not by the
+ * first-key position in the first record. A harmless upstream reordering
+ * like `{"country":"X","iso":"Y"}` → `{"iso":"Y","country":"X"}` would
+ * have broken a position-anchored parser; this approach treats either
+ * order as the same dataset.
+ */
+function* iterateEvalResArrays(bundle) {
+  let pos = 0;
+  const blockNeedle = 'eval("var res = [';
+  while (true) {
+    const start = bundle.indexOf(blockNeedle, pos);
+    if (start === -1) return;
+    const arrayOpen = start + 'eval("var res = '.length; // points at `[`
+    const arrayClose = findArrayCloseInEscapedForm(bundle, arrayOpen);
+    if (arrayClose === -1) return; // truncated; nothing further is parseable
+    const escaped = bundle.slice(arrayOpen, arrayClose + 1);
+    try {
+      const arrayJson = JSON.parse(`"${escaped}"`);
+      const array = JSON.parse(arrayJson);
+      if (Array.isArray(array)) yield { array };
+    } catch {
+      // Malformed candidate (rare — would mean we mis-counted brackets).
+      // Skip and keep searching for the next eval block.
+    }
+    pos = arrayClose + 1;
+  }
+}
+
+/**
+ * Find the first eval-block array whose records contain ALL of the named
+ * fields. Schema-based identification — independent of key order within
+ * objects, eval-block order in the bundle, and minor bundler shuffles.
+ *
+ * We sample multiple records (not just the first) because some upstream
+ * systems emit sparse records where a field may be omitted on a single
+ * row but present on others; a single-record check would false-negative.
+ */
+function findArrayBySchema(bundle, requiredFields) {
+  const needed = new Set(requiredFields);
+  for (const { array } of iterateEvalResArrays(bundle)) {
+    if (array.length === 0) continue;
+    // Sample up to 5 records to tolerate sparse fields on any single row.
+    const sampleSize = Math.min(5, array.length);
+    const seen = new Set();
+    for (let i = 0; i < sampleSize; i++) {
+      const r = array[i];
+      if (!r || typeof r !== 'object') continue;
+      for (const k of Object.keys(r)) seen.add(k);
+    }
+    let allPresent = true;
+    for (const f of needed) {
+      if (!seen.has(f)) { allPresent = false; break; }
+    }
+    if (allPresent) return array;
+  }
+  return null;
+}
+
+export function parseRealtimeAlerts(bundle) {
+  // Realtime alerts are identified by the (Alert_ID, lat, lng, diseases)
+  // schema. Any reordering of these fields within a record (or across
+  // records) is fine; only a real schema change (renamed field) breaks us.
+  const rows = findArrayBySchema(bundle, ['Alert_ID', 'lat', 'lng', 'diseases']);
+  if (!rows) {
+    throw new Error('[VPD] no eval block matches realtime schema (Alert_ID, lat, lng, diseases) — upstream format drift?');
+  }
   return rows
-    .filter(r => r.lat && r.lng)
-    .map(r => ({
+    .filter((r) => r.lat && r.lng)
+    .map((r) => ({
       alertId: r.Alert_ID,
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lng),
@@ -60,26 +226,15 @@ function parseRealtimeAlerts(bundle) {
     }));
 }
 
-/**
- * Parse historical WHO annual case counts from the embedded JS object array.
- *
- * Bundle format (second dataset, follows immediately after realtime module):
- *   [{"country":"Afghanistan","iso":"AF","disease":"Diphtheria","year":"2024","cases":"207"}, ...]
- */
-function parseHistoricalData(bundle) {
-  const colIdx = bundle.indexOf('.columns=["Alert_ID"');
-  if (colIdx === -1) throw new Error('[VPD] Bundle anchor not found for historical data search');
-
-  const arrayStart = bundle.indexOf('[{country:"', colIdx);
-  if (arrayStart === -1) throw new Error('[VPD] Historical data array not found');
-  const arrayEnd = bundle.indexOf('];', arrayStart);
-  if (arrayEnd === -1) throw new Error('[VPD] Historical data end marker not found');
-
-  const rawArray = bundle.slice(arrayStart, arrayEnd + 1);
-  // eslint-disable-next-line no-new-func
-  const rows = Function('"use strict"; return ' + rawArray)();
-
-  return rows.map(r => ({
+export function parseHistoricalData(bundle) {
+  // Historical WHO counts identified by (country, iso, disease, year, cases).
+  // 'cases' alone would also match realtime alerts so we use the full
+  // schema fingerprint — the iso/disease/year combo is unique to historical.
+  const rows = findArrayBySchema(bundle, ['country', 'iso', 'disease', 'year', 'cases']);
+  if (!rows) {
+    throw new Error('[VPD] no eval block matches historical schema (country, iso, disease, year, cases) — upstream format drift?');
+  }
+  return rows.map((r) => ({
     country: r.country,
     iso: r.iso,
     disease: r.disease,
@@ -113,23 +268,29 @@ export function declareRecords(data) {
   return Array.isArray(data?.alerts) ? data.alerts.length : 0;
 }
 
-runSeed('health', 'vpd-tracker', CANONICAL_KEY, fetchVpdTracker, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'tgh-bundle-v1',
-  extraKeys: [
-    {
-      key: HISTORICAL_KEY,
-      ttl: CACHE_TTL,
-      transform: data => ({ records: data.historical, fetchedAt: data.fetchedAt }),
-    },
-  ],
+// Standalone-only entrypoint guard. Without this, importing the file from
+// tests (e.g. to test parseRealtimeAlerts / parseHistoricalData) kicks off
+// the full runSeed pipeline at module-load time — Redis lock acquisition,
+// external bundle fetch, Redis writes — which hangs the test runner.
+if (process.argv[1]?.endsWith('seed-vpd-tracker.mjs')) {
+  runSeed('health', 'vpd-tracker', CANONICAL_KEY, fetchVpdTracker, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'tgh-bundle-v2',
+    extraKeys: [
+      {
+        key: HISTORICAL_KEY,
+        ttl: CACHE_TTL,
+        transform: data => ({ records: data.historical, fetchedAt: data.fetchedAt }),
+      },
+    ],
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 2880,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
-  console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
