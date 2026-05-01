@@ -26,7 +26,15 @@ export interface ServerInsights {
 }
 
 let cached: ServerInsights | null = null;
-const MAX_AGE_MS = 15 * 60 * 1000;
+// Server cron interval: scripts/seed-insights.mjs runs every 30 min
+// (CACHE_TTL=10800s/3h, maxStaleMin: 30). The previous 15-min freshness gate
+// was strictly less than the cron interval, so the panel spent ~50% of every
+// 30-min cycle showing UNAVAILABLE + "Waiting for data..." even when the
+// system was working perfectly. 60 min = 2× cron interval, gives one full
+// missed-tick of headroom before falling through to the client-side path.
+// Exported so the regression test asserts against the real value rather than
+// inlining a copy that drifts silently when this constant changes.
+export const MAX_AGE_MS = 60 * 60 * 1000;
 
 function isFresh(data: ServerInsights): boolean {
   const age = Date.now() - new Date(data.generatedAt).getTime();

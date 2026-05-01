@@ -434,6 +434,22 @@ const SEED_META = {
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
 // Empty = WARN not CRIT since they only exist after first request.
+//
+// POLICY (2026-05-01): If the seed-meta key feeds a panel that renders on the
+// DEFAULT homepage layout (`enabled: true, priority: 1` in src/config/panels.ts
+// or per-variant equivalents), it MUST NOT be in this set. ON_DEMAND softens
+// EMPTY to WARN, which is correct ONLY when data is genuinely populated lazily
+// after a user action (premium RPC caches that warm on click, intermediate
+// seed-to-seed pipeline keys, relay heartbeats, click-warmed lookups). For a
+// homepage panel, chronic absence is a real outage and deserves CRIT — softening
+// it masks production breakage behind an OK summary.
+//
+// Specific incident that motivated this policy: marketImplications (homepage
+// panel, default-enabled in panels.ts:114) sat at age=988 max=120 (8.2× the
+// staleness budget) for 16+ hours while the LLM provider returned HTTP 402 on
+// every cron run. /api/health stayed onDemandWarn=1 instead of crit, so the
+// chronic outage went undetected until a user noticed the panel was stuck on
+// "Loading...". Removed marketImplications below.
 const ON_DEMAND_KEYS = new Set([
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
@@ -445,7 +461,8 @@ const ON_DEMAND_KEYS = new Set([
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   'militaryForecastInputs', // intermediate seed-to-seed pipeline key; only populated after seed-military-flights runs
-  'marketImplications', // LLM-generated inside forecast cron; can fail silently on LLM errors — degrade to WARN not CRIT
+  // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,
+  // chronic LLM-provider failures must surface as CRIT.
   'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
   'simulationOutcomeLatest', // written by writeSimulationOutcome after simulation runs; only present after first successful simulation
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
