@@ -79,6 +79,13 @@ Sentry.init({
     /DataCloneError.*could not be cloned/,
     /cannot decode message/,
     /WKWebView was deallocated/,
+    // WKWebView host-app JS bridge timeout — Apple WebKit emits this exact phrase
+    // when a JS-to-native `postMessage` (e.g. WKScriptMessageHandler) gets no
+    // reply within the host's expected window. Common in in-app browsers like
+    // DuckDuckGo / Yelp / Reddit-mobile / Instagram. We never postMessage to a
+    // WKScriptMessageHandler ourselves; this is browser-native and unactionable
+    // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
+    /WKWebView API client did not respond to this postMessage/,
     /Unexpected end of(?: JSON)? input/,
     /window\.android\.\w+ is not a function/,
     /Attempted to assign to readonly property/,
