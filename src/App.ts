@@ -66,6 +66,7 @@ import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country
 import { initI18n, t } from '@/services/i18n';
 
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
+import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
 import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, type BootstrapHydrationState } from '@/services/bootstrap';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
@@ -1216,6 +1217,36 @@ export class App {
    * Safe to call multiple times (idempotent) — e.g. on auth state changes.
    */
   private enforceFreeTierLimits(): void {
+    // ── One-time v1 cap-bug recovery ──────────────────────────────────
+    // Pre-2026-05-01 the source cap was enforced by Array.sort().slice(),
+    // which silently auto-disabled every source past alphabetical position
+    // FREE_MAX_SOURCES — catastrophically erasing late-alphabet categories
+    // (Layoffs, Semiconductors, IPO, Funding, Product Hunt, …). Storage
+    // didn't track auto-disabled vs user-disabled, so a heuristic that runs
+    // on every load would silently undo a user who legitimately disabled
+    // every source in a category — and re-undo it on every refresh forever.
+    //
+    // Migration approach: run findFullyDisabledCategories ONCE, gated by
+    // disabledFeedsSchema version. After the migration completes, bump
+    // schema → 1 so subsequent loads skip recovery entirely. Users who
+    // explicitly toggle off every source in a category post-migration
+    // keep that preference permanently. Trade-off: a user who BEFORE the
+    // migration legitimately disabled every source in a category will lose
+    // those preferences once. That's acceptable since v1 victims have been
+    // suffering silent breakage and the explicit-full-category-disable
+    // pattern is rare (users typically hide the whole panel instead).
+    const schemaVersion = loadFromStorage<number>(STORAGE_KEYS.disabledFeedsSchema, 0);
+    if (schemaVersion < 1) {
+      const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      const recoverable = findFullyDisabledCategories(FEEDS, disabled);
+      if (recoverable.length > 0) {
+        for (const name of recoverable) disabled.delete(name);
+        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabled));
+        console.log(`[App] One-time v1-cap-bug migration: re-enabled ${recoverable.length} source(s) from fully-disabled categories. This will not run again.`);
+      }
+      saveToStorage(STORAGE_KEYS.disabledFeedsSchema, 1);
+    }
+
     if (isProUser()) return;
 
     // --- Panel limit ---
@@ -1241,22 +1272,35 @@ export class App {
     if (cwDisabled || needsTrim) saveToStorage(STORAGE_KEYS.panels, panelSettings);
 
     // --- Source limit ---
+    // Free-tier 80-source cap. Pre-2026-05-01 this used `Array.sort().slice()`
+    // which silently auto-disabled every source past alphabetical position 80,
+    // catastrophically erasing late-alphabet categories (Layoffs, Semiconductors,
+    // IPO & SPAC, Funding & VC, Product Hunt, …) and producing the "All sources
+    // disabled" red panel state on the homepage with no user explanation.
+    // Replaced with round-robin per-category distribution from `selectSourcesUnderCap`.
+    // (v1-bug recovery for stuck localStorage state is handled once at the top
+    // of this function via the schema-version migration.)
     const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-    const allSourceNames = (() => {
+    const totalEligible = (() => {
       const s = new Set<string>();
-      Object.values(FEEDS).forEach(feeds => feeds?.forEach(f => s.add(f.name)));
-      INTEL_SOURCES.forEach(f => s.add(f.name));
-      return Array.from(s).sort((a, b) => a.localeCompare(b));
+      Object.values(FEEDS).forEach((feeds) => feeds?.forEach((f) => s.add(f.name)));
+      INTEL_SOURCES.forEach((f) => s.add(f.name));
+      let count = 0;
+      for (const name of s) if (!disabledSources.has(name)) count++;
+      return count;
     })();
-    const currentlyEnabled = allSourceNames.filter(n => !disabledSources.has(n));
-    const enabledCount = currentlyEnabled.length;
-    if (enabledCount > FREE_MAX_SOURCES) {
-      const toDisable = enabledCount - FREE_MAX_SOURCES;
-      for (const name of currentlyEnabled.slice(FREE_MAX_SOURCES)) {
-        disabledSources.add(name);
+    if (totalEligible > FREE_MAX_SOURCES) {
+      const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES);
+      // Defense in depth: feeds.ts has 35+ source names that appear in
+      // multiple category buckets. The helper guarantees keep ∩ autoDisabled
+      // = ∅, but a regression there would silently re-disable a kept source
+      // here. The keep.has() guard makes the cross-set invariant explicit
+      // at the caller too — if it ever fires it's a helper-bug signal.
+      for (const name of autoDisabled) {
+        if (!keep.has(name)) disabledSources.add(name);
       }
       saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
-      console.log(`[App] Free tier: disabled ${toDisable} source(s) to enforce ${FREE_MAX_SOURCES}-source limit`);
+      console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
     }
   }
 

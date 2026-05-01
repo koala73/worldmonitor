@@ -95,6 +95,14 @@ export const STORAGE_KEYS = {
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
+  // Schema version for the disabledFeeds set. Bumped on each migration that
+  // mutates the set in a backwards-incompatible way. Currently:
+  //   missing/0 → pre-2026-05-01 alphabetical-cap state. Eligible for
+  //               one-time recovery of fully-disabled categories.
+  //   1 → recovery has run; the set is post-migration and must NOT be
+  //       re-recovered on subsequent loads (otherwise user-explicit
+  //       full-category disabling would be silently undone forever).
+  disabledFeedsSchema: 'worldmonitor-disabled-feeds-schema',
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',
