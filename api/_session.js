@@ -108,6 +108,13 @@ export async function validateSessionToken(token) {
   let providedBytes;
   try { providedBytes = base64UrlToBytes(sig); } catch { return false; }
 
+  // Enforce canonical base64url encoding: re-encode the decoded bytes and
+  // require an exact match. Without this, the trailing base64 character can
+  // carry up to 4 unused padding bits — flipping them yields a *different*
+  // string that decodes to the *same* bytes, allowing a tampered signature
+  // string to pass HMAC verification (PR #3557 review finding).
+  if (bufferToBase64Url(providedBytes.buffer) !== sig) return false;
+
   const expected = new Uint8Array(expectedBuf);
   if (expected.length !== providedBytes.length) return false;
 

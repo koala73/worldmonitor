@@ -106,6 +106,32 @@ describe('premium gateway API key enforcement', () => {
     }));
     assert.equal(publicAllowed.status, 200);
   });
+
+  it('PR #3557 review: anonymous wms_ session token does NOT unlock premium endpoints', async () => {
+    // Regression: an earlier revision returned valid:true for wms_ tokens and
+    // the gateway treated any non-wm_ valid key as enterprise → entitlement
+    // check skipped → premium content served to any anonymous caller. Lock the
+    // contract: wms_ on a premium route must 401 (no Pro auth) — never 200.
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/analyze-stock',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+
+    for (const path of ['/api/market/v1/analyze-stock?symbol=AAPL', '/api/resilience/v1/get-resilience-score?countryCode=US']) {
+      const res = await handler(new Request(`https://worldmonitor.app${path}`, {
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }));
+      assert.notEqual(res.status, 200, `wms_ MUST NOT unlock ${path} (got ${res.status})`);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

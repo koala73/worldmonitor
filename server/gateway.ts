@@ -428,7 +428,7 @@ export function createDomainGateway(
     // Authenticated users (sessionUserId present) bypass the API key requirement.
     let keyCheck = (await validateApiKey(request, {
       forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
-    })) as { valid: boolean; required: boolean; error?: string };
+    })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' };
 
     // Clerk session is itself proof of authentication (validated at line 410).
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
@@ -557,9 +557,12 @@ export function createDomainGateway(
     }
 
     // Entitlement check — blocks tier-gated endpoints for users below required tier.
-    // Admin API-key holders (WORLDMONITOR_VALID_KEYS) bypass entitlement checks.
+    // Admin API-key holders (WORLDMONITOR_VALID_KEYS, kind: 'enterprise') bypass.
     // User API keys do NOT bypass — the key owner's tier is checked normally.
-    if (!(keyCheck.valid && wmKey && !isUserApiKey)) {
+    // Anonymous wms_ session tokens (kind: 'session') do NOT bypass — they are
+    // freely mintable by any caller and are NOT user-bound (PR #3557 review).
+    const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
+    if (!isEnterpriseAuth) {
       const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
       if (entitlementResponse) {
         const entReason: RequestReason =

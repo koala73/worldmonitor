@@ -57,11 +57,38 @@ test('#3541: Sec-Fetch-Site: none alone is rejected', async () => {
 
 // ── Anonymous browser session token (the new trust path) ────────────────────
 
-test('valid wms_ session token from any origin is accepted', async () => {
+test('valid wms_ session token from any origin is accepted (forceKey=false)', async () => {
   const { token } = await issueSessionToken();
   const r = await validateApiKey(makeReq({ key: token }));
   assert.equal(r.valid, true);
   assert.equal(r.required, false);
+  assert.equal(r.kind, 'session', 'must tag as session — gateway uses kind to decide entitlement bypass');
+});
+
+test('PR #3557 review: wms_ session token is REJECTED when forceKey=true (premium endpoints)', async () => {
+  // wms_ tokens are anonymous and freely mintable via /api/wm-session — they
+  // are NOT proof of a paying user. forceKey=true means the route demands a
+  // user-bound credential (Pro Bearer JWT, wm_ user key, or enterprise key).
+  const { token } = await issueSessionToken();
+  const r = await validateApiKey(makeReq({ key: token }), { forceKey: true });
+  assert.equal(r.valid, false);
+  assert.equal(r.required, true);
+  assert.match(r.error, /Pro authentication/);
+});
+
+test('PR #3557 review: wms_ result must NOT carry kind=enterprise (gateway entitlement-bypass anti-regression)', async () => {
+  // Gateway skips entitlement check ONLY for kind:'enterprise'. If a future
+  // refactor mislabels wms_ as enterprise, anonymous tokens silently unlock
+  // premium endpoints. Lock the contract here.
+  const { token } = await issueSessionToken();
+  const r = await validateApiKey(makeReq({ key: token }));
+  assert.notEqual(r.kind, 'enterprise');
+});
+
+test('enterprise key carries kind=enterprise (the only key kind that bypasses entitlement)', async () => {
+  const r = await validateApiKey(makeReq({ key: ENTERPRISE_KEY }));
+  assert.equal(r.valid, true);
+  assert.equal(r.kind, 'enterprise');
 });
 
 test('valid wms_ session token works even when Origin is also forged (not redundant — no privilege escalation)', async () => {
@@ -136,11 +163,7 @@ test('completely unauthenticated request is rejected', async () => {
 
 // ── forceKey option ─────────────────────────────────────────────────────────
 
-test('forceKey=true rejects requests without any key, even with valid wms_ token (sanity: forceKey applies to all paths in the original code; documenting current behavior)', async () => {
-  // In the new design, wms_ token IS a key (it goes through the X-WorldMonitor-Key
-  // header and validateSessionToken). So forceKey=true with wms_ accepts. This
-  // test documents that.
-  const { token } = await issueSessionToken();
-  const r = await validateApiKey(makeReq({ key: token }), { forceKey: true });
-  assert.equal(r.valid, true);
-});
+// forceKey=true behavior is exercised above:
+//   - wms_ token + forceKey=true → REJECTED (PR #3557 review fix)
+//   - wms_ token + forceKey=false → accepted
+//   - enterprise key + forceKey=true → accepted (covered by enterprise tests)

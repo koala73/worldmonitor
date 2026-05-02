@@ -44,8 +44,36 @@ test('validateSessionToken rejects a tampered payload', async () => {
 
 test('validateSessionToken rejects a tampered signature', async () => {
   const { token } = await issueSessionToken();
-  // Flip last char in signature
-  const flipped = token.slice(0, -1) + (token.slice(-1) === 'A' ? 'B' : 'A');
+  // Decode the signature bytes, flip the FIRST byte, re-encode. This guarantees
+  // the signature differs from the legitimate HMAC.
+  //
+  // The earlier "flip the last base64url char" approach was non-deterministic:
+  // for SHA-256 (32 bytes → 43 b64url chars, no padding), the last char encodes
+  // 2 high bits of byte 32 plus 4 unused padding bits. Two different chars can
+  // share the same high 2 bits and differ only in padding — decoding to
+  // identical bytes and passing HMAC verification. PR #3557 review caught this.
+  const m = token.match(/^(wms_)([^.]+)\.(.+)$/);
+  const [, prefix, body, sig] = m;
+  const sigBytes = Buffer.from(sig, 'base64url');
+  sigBytes[0] = sigBytes[0] ^ 0xff;
+  const tamperedSig = sigBytes.toString('base64url');
+  const tampered = `${prefix}${body}.${tamperedSig}`;
+  assert.notEqual(tamperedSig, sig, 'sanity: tampered sig differs in encoding');
+  assert.equal(await validateSessionToken(tampered), false);
+});
+
+test('validateSessionToken rejects non-canonical base64url (last-char padding-bit flip)', async () => {
+  // Defensive: even if a future test/attacker tries the "flip the last char"
+  // trick, the canonical encoding check inside validateSessionToken rejects it
+  // because re-encoding the decoded bytes yields the canonical form, which
+  // won't match the tampered string.
+  const { token } = await issueSessionToken();
+  const last = token.slice(-1);
+  const candidates = ['A', 'B', 'C', 'D', 'E', 'F', 'g', 'h'];
+  const swap = candidates.find(c => c !== last) ?? 'A';
+  const flipped = token.slice(0, -1) + swap;
+  // Either it decodes differently (signature mismatch → false) OR the
+  // canonical-encoding check catches the padding-bit twiddle. Either way, false.
   assert.equal(await validateSessionToken(flipped), false);
 });
 
