@@ -835,8 +835,7 @@ http.route({
     );
 
     if (result) {
-      // Fire-and-forget: update lastUsedAt (don't await, don't block response)
-      void ctx.runMutation((internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+      await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
     }
 
     return new Response(JSON.stringify(result), {
