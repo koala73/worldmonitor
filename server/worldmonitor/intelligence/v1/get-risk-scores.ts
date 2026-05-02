@@ -612,6 +612,25 @@ export async function getRiskScores(
     );
     if (result) {
       await setCachedJson(RISK_STALE_CACHE_KEY, result, RISK_STALE_TTL).catch(() => {});
+      // Write seed-meta on every fresh fetch so /api/health.riskScores stays
+      // green from real user traffic, independent of the ais-relay
+      // CII warm-ping. Pre-2026-05-02 the warm-ping was the SOLE writer of
+      // this seed-meta — when the relay → api.worldmonitor.app auth path
+      // broke (all warm-ping types started returning HTTP 401 simultaneously),
+      // riskScores was the only key that flipped STALE because cable-health
+      // and chokepoints had RPC-side seed-meta writes keeping them fresh
+      // via real user traffic. This brings riskScores into the same pattern
+      // as those two: defense-in-depth, no single point of freshness failure.
+      // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
+      // logic is unchanged.
+      const count = result.ciiScores?.length || 0;
+      if (count > 0) {
+        await setCachedJson(
+          'seed-meta:intelligence:risk-scores',
+          { fetchedAt: Date.now(), recordCount: count },
+          604800,
+        ).catch(() => {});
+      }
       return result;
     }
   } catch { /* upstream failed, fall through to stale */ }
