@@ -263,6 +263,7 @@ Sentry.init({
     /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
     /Response cannot have a body with the given status/, // Safari: Response constructor with 204/304 + body
     /ClerkJS: Network error/, // Clerk SDK transient network failures on user devices
+    /^ClerkJS: Response: needs_(?:first|second)_factor\b/, // Clerk SDK auth-flow branch not yet supported; SDK-internal limitation, not our code — WORLDMONITOR-Q1. Narrow to the observed `needs_*_factor` family so future actionable `ClerkJS: Response: <something>` errors (e.g. misconfigured redirect URI) still surface.
     /doesn't provide an export named/, // stale cached chunk after deploy references removed export
     /Possible side-effect in debug-evaluate/, // Chrome DevTools internal EvalError
     /ConvexError: CONFLICT/, // Expected OCC rejection on concurrent preference saves
