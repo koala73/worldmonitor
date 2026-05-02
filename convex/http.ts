@@ -835,7 +835,11 @@ http.route({
     );
 
     if (result) {
-      await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+      try {
+        await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+      } catch (err) {
+        console.warn("[validate-api-key] touchKeyLastUsed schedule failed:", err instanceof Error ? err.message : String(err));
+      }
     }
 
     return new Response(JSON.stringify(result), {
