@@ -15,6 +15,7 @@
 //      explicit user-key paths still take precedence.
 
 import { getApiBaseUrl, toApiUrl } from './runtime';
+import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 
 const STORAGE_KEY = 'wm-session-token';
 // Refresh well before expiry so a half-loaded page doesn't fail mid-flight.
@@ -121,6 +122,22 @@ export function installWmSessionFetchInterceptor(): void {
       (apiOrigin !== '' && url.startsWith(apiOrigin));
 
     if (!isApiCall) return original(input, init);
+
+    // Premium routes have a dedicated auth-injection layer
+    // (`installWebApiRedirect`'s `enrichInitForPremium` adds Clerk Bearer JWT,
+    // WORLDMONITOR_API_KEY, or tester key based on what the user has). Stepping
+    // aside lets that inner layer attach the right credential — if we set
+    // X-WorldMonitor-Key=wms_... here, the premium injector sees the header
+    // and bails, and the server then 401s because wms_ is rejected on premium
+    // routes (it's anonymous, not user-bound). PR #3557 review finding.
+    const path = (() => {
+      try {
+        return new URL(url, typeof location === 'undefined' ? 'http://localhost' : location.href).pathname;
+      } catch {
+        return url.split('?')[0] ?? url;
+      }
+    })();
+    if (PREMIUM_RPC_PATHS.has(path)) return original(input, init);
 
     const headers = new Headers(
       init?.headers ?? (input instanceof Request ? input.headers : undefined),
