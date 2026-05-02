@@ -381,22 +381,29 @@ interface CoinPaprikaTicker {
   };
 }
 
+async function fetchCoinPaprikaTickersById(
+  paprikaIds: string[],
+): Promise<CoinPaprikaTicker[]> {
+  const ids = [...new Set(paprikaIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  return Promise.all(ids.map(async id => {
+    const resp = await fetch(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) throw new Error(`CoinPaprika ${id} HTTP ${resp.status}`);
+    return resp.json() as Promise<CoinPaprikaTicker>;
+  }));
+}
+
 export async function fetchCoinPaprikaMarkets(
   geckoIds: string[],
 ): Promise<CoinGeckoMarketItem[]> {
   const paprikaIds = geckoIds.map(id => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
   if (paprikaIds.length === 0) throw new Error('No CoinPaprika ID mapping for requested coins');
 
-  const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`CoinPaprika HTTP ${resp.status}`);
-
-  const allTickers: CoinPaprikaTicker[] = await resp.json();
-  const paprikaSet = new Set(paprikaIds);
-  const matched = allTickers.filter(t => paprikaSet.has(t.id));
-
+  const matched = await fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
 
   return matched.map(t => {
