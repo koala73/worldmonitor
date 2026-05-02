@@ -52,10 +52,10 @@ export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
   if (ids.length === 0) return [];
 
   const fetchFn = options.fetchFn || fetch;
-  const headers = options.headers || { Accept: 'application/json', 'User-Agent': CHROME_UA };
+  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(options.headers || {}) };
   const timeoutMs = options.timeoutMs || 15_000;
 
-  const tickers = await Promise.all(ids.map(async (id) => {
+  const results = await Promise.allSettled(ids.map(async (id) => {
     const resp = await fetchFn(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`, {
       headers,
       signal: AbortSignal.timeout(timeoutMs),
@@ -63,6 +63,22 @@ export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
     if (!resp.ok) throw new Error(`CoinPaprika ${id} HTTP ${resp.status}`);
     return resp.json();
   }));
+
+  const tickers = [];
+  const failures = [];
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    if (result.status === 'fulfilled') {
+      tickers.push(result.value);
+    } else {
+      failures.push(result.reason);
+      console.warn(`[CoinPaprika] Skipping ${ids[i]}: ${describeErr(result.reason)}`);
+    }
+  }
+
+  if (tickers.length === 0 && failures.length > 0) {
+    throw new Error(`All ${failures.length} CoinPaprika ticker request(s) failed`);
+  }
 
   return tickers;
 }

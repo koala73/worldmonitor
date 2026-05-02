@@ -384,10 +384,10 @@ interface CoinPaprikaTicker {
 async function fetchCoinPaprikaTickersById(
   paprikaIds: string[],
 ): Promise<CoinPaprikaTicker[]> {
-  const ids = [...new Set(paprikaIds.filter(Boolean))];
+  const ids = [...new Set(paprikaIds.filter((id): id is string => Boolean(id)))];
   if (ids.length === 0) return [];
 
-  return Promise.all(ids.map(async id => {
+  const results = await Promise.allSettled(ids.map(async id => {
     const resp = await fetch(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -395,12 +395,29 @@ async function fetchCoinPaprikaTickersById(
     if (!resp.ok) throw new Error(`CoinPaprika ${id} HTTP ${resp.status}`);
     return resp.json() as Promise<CoinPaprikaTicker>;
   }));
+
+  const tickers: CoinPaprikaTicker[] = [];
+  const failures: unknown[] = [];
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'fulfilled') {
+      tickers.push(result.value);
+    } else {
+      failures.push(result.reason);
+      console.warn(`[CoinPaprika] Skipping ${ids[index] ?? 'unknown'}:`, (result.reason as Error).message || result.reason);
+    }
+  }
+
+  if (tickers.length === 0 && failures.length > 0) {
+    throw new Error(`All ${failures.length} CoinPaprika ticker request(s) failed`);
+  }
+
+  return tickers;
 }
 
 export async function fetchCoinPaprikaMarkets(
   geckoIds: string[],
 ): Promise<CoinGeckoMarketItem[]> {
-  const paprikaIds = geckoIds.map(id => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
+  const paprikaIds = geckoIds.map(id => COINPAPRIKA_ID_MAP[id]).filter((id): id is string => Boolean(id));
   if (paprikaIds.length === 0) throw new Error('No CoinPaprika ID mapping for requested coins');
 
   const matched = await fetchCoinPaprikaTickersById(paprikaIds);

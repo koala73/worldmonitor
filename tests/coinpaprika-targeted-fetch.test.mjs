@@ -27,12 +27,63 @@ describe('fetchCoinPaprikaTickersById', () => {
     assert.equal(rows.length, 2);
   });
 
-  it('includes the ticker id in HTTP errors', async () => {
-    await assert.rejects(
-      fetchCoinPaprikaTickersById(['bad-token'], {
-        fetchFn: async () => ({ ok: false, status: 404 }),
-      }),
-      /CoinPaprika bad-token HTTP 404/,
-    );
+  it('keeps successful tickers when one configured id fails', async () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (message) => warnings.push(message);
+    try {
+      const rows = await fetchCoinPaprikaTickersById(['btc-bitcoin', 'bad-token', 'eth-ethereum'], {
+        fetchFn: async (url) => {
+          const id = url.match(/tickers\/([^?]+)/)[1];
+          if (id === 'bad-token') return { ok: false, status: 404 };
+          return {
+            ok: true,
+            async json() {
+              return { id, quotes: { USD: { price: 1 } } };
+            },
+          };
+        },
+      });
+
+      assert.deepEqual(rows.map((row) => row.id), ['btc-bitcoin', 'eth-ethereum']);
+      assert.match(warnings[0], /CoinPaprika bad-token HTTP 404/);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('merges custom headers without dropping default CoinPaprika headers', async () => {
+    const seen = [];
+    await fetchCoinPaprikaTickersById(['btc-bitcoin'], {
+      headers: { 'X-Test': '1' },
+      fetchFn: async (_url, options) => {
+        seen.push(options.headers);
+        return {
+          ok: true,
+          async json() {
+            return { id: 'btc-bitcoin', quotes: { USD: { price: 1 } } };
+          },
+        };
+      },
+    });
+
+    assert.equal(seen[0].Accept, 'application/json');
+    assert.equal(seen[0]['User-Agent'].includes('Chrome/'), true);
+    assert.equal(seen[0]['X-Test'], '1');
+  });
+
+  it('still fails when every configured ticker request fails', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await assert.rejects(
+        fetchCoinPaprikaTickersById(['bad-token'], {
+          fetchFn: async () => ({ ok: false, status: 404 }),
+        }),
+        /All 1 CoinPaprika ticker request\(s\) failed/,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
