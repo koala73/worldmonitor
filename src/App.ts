@@ -68,6 +68,7 @@ import { initI18n, t } from '@/services/i18n';
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
 import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
 import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, type BootstrapHydrationState } from '@/services/bootstrap';
+import { ensureWmSession, installWmSessionFetchInterceptor } from '@/services/wm-session';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
@@ -938,6 +939,17 @@ export class App {
     // Wait for sidecar readiness on desktop so bootstrap hits a live server
     if (isDesktopRuntime()) {
       await waitForSidecarReady(3000);
+    }
+
+    // Anonymous browser session token (issue #3541). Server's validateApiKey
+    // no longer trusts header-only signals (Origin / Referer / Sec-Fetch-Site
+    // are all forgeable). Install a fetch interceptor ONCE, then mint a
+    // wms_-prefixed HMAC token before the first API call. Desktop has its own
+    // API key path and doesn't need this; Clerk-authenticated users will pass
+    // their JWT in a Bearer header and the interceptor steps aside.
+    if (!isDesktopRuntime()) {
+      installWmSessionFetchInterceptor();
+      await ensureWmSession();
     }
 
     // Hydrate in-memory cache from bootstrap endpoint (before panels construct and fetch)

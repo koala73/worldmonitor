@@ -4,12 +4,25 @@ import { afterEach, describe, it, before, after, mock } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway } from '../server/gateway.ts';
+import { issueSessionToken } from '../api/_session.js';
 
 const originalKeys = process.env.WORLDMONITOR_VALID_KEYS;
+const originalSessionSecret = process.env.WM_SESSION_SECRET;
+
+// Public routes now require a wms_ session token (issue #3541) — header-only
+// origin trust is gone. Mint one for tests that previously relied on
+// "trusted browser origin = anonymous public read."
+process.env.WM_SESSION_SECRET = originalSessionSecret
+  ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
+let SESSION_TOKEN: string;
+before(async () => { SESSION_TOKEN = (await issueSessionToken()).token; });
 
 afterEach(() => {
   if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
   else process.env.WORLDMONITOR_VALID_KEYS = originalKeys;
+  // Keep the session secret stable across tests so SESSION_TOKEN stays valid.
+  process.env.WM_SESSION_SECRET = originalSessionSecret
+    ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
 });
 
 describe('premium gateway API key enforcement', () => {
@@ -86,11 +99,38 @@ describe('premium gateway API key enforcement', () => {
     }));
     assert.equal(unknownNoKey.status, 403);
 
-    // Public endpoint — always accessible from trusted origin (no credentials needed)
+    // Public endpoint — anonymous browsers authenticate via the wms_ session token
+    // (issue #3541; previously this was a trusted-origin bypass).
     const publicAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
-      headers: { Origin: 'https://worldmonitor.app' },
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
     }));
     assert.equal(publicAllowed.status, 200);
+  });
+
+  it('PR #3557 review: anonymous wms_ session token does NOT unlock premium endpoints', async () => {
+    // Regression: an earlier revision returned valid:true for wms_ tokens and
+    // the gateway treated any non-wm_ valid key as enterprise → entitlement
+    // check skipped → premium content served to any anonymous caller. Lock the
+    // contract: wms_ on a premium route must 401 (no Pro auth) — never 200.
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/analyze-stock',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+
+    for (const path of ['/api/market/v1/analyze-stock?symbol=AAPL', '/api/resilience/v1/get-resilience-score?countryCode=US']) {
+      const res = await handler(new Request(`https://worldmonitor.app${path}`, {
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }));
+      assert.notEqual(res.status, 200, `wms_ MUST NOT unlock ${path} (got ${res.status})`);
+    }
   });
 });
 
@@ -216,11 +256,18 @@ describe('premium gateway bearer token auth', () => {
     assert.equal(res.status, 401);
   });
 
-  it('public routes are unaffected by absence of auth header', async () => {
+  it('public routes accept the anonymous browser session token', async () => {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+      headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+    }));
+    assert.equal(res.status, 200);
+  });
+
+  it('public routes WITHOUT a session token are rejected (#3541 — header-only trust is gone)', async () => {
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 401);
   });
 
   it('rejects free bearer token on resilience premium endpoints → 403', async () => {

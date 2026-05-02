@@ -20,6 +20,13 @@ import { afterEach, before, after, describe, it } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway, type GatewayCtx } from '../server/gateway.ts';
+import { issueSessionToken } from '../api/_session.js';
+
+// Anonymous browser access requires a wms_ session token (issue #3541).
+process.env.WM_SESSION_SECRET = process.env.WM_SESSION_SECRET
+  ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
+let SESSION_TOKEN: string;
+before(async () => { SESSION_TOKEN = (await issueSessionToken()).token; });
 
 interface CapturedEvent {
   event_type: string;
@@ -145,7 +152,7 @@ describe('gateway telemetry payload — domain extraction', () => {
     const recorder = makeRecordingCtx();
     const res = await handler(
       new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
-        headers: { Origin: 'https://worldmonitor.app' },
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       }),
       recorder.ctx,
     );
@@ -156,6 +163,42 @@ describe('gateway telemetry payload — domain extraction', () => {
 
     assert.equal(spy.events.length, 1);
     assert.equal(spy.events[0]!.domain, 'market');
+  });
+
+  it("PR #3557 round-3: anonymous wms_ token telemetry is anon, NOT enterprise_api_key", async () => {
+    // Regression: an earlier revision set usage.enterpriseApiKey for any valid
+    // wmKey not starting with 'wm_'. Since 'wms_' doesn't startsWith 'wm_',
+    // anonymous session tokens were misattributed as enterprise traffic with
+    // customer_id='enterprise-unmapped'. Lock the contract: kind:'session'
+    // tokens emit auth_kind:'anon'.
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH);
+
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response('{"ok":true}', { status: 200 }),
+      },
+    ]);
+
+    const recorder = makeRecordingCtx();
+    const res = await handler(
+      new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }),
+      recorder.ctx,
+    );
+    assert.equal(res.status, 200);
+
+    await recorder.settled;
+    spy.restore();
+
+    assert.equal(spy.events.length, 1);
+    const ev = spy.events[0]!;
+    assert.equal(ev.auth_kind, 'anon', `wms_ tokens must telemeter as anon, got '${ev.auth_kind}'`);
+    assert.notEqual(ev.customer_id, 'enterprise-unmapped');
   });
 });
 
@@ -357,7 +400,7 @@ describe('gateway telemetry payload — ctx-optional safety', () => {
 
     const res = await handler(
       new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
-        headers: { Origin: 'https://worldmonitor.app' },
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       }),
     );
     assert.equal(res.status, 200);
