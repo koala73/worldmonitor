@@ -210,6 +210,32 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
   });
 });
 
+describe('rate-limit fail-closed call-site policy (#3531)', () => {
+  // High-cost endpoints that don't go through gateway.ts's checkEndpointRateLimit
+  // must opt into fail-closed at the call site — otherwise an Upstash blip
+  // silently lifts the only rate-limit gate they have. Static-analysis guard
+  // so a future caller reverting to bare `checkRateLimit(req, cors)` is caught
+  // in CI rather than during a Redis incident.
+  const FAIL_CLOSED_REQUIRED = [
+    'api/chat-analyst.ts', // streaming LLM analyst, Pro-only
+  ];
+
+  for (const path of FAIL_CLOSED_REQUIRED) {
+    it(`${path} passes failClosed: true to checkRateLimit`, async () => {
+      const fs = await import('node:fs');
+      const url = new URL(`../${path}`, import.meta.url);
+      const src = fs.readFileSync(url, 'utf8');
+      const callMatch = src.match(/checkRateLimit\([^)]*\)/);
+      assert.ok(callMatch, `${path} should still call checkRateLimit`);
+      assert.match(
+        callMatch[0],
+        /failClosed:\s*true/,
+        `${path} must pass { failClosed: true } so a Redis outage doesn't silently bypass the only rate-limit gate it has`,
+      );
+    });
+  }
+});
+
 describe('rate-limit constants', () => {
   it('exposes the degraded marker shape both surfaces depend on', () => {
     assert.equal(RATE_LIMIT_DEGRADED_HEADERS['X-RateLimit-Mode'], 'degraded');
