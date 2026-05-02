@@ -838,6 +838,8 @@ http.route({
       try {
         await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
+        // sentry-coverage-ok: re-throwing here would 500 the gateway, which coerces to null
+        // and stamps a 60s negative-cache sentinel for a valid key. lastUsedAt is best-effort telemetry.
         console.warn("[validate-api-key] touchKeyLastUsed schedule failed:", err instanceof Error ? err.message : String(err));
       }
     }
