@@ -202,6 +202,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/wm-session.js",
+      "category": "ops-admin",
+      "reason": "Anonymous browser session-token mint. Single 2-field response ({token, exp}); a sebuf RPC would be over-engineering for an auth-bootstrap endpoint that the client calls once at boot. See PR #3557 / issue #3541 for the full bypass-closure rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/invalidate-user-api-key-cache.ts",
       "category": "ops-admin",
       "reason": "Admin-gated cache bust for user API key lookups. Internal operator action.",

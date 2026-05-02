@@ -1,13 +1,28 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, before, describe, it } from 'node:test';
 
 import { createDomainGateway } from '../server/gateway.ts';
+import { issueSessionToken } from '../api/_session.js';
 
 const originalKeys = process.env.WORLDMONITOR_VALID_KEYS;
+const originalSecret = process.env.WM_SESSION_SECRET;
+
+// Anonymous browser access now requires a wms_ session token (issue #3541).
+// Tests mint one once and pass it on every "browser-like" request.
+let sessionToken: string;
+
+before(async () => {
+  process.env.WM_SESSION_SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
+  sessionToken = (await issueSessionToken()).token;
+});
 
 afterEach(() => {
   if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
   else process.env.WORLDMONITOR_VALID_KEYS = originalKeys;
+  if (originalSecret == null) delete process.env.WM_SESSION_SECRET;
+  else process.env.WM_SESSION_SECRET = originalSecret;
+  // Re-set test secret in case afterEach ran AFTER the per-test reset.
+  process.env.WM_SESSION_SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
 });
 
 function createHandler() {
@@ -28,7 +43,7 @@ function createHandler() {
 async function requestPublicRoute(origin: string) {
   const handler = createHandler();
   return handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
-    headers: { Origin: origin },
+    headers: { Origin: origin, 'X-WorldMonitor-Key': sessionToken },
   }));
 }
 

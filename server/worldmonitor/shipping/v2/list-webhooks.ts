@@ -26,7 +26,7 @@ export async function listWebhooks(
   // ownerTag !== ownerHash defense-in-depth below collapses because both
   // sides equal 'anon' — exposing every 'anon'-bucket tenant's webhooks to
   // every Clerk-session holder. See registerWebhook for full rationale.
-  const apiKeyResult = validateApiKey(ctx.request, { forceKey: true }) as {
+  const apiKeyResult = (await validateApiKey(ctx.request, { forceKey: true })) as {
     valid: boolean; required: boolean; error?: string;
   };
   if (apiKeyResult.required && !apiKeyResult.valid) {

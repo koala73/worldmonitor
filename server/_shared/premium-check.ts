@@ -31,7 +31,7 @@ export async function isCallerPremium(request: Request): Promise<boolean> {
     }
   }
 
-  const keyCheck = validateApiKey(request, {}) as { valid: boolean; required: boolean };
+  const keyCheck = (await validateApiKey(request, {})) as { valid: boolean; required: boolean };
   // Only treat as premium when an explicit API key was validated (required: true).
   // Trusted-origin short-circuits (required: false) do NOT imply PRO entitlement.
   if (keyCheck.valid && keyCheck.required) return true;
