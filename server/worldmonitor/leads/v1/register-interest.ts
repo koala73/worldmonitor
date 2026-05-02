@@ -302,6 +302,9 @@ export async function registerInterest(
       DESKTOP_RATE_WINDOW,
       ip,
     );
+    if (scoped.degraded) {
+      throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
+    }
     if (!scoped.allowed) {
       throw new ApiError(429, 'Too many requests', '');
     }

@@ -931,14 +931,24 @@ export function createDomainGateway(
     if (!internalMcpVerified) {
       const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);
       if (endpointRlResponse) {
-        emitRequest(endpointRlResponse.status, 'rate_limit_429', null);
+        const reason =
+          endpointRlResponse.status === 503 &&
+          endpointRlResponse.headers.get('X-RateLimit-Mode') === 'degraded'
+            ? 'rate_limit_degraded'
+            : 'rate_limit_429';
+        emitRequest(endpointRlResponse.status, reason, null);
         return endpointRlResponse;
       }
 
       if (!hasEndpointRatePolicy(pathname)) {
         const rateLimitResponse = await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
-          emitRequest(rateLimitResponse.status, 'rate_limit_429', null);
+          const reason =
+            rateLimitResponse.status === 503 &&
+            rateLimitResponse.headers.get('X-RateLimit-Mode') === 'degraded'
+              ? 'rate_limit_degraded'
+              : 'rate_limit_429';
+          emitRequest(rateLimitResponse.status, reason, null);
           return rateLimitResponse;
         }
       }
