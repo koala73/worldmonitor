@@ -470,9 +470,12 @@ export function createDomainGateway(
       }
     }
 
-    // Enterprise API key (WORLDMONITOR_VALID_KEYS): keyCheck.valid + wmKey present
-    // and not a wm_-prefixed user key.
-    if (keyCheck.valid && wmKey && !isUserApiKey && !wmKey.startsWith('wm_')) {
+    // Enterprise API key (WORLDMONITOR_VALID_KEYS): require kind === 'enterprise'.
+    // Without this, anonymous wms_ tokens slipped through (validateApiKey marks
+    // them valid, wmKey is set, !isUserApiKey, and 'wms_' doesn't startsWith
+    // 'wm_'), so telemetry mislabelled them as enterprise_api_key with
+    // customer_id='enterprise-unmapped'. PR #3557 round-3 review.
+    if (keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise') {
       usage.enterpriseApiKey = wmKey;
     }
 
