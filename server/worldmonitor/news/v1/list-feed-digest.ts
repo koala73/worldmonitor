@@ -269,19 +269,28 @@ async function fetchAndParseRss(
   variant: string,
   signal: AbortSignal,
 ): Promise<ParseResult> {
-  // v2 cache shape carries items + stats; bump prevents v1 array values
-  // from being mistyped as the new struct after deploy. Old v1 entries
-  // TTL-expire within 1h.
-  const cacheKey = `rss:feed:v2:${variant}:${feed.url}`;
+  // v3 cache shape: identical struct to v2 but a new prefix invalidates
+  // every pre-fix entry on deploy. Pre-fix v2 entries could be poisoned
+  // (non-RSS body cached at the long TTL via the old cachedFetchJson path
+  // — the bug this PR fixes). Their unprefixed v2 keys remain in Redis
+  // until they TTL-expire naturally over the next hour; v3 reads/writes
+  // ignore them. Without this prefix bump we'd need a runtime guard to
+  // distinguish "recently confirmed empty (honor short TTL)" from
+  // "old poisoned long-TTL entry" — and that runtime guard regressed
+  // throttling because every parsedTotal=0 read fell through to a live
+  // upstream fetch (PR #3556 review P1: short TTL never throttled).
+  const cacheKey = `rss:feed:v3:${variant}:${feed.url}`;
 
   try {
-    // Read cache first, but treat a cached zero-from-zero result as a stale
-    // poisoning marker (likely a non-RSS body slipped through the body-sniff
-    // before this fix shipped, OR upstream had a transient failure that
-    // legitimately produced no items). Re-fetch instead of returning the
-    // empty cache — the live fetch may now succeed.
+    // Read cache unconditionally — the v3 prefix guarantees pre-fix
+    // poisoning can't reach this read, so we don't need a parsedTotal
+    // bypass. Honoring cached zero-from-zero entries IS the throttle:
+    // setCachedJson below writes them with CACHE_TTL_EMPTY_S, so the next
+    // request within 5 minutes hits cache instead of upstream. This is
+    // what the PR description claimed and what review P1 flagged was
+    // missing.
     const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
-    if (cached && cached.parsedTotal > 0) return cached;
+    if (cached) return cached;
 
     // Try direct fetch first
     let text = await fetchRssText(feed.url, signal).catch(() => null);
