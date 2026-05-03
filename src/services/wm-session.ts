@@ -97,6 +97,21 @@ export function getWmSessionToken(): string | null {
 // Only patches calls to our API origin (or relative /api/ paths). Other fetches
 // (Sentry, Clerk, third-party CDNs) are forwarded to native fetch unchanged.
 //
+// Decide whether a fetch URL should go through the wms_-injection branch.
+// Exported (and named with no implementation detail in its signature) so the
+// regression test in tests/wm-session-interceptor-target.test.mts can lock the
+// shape of this decision without needing a JSDOM/happy-dom environment to
+// stand up the full interceptor. The bug fixed in PR #3574 was specifically
+// that this matcher silently returned `false` for absolute URLs to our API
+// origin because `apiOrigin` was '' — so the unit test pins both the relative
+// AND absolute matching paths.
+export function isApiCallTarget(url: string, apiOrigin: string): boolean {
+  return (
+    url.startsWith('/api/') ||
+    (apiOrigin !== '' && url.startsWith(apiOrigin))
+  );
+}
+
 // If a caller already set Authorization / X-WorldMonitor-Key / X-Api-Key, we
 // don't override — Clerk Bearer JWT and explicit user keys still take
 // precedence over the anonymous session token.
@@ -124,11 +139,7 @@ export function installWmSessionFetchInterceptor(): void {
       return '';
     })();
 
-    const isApiCall =
-      url.startsWith('/api/') ||
-      (apiOrigin !== '' && url.startsWith(apiOrigin));
-
-    if (!isApiCall) return original(input, init);
+    if (!isApiCallTarget(url, apiOrigin)) return original(input, init);
 
     // Premium routes have a dedicated auth-injection layer
     // (`installWebApiRedirect`'s `enrichInitForPremium` adds Clerk Bearer JWT,
