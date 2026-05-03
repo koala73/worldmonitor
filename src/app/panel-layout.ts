@@ -107,7 +107,6 @@ import { loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
-import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
 import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
@@ -233,11 +232,42 @@ export class PanelLayoutManager implements AppModule {
       showCheckoutFailureBanner(returnResult.rawStatus);
     }
 
-    const userId = getUserId();
-    if (userId) {
+    // Always register the payment-failure-banner listener — onSubscriptionChange
+    // is an in-memory listener registry, doesn't open any network connection,
+    // and survives the destroy/reinit cycle on auth transitions (see
+    // billing.ts:124-126). Registering once here means the banner reacts when
+    // a user signs in mid-session and the App.ts auth-state subscription
+    // (App.ts:995-1006) starts the Convex subscription watch.
+    this.unsubscribePaymentFailureBanner = initPaymentFailureBanner();
+
+    // Defer Convex subscriptions until a real Clerk identity exists.
+    //
+    // `getUserId()` (user-identity.ts) always returns truthy for browser
+    // users — it falls back to an auto-generated `wm-anon-id` UUID — so the
+    // previous `if (userId)` gate never short-circuited. That meant every
+    // anonymous visitor opened a Convex WebSocket via getConvexClient()
+    // with `setAuth(getClerkToken)` returning null, which the Convex SDK
+    // could not authenticate, producing a constant
+    //   `WebSocket connection to wss://…/api/1.34.0/sync failed`
+    // reconnect loop in DevTools (todo #257 item 4). The subscriptions
+    // themselves never delivered useful state for anon users either:
+    //   - getEntitlementsForUser returns FREE_TIER_DEFAULTS without auth
+    //   - getSubscriptionForUser returns null without auth
+    // — so the loop was pure noise.
+    //
+    // For users who sign in mid-session, App.ts:1003-1006 destroys and
+    // re-initializes both subscriptions against the real Clerk userId, so
+    // skipping here is a no-op for the signed-in path.
+    //
+    // Note: PanelLayoutManager is constructed before initAuthState() awaits
+    // Clerk, so getAuthState().user is null even for users who will silently
+    // restore a Clerk session on this page load. Those users are picked up
+    // by subscribeAuthState a few hundred ms later via the same App.ts
+    // rebind path. Constructor-time anon is the common case.
+    if (getAuthState().user) {
+      const userId = getAuthState().user!.id;
       initEntitlementSubscription(userId).catch(() => {});
       initSubscriptionWatch(userId).catch(() => {});
-      this.unsubscribePaymentFailureBanner = initPaymentFailureBanner();
     }
 
     // Overlay success fires BEFORE the entitlement-watcher reload. The
