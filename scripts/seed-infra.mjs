@@ -85,7 +85,7 @@ async function main() {
     // Distinct, grep-able marker so persistent auth/gateway breakage stays
     // visible in Railway logs even though we exit 0. Set up a Railway log
     // alert on this string instead of relying on container exit codes.
-    console.warn('WARN: all warm-pings failed — cache is cold (check WORLDMONITOR_RELAY_KEY and gateway auth)');
+    console.log('WARN: all warm-pings failed — cache is cold (check WORLDMONITOR_RELAY_KEY and gateway auth)');
   }
   // Best-effort cache warmer: a missed warm-ping is not a failure worth paging on.
   // Upstream timeouts and transient 5xx happen routinely; exiting non-zero turned
