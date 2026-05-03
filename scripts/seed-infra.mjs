@@ -23,12 +23,19 @@ loadEnvFile(import.meta.url);
 
 const API_BASE = 'https://api.worldmonitor.app';
 const TIMEOUT = 30_000;
+const API_KEY = process.env.WORLDMONITOR_API_KEY ?? '';
 
 async function warmPing(name, path) {
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'User-Agent': CHROME_UA,
+      Origin: 'https://worldmonitor.app',
+    };
+    if (API_KEY) headers['X-WorldMonitor-Key'] = API_KEY;
     const resp = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers,
       body: JSON.stringify({}),
       signal: AbortSignal.timeout(TIMEOUT),
     });
@@ -62,7 +69,11 @@ async function main() {
   const duration = Date.now() - start;
 
   console.log(`\n=== Done: ${ok}/${total} warm-pings OK (${duration}ms) ===`);
-  process.exit(ok > 0 ? 0 : 1);
+  // Best-effort cache warmer: a missed warm-ping is not a failure worth paging on.
+  // Upstream timeouts and transient 5xx happen routinely on the 30-status-page
+  // fan-out; exiting non-zero turned every blip into a Railway "Deploy crashed"
+  // email. Logs above still surface partial failures for investigation.
+  process.exit(0);
 }
 
 main();
