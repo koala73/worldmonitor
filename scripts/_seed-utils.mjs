@@ -262,11 +262,15 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
 }
 
-export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds) {
+export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
   const meta = {
-    fetchedAt: Date.now(),
+    // Default to now; callers that want to mirror an existing canonical
+    // envelope (validate-fail branch in runSeed) pass the canonical's
+    // original fetchedAt so health doesn't lie about freshness — see
+    // readCanonicalEnvelopeMeta() and the skipped-validate path below.
+    fetchedAt: typeof fetchedAtOverride === 'number' ? fetchedAtOverride : Date.now(),
     recordCount: count,
     sourceVersion: source || '',
   };
@@ -275,6 +279,47 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
   const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
   await redisSet(url, token, metaKey, meta, metaTtl);
   return meta;
+}
+
+/**
+ * Read the canonical key's contract-mode envelope meta. Used by runSeed's
+ * validate-fail branch to mirror canonical state into seed-meta instead
+ * of overwriting it with recordCount=0 (which makes /api/health report
+ * EMPTY_DATA when the canonical key still holds last-good data — see
+ * PR #3581 for the production incident).
+ *
+ * Returns the {fetchedAt, recordCount, sourceVersion} block when canonicalKey
+ * is contract-mode (envelope dual-write) AND has a valid recordCount > 0.
+ * Returns null for legacy (bare-shape) keys, missing keys, parse errors,
+ * or zero envelopes — caller falls back to its existing default behavior.
+ *
+ * Defensive: any read/parse error → null. No throws bubble up.
+ */
+export async function readCanonicalEnvelopeMeta(canonicalKey) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data || !data.result) return null;
+    let parsed;
+    try { parsed = JSON.parse(data.result); } catch { return null; }
+    if (!parsed || typeof parsed !== 'object') return null;
+    const seed = parsed._seed;
+    if (!seed || typeof seed !== 'object') return null;
+    if (typeof seed.fetchedAt !== 'number' || typeof seed.recordCount !== 'number') return null;
+    if (seed.recordCount <= 0) return null;
+    return {
+      fetchedAt: seed.fetchedAt,
+      recordCount: seed.recordCount,
+      sourceVersion: typeof seed.sourceVersion === 'string' ? seed.sourceVersion : '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
@@ -1058,8 +1103,42 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         // Write seed-meta even when data is empty so health can distinguish
         // "seeder ran but nothing to publish" from "seeder stopped" (quiet-
         // period feeds: news, events, sparse indicators).
-        await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
-        console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed, existing cache TTL extended`);
+        //
+        // BUT — when the canonical key still holds last-good contract-mode
+        // data with recordCount > 0, mirror its (fetchedAt, recordCount)
+        // into seed-meta instead of writing zero. This keeps /api/health
+        // reporting an accurate count when validateFn rejects a transient
+        // upstream blip (e.g. WB late-reporter variation that drops a
+        // resilience indicator from 153 → 149 countries when the floor was
+        // 150 — production incident 2026-05-03 for resilience:power-losses
+        // where canonical had 216 countries but seed-meta got overwritten
+        // with 0 → EMPTY_DATA). The mirrored fetchedAt is canonical's
+        // ORIGINAL fetch time, NOT now, so STALE_SEED still fires naturally
+        // once the canonical data ages past maxStaleMin — preserving the
+        // strict-floor honesty WITHOUT punishing a transient blip with a
+        // misleading zero.
+        //
+        // Falls back to writing 0 (legacy quiet-period behavior) when:
+        //   - canonical key is missing
+        //   - canonical envelope is malformed / legacy bare shape
+        //   - canonical envelope has recordCount <= 0
+        const canonicalMeta = await readCanonicalEnvelopeMeta(canonicalKey);
+        if (canonicalMeta) {
+          await writeFreshnessMetadata(
+            domain, resource, canonicalMeta.recordCount,
+            canonicalMeta.sourceVersion || opts.sourceVersion,
+            ttlSeconds,
+            canonicalMeta.fetchedAt,
+          );
+          console.log(
+            `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +
+            `(fetchedAt=${new Date(canonicalMeta.fetchedAt).toISOString()}, recordCount=${canonicalMeta.recordCount}); ` +
+            `existing cache TTL extended`,
+          );
+        } else {
+          await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
+          console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
+        }
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
