@@ -168,6 +168,7 @@ export class PanelLayoutManager implements AppModule {
   private criticalBannerEl: HTMLElement | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
+  private readonly debouncedEnsureZones: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
@@ -180,6 +181,14 @@ export class PanelLayoutManager implements AppModule {
     this.applyTimeRangeFilterDebounced = debounce(() => {
       this.applyTimeRangeFilterToNewsPanels();
     }, 120);
+
+    // Debounce the resize handler to avoid running ensureCorrectZones on every
+    // pixel during a window drag. Without this, a resize gesture fires ~60+
+    // events/sec, each doing DOM queries + re-parenting — visibly janky on slower
+    // machines. 100ms collapses a full drag to 1–2 invocations while feeling instant.
+    this.debouncedEnsureZones = debounce(() => {
+      this.ensureCorrectZones();
+    }, 100);
 
     // Dodo Payments: entitlement subscription + billing watch for ALL users.
     // Free users need the subscription active so they receive real-time
@@ -344,7 +353,7 @@ export class PanelLayoutManager implements AppModule {
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
 
-    window.removeEventListener('resize', this.ensureCorrectZones);
+    window.removeEventListener('resize', this.debouncedEnsureZones);
   }
 
   /** Reactively update premium panel gating based on auth state. */
@@ -1529,7 +1538,7 @@ export class PanelLayoutManager implements AppModule {
       });
     }
 
-    window.addEventListener('resize', () => this.ensureCorrectZones());
+    window.addEventListener('resize', this.debouncedEnsureZones);
 
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
