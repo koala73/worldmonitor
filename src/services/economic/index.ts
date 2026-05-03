@@ -51,6 +51,7 @@ import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import { hasPremiumAccess } from '@/services/panel-gating';
 
 // ---- Client + Circuit Breakers ----
 
@@ -756,6 +757,15 @@ async function _fetchNationalDebt(): Promise<GetNationalDebtResponse> {
       if (data.nationalDebt?.entries?.length) return data.nationalDebt;
     }
   } catch { /* fall through to RPC */ }
+
+  // Anonymous (non-premium) users: do NOT call the Pro-gated RPC.
+  // /api/economic/v1/get-national-debt is in PREMIUM_RPC_PATHS, so the
+  // call deterministically 401s for an anonymous client and the breaker
+  // returns emptyNationalDebtFallback anyway — same outcome as us, minus
+  // the Sentry/console noise on every page load.
+  if (!hasPremiumAccess()) {
+    return emptyNationalDebtFallback;
+  }
 
   try {
     return await nationalDebtBreaker.execute(async () => {
