@@ -4078,6 +4078,48 @@ function startTheaterPostureSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Warm-ping shared auth — relay → api.worldmonitor.app
+//
+// All warm-pings call api.worldmonitor.app/api/* edge functions. Pre-2026-05-02
+// these used Origin-trust alone (the relay sent `Origin: https://worldmonitor.app`
+// which `api/_api-key.js::validateApiKey` accepts via BROWSER_ORIGIN_PATTERNS).
+// On 2026-05-02 ALL three warm-pings (CII + Chokepoints + CableHealth) started
+// returning HTTP 401 simultaneously despite the relay sending the correct
+// Origin header. Root cause unclear (Vercel firewall change, CDN cache
+// poisoning, deploy mismatch) — but Origin-trust is fragile by nature: any
+// intermediary (CF, Vercel firewall, future CDN) can strip or rewrite Origin
+// without leaving a trace.
+//
+// Defense-in-depth: send an explicit X-WorldMonitor-Key in addition to the
+// Origin header. The gateway accepts EITHER, so when Origin trust breaks
+// the key carries the auth. When the key isn't configured, fall through to
+// Origin-only — preserves backward compatibility for local dev / before the
+// env var is provisioned on Railway.
+//
+// Required env var on Railway ais-relay service:
+//   WORLDMONITOR_RELAY_KEY=<value present in Vercel WORLDMONITOR_VALID_KEYS>
+// ─────────────────────────────────────────────────────────────
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
+// Surface the auth-mode at boot so misconfig (env var on wrong service,
+// typo'd name, missing on a fresh Railway deploy) is visible in the first
+// log lines instead of waiting for the first 401. PR #3565 review P2.
+if (!RELAY_API_KEY) {
+  console.warn('[Relay] WORLDMONITOR_RELAY_KEY not set — warm-pings will rely on Origin-trust only (fragile against CDN/firewall changes)');
+} else {
+  console.log('[Relay] WORLDMONITOR_RELAY_KEY configured — warm-pings will send X-WorldMonitor-Key');
+}
+
+function warmPingHeaders(extra = {}) {
+  const h = {
+    'User-Agent': CHROME_UA,
+    Origin: 'https://worldmonitor.app',
+    ...extra,
+  };
+  if (RELAY_API_KEY) h['X-WorldMonitor-Key'] = RELAY_API_KEY;
+  return h;
+}
+
+// ─────────────────────────────────────────────────────────────
 // CII Risk Scores warm-ping — keeps RPC cache fresh so
 // bootstrap stale key never expires.
 // The RPC handler itself refreshes the stale key on every call.
@@ -4088,14 +4130,11 @@ const CII_RPC_URL = 'https://api.worldmonitor.app/api/intelligence/v1/get-risk-s
 async function seedCiiWarmPing() {
   try {
     const resp = await fetch(CII_RPC_URL, {
-      headers: {
-        'User-Agent': CHROME_UA,
-        Origin: 'https://worldmonitor.app',
-      },
+      headers: warmPingHeaders(),
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4130,12 +4169,12 @@ async function seedChokepointWarmPing() {
   try {
     const resp = await fetch(CHOKEPOINT_RPC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4168,12 +4207,12 @@ async function seedCableHealthWarmPing() {
   try {
     const resp = await fetch(CABLE_HEALTH_RPC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
