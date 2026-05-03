@@ -31,7 +31,7 @@ function withEnv<T>(key: string, value: string | undefined, fn: () => T): T {
 }
 
 describe('resolveMaxAgeMs — env override', () => {
-  it('defaults to 48h when NEWS_MAX_AGE_HOURS is unset', () => {
+  it('defaults to 96h when NEWS_MAX_AGE_HOURS is unset', () => {
     withEnv('NEWS_MAX_AGE_HOURS', undefined, () => {
       assert.equal(resolveMaxAgeMs(), 96 * HOUR);
     });
