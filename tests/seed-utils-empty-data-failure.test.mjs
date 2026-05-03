@@ -99,3 +99,99 @@ test('validation failure WITHOUT emptyDataIsFailure DOES refresh seed-meta (quie
     'seed-meta count=0 so health does not false-positive STALE_SEED',
   );
 });
+
+// PR #3582: When validateFn rejects a transient blip but canonical key still
+// holds a contract-mode envelope with recordCount > 0, seed-meta should mirror
+// the canonical's (fetchedAt, recordCount) rather than overwrite with zero.
+// Production motivation: resilience:power-losses 2026-05-03 — canonical had
+// 216 countries but a partial WB fetch (149 < 150 floor) caused validateFn
+// to reject; runSeed wrote recordCount=0 to seed-meta; /api/health flipped
+// EMPTY_DATA even though the canonical data was fine. The mirror behavior
+// keeps health honest while preserving STALE_SEED honesty (mirrored
+// fetchedAt is the canonical's ORIGINAL value, not now).
+function withCanonicalEnvelope({ canonicalKey, fetchedAt, recordCount, sourceVersion = 'test-v1' }) {
+  const envelope = {
+    _seed: {
+      fetchedAt,
+      recordCount,
+      sourceVersion,
+      schemaVersion: 1,
+      state: 'OK',
+    },
+    data: { items: Array.from({ length: recordCount }, (_, i) => ({ id: i })) },
+  };
+  return async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+    recordedCalls.push({ url: u, method: opts?.method || 'GET', body });
+    // Match GET on the canonical key — return the envelope wrapped in {result}.
+    if (u.includes(`/get/${encodeURIComponent(canonicalKey)}`) || u.endsWith(`/get/${canonicalKey}`)) {
+      return new Response(JSON.stringify({ result: JSON.stringify(envelope) }), { status: 200 });
+    }
+    if (Array.isArray(body) && Array.isArray(body[0])) {
+      return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+    }
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+}
+
+function lastMetaSetBody(resourceSuffix) {
+  const setCalls = recordedCalls.filter(c =>
+    Array.isArray(c.body)
+    && c.body[0] === 'SET'
+    && typeof c.body[1] === 'string'
+    && c.body[1] === `seed-meta:test:${resourceSuffix}`,
+  );
+  if (setCalls.length === 0) return null;
+  const last = setCalls[setCalls.length - 1];
+  // Body shape is ['SET', metaKey, JSON.stringify(meta), 'EX', ttl]
+  try { return JSON.parse(last.body[2]); } catch { return null; }
+}
+
+test('PR #3582: validation failure with non-empty canonical envelope MIRRORS its (fetchedAt, recordCount)', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000; // arbitrary fixed past timestamp
+  const RECORD_COUNT = 216;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:partial-fetch:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    sourceVersion: 'wb-power-losses-2026',
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'partial-fetch', 'test:partial-fetch:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10, // rejects (transient blip)
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('partial-fetch');
+  assert.ok(meta, 'seed-meta must be written (mirror path) when a valid canonical envelope exists');
+  assert.equal(
+    meta.recordCount, RECORD_COUNT,
+    `seed-meta.recordCount must MIRROR canonical (${RECORD_COUNT}), not be overwritten with 0 — ` +
+    'health-reported count should track last-good data, not the failed transient fetch',
+  );
+  assert.equal(
+    meta.fetchedAt, FROZEN_FETCHED_AT,
+    'seed-meta.fetchedAt must MIRROR canonical original fetchedAt (not Date.now()) — ' +
+    'STALE_SEED must still fire naturally when canonical truly ages past maxStaleMin',
+  );
+});
+
+test('PR #3582: validation failure with MISSING canonical falls back to recordCount=0 (legacy)', async () => {
+  // Default fetch mock returns {result: 'OK'} on GET, which fails JSON.parse
+  // inside readCanonicalEnvelopeMeta — so the helper returns null and runSeed
+  // falls through to the original quiet-period behavior. This proves the
+  // mirror logic is non-disruptive for legacy bare-shape / missing-key seeders.
+  await runWithExitTrap(() =>
+    runSeed('test', 'no-canonical', 'test:no-canonical:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('no-canonical');
+  assert.ok(meta, 'seed-meta must still be written when no canonical envelope to mirror');
+  assert.equal(meta.recordCount, 0, 'falls back to recordCount=0 when canonical envelope is missing/malformed');
+});
