@@ -111,14 +111,20 @@ describe('panel-config guardrails', () => {
     // item 8.
     const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
 
+    // Accept both quote styles — biome currently enforces single quotes
+    // across the repo, but this guard is meant to outlive style drift.
+    // A double-quoted entry slipping past the regex would silently
+    // shrink the verified set and let an orphan re-appear.
+    const QUOTED = /['"]([^'"]+)['"]/g;
+
     const apiKeyPanelsMatch = panelsSrc.match(/const apiKeyPanels = \[([^\]]+)\];/);
     assert.ok(apiKeyPanelsMatch, 'apiKeyPanels array not found in panels.ts');
-    const apiKeyPanels = [...apiKeyPanelsMatch[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+    const apiKeyPanels = [...apiKeyPanelsMatch[1].matchAll(QUOTED)].map(m => m[1]);
     assert.ok(apiKeyPanels.length > 0, 'apiKeyPanels parse returned no entries');
 
     const webPremiumMatch = panelLayoutSrc.match(/const WEB_PREMIUM_PANELS = new Set\(\[([\s\S]*?)\]\);/);
     assert.ok(webPremiumMatch, 'WEB_PREMIUM_PANELS not found in panel-layout.ts');
-    const webPremium = new Set([...webPremiumMatch[1].matchAll(/'([^']+)'/g)].map(m => m[1]));
+    const webPremium = new Set([...webPremiumMatch[1].matchAll(QUOTED)].map(m => m[1]));
     assert.ok(webPremium.size > 0, 'WEB_PREMIUM_PANELS parse returned no entries');
 
     const orphans = apiKeyPanels.filter(k => !webPremium.has(k));
