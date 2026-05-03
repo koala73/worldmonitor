@@ -11,6 +11,12 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'news:insights:v1';
 const DIGEST_KEY = 'news:digest:v1:full:en';
 
+// Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
+// Set WORLDMONITOR_RELAY_KEY on the Railway service (must match a value in
+// Vercel's WORLDMONITOR_VALID_KEYS). Origin alone is no longer reliable
+// because CF/Vercel intermediaries may strip it and CF can cache the 401.
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
+
 // Digest items store proto enum strings (THREAT_LEVEL_HIGH etc.) from toProtoItem().
 // Normalize to client-side lowercase values before propagating into insights output.
 const PROTO_TO_LEVEL = {
@@ -196,13 +202,21 @@ function categorizeStory(title) {
 
 async function warmDigestCache() {
   const apiBase = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
+  const headers = {
+    'User-Agent': CHROME_UA,
+    Origin: 'https://worldmonitor.app',
+  };
+  if (RELAY_API_KEY) headers['X-WorldMonitor-Key'] = RELAY_API_KEY;
   try {
     const resp = await fetch(`${apiBase}/api/news/v1/list-feed-digest?variant=full&lang=en`, {
-      headers: { 'User-Agent': CHROME_UA },
+      headers,
       signal: AbortSignal.timeout(30_000),
     });
     if (resp.ok) console.log('  Digest cache warmed via RPC');
-    else console.warn(`  Digest warm failed: HTTP ${resp.status}`);
+    else {
+      const keyNote = RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — Origin-only auth)';
+      console.warn(`  Digest warm failed: HTTP ${resp.status}${keyNote}`);
+    }
   } catch (err) {
     console.warn(`  Digest warm failed: ${err.message}`);
   }
