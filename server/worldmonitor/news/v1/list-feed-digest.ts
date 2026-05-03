@@ -37,15 +37,28 @@ const FEED_TIMEOUT_MS = 8_000;
 const OVERALL_DEADLINE_MS = 25_000;
 const BATCH_CONCURRENCY = 20;
 
-// U3 — hard freshness floor (default 48h, env override NEWS_MAX_AGE_HOURS).
+// U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
 // component already treats anything older than 24h as zero recency, so the
-// 48h default is a soft buffer beyond that. Out-of-range / unparseable env
-// values fall back to the default silently. See R3 in
-// docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
+// freshness floor is purely a "don't surface week-old news" guard, not a
+// scoring input.
+//
+// 2026-05-03: bumped 48 → 96 after a production incident where every
+// single-source category panel (GitHub Trending: github.blog/feed/, Product
+// Hunt: producthunt.com/feed) went UNAVAILABLE over a weekend. Both feeds
+// publish on a weekday cadence; over a Sat-Sun window their newest item
+// sits at ~50-70h old, which the 48h floor wholesale dropped → category
+// renders zero items → panel reads "UNAVAILABLE". 96h covers a Fri→Mon
+// weekend with margin so we don't flip empty on Sunday-night dashboard
+// checks. The 24h recencyScore still naturally de-ranks 48-96h items vs
+// anything fresher, so the visible-but-de-ranked outcome is correct:
+// better than "no news" but lower priority than today.
+//
+// Out-of-range / unparseable env values fall back to the default silently.
+// See R3 in docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
 function resolveMaxAgeMs(): number {
   const raw = Number.parseInt(process.env.NEWS_MAX_AGE_HOURS ?? '', 10);
-  const hours = Number.isInteger(raw) && raw > 0 ? raw : 48;
+  const hours = Number.isInteger(raw) && raw > 0 ? raw : 96;
   return hours * 60 * 60 * 1000;
 }
 
