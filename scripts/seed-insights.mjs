@@ -11,6 +11,12 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'news:insights:v1';
 const DIGEST_KEY = 'news:digest:v1:full:en';
 
+// Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
+// Set WORLDMONITOR_RELAY_KEY on the Railway service (must match a value in
+// Vercel's WORLDMONITOR_VALID_KEYS). Origin alone is no longer reliable
+// because CF/Vercel intermediaries may strip it and CF can cache the 401.
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
+
 // Digest items store proto enum strings (THREAT_LEVEL_HIGH etc.) from toProtoItem().
 // Normalize to client-side lowercase values before propagating into insights output.
 const PROTO_TO_LEVEL = {
@@ -196,16 +202,11 @@ function categorizeStory(title) {
 
 async function warmDigestCache() {
   const apiBase = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
-  // Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
-  // Set WORLDMONITOR_RELAY_KEY on the Railway service (must match a value in
-  // Vercel's WORLDMONITOR_VALID_KEYS). Origin alone is no longer reliable
-  // because CF/Vercel intermediaries may strip it and CF can cache the 401.
-  const relayApiKey = process.env.WORLDMONITOR_RELAY_KEY || '';
   const headers = {
     'User-Agent': CHROME_UA,
     Origin: 'https://worldmonitor.app',
   };
-  if (relayApiKey) headers['X-WorldMonitor-Key'] = relayApiKey;
+  if (RELAY_API_KEY) headers['X-WorldMonitor-Key'] = RELAY_API_KEY;
   try {
     const resp = await fetch(`${apiBase}/api/news/v1/list-feed-digest?variant=full&lang=en`, {
       headers,
@@ -213,7 +214,7 @@ async function warmDigestCache() {
     });
     if (resp.ok) console.log('  Digest cache warmed via RPC');
     else {
-      const keyNote = relayApiKey ? '' : ' (WORLDMONITOR_RELAY_KEY not set — Origin-only auth)';
+      const keyNote = RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — Origin-only auth)';
       console.warn(`  Digest warm failed: HTTP ${resp.status}${keyNote}`);
     }
   } catch (err) {
