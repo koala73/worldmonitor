@@ -166,7 +166,7 @@ test('PR #3582: validation failure with non-empty canonical envelope MIRRORS its
   );
 
   const meta = lastMetaSetBody('partial-fetch');
-  assert.ok(meta, 'seed-meta must be written (legacy quiet-period path) when canonical envelope exists');
+  assert.ok(meta, 'seed-meta must be written (mirror path) when a valid canonical envelope exists');
   assert.equal(
     meta.recordCount, RECORD_COUNT,
     `seed-meta.recordCount must MIRROR canonical (${RECORD_COUNT}), not be overwritten with 0 — ` +
