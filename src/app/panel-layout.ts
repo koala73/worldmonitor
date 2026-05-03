@@ -121,7 +121,23 @@ import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import type { Panel } from '@/components/Panel';
 
-/** Panels that require premium access on web. Auth-based gating applies to these. */
+/**
+ * Panels that require premium access on web. Auth-based gating applies to
+ * these — `updatePanelGating()` calls `Panel.showGatedCta()` to render
+ * "Sign In to Unlock" / "Upgrade to Pro" for non-premium users.
+ *
+ * INVARIANT: every panel listed in `apiKeyPanels` (src/config/panels.ts
+ * `isPanelEntitled`) MUST appear here. If it's API-key-entitled but missing
+ * from this set, anonymous/free-Clerk users see the panel mount and run
+ * its loader (which writes empty/loading/error UI directly into the body)
+ * instead of the lock CTA. The PRO badge in the title still renders, so
+ * the symptom is "PRO badge + panel-internal loading or empty copy"
+ * which looks broken (e.g. Regional Intelligence rendering its empty-state
+ * "is being refreshed" message to anonymous users — see todo #257 item 8).
+ *
+ * The static test in tests/panel-config-guardrails.test.mjs enforces
+ * `apiKeyPanels ⊆ WEB_PREMIUM_PANELS` so this drift can't recur silently.
+ */
 const WEB_PREMIUM_PANELS = new Set([
   'stock-analysis',
   'stock-backtest',
@@ -131,6 +147,8 @@ const WEB_PREMIUM_PANELS = new Set([
   'chat-analyst',
   'wsb-ticker-scanner',
   'latest-brief',
+  'regional-intelligence',
+  'trade-policy',
 ]);
 
 /**
