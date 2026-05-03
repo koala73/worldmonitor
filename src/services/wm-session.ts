@@ -14,7 +14,7 @@
 //      auth (Authorization, X-WorldMonitor-Key, X-Api-Key) — Bearer JWT and
 //      explicit user-key paths still take precedence.
 
-import { getApiBaseUrl, toApiUrl } from './runtime';
+import { getCanonicalApiOrigin, toApiUrl } from './runtime';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 
 const STORAGE_KEY = 'wm-session-token';
@@ -104,8 +104,15 @@ export function installWmSessionFetchInterceptor(): void {
   if (interceptorInstalled || typeof window === 'undefined') return;
   interceptorInstalled = true;
 
+  // CRITICAL: must be getCanonicalApiOrigin(), NOT getApiBaseUrl(). The latter
+  // returns '' for non-desktop runtimes (see runtime.ts:111), which makes the
+  // interceptor's cross-origin match below silently fail for every browser
+  // request to https://api.worldmonitor.app/api/* — the interceptor only
+  // catches relative '/api/' paths, the wms_ token never gets attached, and
+  // the gateway returns {"error":"API key required"}. Production incident
+  // 2026-05-03: every browser request 401'd because of this.
   const apiOrigin = (() => {
-    try { return new URL(getApiBaseUrl()).origin; } catch { return ''; }
+    try { return new URL(getCanonicalApiOrigin()).origin; } catch { return ''; }
   })();
   const original = window.fetch.bind(window);
 
