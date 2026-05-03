@@ -55,7 +55,18 @@ export default async function handler(
     return jsonResponse({ error: 'Service unavailable' }, 503, cors);
   }
 
-  const client = new ConvexHttpClient(convexUrl);
+  // Bound the Convex round-trip below Vercel's 25s edge wall-clock so a
+  // stalled platform aborts cleanly into the SERVICE_UNAVAILABLE → 503 +
+  // Retry-After path instead of getting killed by Vercel with a generic
+  // 500 ("function did not return an initial response within 25s"), which
+  // bypasses our typed error plumbing entirely. 20s leaves headroom for
+  // the JWKS verify above + response packaging below. Injected via the
+  // public `fetch` constructor option (the `setFetchOptions` instance
+  // method is marked `@internal` in convex's d.ts and not safe to depend on).
+  const client = new ConvexHttpClient(convexUrl, {
+    fetch: (input, init) =>
+      fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(20_000) }),
+  });
   client.setAuth(token);
 
   if (req.method === 'GET') {

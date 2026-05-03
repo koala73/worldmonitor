@@ -44,6 +44,14 @@ export function extractConvexErrorKind(err, msg) {
   // response with Retry-After so clients back off rather than treating
   // it as a permanent 500.
   if (msg.includes('"code":"ServiceUnavailable"')) return 'SERVICE_UNAVAILABLE';
+  // Client-side fetch timeout (AbortSignal.timeout fires) — Convex stalled
+  // long enough that we aborted before Vercel's 25s edge wall-clock could
+  // kill the function with a generic 500. Same remediation as the platform
+  // 503 (back off + retry), so reuse SERVICE_UNAVAILABLE. Sentry's
+  // `error_shape` classifier still discriminates these two cases via msg
+  // pattern (`transport_timeout` vs `convex_service_unavailable`).
+  const errName = /** @type {{ name?: string } | null | undefined} */ (err)?.name;
+  if (errName === 'TimeoutError' || errName === 'AbortError') return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';
