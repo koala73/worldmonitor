@@ -70,7 +70,10 @@ async function fetchFossilElectricityShare() {
 }
 
 function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 150;
+  // 150 → 100 on 2026-05-03 — see seed-power-reliability.mjs for rationale.
+  // Same WB late-reporter variation affects this indicator (EG.ELC.FOSL.ZS);
+  // canonical cache holds 209 countries.
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 100;
 }
 
 export function declareRecords(data) {

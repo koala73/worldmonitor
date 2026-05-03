@@ -68,8 +68,17 @@ async function fetchPowerLosses() {
   return { countries, seededAt: new Date().toISOString() };
 }
 
+// Threshold lowered 150 → 100 on 2026-05-03: prior threshold sat at ~70%
+// of typical coverage (canonical key carries ~216 countries), so a normal
+// WB late-reporter blip that drops the fetch to 149 wholesale-rejected
+// the run. validateFn=false → atomicPublish skipped → seed-meta refreshed
+// with recordCount=0 (per the "quiet-period feeds" branch in runSeed) →
+// /api/health reports EMPTY_DATA even though the canonical key still
+// holds last-good 216-country data. 100 keeps a meaningful coverage
+// signal (anything below is a real upstream regression) while tolerating
+// the day-to-day WB variation in late-publishing economies.
 function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 150;
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 100;
 }
 
 export function declareRecords(data) {
