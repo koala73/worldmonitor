@@ -134,6 +134,27 @@ test('wm_-prefixed user key returns required:true / valid:false so gateway can f
   assert.equal(r.valid, false);
 });
 
+test('REGRESSION: wm_-prefixed key in WORLDMONITOR_VALID_KEYS is honored as enterprise', async () => {
+  // Pre-#3541 the static enterprise allowlist accepted any key shape, so
+  // some operator-issued keys (e.g. Railway WORLDMONITOR_RELAY_KEY) carry the
+  // wm_ prefix from before user-issued keys were namespaced. Without the
+  // static-allowlist-first ordering, those keys 401 because they get punted
+  // to validateUserApiKey() which doesn't know about operator-minted values.
+  // Symptom: ais-relay warm-pings (Chokepoints / CableHealth / CII /
+  // ServiceStatuses) all 401 in production despite the key being literally
+  // present in WORLDMONITOR_VALID_KEYS.
+  const previous = process.env.WORLDMONITOR_VALID_KEYS;
+  process.env.WORLDMONITOR_VALID_KEYS = `${ENTERPRISE_KEY},wm_legacy_operator_key_in_static_list`;
+  try {
+    const r = await validateApiKey(makeReq({ key: 'wm_legacy_operator_key_in_static_list' }));
+    assert.equal(r.valid, true, 'wm_-prefixed key in static allowlist must validate as enterprise');
+    assert.equal(r.required, true);
+    assert.equal(r.kind, 'enterprise', 'must be kind=enterprise so gateway skips entitlement check');
+  } finally {
+    process.env.WORLDMONITOR_VALID_KEYS = previous;
+  }
+});
+
 // ── Desktop (Tauri) — always requires enterprise key ────────────────────────
 
 test('desktop Tauri origin without key is rejected', async () => {

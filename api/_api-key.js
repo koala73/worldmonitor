@@ -64,6 +64,20 @@ export async function validateApiKey(req, options = {}) {
     return { valid: false, required: true, error: 'Invalid session token' };
   }
 
+  // Enterprise key (WORLDMONITOR_VALID_KEYS) — checked BEFORE the wm_ user-key
+  // fallthrough so an operator-issued key that happens to start with wm_ is
+  // still recognized. Pre-#3541 the static allowlist accepted any prefix; some
+  // legacy operator keys (e.g. the Railway relay's WORLDMONITOR_RELAY_KEY) use
+  // the wm_ prefix from before user-issued keys were namespaced. Without this
+  // ordering, those keys get punted to validateUserApiKey() and 401 because
+  // the Convex user-key table has no record of an operator-minted value.
+  // Collision risk is negligible (wm_ user keys carry ≥192 bits of entropy
+  // and would have to be added to the static env list to be honored at all,
+  // which itself requires server-env-write access).
+  if (key && isValidEnterpriseKey(key)) {
+    return { valid: true, required: true, kind: 'enterprise' };
+  }
+
   // wm_-prefixed user API keys — gateway re-validates against the user-key
   // table. We must return required:true / valid:false for the gateway's
   // fallback at server/gateway.ts:~440 to trigger validateUserApiKey().
@@ -71,10 +85,9 @@ export async function validateApiKey(req, options = {}) {
     return { valid: false, required: true, error: 'User API key requires gateway validation' };
   }
 
-  // Enterprise key (WORLDMONITOR_VALID_KEYS).
+  // Non-wm_ key that isn't in the enterprise allowlist.
   if (key) {
-    if (!isValidEnterpriseKey(key)) return { valid: false, required: true, error: 'Invalid API key' };
-    return { valid: true, required: true, kind: 'enterprise' };
+    return { valid: false, required: true, error: 'Invalid API key' };
   }
 
   // No credentials at all.
