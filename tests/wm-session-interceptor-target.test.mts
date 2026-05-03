@@ -101,6 +101,58 @@ describe('wm-session interceptor URL matcher (PR #3574 regression)', () => {
     );
   });
 
+  it('SECURITY: rejects look-alike hosts that embed the canonical origin as a prefix', () => {
+    // PR #3575 review finding. A naive `url.startsWith(apiOrigin)` matches
+    // ANY hostname that begins with the canonical-origin string — which
+    // includes attacker-controlled subdomains like:
+    //   `https://api.worldmonitor.app.evil.example/api/bootstrap`
+    // The actual hostname there is `api.worldmonitor.app.evil.example`, NOT
+    // ours. Without strict origin parsing the interceptor would attach the
+    // wms_ token, sending it to the attacker. Pin both shapes documented in
+    // the review note.
+    assert.equal(
+      isApiCallTarget('https://api.worldmonitor.app.evil.example/api/bootstrap', CANONICAL_ORIGIN),
+      false,
+      'host suffix attack: api.worldmonitor.app.evil.example must NOT be treated as our origin',
+    );
+    assert.equal(
+      isApiCallTarget('https://api.worldmonitor.app@evil.example/api/bootstrap', CANONICAL_ORIGIN),
+      false,
+      'userinfo attack: api.worldmonitor.app@evil.example must resolve to host=evil.example, NOT our origin',
+    );
+    // Variant: a port appended to the canonical hostname is a different origin.
+    assert.equal(
+      isApiCallTarget('https://api.worldmonitor.app:8443/api/bootstrap', CANONICAL_ORIGIN),
+      false,
+      'a different port is a different origin per RFC 6454',
+    );
+    // Variant: http (not https) is a different origin.
+    assert.equal(
+      isApiCallTarget('http://api.worldmonitor.app/api/bootstrap', CANONICAL_ORIGIN),
+      false,
+      'protocol downgrade is a different origin — never attach token over plain http',
+    );
+  });
+
+  it('SECURITY: does not match non-/api/ paths even on the canonical origin', () => {
+    // Tightening that came with the strict-origin-parse fix. The wms_ token
+    // is only meant for /api/ endpoints; any other path on the API host
+    // (static assets, _next/, healthcheck, etc.) doesn't need it and we
+    // shouldn't broadcast the token there.
+    assert.equal(
+      isApiCallTarget('https://api.worldmonitor.app/_next/static/chunks/foo.js', CANONICAL_ORIGIN),
+      false,
+    );
+    assert.equal(
+      isApiCallTarget('https://api.worldmonitor.app/health', CANONICAL_ORIGIN),
+      false,
+    );
+    assert.equal(
+      isApiCallTarget('https://api.worldmonitor.app/', CANONICAL_ORIGIN),
+      false,
+    );
+  });
+
   it('matches a URL object passed as a string (panels build with new URL().href)', () => {
     const u = new URL('/api/bootstrap?tier=fast', CANONICAL_ORIGIN);
     assert.equal(isApiCallTarget(u.href, CANONICAL_ORIGIN), true);
