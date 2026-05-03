@@ -307,11 +307,15 @@ async function fetchAndParseRss(
 
     // Try direct fetch first
     let text = await fetchRssText(feed.url, signal).catch(() => null);
+    let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
+    let relayStatus: number | null = null;
+    let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
     // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
     if (!text) {
       const relayBase = getRelayBaseUrl();
       if (relayBase) {
+        relayBodyShape = 'fetch-error';
         const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
         const { controller, cleanup } = createTimeoutLinkedController(signal);
         try {
@@ -319,16 +323,34 @@ async function fetchAndParseRss(
             headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
             signal: controller.signal,
           });
+          relayStatus = resp.status;
           if (resp.ok) {
             const relayText = await resp.text();
             // Relay can also return CF-challenge HTML if the relay's IP is
             // challenged — apply the same sniff to keep the cache clean.
-            if (looksLikeRssXml(relayText)) text = relayText;
+            if (looksLikeRssXml(relayText)) {
+              text = relayText;
+              source = 'relay';
+              relayBodyShape = 'rss';
+            } else {
+              relayBodyShape = 'html-or-empty';
+            }
           }
         } catch { /* relay also failed */ } finally {
           cleanup();
         }
       }
+    }
+
+    // Per-feed observability: surfaces which path won the fetch in Vercel
+    // function logs. Critical when panels show 0 items — without this
+    // breadcrumb you can't tell apart "direct blocked + relay env unset"
+    // from "direct blocked + relay 403/429" from "relay returned HTML".
+    // Filter logs by `[feed-fetch]` to triage. Volume: one line per cache
+    // miss per feed (capped by CACHE_TTL_EMPTY_S=300s + healthy=3600s).
+    if (source !== 'direct') {
+      const host = (() => { try { return new URL(feed.url).hostname; } catch { return 'invalid-url'; } })();
+      console.log(`[feed-fetch] variant=${variant} category=? host=${host} source=${source} relay_status=${relayStatus ?? 'n/a'} relay_shape=${relayBodyShape} feed=${feed.name}`);
     }
 
     if (!text) {
