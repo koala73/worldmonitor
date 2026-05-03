@@ -97,6 +97,42 @@ export function getWmSessionToken(): string | null {
 // Only patches calls to our API origin (or relative /api/ paths). Other fetches
 // (Sentry, Clerk, third-party CDNs) are forwarded to native fetch unchanged.
 //
+// Decide whether a fetch URL should go through the wms_-injection branch.
+// Exported (and named with no implementation detail in its signature) so the
+// regression test in tests/wm-session-interceptor-target.test.mts can lock the
+// shape of this decision without needing a JSDOM/happy-dom environment to
+// stand up the full interceptor.
+//
+// Two failure modes pinned here:
+//
+//   1. PR #3574 — `apiOrigin` was '' on browsers, so the cross-origin match
+//      silently returned false for every absolute URL. Bug class: matcher
+//      under-matches → wms_ never attached → 401 on every browser request.
+//
+//   2. PR #3575 review — using raw `startsWith(apiOrigin)` for absolute URLs
+//      lets attacker-controlled origins that embed the canonical-origin
+//      string as a prefix (e.g. `https://api.worldmonitor.app.evil.example/`)
+//      OR as the userinfo portion (`https://api.worldmonitor.app@evil/`)
+//      slip through, sending the wms_ token to a foreign host. Bug class:
+//      matcher over-matches → token leaks cross-origin.
+//
+// The fix: relative `/api/` paths still take a fast prefix check (no host
+// to validate, can only resolve same-origin). Absolute URLs are parsed via
+// `new URL` and compared by `.origin` (exact-match, RFC-3986-correct), with
+// an additional `/api/` pathname guard so the matcher never attaches the
+// token to non-API paths even if they happen to be on the API host.
+export function isApiCallTarget(url: string, apiOrigin: string): boolean {
+  if (url.startsWith('/api/')) return true;
+  if (apiOrigin === '') return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.origin === apiOrigin && parsed.pathname.startsWith('/api/');
+}
+
 // If a caller already set Authorization / X-WorldMonitor-Key / X-Api-Key, we
 // don't override — Clerk Bearer JWT and explicit user keys still take
 // precedence over the anonymous session token.
@@ -124,11 +160,7 @@ export function installWmSessionFetchInterceptor(): void {
       return '';
     })();
 
-    const isApiCall =
-      url.startsWith('/api/') ||
-      (apiOrigin !== '' && url.startsWith(apiOrigin));
-
-    if (!isApiCall) return original(input, init);
+    if (!isApiCallTarget(url, apiOrigin)) return original(input, init);
 
     // Premium routes have a dedicated auth-injection layer
     // (`installWebApiRedirect`'s `enrichInitForPremium` adds Clerk Bearer JWT,
