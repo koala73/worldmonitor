@@ -9358,7 +9358,16 @@ const server = http.createServer(async (req, res) => {
             'Accept-Language': 'en-US,en;q=0.9',
             ...conditionalHeaders,
           },
-          timeout: 15000
+          timeout: 15000,
+          // Bumped from Node's 16KB default. Some publishers (Substack, big-CDN-
+          // fronted feeds) chain Set-Cookie + CSP + Permissions-Policy + tracking
+          // headers that exceed 16KB, which makes Node's HTTP parser throw
+          // `Parse Error: Header overflow` and fail every fetch from this relay.
+          // The relay's in-memory rssResponseCache used to mask this on long-
+          // running deploys; a redeploy clears the cache and the broken feeds
+          // surface immediately. 64KB is well above any legitimate header set,
+          // and is per-request (no process-level Node flag needed).
+          maxHeaderSize: 65536,
         }, (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
             const redirectUrl = response.headers.location.startsWith('http')
