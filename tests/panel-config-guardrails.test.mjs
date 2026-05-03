@@ -87,6 +87,56 @@ describe('panel-config guardrails', () => {
     );
   });
 
+  it('every API-key-entitled premium panel is in WEB_PREMIUM_PANELS (anon lock-CTA invariant)', () => {
+    // Background: src/config/panels.ts has TWO premium-related lists:
+    //
+    //   (a) `apiKeyPanels` — panels that an API-key holder OR a Pro user
+    //       can access. Lives inside isPanelEntitled().
+    //   (b) `WEB_PREMIUM_PANELS` — panels that the web layout's
+    //       updatePanelGating() drives through Panel.showGatedCta() to
+    //       render the "Sign In to Unlock" / "Upgrade to Pro" CTA.
+    //
+    // If a panel is in (a) but NOT (b), API-key users can see it, but
+    // anonymous web users see the panel mount and run its loader (writing
+    // empty/loading/error UI directly into the body) instead of the lock
+    // CTA. The PRO badge still renders, producing a "PRO + visible loader"
+    // shape that looks broken to the user.
+    //
+    // Concrete regression that motivated this test: PR #3578 added a soft
+    // empty state to RegionalIntelligenceBoard. For anonymous users it
+    // wrote "Regional intelligence is being refreshed" into the body
+    // because regional-intelligence was in apiKeyPanels (so isPanelEntitled
+    // mounted it) but missing from WEB_PREMIUM_PANELS (so showGatedCta
+    // never fired). See todos/257-pending-p2-anon-broken-panels-sweep.md
+    // item 8.
+    const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
+
+    // Accept both quote styles — biome currently enforces single quotes
+    // across the repo, but this guard is meant to outlive style drift.
+    // A double-quoted entry slipping past the regex would silently
+    // shrink the verified set and let an orphan re-appear.
+    const QUOTED = /['"]([^'"]+)['"]/g;
+
+    const apiKeyPanelsMatch = panelsSrc.match(/const apiKeyPanels = \[([^\]]+)\];/);
+    assert.ok(apiKeyPanelsMatch, 'apiKeyPanels array not found in panels.ts');
+    const apiKeyPanels = [...apiKeyPanelsMatch[1].matchAll(QUOTED)].map(m => m[1]);
+    assert.ok(apiKeyPanels.length > 0, 'apiKeyPanels parse returned no entries');
+
+    const webPremiumMatch = panelLayoutSrc.match(/const WEB_PREMIUM_PANELS = new Set\(\[([\s\S]*?)\]\);/);
+    assert.ok(webPremiumMatch, 'WEB_PREMIUM_PANELS not found in panel-layout.ts');
+    const webPremium = new Set([...webPremiumMatch[1].matchAll(QUOTED)].map(m => m[1]));
+    assert.ok(webPremium.size > 0, 'WEB_PREMIUM_PANELS parse returned no entries');
+
+    const orphans = apiKeyPanels.filter(k => !webPremium.has(k));
+    assert.deepStrictEqual(
+      orphans,
+      [],
+      `apiKeyPanels members missing from WEB_PREMIUM_PANELS: ${orphans.join(', ')}\n` +
+      `Add these keys to src/app/panel-layout.ts WEB_PREMIUM_PANELS so anonymous/free users see the\n` +
+      `"Sign In to Unlock" CTA instead of the panel's own internal loading/empty/error state.`,
+    );
+  });
+
   it('panel keys are consistent across variant configs (no typos)', () => {
     const allKeys = new Map();
     for (const v of VARIANT_FILES) {
