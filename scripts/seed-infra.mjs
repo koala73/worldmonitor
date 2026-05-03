@@ -69,6 +69,11 @@ async function main() {
   const duration = Date.now() - start;
 
   console.log(`\n=== Done: ${ok}/${total} warm-pings OK (${duration}ms) ===`);
+  if (ok === 0) {
+    // Distinct, grep-able marker so persistent auth/gateway breakage is still
+    // visible in Railway logs even though we exit 0.
+    console.warn('WARN: all warm-pings failed — cache is cold (check WORLDMONITOR_API_KEY and gateway auth)');
+  }
   // Best-effort cache warmer: a missed warm-ping is not a failure worth paging on.
   // Upstream timeouts and transient 5xx happen routinely on the 30-status-page
   // fan-out; exiting non-zero turned every blip into a Railway "Deploy crashed"
