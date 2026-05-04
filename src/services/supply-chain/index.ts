@@ -30,6 +30,7 @@ import {
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { hasPremiumAccess } from '@/services/panel-gating';
 
 export type {
   GetShippingRatesResponse,
@@ -163,6 +164,12 @@ export async function fetchCountryChokepointIndex(
   iso2: string,
   hs2 = '27',
 ): Promise<GetCountryChokepointIndexResponse> {
+  // Anonymous (non-premium) users: skip the Pro-gated RPC. The path
+  // /api/supply-chain/v1/get-country-chokepoint-index is in
+  // PREMIUM_RPC_PATHS, so an anonymous client gets a deterministic 401
+  // and the catch returns this same emptyChokepointIndex anyway — minus
+  // the console-noise on every country-brief open. Mirrors PR #3584.
+  if (!hasPremiumAccess()) return { ...emptyChokepointIndex, iso2, hs2 };
   try {
     return await client.getCountryChokepointIndex({ iso2, hs2 });
   } catch {
@@ -232,6 +239,8 @@ export async function fetchBypassOptions(
   closurePct = 100,
 ): Promise<GetBypassOptionsResponse> {
   const empty: GetBypassOptionsResponse = { chokepointId, cargoType, closurePct, options: [], primaryChokepointWarRiskTier: 'WAR_RISK_TIER_UNSPECIFIED', fetchedAt: '' };
+  // Pro-gated path — see fetchCountryChokepointIndex.
+  if (!hasPremiumAccess()) return empty;
   try {
     return await client.getBypassOptions({ chokepointId, cargoType, closurePct });
   } catch {
@@ -250,6 +259,8 @@ export async function fetchCountryCostShock(
     warRiskTier: 'WAR_RISK_TIER_UNSPECIFIED',
     hasEnergyModel: false, unavailableReason: '', fetchedAt: '',
   };
+  // Pro-gated path — see fetchCountryChokepointIndex.
+  if (!hasPremiumAccess()) return empty;
   try {
     return await client.getCountryCostShock({ iso2, chokepointId, hs2 });
   } catch {
@@ -268,6 +279,8 @@ export async function fetchSectorDependency(
   iso2: string,
   hs2 = '27',
 ): Promise<GetSectorDependencyResponse> {
+  // Pro-gated path — see fetchCountryChokepointIndex.
+  if (!hasPremiumAccess()) return { ...emptySectorDependency, iso2, hs2 };
   try {
     return await client.getSectorDependency({ iso2, hs2 });
   } catch {
@@ -297,6 +310,8 @@ export interface FetchRouteExplorerLaneArgs {
 export async function fetchRouteExplorerLane(
   args: FetchRouteExplorerLaneArgs,
 ): Promise<GetRouteExplorerLaneResponse> {
+  // Pro-gated path — see fetchCountryChokepointIndex.
+  if (!hasPremiumAccess()) return { ...emptyRouteExplorerLane, ...args };
   try {
     return await client.getRouteExplorerLane(args);
   } catch {
@@ -325,6 +340,8 @@ export interface FetchRouteImpactArgs {
 export async function fetchRouteImpact(
   args: FetchRouteImpactArgs,
 ): Promise<GetRouteImpactResponse> {
+  // Pro-gated path — see fetchCountryChokepointIndex.
+  if (!hasPremiumAccess()) return { ...emptyRouteImpact };
   try {
     return await client.getRouteImpact(args);
   } catch {
@@ -335,6 +352,8 @@ export async function fetchRouteImpact(
 const emptyProducts: GetCountryProductsResponse = { iso2: '', products: [], fetchedAt: '' };
 
 export async function fetchCountryProducts(iso2: string): Promise<GetCountryProductsResponse> {
+  // Pro-gated path — see fetchCountryChokepointIndex.
+  if (!hasPremiumAccess()) return { ...emptyProducts, iso2 };
   try {
     return await client.getCountryProducts({ iso2 });
   } catch {
@@ -363,6 +382,10 @@ export async function fetchMultiSectorCostShock(
   closureDays: number,
   options?: { signal?: AbortSignal },
 ): Promise<GetMultiSectorCostShockResponse> {
+  // Pro-gated path — see fetchCountryChokepointIndex. Existing call sites
+  // already guard with hasPremiumAccess(); the service-layer check here
+  // is defense-in-depth to keep parity with sibling fetchers.
+  if (!hasPremiumAccess()) return { ...emptyMultiSectorShock, iso2, chokepointId, closureDays };
   try {
     return await client.getMultiSectorCostShock(
       { iso2, chokepointId, closureDays },
