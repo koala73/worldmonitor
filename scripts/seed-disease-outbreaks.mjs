@@ -114,13 +114,25 @@ async function fetchWhoDonApi() {
     const data = await resp.json();
     const items = data?.value;
     if (!Array.isArray(items)) { console.warn('[Disease] WHO DON API: unexpected response shape'); return []; }
-    return items.map((item) => ({
-      title: (item.Title || '').trim(),
-      link: item.ItemDefaultUrl ? `https://www.who.int${item.ItemDefaultUrl}` : '',
-      desc: '',
-      publishedMs: item.PublicationDateAndTime ? new Date(item.PublicationDateAndTime).getTime() : Date.now(),
-      sourceName: 'WHO',
-    })).filter(i => i.title && !isNaN(i.publishedMs));
+    return items.map((item) => {
+      // Tag synthetic-vs-real timestamps. WHO DON occasionally omits
+      // PublicationDateAndTime; falling back to Date.now() keeps publishedMs
+      // non-null (preserving the existing isNaN filter + UI consumer
+      // contract) but the parallel _originalPublishedMs / _publishedAtIsSynthetic
+      // pair lets contentMeta exclude these from newest-item-age calculations
+      // — otherwise an undated WHO item would falsely report content as fresh.
+      const origMs = item.PublicationDateAndTime ? new Date(item.PublicationDateAndTime).getTime() : null;
+      const hasOrig = origMs != null && Number.isFinite(origMs);
+      return {
+        title: (item.Title || '').trim(),
+        link: item.ItemDefaultUrl ? `https://www.who.int${item.ItemDefaultUrl}` : '',
+        desc: '',
+        publishedMs: hasOrig ? origMs : Date.now(),
+        _originalPublishedMs: hasOrig ? origMs : null,
+        _publishedAtIsSynthetic: !hasOrig,
+        sourceName: 'WHO',
+      };
+    }).filter(i => i.title && Number.isFinite(i.publishedMs));
   } catch (e) {
     console.warn('[Disease] WHO DON API fetch error:', e?.message || e);
     return [];
@@ -148,9 +160,19 @@ async function fetchRssItems(url, sourceName) {
         .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
         .replace(/<[^>]+>/g, '').trim().slice(0, 300);
       const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1]?.trim() || '';
-      const publishedMs = pubDate ? new Date(pubDate).getTime() : Date.now();
-      if (!title || isNaN(publishedMs)) continue;
-      items.push({ title, link, desc, publishedMs, sourceName });
+      // Same synthetic-tagging pattern as fetchWhoDonApi — the RSS parser
+      // also falls back to Date.now() when pubDate is missing/unparseable.
+      // Carry _originalPublishedMs / _publishedAtIsSynthetic so contentMeta
+      // can exclude those items from newest-item-age computation.
+      const origMs = pubDate ? new Date(pubDate).getTime() : null;
+      const hasOrig = origMs != null && Number.isFinite(origMs);
+      const publishedMs = hasOrig ? origMs : Date.now();
+      if (!title || !Number.isFinite(publishedMs)) continue;
+      items.push({
+        title, link, desc, publishedMs, sourceName,
+        _originalPublishedMs: hasOrig ? origMs : null,
+        _publishedAtIsSynthetic: !hasOrig,
+      });
     }
     return items;
   } catch (e) {
@@ -210,6 +232,11 @@ async function fetchThinkGlobalHealth() {
         _lat: Number.isFinite(rec.lat) ? rec.lat : null,
         _lng: Number.isFinite(rec.lng) ? rec.lng : null,
         _cases: rec.cases ?? 0,
+        // TGH always carries a parsed date by line 198's filter; mirror the
+        // same shape as WHO/RSS so contentMeta + publishTransform can apply
+        // uniformly across all three sources.
+        _originalPublishedMs: publishedMs,
+        _publishedAtIsSynthetic: false,
       });
     }
     console.log(`[Disease] ThinkGlobalHealth: ${records.length} total, ${items.length} in last ${TGH_LOOKBACK_DAYS}d`);
@@ -240,6 +267,18 @@ function mapItem(item) {
     lat: item._lat ?? 0,
     lng: item._lng ?? 0,
     cases: item._cases || 0,
+    // PRE-PUBLISH HELPERS (Sprint 2 — health-readiness content-age contract).
+    // Used by contentMeta at runSeed time to exclude items with synthetic
+    // (Date.now() fallback) timestamps from newest-item-age computation.
+    // Stripped by the publishTransform in runSeed opts BEFORE the canonical
+    // payload is written, so they NEVER appear in:
+    //   - resilience:disease-outbreaks:v1 canonical key
+    //   - /api/bootstrap response (data.diseaseOutbreaks)
+    //   - list-disease-outbreaks RPC response
+    //   - DiseaseOutbreakItem proto-generated type
+    // See plan Sprint 2 / Step 2.3 for the strip contract.
+    _publishedAtIsSynthetic: item._publishedAtIsSynthetic === true,
+    _originalPublishedMs: item._originalPublishedMs ?? null,
   };
 }
 
@@ -307,6 +346,61 @@ runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 2880,
+
+  // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
+  //
+  // Sets a 9-day budget chosen so the 2026-05-04 incident — where the cache
+  // held 50 outbreaks all 11+ days old — would have correctly tripped
+  // STALE_CONTENT in /api/health. WHO Disease Outbreak News publishes
+  // 1-2/week (typical gap 3-5d), CDC HAN is sporadic but rarely silent for
+  // a full week, and TGH (post-#3593) provides daily ProMED items. 9 days
+  // tolerates a single quiet WHO/CDC week without paging on normal cadence.
+  //
+  // contentMeta excludes items with `_publishedAtIsSynthetic: true` (those
+  // got a Date.now() fallback because the upstream omitted a date). Without
+  // this exclusion, undated items would falsely report content as fresh and
+  // mask a real upstream silence. Future-dated items beyond 1h clock-skew
+  // tolerance are also excluded — matches list-feed-digest's
+  // FUTURE_DATE_TOLERANCE_MS pattern.
+  //
+  // Returns null when no items have a usable timestamp — runSeed writes
+  // newestItemAt: null, classifier reads as STALE_CONTENT.
+  contentMeta: (data) => {
+    const items = Array.isArray(data?.outbreaks) ? data.outbreaks : [];
+    let newest = -Infinity, oldest = Infinity, validCount = 0;
+    const skewLimit = Date.now() + 60 * 60 * 1000;
+    for (const item of items) {
+      if (item._publishedAtIsSynthetic === true) continue;
+      const ts = item._originalPublishedMs;
+      if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) continue;
+      if (ts > skewLimit) continue;
+      validCount++;
+      if (ts > newest) newest = ts;
+      if (ts < oldest) oldest = ts;
+    }
+    if (validCount === 0) return null;
+    return { newestItemAt: newest, oldestItemAt: oldest };
+  },
+  maxContentAgeMin: 9 * 24 * 60,
+
+  // Strip pre-publish helper fields BEFORE atomicPublish writes the canonical
+  // key. Per the Sprint 1 ordering contract, contentMeta has already run on
+  // the raw fetcher output by this point, so it's safe to drop these.
+  // _publishedAtIsSynthetic + _originalPublishedMs MUST NOT appear in:
+  //   - the canonical key (Redis read-back)
+  //   - /api/bootstrap response payload
+  //   - list-disease-outbreaks RPC response
+  //   - the DiseaseOutbreakItem proto-generated type
+  publishTransform: (data) => {
+    const outbreaks = Array.isArray(data?.outbreaks) ? data.outbreaks : [];
+    return {
+      ...data,
+      outbreaks: outbreaks.map((item) => {
+        const { _publishedAtIsSynthetic: _a, _originalPublishedMs: _b, ...rest } = item;
+        return rest;
+      }),
+    };
+  },
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);
