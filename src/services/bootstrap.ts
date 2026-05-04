@@ -167,8 +167,17 @@ export async function fetchBootstrapData(): Promise<void> {
   const fastCtrl = new AbortController();
   const slowCtrl = new AbortController();
   const desktop = isDesktopRuntime();
+  // Tier abort budgets:
+  // - Fast tier (~10 keys, small payload) keeps an aggressive 1.2 s browser cap; it already meets that budget.
+  // - Slow tier carries ~70 bootstrap keys (~500 KB). The previous 1.8 s browser cap was below realistic p95
+  //   from a cold CF cache, so it aborted on slow connections. That left the hydration cache empty for those
+  //   keys, and downstream per-panel lazy fetches each got a doomed 5 s shot — half of which timed out under
+  //   the same conditions, leaving panels stuck in empty-state.
+  // - 3.0 s is a conservative bump to avoid that cascade. Further tuning should be driven by RUM / Sentry
+  //   data once available; do not move this without evidence.
+  // - Desktop budgets (5 s / 8 s) are unchanged — different network and dependency-loading constraints.
   const fastTimeout = setTimeout(() => fastCtrl.abort(), desktop ? 5_000 : 1_200);
-  const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 8_000 : 1_800);
+  const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 8_000 : 3_000);
 
   try {
     const [slowState, fastState] = await Promise.all([
