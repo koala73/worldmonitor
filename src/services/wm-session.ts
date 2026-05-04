@@ -101,9 +101,16 @@ export function getWmSessionToken(): string | null {
 // install per process) so unit tests can't easily simulate token-state
 // transitions across cases without a way to clear `cached` and `inflight`.
 // Production code never imports this — it's exclusively for `tests/wm-session-*`.
+//
+// `interceptorInstalled` is also reset so a test that calls this followed by
+// `installWmSessionFetchInterceptor()` actually re-runs the install path
+// instead of silently no-op'ing on the install guard. Without it, future
+// tests that wipe state and expect a fresh install would see a stale
+// `window.fetch` wrapper from a prior test.
 export function __resetWmSessionForTests(): void {
   cached = null;
   inflight = null;
+  interceptorInstalled = false;
 }
 
 // Install a one-shot fetch wrapper that adds X-WorldMonitor-Key to API calls.
@@ -163,7 +170,15 @@ export function installWmSessionFetchInterceptor(): void {
   const apiOrigin = (() => {
     try { return new URL(getCanonicalApiOrigin()).origin; } catch { return ''; }
   })();
-  const original = window.fetch.bind(window);
+  // AGENTS.md bans `fetch.bind(globalThis)` to avoid freezing a stale
+  // reference. The prescribed alternative `(...args) => globalThis.fetch(...)`
+  // would recurse here because the very next line replaces `window.fetch`
+  // with our wrapper — re-entering through `globalThis.fetch` would loop
+  // forever. The correct minimal pattern that captures the pre-wrapping
+  // value AND avoids `.bind()` is a plain assignment: in modern browsers
+  // `fetch` is already bound to its global receiver and the unbound
+  // reference works correctly when called as `original(...)`.
+  const original = window.fetch;
 
   window.fetch = async function wmSessionFetch(input, init) {
     const url = (() => {
