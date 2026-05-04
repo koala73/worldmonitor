@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
-import { extractCountryCode } from './shared/geo-extract.mjs';
 // Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
 // The 2026-04 webpack rebuild changed the TGH bundle from the legacy
 // `var a=[{Alert_ID:"..."}]` shape (unquoted keys) to `eval("var res = [...]")`
@@ -11,28 +10,20 @@ import { extractCountryCode } from './shared/geo-extract.mjs';
 // its top-level runSeed is guarded by `if (process.argv[1]?.endsWith(...))`,
 // so importing as a module just exposes the parsers.
 import { parseRealtimeAlerts } from './seed-vpd-tracker.mjs';
+// Pure helpers (parsers/mappers/contentMeta/publishTransform) live in their
+// own module so tests can import the real code instead of replicating it.
+// See `scripts/_disease-outbreaks-helpers.mjs` for the shape contract.
+import {
+  whoNormalizeItem,
+  rssNormalizeItem,
+  tghNormalizeItem,
+  mapItem,
+  diseaseContentMeta,
+  diseasePublishTransform,
+  DISEASE_MAX_CONTENT_AGE_MIN,
+} from './_disease-outbreaks-helpers.mjs';
 
 loadEnvFile(import.meta.url);
-
-// WHO DON uses multi-word or hyphenated country names that the bigram scanner misses.
-// These override extractCountryCode for exact substring matches (checked first, case-insensitive).
-const WHO_NAME_OVERRIDES = {
-  'democratic republic of the congo': 'CD',
-  'dr congo': 'CD',
-  'timor-leste': 'TL',
-  'east timor': 'TL',
-  'papua new guinea': 'PG',
-  'kingdom of saudi arabia': 'SA',
-  'united kingdom': 'GB',
-};
-
-function extractCountryCodeFull(text) {
-  const lower = text.toLowerCase();
-  for (const [name, iso2] of Object.entries(WHO_NAME_OVERRIDES)) {
-    if (lower.includes(name)) return iso2;
-  }
-  return extractCountryCode(text) ?? '';
-}
 
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
@@ -54,52 +45,6 @@ const TGH_LOOKBACK_DAYS = 90;
 
 const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
-
-function stableHash(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-  return Math.abs(h).toString(36);
-}
-
-/**
- * Extract location string from WHO-style titles.
- * Handles: "Disease – Country" (em-dash), "Disease - Country" (hyphen), "Disease in Country".
- */
-function extractLocationFromTitle(title) {
-  // WHO DON pattern: "Disease – Country" or "Disease - Country" (one or more dash-separated segments)
-  // Split on em-dash, en-dash, or " - " / " – " to get all segments, then take the last capitalized one.
-  const segments = title.split(/\s*[–—]\s*|\s+-\s+/);
-  if (segments.length >= 2) {
-    const last = segments[segments.length - 1].trim();
-    if (/^[A-Z]/.test(last)) return last;
-  }
-  // Fallback: "... in <Country/Region>"
-  const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
-  if (inMatch) return inMatch[1].trim();
-  return '';
-}
-
-function detectAlertLevel(title, desc) {
-  const text = `${title} ${desc}`.toLowerCase();
-  if (text.includes('outbreak') || text.includes('emergency') || text.includes('epidemic') || text.includes('pandemic')) return 'alert';
-  if (text.includes('warning') || text.includes('spread') || text.includes('cases increasing')) return 'warning';
-  return 'watch';
-}
-
-function detectDisease(title) {
-  const lower = title.toLowerCase();
-  const known = ['mpox', 'monkeypox', 'ebola', 'cholera', 'covid', 'dengue', 'measles',
-    'polio', 'marburg', 'lassa', 'plague', 'yellow fever', 'typhoid', 'influenza',
-    'avian flu', 'h5n1', 'h5n2', 'anthrax', 'rabies', 'meningitis', 'hepatitis',
-    'nipah', 'rift valley', 'crimean-congo', 'leishmaniasis', 'malaria', 'diphtheria',
-    'chikungunya', 'botulism', 'brucellosis', 'salmonella', 'listeria', 'e. coli',
-    'norovirus', 'legionella', 'campylobacter'];
-  for (const d of known) {
-    if (lower.includes(d)) return d.charAt(0).toUpperCase() + d.slice(1);
-  }
-  return 'Unknown Disease';
-}
-
 /**
  * Fetch WHO Disease Outbreak News via their JSON API (RSS feed is dead since 2024).
  * Returns normalized items array.
@@ -114,25 +59,10 @@ async function fetchWhoDonApi() {
     const data = await resp.json();
     const items = data?.value;
     if (!Array.isArray(items)) { console.warn('[Disease] WHO DON API: unexpected response shape'); return []; }
-    return items.map((item) => {
-      // Tag synthetic-vs-real timestamps. WHO DON occasionally omits
-      // PublicationDateAndTime; falling back to Date.now() keeps publishedMs
-      // non-null (preserving the existing isNaN filter + UI consumer
-      // contract) but the parallel _originalPublishedMs / _publishedAtIsSynthetic
-      // pair lets contentMeta exclude these from newest-item-age calculations
-      // — otherwise an undated WHO item would falsely report content as fresh.
-      const origMs = item.PublicationDateAndTime ? new Date(item.PublicationDateAndTime).getTime() : null;
-      const hasOrig = origMs != null && Number.isFinite(origMs);
-      return {
-        title: (item.Title || '').trim(),
-        link: item.ItemDefaultUrl ? `https://www.who.int${item.ItemDefaultUrl}` : '',
-        desc: '',
-        publishedMs: hasOrig ? origMs : Date.now(),
-        _originalPublishedMs: hasOrig ? origMs : null,
-        _publishedAtIsSynthetic: !hasOrig,
-        sourceName: 'WHO',
-      };
-    }).filter(i => i.title && Number.isFinite(i.publishedMs));
+    // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
+    // so tests can verify the exact contract without duplicating logic.
+    return items.map((item) => whoNormalizeItem(item))
+      .filter(i => i.title && Number.isFinite(i.publishedMs));
   } catch (e) {
     console.warn('[Disease] WHO DON API fetch error:', e?.message || e);
     return [];
@@ -160,19 +90,11 @@ async function fetchRssItems(url, sourceName) {
         .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
         .replace(/<[^>]+>/g, '').trim().slice(0, 300);
       const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1]?.trim() || '';
-      // Same synthetic-tagging pattern as fetchWhoDonApi — the RSS parser
-      // also falls back to Date.now() when pubDate is missing/unparseable.
-      // Carry _originalPublishedMs / _publishedAtIsSynthetic so contentMeta
-      // can exclude those items from newest-item-age computation.
-      const origMs = pubDate ? new Date(pubDate).getTime() : null;
-      const hasOrig = origMs != null && Number.isFinite(origMs);
-      const publishedMs = hasOrig ? origMs : Date.now();
-      if (!title || !Number.isFinite(publishedMs)) continue;
-      items.push({
-        title, link, desc, publishedMs, sourceName,
-        _originalPublishedMs: hasOrig ? origMs : null,
-        _publishedAtIsSynthetic: !hasOrig,
-      });
+      // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
+      // (rssNormalizeItem) so tests verify the exact contract without duplicating logic.
+      const normalized = rssNormalizeItem({ title, link, desc, pubDate, sourceName });
+      if (!normalized.title || !Number.isFinite(normalized.publishedMs)) continue;
+      items.push(normalized);
     }
     return items;
   } catch (e) {
@@ -218,26 +140,9 @@ async function fetchThinkGlobalHealth() {
       if (rec.lat == null || rec.lng == null || !rec.disease || !rec.date) continue;
       const publishedMs = new Date(rec.date).getTime();
       if (isNaN(publishedMs) || publishedMs < cutoff) continue;
-      // place_name from TGH is often "City, District, Country" — take only the first segment for display.
-      const cityName = (rec.placeName || '').split(',')[0].trim() || rec.country || '';
-      items.push({
-        title: `${rec.disease}${rec.country ? ` - ${rec.country}` : ''}`,
-        link: rec.sourceUrl || '',
-        desc: rec.summary ? rec.summary.slice(0, 300) : '',
-        publishedMs,
-        sourceName: 'ThinkGlobalHealth',
-        _country: rec.country || '',
-        _disease: rec.disease || '',
-        _location: cityName,
-        _lat: Number.isFinite(rec.lat) ? rec.lat : null,
-        _lng: Number.isFinite(rec.lng) ? rec.lng : null,
-        _cases: rec.cases ?? 0,
-        // TGH always carries a parsed date by line 198's filter; mirror the
-        // same shape as WHO/RSS so contentMeta + publishTransform can apply
-        // uniformly across all three sources.
-        _originalPublishedMs: publishedMs,
-        _publishedAtIsSynthetic: false,
-      });
+      // Per-item normalization lives in _disease-outbreaks-helpers.mjs
+      // (tghNormalizeItem) so tests verify the exact contract without duplicating logic.
+      items.push(tghNormalizeItem(rec));
     }
     console.log(`[Disease] ThinkGlobalHealth: ${records.length} total, ${items.length} in last ${TGH_LOOKBACK_DAYS}d`);
     return items;
@@ -245,41 +150,6 @@ async function fetchThinkGlobalHealth() {
     console.warn('[Disease] ThinkGlobalHealth fetch error:', e?.message || e);
     return [];
   }
-}
-
-function mapItem(item) {
-  const location = item._location || extractLocationFromTitle(item.title)
-    || (item.sourceName === 'CDC' ? 'United States' : '');
-  const disease = item._disease || detectDisease(item.title);
-  const countryCode = item._country
-    ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
-    : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
-  return {
-    id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
-    disease,
-    location,
-    countryCode,
-    alertLevel: detectAlertLevel(item.title, item.desc),
-    summary: item.desc,
-    sourceUrl: item.link,
-    publishedAt: item.publishedMs,
-    sourceName: item.sourceName,
-    lat: item._lat ?? 0,
-    lng: item._lng ?? 0,
-    cases: item._cases || 0,
-    // PRE-PUBLISH HELPERS (Sprint 2 — health-readiness content-age contract).
-    // Used by contentMeta at runSeed time to exclude items with synthetic
-    // (Date.now() fallback) timestamps from newest-item-age computation.
-    // Stripped by the publishTransform in runSeed opts BEFORE the canonical
-    // payload is written, so they NEVER appear in:
-    //   - resilience:disease-outbreaks:v1 canonical key
-    //   - /api/bootstrap response (data.diseaseOutbreaks)
-    //   - list-disease-outbreaks RPC response
-    //   - DiseaseOutbreakItem proto-generated type
-    // See plan Sprint 2 / Step 2.3 for the strip contract.
-    _publishedAtIsSynthetic: item._publishedAtIsSynthetic === true,
-    _originalPublishedMs: item._originalPublishedMs ?? null,
-  };
 }
 
 async function fetchDiseaseOutbreaks() {
@@ -349,58 +219,19 @@ runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
 
   // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
   //
-  // Sets a 9-day budget chosen so the 2026-05-04 incident — where the cache
-  // held 50 outbreaks all 11+ days old — would have correctly tripped
-  // STALE_CONTENT in /api/health. WHO Disease Outbreak News publishes
-  // 1-2/week (typical gap 3-5d), CDC HAN is sporadic but rarely silent for
-  // a full week, and TGH (post-#3593) provides daily ProMED items. 9 days
-  // tolerates a single quiet WHO/CDC week without paging on normal cadence.
+  // 9-day budget chosen so the 2026-05-04 incident — where the cache held
+  // 50 outbreaks all 11+ days old — would have correctly tripped STALE_CONTENT
+  // in /api/health. WHO Disease Outbreak News publishes 1-2/week (typical gap
+  // 3-5d), CDC HAN is sporadic but rarely silent for a full week, and TGH
+  // (post-#3593) provides daily ProMED items. 9 days tolerates a single quiet
+  // WHO/CDC week without paging on normal cadence.
   //
-  // contentMeta excludes items with `_publishedAtIsSynthetic: true` (those
-  // got a Date.now() fallback because the upstream omitted a date). Without
-  // this exclusion, undated items would falsely report content as fresh and
-  // mask a real upstream silence. Future-dated items beyond 1h clock-skew
-  // tolerance are also excluded — matches list-feed-digest's
-  // FUTURE_DATE_TOLERANCE_MS pattern.
-  //
-  // Returns null when no items have a usable timestamp — runSeed writes
-  // newestItemAt: null, classifier reads as STALE_CONTENT.
-  contentMeta: (data) => {
-    const items = Array.isArray(data?.outbreaks) ? data.outbreaks : [];
-    let newest = -Infinity, oldest = Infinity, validCount = 0;
-    const skewLimit = Date.now() + 60 * 60 * 1000;
-    for (const item of items) {
-      if (item._publishedAtIsSynthetic === true) continue;
-      const ts = item._originalPublishedMs;
-      if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) continue;
-      if (ts > skewLimit) continue;
-      validCount++;
-      if (ts > newest) newest = ts;
-      if (ts < oldest) oldest = ts;
-    }
-    if (validCount === 0) return null;
-    return { newestItemAt: newest, oldestItemAt: oldest };
-  },
-  maxContentAgeMin: 9 * 24 * 60,
-
-  // Strip pre-publish helper fields BEFORE atomicPublish writes the canonical
-  // key. Per the Sprint 1 ordering contract, contentMeta has already run on
-  // the raw fetcher output by this point, so it's safe to drop these.
-  // _publishedAtIsSynthetic + _originalPublishedMs MUST NOT appear in:
-  //   - the canonical key (Redis read-back)
-  //   - /api/bootstrap response payload
-  //   - list-disease-outbreaks RPC response
-  //   - the DiseaseOutbreakItem proto-generated type
-  publishTransform: (data) => {
-    const outbreaks = Array.isArray(data?.outbreaks) ? data.outbreaks : [];
-    return {
-      ...data,
-      outbreaks: outbreaks.map((item) => {
-        const { _publishedAtIsSynthetic: _a, _originalPublishedMs: _b, ...rest } = item;
-        return rest;
-      }),
-    };
-  },
+  // diseaseContentMeta + diseasePublishTransform live in
+  // `_disease-outbreaks-helpers.mjs` so the test suite imports the same code
+  // the seeder runs (no drift). See helpers module header for their semantics.
+  contentMeta: diseaseContentMeta,
+  maxContentAgeMin: DISEASE_MAX_CONTENT_AGE_MIN,
+  publishTransform: diseasePublishTransform,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);
