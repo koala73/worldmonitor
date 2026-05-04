@@ -110,18 +110,44 @@ function extractVariantBlock(src: string, variantKey: string): string | null {
 // whose VALUE is an array literal (`<key>: [`). That excludes nested
 // objects and natural-language text that happens to contain a colon.
 // Both bare identifiers and quoted (kebab-case) keys are accepted.
+//
+// Brace-depth tracking: a key only counts when found at depth 0 of the
+// passed body. Otherwise a future feed entry shaped like
+// `{ name: '...', tags: ['a', 'b'] }` would emit a spurious `tags` key
+// for the test. The current feed maps use flat single-line objects so
+// this isn't observable yet, but the guard means the parity guard
+// stays correct under reasonable future formatting.
 function extractCategoryKeys(body: string): string[] {
   const keys: string[] = [];
-  // Anchor to a newline so we only match top-of-line property declarations,
-  // not a colon embedded mid-string. Either:
-  //   <leading-ws><identifier>: [
-  //   <leading-ws>'<kebab-or-anything>': [
-  //   <leading-ws>"<kebab-or-anything>": [
-  const re = /\n[ \t]+(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*\[/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
-    const key = m[1] ?? m[2] ?? m[3];
-    if (key) keys.push(key);
+  // Anchor: <leading-ws><key>: [   where <key> is either a bare
+  // identifier or a single/double-quoted string.
+  const KEY_RE = /[ \t]+(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*\[/y;
+  let depth = 0;
+  let inString: '"' | "'" | '`' | null = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i] ?? '';
+    // Crude string skip — string literals can contain `{` / `}` / `:` which would
+    // otherwise corrupt depth tracking. We don't need full template-literal
+    // expression handling because feed map values never contain ${...}.
+    if (inString) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = ch as '"' | "'" | '`';
+      continue;
+    }
+    if (ch === '{') { depth++; continue; }
+    if (ch === '}') { depth--; continue; }
+    if (depth !== 0) continue;
+    if (ch !== '\n') continue;
+    KEY_RE.lastIndex = i + 1;
+    const m = KEY_RE.exec(body);
+    if (m) {
+      const key = m[1] ?? m[2] ?? m[3];
+      if (key) keys.push(key);
+    }
   }
   return keys;
 }
@@ -162,12 +188,12 @@ describe('news feed key parity (client FEEDS ⇔ server VARIANT_FEEDS)', () => {
       // Sanity: every key in knownGapsClientOnly must actually be a real
       // gap. If a future server change covers one, drop it from the
       // allowlist so we don't carry phantom entries forever.
-      const stalewListed = knownGapsClientOnly.filter(k => serverKeys.has(k));
+      const staleListed = knownGapsClientOnly.filter(k => serverKeys.has(k));
       assert.deepStrictEqual(
-        stalewListed,
+        staleListed,
         [],
         `'${serverKey}' knownGapsClientOnly contains keys the server NOW covers: ` +
-        `${stalewListed.join(', ')}. Remove them from the allowlist so future drift can be detected.`,
+        `${staleListed.join(', ')}. Remove them from the allowlist so future drift can be detected.`,
       );
 
       // Sanity: every key in knownGapsClientOnly must still exist on the
