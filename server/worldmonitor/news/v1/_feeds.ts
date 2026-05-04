@@ -291,7 +291,15 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Trading Tech', url: gn('("algorithmic trading" OR "trading platform" OR "quantitative finance") when:7d') },
       { name: 'Blockchain Finance', url: gn('("blockchain finance" OR tokenization OR "digital securities" OR CBDC) when:7d') },
     ],
-    regulation: [
+    // Key MUST match the client-side category key in src/config/feeds.ts
+    // FINANCE_FEEDS (`'fin-regulation'`). The client iterates
+    // `Object.keys(FEEDS)` and looks up `digest.categories[category]` by the
+    // same key — a name drift here means the server returns the digest
+    // bucket but the client never finds it, and the panel renders empty.
+    // The panel name was renamed `regulation` → `fin-regulation` client-side
+    // in PR #3578-era work (App.ts:539-542 has a one-time storage migration
+    // for prior users), but this server-side key was never updated.
+    'fin-regulation': [
       { name: 'SEC', url: 'https://www.sec.gov/news/pressreleases.rss' },
       { name: 'Financial Regulation', url: gn('(SEC OR CFTC OR FINRA OR FCA) regulation OR enforcement when:3d') },
       { name: 'Banking Rules', url: gn('(Basel OR "capital requirements" OR "banking regulation") when:7d') },
