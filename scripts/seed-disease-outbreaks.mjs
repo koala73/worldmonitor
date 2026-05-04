@@ -2,6 +2,15 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
+// Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
+// The 2026-04 webpack rebuild changed the TGH bundle from the legacy
+// `var a=[{Alert_ID:"..."}]` shape (unquoted keys) to `eval("var res = [...]")`
+// blocks with JSON-quoted keys. This seeder's homegrown regex no longer
+// matches the new shape — pre-fix it returned 0 records and silently
+// dropped the only geo-rich disease source. Importing vpd-tracker is safe:
+// its top-level runSeed is guarded by `if (process.argv[1]?.endsWith(...))`,
+// so importing as a module just exposes the parsers.
+import { parseRealtimeAlerts } from './seed-vpd-tracker.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -34,8 +43,12 @@ const WHO_DON_API = 'https://www.who.int/api/emergencies/diseaseoutbreaknews?sf_
 const CDC_FEED = 'https://tools.cdc.gov/api/v2/resources/media/132608.rss';
 // Outbreak News Today — aggregates WHO, CDC, and regional health ministry alerts
 const OUTBREAK_NEWS_FEED = 'https://outbreaknewstoday.com/feed/';
-// ThinkGlobalHealth disease tracker — 1,600+ ProMED-sourced real-time alerts with lat/lng
-const THINKGLOBALHEALTH_BUNDLE = 'https://raw.githubusercontent.com/thinkglobalhealth/disease_tracker/main/index_bundle.js';
+// ThinkGlobalHealth disease tracker — 1,600+ ProMED-sourced real-time alerts
+// with lat/lng. Default branch is `master` (NOT `main`) — using `main` returns
+// HTTP 404 and silently zeroes out this source, which is the only one that
+// publishes precise coordinates (WHO/CDC/ONT only have country names → map
+// falls back to country centroids). Verified 2026-05-04.
+const THINKGLOBALHEALTH_BUNDLE = 'https://raw.githubusercontent.com/thinkglobalhealth/disease_tracker/master/index_bundle.js';
 // Keep alerts within this many days; avoids flooding the map with old events
 const TGH_LOOKBACK_DAYS = 90;
 
@@ -148,10 +161,17 @@ async function fetchRssItems(url, sourceName) {
 
 /**
  * Fetch ThinkGlobalHealth disease tracker data.
- * The site (https://thinkglobalhealth.github.io/disease_tracker/) embeds all ProMED-reviewed
- * disease alerts directly in index_bundle.js as a JS object literal array:
- *   var a=[{Alert_ID:"...",lat:"...",lng:"...",diseases:"...",country:"...",date:"M/D/YYYY",...}]
- * ~1,600 records with exact lat/lng coordinates. We filter to last TGH_LOOKBACK_DAYS days.
+ *
+ * The site (https://thinkglobalhealth.github.io/disease_tracker/) embeds
+ * ~1,600 ProMED-reviewed disease alerts in index_bundle.js. After their
+ * 2026-04 webpack rebuild the data shape changed from a JS object literal
+ * (`var a=[{Alert_ID:"..."}]` — unquoted keys) to JSON-quoted records
+ * inside `eval("var res = [...]")` blocks. parseRealtimeAlerts (lifted
+ * from seed-vpd-tracker.mjs) handles the new format with a
+ * schema-anchored scanner that survives further bundler upgrades as long
+ * as the field names (Alert_ID, lat, lng, diseases) are stable.
+ *
+ * We filter to last TGH_LOOKBACK_DAYS days post-parse.
  */
 async function fetchThinkGlobalHealth() {
   try {
@@ -162,53 +182,34 @@ async function fetchThinkGlobalHealth() {
     if (!resp.ok) { console.warn(`[Disease] ThinkGlobalHealth HTTP ${resp.status}`); return []; }
     const bundle = await resp.text();
 
-    // Extract the data array: "var a=[{Alert_ID:"
-    const marker = 'var a=[{Alert_ID:';
-    const startIdx = bundle.indexOf(marker);
-    if (startIdx === -1) { console.warn('[Disease] ThinkGlobalHealth: data marker not found'); return []; }
-
-    // Find the end of the array by counting brackets from the [ position
-    const arrStart = startIdx + 'var a='.length;
-    let depth = 0, end = arrStart;
-    for (; end < bundle.length; end++) {
-      if (bundle[end] === '[' || bundle[end] === '{') depth++;
-      else if (bundle[end] === ']' || bundle[end] === '}') { depth--; if (depth === 0) { end++; break; } }
-    }
-    const arrayStr = bundle.slice(arrStart, end);
-
-    // Parse JS object literals (keys are unquoted identifiers, all values are strings).
-    // Pattern: {Key:"value",...} — flat objects only.
-    const records = [];
-    const objRe = /\{([^{}]+)\}/g;
-    let m;
-    while ((m = objRe.exec(arrayStr)) !== null) {
-      const obj = {};
-      const pairRe = /(\w+):"((?:[^"\\]|\\.)*)"/g;
-      let p;
-      while ((p = pairRe.exec(m[1])) !== null) obj[p[1]] = p[2];
-      if (obj.Alert_ID) records.push(obj);
+    let records;
+    try {
+      records = parseRealtimeAlerts(bundle);
+    } catch (e) {
+      console.warn(`[Disease] ThinkGlobalHealth parse error: ${e?.message || e}`);
+      return [];
     }
 
     const cutoff = Date.now() - TGH_LOOKBACK_DAYS * 86400_000;
     const items = [];
     for (const rec of records) {
-      if (!rec.lat || !rec.lng || !rec.diseases || !rec.date) continue;
+      if (rec.lat == null || rec.lng == null || !rec.disease || !rec.date) continue;
       const publishedMs = new Date(rec.date).getTime();
       if (isNaN(publishedMs) || publishedMs < cutoff) continue;
       // place_name from TGH is often "City, District, Country" — take only the first segment for display.
-      const cityName = (rec.place_name || '').split(',')[0].trim() || rec.country || '';
+      const cityName = (rec.placeName || '').split(',')[0].trim() || rec.country || '';
       items.push({
-        title: `${rec.diseases}${rec.country ? ` - ${rec.country}` : ''}`,
-        link: rec.link || '',
+        title: `${rec.disease}${rec.country ? ` - ${rec.country}` : ''}`,
+        link: rec.sourceUrl || '',
         desc: rec.summary ? rec.summary.slice(0, 300) : '',
         publishedMs,
         sourceName: 'ThinkGlobalHealth',
         _country: rec.country || '',
-        _disease: rec.diseases || '',
+        _disease: rec.disease || '',
         _location: cityName,
-        _lat: Number.isFinite(parseFloat(rec.lat)) ? parseFloat(rec.lat) : null,
-        _lng: Number.isFinite(parseFloat(rec.lng)) ? parseFloat(rec.lng) : null,
-        _cases: parseInt(rec.cases_count || rec.cases || '0', 10) || 0,
+        _lat: Number.isFinite(rec.lat) ? rec.lat : null,
+        _lng: Number.isFinite(rec.lng) ? rec.lng : null,
+        _cases: rec.cases ?? 0,
       });
     }
     console.log(`[Disease] ThinkGlobalHealth: ${records.length} total, ${items.length} in last ${TGH_LOOKBACK_DAYS}d`);

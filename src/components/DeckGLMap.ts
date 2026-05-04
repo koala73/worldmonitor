@@ -1502,7 +1502,16 @@ export class DeckGLMap {
     const { layers: mapLayers } = this.state;
     const filteredEarthquakes = mapLayers.natural ? this.filterByTimeCached(this.earthquakes, (eq) => eq.occurredAt) : [];
     const filteredNaturalEvents = mapLayers.natural ? this.filterByTimeCached(this.naturalEvents, (event) => event.date) : [];
-    const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.filterByTimeCached(this.diseaseOutbreaks, (item) => item.publishedAt) : [];
+    // Disease outbreaks are sparse-by-nature — WHO Disease Outbreak News
+    // publishes 1-2 alerts/week, CDC HAN alerts are infrequent, and the
+    // upstream ThinkGlobalHealth tracker carries 90 days of ProMED items.
+    // Applying the global time-range filter (max '7d' in the dropdown)
+    // wholesale-zeroes the layer when the most recent WHO/CDC update is
+    // 8+ days old, which is normal for these sources. Show all items in
+    // the cache; the seeder's TTL + per-source lookback already bound
+    // freshness at write time. PR #3593: production saw 50 valid records
+    // cached but 0 rendered because the newest CDC item was 11d old.
+    const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.diseaseOutbreaks : [];
     const filteredRadiationObservations = mapLayers.radiationWatch ? this.filterByTimeCached(this.radiationObservations, (obs) => obs.observedAt) : [];
     const filteredPositiveEvents = mapLayers.positiveEvents ? this.filterByTimeCached(this.positiveEvents, (e) => e.timestamp) : [];
     const filteredIranEvents = mapLayers.iranAttacks ? this.filterByTimeCached(this.iranEvents, (e) => e.timestamp) : [];
