@@ -20,6 +20,10 @@ import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 const STORAGE_KEY = 'wm-session-token';
 // Refresh well before expiry so a half-loaded page doesn't fail mid-flight.
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+// Periodic refresh cadence — wake every 30 minutes to renew before the
+// 12-hour token expires. Long-lived tabs (overnight, multi-day) lose the
+// token without this; the original implementation had no auto-refresh.
+const PERIODIC_REFRESH_MS = 30 * 60 * 1000;
 
 interface StoredSession {
   token: string;
@@ -93,6 +97,22 @@ export function getWmSessionToken(): string | null {
   return null;
 }
 
+// Test-only escape hatch. The interceptor lifecycle is module-scoped (one
+// install per process) so unit tests can't easily simulate token-state
+// transitions across cases without a way to clear `cached` and `inflight`.
+// Production code never imports this — it's exclusively for `tests/wm-session-*`.
+//
+// `interceptorInstalled` is also reset so a test that calls this followed by
+// `installWmSessionFetchInterceptor()` actually re-runs the install path
+// instead of silently no-op'ing on the install guard. Without it, future
+// tests that wipe state and expect a fresh install would see a stale
+// `window.fetch` wrapper from a prior test.
+export function __resetWmSessionForTests(): void {
+  cached = null;
+  inflight = null;
+  interceptorInstalled = false;
+}
+
 // Install a one-shot fetch wrapper that adds X-WorldMonitor-Key to API calls.
 // Only patches calls to our API origin (or relative /api/ paths). Other fetches
 // (Sentry, Clerk, third-party CDNs) are forwarded to native fetch unchanged.
@@ -150,7 +170,15 @@ export function installWmSessionFetchInterceptor(): void {
   const apiOrigin = (() => {
     try { return new URL(getCanonicalApiOrigin()).origin; } catch { return ''; }
   })();
-  const original = window.fetch.bind(window);
+  // AGENTS.md bans `fetch.bind(globalThis)` to avoid freezing a stale
+  // reference. The prescribed alternative `(...args) => globalThis.fetch(...)`
+  // would recurse here because the very next line replaces `window.fetch`
+  // with our wrapper — re-entering through `globalThis.fetch` would loop
+  // forever. The correct minimal pattern that captures the pre-wrapping
+  // value AND avoids `.bind()` is a plain assignment: in modern browsers
+  // `fetch` is already bound to its global receiver and the unbound
+  // reference works correctly when called as `original(...)`.
+  const original = window.fetch;
 
   window.fetch = async function wmSessionFetch(input, init) {
     const url = (() => {
@@ -193,16 +221,78 @@ export function installWmSessionFetchInterceptor(): void {
     }
 
     const token = getWmSessionToken();
-    if (!token) return original(input, init);
+    if (token) headers.set('X-WorldMonitor-Key', token);
 
-    headers.set('X-WorldMonitor-Key', token);
+    // A Request body is a one-shot stream — clone BEFORE the first send so
+    // the refresh-on-401 retry below has an intact body to replay. For
+    // string/URL inputs, body lives on `init` and Headers merging is enough.
+    const requestClone = input instanceof Request ? input.clone() : null;
 
-    // Preserve body/method/credentials/cache/redirect by cloning the Request.
-    // For string/URL inputs, fold the merged headers into init.
-    if (input instanceof Request) {
-      const cloned = new Request(input, { headers });
-      return original(cloned, init);
+    const sendWith = (h: Headers, src: typeof input): Promise<Response> => {
+      if (src instanceof Request) {
+        const cloned = new Request(src, { headers: h });
+        return original(cloned, init);
+      }
+      return original(src, { ...(init ?? {}), headers: h });
+    };
+
+    const resp = await sendWith(headers, input);
+
+    // Layer 2 — refresh-on-401. A single transient blip (HMAC-key rotation,
+    // expiry race, server-side cache flap) shouldn't strand the tab. If we
+    // had no token to begin with OR the token we sent was rejected, mint a
+    // fresh one and replay ONCE. Premium routes already returned above; the
+    // wms_ token is irrelevant there.
+    if (resp.status !== 401) return resp;
+
+    // Invalidate the cached token (and its sessionStorage twin) before
+    // re-minting. ensureWmSession() is opportunistic — without invalidation,
+    // it would return the same not-yet-clock-expired token that the server
+    // just rejected (HMAC-key rotation: token signature is wrong even though
+    // `exp` is in the future), and the retry would 401 with the same header.
+    if (token && cached?.token === token) {
+      cached = null;
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     }
-    return original(input, { ...(init ?? {}), headers });
+
+    const fresh = await ensureWmSession().catch(() => null);
+    // Bail if mint failed, or the "fresh" token is identical to what we just
+    // sent (cache returned the same value — retry would 401 again).
+    if (!fresh || fresh === token) return resp;
+
+    const retryHeaders = new Headers(headers);
+    retryHeaders.set('X-WorldMonitor-Key', fresh);
+    return sendWith(retryHeaders, requestClone ?? input);
   };
+
+  // Layer 1 — periodic refresh. The token is short-lived (12h server-side)
+  // and originally there was no auto-refresh, so a tab open overnight (or
+  // a laptop that slept) returned 401 on every API call after expiry.
+  //
+  // Two complementary primitives:
+  //   1. setInterval at PERIODIC_REFRESH_MS — wakes opportunistically.
+  //      Gated on document.visibilityState so a hidden tab on a sleeping
+  //      laptop doesn't fire a flurry of mints when the laptop wakes (N
+  //      tabs all hitting /api/wm-session in parallel).
+  //   2. visibilitychange listener — when the user returns to a hidden
+  //      tab, check freshness immediately. Catches the case where the
+  //      interval skipped many beats while hidden.
+  //
+  // Errors are swallowed — periodic refresh is best-effort; the
+  // refresh-on-401 layer above is the safety net.
+  if (typeof setInterval === 'function') {
+    setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (isFresh(cached)) return;
+      ensureWmSession().catch(() => { /* best-effort */ });
+    }, PERIODIC_REFRESH_MS);
+  }
+
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (isFresh(cached)) return;
+      ensureWmSession().catch(() => { /* best-effort */ });
+    });
+  }
 }
