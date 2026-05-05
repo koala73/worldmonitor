@@ -620,15 +620,69 @@ async function fetchCustomsRevenue() {
   const fields = 'record_date,current_month_rcpt_outly_amt,current_fytd_rcpt_outly_amt,record_fiscal_year,record_calendar_year,record_calendar_month';
   const url = `${TREASURY_MTS_URL}?fields=${fields}&filter=classification_desc:eq:Customs%20Duties,record_date:gte:${threeYearsAgo}&sort=-record_date&page[size]=50`;
 
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`Treasury MTS HTTP ${resp.status}`);
-  const json = await resp.json();
-  const rows = json.data;
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error('Treasury MTS returned no data');
-  if (rows.length > 100) throw new Error(`Treasury MTS returned unexpected row count: ${rows.length}`);
+  // Treasury MTS occasionally trips up on Railway egress (transient connect /
+  // 5xx / TLS resets). 30+ hour stale windows traced back to a single rejected
+  // fetch followed by no retry until the next 6h cron tick — by which point
+  // the 24h data TTL had expired and the panel went empty. Three attempts
+  // with linear backoff (5s, 10s) plus the existing 15s per-attempt timeout
+  // give a worst-case ~60s budget per cron run, well within the bundle window.
+  // The final rejection re-throws with attempt count + last status / error
+  // so the rejection log line at fetchAll() + Sentry have enough context to
+  // triage from health output alone.
+  //
+  // Deterministic failures (4xx other than 429, schema-drift row-count
+  // violation) skip the retry loop — they cannot recover by waiting.
+  // Marking them with `{ __retryable: false }` lets the catch block
+  // short-circuit instead of burning ~30s of cron time and emitting
+  // misleading "retrying in 5000ms" warns for what is actually a fixed
+  // upstream / contract-violation condition.
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        // 4xx client errors (except 429 rate-limit) are deterministic — the
+        // request is malformed or the resource is gone; retry can't fix it.
+        const isClient4xx = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
+        const err = new Error(`Treasury MTS HTTP ${resp.status}`);
+        if (isClient4xx) err.__retryable = false;
+        throw err;
+      }
+      const json = await resp.json();
+      const rows = json.data;
+      // Empty array MAY be transient (deploy gap, reseed window) — keep retryable.
+      if (!Array.isArray(rows) || rows.length === 0) throw new Error('Treasury MTS returned no data');
+      // Row-count > 100 means schema drift / new MTS response shape; second
+      // request will return the same number, so don't waste cron time.
+      if (rows.length > 100) {
+        const err = new Error(`Treasury MTS returned unexpected row count: ${rows.length}`);
+        err.__retryable = false;
+        throw err;
+      }
+      // Success — break out, fall through to parse below.
+      return parseCustomsRows(rows);
+    } catch (err) {
+      lastErr = err;
+      const msg = err?.message || String(err);
+      // Skip the rest of the retry budget on deterministic failures.
+      if (err?.__retryable === false) {
+        console.warn(`  Treasury customs attempt ${attempt}/3 hit non-retryable error (${msg}); aborting retry`);
+        break;
+      }
+      if (attempt < 3) {
+        const backoffMs = attempt * 5_000; // 5s, 10s
+        console.warn(`  Treasury customs attempt ${attempt}/3 failed (${msg}); retrying in ${backoffMs}ms`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  throw new Error(`Treasury MTS exhausted 3 attempts: ${lastErr?.message || lastErr}`);
+}
+
+function parseCustomsRows(rows) {
 
   const months = rows
     .map(r => {
