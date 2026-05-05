@@ -20,8 +20,30 @@
 import { cachedFetchJson } from '../../_shared/redis';
 import { INTEL_TOPICS, type IntelTopic } from './_topics';
 
-const PER_TOPIC_TTL_S = 30 * 60;        // 30 min — matches GDELT update cadence
-const PER_TOPIC_NEG_TTL_S = 120;        // 2 min — back off after 429
+// Per-topic cache freshness target: ~15 min, matching GDELT's own update
+// cadence. We add 0–60 s of jitter at write-time so the 9 topics' caches
+// don't all expire in the same second post-deploy and trigger a 9-parallel
+// GDELT burst (the classic 429 trigger).
+const PER_TOPIC_TTL_BASE_S = 15 * 60;
+const PER_TOPIC_TTL_JITTER_S = 60;
+function perTopicTtlSeconds(): number {
+  return PER_TOPIC_TTL_BASE_S + Math.floor(Math.random() * PER_TOPIC_TTL_JITTER_S);
+}
+
+// 5 min — when GDELT returns 429 we wait longer before probing again.
+// Aggressive retry doesn't help against rate-limit cool-downs and signals
+// poor citizenship. The user-visible cost is "an old cache stays warm
+// for an extra few minutes" which is fine.
+const PER_TOPIC_NEG_TTL_S = 5 * 60;
+
+// Stagger fan-out delay. When multiple topic caches miss simultaneously
+// (e.g. post-deploy), this small per-topic delay turns 9-in-the-same-instant
+// into 9-spread-over-~2-seconds, which GDELT's per-IP rate limiter handles
+// without 429ing. Cold-start latency penalty: ~2 s for the slowest topic.
+// Hot-cache requests pay zero — the delay only applies inside the fetcher,
+// which only runs on cache miss.
+const STAGGER_PER_TOPIC_MS = 250;
+
 const TOP_LEVEL_TTL_S = 30;             // 30 s — same urgency tier as live-news
 const FETCH_TIMEOUT_MS = 10_000;
 const GDELT_BASE = 'https://api.gdeltproject.org/api/v2/doc/doc';
@@ -261,14 +283,26 @@ export async function listIntelNews(): Promise<ListIntelNewsResponse> {
     topLevelKey,
     TOP_LEVEL_TTL_S,
     async () => {
-      // Fetch each topic with its own cachedFetchJson so per-topic 30 min
+      // Fetch each topic with its own cachedFetchJson so per-topic ~15 min
       // cache survives even when the top-level 30 s key expires.
-      const promises = INTEL_TOPICS.map(async (topic) => {
+      //
+      // The fetcher embeds a per-topic stagger delay (`index * 250 ms`).
+      // It only runs on cache miss, so:
+      //   • Hot-cache request: 0 ms penalty (cachedFetchJson returns cached).
+      //   • Cold-cache request: 9 GDELT calls spread over ~2 s rather than
+      //     all-in-the-same-instant. Spreads load on GDELT's rate-limiter,
+      //     drops 429 risk significantly.
+      const promises = INTEL_TOPICS.map(async (topic, index) => {
         const perTopicKey = `intel-news:topic:v2:${topic.id}`;
         return cachedFetchJson<IntelNewsTopicBucket>(
           perTopicKey,
-          PER_TOPIC_TTL_S,
-          () => fetchTopicArticles(topic),
+          perTopicTtlSeconds(),
+          async () => {
+            if (index > 0) {
+              await new Promise((r) => setTimeout(r, index * STAGGER_PER_TOPIC_MS));
+            }
+            return fetchTopicArticles(topic);
+          },
           PER_TOPIC_NEG_TTL_S,
         );
       });
