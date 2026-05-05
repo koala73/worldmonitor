@@ -18,7 +18,10 @@
  */
 
 import { cachedFetchJson } from '../../_shared/redis';
+import { keepAlive } from '../../_shared/keep-alive';
 import { INTEL_TOPICS, type IntelTopic } from './_topics';
+import { appendToArchive, type ConflictArchiveItem } from '../../conflict-archive/v1/_store';
+import { enrichGdeltConflictAsync, attachGdeltEnrichment } from './_enrich-conflict';
 
 // Per-topic cache freshness target: ~15 min, matching GDELT's own update
 // cadence. We add 0–60 s of jitter at write-time so the 9 topics' caches
@@ -255,6 +258,58 @@ async function fetchTopicArticles(topic: IntelTopic): Promise<IntelNewsTopicBuck
 
   if (dupedAway > 0) {
     console.log(`[intel-news] ${topic.id}: ${rawItems.length} raw → ${items.length} unique (-${dupedAway} duplicate outlets)`);
+  }
+
+  // Conflict-only side effects: LLM enrichment + archive write.
+  // This branch only fires for the `conflict` topic so the other 8 topics
+  // stay cheap (no LLM cost) and the conflict feed is the only one that
+  // gets the rich location + summary treatment.
+  if (topic.id === 'conflict') {
+    // Read path: attach already-cached enrichment, identify cache misses.
+    type IntelItemWithEnrichment = IntelNewsItem & {
+      id?: string;
+      enrichment?: {
+        summary: string;
+        latitude: number;
+        longitude: number;
+        locationName: string;
+        country: string;
+        confidence: number;
+      } | null;
+    };
+    const itemsForEnrichment = items as IntelItemWithEnrichment[];
+    const missing = await attachGdeltEnrichment(itemsForEnrichment);
+
+    // Write path: fire-and-forget LLM enrichment for misses. Results
+    // populate the cache; the next cycle attaches them. keepAlive
+    // prevents Vercel from killing the isolate before the LLM call lands.
+    if (missing.length > 0) {
+      console.log(`[intel-news:conflict] kicking off enrichment for ${missing.length} items`);
+      keepAlive(enrichGdeltConflictAsync(missing), 'intel-news:conflict-enrich');
+    }
+
+    // Write to long-retention archive — only items that have BOTH
+    // location and summary (so the iOS conflict feed and map are both
+    // satisfied). Items still pending enrichment write on a future cycle.
+    const archiveItems: ConflictArchiveItem[] = itemsForEnrichment
+      .filter((it) => it.enrichment != null && it.id != null)
+      .map((it) => ({
+        id: it.id!,
+        source: it.source,
+        title: it.title,
+        link: it.link,
+        publishedAt: it.publishedAt,
+        isAlert: it.isAlert,
+        summary: it.enrichment!.summary,
+        location: { latitude: it.enrichment!.latitude, longitude: it.enrichment!.longitude },
+        locationName: it.enrichment!.locationName,
+        country: it.enrichment!.country,
+        sources: it.sources ?? null,
+        origin: 'gdelt',
+      }));
+    if (archiveItems.length > 0) {
+      keepAlive(appendToArchive('gdelt', archiveItems), 'intel-news:conflict-archive');
+    }
   }
 
   return {

@@ -16,6 +16,7 @@ export default [
   "feeds.marketwatch.com",
   "www.defenseone.com",
   "breakingdefense.com",
+  "www.longwarjournal.org",
   "www.bellingcat.com",
   "techcrunch.com",
   "huggingface.co",

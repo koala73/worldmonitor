@@ -25,6 +25,7 @@ import {
   classifyUnknownsAsync,
   type LiveNewsItemWithSources,
 } from '../v1/_dedup';
+import { appendToArchive, type ConflictArchiveItem } from '../../conflict-archive/v1/_store';
 
 const TOP_LEVEL_TTL_S = 30;
 const NEGATIVE_TTL_S = 30;
@@ -83,6 +84,33 @@ async function buildDigestPayload(): Promise<ListUsHeadlinesV2Response> {
       `(${multiSource} multi-source). withSummary=${withSummary}/${grouped.length} ` +
       `withLocation=${withLocation}/${grouped.length}`,
     );
+
+    // Conflict archive — long-retention store for items the LLM tagged
+    // as armed-conflict. We write only items with BOTH isConflict=true
+    // AND a location (so they can pin on the map). The archive accumulates
+    // across enrichment cycles, so a Gaza shelling stays for 30 days even
+    // after BBC drops it from RSS. Fire-and-forget so the response isn't
+    // blocked by Redis writes — keepAlive prevents Vercel from killing
+    // the isolate before the write lands.
+    const conflictArchive: ConflictArchiveItem[] = grouped
+      .filter((it) => it.isConflict === true && it.location !== null)
+      .map((it) => ({
+        id: it.titleHash,
+        source: it.source,
+        title: it.title,
+        link: it.link,
+        publishedAt: it.publishedAt,
+        isAlert: it.isAlert,
+        summary: it.summary,
+        location: it.location,
+        locationName: it.locationName,
+        country: it.country,
+        sources: it.sources,                  // canonical-first, multi-outlet
+        origin: 'live-news',
+      }));
+    if (conflictArchive.length > 0) {
+      keepAlive(appendToArchive('live-news', conflictArchive), 'live-news-v2:archive');
+    }
 
     return {
       items: grouped,

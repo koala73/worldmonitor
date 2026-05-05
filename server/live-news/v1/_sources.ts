@@ -71,6 +71,28 @@ export const US_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'Foreign Policy',       url: 'https://foreignpolicy.com/feed/',                           priority: 4 },
   { name: 'The Diplomat',         url: 'https://thediplomat.com/feed/',                             priority: 4 },
 
+  // ── Regional newsdesks (Tier-A conflict-signal lift) ─────────────────
+  // Smoke-tested 2026-05-05: returns valid RSS, ~20–40 items each. These
+  // give us the granular conflict reporting that the world-feed tier
+  // doesn't carry — Gaza shellings, Ukraine front-line moves, Sahel ops.
+  { name: 'BBC Middle East',      url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml',   priority: 2 },
+  { name: 'Guardian Middle East', url: 'https://www.theguardian.com/world/middleeast/rss',           priority: 3 },
+  { name: 'BBC Africa',           url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml',         priority: 2 },
+  { name: 'BBC Europe',           url: 'https://feeds.bbci.co.uk/news/world/europe/rss.xml',         priority: 2 },
+  { name: 'France 24 ME',         url: 'https://www.france24.com/en/middle-east/rss',                priority: 2 },
+
+  // ── Regional newsdesks via relay (egress-blocked from Vercel IPs) ────
+  // Both return 403 to direct fetches from cloud IPs. Routed through
+  // the existing WS_RELAY_URL proxy. If the relay isn't configured for
+  // your environment these silently no-op — no error, just an empty feed.
+  { name: 'Times of Israel',      url: 'https://www.timesofisrael.com/feed/',                        priority: 3, relayOnly: true },
+  { name: 'Al Arabiya English',   url: 'https://english.alarabiya.net/.mrss/en.xml',                 priority: 3, relayOnly: true },
+
+  // ── Defense / militant-ops specialty (Tier-B) ────────────────────────
+  // High signal-to-noise on conflict and military operations.
+  { name: 'Defense News',         url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml', priority: 4 },
+  { name: 'Long War Journal',     url: 'https://www.longwarjournal.org/feed',                        priority: 4 },
+
   // ── Aggregator backstop (catches breaking before direct feeds update) ─
   { name: 'Google News (World)',  url: 'https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en', priority: 4 },
 ] as const;
