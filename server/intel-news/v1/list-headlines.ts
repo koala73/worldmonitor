@@ -33,19 +33,28 @@ function perTopicTtlSeconds(): number {
   return PER_TOPIC_TTL_BASE_S + Math.floor(Math.random() * PER_TOPIC_TTL_JITTER_S);
 }
 
-// 5 min — when GDELT returns 429 we wait longer before probing again.
-// Aggressive retry doesn't help against rate-limit cool-downs and signals
-// poor citizenship. The user-visible cost is "an old cache stays warm
-// for an extra few minutes" which is fine.
-const PER_TOPIC_NEG_TTL_S = 5 * 60;
+// 15 min — when GDELT returns 429 we back off hard. Aggressive retry
+// makes the rate-limit window LONGER (GDELT's limiter ratchets up on
+// repeated knocks), and we'd rather show old cached data than zero data.
+// 15 min is comfortably past GDELT's typical 429 cool-down (~10 min),
+// so the next miss-probe usually succeeds.
+const PER_TOPIC_NEG_TTL_S = 15 * 60;
 
 // Stagger fan-out delay. When multiple topic caches miss simultaneously
-// (e.g. post-deploy), this small per-topic delay turns 9-in-the-same-instant
-// into 9-spread-over-~2-seconds, which GDELT's per-IP rate limiter handles
-// without 429ing. Cold-start latency penalty: ~2 s for the slowest topic.
-// Hot-cache requests pay zero — the delay only applies inside the fetcher,
-// which only runs on cache miss.
-const STAGGER_PER_TOPIC_MS = 250;
+// (e.g. post-deploy or after a cache-key version bump), this per-topic
+// delay turns N-in-the-same-instant into N-spread-over-~10-seconds,
+// which GDELT's per-IP rate limiter handles without 429ing.
+//
+// Bumped 250 → 1000 ms after a real 429 incident: 10 topics × 250 ms
+// (2.5s burst) was enough for GDELT to throttle our egress IP. 1000 ms
+// gives ~10s for the full fan-out, well within their fair-use envelope.
+//
+// Cold-start latency penalty: ~10 s for the slowest topic. Hot-cache
+// requests pay zero — the delay only applies inside the fetcher, which
+// only runs on cache miss. After the first cold start, per-topic TTL
+// jitter (0–60s) drifts expirations apart so most refreshes affect
+// only 1–2 topics at a time.
+const STAGGER_PER_TOPIC_MS = 1000;
 
 const TOP_LEVEL_TTL_S = 30;             // 30 s — same urgency tier as live-news
 const FETCH_TIMEOUT_MS = 10_000;
