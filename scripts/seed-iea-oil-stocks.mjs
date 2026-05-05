@@ -273,12 +273,12 @@ if (isMain) {
 
     // ── Content-age contract (Sprint 3b of the 2026-05-04 health-readiness plan) ──
     //
-    // 45-day budget chosen to match IEA's M+2 monthly publication cadence
-    // (August data ships in late Oct/early Nov, so dataMonth in cache is
-    // typically ~30-60 days old at "fresh-arrival" time). 45d tolerates
-    // one normal publication delay and trips when a month is missed
-    // entirely (e.g. cache stuck at "2024-08" past Dec 1 when "2024-10"
-    // should have landed → STALE_CONTENT in /api/health).
+    // 90-day budget = ~60d natural M+2 lag + ~30d missed-publication slack.
+    // August data (dataMonth="2024-08", end-of-month Aug 31) ships in late
+    // Oct/early Nov, so at fresh-arrival `newestItemAt` is already ~60d
+    // old. STALE_CONTENT trips only when a month is missed entirely (e.g.
+    // cache stuck at "2024-08" past mid-Jan when "2024-10" should have
+    // landed → /api/health surfaces STALE_CONTENT).
     //
     // ieaOilStocksContentMeta parses data.dataMonth ("YYYY-MM") into
     // end-of-month UTC ms. Single-snapshot shape: newest === oldest.

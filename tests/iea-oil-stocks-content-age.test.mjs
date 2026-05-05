@@ -15,8 +15,12 @@ import {
 
 const FIXED_NOW = 1700000000000;     // 2023-11-14T22:13:20.000Z — stable test "now"
 
-test('IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN is 45 days', () => {
-  assert.equal(IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN, 45 * 24 * 60);
+test('IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN is 90 days', () => {
+  // 90d = ~60d natural M+2 lag + ~30d missed-publication slack. See helper
+  // module's JSDoc on the threshold. Initial PR shipped 45d, which was
+  // wrong: every fresh seed run would have tripped STALE_CONTENT because
+  // 45d < the natural lag. Greptile P1 caught it on PR #3599.
+  assert.equal(IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN, 90 * 24 * 60);
 });
 
 // ── dataMonthToEndOfMonthMs ──────────────────────────────────────────────
@@ -100,21 +104,28 @@ test('contentMeta accepts last fully-completed month', () => {
   assert.equal(new Date(cm.newestItemAt).toISOString(), '2023-10-31T23:59:59.999Z');
 });
 
-// ── Pilot threshold sanity (anti-drift on the 45-day budget) ────────────
+// ── Pilot threshold sanity (anti-drift on the 90-day budget) ────────────
 
-test('pilot threshold: dataMonth 60 days old would trip STALE_CONTENT', () => {
-  // FIXED_NOW = 2023-11-14T22:13:20Z. dataMonth "2023-09" → end-of-Sept = ~45d ago.
-  // "2023-08" → end-of-Aug = ~75d ago. Use Aug to be clearly past 45d.
+test('fresh-arrival regression guard: ~60d-old fresh M+2 data does NOT trip STALE_CONTENT', () => {
+  // The exact failure mode caught by Greptile P1 on the initial 45d budget:
+  // when IEA publishes "2024-08" data in late Oct/early Nov, end-of-Aug is
+  // ~60-65d before fresh-arrival NOW. A budget below ~60d would fire
+  // STALE_CONTENT immediately on every successful seed run.
+  //
+  // FIXED_NOW = 2023-11-14T22:13:20Z. dataMonth "2023-09" → end-of-Sept
+  // = ~45d ago. dataMonth "2023-08" → end-of-Aug = ~75d ago. Use 2023-08
+  // to simulate freshly-arrived M+2 data at the upper end of the natural
+  // arrival-age range. This MUST be within budget.
   const cm = ieaOilStocksContentMeta({ dataMonth: '2023-08' }, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
-    ageMin > IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
-    `${Math.round(ageMin)}min > budget ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN}min — STALE_CONTENT would fire`,
+    ageMin < IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
+    `${Math.round(ageMin / 60 / 24)}d < ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d budget — fresh M+2 arrival does NOT page`,
   );
 });
 
-test('pilot threshold: dataMonth ~30 days old is within 45-day budget (no false positive)', () => {
-  // FIXED_NOW = 2023-11-14. "2023-10" → end-of-Oct = ~14d ago. Fresh.
+test('pilot threshold: dataMonth ~14 days old is within 90-day budget (no false positive)', () => {
+  // FIXED_NOW = 2023-11-14. "2023-10" → end-of-Oct = ~14d ago. Trivially fresh.
   const cm = ieaOilStocksContentMeta({ dataMonth: '2023-10' }, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
@@ -123,15 +134,28 @@ test('pilot threshold: dataMonth ~30 days old is within 45-day budget (no false 
   );
 });
 
-test('pilot threshold: M+2 lag scenario — Sept data published in late Oct ages over 45d threshold by mid-Dec', () => {
-  // Realistic incident pattern: cache holds dataMonth="2023-09" (latest IEA
-  // monthly), which was published ~Oct 25. By 2024-01-01 (FIXED_FUTURE),
-  // it's been ~3 months since end-of-September → must trip.
-  const FIXED_FUTURE = Date.UTC(2024, 0, 1);     // Jan 1 2024 UTC
+test('pilot threshold: dataMonth ~120d old (multiple missed publications) trips STALE_CONTENT', () => {
+  // FIXED_NOW = 2023-11-14T22:13:20Z. "2023-07" → end-of-Jul = ~106d ago,
+  // past the 90d budget. Simulates "Aug AND Sept data both missed" or "Aug
+  // arrived very late" scenarios where on-call should be paged.
+  const cm = ieaOilStocksContentMeta({ dataMonth: '2023-07' }, FIXED_NOW);
+  const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
+  assert.ok(
+    ageMin > IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
+    `${Math.round(ageMin / 60 / 24)}d > budget ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d — STALE_CONTENT would fire`,
+  );
+});
+
+test('pilot threshold: M+2 lag scenario — Sept data still in cache by Feb 1 (5 months later) trips STALE_CONTENT', () => {
+  // Realistic incident pattern: cache holds dataMonth="2023-09" (Sept data,
+  // M+2 publication = late Nov 2023). By Feb 1 2024 — three months past
+  // expected publication of Oct AND Nov data — staleness is unambiguous.
+  // 154d > 90d budget: clearly trips.
+  const FIXED_FUTURE = Date.UTC(2024, 1, 1);     // Feb 1 2024 UTC
   const cm = ieaOilStocksContentMeta({ dataMonth: '2023-09' }, FIXED_FUTURE);
   const ageMin = (FIXED_FUTURE - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin > IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
-    `Sept 2023 data on Jan 1 2024: ${Math.round(ageMin / 60 / 24)}d > 45d budget — STALE_CONTENT trips`,
+    `Sept 2023 data on Feb 1 2024: ${Math.round(ageMin / 60 / 24)}d > ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d budget — STALE_CONTENT trips`,
   );
 });

@@ -64,12 +64,21 @@ export function ieaOilStocksContentMeta(data, nowMs = Date.now()) {
 }
 
 /**
- * Sprint 3b pilot threshold (45 days). IEA monthly oil stocks reports
- * publish on an M+2 cadence (e.g. August data ships in late October/early
- * November), so the dataMonth in cache is typically ~30-60 days old at
- * "fresh-arrival" time. A 45-day budget tolerates one normal publication
- * delay (~30d slack on top of the M+2 lag's natural age) and trips when a
- * publication month is missed entirely (cache shows e.g. "2024-08" but
- * "2024-09" should have landed by now → STALE_CONTENT).
+ * Sprint 3b pilot threshold (90 days).
+ *
+ * IEA monthly oil stocks publish on an M+2 cadence — August data
+ * (`dataMonth = "2024-08"`, end-of-month = Aug 31) ships in late Oct
+ * / early Nov, which is ~60-65 days AFTER end-of-observation-month.
+ * That means at fresh-arrival the helper's `newestItemAt` is already
+ * 60d old, before any real staleness has accrued.
+ *
+ * The budget therefore needs ~60d to cover the natural M+2 lag PLUS
+ * ~30d slack for one missed publication = 90d total. STALE_CONTENT
+ * trips when a month is missed entirely (e.g. cache stuck at
+ * "2024-08" past mid-Jan when "2024-10" should have landed).
+ *
+ * (Sprint 3b initial PR shipped 45d, which would have fired
+ * STALE_CONTENT on every fresh seed because 45d < natural lag.
+ * Greptile P1 caught it; #3599 review.)
  */
-export const IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN = 45 * 24 * 60;
+export const IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN = 90 * 24 * 60;
