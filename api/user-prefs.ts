@@ -100,12 +100,14 @@ export default async function handler(
         // Convex platform-level 503 — transient and self-recovering. Map to
         // 503 with `Retry-After` so the client backs off rather than treating
         // it as a permanent 500. Still capture so we can spot regressions /
-        // sustained outages, but use the typed `convex_service_unavailable`
-        // shape so it groups distinctly from real internal 500s.
+        // sustained outages, but use `level: 'warning'` so this expected
+        // transient external-system event doesn't drown the error
+        // dashboard or page on-call (WORLDMONITOR-QA).
         console.warn('[user-prefs] GET convex service unavailable:', msg);
         captureSilentError(err, buildSentryContext(err, msg, {
           method: 'GET', convexFn: 'userPreferences:getPreferences',
           userId: session.userId, variant, ctx,
+          level: 'warning',
         }));
         return jsonResponse({ error: 'SERVICE_UNAVAILABLE' }, 503, { ...cors, 'Retry-After': '5' });
       }
@@ -202,6 +204,8 @@ export default async function handler(
     if (kind === 'SERVICE_UNAVAILABLE') {
       // See GET branch above — Convex 503, transient. 503 + Retry-After
       // so the client backs off rather than burning a 500-failed-write.
+      // `level: 'warning'` so the expected transient external-system
+      // event stays queryable but doesn't page on-call (WORLDMONITOR-QA).
       console.warn('[user-prefs] POST convex service unavailable:', msg);
       captureSilentError(err, buildSentryContext(err, msg, {
         method: 'POST', convexFn: 'userPreferences:setPreferences',
@@ -209,6 +213,7 @@ export default async function handler(
         schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : null,
         expectedSyncVersion: body.expectedSyncVersion,
         blobSize: body.data !== undefined ? JSON.stringify(body.data).length : 0,
+        level: 'warning',
       }));
       return jsonResponse({ error: 'SERVICE_UNAVAILABLE' }, 503, { ...cors, 'Retry-After': '5' });
     }
@@ -347,7 +352,14 @@ export function buildSentryContext(
   // would otherwise fall into 'unknown' and conflate transient outages with
   // genuinely-novel failure modes that haven't been classified yet.
   const errorShape = opts.errorShapeOverride
-    ?? (/UNAUTHENTICATED/.test(msg) ? 'convex_auth_drift'
+    // Match both the structured-data `UNAUTHENTICATED` kind (uppercase, from
+    // `ConvexError({kind:'UNAUTHENTICATED'})`) AND the platform-level JSON-
+    // shape `"code":"Unauthenticated"` (mixed case, from Convex's runtime
+    // when Clerk OIDC token verification fails). Both are auth drift —
+    // WORLDMONITOR-PG: the JSON-cased variant was previously falling
+    // through to 'unknown' because the `/UNAUTHENTICATED/` regex is
+    // case-sensitive.
+    ?? (/UNAUTHENTICATED|"code":"Unauthenticated"/.test(msg) ? 'convex_auth_drift'
       : /"code":"ServiceUnavailable"/.test(msg) ? 'convex_service_unavailable'
       : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
       : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
