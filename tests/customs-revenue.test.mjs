@@ -50,6 +50,21 @@ describe('Customs revenue seed', () => {
     assert.match(seedSrc, /\.reverse\(\)/);
   });
 
+  it('retries the Treasury fetch with backoff to survive transient Railway-egress failures', () => {
+    // Single-attempt fetch left the customs branch failing for 30+ hours
+    // after a one-off transient blip — by the next 6h cron tick the data
+    // had TTL'd out (24h) and the panel went empty. Three attempts with
+    // 5s/10s linear backoff covers the realistic transient envelope.
+    assert.match(seedSrc, /attempt\s*<=\s*3/, 'retry loop must use a 3-attempt cap');
+    assert.match(seedSrc, /Treasury MTS exhausted 3 attempts/, 'final error must include attempt count for triage');
+    assert.match(seedSrc, /attempt \* 5_000/, 'backoff must be linear (5s, 10s) on attempt 1 and 2');
+  });
+
+  it('factors row parsing into a separate function so retry success path stays clean', () => {
+    assert.match(seedSrc, /function parseCustomsRows\(rows\)/);
+    assert.match(seedSrc, /return parseCustomsRows\(rows\);/);
+  });
+
   it('writes customs revenue as extra key with seed-meta', () => {
     assert.match(seedSrc, /writeExtraKeyWithMeta\(KEYS\.customsRevenue/);
   });
