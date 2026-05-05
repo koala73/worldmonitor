@@ -899,7 +899,11 @@ export class App {
       if (BETA_MODE) mlWorker.loadModel('summarization-beta').catch(() => { });
     }
 
-    if (aiFlow.headlineMemory) {
+    // Headline Memory requires Browser Local Model to be ON — `isHeadlineMemoryEnabled()`
+    // ANDs both flags. Without this gate, leaving Headline Memory on while turning
+    // Browser Local Model off would silently download/run an embeddings model the user
+    // opted out of via the parent toggle.
+    if (isHeadlineMemoryEnabled()) {
       mlWorker.init().then(ok => {
         if (ok) mlWorker.loadModel('embeddings').catch(() => { });
       }).catch(() => { });
@@ -909,8 +913,16 @@ export class App {
       if (key === 'browserModel') {
         const s = getAiFlowSettings();
         if (s.browserModel) {
-          mlWorker.init();
-        } else if (!isHeadlineMemoryEnabled()) {
+          mlWorker.init().then(ok => {
+            // Re-honor Headline Memory's persisted value on parent re-enable.
+            if (ok && isHeadlineMemoryEnabled()) {
+              mlWorker.loadModel('embeddings').catch(() => { });
+            }
+          }).catch(() => { });
+        } else if (!isDesktopRuntime()) {
+          // Browser Local Model is the parent toggle for ALL local-model use,
+          // including Headline Memory. Terminate unconditionally on web —
+          // any persisted Headline Memory value is now non-effective.
           mlWorker.terminate();
         }
       }
