@@ -50,16 +50,36 @@ const PER_TOPIC_NEG_TTL_S = 15 * 60;
 // timeout headroom even if GDELT is slow.
 const STAGGER_PER_TOPIC_MS = 250;
 
-// When the live cache misses, we also try a long-lived "stale" cache
-// before falling back to fetching from GDELT. That way a slow / 429'd
-// GDELT doesn't leave the chip empty for users — we serve yesterday's
-// data while a background refresh lands. 7 days is generous; the live
-// cache (15 min) refreshes constantly under normal conditions.
-const STALE_TTL_S = 7 * 24 * 60 * 60;
-const STALE_KEY_SUFFIX = ':stale';
+// Per-topic ACCUMULATOR — rolling 7-day window of items merged across
+// fetches. Each successful GDELT response gets unioned into the
+// accumulator (dedup by article link), items older than 7 days are
+// pruned out, and the accumulated set is what we return to clients.
+//
+// Why an accumulator instead of just the latest fetch:
+//   • GDELT returns last-24h only. Without accumulation, items vanish
+//     from the chip as soon as they roll out of the 24h window.
+//   • Conflict / nuclear / sanctions stories often stay relevant for
+//     days; the accumulator keeps them visible.
+//   • Doubles as the failure fallback — if a fresh fetch fails, we
+//     serve the accumulator (which may already contain hundreds of
+//     items from prior successful fetches).
+//
+// Per-item TTL is enforced at write-time by filtering on `publishedAt`
+// rather than a Redis TTL on each entry. The Redis key itself has a
+// 7-day TTL as a backstop — if writes stop entirely, the accumulator
+// expires cleanly. Cap protects against runaway growth.
+const ACCUMULATOR_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ACCUMULATOR_TTL_S = 7 * 24 * 60 * 60;
+const ACCUMULATOR_MAX_ITEMS = 500;
+const ACCUMULATOR_KEY_SUFFIX = ':accumulator';
 
 const TOP_LEVEL_TTL_S = 30;             // 30 s — same urgency tier as live-news
-const FETCH_TIMEOUT_MS = 10_000;
+// Bumped 10s → 20s after observing real-world GDELT response times of
+// 7–30 s under their fair-use throttling window. 10 s killed too many
+// fetches mid-flight, which then negative-cached for 5 min and starved
+// the chips. Vercel edge functions tolerate 25 s on the Pro plan and
+// 10 s on Hobby — 20 s is safely below either ceiling for most cases.
+const FETCH_TIMEOUT_MS = 20_000;
 const GDELT_BASE = 'https://api.gdeltproject.org/api/v2/doc/doc';
 
 interface GdeltArticle {
@@ -172,13 +192,22 @@ async function fetchTopicArticles(topic: IntelTopic): Promise<IntelNewsTopicBuck
   const url = new URL(GDELT_BASE);
   url.searchParams.set('query', topic.query);
   url.searchParams.set('mode', 'artlist');
-  // Bumped 20 → 50 (Task 4c+). Within GDELT's 250 hard cap and gives
-  // each topic chip enough depth that scrolling feels meaningful.
-  // After title-dedup the visible item count is typically ~30–40.
-  url.searchParams.set('maxrecords', '50');
+  // Reduced 50 → 30 after observing that GDELT response times scale
+  // with payload size. 50 was returning healthy data but taking 7–30 s
+  // per call, which blew our fetch timeout budget on slow days. 30 is
+  // still post-dedup-comfortable (~20–25 unique items per topic) and
+  // GDELT typically returns this size in 3–6 s.
+  url.searchParams.set('maxrecords', '30');
   url.searchParams.set('format', 'json');
   url.searchParams.set('sort', 'date');
   url.searchParams.set('timespan', '24h');
+
+  // Log request start so we can correlate with the response line below.
+  const startMs = Date.now();
+  console.log(
+    `[intel-news] ${topic.id} GDELT GET maxrecords=30 timespan=24h ` +
+    `timeout=${FETCH_TIMEOUT_MS}ms queryLen=${topic.query.length}`,
+  );
 
   let resp: Response;
   try {
@@ -190,24 +219,66 @@ async function fetchTopicArticles(topic: IntelTopic): Promise<IntelNewsTopicBuck
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (err) {
-    console.warn(`[intel-news] ${topic.id} fetch error:`, (err as Error).message);
+    const elapsedMs = Date.now() - startMs;
+    const e = err as Error;
+    // Distinguish timeout from other network errors so logs are actionable.
+    const isTimeout = e?.name === 'TimeoutError' || /abort|timeout/i.test(e?.message ?? '');
+    const reason = isTimeout
+      ? `TIMEOUT after ${elapsedMs}ms (limit=${FETCH_TIMEOUT_MS}ms) — GDELT didn't respond in time`
+      : `NETWORK ERROR after ${elapsedMs}ms — ${e?.name ?? 'Error'}: ${e?.message ?? 'unknown'}`;
+    console.warn(`[intel-news] ${topic.id} FAIL: ${reason}`);
     return null;
   }
 
+  const elapsedMs = Date.now() - startMs;
+
   if (!resp.ok) {
-    console.warn(`[intel-news] ${topic.id} HTTP ${resp.status}`);
+    // Read up to 200 chars of the body so we can see GDELT's exact error
+    // message (HTML page, JSON error, plain-text "rate limit exceeded",
+    // etc. — they vary by failure mode).
+    let bodyPreview = '';
+    try {
+      bodyPreview = (await resp.text()).slice(0, 200).replace(/\s+/g, ' ').trim();
+    } catch { /* ignore body-read failures */ }
+    const kind =
+      resp.status === 429 ? 'RATE LIMITED (429)'
+      : resp.status === 503 ? 'SERVICE UNAVAILABLE (503)'
+      : resp.status >= 500 ? `UPSTREAM ERROR (${resp.status})`
+      : `CLIENT ERROR (${resp.status})`;
+    console.warn(
+      `[intel-news] ${topic.id} FAIL: ${kind} after ${elapsedMs}ms · ` +
+      `body="${bodyPreview || '<empty>'}"`,
+    );
     return null;
   }
 
   let data: GdeltResponse;
+  let bodySize = 0;
   try {
-    data = (await resp.json()) as GdeltResponse;
-  } catch {
+    const bodyText = await resp.text();
+    bodySize = bodyText.length;
+    data = JSON.parse(bodyText) as GdeltResponse;
+  } catch (err) {
+    console.warn(
+      `[intel-news] ${topic.id} FAIL: PARSE ERROR after ${elapsedMs}ms · ` +
+      `bodySize=${bodySize} · ${(err as Error).message}`,
+    );
     return null;
   }
 
   const articles = Array.isArray(data?.articles) ? data.articles : [];
-  if (articles.length === 0) return null;
+  if (articles.length === 0) {
+    console.warn(
+      `[intel-news] ${topic.id} EMPTY: GDELT returned 0 articles after ${elapsedMs}ms · ` +
+      `bodySize=${bodySize}B (typical for narrow queries on quiet days)`,
+    );
+    return null;
+  }
+
+  console.log(
+    `[intel-news] ${topic.id} OK: ${articles.length} articles in ${elapsedMs}ms · ` +
+    `bodySize=${(bodySize / 1024).toFixed(1)}KB`,
+  );
 
   // First pass: build raw item list straight from the GDELT response.
   // Dedup happens in the second pass.
@@ -331,6 +402,71 @@ async function fetchTopicArticles(topic: IntelTopic): Promise<IntelNewsTopicBuck
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-topic accumulator
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Merge a fresh fetch into the rolling 7-day accumulator for a topic.
+ *
+ *   1. Read existing accumulator from Redis.
+ *   2. Union with the fresh items, deduplicating by article `link` —
+ *      newer wins on collisions (so updated tone/source/etc. propagate).
+ *   3. Filter to items published within the retention window.
+ *   4. Sort newest-first, cap at MAX to bound storage + payload size.
+ *   5. Write back with a 7-day Redis TTL as a backstop.
+ *
+ * Returns the merged set so the caller can use it as the response payload
+ * for this fetch (rather than just returning the fresh items).
+ */
+async function mergeIntoAccumulator(
+  topicId: string,
+  freshItems: IntelNewsItem[],
+): Promise<IntelNewsItem[]> {
+  const key = `intel-news:topic:v5:${topicId}${ACCUMULATOR_KEY_SUFFIX}`;
+  const cutoff = Date.now() - ACCUMULATOR_RETENTION_MS;
+
+  const existing = (await getCachedJson(key)) as IntelNewsItem[] | null;
+  const byLink = new Map<string, IntelNewsItem>();
+
+  // Existing items first; fresh items overwrite on link collision so
+  // a refreshed article (potentially with updated metadata) wins.
+  if (Array.isArray(existing)) {
+    for (const item of existing) {
+      if (item && typeof item.link === 'string' && item.link.length > 0) {
+        byLink.set(item.link, item);
+      }
+    }
+  }
+  for (const item of freshItems) {
+    if (item && typeof item.link === 'string' && item.link.length > 0) {
+      byLink.set(item.link, item);
+    }
+  }
+
+  const merged = [...byLink.values()]
+    .filter((it) => typeof it.publishedAt === 'number' && it.publishedAt >= cutoff)
+    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .slice(0, ACCUMULATOR_MAX_ITEMS);
+
+  // Don't await — the merged set is what we return; the write can land
+  // after the response. .catch keeps the unhandled-rejection logger quiet.
+  setCachedJson(key, merged, ACCUMULATOR_TTL_S).catch(() => {});
+
+  return merged;
+}
+
+/** Read the accumulator without merging. Used as the failure fallback. */
+async function readAccumulator(topicId: string): Promise<IntelNewsItem[]> {
+  const key = `intel-news:topic:v5:${topicId}${ACCUMULATOR_KEY_SUFFIX}`;
+  const cached = (await getCachedJson(key)) as IntelNewsItem[] | null;
+  if (!Array.isArray(cached)) return [];
+  // Filter on read too — protects against accumulator entries that
+  // pre-date a retention-window change without forcing a key bump.
+  const cutoff = Date.now() - ACCUMULATOR_RETENTION_MS;
+  return cached.filter((it) => typeof it?.publishedAt === 'number' && it.publishedAt >= cutoff);
+}
+
 /**
  * Public entrypoint. Always returns a 200 — empty buckets on full upstream
  * failure rather than failing the request, so the iOS feed never goes blank.
@@ -340,11 +476,10 @@ export async function listIntelNews(): Promise<ListIntelNewsResponse> {
   // safely on the iOS side (sources is optional) but bumping the key
   // forces an immediate rebuild after deploy so users see the dedup
   // benefit without waiting for the 30 min TTL to expire.
-  // v3 — bumped to clear out the NEG_SENTINEL entries left over from
-  // the GDELT-slow incident. The new digest path also reads stale-cache
-  // fallbacks per-topic, so users no longer see empty chips when GDELT
-  // is throttled or slow.
-  const topLevelKey = 'intel-news:digest:v3';
+  // v5 — bumped alongside the per-topic accumulator redesign. Clears
+  // out v4 stale-snapshot keys (different schema) and the v4 negative
+  // cache entries from the slow-GDELT incident.
+  const topLevelKey = 'intel-news:digest:v5';
 
   // Top-level cache aggregates per-topic results. Per-topic caches let us
   // partially refresh — if 5 topics are fresh and 1 is stale, only 1 GDELT
@@ -355,17 +490,18 @@ export async function listIntelNews(): Promise<ListIntelNewsResponse> {
     async () => {
       // Fetch each topic with cachedFetchJson (live cache, ~15 min TTL).
       //
-      // Two safety nets layered around the fetch:
+      // Layers around the fetch:
       //   1. Stagger delay (250 ms × index) — spreads cold-start fan-out
       //      to ~2.5 s so GDELT's rate-limiter doesn't 429 the burst.
-      //   2. Stale cache fallback — when fresh fetch returns null (slow
-      //      GDELT, timeout, 429, parse error), we read from the long-
-      //      lived stale key and serve THAT rather than letting the chip
-      //      go empty. On every successful fetch we mirror the result
-      //      into the stale key so it stays warm.
+      //   2. Accumulator merge on success — fresh items get unioned into
+      //      a 7-day rolling store (deduplicated by article link). The
+      //      accumulator is what we return, not just the fresh fetch.
+      //   3. Accumulator fallback on failure — when GDELT is slow / 429s /
+      //      times out, we serve the accumulator unchanged. The chip
+      //      stays populated with up to 7 days of recent stories instead
+      //      of going empty.
       const promises = INTEL_TOPICS.map(async (topic, index) => {
-        const perTopicKey = `intel-news:topic:v3:${topic.id}`;
-        const stalePerTopicKey = `${perTopicKey}${STALE_KEY_SUFFIX}`;
+        const perTopicKey = `intel-news:topic:v5:${topic.id}`;
 
         const result = await cachedFetchJson<IntelNewsTopicBucket>(
           perTopicKey,
@@ -374,38 +510,60 @@ export async function listIntelNews(): Promise<ListIntelNewsResponse> {
             if (index > 0) {
               await new Promise((r) => setTimeout(r, index * STAGGER_PER_TOPIC_MS));
             }
+
             const fresh = await fetchTopicArticles(topic);
-            // On success, mirror to the stale cache so future failures
-            // can fall back to this snapshot.
             if (fresh) {
-              setCachedJson(stalePerTopicKey, fresh, STALE_TTL_S).catch(() => {});
+              // Successful fetch — merge into accumulator and return
+              // the full merged set as this fetch's payload.
+              const merged = await mergeIntoAccumulator(topic.id, fresh.items);
+              if (fresh.items.length !== merged.length) {
+                console.log(
+                  `[intel-news] ${topic.id}: ${fresh.items.length} fresh + ` +
+                  `${merged.length - fresh.items.length} from accumulator = ${merged.length} merged`,
+                );
+              }
+              return { ...fresh, items: merged };
             }
-            return fresh;
+
+            // Fresh fetch failed — serve the accumulator if it has anything.
+            const accumulated = await readAccumulator(topic.id);
+            if (accumulated.length > 0) {
+              console.log(`[intel-news] ${topic.id}: fresh failed, serving accumulator (${accumulated.length} items)`);
+              return {
+                id: topic.id,
+                label: topic.label,
+                items: accumulated,
+                fetchedAt: Date.now(),
+                stale: true,
+              };
+            }
+            return null; // truly nothing — let cachedFetchJson NEG-cache
           },
           PER_TOPIC_NEG_TTL_S,
         );
 
-        if (result) return result;
-
-        // Live cache miss returned null. Try the stale cache before giving
-        // up — much better to show users yesterday's stories than nothing.
-        const stale = await getCachedJson(stalePerTopicKey) as IntelNewsTopicBucket | null;
-        if (stale && Array.isArray(stale.items) && stale.items.length > 0) {
-          console.log(`[intel-news] ${topic.id}: serving stale (${stale.items.length} items)`);
-          return { ...stale, stale: true };
-        }
-        return null;
+        return result;
       });
 
+      const fanOutStartMs = Date.now();
       const results = await Promise.all(promises);
+      const fanOutMs = Date.now() - fanOutStartMs;
 
-      // Filter nulls (topics where GDELT failed AND nothing was cached).
+      // Filter nulls (topics where GDELT failed AND no accumulator existed).
       // Note: the iOS client tolerates missing topics — empty chip = "no
       // recent stories" rather than an error state.
       const topics = results.filter((b): b is IntelNewsTopicBucket => b !== null);
 
       const totalArticles = topics.reduce((s, t) => s + t.items.length, 0);
-      console.log(`[intel-news] digest: ${topics.length}/${INTEL_TOPICS.length} topics, ${totalArticles} articles`);
+      const staleCount = topics.filter((t) => t.stale === true).length;
+      const freshCount = topics.length - staleCount;
+      const failedCount = INTEL_TOPICS.length - topics.length;
+
+      console.log(
+        `[intel-news] digest: ${topics.length}/${INTEL_TOPICS.length} topics in ${fanOutMs}ms · ` +
+        `${freshCount} fresh, ${staleCount} accumulator-served, ${failedCount} failed · ` +
+        `${totalArticles} total articles`,
+      );
 
       return {
         topics,
