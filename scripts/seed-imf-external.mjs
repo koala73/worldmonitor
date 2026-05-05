@@ -17,6 +17,11 @@
 // Per WorldMonitor #3027 — feeds Trade Flows card.
 
 import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+// Sprint 4 IMF/WEO cohort — content-age helper. NOT the WB cohort helper:
+// IMF stores forecast YEAR (not observation year), so end-of-(year-1)
+// semantics are required to avoid future-dated rejection of fresh
+// current-year forecasts. See helper module header for derivation.
+import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN } from './_imf-weo-content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -127,6 +132,14 @@ if (process.argv[1]?.endsWith('seed-imf-external.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 100800,
+
+    // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──
+    // 18-month budget = 16mo steady-state ceiling (just before next April
+    // WEO release of year+1) + 2mo slack. Trips when a full WEO year is
+    // missed (both April AND October vintages). Same budget across all 4
+    // IMF seeders — they share the WEO release cadence.
+    contentMeta: imfWeoContentMeta,
+    maxContentAgeMin: IMF_WEO_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
