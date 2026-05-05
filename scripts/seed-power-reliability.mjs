@@ -101,16 +101,17 @@ if (process.argv[1]?.endsWith('seed-power-reliability.mjs')) {
 
     // ── Content-age contract (Sprint 4 of the 2026-05-04 health-readiness plan) ──
     //
-    // 24-month budget: covers WB's 12-18 month publication lag for year-N
-    // data + slack for the year-N+1 publication cycle. STALE_CONTENT trips
-    // only on catastrophic upstream stalls (>2y since any country's latest
-    // year). See helper module's JSDoc for the math + the verification
-    // against live WB data on 2026-05-05.
+    // 36-month budget = 30mo steady-state ceiling + 6mo slack.
     //
-    // Plan §477-485 originally proposed 13 months but that is structurally
-    // wrong for WB indicators — fresh-arrival age is already 12-18 months
-    // because publication is 12-18 months after end-of-year. Sprint 3b's
-    // P1 (PR #3599) was the same shape of trap.
+    // The 30mo ceiling comes from the WB publication-lag-plus-cycle math:
+    // year N+1 can normally publish as late as end-of-(N+1) + 18mo =
+    // end-of-N + 30mo, so a cache holding year N can legitimately reach
+    // 30mo of age before year N+1 arrives. Anything tighter than 30mo
+    // false-positives mid-cycle. See helper module's JSDoc for the full
+    // derivation + the verification against live WB data on 2026-05-05.
+    //
+    // STALE_CONTENT trips only on multi-cycle silent upstream stalls,
+    // never during normal "year N+1 ran late" cycles.
     //
     // powerReliabilityContentMeta scans data.countries per-country years
     // and returns end-of-(max year) UTC ms as newestItemAt.

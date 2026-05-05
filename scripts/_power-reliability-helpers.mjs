@@ -77,31 +77,45 @@ export function powerReliabilityContentMeta(data, nowMs = Date.now()) {
 }
 
 /**
- * Sprint 4 pilot threshold (24 months / 730 days, expressed in minutes).
+ * Sprint 4 pilot threshold (36 thirty-day months ≈ 1080 days ≈ 3 years).
  *
- * Why 24 months — verified against live WB data 2026-05-05:
+ * Verified against live WB data 2026-05-05:
  *
  *   curl https://api.worldbank.org/v2/country/USA;CHN;...;KWT/indicator/EG.ELC.LOSS.ZS
  *
- * On that date G7 max year was 2024 (end-of-2024 = Dec 31 2024 = ~17
- * months before the seed run). Plan §477-485 originally proposed 13
- * months but that's structurally wrong: WB year-N data lands in cache
- * 12-18 months after end-of-N (publication lag varies), so a 13-month
- * budget would have tripped STALE_CONTENT immediately on every successful
- * fresh-arrival — same trap Greptile P1 caught on Sprint 3b PR #3599.
+ * G7 max year on that date was 2024. End-of-2024 = Dec 31 2024 ≈ 17
+ * months before the seed run.
  *
- * Steady-state model:
- *   - Year N data lands at age = 12-18 months (publication lag)
- *   - Year (N+1) data lands ~12 months later, resetting the clock
- *   - Worst case during steady state: age = ~30 months (just before next
- *     year drops AND publication lag is at upper end)
- *   - 24-month budget catches catastrophic stalls (>2y silent upstream)
- *     without false-positive paging during normal "between publications"
+ * Plan §477-485 originally proposed 13 months but that's structurally
+ * wrong for two compounding reasons that BOTH had to be addressed:
+ *
+ *   1. Fresh-arrival lag — WB year-N data lands in cache 12-18 months
+ *      after end-of-N. A budget below ~18mo trips STALE_CONTENT
+ *      immediately on every successful fresh-arrival (the Sprint 3b
+ *      PR #3599 P1 trap, in its annual-data variant).
+ *
+ *   2. Steady-state ceiling — once year N is in cache, it stays there
+ *      until year N+1 publishes. Year N+1 can publish as late as
+ *      end-of-(N+1) + 18mo = end-of-N + 12 + 18 = 30 months past
+ *      end-of-N. So under normal upstream cadence, cache age can
+ *      reach 30 months between publications WITHOUT any real stall.
+ *      A 24-month budget would page mid-cycle (caught on PR #3602
+ *      review round 2 by Greptile P1).
+ *
+ * 36-month budget = 30mo steady-state ceiling + 6mo slack. STALE_CONTENT
+ * trips only on multi-cycle silent upstream stalls, never during normal
+ * "year N+1 ran late" cycles.
  *
  * If a future migration uses an indicator with worse publication lag
- * (some WB indicators like FI.RES.TOTL.MO publish on Q+2 quarterly so
- * are fresher; others lag 24+ months), bump per-indicator. Don't reuse
- * this constant blindly across the 4-indicator Sprint 4 cohort —
- * audit each one's actual fresh-arrival age.
+ * (some WB indicators publish quarterly with Q+2 lag so are fresher;
+ * others lag 24+ months), bump per-indicator. Don't reuse this constant
+ * blindly across the 4-indicator Sprint 4 cohort — audit each one's
+ * actual fresh-arrival age via the same WB-API curl recipe and apply
+ * the publication-lag-plus-cycle formula:
+ *
+ *   budget_months >= max_publication_lag + cycle_length + slack
+ *
+ * (For annual indicators: publication_lag ~= 12-18 months, cycle = 12,
+ *  steady-state max age = publication_lag + cycle = 30, budget = 36.)
  */
-export const POWER_RELIABILITY_MAX_CONTENT_AGE_MIN = 24 * 30 * 24 * 60;
+export const POWER_RELIABILITY_MAX_CONTENT_AGE_MIN = 36 * 30 * 24 * 60;

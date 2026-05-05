@@ -20,8 +20,12 @@ import {
 
 const FIXED_NOW = Date.UTC(2026, 4, 5, 12);     // 2026-05-05T12:00 UTC — matches the live-WB-data verification date in the helper JSDoc.
 
-test('POWER_RELIABILITY_MAX_CONTENT_AGE_MIN is 24 months', () => {
-  assert.equal(POWER_RELIABILITY_MAX_CONTENT_AGE_MIN, 24 * 30 * 24 * 60);
+test('POWER_RELIABILITY_MAX_CONTENT_AGE_MIN is 36 thirty-day months', () => {
+  // 36mo = 30mo steady-state ceiling (max publication_lag + cycle_length
+  // for annual WB data) + 6mo slack. See helper module JSDoc for the
+  // full derivation. Initial PR shipped 24mo, which Greptile P1 caught
+  // as "false-positives mid-cycle when next-year data publishes late."
+  assert.equal(POWER_RELIABILITY_MAX_CONTENT_AGE_MIN, 36 * 30 * 24 * 60);
 });
 
 // ── yearToEndOfYearMs ────────────────────────────────────────────────────
@@ -126,18 +130,33 @@ test('fresh-arrival regression guard: max year 2024 in May 2026 (~17mo) does NOT
   );
 });
 
-test('boundary: max year 2023 in May 2026 (~29mo) DOES trip — by then 2024 data should have arrived', () => {
+test('steady-state regression guard: max year 2023 in May 2026 (~29mo) does NOT trip — within steady-state ceiling', () => {
   // Steady-state late-cycle: cache holds 2023 data, FIXED_NOW = May 2026.
-  // 2023-12-31 → 2026-05-05 ≈ 891 days ≈ 29.7 months — past 24-month budget.
-  // This is the correct STALE_CONTENT signal: by May 2026, 2024 data SHOULD
-  // have arrived (verified via live WB API on the same date), so a cache
-  // still holding only 2023 data is a real upstream regression worth paging.
+  // 2023-12-31 → 2026-05-05 ≈ 891 days ≈ 29.7 months. This is JUST under
+  // the 30mo steady-state ceiling — a normal "2024 data is publishing
+  // late" cycle. A budget < 30mo would page on this (Greptile P1 trap on
+  // initial 24mo); 36mo correctly tolerates it.
   const data = { countries: { US: { value: 5.4, year: 2023 } } };
   const cm = powerReliabilityContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
+    ageMin < POWER_RELIABILITY_MAX_CONTENT_AGE_MIN,
+    `${Math.round(ageMin / 60 / 24 / 30)}mo < 36mo budget — within steady-state ceiling, no false-positive page`,
+  );
+});
+
+test('boundary: max year 2022 in May 2026 (~40mo) DOES trip — past steady-state ceiling = real stall', () => {
+  // 2022-12-31 → 2026-05-05 ≈ 1221 days ≈ 40.7 months — past both the
+  // 30mo steady-state ceiling AND the 36mo budget. By May 2026, both 2023
+  // and 2024 data should have arrived under any realistic publication
+  // schedule; a cache stuck on 2022 indicates a multi-cycle upstream stall
+  // worth paging on-call.
+  const data = { countries: { US: { value: 5.4, year: 2022 } } };
+  const cm = powerReliabilityContentMeta(data, FIXED_NOW);
+  const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
+  assert.ok(
     ageMin > POWER_RELIABILITY_MAX_CONTENT_AGE_MIN,
-    `${Math.round(ageMin / 60 / 24 / 30)}mo > 24mo budget — STALE_CONTENT fires (correct: 2024 should have landed by May 2026)`,
+    `${Math.round(ageMin / 60 / 24 / 30)}mo > 36mo budget — STALE_CONTENT correctly fires on multi-cycle stall`,
   );
 });
 
