@@ -119,6 +119,10 @@ export async function listUsHeadlines(): Promise<ListUsHeadlinesResponse> {
   // backed by `live-news:loc:v1` and `live-news:para:v4`. New digests
   // pull from `live-news:enrichment:v1` (single namespace). Bumping
   // forces immediate rebuild so iOS doesn't see mixed-shape responses.
+  // Kept at v6 — bumping would invalidate the production digest cache and
+  // force a rebuild burst that degrades old iOS clients. The new `isConflict`
+  // field rides through on individual item enrichments as they refresh
+  // naturally; the digest itself just relays whatever's on each item.
   const cacheKey = 'live-news:us:v6';
 
   try {

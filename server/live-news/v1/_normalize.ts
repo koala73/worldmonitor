@@ -45,6 +45,16 @@ export interface LiveNewsItem {
    * on the wire so any future tooling can re-summarize from the same source.
    */
   rawDescription: string | null;
+  /**
+   * True when the LLM enrichment classified this story as an active
+   * armed-conflict event. iOS uses this to:
+   *   1. Surface the item under the CONFLICT chip in the feed.
+   *   2. Add it to the conflict-pin layer on the map (lat/lng come
+   *      from the same enrichment call).
+   * Null while enrichment hasn't run yet — iOS treats null/false the
+   * same way (item doesn't appear under CONFLICT until classified).
+   */
+  isConflict: boolean | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -379,6 +389,7 @@ export async function buildBaseDigest(signal: AbortSignal): Promise<{
         country: null,
         summary: null,
         rawDescription: cappedDescription || null,
+        isConflict: null,            // populated by attachCachedEnrichment
       };
     }),
   );

@@ -28,6 +28,12 @@ import type { LiveNewsItem } from './_normalize';
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Cache prefix kept at v1 deliberately — bumping it would invalidate every
+// cached enrichment in production and force a re-enrichment storm that
+// degrades the old iOS app for ~1-2 min after deploy. The new `isConflict`
+// field is additive: old cache entries decode it as `false` (see attach
+// step below), new fresh enrichments include it. Items naturally migrate
+// to having the flag as they're re-enriched on their normal TTL cycle.
 const CACHE_PREFIX = 'live-news:enrichment:v1:';
 const ENRICHMENT_TTL_S = 30 * 24 * 60 * 60; // 30 days
 const ENRICH_BATCH_SIZE = 8;
@@ -47,6 +53,15 @@ interface CombinedEnrichment {
   locationName: string;
   country: string;       // ISO 3166-1 alpha-2 (uppercase)
   confidence: number;    // 0..1
+  /**
+   * True when the story describes an active armed-conflict event —
+   * airstrike, ground combat, missile/drone strike, ceasefire, casualty
+   * report, etc. Used by iOS to:
+   *   1. Surface the item under the CONFLICT chip in the feed.
+   *   2. Pin it on the map's conflict layer (lat/lng come from the
+   *      same enrichment call, so no separate location step is needed).
+   */
+  isConflict: boolean;
 }
 
 interface LlmResultEntry {
@@ -57,6 +72,7 @@ interface LlmResultEntry {
   locationName?: string | null;
   country?: string | null;
   confidence?: number | string | null;
+  isConflict?: boolean | string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -158,14 +174,26 @@ function validateEntry(entry: LlmResultEntry): CombinedEnrichment | null {
   const confRaw = toFiniteNumber(entry.confidence);
   const confidence = confRaw !== null ? Math.min(1, Math.max(0, confRaw)) : 0.5;
 
-  return { summary, latitude: lat, longitude: lng, locationName, country, confidence };
+  // isConflict — accept boolean, plus a few common stringly-typed forms
+  // that LLMs sometimes emit instead of strict JSON booleans.
+  const isConflict = (() => {
+    const raw = entry.isConflict;
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw === 'string') {
+      const s = raw.trim().toLowerCase();
+      return s === 'true' || s === 'yes' || s === '1';
+    }
+    return false; // missing or null → default to non-conflict
+  })();
+
+  return { summary, latitude: lat, longitude: lng, locationName, country, confidence, isConflict };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prompt
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a news enrichment service. For each news item you receive, return BOTH a summary AND a location in a single JSON response.
+const SYSTEM_PROMPT = `You are a news enrichment service. For each news item you receive, return a summary, a location, AND a conflict-classification flag in a single JSON response.
 
 # 1. Summary (the "summary" field)
 
@@ -204,6 +232,28 @@ Rules:
 - For European Union stories with no specific member state: use "EU".
 - Confidence: 0.9+ when a specific city is named, 0.6–0.8 for inferred city, 0.3–0.5 for country-level guess, 0.1–0.3 for very speculative.
 
+# 3. Conflict classification (the "isConflict" field)
+
+Set "isConflict": true when the story describes an active armed-conflict event happening on the ground. Use a strict definition — the goal is to keep the conflict feed signal-heavy.
+
+Conflict TRUE examples:
+- Airstrike, missile strike, drone strike, artillery shelling
+- Ground combat, firefight, ambush, raid, infantry assault
+- Military offensive, troop movements into hostile territory
+- Casualty reports, bombing aftermath, hostages, war crimes
+- Ceasefire announcements, prisoner exchanges (active conflict context)
+- Civilian deaths from active fighting
+
+Conflict FALSE examples:
+- Diplomatic statements with no kinetic event ("Iran condemns…", "Russia warns…")
+- Political analysis, op-eds, retrospectives
+- Defense procurement, military exercises (no actual combat), force posture
+- Legal proceedings (war crimes trials are FALSE; war crimes happening today are TRUE)
+- Civil unrest / protests — those are not armed conflict
+- Cyber operations, sanctions, intelligence — those have their own categories
+
+When in doubt, prefer FALSE. We'd rather miss a borderline item than flood the conflict feed with diplomatic chatter.
+
 # Output format
 
 A JSON object with a "results" array, one entry per input id, exactly:
@@ -217,7 +267,8 @@ A JSON object with a "results" array, one entry per input id, exactly:
       "lng": <number>,
       "locationName": "<human-readable, e.g. 'Kyiv, Ukraine'>",
       "country": "<2-letter alpha-2 code>",
-      "confidence": <number 0..1>
+      "confidence": <number 0..1>,
+      "isConflict": <boolean — true only when the story describes an active armed-conflict event>
     }
   ]
 }
@@ -301,6 +352,10 @@ export async function attachCachedEnrichment(items: LiveNewsItem[]): Promise<Liv
       item.locationName = e.locationName;
       item.country = e.country;
       item.confidence = e.confidence;
+      // isConflict is new in cache v2 — defaults to false if missing,
+      // not null, because cached entries that pre-date the field came
+      // from a prompt that didn't classify (so no info, treat as non-conflict).
+      item.isConflict = typeof e.isConflict === 'boolean' ? e.isConflict : false;
       attached++;
     }
   }

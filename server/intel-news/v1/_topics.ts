@@ -30,6 +30,21 @@ export interface IntelTopic {
 
 export const INTEL_TOPICS: IntelTopic[] = [
   {
+    id: 'conflict',
+    label: 'CONFLICT',
+    // Active armed-conflict events. Strict definition matching the
+    // live-news LLM's `isConflict` classifier — kinetic events on the
+    // ground, not diplomacy or commentary. Pinned first so it leads
+    // the topic-fetch order on every refresh.
+    query:
+      '("armed conflict" OR airstrike OR "air strike" OR "drone strike" OR ' +
+      '"missile strike" OR "missile attack" OR "rocket attack" OR shelling OR ' +
+      'artillery OR "ground assault" OR firefight OR "armed clash" OR ' +
+      'ceasefire OR "civilian casualties" OR "war crime" OR insurgent OR ' +
+      'militant OR Hezbollah OR Hamas OR Houthi OR offensive OR "military strike") ' +
+      'sourcelang:eng',
+  },
+  {
     id: 'cyber',
     label: 'CYBER',
     query:

@@ -104,6 +104,9 @@ async function buildDigestPayload(): Promise<ListUsHeadlinesV2Response> {
 export async function listUsHeadlinesV2(): Promise<ListUsHeadlinesV2Response> {
   // Distinct cache key — v1 and v2 must not contaminate each other. Bump the
   // suffix when the v2 wire shape changes (just like v1 does with `live-news:us:v6`).
+  // Kept at v2-sources:v1 — same rationale as v1 digest. The `isConflict`
+  // field rides through on each item's enrichment as it refreshes naturally;
+  // the digest cache layer doesn't need a forced rebuild.
   const cacheKey = 'live-news:us:v2-sources:v1';
 
   try {

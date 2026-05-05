@@ -20,6 +20,15 @@ jobs:
           node-version: '20'
 
       # --- Geopolitical & conflict ---
+      # NOTE on iran-events: the input file (scripts/data/iran-events-latest.json)
+      # is a stale scrape of a competitor (iran.liveuamap.com), fake-freshened
+      # via parseRelativeTime() on every cron run. New iOS builds no longer
+      # consume this data — the Conflict feed/map there comes from the
+      # live-news LLM `isConflict` flag and the GDELT `conflict` topic.
+      # We keep this seeder running so OLDER App Store / TestFlight builds
+      # (which still read bootstrap.iranEvents) don't suddenly go empty.
+      # Plan: sunset this step once telemetry shows old-build adoption has
+      # dropped below the threshold we're comfortable with.
       - name: Seed Iran events
         run: node scripts/seed-iran-events.mjs
         env:
