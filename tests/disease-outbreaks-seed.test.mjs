@@ -82,7 +82,7 @@ test('TGH record always non-synthetic (line-198 filter rejects undated items ear
 // regardless of loaded-CI scheduler timing — addresses the P2 reviewer
 // finding about timing sensitivity around the 1h boundary.
 
-const FIXED_NOW = 1700000000000;     // 2025-11-14T22:13:20.000Z — stable test "now"
+const FIXED_NOW = 1700000000000;     // 2023-11-14T22:13:20.000Z — stable test "now"
 
 test('contentMeta returns null when ALL items are synthetic', () => {
   const data = {
