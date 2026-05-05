@@ -13,6 +13,10 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+// Pure contentMeta + year parser live in their own module so tests can
+// import the real code (no replicas, no drift). Per-country annual shape:
+// each country reports its own year; newestItemAt = max year across all.
+import { powerReliabilityContentMeta, POWER_RELIABILITY_MAX_CONTENT_AGE_MIN } from './_power-reliability-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -94,6 +98,24 @@ if (process.argv[1]?.endsWith('seed-power-reliability.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 8 * 24 * 60,
+
+    // ── Content-age contract (Sprint 4 of the 2026-05-04 health-readiness plan) ──
+    //
+    // 24-month budget: covers WB's 12-18 month publication lag for year-N
+    // data + slack for the year-N+1 publication cycle. STALE_CONTENT trips
+    // only on catastrophic upstream stalls (>2y since any country's latest
+    // year). See helper module's JSDoc for the math + the verification
+    // against live WB data on 2026-05-05.
+    //
+    // Plan §477-485 originally proposed 13 months but that is structurally
+    // wrong for WB indicators — fresh-arrival age is already 12-18 months
+    // because publication is 12-18 months after end-of-year. Sprint 3b's
+    // P1 (PR #3599) was the same shape of trap.
+    //
+    // powerReliabilityContentMeta scans data.countries per-country years
+    // and returns end-of-(max year) UTC ms as newestItemAt.
+    contentMeta: powerReliabilityContentMeta,
+    maxContentAgeMin: POWER_RELIABILITY_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
