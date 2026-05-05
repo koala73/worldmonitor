@@ -52,6 +52,16 @@ export function extractConvexErrorKind(err, msg) {
   // pattern (`transport_timeout` vs `convex_service_unavailable`).
   const errName = /** @type {{ name?: string } | null | undefined} */ (err)?.name;
   if (errName === 'TimeoutError' || errName === 'AbortError') return 'SERVICE_UNAVAILABLE';
+  // Convex platform-level 401: when Clerk's OIDC token fails Convex's own
+  // verification (token expired between our edge's `validateBearerToken`
+  // and Convex's check, or Clerk JWKS rotated), the SDK surfaces a JSON
+  // body `{"code":"Unauthenticated","message":"Could not verify OIDC token
+  // claim..."}` — case-mismatched against the structured-data
+  // `UNAUTHENTICATED` kind, so the substring check below would miss it.
+  // Map to the same UNAUTHENTICATED kind as the structured-data path so
+  // the edge handler maps it to 401 and tags it as `convex_auth_drift`
+  // (WORLDMONITOR-PG).
+  if (msg.includes('"code":"Unauthenticated"')) return 'UNAUTHENTICATED';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';

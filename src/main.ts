@@ -202,7 +202,7 @@ Sentry.init({
     /Can't find variable: caches/,
     /crypto\.randomUUID is not a function/,
     /ucapi is not defined/,
-    /Identifier '(?:script|reportPage|element|Shop)' has already been declared/,
+    /Identifier '(?:script|reportPage|element|Shop|change_ua)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users)
     /getAttribute is not a function.*getAttribute\("role"\)/,
     /SCDynimacBridge/,
     /errTimes is not defined/,

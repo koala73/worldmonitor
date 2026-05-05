@@ -66,6 +66,42 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
   });
 
+  describe('Convex platform 401 — Unauthenticated JSON body (OIDC token verification failure)', () => {
+    it('detects UNAUTHENTICATED from the {"code":"Unauthenticated"} JSON shape', () => {
+      // WORLDMONITOR-PG: when Clerk's OIDC token fails Convex's own
+      // verification (token expired between our edge's
+      // `validateBearerToken` and Convex's check, or Clerk JWKS rotated),
+      // the SDK surfaces a JSON body
+      //   `{"code":"Unauthenticated","message":"Could not verify OIDC token claim..."}`
+      // The mixed-case `"Unauthenticated"` doesn't match the uppercase
+      // legacy substring check, so without the JSON-shape detector this
+      // fell into the generic 500 bucket. Map to UNAUTHENTICATED so the
+      // edge handler returns 401 and tags as `convex_auth_drift`.
+      const err = new Error('{"code":"Unauthenticated","message":"Could not verify OIDC token claim. Check that the token signature is valid and the token hasn\'t expired."}');
+      assert.equal(extractConvexErrorKind(err, err.message), 'UNAUTHENTICATED');
+    });
+
+    it('detects UNAUTHENTICATED even when the JSON has additional fields', () => {
+      const err = new Error('{"code":"Unauthenticated","message":"Token expired","reason":"jwks_rotation"}');
+      assert.equal(extractConvexErrorKind(err, err.message), 'UNAUTHENTICATED');
+    });
+
+    it('does NOT match the loose phrase "unauthenticated" without the JSON code field', () => {
+      // Defensive: the detector keys off the exact JSON-shape `"code":"Unauthenticated"`,
+      // not the prose. Prevents matching some unrelated upstream that happens to
+      // include the lowercase word in a free-form error message.
+      const err = new Error('Network error: user is unauthenticated, please retry');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('structured-data path still wins over JSON-shape Unauthenticated (forward-compat)', () => {
+      const err = Object.assign(new Error('{"code":"Unauthenticated","message":"x"}'), {
+        data: { kind: 'CONFLICT' },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
   describe('legacy substring-match fallback (string-data ConvexError that arrived without errorData)', () => {
     it('matches CONFLICT in the message', () => {
       const err = new Error('CONFLICT');

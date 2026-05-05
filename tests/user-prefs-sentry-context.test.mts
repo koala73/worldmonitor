@@ -130,6 +130,18 @@ describe('buildSentryContext — backwards-compat for non-CONFLICT callers', () 
     assert.equal(ctx.tags.error_shape, 'convex_service_unavailable');
   });
 
+  it('JSON-shape "code":"Unauthenticated" classifies as convex_auth_drift (mixed-case OIDC failure)', () => {
+    // WORLDMONITOR-PG: Convex platform-level 401 ships a JSON body
+    //   `{"code":"Unauthenticated","message":"Could not verify OIDC token claim..."}`
+    // The mixed-case `"Unauthenticated"` doesn't match the uppercase
+    // `/UNAUTHENTICATED/` regex, so prior to the fix this fell through
+    // to `error_shape: 'unknown'` and the response went 500 instead of
+    // 401. Now both shapes route to the same auth-drift bucket.
+    const err = new Error('{"code":"Unauthenticated","message":"Could not verify OIDC token claim. Check that the token signature is valid and the token hasn\'t expired."}');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'convex_auth_drift');
+  });
+
   it('messageHead still in extra (non-indexed payload, not promoted)', () => {
     const err = new Error('quite a long error message that should land in extra');
     const ctx = buildSentryContext(err, err.message, baseOpts);
