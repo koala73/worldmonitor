@@ -12,7 +12,7 @@ import {
   CLIMATE_NEWS_MAX_CONTENT_AGE_MIN,
 } from '../scripts/_climate-news-helpers.mjs';
 
-const FIXED_NOW = 1700000000000;     // 2025-11-14T22:13:20.000Z — stable test "now"
+const FIXED_NOW = 1700000000000;     // 2023-11-14T22:13:20.000Z — stable test "now"
 
 test('CLIMATE_NEWS_MAX_CONTENT_AGE_MIN is 7 days', () => {
   assert.equal(CLIMATE_NEWS_MAX_CONTENT_AGE_MIN, 7 * 24 * 60);
