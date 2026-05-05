@@ -23,41 +23,11 @@ import { INTEL_TOPICS, type IntelTopic } from './_topics';
 import { appendToArchive, type ConflictArchiveItem } from '../../conflict-archive/v1/_store';
 import { enrichGdeltConflictAsync, attachGdeltEnrichment } from './_enrich-conflict';
 
-// Per-topic cache freshness target: ~15 min, matching GDELT's own update
-// cadence. We add 0–60 s of jitter at write-time so the 9 topics' caches
-// don't all expire in the same second post-deploy and trigger a 9-parallel
-// GDELT burst (the classic 429 trigger).
-const PER_TOPIC_TTL_BASE_S = 15 * 60;
-const PER_TOPIC_TTL_JITTER_S = 60;
-function perTopicTtlSeconds(): number {
-  return PER_TOPIC_TTL_BASE_S + Math.floor(Math.random() * PER_TOPIC_TTL_JITTER_S);
-}
-
-// 15 min — when GDELT returns 429 we back off hard. Aggressive retry
-// makes the rate-limit window LONGER (GDELT's limiter ratchets up on
-// repeated knocks), and we'd rather show old cached data than zero data.
-// 15 min is comfortably past GDELT's typical 429 cool-down (~10 min),
-// so the next miss-probe usually succeeds.
-const PER_TOPIC_NEG_TTL_S = 15 * 60;
-
-// Stagger fan-out delay between topic GDELT calls.
-//
-// GDELT enforces "1 request per 5 seconds per IP" per their fair-use
-// policy (their 429 body says so verbatim). 250 ms / 1000 ms staggers
-// blasted through this and got us rate-limited. 5500 ms is safely
-// above the 5-second floor.
-//
-// Trade-off: 10 topics × 5500 ms = 55 s of cumulative stagger, which
-// EXCEEDS Vercel edge-function timeouts (10 s on Hobby, 25 s on Pro).
-// In practice this means a single user request can only fully fetch
-// ~4 topics on Pro before being killed. The fixed `cachedFetchJson`
-// 15-min TTL means topics that DID fetch successfully stay cached, so
-// successive user requests progressively warm the remaining topics.
-//
-// Long-term we should move the fan-out to a Vercel cron job (60 s
-// max-duration on Pro) so all 10 topics refresh on a server-driven
-// schedule independent of user request timing. See proposal below.
-const STAGGER_PER_TOPIC_MS = 5500;
+// (Removed: per-topic live cache TTL + neg-TTL + stagger constants.
+//  The user-facing path no longer triggers GDELT fetches — that work
+//  now lives in `refresh.ts` driven by Vercel cron. The user endpoint
+//  reads accumulators only, with the top-level digest cache below as
+//  the only caching layer in this file's hot path.)
 
 // Per-topic ACCUMULATOR — rolling 7-day window of items merged across
 // fetches. Each successful GDELT response gets unioned into the
@@ -195,6 +165,16 @@ function normalizeTitle(t: string): string {
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Public alias of `fetchTopicArticles` so the cron-refresh handler can
+ * call it without exposing additional implementation details. Same
+ * behavior — fetches one GDELT topic, dedupes by title, runs conflict-
+ * specific enrichment + archive write when applicable.
+ */
+export async function fetchTopicArticlesPublic(topic: IntelTopic): Promise<IntelNewsTopicBucket | null> {
+  return fetchTopicArticles(topic);
 }
 
 async function fetchTopicArticles(topic: IntelTopic): Promise<IntelNewsTopicBucket | null> {
@@ -428,7 +408,7 @@ async function fetchTopicArticles(topic: IntelTopic): Promise<IntelNewsTopicBuck
  * Returns the merged set so the caller can use it as the response payload
  * for this fetch (rather than just returning the fresh items).
  */
-async function mergeIntoAccumulator(
+export async function mergeIntoAccumulator(
   topicId: string,
   freshItems: IntelNewsItem[],
 ): Promise<IntelNewsItem[]> {
@@ -477,101 +457,55 @@ async function readAccumulator(topicId: string): Promise<IntelNewsItem[]> {
 }
 
 /**
- * Public entrypoint. Always returns a 200 — empty buckets on full upstream
- * failure rather than failing the request, so the iOS feed never goes blank.
+ * Public entrypoint. Reads the per-topic accumulators (no GDELT call from
+ * the user-traffic path) and assembles the response. Sub-100ms typical
+ * because it's just N Redis reads.
+ *
+ * GDELT fetching happens in a separate cron job (`/api/intel-news/v1/refresh`)
+ * which runs every 15 minutes server-side, sequentially fetching all 10
+ * topics with 5.5s pacing per GDELT's rate limit. That keeps the user-
+ * facing path completely insulated from GDELT availability and rate
+ * limits — the worst-case here is "chip shows yesterday's articles
+ * because cron hasn't run yet."
+ *
+ * Always returns a 200, even with empty topics — iOS tolerates this
+ * gracefully (chip just renders empty).
  */
 export async function listIntelNews(): Promise<ListIntelNewsResponse> {
-  // v2 — adds title-dedup with sources[]. Old v1 caches still decode
-  // safely on the iOS side (sources is optional) but bumping the key
-  // forces an immediate rebuild after deploy so users see the dedup
-  // benefit without waiting for the 30 min TTL to expire.
-  // v6 — clears v5 NEG_SENTINEL entries left over from the GDELT
-  // rate-limit incident (their 1-req-per-5-sec policy). Stagger now
-  // bumped to 5500 ms so cold-start fan-outs respect that policy.
+  // v6 — see refresh.ts for cron-driven population. The cache key
+  // version bump cleared out the legacy fan-out NEG_SENTINEL entries.
   const topLevelKey = 'intel-news:digest:v6';
 
-  // Top-level cache aggregates per-topic results. Per-topic caches let us
-  // partially refresh — if 5 topics are fresh and 1 is stale, only 1 GDELT
-  // hit is needed.
   const cached = await cachedFetchJson<ListIntelNewsResponse>(
     topLevelKey,
     TOP_LEVEL_TTL_S,
     async () => {
-      // Fetch each topic with cachedFetchJson (live cache, ~15 min TTL).
-      //
-      // Layers around the fetch:
-      //   1. Stagger delay (250 ms × index) — spreads cold-start fan-out
-      //      to ~2.5 s so GDELT's rate-limiter doesn't 429 the burst.
-      //   2. Accumulator merge on success — fresh items get unioned into
-      //      a 7-day rolling store (deduplicated by article link). The
-      //      accumulator is what we return, not just the fresh fetch.
-      //   3. Accumulator fallback on failure — when GDELT is slow / 429s /
-      //      times out, we serve the accumulator unchanged. The chip
-      //      stays populated with up to 7 days of recent stories instead
-      //      of going empty.
-      const promises = INTEL_TOPICS.map(async (topic, index) => {
-        const perTopicKey = `intel-news:topic:v6:${topic.id}`;
-
-        const result = await cachedFetchJson<IntelNewsTopicBucket>(
-          perTopicKey,
-          perTopicTtlSeconds(),
-          async () => {
-            if (index > 0) {
-              await new Promise((r) => setTimeout(r, index * STAGGER_PER_TOPIC_MS));
-            }
-
-            const fresh = await fetchTopicArticles(topic);
-            if (fresh) {
-              // Successful fetch — merge into accumulator and return
-              // the full merged set as this fetch's payload.
-              const merged = await mergeIntoAccumulator(topic.id, fresh.items);
-              if (fresh.items.length !== merged.length) {
-                console.log(
-                  `[intel-news] ${topic.id}: ${fresh.items.length} fresh + ` +
-                  `${merged.length - fresh.items.length} from accumulator = ${merged.length} merged`,
-                );
-              }
-              return { ...fresh, items: merged };
-            }
-
-            // Fresh fetch failed — serve the accumulator if it has anything.
-            const accumulated = await readAccumulator(topic.id);
-            if (accumulated.length > 0) {
-              console.log(`[intel-news] ${topic.id}: fresh failed, serving accumulator (${accumulated.length} items)`);
-              return {
-                id: topic.id,
-                label: topic.label,
-                items: accumulated,
-                fetchedAt: Date.now(),
-                stale: true,
-              };
-            }
-            return null; // truly nothing — let cachedFetchJson NEG-cache
-          },
-          PER_TOPIC_NEG_TTL_S,
-        );
-
-        return result;
-      });
-
       const fanOutStartMs = Date.now();
-      const results = await Promise.all(promises);
-      const fanOutMs = Date.now() - fanOutStartMs;
 
-      // Filter nulls (topics where GDELT failed AND no accumulator existed).
-      // Note: the iOS client tolerates missing topics — empty chip = "no
-      // recent stories" rather than an error state.
-      const topics = results.filter((b): b is IntelNewsTopicBucket => b !== null);
+      // Read each topic's accumulator. Items live in the 7-day rolling
+      // window, deduplicated by article link. Cron job is what actually
+      // populates these — this path is read-only.
+      const buckets = await Promise.all(
+        INTEL_TOPICS.map(async (topic) => {
+          const items = await readAccumulator(topic.id);
+          if (items.length === 0) return null;
+          return {
+            id: topic.id,
+            label: topic.label,
+            items,
+            fetchedAt: Date.now(),
+          } satisfies IntelNewsTopicBucket;
+        }),
+      );
 
+      const topics = buckets.filter((b): b is IntelNewsTopicBucket => b !== null);
       const totalArticles = topics.reduce((s, t) => s + t.items.length, 0);
-      const staleCount = topics.filter((t) => t.stale === true).length;
-      const freshCount = topics.length - staleCount;
-      const failedCount = INTEL_TOPICS.length - topics.length;
+      const fanOutMs = Date.now() - fanOutStartMs;
+      const emptyCount = INTEL_TOPICS.length - topics.length;
 
       console.log(
         `[intel-news] digest: ${topics.length}/${INTEL_TOPICS.length} topics in ${fanOutMs}ms · ` +
-        `${freshCount} fresh, ${staleCount} accumulator-served, ${failedCount} failed · ` +
-        `${totalArticles} total articles`,
+        `${emptyCount} empty (cron hasn't populated yet) · ${totalArticles} total articles`,
       );
 
       return {

@@ -1,6 +1,8 @@
 {
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
-  "crons": [],
+  "crons": [
+    { "path": "/api/intel-news/v1/refresh", "schedule": "*/15 * * * *" }
+  ],
   "rewrites": [
     { "source": "/pro", "destination": "/pro/index.html" },
     { "source": "/app/:path*", "destination": "/app.html" },
