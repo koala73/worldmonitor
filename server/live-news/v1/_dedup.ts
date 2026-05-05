@@ -495,7 +495,7 @@ export async function classifyUnknownsAsync(
   }));
 
   console.log(
-    `[live-news:dedup] classified ${parsed.results.length} unknowns: ${writtenUnique} unique, ${writtenDuplicate} duplicate. ` +
+    `[live-news:dedup] classified ${results.length} unknowns: ${writtenUnique} unique, ${writtenDuplicate} duplicate. ` +
     `(+ ${singletonsToCache.length} singleton-cached). ` +
     `Tokens: in=${result.inputTokens} out=${result.outputTokens}`,
   );

@@ -153,7 +153,6 @@ export async function callClaude(opts: ClaudeCallOptions): Promise<ClaudeCallRes
   const preferredKey = preferredEnvName ? process.env[preferredEnvName] : undefined;
   const fallbackKey = process.env.ANTHROPIC_API_KEY;
   const apiKey = preferredKey || fallbackKey;
-  const usedEnvName = preferredKey ? preferredEnvName! : 'ANTHROPIC_API_KEY';
 
   if (!apiKey) {
     console.warn(`[llm:claude] ${preferredEnvName ?? 'ANTHROPIC_API_KEY'} missing (and ANTHROPIC_API_KEY also unset) — skipping`);

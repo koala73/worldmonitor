@@ -121,10 +121,6 @@ interface LlmResultEntry {
   confidence?: number;
 }
 
-interface LlmResponse {
-  results: LlmResultEntry[];
-}
-
 function buildPrompt(items: LiveNewsItem[]): string {
   const headlines = items.map((it) => ({
     id: it.titleHash,

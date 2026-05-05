@@ -78,7 +78,7 @@ const CITY_COORDS: Record<string, CityCoord> = {
   'austin|tx':            { lat: 30.2672, lng: -97.7431 },
   'cary|nc':              { lat: 35.7915, lng: -78.7811 }, // NC FC
   'commerce city|co':     { lat: 39.8083, lng: -104.9339 }, // Rapids
-  'cincinnati|oh':        { lat: 39.1031, lng: -84.5120 },
+  // ('cincinnati|oh' already in main NFL/MLB block above — duplicate removed)
   'frisco|tx':            { lat: 33.1507, lng: -96.8236 }, // FC Dallas
   'harrison|nj':          { lat: 40.7456, lng: -74.1564 }, // Red Bulls
   'st. paul|mn':          { lat: 44.9537, lng: -93.0900 }, // Minnesota Utd

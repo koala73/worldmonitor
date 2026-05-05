@@ -144,10 +144,6 @@ interface LlmResultEntry {
   summary?: string | null;
 }
 
-interface LlmResponse {
-  results: LlmResultEntry[];
-}
-
 function buildPrompt(items: LiveNewsItem[]): string {
   const inputs = items.map((it) => ({
     id: it.titleHash,
