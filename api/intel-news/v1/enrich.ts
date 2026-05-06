@@ -62,8 +62,12 @@ const CONFLICT_ARCHIVE_TTL_S = 30 * 24 * 60 * 60;
 // Shared enrichment cache — keyed by sha256(link). Both pipelines read /
 // write it, so a URL enriched once in either pipeline is reused by the
 // other instead of re-paying the LLM call.
+//
+// Version bump: v1 → v2 invalidates all prior cached enrichments so the
+// new 3-paragraph + locationName prompt re-enriches everything. Bumps
+// total LLM cost ~$0.30 one-time as ~2800 existing items refresh.
 const ENRICHMENT_CACHE_KEY = (link: string): string =>
-  `enrichment-cache:v1:${createHash('sha256').update(link).digest('hex')}`;
+  `enrichment-cache:v2:${createHash('sha256').update(link).digest('hex')}`;
 const ENRICHMENT_CACHE_TTL_S = 30 * 24 * 60 * 60;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,9 +89,13 @@ const CONCURRENCY = 40;
 // (left in the accumulator for the next enrich pass).
 const BUDGET_MS = 280_000;
 
-const ARTICLE_BODY_MAX_CHARS = 5_000;
-const SUMMARY_MIN_LEN = 80;        // 2-3 paragraphs minimum
-const SUMMARY_MAX_LEN = 3_000;     // 2-3 paragraphs maximum
+const ARTICLE_BODY_MAX_CHARS = 6_000;
+// 3-paragraph minimum (200-400 words → 1200-2400 chars). 600 floor allows
+// for a short LLM that still produced 3 short paragraphs without rejecting
+// the response. 4000 ceiling allows for 5 long paragraphs without
+// rejecting (rare but valid for complex stories).
+const SUMMARY_MIN_LEN = 600;
+const SUMMARY_MAX_LEN = 4_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Region taxonomy — must match iOS `FeedRegion` rawValue strings.
@@ -142,6 +150,10 @@ interface EnrichmentPayload {
   summary: string;
   region: string;
   country?: string;
+  /** City or named location for the incident, e.g. "Tel Aviv", "Khartoum",
+   *  "Donetsk Oblast". Conflict items only — used as the typeLabel in
+   *  the iOS feed row (the "TEL AVIV" header above the headline). */
+  locationName?: string;
   lat?: number;
   lng?: number;
 }
@@ -319,7 +331,7 @@ async function callClaudeJSON(system: string, prompt: string): Promise<string | 
 
 const SYSTEM_PROMPT = `You enrich a news article for a world events tracking app. Always return ONE JSON object with these fields:
 
-  - summary: 2-3 paragraph neutral summary in plain prose (80-300 words). Match the tone of major newswires (Reuters, AP, BBC). Capture who/what/when/where/why. No bullet points, no markdown, no headers, no editorializing. Don't repeat the headline verbatim.
+  - summary: AT LEAST 3 paragraphs of neutral, factual prose (200-400 words). Use double-newline paragraph breaks. Match the tone of major newswires (Reuters, AP, BBC). Each paragraph should be 2-4 sentences. Cover who/what/when/where/why and any relevant context, reactions, or implications. No bullet points, no markdown, no headers, no editorializing. Don't repeat the headline verbatim. If the source content is sparse, draw on what you know about the named people, places, and organizations to add context (clearly attributed if you do).
 
   - region: ONE of these exact strings — choose the world region the story is most associated with:
       "us"             — United States
@@ -334,9 +346,11 @@ const SYSTEM_PROMPT = `You enrich a news article for a world events tracking app
 
   - country: ISO 3166-1 alpha-2 code of the primary country in the story. ONLY include this field for stories about armed conflict, military operations, terrorist attacks, civil unrest, or any kinetic event with a clear geographic incident location. For other stories (business, sports, entertainment, etc.), OMIT this field entirely.
 
+  - locationName: short human-readable place name shown as the row header in the feed UI — typically a city ("Tel Aviv", "Kharkiv"), a region/oblast ("Donetsk Oblast", "Sinai"), or a country if no narrower place is named ("Sudan"). Title Case. Use the same location-naming convention major newswires use in their dateline. ONLY include for the same conflict/kinetic-event stories where you set "country". OMIT for non-conflict stories.
+
   - lat, lng: estimated coordinates (decimal degrees) of the incident. ONLY include for the same conflict/kinetic-event stories where you set "country". When the article names a specific city, use that city's coordinates. Otherwise, use the capital city of "country". OMIT for non-conflict stories.
 
-If the article body is paywalled, garbled, or the source URL didn't return useful text, write a 2-3 sentence summary based on the headline alone — and still return region (best guess based on headline).
+If the article body is paywalled, garbled, or the source URL didn't return useful text, write a 3-paragraph summary using the headline + your knowledge of the topic. Still return region (best guess based on headline).
 
 Return JSON ONLY. No prose, no markdown, no code fences.`;
 
@@ -376,6 +390,13 @@ function parseEnrichmentJSON(raw: string | null): EnrichmentPayload | null {
   if (typeof obj.country === 'string') {
     const c = obj.country.trim().toUpperCase();
     if (/^[A-Z]{2}$/.test(c)) result.country = c;
+  }
+
+  // locationName — short place string. Cap at 100 chars defensively in
+  // case the LLM ignores the "short" instruction; trim whitespace.
+  if (typeof obj.locationName === 'string') {
+    const ln = obj.locationName.trim();
+    if (ln.length > 0 && ln.length <= 100) result.locationName = ln;
   }
 
   // Coordinates — accept only when both are valid finite numbers in range.
@@ -498,7 +519,13 @@ async function runEnrichment(): Promise<EnrichResult> {
   const queue: QueueEntry[] = [];
   const perTopic: Record<string, PerTopicStats> = {};
 
-  // Per-bucket "needs enrichment" index lists.
+  // Per-bucket "needs enrichment" index lists. An item is considered
+  // un-enriched if ANY of these are true:
+  //   • no summary
+  //   • no region tag
+  //   • summary is shorter than the current 3-paragraph minimum (catches
+  //     items enriched under older prompts; cache v2 ensures re-LLM)
+  //   • conflict bucket only — no locationName (drives the iOS row header)
   const perBucketIndices: Array<{ bucketIdx: number; indices: number[] }> = [];
   buckets.forEach((bucket, bucketIdx) => {
     perTopic[bucket.id] = { toEnrich: 0, succeeded: 0, failed: 0 };
@@ -506,15 +533,20 @@ async function runEnrichment(): Promise<EnrichResult> {
     for (let i = 0; i < bucket.items.length; i++) {
       const item = bucket.items[i];
       if (!item) continue;
-      // Treat as "needs enrichment" if EITHER summary OR region is missing.
-      // (region was added later, so existing summarized items get back-filled.)
+
       const summary = bucket.isConflict
         ? (item as ConflictArchiveItem).summary
         : (item as IntelNewsItem).summary;
       const region = bucket.isConflict
         ? (item as ConflictArchiveItem).region
         : (item as IntelNewsItem).region;
-      if (!summary || !region) indices.push(i);
+      const summaryTooShort = !!summary && summary.length < SUMMARY_MIN_LEN;
+      const conflictMissingLocation = bucket.isConflict
+        && !(item as ConflictArchiveItem).locationName;
+
+      if (!summary || !region || summaryTooShort || conflictMissingLocation) {
+        indices.push(i);
+      }
     }
     perTopic[bucket.id]!.toEnrich = indices.length;
     if (indices.length > 0) perBucketIndices.push({ bucketIdx, indices });
@@ -571,6 +603,10 @@ async function runEnrichment(): Promise<EnrichResult> {
             ci.summary = payload.summary;
             ci.region = payload.region;
             if (payload.country) ci.country = payload.country;
+            // locationName drives the row's typeLabel in iOS — without it
+            // the feed falls back to the source domain ("BBC News") which
+            // looks wrong next to RSS-sourced conflicts that show a city.
+            if (payload.locationName) ci.locationName = payload.locationName;
             if (payload.lat != null && payload.lng != null) {
               ci.location = { latitude: payload.lat, longitude: payload.lng };
             }
