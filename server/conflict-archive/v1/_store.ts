@@ -68,6 +68,11 @@ export interface ConflictArchiveItem {
   location: { latitude: number; longitude: number } | null;
   locationName: string | null;
   country: string | null;
+  /** 8-region taxonomy code populated by enrichment ("us", "middle_east",
+   *  etc.). Optional — older entries written before this field was added
+   *  decode as undefined. iOS falls back to country-code mapping in that
+   *  case. */
+  region?: string | null;
   /** Other outlets covering the same story (canonical at index 0). */
   sources: Array<{
     source: string;
@@ -135,8 +140,20 @@ export async function appendToArchive(
 
 /**
  * Read merged archive across both source pipelines. Sorted newest-first.
- * Cross-source dedup is by id — same item ID across pipelines collapses
- * to one entry (we keep whichever has the newer publishedAt).
+ *
+ * Cross-source dedup is by **link**, not `id`. The two pipelines use
+ * different id formats:
+ *   • live-news writes `id: titleHash`
+ *   • GDELT (refresh.ts) writes `id: link`
+ * The same article appearing in both pipelines therefore has different
+ * server-side ids but the same `link`. iOS sees `link` as the article
+ * identity (`NewsItem.id` returns `link`), so deduping by `id` here lets
+ * duplicates leak through and Mapbox rejects them as duplicate annotation
+ * IDs ("Duplicated annotations: conflict-archive-https://...").
+ *
+ * Within each source pipeline we also fall back to id-based dedup as a
+ * safety net (in case a pipeline ever wrote two entries with same id but
+ * different/missing links — unlikely but cheap to guard).
  */
 export async function readArchive(limit: number = 500): Promise<ConflictArchiveItem[]> {
   const [liveNews, gdelt] = await Promise.all([
@@ -144,20 +161,48 @@ export async function readArchive(limit: number = 500): Promise<ConflictArchiveI
     getCachedJson(keyFor('gdelt')) as Promise<ConflictArchiveItem[] | null>,
   ]);
 
-  const byId = new Map<string, ConflictArchiveItem>();
+  // First pass: dedup by link across pipelines, keeping the entry with
+  // the newer publishedAt when both have the same link. We prefer the
+  // entry with non-null `summary` / `location` to push the most enriched
+  // representation forward when timestamps tie.
+  const byLink = new Map<string, ConflictArchiveItem>();
   for (const arr of [liveNews, gdelt]) {
     if (!Array.isArray(arr)) continue;
     for (const it of arr) {
-      if (!it || typeof it.id !== 'string' || typeof it.publishedAt !== 'number') continue;
-      const existing = byId.get(it.id);
-      // Keep the newer one when ids collide across sources.
-      if (!existing || it.publishedAt > existing.publishedAt) {
-        byId.set(it.id, it);
+      if (!it || typeof it.publishedAt !== 'number') continue;
+      const link = typeof it.link === 'string' ? it.link : '';
+      if (!link) continue;
+      const existing = byLink.get(link);
+      if (!existing) {
+        byLink.set(link, it);
+        continue;
+      }
+      // Both candidates have the same link. Pick the better entry:
+      //   1. Newer publishedAt wins
+      //   2. On timestamp tie, the entry with more enrichment fields wins
+      const sameTimestamp = it.publishedAt === existing.publishedAt;
+      const itEnrichScore = enrichmentScore(it);
+      const exEnrichScore = enrichmentScore(existing);
+      if (it.publishedAt > existing.publishedAt
+          || (sameTimestamp && itEnrichScore > exEnrichScore)) {
+        byLink.set(link, it);
       }
     }
   }
 
-  return [...byId.values()]
+  return [...byLink.values()]
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .slice(0, limit);
+}
+
+/** Crude richness score for picking the better of two same-link entries.
+ *  Each enrichment field present adds 1. */
+function enrichmentScore(it: ConflictArchiveItem): number {
+  let s = 0;
+  if (it.summary) s++;
+  if (it.location) s++;
+  if (it.locationName) s++;
+  if (it.country) s++;
+  if (it.region) s++;
+  return s;
 }
